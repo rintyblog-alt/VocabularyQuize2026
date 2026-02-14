@@ -4,16 +4,16 @@
 */
 window.__PUBLIC_CONFIG__ = {
   firebase: {
-    apiKey: "__FIREBASE_API_KEY__",
-    authDomain: "__FIREBASE_AUTH_DOMAIN__",
-    projectId: "__FIREBASE_PROJECT_ID__",
-    storageBucket: "__FIREBASE_STORAGE_BUCKET__",
-    messagingSenderId: "__FIREBASE_MESSAGING_SENDER_ID__",
-    appId: "__FIREBASE_APP_ID__"
+  piKey: "AIzaSyB7DKVD4rQKekzfqzQiFzZBvonMXLOFWe0",
+  authDomain: "vocabuquiz.firebaseapp.com",
+  projectId: "vocabuquiz",
+  storageBucket: "vocabuquiz.firebasestorage.app",
+  messagingSenderId: "290676646464",
+  appId: "1:290676646464:web:cd3bba927ebbf71b4b35a5",
   },
   emailjs: {
-    serviceId: "__EMAILJS_SERVICE_ID__",
-    templateId: "__EMAILJS_TEMPLATE_ID__",
-    publicKey: "__EMAILJS_PUBLIC_KEY__"
+    serviceId: "service_fyd3no8",
+    templateId: "template_103i08s",
+    publicKey: "GQAs4-6iXdocFFrhE"
   }
 };
