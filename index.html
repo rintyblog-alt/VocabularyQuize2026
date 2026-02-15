@@ -2603,6 +2603,100 @@ a{ color: inherit; }
       color: var(--muted);
     }
     .menu-article .status.error{ color: #b91c1c; }
+    .menu-article .status.ok{ color: #198754; }
+    .admin-settings-card{
+      border:1px solid rgba(31,42,68,.14);
+      border-radius: 12px;
+      background: rgba(31,42,68,.03);
+      padding: 12px;
+      display:grid;
+      gap: 10px;
+    }
+    .admin-settings-head{
+      display:flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .admin-settings-actions{
+      display:flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .admin-notif-editor{
+      border:1px solid rgba(31,42,68,.14);
+      border-radius: 12px;
+      background: rgba(31,42,68,.03);
+      padding: 12px;
+      display:grid;
+      gap: 12px;
+    }
+    .admin-editor-actions{
+      display:flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .admin-editor-form{
+      display:grid;
+      gap: 10px;
+    }
+    .admin-editor-form textarea.spell-input{
+      min-height: 120px;
+      resize: vertical;
+    }
+    .admin-editor-grid{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .admin-editor-submit{
+      display:flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .admin-notif-list{
+      display:grid;
+      gap: 10px;
+    }
+    .admin-notif-item{
+      border:1px solid rgba(17,18,20,.1);
+      border-radius: 12px;
+      background: #fff;
+      padding: 10px;
+      display:grid;
+      gap: 8px;
+    }
+    .admin-notif-title{
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.35;
+    }
+    .admin-notif-meta{
+      font-size: 12px;
+      color: var(--muted);
+      display:flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .admin-notif-body{
+      white-space: pre-wrap;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .admin-notif-item-actions{
+      display:flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    @media (max-width: 720px){
+      .admin-editor-grid{
+        grid-template-columns: 1fr;
+      }
+    }
 
     .menu-article pre{
       white-space: pre-wrap;
@@ -3209,69 +3303,140 @@ a{ color: inherit; }
         </div>
 
         <div class="sheet-body">
-          <div class="setting">
-            <div class="text">
-              <div class="name">出題方向</div>
-              <div class="note">英語を見て日本語 / 日本語を見て英語（手書き本番は日→英固定）</div>
+          <div id="settingsMainPane">
+            <div class="setting">
+              <div class="text">
+                <div class="name">出題方向</div>
+                <div class="note">英語を見て日本語 / 日本語を見て英語（手書き本番は日→英固定）</div>
+              </div>
+              <div class="seg" role="tablist" aria-label="出題方向">
+                <button type="button" id="dirEnJaBtn" class="active" role="tab" aria-selected="true">En → Ja</button>
+                <button type="button" id="dirJaEnBtn" role="tab" aria-selected="false">Ja → En</button>
+              </div>
             </div>
-            <div class="seg" role="tablist" aria-label="出題方向">
-              <button type="button" id="dirEnJaBtn" class="active" role="tab" aria-selected="true">En → Ja</button>
-              <button type="button" id="dirJaEnBtn" role="tab" aria-selected="false">Ja → En</button>
+
+            <div class="setting">
+              <div class="text">
+                <div class="name">アニメーション</div>
+                <div class="note"></div>
+              </div>
+              <label class="toggle" aria-label="アニメーション ON/OFF">
+                <input type="checkbox" id="animToggle" />
+              </label>
             </div>
+
+            <div class="setting">
+              <div class="text">
+                <div class="name">効果音</div>
+                <div class="note">正解/不正解の音。ループしません。</div>
+              </div>
+              <label class="toggle" aria-label="効果音 ON/OFF">
+                <input type="checkbox" id="sfxToggle" />
+              </label>
+            </div>
+
+            <div class="setting">
+              <div class="text">
+                <div class="name">BGM</div>
+                <div class="note">クイズ画面でループ再生。</div>
+              </div>
+              <label class="toggle" aria-label="BGM ON/OFF">
+                <input type="checkbox" id="bgmToggle" />
+              </label>
+            </div>
+
+            <div class="setting">
+              <div class="text">
+                <div class="name">BGM 音量</div>
+                <div class="note">大 / デフォルト / 小</div>
+              </div>
+              <div class="seg" role="tablist" aria-label="BGM 音量">
+                <button type="button" id="bgmVolLargeBtn" role="tab" aria-selected="false">大</button>
+                <button type="button" id="bgmVolDefaultBtn" role="tab" aria-selected="false">デフォルト</button>
+                <button type="button" id="bgmVolSmallBtn" role="tab" aria-selected="false">小</button>
+              </div>
+            </div>
+
+            <div class="setting">
+              <div class="text">
+                <div class="name">データ検証表示</div>
+                <div class="note">欠番/重複/解析エラーがある場合に小さく表示。</div>
+              </div>
+              <label class="toggle" aria-label="データ検証表示 ON/OFF">
+                <input type="checkbox" id="debugToggle" />
+              </label>
+            </div>
+            <section class="admin-settings-card" id="adminSettingsCard">
+              <div class="admin-settings-head">
+                <div class="text">
+                  <div class="name">Admin</div>
+                  <div class="note" id="adminAuthStateLine">未ログイン</div>
+                  <div class="note" id="adminAuthRoleLine">権限: User</div>
+                </div>
+                <div class="admin-settings-actions">
+                  <button class="textbtn" id="adminLoginBtn" type="button">Admin Login</button>
+                  <button class="textbtn" id="adminLogoutBtn" type="button">Logout</button>
+                </div>
+              </div>
+              <div>
+                <button class="navbtn hidden" id="adminOpenNotifEditorBtn" type="button">通知を編集</button>
+              </div>
+              <div id="adminAuthStatus" class="drawer-share-status" aria-live="polite"></div>
+            </section>
           </div>
 
-          <div class="setting">
+          <section class="admin-notif-editor hidden" id="adminNotifEditor">
             <div class="text">
-              <div class="name">アニメーション</div>
-              <div class="note"></div>
+              <div class="name">通知管理</div>
+              <div class="note">Firestore: notifications（Adminのみ編集可）</div>
             </div>
-            <label class="toggle" aria-label="アニメーション ON/OFF">
-              <input type="checkbox" id="animToggle" />
-            </label>
-          </div>
-
-          <div class="setting">
-            <div class="text">
-              <div class="name">効果音</div>
-              <div class="note">正解/不正解の音。ループしません。</div>
+            <div class="admin-editor-actions">
+              <button class="textbtn" id="adminNotifBackBtn" type="button">Settingsに戻る</button>
+              <button class="textbtn" id="adminNotifReloadBtn" type="button">再読み込み</button>
             </div>
-            <label class="toggle" aria-label="効果音 ON/OFF">
-              <input type="checkbox" id="sfxToggle" />
-            </label>
-          </div>
-
-          <div class="setting">
-            <div class="text">
-              <div class="name">BGM</div>
-              <div class="note">クイズ画面でループ再生。</div>
+            <div id="adminNotifStatus" class="drawer-share-status" aria-live="polite"></div>
+            <div class="admin-editor-form">
+              <input id="adminNotifDocId" type="hidden" />
+              <label>
+                タイトル
+                <input class="spell-input" id="adminNotifTitle" type="text" placeholder="通知タイトル" />
+              </label>
+              <label>
+                本文
+                <textarea class="spell-input" id="adminNotifBody" placeholder="通知本文（Markdown可）"></textarea>
+              </label>
+              <div class="admin-editor-grid">
+                <label>
+                  Category
+                  <select class="select" id="adminNotifCategory">
+                    <option value="Update">Update</option>
+                    <option value="Study">Study</option>
+                    <option value="Preset">Preset</option>
+                    <option value="System">System</option>
+                  </select>
+                </label>
+                <label>
+                  Priority
+                  <select class="select" id="adminNotifPriority">
+                    <option value="normal">normal</option>
+                    <option value="low">low</option>
+                    <option value="high">high</option>
+                  </select>
+                </label>
+                <label>
+                  PublishedAt
+                  <input class="spell-input" id="adminNotifPublishedAt" type="datetime-local" />
+                </label>
+              </div>
+              <div class="admin-editor-submit">
+                <button class="navbtn" id="adminNotifSaveBtn" type="button">追加</button>
+                <button class="textbtn" id="adminNotifClearBtn" type="button">入力クリア</button>
+                <button class="textbtn hidden" id="adminNotifCancelEditBtn" type="button">編集を解除</button>
+              </div>
             </div>
-            <label class="toggle" aria-label="BGM ON/OFF">
-              <input type="checkbox" id="bgmToggle" />
-            </label>
-          </div>
-
-
-          <div class="setting">
-            <div class="text">
-              <div class="name">BGM 音量</div>
-              <div class="note">大 / デフォルト / 小</div>
-            </div>
-            <div class="seg" role="tablist" aria-label="BGM 音量">
-              <button type="button" id="bgmVolLargeBtn" role="tab" aria-selected="false">大</button>
-              <button type="button" id="bgmVolDefaultBtn" role="tab" aria-selected="false">デフォルト</button>
-              <button type="button" id="bgmVolSmallBtn" role="tab" aria-selected="false">小</button>
-            </div>
-          </div>
-
-          <div class="setting">
-            <div class="text">
-              <div class="name">データ検証表示</div>
-              <div class="note">欠番/重複/解析エラーがある場合に小さく表示。</div>
-            </div>
-            <label class="toggle" aria-label="データ検証表示 ON/OFF">
-              <input type="checkbox" id="debugToggle" />
-            </label>
-          </div>
+            <div class="admin-notif-list" id="adminNotifList"></div>
+            <div class="note hidden" id="adminNotifEmpty">通知がありません。</div>
+          </section>
         </div>
 
         <div class="sheet-footer">
@@ -3565,6 +3730,8 @@ a{ color: inherit; }
     </div>
   </div>
 
+  <!-- Optional public config fallback. Keep placeholder-only in repo. -->
+  <script src="./config.public.example.js"></script>
   <!-- Optional local runtime config (create config.public.js locally; keep it out of git). -->
   <script src="./config.public.js"></script>
   <!-- Optional QR decoding fallback (used only when BarcodeDetector is unavailable). -->
@@ -3578,7 +3745,8 @@ a{ color: inherit; }
     ;(() => {
       "use strict";
 
-      // Security: load publish-safe config from config.public.js or <meta> placeholders.
+      // Security: load publish-safe config from config.public.js, legacy globals, meta, and cache.
+      const PUBLIC_RUNTIME_CACHE_KEY = "app.public.config.v1";
       function _sanitizePublicConfigValue(v){
         const s = String(v ?? "").trim();
         if (!s) return "";
@@ -3591,37 +3759,130 @@ a{ color: inherit; }
         if (!el) return "";
         return _sanitizePublicConfigValue(el.getAttribute("content"));
       }
+      function _metaConfigValueAny(names){
+        for (const name of (Array.isArray(names) ? names : [])){
+          const v = _metaConfigValue(name);
+          if (v) return v;
+        }
+        return "";
+      }
+      function _readPublicRuntimeCache(){
+        try{
+          const raw = localStorage.getItem(PUBLIC_RUNTIME_CACHE_KEY);
+          if (!raw) return {};
+          const parsed = JSON.parse(raw);
+          return (parsed && typeof parsed === "object") ? parsed : {};
+        }catch{
+          return {};
+        }
+      }
+      function _savePublicRuntimeCache(cfg){
+        try{
+          if (!cfg || typeof cfg !== "object") return;
+          localStorage.setItem(PUBLIC_RUNTIME_CACHE_KEY, JSON.stringify(cfg));
+        }catch{}
+      }
+      function _normalizeFirebaseConfig(raw){
+        const src = (raw && typeof raw === "object") ? raw : {};
+        return {
+          apiKey: _sanitizePublicConfigValue(src.apiKey || src.piKey || src.API_KEY || src.firebaseApiKey),
+          authDomain: _sanitizePublicConfigValue(src.authDomain || src.AUTH_DOMAIN),
+          projectId: _sanitizePublicConfigValue(src.projectId || src.projectID || src.PROJECT_ID || src.firebaseProjectId),
+          storageBucket: _sanitizePublicConfigValue(src.storageBucket || src.STORAGE_BUCKET),
+          messagingSenderId: _sanitizePublicConfigValue(src.messagingSenderId || src.messaging_sender_id || src.MESSAGING_SENDER_ID),
+          appId: _sanitizePublicConfigValue(src.appId || src.APP_ID)
+        };
+      }
+      function _normalizeEmailJsConfig(raw){
+        const src = (raw && typeof raw === "object") ? raw : {};
+        return {
+          serviceId: _sanitizePublicConfigValue(src.serviceId),
+          templateId: _sanitizePublicConfigValue(src.templateId),
+          publicKey: _sanitizePublicConfigValue(src.publicKey)
+        };
+      }
+      function _hasFirebaseConfig(cfg){
+        const c = _normalizeFirebaseConfig(cfg);
+        return !!(c.apiKey && c.projectId);
+      }
+      function _hasEmailJsConfig(cfg){
+        const c = _normalizeEmailJsConfig(cfg);
+        return !!(c.serviceId && c.templateId && c.publicKey);
+      }
       function _readPublicRuntimeConfig(){
         const root = (window.__PUBLIC_CONFIG__ && typeof window.__PUBLIC_CONFIG__ === "object")
           ? window.__PUBLIC_CONFIG__
           : {};
-        const legacyFirebase = (window.__FIREBASE_CONFIG__ && typeof window.__FIREBASE_CONFIG__ === "object")
+        const cache = _readPublicRuntimeCache();
+        const firebaseLegacy = (window.__FIREBASE_CONFIG__ && typeof window.__FIREBASE_CONFIG__ === "object")
           ? window.__FIREBASE_CONFIG__
+          : ((window.firebaseConfig && typeof window.firebaseConfig === "object")
+            ? window.firebaseConfig
+            : ((window.__firebaseConfig__ && typeof window.__firebaseConfig__ === "object")
+              ? window.__firebaseConfig__
+              : {}));
+        const emailjsLegacy = (window.__EMAILJS_CONFIG__ && typeof window.__EMAILJS_CONFIG__ === "object")
+          ? window.__EMAILJS_CONFIG__
           : {};
         const firebaseRaw = (root.firebase && typeof root.firebase === "object")
           ? root.firebase
-          : {};
+          : ((root.firebaseConfig && typeof root.firebaseConfig === "object")
+            ? root.firebaseConfig
+            : (((root.apiKey || root.projectId) && typeof root === "object") ? root : {}));
         const emailjsRaw = (root.emailjs && typeof root.emailjs === "object")
           ? root.emailjs
+          : ((root.emailJs && typeof root.emailJs === "object")
+            ? root.emailJs
+            : (((root.serviceId || root.templateId || root.publicKey) && typeof root === "object") ? root : {}));
+        const firebaseFromCache = (cache.firebase && typeof cache.firebase === "object") ? cache.firebase : {};
+        const emailjsFromCache = (cache.emailjs && typeof cache.emailjs === "object") ? cache.emailjs : {};
+        const firebase = _normalizeFirebaseConfig({
+          apiKey: firebaseRaw.apiKey || firebaseLegacy.apiKey || firebaseFromCache.apiKey || _metaConfigValueAny(["firebase-api-key", "public-api-key"]),
+          authDomain: firebaseRaw.authDomain || firebaseLegacy.authDomain || firebaseFromCache.authDomain || _metaConfigValueAny(["firebase-auth-domain", "public-auth-domain"]),
+          projectId: firebaseRaw.projectId || firebaseLegacy.projectId || firebaseFromCache.projectId || _metaConfigValueAny(["firebase-project-id", "public-project-id"]),
+          storageBucket: firebaseRaw.storageBucket || firebaseLegacy.storageBucket || firebaseFromCache.storageBucket || _metaConfigValueAny(["firebase-storage-bucket", "public-storage-bucket"]),
+          messagingSenderId: firebaseRaw.messagingSenderId || firebaseLegacy.messagingSenderId || firebaseFromCache.messagingSenderId || _metaConfigValueAny(["firebase-messaging-sender-id", "public-messaging-sender-id"]),
+          appId: firebaseRaw.appId || firebaseLegacy.appId || firebaseFromCache.appId || _metaConfigValueAny(["firebase-app-id", "public-app-id"])
+        });
+        const emailjs = _normalizeEmailJsConfig({
+          serviceId: emailjsRaw.serviceId || emailjsLegacy.serviceId || emailjsFromCache.serviceId || _metaConfigValue("emailjs-service-id"),
+          templateId: emailjsRaw.templateId || emailjsLegacy.templateId || emailjsFromCache.templateId || _metaConfigValue("emailjs-template-id"),
+          publicKey: emailjsRaw.publicKey || emailjsLegacy.publicKey || emailjsFromCache.publicKey || _metaConfigValue("emailjs-public-key")
+        });
+        const resolved = { firebase, emailjs };
+        if (_hasFirebaseConfig(firebase) || _hasEmailJsConfig(emailjs)){
+          _savePublicRuntimeCache(resolved);
+        }
+        return resolved;
+      }
+      function _resolveFirebaseConfigNow(){
+        const direct = _normalizeFirebaseConfig(window.__FIREBASE_CONFIG__);
+        if (_hasFirebaseConfig(direct)) return direct;
+        const root = (window.__PUBLIC_CONFIG__ && typeof window.__PUBLIC_CONFIG__ === "object")
+          ? window.__PUBLIC_CONFIG__
           : {};
-        return {
-          firebase: {
-            apiKey: _sanitizePublicConfigValue(firebaseRaw.apiKey || legacyFirebase.apiKey) || _metaConfigValue("firebase-api-key"),
-            authDomain: _sanitizePublicConfigValue(firebaseRaw.authDomain || legacyFirebase.authDomain) || _metaConfigValue("firebase-auth-domain"),
-            projectId: _sanitizePublicConfigValue(firebaseRaw.projectId || legacyFirebase.projectId) || _metaConfigValue("firebase-project-id"),
-            storageBucket: _sanitizePublicConfigValue(firebaseRaw.storageBucket || legacyFirebase.storageBucket) || _metaConfigValue("firebase-storage-bucket"),
-            messagingSenderId: _sanitizePublicConfigValue(firebaseRaw.messagingSenderId || legacyFirebase.messagingSenderId) || _metaConfigValue("firebase-messaging-sender-id"),
-            appId: _sanitizePublicConfigValue(firebaseRaw.appId || legacyFirebase.appId) || _metaConfigValue("firebase-app-id")
-          },
-          emailjs: {
-            serviceId: _sanitizePublicConfigValue(emailjsRaw.serviceId) || _metaConfigValue("emailjs-service-id"),
-            templateId: _sanitizePublicConfigValue(emailjsRaw.templateId) || _metaConfigValue("emailjs-template-id"),
-            publicKey: _sanitizePublicConfigValue(emailjsRaw.publicKey) || _metaConfigValue("emailjs-public-key")
-          }
-        };
+        const fromRootRaw = (root.firebase && typeof root.firebase === "object")
+          ? root.firebase
+          : ((root.firebaseConfig && typeof root.firebaseConfig === "object")
+            ? root.firebaseConfig
+            : root);
+        const fromRoot = _normalizeFirebaseConfig(fromRootRaw);
+        if (_hasFirebaseConfig(fromRoot)){
+          window.__FIREBASE_CONFIG__ = fromRoot;
+          return fromRoot;
+        }
+        const runtime = _readPublicRuntimeConfig();
+        const fromRuntime = _normalizeFirebaseConfig(runtime.firebase);
+        if (_hasFirebaseConfig(fromRuntime)){
+          window.__FIREBASE_CONFIG__ = fromRuntime;
+          return fromRuntime;
+        }
+        return null;
       }
       const PUBLIC_RUNTIME_CONFIG = _readPublicRuntimeConfig();
-      window.__FIREBASE_CONFIG__ = PUBLIC_RUNTIME_CONFIG.firebase;
+      if (_hasFirebaseConfig(PUBLIC_RUNTIME_CONFIG.firebase)){
+        window.__FIREBASE_CONFIG__ = _normalizeFirebaseConfig(PUBLIC_RUNTIME_CONFIG.firebase);
+      }
 
       // =========================
       // Audio (user-provided mp3)
@@ -5964,6 +6225,9 @@ function renderAll(){
         el.bgmVolSmallBtn.setAttribute("aria-selected", String(bv === "SMALL"));
 
         el.debugToggle.checked = state.settings.debug;
+        if (el.settingsOverlay && !el.settingsOverlay.classList.contains("hidden")){
+          _adminRenderUI();
+        }
 
         if (state.view === "TITLE"){
           renderTitleHeader();
@@ -6190,8 +6454,23 @@ function setDeck(deckKey){
       // =========================
       // Settings overlay
       // =========================
-      function openSettings(){ el.settingsOverlay.classList.remove("hidden"); }
-      function closeSettings(){ el.settingsOverlay.classList.add("hidden"); }
+      function openSettings(){
+        if (!el.settingsOverlay){
+          uiToast("Settings UIが見つかりませんでした");
+          return;
+        }
+        el.settingsOverlay.classList.remove("hidden");
+        _adminEnsureAuthWatcher();
+        _adminRenderUI();
+      }
+      function closeSettings(){
+        if (!el.settingsOverlay){
+          uiToast("Settings UIが見つかりませんでした");
+          return;
+        }
+        _adminShowEditor(false);
+        el.settingsOverlay.classList.add("hidden");
+      }
 
       function openUpdateNotes(){ if (el.updateOverlay) el.updateOverlay.classList.remove("hidden"); }
       function closeUpdateNotes(){
@@ -6288,6 +6567,19 @@ function reviewWrong(){
       // Notifications (local)
       // =========================
       const NOTIF_KEY = "app.notifications.v1";
+      const NOTIF_SEEN_KEY = "app.notifications.seenAt.v1";
+      const ADMIN_EMAIL = "Matsushiri20pc@gmail.com";
+      const NOTIF_MAX = 200;
+      const _adminState = {
+        authWatchStarted: false,
+        auth: null,
+        db: null,
+        user: null,
+        isAdmin: false,
+        editorOpen: false,
+        notifItems: [],
+        loading: false
+      };
 
       function _fmt2(n){ return String(n).padStart(2,"0"); }
       function formatDateTime(ts){
@@ -6303,6 +6595,89 @@ function reviewWrong(){
           return "—";
         }
       }
+      function _toLocalDateTimeInput(ms){
+        const n = Number(ms) || 0;
+        if (!n) return "";
+        const d = new Date(n);
+        const pad = (x) => String(x).padStart(2, "0");
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      }
+      function _parseLocalDateTimeInput(v){
+        const s = String(v || "").trim();
+        if (!s) return 0;
+        const ms = new Date(s).getTime();
+        return Number.isFinite(ms) ? ms : 0;
+      }
+      function _notifTsToMs(v){
+        if (!v) return 0;
+        if (typeof v.toMillis === "function") return Number(v.toMillis()) || 0;
+        if (typeof v.seconds === "number"){
+          return (Number(v.seconds) * 1000) + Math.floor(Number(v.nanoseconds || 0) / 1e6);
+        }
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      }
+      function _notifNormalizeCategory(v){
+        const s = String(v || "Update");
+        if (s === "Study" || s === "Preset" || s === "System") return s;
+        return "Update";
+      }
+      function _notifNormalizePriority(v){
+        const s = String(v || "normal");
+        if (s === "low" || s === "high") return s;
+        return "normal";
+      }
+      function _notifNormalizeItem(raw){
+        const id = String(raw?.id || "").trim();
+        if (!id) return null;
+        const title = String(raw?.title || "").trim();
+        const body = String(raw?.body || "");
+        const publishedAtMs = _notifTsToMs(raw?.publishedAtMs || raw?.publishedAt);
+        const createdAtMs = _notifTsToMs(raw?.createdAtMs || raw?.createdAt);
+        const updatedAtMs = _notifTsToMs(raw?.updatedAtMs || raw?.updatedAt);
+        const ts = _notifTsToMs(raw?.ts) || publishedAtMs || createdAtMs || updatedAtMs || 0;
+        return {
+          id,
+          title,
+          body,
+          category: _notifNormalizeCategory(raw?.category),
+          priority: _notifNormalizePriority(raw?.priority),
+          publishedAtMs,
+          createdAtMs,
+          updatedAtMs,
+          ts
+        };
+      }
+      function _notifFromDoc(doc){
+        const raw = (doc && typeof doc.data === "function") ? (doc.data() || {}) : {};
+        return _notifNormalizeItem({
+          id: doc?.id || "",
+          title: raw.title,
+          body: raw.body,
+          category: raw.category,
+          priority: raw.priority,
+          publishedAt: raw.publishedAt,
+          createdAt: raw.createdAt,
+          updatedAt: raw.updatedAt
+        });
+      }
+      function _notifSeenAt(){
+        try{
+          const n = Number(localStorage.getItem(NOTIF_SEEN_KEY) || 0);
+          return Number.isFinite(n) ? n : 0;
+        }catch{
+          return 0;
+        }
+      }
+      function _notifSetSeenAt(ts){
+        const n = Number(ts) || 0;
+        if (!n) return;
+        try{ localStorage.setItem(NOTIF_SEEN_KEY, String(n)); }catch{}
+      }
+      function _notifMarkSeenByList(list){
+        const maxTs = (Array.isArray(list) ? list : []).reduce((mx, n) => Math.max(mx, Number(n?.ts) || 0), 0);
+        if (maxTs > 0) _notifSetSeenAt(maxTs);
+      }
 
       function loadNotifications(){
         try{
@@ -6310,100 +6685,491 @@ function reviewWrong(){
           if (!raw) return [];
           const arr = JSON.parse(raw);
           if (!Array.isArray(arr)) return [];
-          return arr.map(n => ({
-            id: String(n.id || ""),
-            title: String(n.title || ""),
-            body: String(n.body || ""),
-            ts: Number(n.ts || 0),
-            read: !!n.read
-          })).filter(n => n.id && n.title);
+          return arr
+            .map(_notifNormalizeItem)
+            .filter(Boolean)
+            .sort((a,b) => (b.ts || 0) - (a.ts || 0))
+            .slice(0, NOTIF_MAX);
         }catch{
           return [];
         }
       }
-
       function saveNotifications(list){
         try{
-          localStorage.setItem(NOTIF_KEY, JSON.stringify(list.slice(0, 200)));
+          const arr = (Array.isArray(list) ? list : [])
+            .map(_notifNormalizeItem)
+            .filter(Boolean)
+            .slice(0, NOTIF_MAX)
+            .map(n => ({
+              id: n.id,
+              title: n.title,
+              body: n.body,
+              category: n.category,
+              priority: n.priority,
+              publishedAtMs: n.publishedAtMs || 0,
+              createdAtMs: n.createdAtMs || 0,
+              updatedAtMs: n.updatedAtMs || 0,
+              ts: n.ts || 0
+            }));
+          localStorage.setItem(NOTIF_KEY, JSON.stringify(arr));
         }catch{}
       }
-
       function ensureDemoNotification(){
-        const list = loadNotifications();
-        if (list.length) return list;
-        const d = new Date();
-        const y = d.getFullYear();
-        const m = _fmt2(d.getMonth()+1);
-        const da = _fmt2(d.getDate());
-        const demo = [{
-          id: "demo-"+Date.now(),
-          title: "アップデートのお知らせ",
-          body: "UIの刷新（Phase 1）に向けた準備が進行中です。ダッシュボードから学習を開始できます。",
-          ts: Date.now(),
-          read: false
-        }];
-        saveNotifications(demo);
-        return demo;
+        return loadNotifications();
       }
 
+      function _adminSetStatus(msg, kind){
+        const elx = document.getElementById("adminAuthStatus");
+        if (!elx){
+          if (msg) uiToast(String(msg));
+          return;
+        }
+        elx.textContent = String(msg || "");
+        elx.classList.remove("ok", "error");
+        if (kind === "ok") elx.classList.add("ok");
+        if (kind === "error") elx.classList.add("error");
+      }
+      function _adminSetNotifStatus(msg, kind){
+        const elx = document.getElementById("adminNotifStatus");
+        if (!elx){
+          if (msg) uiToast(String(msg));
+          return;
+        }
+        elx.textContent = String(msg || "");
+        elx.classList.remove("ok", "error");
+        if (kind === "ok") elx.classList.add("ok");
+        if (kind === "error") elx.classList.add("error");
+      }
+      function _adminUserIsAdmin(user){
+        const email = String(user?.email || "").trim().toLowerCase();
+        return !!email && email === String(ADMIN_EMAIL).trim().toLowerCase();
+      }
+      function _adminGetDb(){
+        if (_adminState.db) return _adminState.db;
+        _adminState.db = _drawerShareGetDb();
+        return _adminState.db;
+      }
+      function _adminGetAuth(){
+        if (_adminState.auth) return _adminState.auth;
+        if (!window.firebase || typeof window.firebase.auth !== "function"){
+          throw new Error("Firebase Auth SDK が読み込まれていません。");
+        }
+        _adminGetDb(); // app初期化を保証
+        _adminState.auth = window.firebase.auth();
+        return _adminState.auth;
+      }
+      function _adminCheckAuthEnvironment(){
+        const proto = String(location.protocol || "");
+        if (!/^https?:$/.test(proto) && proto !== "chrome-extension:"){
+          return {
+            ok: false,
+            reason: `この環境ではGoogleログインできません（protocol=${proto || "unknown"}）。httpsで開いてください。`
+          };
+        }
+        try{
+          const k = "__admin_auth_probe__";
+          localStorage.setItem(k, "1");
+          localStorage.removeItem(k);
+        }catch{
+          return {
+            ok: false,
+            reason: "ブラウザのWeb Storageが無効です。Cookie/サイトデータを有効にしてください。"
+          };
+        }
+        return { ok: true, reason: "" };
+      }
+      async function _adminHandleRedirectResult(){
+        let auth;
+        try{
+          auth = _adminGetAuth();
+        }catch{
+          return;
+        }
+        if (!auth || typeof auth.getRedirectResult !== "function") return;
+        try{
+          const result = await auth.getRedirectResult();
+          if (result && result.user){
+            _adminSetStatus("Googleログインが完了しました。", "ok");
+          }
+        }catch(err){
+          const code = String(err?.code || "AUTH_ERROR");
+          const msg = String(err?.message || "");
+          _adminSetStatus(`ログイン失敗: ${code} / ${msg}`, "error");
+        }
+      }
+      function _adminRenderUI(){
+        const stateLine = document.getElementById("adminAuthStateLine");
+        const roleLine = document.getElementById("adminAuthRoleLine");
+        const loginBtn = document.getElementById("adminLoginBtn");
+        const logoutBtn = document.getElementById("adminLogoutBtn");
+        const openEditorBtn = document.getElementById("adminOpenNotifEditorBtn");
+        const mainPane = document.getElementById("settingsMainPane");
+        const editorPane = document.getElementById("adminNotifEditor");
+        const email = String(_adminState.user?.email || "").trim();
+        if (stateLine){
+          stateLine.textContent = email ? `ログイン中: ${email}` : "未ログイン";
+        }
+        if (roleLine){
+          roleLine.textContent = _adminState.isAdmin ? "権限: Admin" : "権限: User";
+        }
+        if (loginBtn) loginBtn.disabled = !!email;
+        if (logoutBtn) logoutBtn.disabled = !email;
+        if (openEditorBtn) openEditorBtn.classList.toggle("hidden", !_adminState.isAdmin);
+        if (!_adminState.isAdmin && _adminState.editorOpen){
+          _adminState.editorOpen = false;
+        }
+        if (mainPane && editorPane){
+          mainPane.classList.toggle("hidden", !!_adminState.editorOpen);
+          editorPane.classList.toggle("hidden", !_adminState.editorOpen);
+        }
+      }
+      function _adminEnsureAuthWatcher(){
+        if (_adminState.authWatchStarted) return;
+        try{
+          const auth = _adminGetAuth();
+          _adminState.authWatchStarted = true;
+          _adminHandleRedirectResult();
+          auth.onAuthStateChanged((user) => {
+            _adminState.user = user || null;
+            _adminState.isAdmin = _adminUserIsAdmin(user);
+            _adminRenderUI();
+          });
+        }catch(err){
+          _adminSetStatus(`Admin機能の初期化に失敗: ${String(err?.message || err)}`, "error");
+        }
+      }
+      function _adminShowEditor(open){
+        const mainPane = document.getElementById("settingsMainPane");
+        const editorPane = document.getElementById("adminNotifEditor");
+        if (!mainPane || !editorPane){
+          _adminSetStatus("通知編集UIが見つかりません。", "error");
+          return false;
+        }
+        if (open && !_adminState.isAdmin){
+          _adminSetStatus("Adminログインが必要です。", "error");
+          return false;
+        }
+        _adminState.editorOpen = !!open;
+        _adminRenderUI();
+        return true;
+      }
+      function _adminClearNotifForm(){
+        const idEl = document.getElementById("adminNotifDocId");
+        const titleEl = document.getElementById("adminNotifTitle");
+        const bodyEl = document.getElementById("adminNotifBody");
+        const categoryEl = document.getElementById("adminNotifCategory");
+        const priorityEl = document.getElementById("adminNotifPriority");
+        const publishedEl = document.getElementById("adminNotifPublishedAt");
+        const saveBtn = document.getElementById("adminNotifSaveBtn");
+        const cancelBtn = document.getElementById("adminNotifCancelEditBtn");
+        if (idEl) idEl.value = "";
+        if (titleEl) titleEl.value = "";
+        if (bodyEl) bodyEl.value = "";
+        if (categoryEl) categoryEl.value = "Update";
+        if (priorityEl) priorityEl.value = "normal";
+        if (publishedEl) publishedEl.value = "";
+        if (saveBtn) saveBtn.textContent = "追加";
+        if (cancelBtn) cancelBtn.classList.add("hidden");
+      }
+      function _adminFillNotifForm(item){
+        const n = _notifNormalizeItem(item);
+        if (!n) return;
+        const idEl = document.getElementById("adminNotifDocId");
+        const titleEl = document.getElementById("adminNotifTitle");
+        const bodyEl = document.getElementById("adminNotifBody");
+        const categoryEl = document.getElementById("adminNotifCategory");
+        const priorityEl = document.getElementById("adminNotifPriority");
+        const publishedEl = document.getElementById("adminNotifPublishedAt");
+        const saveBtn = document.getElementById("adminNotifSaveBtn");
+        const cancelBtn = document.getElementById("adminNotifCancelEditBtn");
+        if (idEl) idEl.value = n.id;
+        if (titleEl) titleEl.value = n.title;
+        if (bodyEl) bodyEl.value = n.body;
+        if (categoryEl) categoryEl.value = n.category;
+        if (priorityEl) priorityEl.value = n.priority;
+        if (publishedEl) publishedEl.value = _toLocalDateTimeInput(n.publishedAtMs || n.ts || Date.now());
+        if (saveBtn) saveBtn.textContent = "更新";
+        if (cancelBtn) cancelBtn.classList.remove("hidden");
+      }
+      function _adminReadNotifForm(){
+        const idEl = document.getElementById("adminNotifDocId");
+        const titleEl = document.getElementById("adminNotifTitle");
+        const bodyEl = document.getElementById("adminNotifBody");
+        const categoryEl = document.getElementById("adminNotifCategory");
+        const priorityEl = document.getElementById("adminNotifPriority");
+        const publishedEl = document.getElementById("adminNotifPublishedAt");
+        if (!idEl || !titleEl || !bodyEl || !categoryEl || !priorityEl || !publishedEl){
+          throw new Error("通知編集UI要素が見つかりません。");
+        }
+        const title = String(titleEl.value || "").trim();
+        const body = String(bodyEl.value || "").trim();
+        if (!title) throw new Error("title は必須です。");
+        if (!body) throw new Error("body は必須です。");
+        const publishedAtMs = _parseLocalDateTimeInput(publishedEl.value) || Date.now();
+        return {
+          id: String(idEl.value || "").trim(),
+          title,
+          body,
+          category: _notifNormalizeCategory(categoryEl.value),
+          priority: _notifNormalizePriority(priorityEl.value),
+          publishedAtMs
+        };
+      }
+      function _adminRenderNotifList(){
+        const listEl = document.getElementById("adminNotifList");
+        const emptyEl = document.getElementById("adminNotifEmpty");
+        if (!listEl || !emptyEl){
+          _adminSetNotifStatus("通知一覧UIが見つかりません。", "error");
+          return;
+        }
+        const list = Array.isArray(_adminState.notifItems) ? _adminState.notifItems.slice() : [];
+        listEl.innerHTML = "";
+        if (!list.length){
+          emptyEl.classList.remove("hidden");
+          return;
+        }
+        emptyEl.classList.add("hidden");
+        const frag = document.createDocumentFragment();
+        for (const n of list){
+          const item = document.createElement("article");
+          item.className = "admin-notif-item";
+          const title = document.createElement("div");
+          title.className = "admin-notif-title";
+          title.textContent = n.title || "(untitled)";
+          const meta = document.createElement("div");
+          meta.className = "admin-notif-meta";
+          const publishedText = n.ts ? formatDateTime(n.ts) : "—";
+          meta.innerHTML = `<span>${escapeHtml(n.category || "Update")}</span><span>${escapeHtml(n.priority || "normal")}</span><span>${escapeHtml(publishedText)}</span>`;
+          const body = document.createElement("div");
+          body.className = "admin-notif-body";
+          body.textContent = String(n.body || "");
+          const actions = document.createElement("div");
+          actions.className = "admin-notif-item-actions";
+          const editBtn = document.createElement("button");
+          editBtn.type = "button";
+          editBtn.className = "textbtn";
+          editBtn.textContent = "編集";
+          editBtn.dataset.adminNotifAction = "edit";
+          editBtn.dataset.id = n.id;
+          const delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "textbtn";
+          delBtn.textContent = "削除";
+          delBtn.dataset.adminNotifAction = "delete";
+          delBtn.dataset.id = n.id;
+          actions.appendChild(editBtn);
+          actions.appendChild(delBtn);
+          item.appendChild(title);
+          item.appendChild(meta);
+          item.appendChild(body);
+          item.appendChild(actions);
+          frag.appendChild(item);
+        }
+        listEl.appendChild(frag);
+      }
+      async function _fetchNotificationsFromFirestore(){
+        const db = _adminGetDb();
+        const map = new Map();
+        let successCount = 0;
+        const tryQuery = async (field) => {
+          try{
+            const snap = await db.collection("notifications").orderBy(field, "desc").limit(NOTIF_MAX).get();
+            successCount++;
+            snap.forEach((doc) => {
+              const item = _notifFromDoc(doc);
+              if (!item) return;
+              map.set(item.id, item);
+            });
+          }catch(_){}
+        };
+        await tryQuery("publishedAt");
+        await tryQuery("createdAt");
+        if (!successCount){
+          const snap = await db.collection("notifications").limit(NOTIF_MAX).get();
+          snap.forEach((doc) => {
+            const item = _notifFromDoc(doc);
+            if (!item) return;
+            map.set(item.id, item);
+          });
+        }
+        const list = Array.from(map.values())
+          .filter(n => n && n.id)
+          .sort((a,b) => (b.ts || 0) - (a.ts || 0))
+          .slice(0, NOTIF_MAX);
+        saveNotifications(list);
+        return list;
+      }
+      async function _refreshNotificationsFromFirestore(options){
+        const opt = options || {};
+        const list = await _fetchNotificationsFromFirestore();
+        updateNotifyDot();
+        if (el.notifyOverlay && !el.notifyOverlay.classList.contains("hidden")){
+          renderNotifyList();
+          _notifMarkSeenByList(list);
+          renderNotifyList();
+          updateNotifyDot();
+        }
+        if (opt.forAdmin){
+          _adminState.notifItems = list.slice();
+          _adminRenderNotifList();
+        }
+        return list;
+      }
       function updateNotifyDot(){
         if (!el.notifyDot) return;
+        const seenAt = _notifSeenAt();
         const list = loadNotifications();
-        const unread = list.some(n => !n.read);
+        const unread = list.some(n => (Number(n?.ts) || 0) > seenAt);
         el.notifyDot.classList.toggle("hidden", !unread);
       }
-
       function renderNotifyList(){
         if (!el.notifyList || !el.notifyEmpty) return;
-        const list = loadNotifications().sort((a,b) => (b.ts||0) - (a.ts||0));
+        const seenAt = _notifSeenAt();
+        const list = loadNotifications().sort((a,b) => (b.ts || 0) - (a.ts || 0));
         el.notifyList.innerHTML = "";
         if (!list.length){
+          el.notifyEmpty.textContent = "通知はありません。";
           el.notifyEmpty.classList.remove("hidden");
           return;
         }
         el.notifyEmpty.classList.add("hidden");
         for (const n of list){
+          const unread = (Number(n.ts) || 0) > seenAt;
           const item = document.createElement("div");
-          item.className = "notify-item" + (n.read ? "" : " unread");
-
+          item.className = "notify-item" + (unread ? " unread" : "");
           const h = document.createElement("h3");
           h.className = "notify-title";
-          h.textContent = n.title;
-
+          h.textContent = n.title || "(untitled)";
           const p = document.createElement("p");
           p.className = "notify-bodytext";
-          p.textContent = n.body;
-
+          p.textContent = n.body || "";
           const t = document.createElement("div");
           t.className = "notify-time";
-          t.innerHTML = `<span class="ms" aria-hidden="true" style="font-size:16px; opacity:.8;">schedule</span><span>${formatDateTime(n.ts)}</span>`;
-
+          const timeTxt = n.ts ? formatDateTime(n.ts) : "—";
+          t.innerHTML = `<span class="ms" aria-hidden="true" style="font-size:16px; opacity:.8;">schedule</span><span>${escapeHtml(timeTxt)}</span>`;
           item.appendChild(h);
           item.appendChild(p);
           item.appendChild(t);
           el.notifyList.appendChild(item);
         }
       }
-
       function openNotify(){
-        if (!el.notifyOverlay) return;
+        if (!el.notifyOverlay){
+          uiToast("通知UIが見つかりませんでした");
+          return;
+        }
         el.notifyOverlay.classList.remove("hidden");
         renderNotifyList();
-        // mark as read
-        const list = loadNotifications();
-        let changed = false;
-        for (const n of list){
-          if (!n.read){ n.read = true; changed = true; }
-        }
-        if (changed) saveNotifications(list);
-        updateNotifyDot();
-        // refresh list styles
+        const cached = loadNotifications();
+        _notifMarkSeenByList(cached);
         renderNotifyList();
+        updateNotifyDot();
+        _refreshNotificationsFromFirestore()
+          .catch((err) => {
+            const msg = String(err?.message || err || "unknown error");
+            if (el.notifyEmpty && (!cached || !cached.length)){
+              el.notifyEmpty.textContent = `通知取得に失敗: ${msg}`;
+              el.notifyEmpty.classList.remove("hidden");
+            }
+          });
       }
-
       function closeNotify(){
         if (!el.notifyOverlay) return;
         el.notifyOverlay.classList.add("hidden");
+      }
+      async function _adminReloadNotifications(silent){
+        if (!_adminState.isAdmin){
+          _adminSetNotifStatus("Adminログインが必要です。", "error");
+          return;
+        }
+        if (_adminState.loading) return;
+        _adminState.loading = true;
+        if (!silent) _adminSetNotifStatus("通知一覧を読み込み中…");
+        try{
+          const list = await _refreshNotificationsFromFirestore({ forAdmin: true });
+          _adminState.notifItems = list.slice();
+          _adminRenderNotifList();
+          if (!silent) _adminSetNotifStatus(`読み込み完了: ${list.length}件`, "ok");
+        }catch(err){
+          _adminSetNotifStatus(`読み込み失敗: ${String(err?.code || "ERROR")} / ${String(err?.message || err)}`, "error");
+        }finally{
+          _adminState.loading = false;
+        }
+      }
+      async function _adminSaveNotification(){
+        if (!_adminState.isAdmin){
+          _adminSetNotifStatus("Adminログインが必要です。", "error");
+          return;
+        }
+        let form;
+        try{
+          form = _adminReadNotifForm();
+        }catch(err){
+          _adminSetNotifStatus(String(err?.message || err), "error");
+          return;
+        }
+        _adminSetNotifStatus(form.id ? "更新中…" : "追加中…");
+        try{
+          const db = _adminGetDb();
+          const fs = window.firebase?.firestore;
+          if (!fs || !fs.FieldValue || !fs.Timestamp){
+            throw new Error("Firestore SDK が未初期化です。");
+          }
+          const payloadBase = {
+            title: form.title,
+            body: form.body,
+            category: form.category,
+            priority: form.priority,
+            publishedAt: fs.Timestamp.fromMillis(form.publishedAtMs || Date.now()),
+            updatedAt: fs.FieldValue.serverTimestamp()
+          };
+          if (form.id){
+            await db.collection("notifications").doc(form.id).set(payloadBase, { merge: true });
+          }else{
+            await db.collection("notifications").add({
+              ...payloadBase,
+              createdAt: fs.FieldValue.serverTimestamp()
+            });
+          }
+          _adminClearNotifForm();
+          await _adminReloadNotifications(true);
+          _adminSetNotifStatus(form.id ? "更新しました。" : "追加しました。", "ok");
+          uiToast(form.id ? "通知を更新しました" : "通知を追加しました");
+        }catch(err){
+          _adminSetNotifStatus(`保存失敗: ${String(err?.code || "ERROR")} / ${String(err?.message || err)}`, "error");
+        }
+      }
+      async function _adminDeleteNotification(docId){
+        const id = String(docId || "").trim();
+        if (!id){
+          _adminSetNotifStatus("削除対象IDが不正です。", "error");
+          return;
+        }
+        if (!_adminState.isAdmin){
+          _adminSetNotifStatus("Adminログインが必要です。", "error");
+          return;
+        }
+        const ok = await uiConfirm("この通知を削除しますか？", {
+          title: "通知管理",
+          okText: "削除",
+          cancelText: "キャンセル",
+          danger: true
+        });
+        if (!ok) return;
+        _adminSetNotifStatus("削除中…");
+        try{
+          const db = _adminGetDb();
+          await db.collection("notifications").doc(id).delete();
+          const currentId = String(document.getElementById("adminNotifDocId")?.value || "");
+          if (currentId && currentId === id){
+            _adminClearNotifForm();
+          }
+          await _adminReloadNotifications(true);
+          _adminSetNotifStatus("削除しました。", "ok");
+          uiToast("通知を削除しました");
+        }catch(err){
+          _adminSetNotifStatus(`削除失敗: ${String(err?.code || "ERROR")} / ${String(err?.message || err)}`, "error");
+        }
       }
 
       // =========================
@@ -6824,6 +7590,153 @@ function _openSearchResultByIndex(i){
       el.bgmVolDefaultBtn.addEventListener("click", () => setBgmVolume("DEFAULT"));
       el.bgmVolSmallBtn.addEventListener("click", () => setBgmVolume("SMALL"));
       el.debugToggle.addEventListener("change", (e) => setDebug(e.target.checked));
+
+      document.addEventListener("click", async (e) => {
+        const loginBtn = e.target.closest("#adminLoginBtn");
+        if (loginBtn){
+          e.preventDefault();
+          _adminEnsureAuthWatcher();
+          const env = _adminCheckAuthEnvironment();
+          if (!env.ok){
+            _adminSetStatus(env.reason, "error");
+            return;
+          }
+          let auth;
+          try{
+            auth = _adminGetAuth();
+          }catch(err){
+            _adminSetStatus(`Firebase初期化エラー: ${String(err?.message || err)}`, "error");
+            return;
+          }
+          try{
+            loginBtn.disabled = true;
+            _adminSetStatus("Googleログインを開始しています…");
+            const provider = new window.firebase.auth.GoogleAuthProvider();
+            await auth.signInWithPopup(provider);
+            _adminSetStatus("ログインしました。", "ok");
+          }catch(err){
+            const code = String(err?.code || "AUTH_ERROR");
+            const msg = String(err?.message || "");
+            const fallbackCodes = new Set([
+              "auth/popup-blocked",
+              "auth/web-storage-unsupported",
+              "auth/operation-not-supported-in-this-environment"
+            ]);
+            if (fallbackCodes.has(code) && typeof auth.signInWithRedirect === "function"){
+              try{
+                _adminSetStatus(`ポップアップ不可のためリダイレクトで再試行します… (${code})`);
+                const provider = new window.firebase.auth.GoogleAuthProvider();
+                await auth.signInWithRedirect(provider);
+                return;
+              }catch(err2){
+                const code2 = String(err2?.code || "AUTH_ERROR");
+                const msg2 = String(err2?.message || "");
+                _adminSetStatus(`ログイン失敗: ${code2} / ${msg2}`, "error");
+              }
+            } else {
+              _adminSetStatus(`ログイン失敗: ${code} / ${msg}`, "error");
+            }
+          }finally{
+            loginBtn.disabled = false;
+            _adminRenderUI();
+          }
+          return;
+        }
+
+        const logoutBtn = e.target.closest("#adminLogoutBtn");
+        if (logoutBtn){
+          e.preventDefault();
+          let auth;
+          try{
+            auth = _adminGetAuth();
+          }catch(err){
+            _adminSetStatus(`Firebase初期化エラー: ${String(err?.message || err)}`, "error");
+            return;
+          }
+          try{
+            logoutBtn.disabled = true;
+            await auth.signOut();
+            _adminSetStatus("ログアウトしました。", "ok");
+          }catch(err){
+            _adminSetStatus(`ログアウト失敗: ${String(err?.code || "AUTH_ERROR")} / ${String(err?.message || err)}`, "error");
+          }finally{
+            logoutBtn.disabled = false;
+            _adminRenderUI();
+          }
+          return;
+        }
+
+        const openEditorBtn = e.target.closest("#adminOpenNotifEditorBtn");
+        if (openEditorBtn){
+          e.preventDefault();
+          if (!_adminShowEditor(true)) return;
+          _adminClearNotifForm();
+          _adminReloadNotifications(false);
+          return;
+        }
+
+        const backEditorBtn = e.target.closest("#adminNotifBackBtn");
+        if (backEditorBtn){
+          e.preventDefault();
+          _adminShowEditor(false);
+          return;
+        }
+
+        const reloadBtn = e.target.closest("#adminNotifReloadBtn");
+        if (reloadBtn){
+          e.preventDefault();
+          _adminReloadNotifications(false);
+          return;
+        }
+
+        const saveBtn = e.target.closest("#adminNotifSaveBtn");
+        if (saveBtn){
+          e.preventDefault();
+          _adminSaveNotification();
+          return;
+        }
+
+        const clearBtn = e.target.closest("#adminNotifClearBtn");
+        if (clearBtn){
+          e.preventDefault();
+          _adminClearNotifForm();
+          _adminSetNotifStatus("入力をクリアしました。");
+          return;
+        }
+
+        const cancelEditBtn = e.target.closest("#adminNotifCancelEditBtn");
+        if (cancelEditBtn){
+          e.preventDefault();
+          _adminClearNotifForm();
+          _adminSetNotifStatus("編集を解除しました。");
+          return;
+        }
+
+        const rowActionBtn = e.target.closest("[data-admin-notif-action]");
+        if (rowActionBtn){
+          const action = rowActionBtn.dataset.adminNotifAction || "";
+          const id = rowActionBtn.dataset.id || "";
+          if (!action || !id){
+            _adminSetNotifStatus("通知行の操作情報が不足しています。", "error");
+            return;
+          }
+          e.preventDefault();
+          if (action === "edit"){
+            const hit = _adminState.notifItems.find(n => String(n?.id || "") === String(id));
+            if (!hit){
+              _adminSetNotifStatus("編集対象が見つかりません。", "error");
+              return;
+            }
+            _adminFillNotifForm(hit);
+            _adminSetNotifStatus(`編集中: ${hit.title || hit.id}`);
+            return;
+          }
+          if (action === "delete"){
+            _adminDeleteNotification(id);
+            return;
+          }
+        }
+      });
 
 
       el.resultRestartBtn.addEventListener("click", () => {
@@ -10154,16 +11067,22 @@ function _openSearchResultByIndex(i){
         if (!window.firebase || typeof window.firebase.initializeApp !== "function" || !window.firebase.firestore){
           throw new Error("Firebase SDK の読み込みに失敗しました。");
         }
-        const cfg = window.__FIREBASE_CONFIG__;
-        if (!cfg || typeof cfg !== "object" || !cfg.apiKey || !cfg.projectId){
-          throw new Error("firebaseConfig が未設定です。config.public.js または meta 設定を確認してください。");
-        }
+        // If Firebase app is already initialized elsewhere, reuse it without re-checking config fields.
         if (window.firebase.apps && window.firebase.apps.length){
           _drawerShareDb = window.firebase.app().firestore();
-        } else {
-          window.firebase.initializeApp(cfg);
-          _drawerShareDb = window.firebase.firestore();
+          return _drawerShareDb;
         }
+        const cfg = _resolveFirebaseConfigNow();
+        if (!cfg || typeof cfg !== "object" || !cfg.apiKey || !cfg.projectId){
+          const configured = _normalizeFirebaseConfig(window.__FIREBASE_CONFIG__);
+          const missing = [];
+          if (!configured.apiKey) missing.push("apiKey");
+          if (!configured.projectId) missing.push("projectId");
+          const hasPublicRoot = !!(window.__PUBLIC_CONFIG__ && typeof window.__PUBLIC_CONFIG__ === "object");
+          throw new Error(`firebaseConfig が未設定です。config.public.js または meta 設定を確認してください。missing=${missing.join(",") || "unknown"} hasPublicConfig=${hasPublicRoot ? "yes" : "no"}`);
+        }
+        window.firebase.initializeApp(cfg);
+        _drawerShareDb = window.firebase.firestore();
         return _drawerShareDb;
       }
       function _drawerShareGenerateCode(){
