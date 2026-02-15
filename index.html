@@ -253,12 +253,15 @@
     .notify-sheet{ max-width: 720px; }
     .notify-body{ padding-top: 12px; }
     .notify-list{ display:flex; flex-direction:column; gap:10px; }
+    .notify-pane.hidden{ display:none; }
     .notify-item{
       border:1px solid var(--border);
       border-radius: 14px;
       padding: 12px 12px;
       background: rgba(255,255,255,.72);
       box-shadow: 0 2px 10px rgba(17,18,20,.04);
+      display:grid;
+      gap:8px;
     }
     .notify-item.unread{
       border-color: rgba(31,42,68,.26);
@@ -277,6 +280,11 @@
       color: var(--text);
       font-size: 13px;
       line-height: 1.6;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      word-break: break-word;
     }
     .notify-time{
       margin-top:8px;
@@ -285,6 +293,111 @@
       display:flex;
       align-items:center;
       gap:6px;
+    }
+    .notify-actions{
+      margin-top: 4px;
+      display:flex;
+      justify-content:flex-end;
+    }
+    .notify-detail-wrap{
+      display:grid;
+      gap:10px;
+      min-height: 160px;
+    }
+    .notify-detail-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap: wrap;
+    }
+    .notify-detail-title{
+      margin:0;
+      font-weight: 760;
+      color: var(--accent);
+      font-size: 16px;
+      line-height: 1.4;
+    }
+    .notify-detail-meta{
+      font-size: 12px;
+      color: var(--muted);
+      display:flex;
+      flex-wrap: wrap;
+      gap:8px;
+    }
+    .notify-detail-content{
+      display:grid;
+      gap:10px;
+    }
+    .notify-detail-content h3{
+      margin: 6px 0 2px;
+      font-size: 15px;
+      color: var(--accent);
+      letter-spacing: .01em;
+    }
+    .notify-detail-text{
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.7;
+      word-break: break-word;
+    }
+    .notify-detail-text a{
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .notify-invalid{
+      font-size: 12px;
+      color: #b42318;
+      border: 1px solid rgba(180,35,24,.22);
+      background: rgba(180,35,24,.06);
+      border-radius: 10px;
+      padding: 7px 10px;
+    }
+    .notify-media{
+      display:grid;
+      gap:6px;
+    }
+    .notify-media img{
+      width:100%;
+      max-width:100%;
+      height:auto;
+      border-radius: 12px;
+      border:1px solid var(--border);
+      display:block;
+      background:#fff;
+    }
+    .notify-video{
+      border:1px solid rgba(17,18,20,.12);
+      border-radius: 12px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .notify-video-screen{
+      width:100%;
+      display:block;
+      background:#000;
+    }
+    .notify-video-controls{
+      display:grid;
+      gap:8px;
+      padding:10px;
+    }
+    .notify-video-row{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap: wrap;
+    }
+    .notify-video-time{
+      font-size:12px;
+      color: var(--muted);
+      min-width: 76px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .notify-video-seek{
+      width:100%;
     }
     .notify-empty{
       color: var(--muted);
@@ -2692,6 +2805,19 @@ a{ color: inherit; }
       gap: 8px;
       flex-wrap: wrap;
     }
+    .backup-settings-card{
+      border:1px solid rgba(31,42,68,.14);
+      border-radius: 12px;
+      background: rgba(31,42,68,.03);
+      padding: 12px;
+      display:grid;
+      gap: 10px;
+    }
+    .backup-actions{
+      display:flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
     @media (max-width: 720px){
       .admin-editor-grid{
         grid-template-columns: 1fr;
@@ -3383,6 +3509,20 @@ a{ color: inherit; }
               </div>
               <div id="adminAuthStatus" class="drawer-share-status" aria-live="polite"></div>
             </section>
+            <section class="backup-settings-card" id="backupSettingsCard">
+              <div class="text">
+                <div class="name">バックアップ / 復元</div>
+                <div class="note">My Preset・設定・学習ログ・共有キャッシュ・通知既読状態を保存します。</div>
+              </div>
+              <div class="backup-actions">
+                <button class="textbtn" id="backupCreateNowBtn" type="button">今すぐバックアップ作成</button>
+                <button class="textbtn" id="backupExportBtn" type="button">JSONを書き出し</button>
+                <button class="textbtn" id="backupImportBtn" type="button">JSONから復元</button>
+                <button class="textbtn" id="backupRestoreLatestBtn" type="button">端末内最新から復元</button>
+                <input id="backupImportFile" type="file" accept="application/json,.json" class="hidden" />
+              </div>
+              <div id="backupStatus" class="drawer-share-status" aria-live="polite"></div>
+            </section>
           </div>
 
           <section class="admin-notif-editor hidden" id="adminNotifEditor">
@@ -3403,8 +3543,9 @@ a{ color: inherit; }
               </label>
               <label>
                 本文
-                <textarea class="spell-input" id="adminNotifBody" placeholder="通知本文（Markdown可）"></textarea>
+                <textarea class="spell-input" id="adminNotifBody" placeholder="## UPDATE&#10;**IMPORTANT**&#10;![img](https://example.com/a.jpg)&#10;[video](https://example.com/a.mp4)&#10;[link](https://example.com)"></textarea>
               </label>
+              <div class="note">一覧では軽量表示のみ。画像/動画は「詳細を見る」でのみ描画されます。</div>
               <div class="admin-editor-grid">
                 <label>
                   Category
@@ -3693,8 +3834,20 @@ a{ color: inherit; }
       </div>
 
       <div class="sheet-body notify-body">
-        <div class="notify-empty hidden" id="notifyEmpty">通知はありません。</div>
-        <div class="notify-list" id="notifyList"></div>
+        <div class="notify-pane" id="notifyListPane">
+          <div class="notify-empty hidden" id="notifyEmpty">通知はありません。</div>
+          <div class="notify-list" id="notifyList"></div>
+        </div>
+        <div class="notify-pane hidden" id="notifyDetailPane">
+          <div class="notify-detail-wrap">
+            <div class="notify-detail-head">
+              <button class="textbtn" id="notifyDetailBackBtn" type="button">一覧へ戻る</button>
+              <div class="notify-detail-meta" id="notifyDetailMeta"></div>
+            </div>
+            <h3 class="notify-detail-title" id="notifyDetailTitle"></h3>
+            <div id="notifyDetailContent" class="notify-detail-content"></div>
+          </div>
+        </div>
       </div>
 
       <div class="sheet-footer">
@@ -4801,6 +4954,12 @@ function loadPresets(){
         notifyCloseBtn2: document.getElementById("notifyCloseBtn2"),
         notifyList: document.getElementById("notifyList"),
         notifyEmpty: document.getElementById("notifyEmpty"),
+        notifyListPane: document.getElementById("notifyListPane"),
+        notifyDetailPane: document.getElementById("notifyDetailPane"),
+        notifyDetailBackBtn: document.getElementById("notifyDetailBackBtn"),
+        notifyDetailTitle: document.getElementById("notifyDetailTitle"),
+        notifyDetailMeta: document.getElementById("notifyDetailMeta"),
+        notifyDetailContent: document.getElementById("notifyDetailContent"),
         topPresetBtn: document.getElementById("topPresetBtn"),
         searchBtn: document.getElementById("searchBtn"),
         searchOverlay: document.getElementById("searchOverlay"),
@@ -4904,6 +5063,12 @@ function loadPresets(){
         bgmVolDefaultBtn: document.getElementById("bgmVolDefaultBtn"),
         bgmVolSmallBtn: document.getElementById("bgmVolSmallBtn"),
         debugToggle: document.getElementById("debugToggle"),
+        backupCreateNowBtn: document.getElementById("backupCreateNowBtn"),
+        backupExportBtn: document.getElementById("backupExportBtn"),
+        backupImportBtn: document.getElementById("backupImportBtn"),
+        backupRestoreLatestBtn: document.getElementById("backupRestoreLatestBtn"),
+        backupImportFile: document.getElementById("backupImportFile"),
+        backupStatus: document.getElementById("backupStatus"),
 
         // result
         resultSub: document.getElementById("resultSub"),
@@ -7022,17 +7187,352 @@ function reviewWrong(){
         const unread = list.some(n => (Number(n?.ts) || 0) > seenAt);
         el.notifyDot.classList.toggle("hidden", !unread);
       }
+      const _notifyDetailState = {
+        activeId: "",
+        players: [],
+        cleanups: []
+      };
+      function _notifySafeUrl(raw){
+        const s = String(raw || "").trim();
+        if (!s) return "";
+        try{
+          const u = new URL(s, location.href);
+          const p = String(u.protocol || "").toLowerCase();
+          if (p === "http:" || p === "https:"){
+            return u.href;
+          }
+        }catch{
+          // noop
+        }
+        return "";
+      }
+      function _notifyPreviewText(body){
+        let txt = String(body || "");
+        txt = txt.replace(/\r\n?/g, "\n");
+        txt = txt.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, "$1");
+        txt = txt.replace(/\[video\]\(([^)]+)\)/gi, "[video]");
+        txt = txt.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1");
+        txt = txt.replace(/^##\s+/gm, "");
+        txt = txt.replace(/\*\*([^*]+)\*\*/g, "$1");
+        txt = txt.replace(/\s+/g, " ").trim();
+        return txt;
+      }
+      function _notifyTimeText(sec){
+        const n = Number(sec);
+        if (!Number.isFinite(n) || n < 0) return "00:00";
+        const s = Math.floor(n);
+        const mm = String(Math.floor(s / 60)).padStart(2, "0");
+        const ss = String(s % 60).padStart(2, "0");
+        return `${mm}:${ss}`;
+      }
+      function _notifyAddCleanup(fn){
+        if (typeof fn !== "function") return;
+        _notifyDetailState.cleanups.push(fn);
+      }
+      function _notifyPauseOtherVideos(exceptVideo){
+        for (const p of _notifyDetailState.players){
+          if (!p || !p.video || p.video === exceptVideo) continue;
+          try{ p.video.pause(); }catch{}
+          try{ if (p.playBtn) p.playBtn.textContent = "再生"; }catch{}
+        }
+      }
+      function _notifyDestroyDetailMedia(){
+        for (const p of _notifyDetailState.players){
+          if (!p || !p.video) continue;
+          try{ p.video.pause(); }catch{}
+          try{ p.video.removeAttribute("src"); p.video.load(); }catch{}
+        }
+        _notifyDetailState.players = [];
+        for (const fn of _notifyDetailState.cleanups){
+          try{ fn(); }catch{}
+        }
+        _notifyDetailState.cleanups = [];
+      }
+      function _notifyShowListPane(){
+        _notifyDestroyDetailMedia();
+        _notifyDetailState.activeId = "";
+        if (el.notifyDetailContent) el.notifyDetailContent.replaceChildren();
+        if (el.notifyDetailTitle) el.notifyDetailTitle.textContent = "";
+        if (el.notifyDetailMeta) el.notifyDetailMeta.textContent = "";
+        if (el.notifyListPane) el.notifyListPane.classList.remove("hidden");
+        if (el.notifyDetailPane) el.notifyDetailPane.classList.add("hidden");
+      }
+      function _notifyAppendInlineMarkdown(parent, text){
+        const src = String(text || "");
+        const tokenRe = /(\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\))/g;
+        let last = 0;
+        let m;
+        while ((m = tokenRe.exec(src))){
+          if (m.index > last){
+            parent.appendChild(document.createTextNode(src.slice(last, m.index)));
+          }
+          if (m[2] != null){
+            const strong = document.createElement("strong");
+            strong.textContent = m[2];
+            parent.appendChild(strong);
+          } else {
+            const label = String(m[3] || "");
+            const url = _notifySafeUrl(m[4] || "");
+            if (!url){
+              const bad = document.createElement("span");
+              bad.className = "notify-invalid";
+              bad.textContent = `無効なリンク: ${label || "link"}`;
+              parent.appendChild(bad);
+            } else {
+              const a = document.createElement("a");
+              a.href = url;
+              a.target = "_blank";
+              a.rel = "noopener noreferrer";
+              a.textContent = label || url;
+              parent.appendChild(a);
+            }
+          }
+          last = tokenRe.lastIndex;
+        }
+        if (last < src.length){
+          parent.appendChild(document.createTextNode(src.slice(last)));
+        }
+      }
+      function _notifyCreateImageBlock(alt, rawUrl){
+        const wrap = document.createElement("div");
+        wrap.className = "notify-media";
+        const safe = _notifySafeUrl(rawUrl);
+        if (!safe){
+          const bad = document.createElement("div");
+          bad.className = "notify-invalid";
+          bad.textContent = "無効な画像URLです。";
+          wrap.appendChild(bad);
+          return wrap;
+        }
+        const img = document.createElement("img");
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.alt = String(alt || "");
+        img.src = safe;
+        const err = document.createElement("div");
+        err.className = "notify-invalid hidden";
+        err.textContent = "画像読み込み失敗";
+        const onErr = () => {
+          err.classList.remove("hidden");
+          img.classList.add("hidden");
+        };
+        img.addEventListener("error", onErr);
+        _notifyAddCleanup(() => img.removeEventListener("error", onErr));
+        wrap.appendChild(img);
+        wrap.appendChild(err);
+        return wrap;
+      }
+      function _notifyCreateVideoBlock(rawUrl){
+        const safe = _notifySafeUrl(rawUrl);
+        const wrap = document.createElement("div");
+        wrap.className = "notify-video";
+        if (!safe){
+          const bad = document.createElement("div");
+          bad.className = "notify-invalid";
+          bad.textContent = "無効な動画URLです。";
+          wrap.appendChild(bad);
+          return wrap;
+        }
+        const video = document.createElement("video");
+        video.className = "notify-video-screen";
+        video.src = safe;
+        video.preload = "metadata";
+        video.playsInline = true;
+        video.setAttribute("playsinline", "");
+        const controls = document.createElement("div");
+        controls.className = "notify-video-controls";
+        const row = document.createElement("div");
+        row.className = "notify-video-row";
+        const playBtn = document.createElement("button");
+        playBtn.type = "button";
+        playBtn.className = "textbtn";
+        playBtn.textContent = "再生";
+        const muteBtn = document.createElement("button");
+        muteBtn.type = "button";
+        muteBtn.className = "textbtn";
+        muteBtn.textContent = "ミュート";
+        const time = document.createElement("div");
+        time.className = "notify-video-time";
+        time.textContent = "00:00 / 00:00";
+        const seek = document.createElement("input");
+        seek.type = "range";
+        seek.className = "notify-video-seek";
+        seek.min = "0";
+        seek.max = "1000";
+        seek.step = "1";
+        seek.value = "0";
+        const err = document.createElement("div");
+        err.className = "notify-invalid hidden";
+        err.textContent = "動画読み込み失敗";
+
+        const updateTime = () => {
+          const cur = Number(video.currentTime) || 0;
+          const dur = Number(video.duration);
+          const durTxt = Number.isFinite(dur) && dur > 0 ? _notifyTimeText(dur) : "00:00";
+          time.textContent = `${_notifyTimeText(cur)} / ${durTxt}`;
+          if (Number.isFinite(dur) && dur > 0){
+            seek.value = String(Math.max(0, Math.min(1000, Math.round((cur / dur) * 1000))));
+          } else {
+            seek.value = "0";
+          }
+        };
+        const onPlay = () => {
+          _notifyPauseOtherVideos(video);
+          playBtn.textContent = "停止";
+        };
+        const onPause = () => { playBtn.textContent = "再生"; };
+        const onEnded = () => {
+          playBtn.textContent = "再生";
+          seek.value = "0";
+        };
+        const onErr = () => { err.classList.remove("hidden"); };
+        const onPlayClick = async () => {
+          try{
+            if (video.paused) await video.play();
+            else video.pause();
+          }catch{}
+        };
+        const onMuteClick = () => {
+          video.muted = !video.muted;
+          muteBtn.textContent = video.muted ? "ミュート解除" : "ミュート";
+        };
+        const onSeekInput = () => {
+          const dur = Number(video.duration);
+          if (!Number.isFinite(dur) || dur <= 0) return;
+          const ratio = (Number(seek.value) || 0) / 1000;
+          video.currentTime = Math.max(0, Math.min(dur, dur * ratio));
+          updateTime();
+        };
+
+        playBtn.addEventListener("click", onPlayClick);
+        muteBtn.addEventListener("click", onMuteClick);
+        seek.addEventListener("input", onSeekInput);
+        video.addEventListener("loadedmetadata", updateTime);
+        video.addEventListener("durationchange", updateTime);
+        video.addEventListener("timeupdate", updateTime);
+        video.addEventListener("play", onPlay);
+        video.addEventListener("pause", onPause);
+        video.addEventListener("ended", onEnded);
+        video.addEventListener("error", onErr);
+
+        _notifyAddCleanup(() => playBtn.removeEventListener("click", onPlayClick));
+        _notifyAddCleanup(() => muteBtn.removeEventListener("click", onMuteClick));
+        _notifyAddCleanup(() => seek.removeEventListener("input", onSeekInput));
+        _notifyAddCleanup(() => video.removeEventListener("loadedmetadata", updateTime));
+        _notifyAddCleanup(() => video.removeEventListener("durationchange", updateTime));
+        _notifyAddCleanup(() => video.removeEventListener("timeupdate", updateTime));
+        _notifyAddCleanup(() => video.removeEventListener("play", onPlay));
+        _notifyAddCleanup(() => video.removeEventListener("pause", onPause));
+        _notifyAddCleanup(() => video.removeEventListener("ended", onEnded));
+        _notifyAddCleanup(() => video.removeEventListener("error", onErr));
+
+        row.appendChild(playBtn);
+        row.appendChild(muteBtn);
+        row.appendChild(time);
+        controls.appendChild(row);
+        controls.appendChild(seek);
+        wrap.appendChild(video);
+        wrap.appendChild(controls);
+        wrap.appendChild(err);
+        _notifyDetailState.players.push({ video, playBtn });
+        return wrap;
+      }
+      function _notifyRenderDetailContent(bodyRaw){
+        const root = document.createDocumentFragment();
+        const text = String(bodyRaw || "").replace(/\r\n?/g, "\n");
+        const lines = text.split("\n");
+        let paraLines = [];
+        const flushParagraph = () => {
+          if (!paraLines.length) return;
+          const p = document.createElement("div");
+          p.className = "notify-detail-text";
+          paraLines.forEach((line, idx) => {
+            if (idx > 0) p.appendChild(document.createElement("br"));
+            _notifyAppendInlineMarkdown(p, line);
+          });
+          root.appendChild(p);
+          paraLines = [];
+        };
+        for (const lineRaw of lines){
+          const line = String(lineRaw || "");
+          const h = line.match(/^##\s+(.+)$/);
+          const img = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
+          const vid = line.match(/^\[video\]\(([^)]+)\)\s*$/i);
+          if (h){
+            flushParagraph();
+            const heading = document.createElement("h3");
+            _notifyAppendInlineMarkdown(heading, h[1]);
+            root.appendChild(heading);
+            continue;
+          }
+          if (img){
+            flushParagraph();
+            root.appendChild(_notifyCreateImageBlock(img[1], img[2]));
+            continue;
+          }
+          if (vid){
+            flushParagraph();
+            root.appendChild(_notifyCreateVideoBlock(vid[1]));
+            continue;
+          }
+          paraLines.push(line);
+        }
+        flushParagraph();
+        if (!root.childNodes.length){
+          const empty = document.createElement("div");
+          empty.className = "notify-empty";
+          empty.textContent = "本文がありません。";
+          root.appendChild(empty);
+        }
+        return root;
+      }
+      function _notifyOpenDetail(idRaw){
+        const id = String(idRaw || "").trim();
+        if (!id || !el.notifyDetailPane || !el.notifyListPane){
+          if (el.notifyEmpty){
+            el.notifyEmpty.textContent = "通知詳細UIが見つかりません。";
+            el.notifyEmpty.classList.remove("hidden");
+          }
+          return;
+        }
+        const list = loadNotifications();
+        const item = list.find(n => String(n?.id || "") === id);
+        if (!item){
+          if (el.notifyEmpty){
+            el.notifyEmpty.textContent = "通知詳細の読み込みに失敗しました。";
+            el.notifyEmpty.classList.remove("hidden");
+          }
+          return;
+        }
+        _notifyDestroyDetailMedia();
+        _notifyDetailState.activeId = id;
+        if (el.notifyDetailTitle) el.notifyDetailTitle.textContent = item.title || "(untitled)";
+        if (el.notifyDetailMeta){
+          const timeTxt = item.ts ? formatDateTime(item.ts) : "—";
+          el.notifyDetailMeta.innerHTML =
+            `<span>${escapeHtml(item.category || "Update")}</span>` +
+            `<span>${escapeHtml(item.priority || "normal")}</span>` +
+            `<span>${escapeHtml(timeTxt)}</span>`;
+        }
+        if (el.notifyDetailContent){
+          el.notifyDetailContent.replaceChildren();
+          el.notifyDetailContent.appendChild(_notifyRenderDetailContent(item.body || ""));
+        }
+        el.notifyListPane.classList.add("hidden");
+        el.notifyDetailPane.classList.remove("hidden");
+      }
       function renderNotifyList(){
         if (!el.notifyList || !el.notifyEmpty) return;
         const seenAt = _notifSeenAt();
         const list = loadNotifications().sort((a,b) => (b.ts || 0) - (a.ts || 0));
-        el.notifyList.innerHTML = "";
+        el.notifyList.replaceChildren();
         if (!list.length){
           el.notifyEmpty.textContent = "通知はありません。";
           el.notifyEmpty.classList.remove("hidden");
           return;
         }
         el.notifyEmpty.classList.add("hidden");
+        const frag = document.createDocumentFragment();
         for (const n of list){
           const unread = (Number(n.ts) || 0) > seenAt;
           const item = document.createElement("div");
@@ -7042,22 +7542,34 @@ function reviewWrong(){
           h.textContent = n.title || "(untitled)";
           const p = document.createElement("p");
           p.className = "notify-bodytext";
-          p.textContent = n.body || "";
+          p.textContent = _notifyPreviewText(n.body || "");
           const t = document.createElement("div");
           t.className = "notify-time";
           const timeTxt = n.ts ? formatDateTime(n.ts) : "—";
           t.innerHTML = `<span class="ms" aria-hidden="true" style="font-size:16px; opacity:.8;">schedule</span><span>${escapeHtml(timeTxt)}</span>`;
+          const actions = document.createElement("div");
+          actions.className = "notify-actions";
+          const detailBtn = document.createElement("button");
+          detailBtn.type = "button";
+          detailBtn.className = "textbtn";
+          detailBtn.textContent = "詳細を見る";
+          detailBtn.dataset.notifyAction = "detail";
+          detailBtn.dataset.id = String(n.id || "");
+          actions.appendChild(detailBtn);
           item.appendChild(h);
           item.appendChild(p);
           item.appendChild(t);
-          el.notifyList.appendChild(item);
+          item.appendChild(actions);
+          frag.appendChild(item);
         }
+        el.notifyList.appendChild(frag);
       }
       function openNotify(){
         if (!el.notifyOverlay){
           uiToast("通知UIが見つかりませんでした");
           return;
         }
+        _notifyShowListPane();
         el.notifyOverlay.classList.remove("hidden");
         renderNotifyList();
         const cached = loadNotifications();
@@ -7075,7 +7587,232 @@ function reviewWrong(){
       }
       function closeNotify(){
         if (!el.notifyOverlay) return;
+        _notifyShowListPane();
         el.notifyOverlay.classList.add("hidden");
+      }
+      const BACKUP_LATEST_KEY = "app.backup.latest.v1";
+      const BACKUP_LAST_RUN_DATE_KEY = "app.backup.lastRunDate.v1";
+      const BACKUP_SCHEMA_VERSION = 1;
+      const BACKUP_MAX_SESSIONS = 500;
+      function _backupSetStatus(msg, kind){
+        if (!el.backupStatus){
+          if (msg) uiToast(String(msg));
+          return;
+        }
+        el.backupStatus.textContent = String(msg || "");
+        el.backupStatus.classList.remove("ok", "error");
+        if (kind === "ok") el.backupStatus.classList.add("ok");
+        if (kind === "error") el.backupStatus.classList.add("error");
+      }
+      function _backupYmd(ts){
+        const n = Number(ts) || Date.now();
+        const d = new Date(n);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const da = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${da}`;
+      }
+      function _backupDeepClone(v){
+        try{
+          return JSON.parse(JSON.stringify(v));
+        }catch{
+          return null;
+        }
+      }
+      function _backupBuildPayload(){
+        const presets = _backupDeepClone(loadPresets()) || [];
+        const settings = _backupDeepClone(state.settings || loadSettings()) || { ...defaultSettings };
+        const sessions = _backupDeepClone(_insightsLoadSessions()) || [];
+        const shareCache = _backupDeepClone(_shareCacheLoad()) || {};
+        const activePresetId = String((typeof getActivePresetId === "function" ? getActivePresetId() : state.presetId) || "");
+        const seenAt = _notifSeenAt();
+        const appVersion = (typeof APP_VERSION === "string" && APP_VERSION) ? APP_VERSION : "v26";
+        return {
+          schemaVersion: BACKUP_SCHEMA_VERSION,
+          createdAt: Date.now(),
+          appVersion,
+          data: {
+            presets,
+            activePresetId,
+            settings,
+            sessions: Array.isArray(sessions) ? sessions.slice(-BACKUP_MAX_SESSIONS) : [],
+            shareCache,
+            notificationReadState: { seenAt: Number(seenAt) || 0 },
+            deck: String(state.deck || loadDeck() || "A")
+          }
+        };
+      }
+      function _backupWriteLatest(payload, updateLastRunDate){
+        if (!payload || typeof payload !== "object"){
+          throw new Error("バックアップデータが不正です。");
+        }
+        localStorage.setItem(BACKUP_LATEST_KEY, JSON.stringify(payload));
+        if (updateLastRunDate){
+          localStorage.setItem(BACKUP_LAST_RUN_DATE_KEY, _backupYmd(payload.createdAt || Date.now()));
+        }
+      }
+      function _backupReadLatest(){
+        try{
+          const raw = localStorage.getItem(BACKUP_LATEST_KEY);
+          if (!raw) return null;
+          return JSON.parse(raw);
+        }catch{
+          return null;
+        }
+      }
+      function _backupNormalizePayload(raw){
+        if (!raw || typeof raw !== "object"){
+          throw new Error("バックアップJSONが不正です。");
+        }
+        const schemaVersion = Number(raw.schemaVersion || 0);
+        if (schemaVersion !== BACKUP_SCHEMA_VERSION){
+          throw new Error(`schemaVersion が不一致です: ${schemaVersion}`);
+        }
+        const dataRaw = raw.data;
+        if (!dataRaw || typeof dataRaw !== "object"){
+          throw new Error("data が不正です。");
+        }
+        const presets = Array.isArray(dataRaw.presets) ? dataRaw.presets : [];
+        const activePresetId = String(dataRaw.activePresetId || "");
+        const settings = (dataRaw.settings && typeof dataRaw.settings === "object")
+          ? dataRaw.settings
+          : { ...defaultSettings };
+        const sessions = Array.isArray(dataRaw.sessions) ? dataRaw.sessions.slice(-BACKUP_MAX_SESSIONS) : [];
+        const shareCache = (dataRaw.shareCache && typeof dataRaw.shareCache === "object") ? dataRaw.shareCache : {};
+        const seenAt = Number(dataRaw.notificationReadState?.seenAt || 0);
+        const deckRaw = String(dataRaw.deck || "");
+        const deck = (deckRaw === "A" || deckRaw === "B" || deckRaw === "C" || deckRaw === "ALL") ? deckRaw : "";
+        return {
+          schemaVersion: BACKUP_SCHEMA_VERSION,
+          createdAt: Number(raw.createdAt || Date.now()) || Date.now(),
+          appVersion: String(raw.appVersion || "v26"),
+          data: {
+            presets,
+            activePresetId,
+            settings,
+            sessions,
+            shareCache,
+            notificationReadState: { seenAt: Number.isFinite(seenAt) ? seenAt : 0 },
+            deck
+          }
+        };
+      }
+      function _backupCreateNow(options = {}){
+        const payload = _backupBuildPayload();
+        _backupWriteLatest(payload, !!options.updateLastRunDate);
+        const stamp = formatDateTime(payload.createdAt);
+        _backupSetStatus(`バックアップ作成完了: ${stamp}`, "ok");
+        if (!options.silentToast){
+          uiToast(options.toastText || "バックアップを作成しました");
+        }
+        return payload;
+      }
+      function _backupDownloadJson(payload){
+        const obj = payload || _backupReadLatest() || _backupCreateNow({ silentToast: true, updateLastRunDate: false });
+        const text = JSON.stringify(obj, null, 2);
+        const blob = new Blob([text], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const da = String(d.getDate()).padStart(2, "0");
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mm = String(d.getMinutes()).padStart(2, "0");
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `vocabuquiz_backup_${y}${m}${da}_${hh}${mm}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+      function _backupApplyPayload(payload){
+        const normalized = _backupNormalizePayload(payload);
+        const dataObj = normalized.data;
+        localStorage.setItem(PRESETS_KEY, JSON.stringify(dataObj.presets || []));
+        if (dataObj.activePresetId){
+          localStorage.setItem(ACTIVE_PRESET_KEY, dataObj.activePresetId);
+        }
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(dataObj.settings || { ...defaultSettings }));
+        localStorage.setItem(INSIGHTS_SESSIONS_KEY, JSON.stringify(Array.isArray(dataObj.sessions) ? dataObj.sessions.slice(-BACKUP_MAX_SESSIONS) : []));
+        localStorage.setItem(SHARE_CACHE_KEY, JSON.stringify(dataObj.shareCache || {}));
+        const seenAt = Number(dataObj.notificationReadState?.seenAt || 0);
+        if (seenAt > 0) localStorage.setItem(NOTIF_SEEN_KEY, String(seenAt));
+        else localStorage.removeItem(NOTIF_SEEN_KEY);
+
+        let deck = dataObj.deck || "";
+        if (!deck){
+          const pid = String(dataObj.activePresetId || "");
+          if (pid.startsWith("builtin:")){
+            const maybe = pid.split(":")[1] || "";
+            if (maybe === "A" || maybe === "B" || maybe === "C" || maybe === "ALL") deck = maybe;
+          }
+        }
+        if (deck){
+          localStorage.setItem(DECK_KEY, deck);
+        }
+        _backupWriteLatest(normalized, true);
+      }
+      async function _backupRestoreWithConfirm(payload, sourceLabel){
+        const stamp = formatDateTime(Number(payload?.createdAt || Date.now()));
+        const ok = await uiConfirm(
+          `${sourceLabel} を復元します。現在の端末データは上書きされます。\n\n作成日時: ${stamp}\n\n続行しますか？`,
+          {
+            title: "バックアップ復元",
+            okText: "復元する",
+            cancelText: "キャンセル",
+            danger: true
+          }
+        );
+        if (!ok) return false;
+        try{
+          _backupApplyPayload(payload);
+          _backupSetStatus("復元しました。再読み込みします…", "ok");
+          uiToast("復元しました");
+          setTimeout(() => location.reload(), 120);
+          return true;
+        }catch(err){
+          _backupSetStatus(`復元失敗: ${String(err?.message || err)}`, "error");
+          return false;
+        }
+      }
+      async function _backupImportFromFile(file){
+        if (!file) throw new Error("JSONファイルが選択されていません。");
+        const text = await file.text();
+        let parsed;
+        try{
+          parsed = JSON.parse(text);
+        }catch{
+          throw new Error("JSONの解析に失敗しました。");
+        }
+        const normalized = _backupNormalizePayload(parsed);
+        return _backupRestoreWithConfirm(normalized, "JSONファイル");
+      }
+      function _backupRunAutoDaily(){
+        const today = _backupYmd(Date.now());
+        const last = String(localStorage.getItem(BACKUP_LAST_RUN_DATE_KEY) || "");
+        if (last === today) return false;
+        const payload = _backupCreateNow({
+          silentToast: true,
+          updateLastRunDate: true
+        });
+        _backupSetStatus(`自動バックアップ更新: ${formatDateTime(payload.createdAt)}`, "ok");
+        uiToast("自動バックアップを更新しました");
+        return true;
+      }
+      function _backupScheduleAuto(){
+        const run = () => {
+          try{
+            _backupRunAutoDaily();
+          }catch(err){
+            _backupSetStatus(`自動バックアップ失敗: ${String(err?.message || err)}`, "error");
+          }
+        };
+        if (typeof requestIdleCallback === "function"){
+          requestIdleCallback(() => run(), { timeout: 1500 });
+        }else{
+          setTimeout(run, 1200);
+        }
       }
       async function _adminReloadNotifications(silent){
         if (!_adminState.isAdmin){
@@ -7552,6 +8289,22 @@ function _openSearchResultByIndex(i){
       });
       if (el.notifyCloseBtn) el.notifyCloseBtn.addEventListener("click", closeNotify);
       if (el.notifyCloseBtn2) el.notifyCloseBtn2.addEventListener("click", closeNotify);
+      if (el.notifyDetailBackBtn) el.notifyDetailBackBtn.addEventListener("click", _notifyShowListPane);
+      if (el.notifyList){
+        el.notifyList.addEventListener("click", (e) => {
+          const btn = e.target && e.target.closest ? e.target.closest("[data-notify-action='detail']") : null;
+          if (!btn) return;
+          const id = String(btn.dataset.id || "").trim();
+          if (!id){
+            if (el.notifyEmpty){
+              el.notifyEmpty.textContent = "通知IDが見つかりません。";
+              el.notifyEmpty.classList.remove("hidden");
+            }
+            return;
+          }
+          _notifyOpenDetail(id);
+        });
+      }
       if (el.notifyOverlay) el.notifyOverlay.addEventListener("click", (e) => {
         if (e.target === el.notifyOverlay) closeNotify();
       });
@@ -7592,6 +8345,59 @@ function _openSearchResultByIndex(i){
       el.debugToggle.addEventListener("change", (e) => setDebug(e.target.checked));
 
       document.addEventListener("click", async (e) => {
+        const backupCreateBtn = e.target.closest("#backupCreateNowBtn");
+        if (backupCreateBtn){
+          e.preventDefault();
+          try{
+            _backupCreateNow({ updateLastRunDate: true, silentToast: false });
+          }catch(err){
+            _backupSetStatus(`バックアップ作成失敗: ${String(err?.message || err)}`, "error");
+          }
+          return;
+        }
+
+        const backupExportBtn = e.target.closest("#backupExportBtn");
+        if (backupExportBtn){
+          e.preventDefault();
+          try{
+            const latest = _backupReadLatest() || _backupCreateNow({ updateLastRunDate: true, silentToast: true });
+            _backupDownloadJson(latest);
+            _backupSetStatus("JSONを書き出しました。", "ok");
+            uiToast("バックアップJSONを書き出しました");
+          }catch(err){
+            _backupSetStatus(`書き出し失敗: ${String(err?.message || err)}`, "error");
+          }
+          return;
+        }
+
+        const backupImportBtn = e.target.closest("#backupImportBtn");
+        if (backupImportBtn){
+          e.preventDefault();
+          if (!el.backupImportFile){
+            _backupSetStatus("復元UI要素が見つかりません。", "error");
+            return;
+          }
+          el.backupImportFile.value = "";
+          el.backupImportFile.click();
+          return;
+        }
+
+        const backupRestoreLatestBtn = e.target.closest("#backupRestoreLatestBtn");
+        if (backupRestoreLatestBtn){
+          e.preventDefault();
+          const latest = _backupReadLatest();
+          if (!latest){
+            _backupSetStatus("端末内に復元可能なバックアップがありません。", "error");
+            return;
+          }
+          try{
+            await _backupRestoreWithConfirm(latest, "端末内最新バックアップ");
+          }catch(err){
+            _backupSetStatus(`復元失敗: ${String(err?.message || err)}`, "error");
+          }
+          return;
+        }
+
         const loginBtn = e.target.closest("#adminLoginBtn");
         if (loginBtn){
           e.preventDefault();
@@ -7737,6 +8543,24 @@ function _openSearchResultByIndex(i){
           }
         }
       });
+      if (el.backupImportFile){
+        el.backupImportFile.addEventListener("change", async (e) => {
+          const input = e.target;
+          const file = input && input.files && input.files[0] ? input.files[0] : null;
+          if (!file){
+            _backupSetStatus("ファイルが選択されていません。", "error");
+            return;
+          }
+          _backupSetStatus("復元ファイルを読み込み中…");
+          try{
+            await _backupImportFromFile(file);
+          }catch(err){
+            _backupSetStatus(`復元失敗: ${String(err?.message || err)}`, "error");
+          }finally{
+            try{ input.value = ""; }catch{}
+          }
+        });
+      }
 
 
       el.resultRestartBtn.addEventListener("click", () => {
@@ -10210,6 +11034,7 @@ function _openSearchResultByIndex(i){
       setView("START");
       renderAll();
       maybeShowUpdateNotes();
+      _backupScheduleAuto();
     
       // =========================
       // Hamburger Menu (stable navigation)
