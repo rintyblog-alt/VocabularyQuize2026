@@ -5094,9 +5094,370 @@ body[data-app-tab="insights"] #appInsightsPage{
     transform:none !important;
   }
 }
+
+/* =========================
+   Auth Gate + Account UI
+   ========================= */
+body.auth-booting .app{
+  visibility: hidden;
+}
+#authBootSplash{
+  position: fixed;
+  inset: 0;
+  z-index: 170;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: .02em;
+}
+#authBootSplash.hidden{
+  display: none;
+}
+.auth-gate{
+  position: fixed;
+  inset: 0;
+  z-index: 165;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(17, 18, 20, .34);
+}
+.auth-gate.hidden{
+  display: none;
+}
+.auth-gate-card{
+  width: min(560px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+.auth-gate-head{
+  display: grid;
+  gap: 6px;
+}
+.auth-gate-title{
+  margin: 0;
+  font-size: 24px;
+  font-weight: 720;
+  letter-spacing: .01em;
+  color: var(--accent);
+}
+.auth-gate-sub{
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.auth-gate-panels{
+  display: grid;
+  gap: 14px;
+}
+.auth-gate-panel{
+  display: none;
+  gap: 10px;
+}
+.auth-gate-panel.is-active{
+  display: grid;
+}
+.auth-gate-actions{
+  display: grid;
+  gap: 10px;
+}
+.auth-gate-btn{
+  min-height: 46px;
+  border-radius: 14px;
+}
+.auth-gate-btn.primary{
+  border-color: rgba(31, 42, 68, .26);
+  background: rgba(31, 42, 68, .08);
+  color: var(--accent);
+  font-weight: 700;
+}
+.auth-gate-btn.secondary{
+  background: var(--panel2);
+}
+.auth-gate-btn.ghost{
+  background: transparent;
+}
+.auth-gate-row{
+  display: grid;
+  gap: 6px;
+}
+.auth-gate-label{
+  font-size: 12px;
+  color: var(--muted);
+}
+.auth-gate-inline{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auth-gate-inline > *{
+  flex: 1 1 auto;
+}
+.auth-gate-grade{
+  min-height: 44px;
+  min-width: 120px;
+}
+.auth-gate-status{
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.auth-gate-status.ok{
+  color: #0b6b47;
+}
+.auth-gate-status.error{
+  color: #c1121f;
+}
+.auth-gate-mini{
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.auth-gate-tos-wrap{
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel2);
+  padding: 10px 10px 12px;
+  display: grid;
+  gap: 10px;
+}
+.auth-gate-tos-scroll{
+  max-height: 260px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 12px 12px;
+  line-height: 1.65;
+}
+.auth-gate-tos-scroll h4{
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--accent);
+}
+.auth-gate-tos-scroll p{
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+.auth-gate-tos-scroll p:last-child{
+  margin-bottom: 0;
+}
+.auth-gate-checks{
+  display: grid;
+  gap: 8px;
+}
+.auth-gate-check{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+.auth-gate-check input{
+  width: 18px;
+  height: 18px;
+}
+.auth-gate-foot{
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.auth-badge{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--chip-bg);
+}
+#authGuestBadge.hidden{
+  display: none;
+}
+.account-user-card{
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel2);
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+.account-user-title{
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+}
+.account-user-meta{
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+@media (max-width: 640px){
+  .auth-gate{
+    padding: 12px;
+  }
+  .auth-gate-card{
+    border-radius: 16px;
+    padding: 14px;
+  }
+  .auth-gate-title{
+    font-size: 22px;
+  }
+}
 </style>
 </head>
-<body class="app-tabs-visible" data-app-tab="home">
+<body class="app-tabs-visible auth-booting" data-app-tab="home">
+  <div id="authBootSplash" role="status" aria-live="polite">認証状態を確認中…</div>
+  <div id="authGate" class="auth-gate hidden" role="dialog" aria-modal="true" aria-label="アカウント">
+    <div class="auth-gate-card">
+      <div class="auth-gate-head">
+        <h2 class="auth-gate-title">VocabuQuiz</h2>
+        <p class="auth-gate-sub">学習データを複数端末で同期するにはログインが必要です。</p>
+      </div>
+      <div class="auth-gate-panels">
+        <section class="auth-gate-panel is-active" data-auth-panel="entry" id="authEntryPanel">
+          <div class="auth-gate-actions">
+            <button class="btn auth-gate-btn primary" type="button" id="authOpenRegisterBtn">
+              <div class="label">新規登録</div>
+              <div class="desc">学年 + ニックネーム + パスワードで作成</div>
+            </button>
+            <button class="btn auth-gate-btn secondary" type="button" id="authOpenLoginBtn">
+              <div class="label">ログイン</div>
+              <div class="desc">既存アカウントで続行</div>
+            </button>
+            <button class="btn auth-gate-btn ghost" type="button" id="authOpenGuestConfirmBtn">
+              <div class="label">スキップ（ゲストで続行）</div>
+              <div class="desc">この端末内のみ保存</div>
+            </button>
+          </div>
+          <div id="authEntryStatus" class="auth-gate-status" aria-live="polite"></div>
+        </section>
+
+        <section class="auth-gate-panel" data-auth-panel="register" id="authRegisterPanel">
+          <div class="auth-gate-row">
+            <div class="auth-gate-label">学年</div>
+            <select id="authRegisterGrade" class="select auth-gate-grade">
+              <option value="J1">中1</option>
+              <option value="J2">中2</option>
+              <option value="J3">中3</option>
+              <option value="H1">高1</option>
+              <option value="H2">高2</option>
+              <option value="H3">高3</option>
+            </select>
+          </div>
+          <div class="auth-gate-row">
+            <div class="auth-gate-label">ニックネーム</div>
+            <input id="authRegisterNickname" class="spell-input" type="text" maxlength="24" autocomplete="username" placeholder="例: rinty" />
+          </div>
+          <div class="auth-gate-row">
+            <div class="auth-gate-label">パスワード</div>
+            <input id="authRegisterPassword" class="spell-input" type="password" minlength="8" maxlength="72" autocomplete="new-password" placeholder="8文字以上" />
+          </div>
+          <div class="auth-gate-row">
+            <div class="auth-gate-label">パスワード（確認）</div>
+            <input id="authRegisterPassword2" class="spell-input" type="password" minlength="8" maxlength="72" autocomplete="new-password" placeholder="再入力" />
+          </div>
+          <div class="auth-gate-foot">
+            <button class="textbtn" type="button" id="authRegisterBackBtn">戻る</button>
+            <button class="navbtn" type="button" id="authRegisterNextBtn">次へ（利用規約）</button>
+          </div>
+          <div id="authRegisterStatus" class="auth-gate-status" aria-live="polite"></div>
+        </section>
+
+        <section class="auth-gate-panel" data-auth-panel="login" id="authLoginPanel">
+          <div class="auth-gate-row">
+            <div class="auth-gate-label">学年</div>
+            <select id="authLoginGrade" class="select auth-gate-grade">
+              <option value="J1">中1</option>
+              <option value="J2">中2</option>
+              <option value="J3">中3</option>
+              <option value="H1">高1</option>
+              <option value="H2">高2</option>
+              <option value="H3">高3</option>
+            </select>
+          </div>
+          <div class="auth-gate-row">
+            <div class="auth-gate-label">ニックネーム</div>
+            <input id="authLoginNickname" class="spell-input" type="text" maxlength="24" autocomplete="username" placeholder="例: rinty" />
+          </div>
+          <div class="auth-gate-row">
+            <div class="auth-gate-label">パスワード</div>
+            <input id="authLoginPassword" class="spell-input" type="password" maxlength="72" autocomplete="current-password" placeholder="パスワード" />
+          </div>
+          <div class="auth-gate-foot">
+            <button class="textbtn" type="button" id="authLoginBackBtn">戻る</button>
+            <button class="navbtn" type="button" id="authLoginSubmitBtn">ログイン</button>
+          </div>
+          <div id="authLoginStatus" class="auth-gate-status" aria-live="polite"></div>
+        </section>
+
+        <section class="auth-gate-panel" data-auth-panel="guestConfirm" id="authGuestConfirmPanel">
+          <h3 class="auth-gate-title" style="font-size:20px;">ゲストで続行</h3>
+          <p class="auth-gate-mini">
+            インサイト（学習ログ）・チャット履歴・設定の一部は、この端末 / このブラウザにのみ保存されます。
+            端末を変えると引き継げません。
+          </p>
+          <div class="auth-gate-foot">
+            <button class="textbtn" type="button" id="authGuestBackBtn">戻る</button>
+            <button class="navbtn" type="button" id="authGuestConfirmBtn">ゲストで続行</button>
+          </div>
+          <div id="authGuestStatus" class="auth-gate-status" aria-live="polite"></div>
+        </section>
+
+        <section class="auth-gate-panel" data-auth-panel="tos" id="authTosPanel">
+          <div class="auth-gate-tos-wrap">
+            <div class="auth-gate-mini">一番下までスクロールすると同意チェックができるようになります。</div>
+            <div id="authTosScroll" class="auth-gate-tos-scroll" tabindex="0">
+              <h4>利用規約 v1（登録同意用）</h4>
+              <p><strong>第1条（適用）</strong><br>本規約は、VocabuQuiz（以下「本サービス」）のアカウント機能に関する利用条件を定めるものです。本サービスを利用するユーザーは、本規約に同意した上で利用するものとします。</p>
+              <p><strong>第2条（アカウント登録）</strong><br>登録時には、学年プレフィックス・ニックネーム・パスワードを入力します。入力情報は不正利用防止のためサーバー側で検証され、要件を満たさない場合は登録できません。</p>
+              <p><strong>第3条（認証情報の管理）</strong><br>ユーザーは、認証情報を自己の責任で管理するものとします。第三者への共有、使い回し、推測されやすいパスワードの利用は避けてください。</p>
+              <p><strong>第4条（禁止事項）</strong><br>不正アクセス、アカウント乗っ取り、システムへの過剰リクエスト、他ユーザーへの迷惑行為、法令違反行為を禁止します。違反が確認された場合、利用制限を行う場合があります。</p>
+              <p><strong>第5条（データ保存）</strong><br>ログイン時は認証状態を保持するためトークンを端末に保存します。学習ログ、設定、チャット履歴等は本サービス仕様に応じてローカル保存または同期対象となります。</p>
+              <p><strong>第6条（ゲスト利用）</strong><br>ゲストモードでは端末ローカル保存のみです。ブラウザデータ削除、端末変更、シークレットモード利用等によりデータが失われる可能性があります。</p>
+              <p><strong>第7条（セキュリティ）</strong><br>本サービスは平文パスワードを保存しません。ログイン試行制御、ロック制御、レート制限を実施し、不審なアクセスを防止します。</p>
+              <p><strong>第8条（サービス変更）</strong><br>本サービスは予告なく仕様変更・機能追加・停止を行う場合があります。重大な変更がある場合は、可能な範囲で通知します。</p>
+              <p><strong>第9条（免責）</strong><br>本サービスは現状有姿で提供されます。端末環境差異、通信障害、ブラウザ仕様変更等による不具合・損失について、法令上許容される範囲で責任を負いません。</p>
+              <p><strong>第10条（準拠）</strong><br>本規約に関して疑義が生じた場合は、誠実に協議のうえ解決を図ります。なお、本規約は将来改定される場合があります。</p>
+            </div>
+            <div id="authTosHint" class="auth-gate-mini">スクロール最下部に到達するとチェック可能になります。</div>
+            <div class="auth-gate-checks">
+              <label class="auth-gate-check">
+                <input id="authTosAgree1" type="checkbox" disabled />
+                <span>利用規約に同意します</span>
+              </label>
+              <label class="auth-gate-check">
+                <input id="authTosAgree2" type="checkbox" disabled />
+                <span>データ保存 / ゲスト制限を理解しました</span>
+              </label>
+            </div>
+          </div>
+          <div class="auth-gate-foot">
+            <button class="textbtn" type="button" id="authTosBackBtn">戻る</button>
+            <button class="navbtn" type="button" id="authTosSubmitBtn" disabled>同意して登録</button>
+          </div>
+          <div id="authTosStatus" class="auth-gate-status" aria-live="polite"></div>
+        </section>
+      </div>
+    </div>
+  </div>
   <div class="app" id="app">
     
     <header class="topbar" role="banner">
@@ -5113,6 +5474,7 @@ body[data-app-tab="insights"] #appInsightsPage{
           <div class="brand" aria-label="アプリ名">
             <div class="brand-title">VocabuQuiz</div>
             <div class="brand-sub">v.1 Public</div>
+            <span id="authGuestBadge" class="auth-badge hidden">ゲスト</span>
           </div>
         </div>
 
@@ -5875,6 +6237,10 @@ body[data-app-tab="insights"] #appInsightsPage{
                   <span class="label">Display</span>
                   <span class="value" id="settingsSummaryDisplay">Auto</span>
                 </button>
+                <button class="settings-row" type="button" data-settings-nav="account">
+                  <span class="label">アカウント</span>
+                  <span class="value" id="settingsSummaryAccount">未ログイン</span>
+                </button>
               </div>
 
               <div class="settings-section-title">管理</div>
@@ -5985,6 +6351,43 @@ body[data-app-tab="insights"] #appInsightsPage{
                   <span class="toggle"><input type="checkbox" id="animToggle" /></span>
                 </label>
               </div>
+            </section>
+
+            <section class="settings-page" id="settingsPageAccount" data-settings-page="account">
+              <div class="settings-section-title">アカウント</div>
+              <div class="settings-group">
+                <div class="settings-row is-static">
+                  <span class="label">状態</span>
+                  <span class="value" id="settingsAccountStateLine">未ログイン</span>
+                </div>
+                <div class="settings-row is-static">
+                  <span class="label">ユーザー</span>
+                  <span class="value" id="settingsAccountUserLine">—</span>
+                </div>
+              </div>
+              <div class="account-user-card" id="settingsAccountUserCard">
+                <div class="account-user-title" id="settingsAccountCardTitle">アカウント未接続</div>
+                <div class="account-user-meta" id="settingsAccountCardMeta">ログインすると複数端末で同期できます。</div>
+              </div>
+              <div class="settings-group">
+                <button class="settings-row" id="settingsAccountOpenLoginBtn" type="button">
+                  <span class="label">ログイン</span>
+                  <span class="value">開く</span>
+                </button>
+                <button class="settings-row" id="settingsAccountOpenRegisterBtn" type="button">
+                  <span class="label">新規登録</span>
+                  <span class="value">開く</span>
+                </button>
+                <button class="settings-row hidden" id="settingsAccountSwitchFromGuestBtn" type="button">
+                  <span class="label">ログインに切り替え</span>
+                  <span class="value">開く</span>
+                </button>
+                <button class="settings-row hidden" id="settingsAccountLogoutBtn" type="button">
+                  <span class="label">ログアウト</span>
+                  <span class="value">実行</span>
+                </button>
+              </div>
+              <div id="settingsAccountStatus" class="drawer-share-status" aria-live="polite"></div>
             </section>
 
             <section class="settings-page" id="settingsPageData" data-settings-page="data">
@@ -8172,6 +8575,507 @@ body[data-app-tab="insights"] #appInsightsPage{
         state._recommendScopeIds = list.length ? list : null;
         state._recommendScopedActive = list.length > 0;
       }
+
+      // =========================
+      // Auth (Worker + D1)
+      // =========================
+      const AUTH_TOKEN_KEY = "app.auth.token.v1";
+      const AUTH_MODE_KEY = "app.auth.mode.v1"; // user | guest
+      const AUTH_TOS_ACCEPT_KEY = "app.tos.accepted.v1";
+      const AUTH_TOS_VERSION = "1";
+      const AUTH_API_TIMEOUT_MS = 12000;
+      const AUTH_GRADE_VALUES = new Set(["J1","J2","J3","H1","H2","H3"]);
+      const authState = {
+        mode: "none", // none | guest | user
+        token: "",
+        user: null,
+        panel: "entry",
+        registerDraft: null,
+        tosReachedBottom: false,
+        tosSubmitting: false,
+        booted: false,
+        skippedExplanationShown: false
+      };
+
+      function _authApiBase(){
+        try{
+          if (typeof _shareApiBase === "function"){
+            return _shareApiBase();
+          }
+        }catch{}
+        try{
+          if (location && location.origin && location.origin !== "null" && /^https?:/i.test(location.protocol)){
+            return String(location.origin).replace(/\/+$/, "");
+          }
+        }catch{}
+        return "http://127.0.0.1:8787";
+      }
+      function _authApiUrl(path){
+        return `${_authApiBase()}${String(path || "")}`;
+      }
+      async function _authFetch(path, opts = {}){
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), AUTH_API_TIMEOUT_MS);
+        try{
+          const headers = Object.assign(
+            { "Content-Type": "application/json" },
+            opts.headers || {}
+          );
+          const req = Object.assign({}, opts, { headers, signal: ctrl.signal });
+          const res = await fetch(_authApiUrl(path), req);
+          const txt = await res.text();
+          let body = null;
+          try{ body = txt ? JSON.parse(txt) : null; }catch{ body = null; }
+          if (!res.ok){
+            const msg = String(body?.message || body?.error || `${res.status} ${res.statusText}`);
+            const err = new Error(msg);
+            err.code = String(body?.code || `HTTP_${res.status}`);
+            throw err;
+          }
+          return body || {};
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+      function _authGetToken(){
+        try{
+          return String(localStorage.getItem(AUTH_TOKEN_KEY) || "").trim();
+        }catch{
+          return "";
+        }
+      }
+      function _authSetToken(token){
+        const t = String(token || "").trim();
+        authState.token = t;
+        try{
+          if (t) localStorage.setItem(AUTH_TOKEN_KEY, t);
+          else localStorage.removeItem(AUTH_TOKEN_KEY);
+        }catch{}
+      }
+      function _authSetMode(mode){
+        const m = (mode === "user" || mode === "guest") ? mode : "none";
+        authState.mode = m;
+        try{
+          if (m === "none") localStorage.removeItem(AUTH_MODE_KEY);
+          else localStorage.setItem(AUTH_MODE_KEY, m);
+        }catch{}
+      }
+      function _authGetMode(){
+        if (authState.mode === "user" || authState.mode === "guest") return authState.mode;
+        try{
+          const m = String(localStorage.getItem(AUTH_MODE_KEY) || "");
+          if (m === "user" || m === "guest") return m;
+        }catch{}
+        return "none";
+      }
+      function _authSetUser(user){
+        authState.user = (user && typeof user === "object") ? user : null;
+      }
+      function _authClearSession(){
+        _authSetToken("");
+        _authSetUser(null);
+        _authSetMode("none");
+      }
+      function _authDisplayId(user){
+        if (!user) return "—";
+        const grade = String(user.gradePrefix || "").trim();
+        const nickname = String(user.nickname || "").trim();
+        if (grade && nickname) return `${grade}-${nickname}`;
+        if (nickname) return nickname;
+        if (grade) return grade;
+        return "—";
+      }
+      function _authNormalizeNickname(raw){
+        return String(raw || "").trim().replace(/\s+/g, "");
+      }
+      function _authSetStatus(elx, msg, kind){
+        if (!elx) return;
+        elx.textContent = String(msg || "");
+        elx.classList.remove("ok", "error");
+        if (kind === "ok") elx.classList.add("ok");
+        if (kind === "error") elx.classList.add("error");
+      }
+      function _authClearStatuses(){
+        _authSetStatus(el.authEntryStatus, "", "");
+        _authSetStatus(el.authRegisterStatus, "", "");
+        _authSetStatus(el.authLoginStatus, "", "");
+        _authSetStatus(el.authGuestStatus, "", "");
+        _authSetStatus(el.authTosStatus, "", "");
+      }
+      function _authRenderGuestBadge(){
+        if (!el.authGuestBadge) return;
+        const show = authState.mode === "guest" && !authState.user;
+        el.authGuestBadge.classList.toggle("hidden", !show);
+      }
+      function _authRenderSettingsAccount(){
+        const summary = document.getElementById("settingsSummaryAccount");
+        const stateLine = document.getElementById("settingsAccountStateLine");
+        const userLine = document.getElementById("settingsAccountUserLine");
+        const cardTitle = document.getElementById("settingsAccountCardTitle");
+        const cardMeta = document.getElementById("settingsAccountCardMeta");
+        const btnLogin = document.getElementById("settingsAccountOpenLoginBtn");
+        const btnReg = document.getElementById("settingsAccountOpenRegisterBtn");
+        const btnSwitch = document.getElementById("settingsAccountSwitchFromGuestBtn");
+        const btnLogout = document.getElementById("settingsAccountLogoutBtn");
+        const status = document.getElementById("settingsAccountStatus");
+        if (status && !status.textContent) _authSetStatus(status, "", "");
+
+        if (authState.user){
+          const idText = _authDisplayId(authState.user);
+          if (summary) summary.textContent = idText;
+          if (stateLine) stateLine.textContent = "ログイン中";
+          if (userLine) userLine.textContent = idText;
+          if (cardTitle) cardTitle.textContent = "ログイン中";
+          if (cardMeta) cardMeta.textContent = `アカウント: ${idText}`;
+          if (btnLogin) btnLogin.classList.add("hidden");
+          if (btnReg) btnReg.classList.add("hidden");
+          if (btnSwitch) btnSwitch.classList.add("hidden");
+          if (btnLogout) btnLogout.classList.remove("hidden");
+        } else if (authState.mode === "guest"){
+          if (summary) summary.textContent = "ゲスト";
+          if (stateLine) stateLine.textContent = "ゲスト";
+          if (userLine) userLine.textContent = "この端末のみ";
+          if (cardTitle) cardTitle.textContent = "ゲストモード";
+          if (cardMeta) cardMeta.textContent = "インサイト・チャット履歴・設定の一部はこの端末のみに保存されます。";
+          if (btnLogin) btnLogin.classList.add("hidden");
+          if (btnReg) btnReg.classList.add("hidden");
+          if (btnSwitch) btnSwitch.classList.remove("hidden");
+          if (btnLogout) btnLogout.classList.add("hidden");
+        } else {
+          if (summary) summary.textContent = "未ログイン";
+          if (stateLine) stateLine.textContent = "未ログイン";
+          if (userLine) userLine.textContent = "—";
+          if (cardTitle) cardTitle.textContent = "アカウント未接続";
+          if (cardMeta) cardMeta.textContent = "ログインすると複数端末で同期できます。";
+          if (btnLogin) btnLogin.classList.remove("hidden");
+          if (btnReg) btnReg.classList.remove("hidden");
+          if (btnSwitch) btnSwitch.classList.add("hidden");
+          if (btnLogout) btnLogout.classList.add("hidden");
+        }
+      }
+      function _authShowPanel(panel){
+        const next = String(panel || "entry");
+        authState.panel = next;
+        const root = el.authGate || document;
+        root.querySelectorAll?.("[data-auth-panel]").forEach((node) => {
+          node.classList.toggle("is-active", node.getAttribute("data-auth-panel") === next);
+        });
+        _authClearStatuses();
+        if (next === "tos"){
+          _authResetTosGate();
+        }
+      }
+      function _authOpenGate(panel = "entry", msg = ""){
+        if (!el.authGate){
+          uiToast("Auth Gate UIが見つかりません");
+          return;
+        }
+        el.authGate.classList.remove("hidden");
+        document.body.classList.add("auth-gate-open");
+        _authShowPanel(panel);
+        if (msg){
+          _authSetStatus(el.authEntryStatus, msg, "error");
+        }
+      }
+      function _authCloseGate(){
+        if (!el.authGate) return;
+        el.authGate.classList.add("hidden");
+        document.body.classList.remove("auth-gate-open");
+        _authShowPanel("entry");
+      }
+      function _authSetBooting(on){
+        document.body.classList.toggle("auth-booting", !!on);
+        if (el.authBootSplash){
+          el.authBootSplash.classList.toggle("hidden", !on);
+        }
+      }
+      function _authCanSubmitTos(){
+        return !!(authState.tosReachedBottom && el.authTosAgree1?.checked && el.authTosAgree2?.checked && !authState.tosSubmitting);
+      }
+      function _authUpdateTosSubmitState(){
+        if (el.authTosSubmitBtn){
+          el.authTosSubmitBtn.disabled = !_authCanSubmitTos();
+        }
+      }
+      function _authResetTosGate(){
+        authState.tosReachedBottom = false;
+        authState.tosSubmitting = false;
+        if (el.authTosScroll) el.authTosScroll.scrollTop = 0;
+        if (el.authTosAgree1){
+          el.authTosAgree1.checked = false;
+          el.authTosAgree1.disabled = true;
+        }
+        if (el.authTosAgree2){
+          el.authTosAgree2.checked = false;
+          el.authTosAgree2.disabled = true;
+        }
+        if (el.authTosHint){
+          el.authTosHint.textContent = "スクロール最下部に到達するとチェック可能になります。";
+        }
+        _authUpdateTosSubmitState();
+      }
+      function _authHandleTosScroll(){
+        if (!el.authTosScroll) return;
+        const reached = (el.authTosScroll.scrollTop + el.authTosScroll.clientHeight) >= (el.authTosScroll.scrollHeight - 4);
+        if (!reached || authState.tosReachedBottom) return;
+        authState.tosReachedBottom = true;
+        if (el.authTosAgree1) el.authTosAgree1.disabled = false;
+        if (el.authTosAgree2) el.authTosAgree2.disabled = false;
+        if (el.authTosHint){
+          el.authTosHint.textContent = "確認ありがとうございます。2つの項目にチェックすると登録できます。";
+        }
+        _authUpdateTosSubmitState();
+      }
+      function _authReadRegisterDraft(){
+        const grade = String(el.authRegisterGrade?.value || "J1");
+        const nickname = _authNormalizeNickname(el.authRegisterNickname?.value || "");
+        const password = String(el.authRegisterPassword?.value || "");
+        const password2 = String(el.authRegisterPassword2?.value || "");
+        return { grade, nickname, password, password2 };
+      }
+      function _authValidateRegisterDraft(draft){
+        const d = draft || {};
+        if (!AUTH_GRADE_VALUES.has(String(d.grade || ""))) return "学年を選択してください。";
+        if (!d.nickname || d.nickname.length < 2 || d.nickname.length > 24) return "ニックネームは2〜24文字で入力してください。";
+        if (!/^[A-Za-z0-9._-]{2,24}$/.test(d.nickname)) return "ニックネームは英数字と . _ - のみ使用できます。";
+        if (!d.password || d.password.length < 8) return "パスワードは8文字以上で入力してください。";
+        if (d.password !== d.password2) return "パスワード（確認）が一致しません。";
+        return "";
+      }
+      async function _authSubmitRegister(){
+        if (authState.tosSubmitting) return;
+        if (!_authCanSubmitTos()){
+          _authSetStatus(el.authTosStatus, "2つの同意チェックを完了してください。", "error");
+          return;
+        }
+        const draft = authState.registerDraft;
+        if (!draft){
+          _authSetStatus(el.authTosStatus, "登録情報が見つかりません。最初から入力してください。", "error");
+          _authShowPanel("register");
+          return;
+        }
+        authState.tosSubmitting = true;
+        _authUpdateTosSubmitState();
+        _authSetStatus(el.authTosStatus, "登録中…");
+        try{
+          const body = await _authFetch("/api/auth/register", {
+            method: "POST",
+            body: JSON.stringify({
+              gradePrefix: draft.grade,
+              nickname: draft.nickname,
+              password: draft.password,
+              tosAccepted: true,
+              tosVersion: AUTH_TOS_VERSION
+            })
+          });
+          const token = String(body?.token || "");
+          const user = body?.user || null;
+          if (!token || !user){
+            throw new Error("登録レスポンスが不正です。");
+          }
+          _authSetToken(token);
+          _authSetUser(user);
+          _authSetMode("user");
+          try{
+            localStorage.setItem(AUTH_TOS_ACCEPT_KEY, JSON.stringify({
+              acceptedAt: Date.now(),
+              version: AUTH_TOS_VERSION
+            }));
+          }catch{}
+          authState.registerDraft = null;
+          _authSetStatus(el.authTosStatus, "登録に成功しました。", "ok");
+          _authCloseGate();
+          _authRenderGuestBadge();
+          _authRenderSettingsAccount();
+          _settingsRefreshSummary();
+          _appSetTab("home");
+          uiToast("登録しました");
+        }catch(err){
+          _authSetStatus(el.authTosStatus, `登録失敗: ${String(err?.message || err)}`, "error");
+        }finally{
+          authState.tosSubmitting = false;
+          _authUpdateTosSubmitState();
+        }
+      }
+      async function _authSubmitLogin(){
+        const grade = String(el.authLoginGrade?.value || "J1");
+        const nickname = _authNormalizeNickname(el.authLoginNickname?.value || "");
+        const password = String(el.authLoginPassword?.value || "");
+        if (!AUTH_GRADE_VALUES.has(grade)){
+          _authSetStatus(el.authLoginStatus, "学年を選択してください。", "error");
+          return;
+        }
+        if (!nickname || nickname.length < 2){
+          _authSetStatus(el.authLoginStatus, "ニックネームを入力してください。", "error");
+          return;
+        }
+        if (!password){
+          _authSetStatus(el.authLoginStatus, "パスワードを入力してください。", "error");
+          return;
+        }
+        _authSetStatus(el.authLoginStatus, "ログイン中…");
+        if (el.authLoginSubmitBtn) el.authLoginSubmitBtn.disabled = true;
+        try{
+          const body = await _authFetch("/api/auth/login", {
+            method: "POST",
+            body: JSON.stringify({
+              gradePrefix: grade,
+              nickname,
+              password
+            })
+          });
+          const token = String(body?.token || "");
+          const user = body?.user || null;
+          if (!token || !user){
+            throw new Error("ログインレスポンスが不正です。");
+          }
+          _authSetToken(token);
+          _authSetUser(user);
+          _authSetMode("user");
+          _authCloseGate();
+          _authRenderGuestBadge();
+          _authRenderSettingsAccount();
+          _settingsRefreshSummary();
+          _appSetTab("home");
+          uiToast("ログインしました");
+        }catch(err){
+          _authSetStatus(el.authLoginStatus, `ログイン失敗: ${String(err?.message || err)}`, "error");
+        }finally{
+          if (el.authLoginSubmitBtn) el.authLoginSubmitBtn.disabled = false;
+        }
+      }
+      function _authContinueAsGuest(){
+        _authSetToken("");
+        _authSetUser(null);
+        _authSetMode("guest");
+        _authCloseGate();
+        _authRenderGuestBadge();
+        _authRenderSettingsAccount();
+        _settingsRefreshSummary();
+        _appSetTab("home");
+        uiToast("ゲストで続行します");
+      }
+      async function _authLogout(){
+        _authClearSession();
+        _authRenderGuestBadge();
+        _authRenderSettingsAccount();
+        _settingsRefreshSummary();
+        _authOpenGate("entry");
+        _appSetTab("home");
+        uiToast("ログアウトしました");
+      }
+      async function _authVerifyToken(token){
+        const t = String(token || "").trim();
+        if (!t) return { ok: false };
+        try{
+          const body = await _authFetch("/api/auth/me", {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${t}`
+            }
+          });
+          if (!body?.user) return { ok: false };
+          return { ok: true, user: body.user };
+        }catch{
+          return { ok: false };
+        }
+      }
+      async function _authBootstrap(){
+        _authSetBooting(true);
+        const mode = _authGetMode();
+        const token = _authGetToken();
+        _authSetMode(mode === "user" || mode === "guest" ? mode : "none");
+        _authSetToken(token);
+        _authSetUser(null);
+        let gateShouldOpen = true;
+
+        if (token){
+          const me = await _authVerifyToken(token);
+          if (me.ok){
+            _authSetMode("user");
+            _authSetUser(me.user);
+            gateShouldOpen = false;
+          } else {
+            _authClearSession();
+            gateShouldOpen = true;
+          }
+        } else if (mode === "guest"){
+          // Guest mode always starts from Auth Gate.
+          gateShouldOpen = true;
+        } else {
+          gateShouldOpen = true;
+        }
+
+        _authRenderGuestBadge();
+        _authRenderSettingsAccount();
+        _settingsRefreshSummary();
+        if (gateShouldOpen){
+          _authOpenGate("entry");
+        } else {
+          _authCloseGate();
+        }
+        _authSetBooting(false);
+        authState.booted = true;
+      }
+      function _authBindEvents(){
+        if (!el.authGate){
+          uiToast("Auth Gate UIの初期化に失敗しました");
+          return;
+        }
+        el.authOpenRegisterBtn?.addEventListener("click", () => _authShowPanel("register"));
+        el.authOpenLoginBtn?.addEventListener("click", () => _authShowPanel("login"));
+        el.authOpenGuestConfirmBtn?.addEventListener("click", () => _authShowPanel("guestConfirm"));
+        el.authRegisterBackBtn?.addEventListener("click", () => _authShowPanel("entry"));
+        el.authLoginBackBtn?.addEventListener("click", () => _authShowPanel("entry"));
+        el.authGuestBackBtn?.addEventListener("click", () => _authShowPanel("entry"));
+        el.authTosBackBtn?.addEventListener("click", () => _authShowPanel("register"));
+        el.authRegisterNextBtn?.addEventListener("click", () => {
+          const draft = _authReadRegisterDraft();
+          const err = _authValidateRegisterDraft(draft);
+          if (err){
+            _authSetStatus(el.authRegisterStatus, err, "error");
+            return;
+          }
+          authState.registerDraft = { grade: draft.grade, nickname: draft.nickname, password: draft.password };
+          _authShowPanel("tos");
+        });
+        el.authLoginSubmitBtn?.addEventListener("click", () => {
+          _authSubmitLogin();
+        });
+        el.authGuestConfirmBtn?.addEventListener("click", () => {
+          _authContinueAsGuest();
+        });
+        el.authTosSubmitBtn?.addEventListener("click", () => {
+          _authSubmitRegister();
+        });
+        el.authTosScroll?.addEventListener("scroll", _authHandleTosScroll, { passive: true });
+        el.authTosAgree1?.addEventListener("change", _authUpdateTosSubmitState);
+        el.authTosAgree2?.addEventListener("change", _authUpdateTosSubmitState);
+
+        document.addEventListener("keydown", (e) => {
+          if (!el.authGate || el.authGate.classList.contains("hidden")) return;
+          const ae = document.activeElement;
+          const typing = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
+          if (!typing) return;
+          if (e.key !== "Enter" || e.shiftKey) return;
+          if (authState.panel === "login"){
+            e.preventDefault();
+            _authSubmitLogin();
+            return;
+          }
+          if (authState.panel === "register"){
+            e.preventDefault();
+            const draft = _authReadRegisterDraft();
+            const err = _authValidateRegisterDraft(draft);
+            if (err){
+              _authSetStatus(el.authRegisterStatus, err, "error");
+              return;
+            }
+            authState.registerDraft = { grade: draft.grade, nickname: draft.nickname, password: draft.password };
+            _authShowPanel("tos");
+          }
+        }, true);
+      }
       applyTheme();
       applyFontSize();
       try{
@@ -8391,7 +9295,39 @@ body[data-app-tab="insights"] #appInsightsPage{
         appChatComposer: document.getElementById("appChatComposer"),
         appChatInput: document.getElementById("appChatInput"),
         appChatSendBtn: document.getElementById("appChatSendBtn"),
-        appSettingsPage: document.getElementById("appSettingsPage")
+        appSettingsPage: document.getElementById("appSettingsPage"),
+
+        // auth
+        authBootSplash: document.getElementById("authBootSplash"),
+        authGate: document.getElementById("authGate"),
+        authGuestBadge: document.getElementById("authGuestBadge"),
+        authOpenRegisterBtn: document.getElementById("authOpenRegisterBtn"),
+        authOpenLoginBtn: document.getElementById("authOpenLoginBtn"),
+        authOpenGuestConfirmBtn: document.getElementById("authOpenGuestConfirmBtn"),
+        authRegisterGrade: document.getElementById("authRegisterGrade"),
+        authRegisterNickname: document.getElementById("authRegisterNickname"),
+        authRegisterPassword: document.getElementById("authRegisterPassword"),
+        authRegisterPassword2: document.getElementById("authRegisterPassword2"),
+        authRegisterBackBtn: document.getElementById("authRegisterBackBtn"),
+        authRegisterNextBtn: document.getElementById("authRegisterNextBtn"),
+        authLoginGrade: document.getElementById("authLoginGrade"),
+        authLoginNickname: document.getElementById("authLoginNickname"),
+        authLoginPassword: document.getElementById("authLoginPassword"),
+        authLoginBackBtn: document.getElementById("authLoginBackBtn"),
+        authLoginSubmitBtn: document.getElementById("authLoginSubmitBtn"),
+        authGuestBackBtn: document.getElementById("authGuestBackBtn"),
+        authGuestConfirmBtn: document.getElementById("authGuestConfirmBtn"),
+        authTosScroll: document.getElementById("authTosScroll"),
+        authTosHint: document.getElementById("authTosHint"),
+        authTosAgree1: document.getElementById("authTosAgree1"),
+        authTosAgree2: document.getElementById("authTosAgree2"),
+        authTosBackBtn: document.getElementById("authTosBackBtn"),
+        authTosSubmitBtn: document.getElementById("authTosSubmitBtn"),
+        authEntryStatus: document.getElementById("authEntryStatus"),
+        authRegisterStatus: document.getElementById("authRegisterStatus"),
+        authLoginStatus: document.getElementById("authLoginStatus"),
+        authGuestStatus: document.getElementById("authGuestStatus"),
+        authTosStatus: document.getElementById("authTosStatus")
 	      };
 
       // =========================
@@ -10107,6 +11043,7 @@ function setDeck(deckKey){
         practice: "Practice",
         sound: "Sound",
         display: "Display",
+        account: "アカウント",
         data: "データ管理",
         admin: "Admin"
       };
@@ -10171,6 +11108,7 @@ function setDeck(deckKey){
         const p = document.getElementById("settingsSummaryPractice");
         const s = document.getElementById("settingsSummarySound");
         const d = document.getElementById("settingsSummaryDisplay");
+        const ac = document.getElementById("settingsSummaryAccount");
         const a = document.getElementById("settingsSummaryAdmin");
         if (p){
           p.textContent = `${state.settings.direction === "JA_EN" ? "日→英" : "英→日"} / ${getSavedPracticeQuestionCount()}問`;
@@ -10182,6 +11120,15 @@ function setDeck(deckKey){
           const theme = String(state.settings.theme || "AUTO");
           const font = _settingsSummaryTextByLevel(state.settings.fontSize || "DEFAULT");
           d.textContent = `${theme} / ${font}`;
+        }
+        if (ac){
+          if (authState.user){
+            ac.textContent = _authDisplayId(authState.user);
+          } else if (authState.mode === "guest"){
+            ac.textContent = "ゲスト";
+          } else {
+            ac.textContent = "未ログイン";
+          }
         }
         if (a){
           const email = String(_adminState.user?.email || "").trim();
@@ -10242,6 +11189,7 @@ function setDeck(deckKey){
         }
 
         _settingsRefreshSummary();
+        _authRenderSettingsAccount();
         _customSelectEnhance(el.settingsOverlay || document);
       }
       function _resolveThemeMode(){
@@ -15143,6 +16091,35 @@ function _openSearchResultByIndex(i){
           return;
         }
 
+        const accountLoginBtn = e.target.closest("#settingsAccountOpenLoginBtn");
+        if (accountLoginBtn){
+          e.preventDefault();
+          _authOpenGate("login");
+          return;
+        }
+        const accountRegisterBtn = e.target.closest("#settingsAccountOpenRegisterBtn");
+        if (accountRegisterBtn){
+          e.preventDefault();
+          _authOpenGate("register");
+          return;
+        }
+        const accountSwitchBtn = e.target.closest("#settingsAccountSwitchFromGuestBtn");
+        if (accountSwitchBtn){
+          e.preventDefault();
+          _authSetMode("none");
+          _authRenderGuestBadge();
+          _authRenderSettingsAccount();
+          _settingsRefreshSummary();
+          _authOpenGate("login");
+          return;
+        }
+        const accountLogoutBtn = e.target.closest("#settingsAccountLogoutBtn");
+        if (accountLogoutBtn){
+          e.preventDefault();
+          _authLogout();
+          return;
+        }
+
         const deleteLogsBtn = e.target.closest("#settingsDeleteLogsBtn");
         if (deleteLogsBtn){
           e.preventDefault();
@@ -15449,6 +16426,17 @@ function _openSearchResultByIndex(i){
       
       // keyboard
       document.addEventListener("keydown", (e) => {
+        if (el.authGate && !el.authGate.classList.contains("hidden")){
+          const aeAuth = document.activeElement;
+          const typingAuth = aeAuth && (aeAuth.tagName === "INPUT" || aeAuth.tagName === "TEXTAREA" || aeAuth.tagName === "SELECT" || aeAuth.isContentEditable);
+          if (typingAuth) return;
+          if (e.key === "Escape"){
+            e.preventDefault();
+            _authShowPanel("entry");
+          }
+          return;
+        }
+
         // If modal is open, let it handle keys (avoid accidental dropdown closes)
         if (uiModal.root && uiModal.root.classList.contains("is-open")) return;
 
@@ -18312,6 +19300,8 @@ function _openSearchResultByIndex(i){
       renderAll();
       maybeShowUpdateNotes();
       _backupScheduleAuto();
+      _authBindEvents();
+      _authBootstrap();
     
       // =========================
       // Hamburger Menu (stable navigation)
