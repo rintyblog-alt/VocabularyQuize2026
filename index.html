@@ -55,6 +55,8 @@
       --maru:#d11f2a; /* correct: red circle */
       --batsu:#1c4fd6; /* wrong: blue cross */
       --quiz-font-scale:1;
+      --ui-font-scale:1;
+      --base-font-size:16px;
 
       --hairline:var(--border);
       --glass:var(--panel);
@@ -99,24 +101,54 @@
       --focus:rgba(144,202,249,.40);
     }
     :root[data-font-size="SMALL"]{
-      --quiz-font-scale:.92;
+      --quiz-font-scale:.88;
+      --ui-font-scale:.92;
+      --base-font-size:15px;
     }
     :root[data-font-size="DEFAULT"]{
       --quiz-font-scale:1;
+      --ui-font-scale:1;
+      --base-font-size:16px;
     }
     :root[data-font-size="LARGE"]{
-      --quiz-font-scale:1.12;
+      --quiz-font-scale:1.2;
+      --ui-font-scale:1.16;
+      --base-font-size:18px;
     }
 
     *{ box-sizing:border-box; }
     html,body{ height:100%; }
+    html{
+      font-size: var(--base-font-size);
+    }
     body{
       margin:0;
       background:var(--bg);
       color:var(--text);
+      font-size:1rem;
       font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, Arial, sans-serif;
       -webkit-font-smoothing:antialiased;
       -moz-osx-font-smoothing:grayscale;
+    }
+    button,
+    input,
+    select,
+    textarea{
+      font-size: inherit;
+    }
+
+    :root[data-animations="off"]{
+      scroll-behavior:auto !important;
+    }
+    :root[data-animations="off"] *,
+    :root[data-animations="off"] *::before,
+    :root[data-animations="off"] *::after{
+      animation:none !important;
+      transition:none !important;
+      transition-duration:0s !important;
+      animation-duration:0s !important;
+      animation-delay:0s !important;
+      scroll-behavior:auto !important;
     }
 
     .app{
@@ -5086,6 +5118,11 @@ body[data-app-tab="insights"] #appInsightsPage{
   input,
   textarea,
   select,
+  #firstLaunchOverlay,
+  .first-launch-shell,
+  .first-launch-phase,
+  .first-launch-welcome-text,
+  .first-launch-welcome-badge,
   .view.active,
   .overlay:not(.hidden),
   .overlay:not(.hidden) .sheet{
@@ -5099,64 +5136,238 @@ body[data-app-tab="insights"] #appInsightsPage{
    Auth Gate + Account UI
    ========================= */
 body.auth-booting .app{
-  visibility: hidden;
+  display: none !important;
+}
+body.first-launch-open{
+  overflow: hidden;
+}
+body.auth-gate-open{
+  overflow: hidden;
+}
+body.auth-gate-open .app{
+  display: none !important;
 }
 #authBootSplash{
+  display: none !important;
+}
+#firstLaunchOverlay{
   position: fixed;
   inset: 0;
-  z-index: 170;
+  z-index: 999999;
   display: grid;
   place-items: center;
-  background: var(--bg);
-  color: var(--muted);
-  font-size: 13px;
-  letter-spacing: .02em;
+  padding: 16px;
+  background:
+    radial-gradient(120% 120% at 50% 0%, color-mix(in oklab, var(--panel2) 72%, transparent), transparent 58%),
+    linear-gradient(180deg, color-mix(in oklab, var(--bg) 88%, var(--panel2)) 0%, var(--bg) 70%);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity .36s cubic-bezier(0.22, 1, 0.36, 1), transform .36s cubic-bezier(0.22, 1, 0.36, 1);
 }
-#authBootSplash.hidden{
+#firstLaunchOverlay.is-active{
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+#firstLaunchOverlay.is-leaving{
+  opacity: 0;
+  transform: translateY(-6px) scale(.995);
+  pointer-events: none;
+}
+#firstLaunchOverlay.hidden{
   display: none;
+}
+.first-launch-shell{
+  width: min(560px, 94vw);
+  min-height: min(440px, 78vh);
+  display: grid;
+  place-items: center;
+  transition: opacity .34s cubic-bezier(0.22, 1, 0.36, 1), transform .34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#firstLaunchOverlay.is-leaving .first-launch-shell{
+  opacity: 0;
+  transform: translateY(-14px) scale(.985);
+}
+#firstLaunchStage{
+  width: 100%;
+  display: grid;
+  place-items: center;
+}
+.first-launch-phase{
+  display: none;
+  width: 100%;
+  opacity: 0;
+  transform: translateY(10px) scale(.99);
+}
+#firstLaunchStage[data-stage="loading"] .first-launch-phase.is-loading{
+  display: grid;
+  place-items: center;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  animation: firstLaunchPhaseIn .38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#firstLaunchStage[data-stage="welcome"] .first-launch-phase.is-welcome{
+  display: grid;
+  place-items: center;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  animation: firstLaunchPhaseIn .44s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.first-launch-loader{
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--panel) 86%, transparent);
+  box-shadow: var(--shadow);
+  display: grid;
+  place-items: center;
+}
+.first-launch-loader .first-launch-icon{
+  font-size: 42px;
+  color: color-mix(in oklab, var(--text) 78%, transparent);
+}
+.first-launch-loader .first-launch-spinner{
+  position: absolute;
+  inset: 12px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in oklab, var(--border) 70%, transparent);
+  border-top-color: color-mix(in oklab, var(--text) 42%, transparent);
+  animation: spin .8s linear infinite;
+}
+.first-launch-welcome{
+  width: 100%;
+  display: grid;
+  place-items: center;
+  padding-top: clamp(8vh, 12vh, 16vh);
+}
+.first-launch-welcome-badge{
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--panel2) 82%, transparent);
+  box-shadow: var(--shadow);
+  display: grid;
+  place-items: center;
+  margin-bottom: 18px;
+  animation: firstLaunchBadgeFloat 2.4s ease-in-out infinite;
+}
+.first-launch-welcome-icon{
+  font-size: 36px;
+  color: color-mix(in oklab, var(--text) 76%, transparent);
+}
+.first-launch-welcome-text{
+  margin: 0;
+  font-size: clamp(20px, 6vw, 46px);
+  font-weight: 760;
+  letter-spacing: .02em;
+  color: var(--text);
+  text-align: center;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(10px) scale(.985);
+  filter: blur(3px);
+  animation: firstLaunchWelcomeIn .72s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+#firstLaunchOverlay.is-leaving #firstLaunchStage[data-stage="welcome"] .first-launch-welcome-text{
+  animation: firstLaunchWelcomeOut .34s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+@keyframes firstLaunchPhaseIn{
+  from{ opacity: 0; transform: translateY(12px) scale(.985); }
+  to{ opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes firstLaunchBadgeFloat{
+  0%,100%{ transform: translateY(0); }
+  50%{ transform: translateY(-6px); }
+}
+@keyframes firstLaunchWelcomeIn{
+  from{ opacity: 0; transform: translateY(10px) scale(.985); filter: blur(3px); letter-spacing: .06em; }
+  to{ opacity: 1; transform: translateY(0) scale(1); filter: blur(0); letter-spacing: .02em; }
+}
+@keyframes firstLaunchWelcomeOut{
+  from{ opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  to{ opacity: 0; transform: translateY(-10px) scale(.98); filter: blur(2px); }
 }
 .auth-gate{
   position: fixed;
   inset: 0;
-  z-index: 165;
+  z-index: 168;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  background: rgba(17, 18, 20, .34);
+  padding: clamp(14px, 3vw, 28px);
+  background:
+    radial-gradient(120% 120% at 50% 0%, color-mix(in oklab, var(--panel2) 68%, transparent), transparent 58%),
+    linear-gradient(180deg, color-mix(in oklab, var(--bg) 86%, var(--panel2)) 0%, var(--bg) 68%);
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity .26s cubic-bezier(0.22, 1, 0.36, 1), transform .26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+body.auth-gate-open .auth-gate{
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 .auth-gate.hidden{
   display: none;
 }
 .auth-gate-card{
-  width: min(560px, 100%);
-  max-height: calc(100vh - 40px);
+  width: min(560px, 92vw);
+  max-height: min(92dvh, 820px);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
-  padding: 18px;
+  background: transparent;
+  border: 0;
+  border-radius: 22px;
+  box-shadow: none;
+  padding: clamp(18px, 3vw, 26px);
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 .auth-gate-head{
   display: grid;
-  gap: 6px;
+  gap: 10px;
 }
 .auth-gate-title{
   margin: 0;
-  font-size: 24px;
-  font-weight: 720;
+  font-size: clamp(28px, 6vw, 44px);
+  font-weight: 760;
   letter-spacing: .01em;
   color: var(--accent);
 }
 .auth-gate-sub{
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.92rem;
   line-height: 1.6;
+}
+.auth-gate-seg{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:6px;
+  background: color-mix(in oklab, var(--panel2) 78%, transparent);
+}
+.auth-gate-seg-btn{
+  min-height:44px;
+  border:0;
+  border-radius:999px;
+  background:transparent;
+  color:var(--muted);
+  font-size:0.94rem;
+  font-weight:700;
+  cursor:pointer;
+}
+.auth-gate-seg-btn.active{
+  background:var(--panel);
+  color:var(--text);
+  box-shadow:0 8px 22px rgba(15,18,27,.12);
 }
 .auth-gate-panels{
   display: grid;
@@ -5165,17 +5376,45 @@ body.auth-booting .app{
 .auth-gate-panel{
   display: none;
   gap: 10px;
+  animation: authPanelIn .35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .auth-gate-panel.is-active{
   display: grid;
 }
+.auth-gate-panel[data-auth-panel="welcome"]{
+  min-height: clamp(280px, 48vh, 420px);
+  place-items: center;
+  align-content: start;
+  padding-top: clamp(11vh, 15vh, 19vh);
+}
+.auth-welcome-mark{
+  font-size: clamp(24px, 5.4vw, 40px);
+  font-weight: 760;
+  color: var(--text);
+  text-align: center;
+  letter-spacing: .02em;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: authWelcomeIn .6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes authWelcomeIn{
+  from{ opacity: 0; transform: translateY(8px); }
+  to{ opacity: 1; transform: translateY(0); }
+}
+@keyframes authPanelIn{
+  from{ opacity: 0; transform: translateY(10px) scale(.985); }
+  to{ opacity: 1; transform: translateY(0) scale(1); }
+}
 .auth-gate-actions{
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 .auth-gate-btn{
-  min-height: 46px;
-  border-radius: 14px;
+  min-height: 52px;
+  border-radius: 16px;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 14px 16px;
 }
 .auth-gate-btn.primary{
   border-color: rgba(31, 42, 68, .26);
@@ -5189,13 +5428,63 @@ body.auth-booting .app{
 .auth-gate-btn.ghost{
   background: transparent;
 }
+.auth-gate-btn .label{
+  font-size: 1.05rem;
+  font-weight: 720;
+}
+.auth-gate-btn .desc{
+  margin-top: 2px;
+  font-size: .86rem;
+  color: var(--muted);
+}
 .auth-gate-row{
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 .auth-gate-label{
   font-size: 12px;
+  font-weight: 620;
   color: var(--muted);
+}
+.auth-gate .spell-input,
+.auth-gate .select{
+  min-height: 52px !important;
+  border-radius: 14px !important;
+  border-width: 1px !important;
+  padding: 0 14px !important;
+  font-size: 1rem !important;
+}
+.auth-gate .auth-line-input{
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--input-border) !important;
+  border-radius: 0 !important;
+  min-height: 48px !important;
+  padding: 8px 2px 10px !important;
+}
+.auth-gate .spell-input:focus,
+.auth-gate .select:focus{
+  outline: none;
+  border-color: color-mix(in oklab, var(--accent) 35%, var(--input-border));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--focus) 72%, transparent);
+}
+.auth-gate .auth-line-input:focus{
+  box-shadow: none !important;
+  border-bottom-color: color-mix(in oklab, var(--accent) 45%, var(--input-border)) !important;
+}
+.auth-gate .auth-line-select{
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--input-border) !important;
+  border-radius: 0 !important;
+  min-height: 48px !important;
+  padding: 8px 28px 10px 2px !important;
+}
+.auth-gate .auth-line-select:focus{
+  box-shadow: none !important;
+  border-bottom-color: color-mix(in oklab, var(--accent) 45%, var(--input-border)) !important;
 }
 .auth-gate-inline{
   display: flex;
@@ -5213,6 +5502,14 @@ body.auth-booting .app{
   font-size: 12px;
   line-height: 1.5;
   color: var(--muted);
+}
+.auth-gate-panel .auth-gate-status{
+  display: none;
+}
+.auth-gate-status-global{
+  display:block;
+  min-height: 20px;
+  margin-top: 4px;
 }
 .auth-gate-status.ok{
   color: #0b6b47;
@@ -5273,9 +5570,66 @@ body.auth-booting .app{
 }
 .auth-gate-foot{
   display: flex;
-  gap: 8px;
+  gap: 10px;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+.auth-gate-foot-between{
+  justify-content: space-between;
+}
+.auth-confirm-card{
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--panel2) 80%, transparent);
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+.auth-confirm-value{
+  min-height: 24px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: .01em;
+}
+.auth-like-seg{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.auth-like-btn{
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--text);
+  font-size: .95rem;
+  font-weight: 680;
+  cursor: pointer;
+}
+.auth-like-btn.active{
+  background: color-mix(in oklab, var(--accent) 12%, var(--panel));
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
+}
+.auth-profile-steps{
+  position: relative;
+}
+.auth-profile-step{
+  display: none;
+  gap: 10px;
+}
+.auth-profile-step.is-active{
+  display: grid;
+  animation: authQuestionIn .34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.auth-profile-nav-left{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+@keyframes authQuestionIn{
+  from{ opacity: 0; transform: translateY(10px) scale(.99); }
+  to{ opacity: 1; transform: translateY(0) scale(1); }
 }
 .auth-badge{
   display: inline-flex;
@@ -5311,20 +5665,92 @@ body.auth-booting .app{
 }
 @media (max-width: 640px){
   .auth-gate{
-    padding: 12px;
-  }
-  .auth-gate-card{
-    border-radius: 16px;
     padding: 14px;
   }
+  .auth-gate-card{
+    width: min(560px, 100%);
+    border-radius: 18px;
+    padding: 16px;
+  }
   .auth-gate-title{
-    font-size: 22px;
+    font-size: clamp(28px, 9vw, 38px);
   }
 }
+
+#globalLoadingOverlay{
+  position: fixed;
+  inset: 0;
+  z-index: 172;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklab, var(--bg) 72%, transparent);
+  backdrop-filter: saturate(110%) blur(2px);
+}
+#globalLoadingOverlay.hidden{
+  display: none;
+}
+.app-loading-card{
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+}
+.app-loading-spinner{
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border: 2px solid color-mix(in oklab, var(--border) 70%, transparent);
+  border-top-color: color-mix(in oklab, var(--text) 42%, transparent);
+  border-radius: 50%;
+  animation: spin .78s linear infinite;
+}
+.app-loading-icon{
+  font-size: 30px;
+  color: color-mix(in oklab, var(--text) 72%, transparent);
+}
+@keyframes spin{
+  to{ transform: rotate(360deg); }
+}
+
+/* font-size bridge: enforce setting reflection on core UI */
+.brand-title,
+.brand-sub,
+.icon-label,
+.btn,
+.navbtn,
+.textbtn,
+.menu-item,
+.settings-row .label,
+.settings-row .value,
+.app-settings-row,
+.note,
+.auth-gate-status,
+.app-page-head p,
+.app-page-head h2,
+.app-inbox-title,
+.app-inbox-preview,
+.app-ins-k,
+.app-ins-v,
+.drawer-share-status{
+  font-size: calc(1em * var(--ui-font-scale));
+}
+
 </style>
 </head>
 <body class="app-tabs-visible auth-booting" data-app-tab="home">
-  <div id="authBootSplash" role="status" aria-live="polite">認証状態を確認中…</div>
+  <div id="authBootSplash" role="status" aria-live="polite">
+    <div class="boot-splash-inner">
+      <span class="ms app-loading-icon" id="authBootIcon" aria-hidden="true">menu_book</span>
+      <span class="app-loading-spinner" aria-hidden="true"></span>
+    </div>
+  </div>
   <div id="authGate" class="auth-gate hidden" role="dialog" aria-modal="true" aria-label="アカウント">
     <div class="auth-gate-card">
       <div class="auth-gate-head">
@@ -5332,28 +5758,36 @@ body.auth-booting .app{
         <p class="auth-gate-sub">学習データを複数端末で同期するにはログインが必要です。</p>
       </div>
       <div class="auth-gate-panels">
+        <section class="auth-gate-panel" data-auth-panel="welcome" id="authWelcomePanel">
+          <div class="auth-welcome-mark">ようこそ！VocabuQuizへ…</div>
+        </section>
+
         <section class="auth-gate-panel is-active" data-auth-panel="entry" id="authEntryPanel">
           <div class="auth-gate-actions">
             <button class="btn auth-gate-btn primary" type="button" id="authOpenRegisterBtn">
               <div class="label">新規登録</div>
-              <div class="desc">学年 + ニックネーム + パスワードで作成</div>
+              <div class="desc">学年・ニックネーム・パスワードで開始</div>
             </button>
             <button class="btn auth-gate-btn secondary" type="button" id="authOpenLoginBtn">
               <div class="label">ログイン</div>
               <div class="desc">既存アカウントで続行</div>
             </button>
             <button class="btn auth-gate-btn ghost" type="button" id="authOpenGuestConfirmBtn">
-              <div class="label">スキップ（ゲストで続行）</div>
-              <div class="desc">この端末内のみ保存</div>
+              <div class="label">ゲスト</div>
+              <div class="desc">この端末のみで利用する</div>
             </button>
           </div>
           <div id="authEntryStatus" class="auth-gate-status" aria-live="polite"></div>
         </section>
 
         <section class="auth-gate-panel" data-auth-panel="register" id="authRegisterPanel">
+          <div class="auth-gate-seg" role="tablist" aria-label="登録またはログイン">
+            <button class="auth-gate-seg-btn" id="authSegRegisterBtn" type="button" role="tab">登録</button>
+            <button class="auth-gate-seg-btn" id="authSegLoginBtn" type="button" role="tab">ログイン</button>
+          </div>
           <div class="auth-gate-row">
             <div class="auth-gate-label">学年</div>
-            <select id="authRegisterGrade" class="select auth-gate-grade">
+            <select id="authRegisterGrade" class="select auth-gate-grade auth-line-select">
               <option value="J1">中1</option>
               <option value="J2">中2</option>
               <option value="J3">中3</option>
@@ -5364,27 +5798,49 @@ body.auth-booting .app{
           </div>
           <div class="auth-gate-row">
             <div class="auth-gate-label">ニックネーム</div>
-            <input id="authRegisterNickname" class="spell-input" type="text" maxlength="24" autocomplete="username" placeholder="例: rinty" />
+            <input id="authRegisterNickname" class="spell-input auth-line-input" type="text" maxlength="24" autocomplete="username" placeholder="例: rinty" />
           </div>
           <div class="auth-gate-row">
             <div class="auth-gate-label">パスワード</div>
-            <input id="authRegisterPassword" class="spell-input" type="password" minlength="8" maxlength="72" autocomplete="new-password" placeholder="8文字以上" />
-          </div>
-          <div class="auth-gate-row">
-            <div class="auth-gate-label">パスワード（確認）</div>
-            <input id="authRegisterPassword2" class="spell-input" type="password" minlength="8" maxlength="72" autocomplete="new-password" placeholder="再入力" />
+            <input id="authRegisterPassword" class="spell-input auth-line-input" type="password" minlength="8" maxlength="72" autocomplete="new-password" placeholder="8文字以上" />
           </div>
           <div class="auth-gate-foot">
             <button class="textbtn" type="button" id="authRegisterBackBtn">戻る</button>
-            <button class="navbtn" type="button" id="authRegisterNextBtn">次へ（利用規約）</button>
+            <button class="navbtn" type="button" id="authRegisterNextBtn">次へ</button>
           </div>
           <div id="authRegisterStatus" class="auth-gate-status" aria-live="polite"></div>
         </section>
 
+        <section class="auth-gate-panel" data-auth-panel="registerConfirm" id="authRegisterConfirmPanel">
+          <div class="auth-confirm-card">
+            <div class="auth-gate-row">
+              <div class="auth-gate-label">学年</div>
+              <div id="authRegisterConfirmGrade" class="auth-confirm-value">—</div>
+            </div>
+            <div class="auth-gate-row">
+              <div class="auth-gate-label">ニックネーム</div>
+              <div id="authRegisterConfirmNickname" class="auth-confirm-value">—</div>
+            </div>
+            <div class="auth-gate-row">
+              <div class="auth-gate-label">パスワード</div>
+              <div id="authRegisterConfirmPassword" class="auth-confirm-value">••••••••</div>
+            </div>
+          </div>
+          <div class="auth-gate-foot">
+            <button class="textbtn" type="button" id="authRegisterConfirmBackBtn">戻って修正</button>
+            <button class="navbtn" type="button" id="authRegisterConfirmNextBtn">OK（次へ）</button>
+          </div>
+          <div id="authRegisterConfirmStatus" class="auth-gate-status" aria-live="polite"></div>
+        </section>
+
         <section class="auth-gate-panel" data-auth-panel="login" id="authLoginPanel">
+          <div class="auth-gate-seg" role="tablist" aria-label="登録またはログイン">
+            <button class="auth-gate-seg-btn" id="authSegRegisterBtn2" type="button" role="tab">登録</button>
+            <button class="auth-gate-seg-btn" id="authSegLoginBtn2" type="button" role="tab">ログイン</button>
+          </div>
           <div class="auth-gate-row">
             <div class="auth-gate-label">学年</div>
-            <select id="authLoginGrade" class="select auth-gate-grade">
+            <select id="authLoginGrade" class="select auth-gate-grade auth-line-select">
               <option value="J1">中1</option>
               <option value="J2">中2</option>
               <option value="J3">中3</option>
@@ -5395,11 +5851,11 @@ body.auth-booting .app{
           </div>
           <div class="auth-gate-row">
             <div class="auth-gate-label">ニックネーム</div>
-            <input id="authLoginNickname" class="spell-input" type="text" maxlength="24" autocomplete="username" placeholder="例: rinty" />
+            <input id="authLoginNickname" class="spell-input auth-line-input" type="text" maxlength="24" autocomplete="username" placeholder="例: rinty" />
           </div>
           <div class="auth-gate-row">
             <div class="auth-gate-label">パスワード</div>
-            <input id="authLoginPassword" class="spell-input" type="password" maxlength="72" autocomplete="current-password" placeholder="パスワード" />
+            <input id="authLoginPassword" class="spell-input auth-line-input" type="password" maxlength="72" autocomplete="current-password" placeholder="パスワード" />
           </div>
           <div class="auth-gate-foot">
             <button class="textbtn" type="button" id="authLoginBackBtn">戻る</button>
@@ -5408,22 +5864,9 @@ body.auth-booting .app{
           <div id="authLoginStatus" class="auth-gate-status" aria-live="polite"></div>
         </section>
 
-        <section class="auth-gate-panel" data-auth-panel="guestConfirm" id="authGuestConfirmPanel">
-          <h3 class="auth-gate-title" style="font-size:20px;">ゲストで続行</h3>
-          <p class="auth-gate-mini">
-            インサイト（学習ログ）・チャット履歴・設定の一部は、この端末 / このブラウザにのみ保存されます。
-            端末を変えると引き継げません。
-          </p>
-          <div class="auth-gate-foot">
-            <button class="textbtn" type="button" id="authGuestBackBtn">戻る</button>
-            <button class="navbtn" type="button" id="authGuestConfirmBtn">ゲストで続行</button>
-          </div>
-          <div id="authGuestStatus" class="auth-gate-status" aria-live="polite"></div>
-        </section>
-
         <section class="auth-gate-panel" data-auth-panel="tos" id="authTosPanel">
           <div class="auth-gate-tos-wrap">
-            <div class="auth-gate-mini">一番下までスクロールすると同意チェックができるようになります。</div>
+            <div class="auth-gate-mini">最後までスクロールすると同意チェックが有効になります。</div>
             <div id="authTosScroll" class="auth-gate-tos-scroll" tabindex="0">
               <h4>利用規約 v1（登録同意用）</h4>
               <p><strong>第1条（適用）</strong><br>本規約は、VocabuQuiz（以下「本サービス」）のアカウント機能に関する利用条件を定めるものです。本サービスを利用するユーザーは、本規約に同意した上で利用するものとします。</p>
@@ -5445,17 +5888,82 @@ body.auth-booting .app{
               </label>
               <label class="auth-gate-check">
                 <input id="authTosAgree2" type="checkbox" disabled />
-                <span>データ保存 / ゲスト制限を理解しました</span>
+                <span>プライバシーポリシーに同意します</span>
               </label>
             </div>
           </div>
           <div class="auth-gate-foot">
             <button class="textbtn" type="button" id="authTosBackBtn">戻る</button>
-            <button class="navbtn" type="button" id="authTosSubmitBtn" disabled>同意して登録</button>
+            <button class="navbtn" type="button" id="authTosSubmitBtn" disabled>次へ</button>
           </div>
           <div id="authTosStatus" class="auth-gate-status" aria-live="polite"></div>
         </section>
+
+        <section class="auth-gate-panel" data-auth-panel="profile" id="authProfilePanel">
+          <div class="auth-profile-steps" id="authProfileSteps">
+            <div class="auth-profile-step is-active" data-auth-question-step="1">
+              <div class="auth-gate-row">
+                <div class="auth-gate-label">Q1. 普段の学習時間</div>
+                <select id="authProfileStudyTime" class="select auth-gate-grade auth-line-select">
+                  <option value="">選択してください</option>
+                  <option value="0-30">0〜30分</option>
+                  <option value="30-60">30〜60分</option>
+                  <option value="1-2h">1〜2時間</option>
+                  <option value="2h+">2時間以上</option>
+                </select>
+              </div>
+            </div>
+            <div class="auth-profile-step" data-auth-question-step="2">
+              <div class="auth-gate-row">
+                <div class="auth-gate-label">Q2. 普段勉強している科目</div>
+                <input id="authProfileSubjects" class="spell-input auth-line-input" type="text" maxlength="120" placeholder="例: 英語, 数学" />
+              </div>
+            </div>
+            <div class="auth-profile-step" data-auth-question-step="3">
+              <div class="auth-gate-row">
+                <div class="auth-gate-label">Q3. 勉強は好き？</div>
+                <div class="auth-like-seg" role="group" aria-label="勉強の好み">
+                  <button class="auth-like-btn" type="button" id="authProfileLikeGoodBtn" data-value="like">好き</button>
+                  <button class="auth-like-btn" type="button" id="authProfileLikeHardBtn" data-value="hard">苦手</button>
+                </div>
+                <input type="hidden" id="authProfileLike" value="" />
+              </div>
+            </div>
+          </div>
+          <div class="auth-gate-foot auth-gate-foot-between">
+            <div class="auth-profile-nav-left">
+              <button class="textbtn hidden" type="button" id="authProfileBackBtn">戻る</button>
+              <button class="textbtn" type="button" id="authProfileSkipBtn">スキップ</button>
+            </div>
+            <button class="navbtn" type="button" id="authProfileNextBtn">次へ</button>
+          </div>
+          <div id="authProfileStatus" class="auth-gate-status" aria-live="polite"></div>
+        </section>
+
+        <section class="auth-gate-panel" data-auth-panel="guestConfirm" id="authGuestConfirmPanel">
+          <h3 class="auth-gate-title" style="font-size:20px;">ゲストで続行</h3>
+          <p class="auth-gate-mini">
+            インサイト（学習ログ）・チャット履歴・設定の一部は、この端末 / このブラウザにのみ保存されます。
+            端末を変えると引き継げません。
+          </p>
+          <label class="auth-gate-check">
+            <input id="authGuestAcknowledge" type="checkbox" />
+            <span>理解しました</span>
+          </label>
+          <div class="auth-gate-foot">
+            <button class="textbtn" type="button" id="authGuestBackBtn">戻る</button>
+            <button class="navbtn" type="button" id="authGuestConfirmBtn" disabled>続ける</button>
+          </div>
+          <div id="authGuestStatus" class="auth-gate-status" aria-live="polite"></div>
+        </section>
       </div>
+      <div id="authGlobalStatus" class="auth-gate-status auth-gate-status-global" aria-live="polite"></div>
+    </div>
+  </div>
+  <div id="globalLoadingOverlay" class="hidden" role="status" aria-live="polite" aria-busy="true">
+    <div class="app-loading-card">
+      <span class="ms app-loading-icon" id="globalLoadingIcon" aria-hidden="true">menu_book</span>
+      <span class="app-loading-spinner" aria-hidden="true"></span>
     </div>
   </div>
   <div class="app" id="app">
@@ -6385,6 +6893,10 @@ body.auth-booting .app{
                 <button class="settings-row hidden" id="settingsAccountLogoutBtn" type="button">
                   <span class="label">ログアウト</span>
                   <span class="value">実行</span>
+                </button>
+                <button class="settings-row danger-action hidden" id="settingsAccountDeleteBtn" type="button">
+                  <span class="label">アカウント削除</span>
+                  <span class="value">削除</span>
                 </button>
               </div>
               <div id="settingsAccountStatus" class="drawer-share-status" aria-live="polite"></div>
@@ -8582,19 +9094,199 @@ body.auth-booting .app{
       const AUTH_TOKEN_KEY = "app.auth.token.v1";
       const AUTH_MODE_KEY = "app.auth.mode.v1"; // user | guest
       const AUTH_TOS_ACCEPT_KEY = "app.tos.accepted.v1";
+      const AUTH_FIRST_RUN_KEY = "app.firstLaunchDone.v1";
+      const AUTH_FIRST_RUN_LEGACY_KEY = "app.firstRun.v1";
+      const AUTH_PROFILE_KEY = "app.profile.v1";
       const AUTH_TOS_VERSION = "1";
       const AUTH_API_TIMEOUT_MS = 12000;
+      const AUTH_BOOT_MIN_MS = 600;
+      const AUTH_TRANSITION_MS = 650;
+      const AUTH_WELCOME_DELAY_MS = 3000;
       const AUTH_GRADE_VALUES = new Set(["J1","J2","J3","H1","H2","H3"]);
+      const AUTH_LOADING_ICONS = Object.freeze([
+        "edit",
+        "menu_book",
+        "book_2",
+        "note_stack",
+        "plagiarism",
+        "search",
+        "straighten",
+        "history_edu"
+      ]);
+      const FIRST_LAUNCH_LOADING_MIN_MS = 650;
+      const FIRST_LAUNCH_LOADING_MAX_MS = 980;
       const authState = {
         mode: "none", // none | guest | user
         token: "",
         user: null,
-        panel: "entry",
+        panel: "welcome",
         registerDraft: null,
         tosReachedBottom: false,
         tosSubmitting: false,
+        welcomeTimer: null,
+        firstRun: false,
+        flow: "boot",
         booted: false,
-        skippedExplanationShown: false
+        skippedExplanationShown: false,
+        profileStep: 1
+      };
+      const firstLaunchState = {
+        root: null,
+        stage: null,
+        icon: null,
+        welcomeIcon: null
+      };
+      let _authGateHideTimer = null;
+      const _loadingState = {
+        count: 0
+      };
+
+      function _isMotionReduced(){
+        try{
+          if (state && state.settings && state.settings.animations === false) return true;
+        }catch{}
+        try{
+          return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+        }catch{
+          return false;
+        }
+      }
+      function _loadingRender(){
+        const overlay = document.getElementById("globalLoadingOverlay") || document.getElementById("globalLoading");
+        if (!overlay) return;
+        const visible = _loadingState.count > 0;
+        overlay.classList.toggle("hidden", !visible);
+      }
+      function _authRandomLoadingIcon(){
+        const list = AUTH_LOADING_ICONS;
+        return list[Math.floor(Math.random() * list.length)] || "menu_book";
+      }
+      function _authApplyLoadingIcon(name){
+        const iconName = String(name || _authRandomLoadingIcon());
+        if (el.authBootIcon) el.authBootIcon.textContent = iconName;
+        if (el.globalLoadingIcon) el.globalLoadingIcon.textContent = iconName;
+        if (firstLaunchState.icon) firstLaunchState.icon.textContent = iconName;
+        if (firstLaunchState.welcomeIcon) firstLaunchState.welcomeIcon.textContent = iconName;
+      }
+      function _ensureFirstLaunchOverlay(){
+        if (firstLaunchState.root && firstLaunchState.stage && firstLaunchState.icon && firstLaunchState.welcomeIcon) return firstLaunchState;
+        let root = document.getElementById("firstLaunchOverlay");
+        if (!root){
+          root = document.createElement("div");
+          root.id = "firstLaunchOverlay";
+          root.className = "hidden";
+          root.setAttribute("aria-live", "polite");
+          root.setAttribute("aria-busy", "true");
+          root.innerHTML = `
+            <div class="first-launch-shell">
+              <div id="firstLaunchStage" data-stage="loading">
+                <section class="first-launch-phase is-loading">
+                  <div class="first-launch-loader">
+                    <span class="ms first-launch-icon" id="firstLaunchIcon" aria-hidden="true">menu_book</span>
+                    <span class="first-launch-spinner" aria-hidden="true"></span>
+                  </div>
+                </section>
+                <section class="first-launch-phase is-welcome">
+                  <div class="first-launch-welcome">
+                    <div class="first-launch-welcome-badge" aria-hidden="true">
+                      <span class="ms first-launch-welcome-icon" id="firstLaunchWelcomeIcon">menu_book</span>
+                    </div>
+                    <h1 class="first-launch-welcome-text">ようこそ！VocabuQuizへ…</h1>
+                  </div>
+                </section>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(root);
+        }
+        firstLaunchState.root = root;
+        firstLaunchState.stage = root.querySelector("#firstLaunchStage");
+        firstLaunchState.icon = root.querySelector("#firstLaunchIcon");
+        firstLaunchState.welcomeIcon = root.querySelector("#firstLaunchWelcomeIcon");
+        return firstLaunchState;
+      }
+      function _firstLaunchSetActive(on){
+        const ui = _ensureFirstLaunchOverlay();
+        const active = !!on;
+        document.body.classList.toggle("first-launch-open", active);
+        if (active){
+          ui.root.classList.remove("hidden");
+          ui.root.classList.remove("is-leaving");
+          requestAnimationFrame(() => {
+            ui.root.classList.add("is-active");
+          });
+          return;
+        }
+        ui.root.classList.remove("is-active");
+        ui.root.classList.remove("is-leaving");
+        ui.root.classList.add("hidden");
+      }
+      function _firstLaunchSetStage(stage){
+        const ui = _ensureFirstLaunchOverlay();
+        const next = String(stage || "loading");
+        ui.stage?.setAttribute("data-stage", next);
+        _authApplyLoadingIcon();
+      }
+      async function _firstLaunchHide(animate = true){
+        const ui = _ensureFirstLaunchOverlay();
+        if (!ui.root || ui.root.classList.contains("hidden")){
+          document.body.classList.remove("first-launch-open");
+          return;
+        }
+        const useAnim = !!animate && !_isMotionReduced();
+        document.body.classList.remove("first-launch-open");
+        if (!useAnim){
+          _firstLaunchSetActive(false);
+          return;
+        }
+        ui.root.classList.remove("is-active");
+        ui.root.classList.add("is-leaving");
+        await new Promise((resolve) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            ui.root.removeEventListener("transitionend", onEnd);
+            resolve();
+          };
+          const onEnd = (ev) => {
+            if (ev.target !== ui.root) return;
+            finish();
+          };
+          ui.root.addEventListener("transitionend", onEnd);
+          setTimeout(finish, 480);
+        });
+        _firstLaunchSetActive(false);
+      }
+      async function _firstLaunchShowLoading(minMs){
+        _firstLaunchSetActive(true);
+        _firstLaunchSetStage("loading");
+        const ms = Math.max(0, Number(minMs) || 0);
+        if (ms > 0) await _authDelay(ms);
+      }
+      async function _firstLaunchShowWelcome(ms){
+        _firstLaunchSetActive(true);
+        _firstLaunchSetStage("welcome");
+        const wait = Math.max(0, Number(ms) || 0);
+        if (wait > 0) await _authDelay(wait);
+      }
+      function showLoading(message){
+        void message;
+        if (_loadingState.count <= 0){
+          _authApplyLoadingIcon();
+        }
+        _loadingState.count += 1;
+        _loadingRender();
+      }
+      function hideLoading(){
+        _loadingState.count = Math.max(0, _loadingState.count - 1);
+        _loadingRender();
+      }
+      window.__showGlobalLoading = function(labelText){
+        showLoading(labelText || "");
+      };
+      window.__hideGlobalLoading = function(){
+        hideLoading();
       };
 
       function _authApiBase(){
@@ -8606,6 +9298,7 @@ body.auth-booting .app{
         return `${_authApiBase()}${pathPart}`;
       }
       async function _authFetch(path, opts = {}){
+        showLoading(opts.loadingText || "認証処理中…");
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), AUTH_API_TIMEOUT_MS);
         try{
@@ -8627,6 +9320,7 @@ body.auth-booting .app{
           return body || {};
         } finally {
           clearTimeout(timer);
+          hideLoading();
         }
       }
       function _authGetToken(){
@@ -8681,18 +9375,147 @@ body.auth-booting .app{
         return String(raw || "").trim().replace(/\s+/g, "");
       }
       function _authSetStatus(elx, msg, kind){
-        if (!elx) return;
-        elx.textContent = String(msg || "");
-        elx.classList.remove("ok", "error");
-        if (kind === "ok") elx.classList.add("ok");
-        if (kind === "error") elx.classList.add("error");
+        const target = elx || el.authGlobalStatus;
+        if (target){
+          target.textContent = String(msg || "");
+          target.classList.remove("ok", "error");
+          if (kind === "ok") target.classList.add("ok");
+          if (kind === "error") target.classList.add("error");
+        }
+        if (el.authGlobalStatus && target !== el.authGlobalStatus){
+          el.authGlobalStatus.textContent = String(msg || "");
+          el.authGlobalStatus.classList.remove("ok", "error");
+          if (kind === "ok") el.authGlobalStatus.classList.add("ok");
+          if (kind === "error") el.authGlobalStatus.classList.add("error");
+        }
       }
       function _authClearStatuses(){
         _authSetStatus(el.authEntryStatus, "", "");
         _authSetStatus(el.authRegisterStatus, "", "");
+        _authSetStatus(el.authRegisterConfirmStatus, "", "");
         _authSetStatus(el.authLoginStatus, "", "");
+        _authSetStatus(el.authProfileStatus, "", "");
         _authSetStatus(el.authGuestStatus, "", "");
         _authSetStatus(el.authTosStatus, "", "");
+        _authSetStatus(el.authGlobalStatus, "", "");
+      }
+      function _authDelay(ms){
+        return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+      }
+      function _authIsFirstRun(){
+        try{
+          const raw = String(localStorage.getItem(AUTH_FIRST_RUN_KEY) || "").trim().toLowerCase();
+          if (raw === "true" || raw === "1" || raw === "done") return false;
+          const legacy = String(localStorage.getItem(AUTH_FIRST_RUN_LEGACY_KEY) || "").trim().toLowerCase();
+          if (legacy === "true" || legacy === "1" || legacy === "done"){
+            localStorage.setItem(AUTH_FIRST_RUN_KEY, "true");
+            return false;
+          }
+          return true;
+        }catch{
+          return true;
+        }
+      }
+      function _authMarkFirstRunDone(){
+        try{
+          localStorage.setItem(AUTH_FIRST_RUN_KEY, "true");
+          localStorage.setItem(AUTH_FIRST_RUN_LEGACY_KEY, "done");
+        }catch{}
+        authState.firstRun = false;
+      }
+      window.__resetFirstLaunch = function(){
+        try{
+          localStorage.removeItem(AUTH_FIRST_RUN_KEY);
+          localStorage.removeItem(AUTH_FIRST_RUN_LEGACY_KEY);
+        }catch{}
+        location.reload();
+      };
+      window.__playFirstLaunch = async function(){
+        try{
+          _authSetBooting(true);
+          await _firstLaunchShowLoading(700);
+          await _firstLaunchShowWelcome(AUTH_WELCOME_DELAY_MS);
+          await _firstLaunchHide(true);
+          if (!authState.user){
+            _authOpenGate("entry");
+          }
+        }finally{
+          _authSetBooting(false);
+        }
+      };
+      function _authSaveProfile(payload){
+        const base = (payload && typeof payload === "object") ? payload : {};
+        const out = {
+          studyTime: String(base.studyTime || ""),
+          subjectsText: String(base.subjectsText || ""),
+          likeStudy: String(base.likeStudy || ""),
+          updatedAt: Date.now()
+        };
+        try{ localStorage.setItem(AUTH_PROFILE_KEY, JSON.stringify(out)); }catch{}
+      }
+      function _authSetProfileLike(v){
+        const value = (v === "like" || v === "hard") ? v : "";
+        if (el.authProfileLike) el.authProfileLike.value = value;
+        if (el.authProfileLikeGoodBtn) el.authProfileLikeGoodBtn.classList.toggle("active", value === "like");
+        if (el.authProfileLikeHardBtn) el.authProfileLikeHardBtn.classList.toggle("active", value === "hard");
+      }
+      function _authReadProfile(){
+        return {
+          studyTime: String(el.authProfileStudyTime?.value || ""),
+          subjectsText: String(el.authProfileSubjects?.value || "").trim(),
+          likeStudy: String(el.authProfileLike?.value || "")
+        };
+      }
+      function _authSetProfileStep(step){
+        const nextStep = Math.max(1, Math.min(3, Number(step) || 1));
+        authState.profileStep = nextStep;
+        const steps = el.authProfilePanel?.querySelectorAll?.("[data-auth-question-step]") || [];
+        steps.forEach((node) => {
+          const nodeStep = Number(node.getAttribute("data-auth-question-step") || "0");
+          node.classList.toggle("is-active", nodeStep === nextStep);
+        });
+        if (el.authProfileBackBtn){
+          el.authProfileBackBtn.classList.toggle("hidden", nextStep <= 1);
+        }
+        if (el.authProfileNextBtn){
+          el.authProfileNextBtn.textContent = (nextStep >= 3) ? "登録する" : "次へ";
+        }
+      }
+      function _authValidateProfileStep(step){
+        const current = Math.max(1, Math.min(3, Number(step) || 1));
+        if (current === 1){
+          const v = String(el.authProfileStudyTime?.value || "");
+          if (!v){
+            _authSetStatus(el.authProfileStatus, "学習時間を選択してください。", "error");
+            return false;
+          }
+        }
+        if (current === 3){
+          const v = String(el.authProfileLike?.value || "");
+          if (v !== "like" && v !== "hard"){
+            _authSetStatus(el.authProfileStatus, "「好き」または「苦手」を選択してください。", "error");
+            return false;
+          }
+        }
+        _authSetStatus(el.authProfileStatus, "", "");
+        return true;
+      }
+      function _authHandleProfileBack(){
+        const step = Math.max(1, Math.min(3, Number(authState.profileStep) || 1));
+        if (step <= 1){
+          _authShowPanel("tos");
+          return;
+        }
+        _authSetProfileStep(step - 1);
+      }
+      function _authHandleProfileNext(){
+        const step = Math.max(1, Math.min(3, Number(authState.profileStep) || 1));
+        if (!_authValidateProfileStep(step)) return;
+        if (step < 3){
+          _authSetProfileStep(step + 1);
+          return;
+        }
+        _authSubmitRegister(false);
       }
       function _authRenderGuestBadge(){
         if (!el.authGuestBadge) return;
@@ -8709,6 +9532,7 @@ body.auth-booting .app{
         const btnReg = document.getElementById("settingsAccountOpenRegisterBtn");
         const btnSwitch = document.getElementById("settingsAccountSwitchFromGuestBtn");
         const btnLogout = document.getElementById("settingsAccountLogoutBtn");
+        const btnDelete = document.getElementById("settingsAccountDeleteBtn");
         const status = document.getElementById("settingsAccountStatus");
         if (status && !status.textContent) _authSetStatus(status, "", "");
 
@@ -8723,6 +9547,7 @@ body.auth-booting .app{
           if (btnReg) btnReg.classList.add("hidden");
           if (btnSwitch) btnSwitch.classList.add("hidden");
           if (btnLogout) btnLogout.classList.remove("hidden");
+          if (btnDelete) btnDelete.classList.remove("hidden");
         } else if (authState.mode === "guest"){
           if (summary) summary.textContent = "ゲスト";
           if (stateLine) stateLine.textContent = "ゲスト";
@@ -8733,6 +9558,7 @@ body.auth-booting .app{
           if (btnReg) btnReg.classList.add("hidden");
           if (btnSwitch) btnSwitch.classList.remove("hidden");
           if (btnLogout) btnLogout.classList.add("hidden");
+          if (btnDelete) btnDelete.classList.add("hidden");
         } else {
           if (summary) summary.textContent = "未ログイン";
           if (stateLine) stateLine.textContent = "未ログイン";
@@ -8743,18 +9569,58 @@ body.auth-booting .app{
           if (btnReg) btnReg.classList.remove("hidden");
           if (btnSwitch) btnSwitch.classList.add("hidden");
           if (btnLogout) btnLogout.classList.add("hidden");
+          if (btnDelete) btnDelete.classList.add("hidden");
         }
       }
       function _authShowPanel(panel){
         const next = String(panel || "entry");
+        const prev = authState.panel;
+        if (authState.welcomeTimer){
+          clearTimeout(authState.welcomeTimer);
+          authState.welcomeTimer = null;
+        }
         authState.panel = next;
+        authState.flow = next;
         const root = el.authGate || document;
         root.querySelectorAll?.("[data-auth-panel]").forEach((node) => {
           node.classList.toggle("is-active", node.getAttribute("data-auth-panel") === next);
         });
+        const registerLike = (next === "register" || next === "registerConfirm" || next === "tos" || next === "profile");
+        const loginLike = (next === "login");
+        if (el.authSegRegisterBtn){
+          el.authSegRegisterBtn.classList.toggle("active", registerLike);
+          el.authSegRegisterBtn.setAttribute("aria-selected", String(registerLike));
+        }
+        if (el.authSegRegisterBtn2){
+          el.authSegRegisterBtn2.classList.toggle("active", registerLike);
+          el.authSegRegisterBtn2.setAttribute("aria-selected", String(registerLike));
+        }
+        if (el.authSegLoginBtn){
+          el.authSegLoginBtn.classList.toggle("active", loginLike);
+          el.authSegLoginBtn.setAttribute("aria-selected", String(loginLike));
+        }
+        if (el.authSegLoginBtn2){
+          el.authSegLoginBtn2.classList.toggle("active", loginLike);
+          el.authSegLoginBtn2.setAttribute("aria-selected", String(loginLike));
+        }
         _authClearStatuses();
-        if (next === "tos"){
+        if (next === "tos" && prev !== "tos"){
           _authResetTosGate();
+        }
+        if (next === "guestConfirm" && el.authGuestAcknowledge){
+          el.authGuestAcknowledge.checked = false;
+          if (el.authGuestConfirmBtn) el.authGuestConfirmBtn.disabled = true;
+        }
+        if (next === "profile"){
+          if (prev !== "profile"){
+            if (el.authProfileStudyTime) el.authProfileStudyTime.value = "";
+            if (el.authProfileSubjects) el.authProfileSubjects.value = "";
+            _authSetProfileLike("");
+            _authSetProfileStep(1);
+          } else {
+            _authSetProfileLike(String(el.authProfileLike?.value || ""));
+            _authSetProfileStep(authState.profileStep || 1);
+          }
         }
       }
       function _authOpenGate(panel = "entry", msg = ""){
@@ -8762,8 +9628,14 @@ body.auth-booting .app{
           uiToast("Auth Gate UIが見つかりません");
           return;
         }
+        if (_authGateHideTimer){
+          clearTimeout(_authGateHideTimer);
+          _authGateHideTimer = null;
+        }
         el.authGate.classList.remove("hidden");
-        document.body.classList.add("auth-gate-open");
+        requestAnimationFrame(() => {
+          document.body.classList.add("auth-gate-open");
+        });
         _authShowPanel(panel);
         if (msg){
           _authSetStatus(el.authEntryStatus, msg, "error");
@@ -8771,11 +9643,32 @@ body.auth-booting .app{
       }
       function _authCloseGate(){
         if (!el.authGate) return;
-        el.authGate.classList.add("hidden");
+        if (authState.welcomeTimer){
+          clearTimeout(authState.welcomeTimer);
+          authState.welcomeTimer = null;
+        }
         document.body.classList.remove("auth-gate-open");
-        _authShowPanel("entry");
+        const finalize = () => {
+          el.authGate.classList.add("hidden");
+          if (!authState.user) _authShowPanel("entry");
+        };
+        if (_authGateHideTimer){
+          clearTimeout(_authGateHideTimer);
+          _authGateHideTimer = null;
+        }
+        if (_isMotionReduced()){
+          finalize();
+          return;
+        }
+        _authGateHideTimer = setTimeout(() => {
+          _authGateHideTimer = null;
+          finalize();
+        }, 260);
       }
       function _authSetBooting(on){
+        if (on){
+          _authApplyLoadingIcon();
+        }
         document.body.classList.toggle("auth-booting", !!on);
         if (el.authBootSplash){
           el.authBootSplash.classList.toggle("hidden", !on);
@@ -8822,8 +9715,7 @@ body.auth-booting .app{
         const grade = String(el.authRegisterGrade?.value || "J1");
         const nickname = _authNormalizeNickname(el.authRegisterNickname?.value || "");
         const password = String(el.authRegisterPassword?.value || "");
-        const password2 = String(el.authRegisterPassword2?.value || "");
-        return { grade, nickname, password, password2 };
+        return { grade, nickname, password };
       }
       function _authValidateRegisterDraft(draft){
         const d = draft || {};
@@ -8831,25 +9723,47 @@ body.auth-booting .app{
         if (!d.nickname || d.nickname.length < 2 || d.nickname.length > 24) return "ニックネームは2〜24文字で入力してください。";
         if (!/^[A-Za-z0-9._-]{2,24}$/.test(d.nickname)) return "ニックネームは英数字と . _ - のみ使用できます。";
         if (!d.password || d.password.length < 8) return "パスワードは8文字以上で入力してください。";
-        if (d.password !== d.password2) return "パスワード（確認）が一致しません。";
         return "";
       }
-      async function _authSubmitRegister(){
-        if (authState.tosSubmitting) return;
-        if (!_authCanSubmitTos()){
-          _authSetStatus(el.authTosStatus, "2つの同意チェックを完了してください。", "error");
-          return;
+      function _authRenderRegisterConfirm(){
+        const d = authState.registerDraft || {};
+        if (el.authRegisterConfirmGrade) el.authRegisterConfirmGrade.textContent = String(d.grade || "—");
+        if (el.authRegisterConfirmNickname) el.authRegisterConfirmNickname.textContent = String(d.nickname || "—");
+        if (el.authRegisterConfirmPassword){
+          const len = Math.max(8, String(d.password || "").length || 8);
+          el.authRegisterConfirmPassword.textContent = "•".repeat(Math.min(16, len));
         }
+      }
+      async function _authTransitionToHome(){
+        showLoading();
+        try{
+          await _authDelay(AUTH_TRANSITION_MS);
+        }finally{
+          hideLoading();
+        }
+        _authCloseGate();
+        _authRenderGuestBadge();
+        _authRenderSettingsAccount();
+        _settingsRefreshSummary();
+        _appSetTab("home");
+      }
+      async function _authSubmitRegister(skipProfile){
+        if (authState.tosSubmitting) return;
         const draft = authState.registerDraft;
         if (!draft){
-          _authSetStatus(el.authTosStatus, "登録情報が見つかりません。最初から入力してください。", "error");
+          _authSetStatus(el.authGlobalStatus, "登録情報が見つかりません。最初から入力してください。", "error");
           _authShowPanel("register");
           return;
         }
         authState.tosSubmitting = true;
-        _authUpdateTosSubmitState();
-        _authSetStatus(el.authTosStatus, "登録中…");
+        const disableProfile = [el.authProfileSkipBtn, el.authProfileNextBtn].filter(Boolean);
+        disableProfile.forEach((b) => { b.disabled = true; });
         try{
+          if (skipProfile){
+            _authSaveProfile({ studyTime: "", subjectsText: "", likeStudy: "" });
+          }else{
+            _authSaveProfile(_authReadProfile());
+          }
           const body = await _authFetch("/api/auth/register", {
             method: "POST",
             body: JSON.stringify({
@@ -8875,18 +9789,17 @@ body.auth-booting .app{
             }));
           }catch{}
           authState.registerDraft = null;
-          _authSetStatus(el.authTosStatus, "登録に成功しました。", "ok");
-          _authCloseGate();
-          _authRenderGuestBadge();
-          _authRenderSettingsAccount();
-          _settingsRefreshSummary();
-          _appSetTab("home");
+          _authSetStatus(el.authGlobalStatus, "登録完了", "ok");
+          await _authDelay(1000);
+          await _authTransitionToHome();
           uiToast("登録しました");
         }catch(err){
-          _authSetStatus(el.authTosStatus, `登録失敗: ${String(err?.message || err)}`, "error");
+          _authShowPanel("register");
+          _authSetStatus(el.authRegisterStatus, `登録失敗: ${String(err?.message || err)}`, "error");
         }finally{
           authState.tosSubmitting = false;
           _authUpdateTosSubmitState();
+          disableProfile.forEach((b) => { b.disabled = false; });
         }
       }
       async function _authSubmitLogin(){
@@ -8905,7 +9818,6 @@ body.auth-booting .app{
           _authSetStatus(el.authLoginStatus, "パスワードを入力してください。", "error");
           return;
         }
-        _authSetStatus(el.authLoginStatus, "ログイン中…");
         if (el.authLoginSubmitBtn) el.authLoginSubmitBtn.disabled = true;
         try{
           const body = await _authFetch("/api/auth/login", {
@@ -8924,11 +9836,7 @@ body.auth-booting .app{
           _authSetToken(token);
           _authSetUser(user);
           _authSetMode("user");
-          _authCloseGate();
-          _authRenderGuestBadge();
-          _authRenderSettingsAccount();
-          _settingsRefreshSummary();
-          _appSetTab("home");
+          await _authTransitionToHome();
           uiToast("ログインしました");
         }catch(err){
           _authSetStatus(el.authLoginStatus, `ログイン失敗: ${String(err?.message || err)}`, "error");
@@ -8936,15 +9844,15 @@ body.auth-booting .app{
           if (el.authLoginSubmitBtn) el.authLoginSubmitBtn.disabled = false;
         }
       }
-      function _authContinueAsGuest(){
+      async function _authContinueAsGuest(){
+        if (!el.authGuestAcknowledge?.checked){
+          _authSetStatus(el.authGuestStatus, "チェックを入れてください。", "error");
+          return;
+        }
         _authSetToken("");
         _authSetUser(null);
         _authSetMode("guest");
-        _authCloseGate();
-        _authRenderGuestBadge();
-        _authRenderSettingsAccount();
-        _settingsRefreshSummary();
-        _appSetTab("home");
+        await _authTransitionToHome();
         uiToast("ゲストで続行します");
       }
       async function _authLogout(){
@@ -8955,6 +9863,100 @@ body.auth-booting .app{
         _authOpenGate("entry");
         _appSetTab("home");
         uiToast("ログアウトしました");
+      }
+      function _authPurgeLocalData(){
+        const directKeys = [
+          AUTH_TOKEN_KEY,
+          AUTH_MODE_KEY,
+          AUTH_TOS_ACCEPT_KEY,
+          PRESETS_KEY,
+          ACTIVE_PRESET_KEY,
+          SETTINGS_KEY,
+          APP_SETTINGS_KEY,
+          DECK_KEY,
+          INSIGHTS_SESSIONS_KEY,
+          SHARE_CACHE_KEY,
+          NOTIF_SEEN_KEY,
+          NOTIF_KEY,
+          BACKUP_LATEST_KEY,
+          BACKUP_LAST_RUN_DATE_KEY,
+          CHAT_HISTORY_KEY,
+          CHAT_MEMORY_KEY,
+          CHAT_LAST_INTENT_KEY,
+          HOME_RESUME_KEY,
+          MEMO_CHECK_KEY,
+          SUBJECTS_CUSTOM_KEY,
+          TAGS_CUSTOM_KEY
+        ].filter(Boolean).map((v) => String(v));
+        const directSet = new Set(directKeys);
+        const prefixKeys = [EXAM_SET_KEY_PREFIX, CHOICE_SET_KEY_PREFIX]
+          .filter(Boolean)
+          .map((v) => String(v));
+        try{
+          const keys = [];
+          for (let i = 0; i < localStorage.length; i += 1){
+            const k = localStorage.key(i);
+            if (k) keys.push(String(k));
+          }
+          for (const key of keys){
+            const removeByPrefix = prefixKeys.some((prefix) => key === prefix || key.startsWith(`${prefix}:`));
+            if (directSet.has(key) || removeByPrefix){
+              localStorage.removeItem(key);
+            }
+          }
+        }catch{}
+      }
+      async function _authDeleteAccount(){
+        const status = document.getElementById("settingsAccountStatus");
+        const deleteBtn = document.getElementById("settingsAccountDeleteBtn");
+        if (!authState.user){
+          _authSetStatus(status, "ログイン中のアカウントで実行してください。", "error");
+          return;
+        }
+        const token = _authGetToken();
+        if (!token){
+          _authSetStatus(status, "認証トークンが見つかりません。再ログインしてください。", "error");
+          return;
+        }
+
+        const step1 = await uiConfirm(
+          "アカウントを削除すると、学習履歴・プリセット・設定などのローカル保存データが消える可能性があります。続行しますか？",
+          { title: "アカウント削除", okText: "次へ", cancelText: "キャンセル" }
+        );
+        if (!step1) return;
+
+        const step2 = await uiConfirm(
+          "最終確認です。アカウントを削除すると元に戻せません。本当に削除しますか？",
+          { title: "アカウント削除（最終確認）", okText: "削除する", cancelText: "キャンセル", danger: true }
+        );
+        if (!step2) return;
+
+        if (deleteBtn) deleteBtn.disabled = true;
+        _authSetStatus(status, "削除中…", "");
+        try{
+          const body = await _authFetch("/api/auth/delete", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (!body || body.ok !== true){
+            throw new Error("削除レスポンスが不正です。");
+          }
+          _authSetStatus(status, "削除しました。初期画面へ戻ります。", "ok");
+          _authPurgeLocalData();
+          _authClearSession();
+          _authSetUser(null);
+          _authSetMode("none");
+          _authRenderGuestBadge();
+          _authRenderSettingsAccount();
+          _settingsRefreshSummary();
+          uiToast("アカウントを削除しました");
+          setTimeout(() => { location.reload(); }, 300);
+        }catch(err){
+          const code = String(err?.code || "");
+          const msg = String(err?.message || err || "削除に失敗しました。");
+          _authSetStatus(status, `削除失敗: ${code ? `${code} / ` : ""}${msg}`, "error");
+          if (deleteBtn) deleteBtn.disabled = false;
+        }
       }
       async function _authVerifyToken(token){
         const t = String(token || "").trim();
@@ -8973,10 +9975,13 @@ body.auth-booting .app{
         }
       }
       async function _authBootstrap(){
+        const bootStart = Date.now();
         _authSetBooting(true);
         try{
+          _ensureFirstLaunchOverlay();
           const mode = _authGetMode();
           const token = _authGetToken();
+          authState.firstRun = _authIsFirstRun();
           _authSetMode(mode === "user" || mode === "guest" ? mode : "none");
           _authSetToken(token);
           _authSetUser(null);
@@ -8993,7 +9998,7 @@ body.auth-booting .app{
               gateShouldOpen = true;
             }
           } else if (mode === "guest"){
-            // Guest mode always starts from Auth Gate.
+            // Guest mode also returns to auth choice screen on reload.
             gateShouldOpen = true;
           } else {
             gateShouldOpen = true;
@@ -9003,19 +10008,36 @@ body.auth-booting .app{
           _authRenderSettingsAccount();
           _settingsRefreshSummary();
           if (gateShouldOpen){
-            _authOpenGate("entry");
+            const openPanel = "entry";
+            if (authState.firstRun){
+              await _firstLaunchShowLoading(FIRST_LAUNCH_LOADING_MAX_MS);
+              await _firstLaunchShowWelcome(AUTH_WELCOME_DELAY_MS);
+              _authMarkFirstRunDone();
+              await _firstLaunchHide(true);
+            } else {
+              await _firstLaunchHide(false);
+            }
+            if (!authState.user){
+              _authOpenGate(openPanel);
+            }
           } else {
+            await _firstLaunchHide(false);
             _authCloseGate();
           }
           authState.booted = true;
         }catch(err){
           _authClearSession();
+          await _firstLaunchHide(false);
           _authOpenGate("entry", `認証初期化に失敗: ${String(err?.message || err)}`);
           _authRenderGuestBadge();
           _authRenderSettingsAccount();
           _settingsRefreshSummary();
           authState.booted = true;
-        }finally{
+        } finally {
+          const elapsed = Date.now() - bootStart;
+          if (elapsed < AUTH_BOOT_MIN_MS){
+            await _authDelay(AUTH_BOOT_MIN_MS - elapsed);
+          }
           _authSetBooting(false);
         }
       }
@@ -9027,10 +10049,22 @@ body.auth-booting .app{
         el.authOpenRegisterBtn?.addEventListener("click", () => _authShowPanel("register"));
         el.authOpenLoginBtn?.addEventListener("click", () => _authShowPanel("login"));
         el.authOpenGuestConfirmBtn?.addEventListener("click", () => _authShowPanel("guestConfirm"));
+        el.authSegRegisterBtn?.addEventListener("click", () => _authShowPanel("register"));
+        el.authSegLoginBtn?.addEventListener("click", () => _authShowPanel("login"));
+        el.authSegRegisterBtn2?.addEventListener("click", () => _authShowPanel("register"));
+        el.authSegLoginBtn2?.addEventListener("click", () => _authShowPanel("login"));
         el.authRegisterBackBtn?.addEventListener("click", () => _authShowPanel("entry"));
         el.authLoginBackBtn?.addEventListener("click", () => _authShowPanel("entry"));
         el.authGuestBackBtn?.addEventListener("click", () => _authShowPanel("entry"));
-        el.authTosBackBtn?.addEventListener("click", () => _authShowPanel("register"));
+        el.authRegisterConfirmBackBtn?.addEventListener("click", () => _authShowPanel("register"));
+        el.authRegisterConfirmNextBtn?.addEventListener("click", () => {
+          if (!authState.registerDraft){
+            _authShowPanel("register");
+            return;
+          }
+          _authShowPanel("tos");
+        });
+        el.authTosBackBtn?.addEventListener("click", () => _authShowPanel("registerConfirm"));
         el.authRegisterNextBtn?.addEventListener("click", () => {
           const draft = _authReadRegisterDraft();
           const err = _authValidateRegisterDraft(draft);
@@ -9039,26 +10073,41 @@ body.auth-booting .app{
             return;
           }
           authState.registerDraft = { grade: draft.grade, nickname: draft.nickname, password: draft.password };
-          _authShowPanel("tos");
+          _authRenderRegisterConfirm();
+          _authShowPanel("registerConfirm");
         });
         el.authLoginSubmitBtn?.addEventListener("click", () => {
           _authSubmitLogin();
         });
+        el.authProfileLikeGoodBtn?.addEventListener("click", () => _authSetProfileLike("like"));
+        el.authProfileLikeHardBtn?.addEventListener("click", () => _authSetProfileLike("hard"));
+        el.authProfileBackBtn?.addEventListener("click", () => _authHandleProfileBack());
+        el.authProfileSkipBtn?.addEventListener("click", () => _authSubmitRegister(true));
+        el.authProfileNextBtn?.addEventListener("click", () => _authHandleProfileNext());
         el.authGuestConfirmBtn?.addEventListener("click", () => {
           _authContinueAsGuest();
         });
+        el.authGuestAcknowledge?.addEventListener("change", () => {
+          if (el.authGuestConfirmBtn){
+            el.authGuestConfirmBtn.disabled = !el.authGuestAcknowledge?.checked;
+          }
+        });
         el.authTosSubmitBtn?.addEventListener("click", () => {
-          _authSubmitRegister();
+          if (!_authCanSubmitTos()){
+            _authSetStatus(el.authTosStatus, "2つの同意チェックを完了してください。", "error");
+            return;
+          }
+          _authShowPanel("profile");
         });
         el.authTosScroll?.addEventListener("scroll", _authHandleTosScroll, { passive: true });
         el.authTosAgree1?.addEventListener("change", _authUpdateTosSubmitState);
         el.authTosAgree2?.addEventListener("change", _authUpdateTosSubmitState);
 
         document.addEventListener("keydown", (e) => {
-          if (!el.authGate || el.authGate.classList.contains("hidden")) return;
           const ae = document.activeElement;
           const typing = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
           if (!typing) return;
+          if (!el.authGate || el.authGate.classList.contains("hidden")) return;
           if (e.key !== "Enter" || e.shiftKey) return;
           if (authState.panel === "login"){
             e.preventDefault();
@@ -9074,12 +10123,34 @@ body.auth-booting .app{
               return;
             }
             authState.registerDraft = { grade: draft.grade, nickname: draft.nickname, password: draft.password };
+            _authRenderRegisterConfirm();
+            _authShowPanel("registerConfirm");
+            return;
+          }
+          if (authState.panel === "registerConfirm"){
+            e.preventDefault();
+            if (!authState.registerDraft){
+              _authShowPanel("register");
+              return;
+            }
             _authShowPanel("tos");
+            return;
+          }
+          if (authState.panel === "tos" && _authCanSubmitTos()){
+            e.preventDefault();
+            _authShowPanel("profile");
+            return;
+          }
+          if (authState.panel === "profile"){
+            e.preventDefault();
+            _authHandleProfileNext();
           }
         }, true);
       }
       applyTheme();
       applyFontSize();
+      applyMotionSetting();
+      try{ insights.reduceMotion = _isMotionReduced(); }catch{}
       try{
         const mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
         if (mq && typeof mq.addEventListener === "function"){
@@ -9300,24 +10371,45 @@ body.auth-booting .app{
         appSettingsPage: document.getElementById("appSettingsPage"),
 
         // auth
+        authBootIcon: document.getElementById("authBootIcon"),
         authBootSplash: document.getElementById("authBootSplash"),
         authGate: document.getElementById("authGate"),
         authGuestBadge: document.getElementById("authGuestBadge"),
+        authWelcomePanel: document.getElementById("authWelcomePanel"),
+        authSegRegisterBtn: document.getElementById("authSegRegisterBtn"),
+        authSegLoginBtn: document.getElementById("authSegLoginBtn"),
+        authSegRegisterBtn2: document.getElementById("authSegRegisterBtn2"),
+        authSegLoginBtn2: document.getElementById("authSegLoginBtn2"),
         authOpenRegisterBtn: document.getElementById("authOpenRegisterBtn"),
         authOpenLoginBtn: document.getElementById("authOpenLoginBtn"),
         authOpenGuestConfirmBtn: document.getElementById("authOpenGuestConfirmBtn"),
         authRegisterGrade: document.getElementById("authRegisterGrade"),
         authRegisterNickname: document.getElementById("authRegisterNickname"),
         authRegisterPassword: document.getElementById("authRegisterPassword"),
-        authRegisterPassword2: document.getElementById("authRegisterPassword2"),
         authRegisterBackBtn: document.getElementById("authRegisterBackBtn"),
         authRegisterNextBtn: document.getElementById("authRegisterNextBtn"),
+        authRegisterConfirmPanel: document.getElementById("authRegisterConfirmPanel"),
+        authRegisterConfirmGrade: document.getElementById("authRegisterConfirmGrade"),
+        authRegisterConfirmNickname: document.getElementById("authRegisterConfirmNickname"),
+        authRegisterConfirmPassword: document.getElementById("authRegisterConfirmPassword"),
+        authRegisterConfirmBackBtn: document.getElementById("authRegisterConfirmBackBtn"),
+        authRegisterConfirmNextBtn: document.getElementById("authRegisterConfirmNextBtn"),
         authLoginGrade: document.getElementById("authLoginGrade"),
         authLoginNickname: document.getElementById("authLoginNickname"),
         authLoginPassword: document.getElementById("authLoginPassword"),
         authLoginBackBtn: document.getElementById("authLoginBackBtn"),
         authLoginSubmitBtn: document.getElementById("authLoginSubmitBtn"),
+        authProfilePanel: document.getElementById("authProfilePanel"),
+        authProfileStudyTime: document.getElementById("authProfileStudyTime"),
+        authProfileSubjects: document.getElementById("authProfileSubjects"),
+        authProfileLike: document.getElementById("authProfileLike"),
+        authProfileLikeGoodBtn: document.getElementById("authProfileLikeGoodBtn"),
+        authProfileLikeHardBtn: document.getElementById("authProfileLikeHardBtn"),
+        authProfileBackBtn: document.getElementById("authProfileBackBtn"),
+        authProfileSkipBtn: document.getElementById("authProfileSkipBtn"),
+        authProfileNextBtn: document.getElementById("authProfileNextBtn"),
         authGuestBackBtn: document.getElementById("authGuestBackBtn"),
+        authGuestAcknowledge: document.getElementById("authGuestAcknowledge"),
         authGuestConfirmBtn: document.getElementById("authGuestConfirmBtn"),
         authTosScroll: document.getElementById("authTosScroll"),
         authTosHint: document.getElementById("authTosHint"),
@@ -9327,9 +10419,13 @@ body.auth-booting .app{
         authTosSubmitBtn: document.getElementById("authTosSubmitBtn"),
         authEntryStatus: document.getElementById("authEntryStatus"),
         authRegisterStatus: document.getElementById("authRegisterStatus"),
+        authRegisterConfirmStatus: document.getElementById("authRegisterConfirmStatus"),
         authLoginStatus: document.getElementById("authLoginStatus"),
+        authProfileStatus: document.getElementById("authProfileStatus"),
         authGuestStatus: document.getElementById("authGuestStatus"),
-        authTosStatus: document.getElementById("authTosStatus")
+        authTosStatus: document.getElementById("authTosStatus"),
+        authGlobalStatus: document.getElementById("authGlobalStatus"),
+        globalLoadingIcon: document.getElementById("globalLoadingIcon")
 	      };
 
       // =========================
@@ -11198,11 +12294,6 @@ function setDeck(deckKey){
         const t = String(state.settings.theme || "AUTO");
         if (t === "LIGHT") return "light";
         if (t === "DARK") return "dark";
-        try{
-          if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches){
-            return "dark";
-          }
-        }catch{}
         return "light";
       }
       function applyTheme(){
@@ -11219,7 +12310,19 @@ function setDeck(deckKey){
         const root = document.documentElement;
         if (!root) return;
         const size = SETTINGS_LEVELS.has(String(state.settings.fontSize || "")) ? String(state.settings.fontSize) : "DEFAULT";
+        const pct = size === "SMALL" ? 94 : (size === "LARGE" ? 108 : 100);
         root.setAttribute("data-font-size", size);
+        root.style.webkitTextSizeAdjust = `${pct}%`;
+        root.style.textSizeAdjust = `${pct}%`;
+        if (document.body){
+          document.body.style.webkitTextSizeAdjust = `${pct}%`;
+          document.body.style.textSizeAdjust = `${pct}%`;
+        }
+      }
+      function applyMotionSetting(){
+        const root = document.documentElement;
+        if (!root) return;
+        root.setAttribute("data-animations", state.settings.animations ? "on" : "off");
       }
       function openSettings(opts = {}){
         if (!el.settingsOverlay){
@@ -11283,6 +12386,8 @@ function setDeck(deckKey){
       function setAnimations(on){
         state.settings.animations = !!on;
         saveSettings(state.settings);
+        applyMotionSetting();
+        try{ insights.reduceMotion = _isMotionReduced(); }catch{}
         _settingsSyncControls();
         renderAll();
       }
@@ -11813,36 +12918,41 @@ function reviewWrong(){
         listEl.appendChild(frag);
       }
       async function _fetchNotificationsFromFirestore(){
-        const db = _adminGetDb();
-        const map = new Map();
-        let successCount = 0;
-        const tryQuery = async (field) => {
-          try{
-            const snap = await db.collection("notifications").orderBy(field, "desc").limit(NOTIF_MAX).get();
-            successCount++;
+        showLoading("通知を読み込み中…");
+        try{
+          const db = _adminGetDb();
+          const map = new Map();
+          let successCount = 0;
+          const tryQuery = async (field) => {
+            try{
+              const snap = await db.collection("notifications").orderBy(field, "desc").limit(NOTIF_MAX).get();
+              successCount++;
+              snap.forEach((doc) => {
+                const item = _notifFromDoc(doc);
+                if (!item) return;
+                map.set(item.id, item);
+              });
+            }catch(_){}
+          };
+          await tryQuery("publishedAt");
+          await tryQuery("createdAt");
+          if (!successCount){
+            const snap = await db.collection("notifications").limit(NOTIF_MAX).get();
             snap.forEach((doc) => {
               const item = _notifFromDoc(doc);
               if (!item) return;
               map.set(item.id, item);
             });
-          }catch(_){}
-        };
-        await tryQuery("publishedAt");
-        await tryQuery("createdAt");
-        if (!successCount){
-          const snap = await db.collection("notifications").limit(NOTIF_MAX).get();
-          snap.forEach((doc) => {
-            const item = _notifFromDoc(doc);
-            if (!item) return;
-            map.set(item.id, item);
-          });
+          }
+          const list = Array.from(map.values())
+            .filter(n => n && n.id)
+            .sort((a,b) => (b.ts || 0) - (a.ts || 0))
+            .slice(0, NOTIF_MAX);
+          saveNotifications(list);
+          return list;
+        } finally {
+          hideLoading();
         }
-        const list = Array.from(map.values())
-          .filter(n => n && n.id)
-          .sort((a,b) => (b.ts || 0) - (a.ts || 0))
-          .slice(0, NOTIF_MAX);
-        saveNotifications(list);
-        return list;
       }
       async function _refreshNotificationsFromFirestore(options){
         const opt = options || {};
@@ -12611,6 +13721,7 @@ function reviewWrong(){
           return;
         }
         _adminSetNotifStatus(form.id ? "更新中…" : "追加中…");
+        showLoading(form.id ? "通知を更新中…" : "通知を追加中…");
         try{
           const db = _adminGetDb();
           const fs = window.firebase?.firestore;
@@ -12639,6 +13750,8 @@ function reviewWrong(){
           uiToast(form.id ? "通知を更新しました" : "通知を追加しました");
         }catch(err){
           _adminSetNotifStatus(`保存失敗: ${String(err?.code || "ERROR")} / ${String(err?.message || err)}`, "error");
+        } finally {
+          hideLoading();
         }
       }
       async function _adminDeleteNotification(docId){
@@ -12659,6 +13772,7 @@ function reviewWrong(){
         });
         if (!ok) return;
         _adminSetNotifStatus("削除中…");
+        showLoading("通知を削除中…");
         try{
           const db = _adminGetDb();
           await db.collection("notifications").doc(id).delete();
@@ -12671,6 +13785,8 @@ function reviewWrong(){
           uiToast("通知を削除しました");
         }catch(err){
           _adminSetNotifStatus(`削除失敗: ${String(err?.code || "ERROR")} / ${String(err?.message || err)}`, "error");
+        } finally {
+          hideLoading();
         }
       }
 
@@ -13915,11 +15031,7 @@ function _openSearchResultByIndex(i){
         _appRenderChat();
       }
       function _chatPrefersReducedMotion(){
-        try{
-          return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-        }catch{
-          return false;
-        }
+        return _isMotionReduced();
       }
       function _chatFmtPct(correct, total){
         const c = Number(correct) || 0;
@@ -16121,6 +17233,12 @@ function _openSearchResultByIndex(i){
           _authLogout();
           return;
         }
+        const accountDeleteBtn = e.target.closest("#settingsAccountDeleteBtn");
+        if (accountDeleteBtn){
+          e.preventDefault();
+          _authDeleteAccount();
+          return;
+        }
 
         const deleteLogsBtn = e.target.closest("#settingsDeleteLogsBtn");
         if (deleteLogsBtn){
@@ -16716,7 +17834,7 @@ function _openSearchResultByIndex(i){
       // =========================
       // Preset Share (Code + QR) via bundled Worker API (10 min TTL)
       // =========================
-      const API_BASE = "https://vocabuquiz-api2.rintyblog.workers.dev";
+      const API_BASE = "https://vocabuquiz-api.rintyblog.workers.dev";
       console.log("API_BASE", API_BASE);
       const APP_VERSION = "v26";
       const SHARE_VALID_MS = 10 * 60 * 1000;
@@ -16734,10 +17852,14 @@ function _openSearchResultByIndex(i){
         return `${_shareApiBase()}/s/${encodeURIComponent(String(code || "").toUpperCase())}`;
       }
       function fetchWithTimeout(url, opts, ms){
+        showLoading("処理中…");
         const ctrl = new AbortController();
         const id = setTimeout(()=>ctrl.abort(), ms||5000);
         const o = Object.assign({}, opts||{}, { signal: ctrl.signal });
-        return fetch(url, o).finally(()=>clearTimeout(id));
+        return fetch(url, o).finally(()=>{
+          clearTimeout(id);
+          hideLoading();
+        });
       }
       async function safeJson(res){
         const ct = (res.headers.get("content-type") || "").toLowerCase();
@@ -16801,6 +17923,7 @@ function _openSearchResultByIndex(i){
       }
 
       async function _fetchJsonWithTimeout(url, opts = {}, ms = 12000){
+        showLoading("処理中…");
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), ms);
         try{
@@ -16815,6 +17938,7 @@ function _openSearchResultByIndex(i){
           return data;
         }finally{
           clearTimeout(t);
+          hideLoading();
         }
       }
 
@@ -16838,6 +17962,13 @@ function _openSearchResultByIndex(i){
         const c = _shareCacheLoad();
         c[presetId] = entry;
         _shareCacheSave(c);
+      }
+      function _shareCacheDelete(presetId){
+        const c = _shareCacheLoad();
+        if (presetId in c){
+          delete c[presetId];
+          _shareCacheSave(c);
+        }
       }
 
       function _uniquePresetName(base, existing){
@@ -18258,7 +19389,7 @@ function _openSearchResultByIndex(i){
         mode: "ALL",
         range: "30D",
         currentPresetId: null,
-        reduceMotion: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        reduceMotion: _isMotionReduced()
       };
 
       let _insightsSessionsCache = null;
@@ -19294,7 +20425,7 @@ function _openSearchResultByIndex(i){
       setView("TITLE");
       _appSetTab("home");
       renderAll();
-      maybeShowUpdateNotes();
+      if (el.updateOverlay) el.updateOverlay.classList.add("hidden");
       _backupScheduleAuto();
       _authBindEvents();
       _authBootstrap();
@@ -21580,6 +22711,7 @@ function _openSearchResultByIndex(i){
         _menuState.presetShare.creating = true;
         const btn = document.getElementById("drawerShareCreateBtn");
         if (btn) btn.disabled = true;
+        showLoading("共有コードを作成中…");
         _drawerShareSetStatus("drawerShareSendStatus", "共有コードを作成中…");
         _drawerShareSetCreateState("started");
         try{
@@ -21605,6 +22737,7 @@ function _openSearchResultByIndex(i){
         }finally{
           _menuState.presetShare.creating = false;
           if (btn) btn.disabled = false;
+          hideLoading();
         }
       }
       async function _drawerShareImportByCode(codeRaw, fromHash){
@@ -21615,6 +22748,7 @@ function _openSearchResultByIndex(i){
         _menuState.presetShare.importing = true;
         const btn = document.getElementById("drawerShareImportBtn");
         if (btn) btn.disabled = true;
+        showLoading("共有コードを取得中…");
         _drawerShareSetStatus("drawerShareImportStatus", "取得中…");
         try{
           const got = await _drawerShareFetchByCode(code);
@@ -21630,6 +22764,7 @@ function _openSearchResultByIndex(i){
         }finally{
           _menuState.presetShare.importing = false;
           if (btn) btn.disabled = false;
+          hideLoading();
         }
       }
       function _drawerShareRefreshBySelection(){
@@ -21765,11 +22900,7 @@ function _openSearchResultByIndex(i){
       let _menuCloseToken = 0;
 
       function _menuReducedMotion(){
-        try{
-          return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-        }catch{
-          return false;
-        }
+        return _isMotionReduced();
       }
 
       function _menuNotifyNotFound(){
