@@ -8598,20 +8598,12 @@ body.auth-booting .app{
       };
 
       function _authApiBase(){
-        try{
-          if (typeof _shareApiBase === "function"){
-            return _shareApiBase();
-          }
-        }catch{}
-        try{
-          if (location && location.origin && location.origin !== "null" && /^https?:/i.test(location.protocol)){
-            return String(location.origin).replace(/\/+$/, "");
-          }
-        }catch{}
-        return "http://127.0.0.1:8787";
+        return _shareApiBase();
       }
       function _authApiUrl(path){
-        return `${_authApiBase()}${String(path || "")}`;
+        const p = String(path || "");
+        const pathPart = p.startsWith("/") ? p : `/${p}`;
+        return `${_authApiBase()}${pathPart}`;
       }
       async function _authFetch(path, opts = {}){
         const ctrl = new AbortController();
@@ -8982,40 +8974,50 @@ body.auth-booting .app{
       }
       async function _authBootstrap(){
         _authSetBooting(true);
-        const mode = _authGetMode();
-        const token = _authGetToken();
-        _authSetMode(mode === "user" || mode === "guest" ? mode : "none");
-        _authSetToken(token);
-        _authSetUser(null);
-        let gateShouldOpen = true;
+        try{
+          const mode = _authGetMode();
+          const token = _authGetToken();
+          _authSetMode(mode === "user" || mode === "guest" ? mode : "none");
+          _authSetToken(token);
+          _authSetUser(null);
+          let gateShouldOpen = true;
 
-        if (token){
-          const me = await _authVerifyToken(token);
-          if (me.ok){
-            _authSetMode("user");
-            _authSetUser(me.user);
-            gateShouldOpen = false;
+          if (token){
+            const me = await _authVerifyToken(token);
+            if (me.ok){
+              _authSetMode("user");
+              _authSetUser(me.user);
+              gateShouldOpen = false;
+            } else {
+              _authClearSession();
+              gateShouldOpen = true;
+            }
+          } else if (mode === "guest"){
+            // Guest mode always starts from Auth Gate.
+            gateShouldOpen = true;
           } else {
-            _authClearSession();
             gateShouldOpen = true;
           }
-        } else if (mode === "guest"){
-          // Guest mode always starts from Auth Gate.
-          gateShouldOpen = true;
-        } else {
-          gateShouldOpen = true;
-        }
 
-        _authRenderGuestBadge();
-        _authRenderSettingsAccount();
-        _settingsRefreshSummary();
-        if (gateShouldOpen){
-          _authOpenGate("entry");
-        } else {
-          _authCloseGate();
+          _authRenderGuestBadge();
+          _authRenderSettingsAccount();
+          _settingsRefreshSummary();
+          if (gateShouldOpen){
+            _authOpenGate("entry");
+          } else {
+            _authCloseGate();
+          }
+          authState.booted = true;
+        }catch(err){
+          _authClearSession();
+          _authOpenGate("entry", `認証初期化に失敗: ${String(err?.message || err)}`);
+          _authRenderGuestBadge();
+          _authRenderSettingsAccount();
+          _settingsRefreshSummary();
+          authState.booted = true;
+        }finally{
+          _authSetBooting(false);
         }
-        _authSetBooting(false);
-        authState.booted = true;
       }
       function _authBindEvents(){
         if (!el.authGate){
@@ -16714,19 +16716,15 @@ function _openSearchResultByIndex(i){
       // =========================
       // Preset Share (Code + QR) via bundled Worker API (10 min TTL)
       // =========================
+      const API_BASE = "https://vocabuquiz-api2.rintyblog.workers.dev";
+      console.log("API_BASE", API_BASE);
       const APP_VERSION = "v26";
       const SHARE_VALID_MS = 10 * 60 * 1000;
       const SHARE_CACHE_KEY = "app.share.cache.v1";
-      const SHARE_API_FALLBACK = "http://127.0.0.1:8787"; // wrangler dev
       const SHARE_QR_IMG = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=";
 
       function _shareApiBase(){
-        try{
-          if (location && location.origin && location.origin !== "null" && location.protocol !== "file:") {
-            return String(location.origin).replace(/\/+$/, "");
-          }
-        }catch(_){/* ignore */}
-        return SHARE_API_FALLBACK;
+        return String(API_BASE || "").trim().replace(/\/+$/, "");
       }
       function _shareApiReady(){
         const b = _shareApiBase();
@@ -16954,7 +16952,7 @@ function _openSearchResultByIndex(i){
       }
 
       function _setShareStatus(txt){
-        const sub = document.getElementById("shareCodeSub");
+        const sub = document.getElementById("shareStatusMsg");
         if (sub) sub.textContent = String(txt || "");
       }
 
@@ -16977,6 +16975,9 @@ function _openSearchResultByIndex(i){
         // Always open UI first (no silent failures)
         const nameForUi = (presetObj && presetObj.name) ? presetObj.name : "My Preset";
         uiHtml(_shareModalHtml(nameForUi, _isoDate()), { title: "Share Preset", wide: true });
+        uiModalOnClose(() => {
+          _stopShareTimer();
+        });
 
         // Elements
         const codeEl = document.getElementById("shareCode");
@@ -16985,8 +16986,8 @@ function _openSearchResultByIndex(i){
         const qrStatusEl = document.getElementById("shareQrStatus");
         const errEl = document.getElementById("shareErr");
         const statusEl = document.getElementById("shareStatusMsg");
-        const copyCodeBtn = document.getElementById("shareCopyCode");
-        const copyUrlBtn = document.getElementById("shareCopyUrl");
+        const copyCodeBtn = document.getElementById("shareCopyCodeBtn");
+        const copyUrlBtn = document.getElementById("shareCopyUrlBtn");
         const debugEl = document.getElementById("shareDebug");
 
         const setErr = (msg) => {
@@ -17006,22 +17007,18 @@ function _openSearchResultByIndex(i){
         };
 
         const dbg = {
-          presetId: String(presetId || ""),
           endpoint: _shareCreateUrl(),
-          fetch: "idle",
           status: "-",
-          preview: "",
+          responseHead: "",
           rendered: false,
         };
         const dbgRender = () => {
           if (!debugEl) return;
           debugEl.textContent =
             "Debug\n" +
-            "presetId: " + (dbg.presetId || "-") + "\n" +
-            "create: " + (dbg.endpoint || "-") + "\n" +
-            "fetch: " + dbg.fetch + "\n" +
+            "endpoint: " + (dbg.endpoint || "-") + "\n" +
             "status: " + dbg.status + "\n" +
-            "preview: " + (dbg.preview || "-") + "\n" +
+            "responseHead: " + (dbg.responseHead || "-") + "\n" +
             "rendered: " + (dbg.rendered ? "true" : "false");
         };
         dbgRender();
@@ -17069,15 +17066,11 @@ function _openSearchResultByIndex(i){
           if (presetObj.builtin){
             throw new Error("共有できるのは My Preset のみです");
           }
-          dbg.presetId = String(presetId);
-          dbgRender();
-
           // Cache
           const cached = _shareCacheGet(presetId);
           if (cached && cached.code && cached.shareUrl && cached.expiresAt && cached.expiresAt > Date.now() + 2000){
-            dbg.fetch = "cache";
             dbg.status = "cached";
-            dbg.preview = JSON.stringify({ code: cached.code, expiresAt: cached.expiresAt }).slice(0, 120);
+            dbg.responseHead = JSON.stringify({ code: cached.code, expiresAt: cached.expiresAt }).slice(0, 160);
             window.__shareCurrentUrl = cached.shareUrl;
             _renderShareResult(cached.code, cached.shareUrl, cached.expiresAt);
             if (copyCodeBtn) copyCodeBtn.disabled = false;
@@ -17089,7 +17082,7 @@ function _openSearchResultByIndex(i){
           }
 
           // Create
-          dbg.fetch = "started";
+          dbg.status = "requesting";
           dbgRender();
           const payload = {
             schemaVersion: 1,
@@ -17110,11 +17103,11 @@ function _openSearchResultByIndex(i){
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
-          }, 8000);
+          }, 5000);
 
           const text = await res.text();
           dbg.status = String(res.status);
-          dbg.preview = text.slice(0, 120);
+          dbg.responseHead = text.slice(0, 160);
           dbgRender();
 
           if (!res.ok){
@@ -17133,13 +17126,13 @@ function _openSearchResultByIndex(i){
           if (copyCodeBtn) copyCodeBtn.disabled = false;
           if (copyUrlBtn) copyUrlBtn.disabled = false;
 
-          dbg.fetch = "ok";
+          dbg.status = "ok";
           dbg.rendered = true;
           dbgRender();
           _startShareTimer(presetId);
         } catch (e){
-          dbg.fetch = "failed";
-          dbg.preview = String((e && (e.message || e)) || "error").slice(0, 120);
+          dbg.status = "failed";
+          dbg.responseHead = String((e && (e.message || e)) || "error").slice(0, 160);
           dbgRender();
           setStatus("失敗");
           setErr(String((e && (e.message || e)) || e));
@@ -17189,7 +17182,10 @@ function _openSearchResultByIndex(i){
         img.src = url;
       }
 
-      function _updateShareCountdown(){
+      function _updateShareCountdown(expiresAt){
+        if (Number.isFinite(Number(expiresAt))){
+          window.__shareExpiresAt = Number(expiresAt);
+        }
         const expEl = document.getElementById("shareExpires");
         if (!expEl) return;
         const exp = Number(window.__shareExpiresAt) || 0;
@@ -17219,7 +17215,7 @@ function _openSearchResultByIndex(i){
             }
             _updateShareCountdown(entry.expiresAt);
             if (entry.expiresAt <= Date.now()){
-              _shareCacheSet(presetId, null);
+              _shareCacheDelete(presetId);
               _stopShareTimer();
               // Auto regenerate while the panel is open
               shareCurrentPreset(presetId);
