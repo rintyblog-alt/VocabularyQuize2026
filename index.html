@@ -8234,6 +8234,7 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
               </div>
               <div id="adminAuthStatus" class="drawer-share-status" aria-live="polite"></div>
               <div class="settings-section-title">メンテナンス</div>
+              <div id="adminMaintenanceLockedNote" class="note">メンテナンス設定の編集はAdminログイン後に可能です。</div>
               <div class="settings-group" id="adminMaintenanceGroup">
                 <label class="settings-row is-static" for="adminMaintenanceEnabled">
                   <span class="label">メンテ有効化</span>
@@ -14557,11 +14558,21 @@ function reviewWrong(){
       }
       function _maintenanceRenderAdminForm(){
         const cfg = _maintenanceNormalizeConfig(_maintenanceState.config || _maintenanceDefaultConfig());
+        const groupEl = document.getElementById("adminMaintenanceGroup");
+        const lockedNoteEl = document.getElementById("adminMaintenanceLockedNote");
+        const previewEl = document.getElementById("adminMaintenancePreview");
         const enabledEl = document.getElementById("adminMaintenanceEnabled");
         const startEl = document.getElementById("adminMaintenanceStartAt");
         const endEl = document.getElementById("adminMaintenanceEndAt");
         const titleEl = document.getElementById("adminMaintenanceTitle");
         const messageEl = document.getElementById("adminMaintenanceMessage");
+        if (groupEl) groupEl.classList.toggle("hidden", !_adminState.isAdmin);
+        if (lockedNoteEl) lockedNoteEl.classList.toggle("hidden", !!_adminState.isAdmin);
+        if (previewEl) previewEl.classList.toggle("hidden", !_adminState.isAdmin);
+        if (!_adminState.isAdmin){
+          _maintenanceSetAdminBusy(false);
+          return;
+        }
         const ae = document.activeElement;
         const editingActive = !!(ae && (
           ae === enabledEl ||
@@ -14741,7 +14752,13 @@ function reviewWrong(){
           _maintenanceRenderAdminForm();
           _maintenanceRenderOverlay();
         }catch(err){
-          _maintenanceSetAdminStatus(`保存失敗: ${String(err?.code || "ERROR")} / ${String(err?.message || err)}`, "error");
+          const code = String(err?.code || "ERROR");
+          const msg = String(err?.message || err);
+          if (code === "permission-denied"){
+            _maintenanceSetAdminStatus("保存失敗: permission-denied / Firestore Rulesで appConfig/maintenance の write をadmin許可にしてください。", "error");
+          }else{
+            _maintenanceSetAdminStatus(`保存失敗: ${code} / ${msg}`, "error");
+          }
         }finally{
           _maintenanceState.saving = false;
           _maintenanceSetAdminBusy(false);
@@ -14781,7 +14798,13 @@ function reviewWrong(){
           _maintenanceRenderAdminForm();
           _maintenanceRenderOverlay();
         }catch(err){
-          _maintenanceSetAdminStatus(`無効化失敗: ${String(err?.code || "ERROR")} / ${String(err?.message || err)}`, "error");
+          const code = String(err?.code || "ERROR");
+          const msg = String(err?.message || err);
+          if (code === "permission-denied"){
+            _maintenanceSetAdminStatus("無効化失敗: permission-denied / Firestore Rulesで appConfig/maintenance の write をadmin許可にしてください。", "error");
+          }else{
+            _maintenanceSetAdminStatus(`無効化失敗: ${code} / ${msg}`, "error");
+          }
         }finally{
           _maintenanceState.saving = false;
           _maintenanceSetAdminBusy(false);
@@ -14807,9 +14830,19 @@ function reviewWrong(){
           if (loginBtn) loginBtn.disabled = true;
           setStatus("Googleログインを開始しています…");
           const provider = new window.firebase.auth.GoogleAuthProvider();
-          await auth.signInWithPopup(provider);
-          setStatus("ログインしました。", "ok");
-          return true;
+          const result = await auth.signInWithPopup(provider);
+          const user = (result && result.user) ? result.user : auth.currentUser;
+          _adminState.user = user || null;
+          _adminState.isAdmin = _adminUserIsAdmin(user);
+          if (_adminState.isAdmin){
+            setStatus("Adminログインしました。", "ok");
+            _maintenanceSetOverlayStatus("管理者ログインを確認しました。", "ok");
+            return true;
+          }
+          const signedEmail = String(user?.email || "").trim();
+          setStatus(`管理者権限がありません: ${signedEmail || "メール不明"}`, "error");
+          _maintenanceSetOverlayStatus("管理者アカウントでログインしてください。", "error");
+          return false;
         }catch(err){
           const code = String(err?.code || "AUTH_ERROR");
           const msg = String(err?.message || "");
@@ -14884,7 +14917,17 @@ function reviewWrong(){
         try{
           const result = await auth.getRedirectResult();
           if (result && result.user){
-            _adminSetStatus("Googleログインが完了しました。", "ok");
+            _adminState.user = result.user;
+            _adminState.isAdmin = _adminUserIsAdmin(result.user);
+            if (_adminState.isAdmin){
+              _adminSetStatus("Googleログインが完了しました。", "ok");
+              _maintenanceSetOverlayStatus("管理者ログインを確認しました。", "ok");
+            }else{
+              const signedEmail = String(result.user?.email || "").trim();
+              _adminSetStatus(`管理者権限がありません: ${signedEmail || "メール不明"}`, "error");
+              _maintenanceSetOverlayStatus("管理者アカウントでログインしてください。", "error");
+            }
+            _adminRenderUI();
           }
         }catch(err){
           const code = String(err?.code || "AUTH_ERROR");
@@ -14899,6 +14942,9 @@ function reviewWrong(){
         const logoutBtn = document.getElementById("adminLogoutBtn");
         const openEditorBtn = document.getElementById("adminOpenNotifEditorBtn");
         const openHelpBtn = document.getElementById("adminOpenHelpEditorBtn");
+        const maintenanceGroup = document.getElementById("adminMaintenanceGroup");
+        const maintenanceLockedNote = document.getElementById("adminMaintenanceLockedNote");
+        const maintenancePreview = document.getElementById("adminMaintenancePreview");
         const mainPane = document.getElementById("settingsMainPane");
         const editorPane = document.getElementById("adminNotifEditor");
         const titleEl = document.getElementById("settingsNavTitle");
@@ -14913,6 +14959,9 @@ function reviewWrong(){
         if (logoutBtn) logoutBtn.disabled = !email;
         if (openEditorBtn) openEditorBtn.classList.toggle("hidden", !_adminState.isAdmin);
         if (openHelpBtn) openHelpBtn.classList.toggle("hidden", !_adminState.isAdmin);
+        if (maintenanceGroup) maintenanceGroup.classList.toggle("hidden", !_adminState.isAdmin);
+        if (maintenanceLockedNote) maintenanceLockedNote.classList.toggle("hidden", !!_adminState.isAdmin);
+        if (maintenancePreview) maintenancePreview.classList.toggle("hidden", !_adminState.isAdmin);
         if (!_adminState.isAdmin && _adminState.editorOpen){
           _adminState.editorOpen = false;
         }
