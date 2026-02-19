@@ -3746,6 +3746,132 @@ a{ color: inherit; }
       gap: 8px;
       flex-wrap: wrap;
     }
+    .maintenance-admin-preview{
+      margin-top: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(17,18,20,.03);
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .maintenance-admin-preview .now{
+      color: var(--text);
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .maintenance-overlay{
+      position: fixed;
+      inset: 0;
+      z-index: 1800;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(15,16,18,.48);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+    }
+    .maintenance-overlay.hidden{
+      display: none !important;
+    }
+    .maintenance-card{
+      width: min(560px, calc(100vw - 26px));
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 20px 48px rgba(0,0,0,.24);
+      padding: 18px 16px;
+      display: grid;
+      gap: 12px;
+      color: var(--text);
+    }
+    .maintenance-head{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+    }
+    .maintenance-icon{
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      display: grid;
+      place-items: center;
+      color: var(--text);
+      background: rgba(17,18,20,.03);
+      flex-shrink: 0;
+    }
+    .maintenance-title{
+      margin: 0;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: .01em;
+    }
+    .maintenance-message{
+      margin: 0;
+      line-height: 1.7;
+      color: var(--muted);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .maintenance-meta{
+      display: grid;
+      gap: 8px;
+    }
+    .maintenance-meta-row{
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 9px 10px;
+      background: rgba(17,18,20,.02);
+    }
+    .maintenance-meta-row strong{
+      color: var(--text);
+      font-weight: 700;
+      text-align: right;
+    }
+    .maintenance-actions{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .maintenance-note{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .maintenance-status{
+      font-size: 12px;
+      line-height: 1.4;
+      min-height: 1.4em;
+      color: var(--muted);
+    }
+    .maintenance-status.ok{ color: #12804b; }
+    .maintenance-status.error{ color: #cf1f1f; }
+    body.maintenance-open{
+      overflow: hidden;
+    }
+    :root[data-theme-mode="dark"] .maintenance-overlay{
+      background: rgba(4,5,8,.7);
+    }
+    :root[data-theme-mode="dark"] .maintenance-card{
+      background: var(--panel);
+      box-shadow: 0 20px 54px rgba(0,0,0,.55);
+    }
+    :root[data-theme-mode="dark"] .maintenance-icon,
+    :root[data-theme-mode="dark"] .maintenance-meta-row{
+      background: rgba(255,255,255,.03);
+    }
+    :root[data-theme-mode="dark"] .maintenance-status.ok{ color: #63d39a; }
+    :root[data-theme-mode="dark"] .maintenance-status.error{ color: #ff8b8b; }
     .backup-settings-card{
       border:1px solid rgba(31,42,68,.14);
       border-radius: 12px;
@@ -6886,6 +7012,26 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
       <span class="app-loading-spinner" aria-hidden="true"></span>
     </div>
   </div>
+  <div id="maintenanceOverlay" class="maintenance-overlay hidden" role="dialog" aria-modal="true" aria-label="メンテナンス情報">
+    <div class="maintenance-card">
+      <div class="maintenance-head">
+        <div class="maintenance-icon"><span class="ms" aria-hidden="true">construction</span></div>
+        <h2 id="maintenanceTitle" class="maintenance-title">メンテナンス中</h2>
+      </div>
+      <p id="maintenanceMessage" class="maintenance-message">現在メンテナンスを実施しています。しばらくお待ちください。</p>
+      <div class="maintenance-meta">
+        <div class="maintenance-meta-row"><span>期間</span><strong id="maintenancePeriod">—</strong></div>
+        <div class="maintenance-meta-row"><span>解除予定</span><strong id="maintenanceRemaining">—</strong></div>
+      </div>
+      <div class="maintenance-actions">
+        <button class="textbtn" id="maintenanceReloadBtn" type="button">再読み込み</button>
+        <button class="textbtn hidden" id="maintenanceAdminLoginBtn" type="button">管理者ログイン</button>
+        <button class="navbtn hidden" id="maintenanceBypassBtn" type="button">管理者として続行</button>
+      </div>
+      <div id="maintenanceStatus" class="maintenance-status" aria-live="polite"></div>
+      <div class="maintenance-note">メンテナンス終了後は自動で通常画面に戻ります。</div>
+    </div>
+  </div>
   <div class="app" id="app">
     
     <header class="topbar" role="banner">
@@ -8087,6 +8233,39 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
                 </button>
               </div>
               <div id="adminAuthStatus" class="drawer-share-status" aria-live="polite"></div>
+              <div class="settings-section-title">メンテナンス</div>
+              <div class="settings-group" id="adminMaintenanceGroup">
+                <label class="settings-row is-static" for="adminMaintenanceEnabled">
+                  <span class="label">メンテ有効化</span>
+                  <span class="toggle"><input type="checkbox" id="adminMaintenanceEnabled" /></span>
+                </label>
+                <label class="settings-row is-static" for="adminMaintenanceStartAt">
+                  <span class="label">開始日時</span>
+                  <input class="spell-input" id="adminMaintenanceStartAt" type="datetime-local" />
+                </label>
+                <label class="settings-row is-static" for="adminMaintenanceEndAt">
+                  <span class="label">終了日時</span>
+                  <input class="spell-input" id="adminMaintenanceEndAt" type="datetime-local" />
+                </label>
+                <label class="settings-row is-static" for="adminMaintenanceTitle">
+                  <span class="label">タイトル</span>
+                  <input class="spell-input" id="adminMaintenanceTitle" type="text" maxlength="80" placeholder="メンテナンス中" />
+                </label>
+                <label class="settings-row is-static" for="adminMaintenanceMessage">
+                  <span class="label">メッセージ</span>
+                  <textarea class="spell-input" id="adminMaintenanceMessage" rows="3" placeholder="現在メンテナンスを実施しています。"></textarea>
+                </label>
+                <button class="settings-row" id="adminMaintenanceSaveBtn" type="button">
+                  <span class="label">保存</span>
+                  <span class="value">更新</span>
+                </button>
+                <button class="settings-row" id="adminMaintenanceClearExpiredBtn" type="button">
+                  <span class="label">終了済みを無効化</span>
+                  <span class="value">実行</span>
+                </button>
+              </div>
+              <div id="adminMaintenanceStatus" class="drawer-share-status" aria-live="polite"></div>
+              <div id="adminMaintenancePreview" class="maintenance-admin-preview" aria-live="polite"></div>
             </section>
           </div>
 
@@ -10721,6 +10900,20 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
       }
       function _authSetUser(user){
         authState.user = (user && typeof user === "object") ? user : null;
+        try{
+          if (typeof _chatOnAuthChanged === "function"){
+            setTimeout(() => {
+              try{ _chatOnAuthChanged(); }catch{}
+            }, 0);
+          }
+        }catch{}
+        try{
+          if (typeof _maintenanceRenderOverlay === "function"){
+            setTimeout(() => {
+              try{ _maintenanceRenderOverlay(); }catch{}
+            }, 0);
+          }
+        }catch{}
       }
       function _authClearSession(){
         _authSetToken("");
@@ -11111,6 +11304,7 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
         _authRenderSettingsAccount();
         _settingsRefreshSummary();
         _appSetTab("home");
+        _maintenanceCheckNow("auth-transition", { silent: true, force: true });
       }
       async function _authSubmitRegister(skipProfile){
         if (authState.tosSubmitting) return;
@@ -11227,6 +11421,8 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
         _settingsRefreshSummary();
         _authOpenGate("entry");
         _appSetTab("home");
+        _maintenanceState.bypass = false;
+        _maintenanceCheckNow("logout", { silent: true, force: true });
         uiToast("ログアウトしました");
       }
       function _authPurgeLocalData(){
@@ -11246,6 +11442,7 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
           BACKUP_LATEST_KEY,
           BACKUP_LAST_RUN_DATE_KEY,
           CHAT_HISTORY_KEY,
+          CHAT_HISTORY_META_KEY,
           CHAT_MEMORY_KEY,
           CHAT_LAST_INTENT_KEY,
           HOME_RESUME_KEY,
@@ -11404,6 +11601,11 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
             await _authDelay(AUTH_BOOT_MIN_MS - elapsed);
           }
           _authSetBooting(false);
+          try{
+            await _maintenanceBootstrap();
+          }catch(err){
+            _maintenanceSetAdminStatus(`メンテ判定の初期化に失敗: ${String(err?.message || err)}`, "error");
+          }
         }
       }
       function _authBindEvents(){
@@ -11804,7 +12006,16 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
         authGuestStatus: document.getElementById("authGuestStatus"),
         authTosStatus: document.getElementById("authTosStatus"),
         authGlobalStatus: document.getElementById("authGlobalStatus"),
-        globalLoadingIcon: document.getElementById("globalLoadingIcon")
+        globalLoadingIcon: document.getElementById("globalLoadingIcon"),
+        maintenanceOverlay: document.getElementById("maintenanceOverlay"),
+        maintenanceTitle: document.getElementById("maintenanceTitle"),
+        maintenanceMessage: document.getElementById("maintenanceMessage"),
+        maintenancePeriod: document.getElementById("maintenancePeriod"),
+        maintenanceRemaining: document.getElementById("maintenanceRemaining"),
+        maintenanceStatus: document.getElementById("maintenanceStatus"),
+        maintenanceReloadBtn: document.getElementById("maintenanceReloadBtn"),
+        maintenanceBypassBtn: document.getElementById("maintenanceBypassBtn"),
+        maintenanceAdminLoginBtn: document.getElementById("maintenanceAdminLoginBtn")
 	      };
 
       // =========================
@@ -13827,6 +14038,7 @@ function setDeck(deckKey){
         _customSelectEnhance(el.settingsOverlay);
         _adminEnsureAuthWatcher();
         _adminRenderUI();
+        _maintenanceCheckNow("settings-open", { silent: true });
       }
       function closeSettings(){
         if (!el.settingsOverlay){
@@ -14006,6 +14218,22 @@ function reviewWrong(){
         notifItems: [],
         loading: false
       };
+      const MAINTENANCE_COLLECTION = "appConfig";
+      const MAINTENANCE_DOC_ID = "maintenance";
+      const MAINTENANCE_POLL_MS = 30000;
+      const MAINTENANCE_COUNTDOWN_MS = 10000;
+      const _maintenanceState = {
+        config: null,
+        active: false,
+        bypass: false,
+        loaded: false,
+        polling: false,
+        pollTimer: 0,
+        countdownTimer: 0,
+        lastCheckAt: 0,
+        saving: false,
+        visibilityBound: false
+      };
 
       function _fmt2(n){ return String(n).padStart(2,"0"); }
       function formatDateTime(ts){
@@ -14170,6 +14398,447 @@ function reviewWrong(){
         const email = String(user?.email || "").trim().toLowerCase();
         return !!email && email === String(ADMIN_EMAIL).trim().toLowerCase();
       }
+      function _maintenanceDefaultConfig(){
+        return {
+          enabled: false,
+          startAt: 0,
+          endAt: 0,
+          title: "メンテナンス中",
+          message: "現在メンテナンスを実施しています。しばらくお待ちください。",
+          updatedAt: 0,
+          updatedBy: ""
+        };
+      }
+      function _maintenanceNormalizeConfig(input){
+        const d = _maintenanceDefaultConfig();
+        const src = (input && typeof input === "object") ? input : {};
+        const startAt = Number(src.startAt || 0);
+        const endAt = Number(src.endAt || 0);
+        return {
+          enabled: !!src.enabled,
+          startAt: Number.isFinite(startAt) ? startAt : 0,
+          endAt: Number.isFinite(endAt) ? endAt : 0,
+          title: String(src.title || d.title || "").trim() || d.title,
+          message: String(src.message || d.message || "").trim() || d.message,
+          updatedAt: Number(src.updatedAt || 0) || 0,
+          updatedBy: String(src.updatedBy || "").trim()
+        };
+      }
+      function _maintenanceIsActive(config, nowMs){
+        const cfg = _maintenanceNormalizeConfig(config);
+        const now = Number(nowMs || Date.now());
+        return !!(cfg.enabled && cfg.startAt > 0 && cfg.endAt > cfg.startAt && now >= cfg.startAt && now < cfg.endAt);
+      }
+      function _maintenanceFmtDate(ms){
+        const n = Number(ms) || 0;
+        if (!n) return "—";
+        return formatDateTime(n);
+      }
+      function _maintenanceFmtRemain(ms){
+        const n = Math.max(0, Number(ms) || 0);
+        if (!n) return "00:00";
+        const sec = Math.floor(n / 1000);
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        if (h > 0){
+          return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        }
+        return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      }
+      function _maintenanceCanBypass(){
+        if (_adminState.isAdmin) return true;
+        if (_adminUserIsAdmin(_adminState.user)) return true;
+        if (_adminUserIsAdmin(authState.user)) return true;
+        const email = String(authState?.user?.email || "").trim().toLowerCase();
+        return !!email && email === String(ADMIN_EMAIL).trim().toLowerCase();
+      }
+      function _maintenanceSetOverlayStatus(msg, kind){
+        const elx = el.maintenanceStatus;
+        if (!elx) return;
+        elx.textContent = String(msg || "");
+        elx.classList.remove("ok", "error");
+        if (kind === "ok") elx.classList.add("ok");
+        if (kind === "error") elx.classList.add("error");
+      }
+      function _maintenanceSetAdminStatus(msg, kind){
+        const elx = document.getElementById("adminMaintenanceStatus");
+        if (!elx){
+          if (msg) uiToast(String(msg));
+          return;
+        }
+        elx.textContent = String(msg || "");
+        elx.classList.remove("ok", "error");
+        if (kind === "ok") elx.classList.add("ok");
+        if (kind === "error") elx.classList.add("error");
+      }
+      function _maintenanceSetAdminBusy(busy){
+        const disabled = !!busy;
+        const ids = [
+          "adminMaintenanceEnabled",
+          "adminMaintenanceStartAt",
+          "adminMaintenanceEndAt",
+          "adminMaintenanceTitle",
+          "adminMaintenanceMessage",
+          "adminMaintenanceSaveBtn",
+          "adminMaintenanceClearExpiredBtn"
+        ];
+        for (const id of ids){
+          const node = document.getElementById(id);
+          if (!node) continue;
+          node.disabled = disabled || !_adminState.isAdmin;
+        }
+      }
+      function _maintenanceReadAdminForm(){
+        const enabledEl = document.getElementById("adminMaintenanceEnabled");
+        const startEl = document.getElementById("adminMaintenanceStartAt");
+        const endEl = document.getElementById("adminMaintenanceEndAt");
+        const titleEl = document.getElementById("adminMaintenanceTitle");
+        const messageEl = document.getElementById("adminMaintenanceMessage");
+        if (!enabledEl || !startEl || !endEl || !titleEl || !messageEl){
+          throw new Error("メンテナンスUI要素が見つかりません。");
+        }
+        const enabled = !!enabledEl.checked;
+        const current = _maintenanceNormalizeConfig(_maintenanceState.config || _maintenanceDefaultConfig());
+        let startAt = _parseLocalDateTimeInput(startEl.value);
+        let endAt = _parseLocalDateTimeInput(endEl.value);
+        if (!startAt){
+          startAt = Number(current.startAt || 0) || Date.now();
+        }
+        if (!endAt){
+          endAt = Number(current.endAt || 0) || (startAt + 3600000);
+        }
+        const title = String(titleEl.value || "").trim() || "メンテナンス中";
+        const message = String(messageEl.value || "").trim() || "現在メンテナンスを実施しています。しばらくお待ちください。";
+        if (enabled && (!startAt || !endAt)){
+          throw new Error("開始日時と終了日時を入力してください。");
+        }
+        if (enabled && endAt <= startAt){
+          throw new Error("終了日時は開始日時より後にしてください。");
+        }
+        return { enabled, startAt, endAt, title, message };
+      }
+      function _maintenanceRenderAdminPreview(){
+        const pv = document.getElementById("adminMaintenancePreview");
+        if (!pv) return;
+        const cfgBase = _maintenanceNormalizeConfig(_maintenanceState.config || _maintenanceDefaultConfig());
+        const enabledEl = document.getElementById("adminMaintenanceEnabled");
+        const startEl = document.getElementById("adminMaintenanceStartAt");
+        const endEl = document.getElementById("adminMaintenanceEndAt");
+        const titleEl = document.getElementById("adminMaintenanceTitle");
+        const messageEl = document.getElementById("adminMaintenanceMessage");
+        const cfg = _maintenanceNormalizeConfig({
+          ...cfgBase,
+          enabled: enabledEl ? !!enabledEl.checked : cfgBase.enabled,
+          startAt: startEl ? (_parseLocalDateTimeInput(startEl.value) || cfgBase.startAt) : cfgBase.startAt,
+          endAt: endEl ? (_parseLocalDateTimeInput(endEl.value) || cfgBase.endAt) : cfgBase.endAt,
+          title: titleEl ? String(titleEl.value || cfgBase.title || "") : cfgBase.title,
+          message: messageEl ? String(messageEl.value || cfgBase.message || "") : cfgBase.message
+        });
+        const now = Date.now();
+        const active = _maintenanceIsActive(cfg, now);
+        let nowLine = "現在: 通常稼働";
+        if (cfg.enabled && now < cfg.startAt){
+          nowLine = "現在: 開始待ち";
+        } else if (active){
+          nowLine = "現在: メンテナンス中";
+        } else if (cfg.enabled && now >= cfg.endAt && cfg.endAt > 0){
+          nowLine = "現在: 期間終了（無効化推奨）";
+        } else if (cfg.enabled){
+          nowLine = "現在: 期間設定不正";
+        }
+        const remainText = active ? _maintenanceFmtRemain(cfg.endAt - now) : "—";
+        pv.innerHTML = `
+          <div class="now">${escapeHtml(nowLine)}</div>
+          <div>期間: ${escapeHtml(_maintenanceFmtDate(cfg.startAt))} 〜 ${escapeHtml(_maintenanceFmtDate(cfg.endAt))}</div>
+          <div>残り: ${escapeHtml(remainText)}</div>
+          <div>更新者: ${escapeHtml(cfg.updatedBy || "—")} / 更新時刻: ${escapeHtml(_maintenanceFmtDate(cfg.updatedAt))}</div>
+        `;
+      }
+      function _maintenanceRenderAdminForm(){
+        const cfg = _maintenanceNormalizeConfig(_maintenanceState.config || _maintenanceDefaultConfig());
+        const enabledEl = document.getElementById("adminMaintenanceEnabled");
+        const startEl = document.getElementById("adminMaintenanceStartAt");
+        const endEl = document.getElementById("adminMaintenanceEndAt");
+        const titleEl = document.getElementById("adminMaintenanceTitle");
+        const messageEl = document.getElementById("adminMaintenanceMessage");
+        const ae = document.activeElement;
+        const editingActive = !!(ae && (
+          ae === enabledEl ||
+          ae === startEl ||
+          ae === endEl ||
+          ae === titleEl ||
+          ae === messageEl
+        ));
+        if (!_maintenanceState.saving && !editingActive){
+          if (enabledEl) enabledEl.checked = !!cfg.enabled;
+          if (startEl) startEl.value = _toLocalDateTimeInput(cfg.startAt || 0);
+          if (endEl) endEl.value = _toLocalDateTimeInput(cfg.endAt || 0);
+          if (titleEl) titleEl.value = cfg.title || "";
+          if (messageEl) messageEl.value = cfg.message || "";
+        }
+        _maintenanceSetAdminBusy(_maintenanceState.saving);
+        _maintenanceRenderAdminPreview();
+      }
+      function _maintenanceStopCountdown(){
+        if (_maintenanceState.countdownTimer){
+          clearInterval(_maintenanceState.countdownTimer);
+          _maintenanceState.countdownTimer = 0;
+        }
+      }
+      function _maintenanceRenderOverlay(){
+        const overlay = el.maintenanceOverlay;
+        if (!overlay) return;
+        const cfg = _maintenanceNormalizeConfig(_maintenanceState.config || _maintenanceDefaultConfig());
+        const now = Date.now();
+        const active = _maintenanceIsActive(cfg, now);
+        _maintenanceState.active = active;
+        if (!active){
+          _maintenanceState.bypass = false;
+        }
+        const canBypass = _maintenanceCanBypass();
+        const blocked = active && !(canBypass && _maintenanceState.bypass);
+        overlay.classList.toggle("hidden", !blocked);
+        document.body.classList.toggle("maintenance-open", blocked);
+        if (el.maintenanceTitle) el.maintenanceTitle.textContent = cfg.title || "メンテナンス中";
+        if (el.maintenanceMessage) el.maintenanceMessage.textContent = cfg.message || "";
+        if (el.maintenancePeriod){
+          el.maintenancePeriod.textContent = `${_maintenanceFmtDate(cfg.startAt)} 〜 ${_maintenanceFmtDate(cfg.endAt)}`;
+        }
+        if (el.maintenanceRemaining){
+          el.maintenanceRemaining.textContent = active ? _maintenanceFmtRemain(cfg.endAt - now) : "—";
+        }
+        if (el.maintenanceBypassBtn){
+          el.maintenanceBypassBtn.classList.toggle("hidden", !(active && canBypass));
+        }
+        if (el.maintenanceAdminLoginBtn){
+          el.maintenanceAdminLoginBtn.classList.toggle("hidden", !active || canBypass);
+        }
+        if (!blocked){
+          _maintenanceSetOverlayStatus("");
+          _maintenanceStopCountdown();
+          return;
+        }
+        if (!_maintenanceState.countdownTimer){
+          _maintenanceState.countdownTimer = setInterval(() => {
+            _maintenanceRenderOverlay();
+            _maintenanceRenderAdminPreview();
+            if (!_maintenanceState.active){
+              _maintenanceCheckNow("auto-release", { silent: true, force: true });
+            }
+          }, MAINTENANCE_COUNTDOWN_MS);
+        }
+      }
+      async function _maintenanceFetchConfig(){
+        const db = _drawerShareGetDb();
+        const snap = await db.collection(MAINTENANCE_COLLECTION).doc(MAINTENANCE_DOC_ID).get();
+        if (!snap || !snap.exists){
+          return _maintenanceDefaultConfig();
+        }
+        return _maintenanceNormalizeConfig(snap.data() || {});
+      }
+      async function _maintenanceCheckNow(reason, opts = {}){
+        const force = !!opts.force;
+        const silent = !!opts.silent;
+        const now = Date.now();
+        if (!force && (now - (_maintenanceState.lastCheckAt || 0)) < 1200){
+          _maintenanceRenderOverlay();
+          _maintenanceRenderAdminForm();
+          return;
+        }
+        _maintenanceState.lastCheckAt = now;
+        try{
+          const cfg = await _maintenanceFetchConfig();
+          _maintenanceState.config = _maintenanceNormalizeConfig(cfg);
+          _maintenanceState.loaded = true;
+        }catch(err){
+          if (!_maintenanceState.loaded){
+            _maintenanceState.config = _maintenanceDefaultConfig();
+          }
+          if (!silent){
+            const msg = String(err?.message || err || "メンテ設定を取得できません。");
+            _maintenanceSetAdminStatus(`取得失敗: ${msg}`, "error");
+            _maintenanceSetOverlayStatus(`メンテ設定取得失敗: ${msg}`, "error");
+          }
+        }
+        _maintenanceRenderAdminForm();
+        _maintenanceRenderOverlay();
+      }
+      function _maintenanceStopPolling(){
+        if (_maintenanceState.pollTimer){
+          clearInterval(_maintenanceState.pollTimer);
+          _maintenanceState.pollTimer = 0;
+        }
+        _maintenanceState.polling = false;
+      }
+      function _maintenanceStartPolling(){
+        if (_maintenanceState.pollTimer) return;
+        if (document.visibilityState === "hidden") return;
+        _maintenanceState.polling = true;
+        _maintenanceState.pollTimer = setInterval(() => {
+          if (document.visibilityState === "hidden") return;
+          _maintenanceCheckNow("poll", { silent: true });
+        }, MAINTENANCE_POLL_MS);
+      }
+      function _maintenanceBindVisibility(){
+        if (_maintenanceState.visibilityBound) return;
+        _maintenanceState.visibilityBound = true;
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "hidden"){
+            _maintenanceStopPolling();
+            return;
+          }
+          _maintenanceCheckNow("visible", { silent: true, force: true });
+          _maintenanceStartPolling();
+        });
+      }
+      async function _maintenanceBootstrap(){
+        await _maintenanceCheckNow("boot", { silent: true, force: true });
+        _maintenanceBindVisibility();
+        _maintenanceStartPolling();
+      }
+      function _maintenanceUpdatedBy(){
+        const uid = String(_adminState.user?.uid || "").trim();
+        const email = String(_adminState.user?.email || "").trim();
+        if (uid && email) return `${uid}:${email}`;
+        if (email) return email;
+        const aid = _authDisplayId(authState.user);
+        return String(aid || "admin");
+      }
+      async function _maintenanceSaveFromAdmin(){
+        if (!_adminState.isAdmin){
+          _maintenanceSetAdminStatus("Adminログインが必要です。", "error");
+          return;
+        }
+        let form;
+        try{
+          form = _maintenanceReadAdminForm();
+        }catch(err){
+          _maintenanceSetAdminStatus(String(err?.message || err), "error");
+          return;
+        }
+        _maintenanceState.saving = true;
+        _maintenanceSetAdminBusy(true);
+        _maintenanceSetAdminStatus("保存中…");
+        showLoading("メンテナンス設定を保存中…");
+        try{
+          const db = _adminGetDb();
+          const payload = {
+            enabled: !!form.enabled,
+            startAt: Number(form.startAt || 0),
+            endAt: Number(form.endAt || 0),
+            title: String(form.title || "メンテナンス中"),
+            message: String(form.message || ""),
+            updatedAt: Date.now(),
+            updatedBy: _maintenanceUpdatedBy()
+          };
+          await db.collection(MAINTENANCE_COLLECTION).doc(MAINTENANCE_DOC_ID).set(payload, { merge: true });
+          _maintenanceState.config = _maintenanceNormalizeConfig(payload);
+          _maintenanceState.loaded = true;
+          _maintenanceState.bypass = false;
+          _maintenanceSetAdminStatus("保存しました。", "ok");
+          uiToast("メンテナンス設定を保存しました");
+          _maintenanceRenderAdminForm();
+          _maintenanceRenderOverlay();
+        }catch(err){
+          _maintenanceSetAdminStatus(`保存失敗: ${String(err?.code || "ERROR")} / ${String(err?.message || err)}`, "error");
+        }finally{
+          _maintenanceState.saving = false;
+          _maintenanceSetAdminBusy(false);
+          hideLoading();
+        }
+      }
+      async function _maintenanceClearExpiredFlagFromAdmin(){
+        if (!_adminState.isAdmin){
+          _maintenanceSetAdminStatus("Adminログインが必要です。", "error");
+          return;
+        }
+        const cfg = _maintenanceNormalizeConfig(_maintenanceState.config || _maintenanceDefaultConfig());
+        if (!cfg.enabled){
+          _maintenanceSetAdminStatus("enabled は既に false です。");
+          return;
+        }
+        if ((Number(cfg.endAt) || 0) > Date.now()){
+          _maintenanceSetAdminStatus("まだ期間中です。終了後に実行してください。", "error");
+          return;
+        }
+        _maintenanceState.saving = true;
+        _maintenanceSetAdminBusy(true);
+        _maintenanceSetAdminStatus("無効化中…");
+        showLoading("メンテナンスを無効化中…");
+        try{
+          const db = _adminGetDb();
+          const payload = {
+            enabled: false,
+            updatedAt: Date.now(),
+            updatedBy: _maintenanceUpdatedBy()
+          };
+          await db.collection(MAINTENANCE_COLLECTION).doc(MAINTENANCE_DOC_ID).set(payload, { merge: true });
+          _maintenanceState.config = _maintenanceNormalizeConfig({ ...cfg, ...payload });
+          _maintenanceState.bypass = false;
+          _maintenanceSetAdminStatus("enabled を false に更新しました。", "ok");
+          uiToast("メンテナンスを無効化しました");
+          _maintenanceRenderAdminForm();
+          _maintenanceRenderOverlay();
+        }catch(err){
+          _maintenanceSetAdminStatus(`無効化失敗: ${String(err?.code || "ERROR")} / ${String(err?.message || err)}`, "error");
+        }finally{
+          _maintenanceState.saving = false;
+          _maintenanceSetAdminBusy(false);
+          hideLoading();
+        }
+      }
+      async function _adminStartLoginFlow(loginBtn, statusFn){
+        const setStatus = (typeof statusFn === "function") ? statusFn : _adminSetStatus;
+        _adminEnsureAuthWatcher();
+        const env = _adminCheckAuthEnvironment();
+        if (!env.ok){
+          setStatus(env.reason, "error");
+          return false;
+        }
+        let auth;
+        try{
+          auth = _adminGetAuth();
+        }catch(err){
+          setStatus(`Firebase初期化エラー: ${String(err?.message || err)}`, "error");
+          return false;
+        }
+        try{
+          if (loginBtn) loginBtn.disabled = true;
+          setStatus("Googleログインを開始しています…");
+          const provider = new window.firebase.auth.GoogleAuthProvider();
+          await auth.signInWithPopup(provider);
+          setStatus("ログインしました。", "ok");
+          return true;
+        }catch(err){
+          const code = String(err?.code || "AUTH_ERROR");
+          const msg = String(err?.message || "");
+          const fallbackCodes = new Set([
+            "auth/popup-blocked",
+            "auth/web-storage-unsupported",
+            "auth/operation-not-supported-in-this-environment"
+          ]);
+          if (fallbackCodes.has(code) && typeof auth.signInWithRedirect === "function"){
+            try{
+              setStatus(`ポップアップ不可のためリダイレクトで再試行します… (${code})`);
+              const provider = new window.firebase.auth.GoogleAuthProvider();
+              await auth.signInWithRedirect(provider);
+              return true;
+            }catch(err2){
+              const code2 = String(err2?.code || "AUTH_ERROR");
+              const msg2 = String(err2?.message || "");
+              setStatus(`ログイン失敗: ${code2} / ${msg2}`, "error");
+              return false;
+            }
+          }
+          setStatus(`ログイン失敗: ${code} / ${msg}`, "error");
+          return false;
+        }finally{
+          if (loginBtn) loginBtn.disabled = false;
+          _adminRenderUI();
+          _maintenanceRenderOverlay();
+        }
+      }
       function _adminGetDb(){
         if (_adminState.db) return _adminState.db;
         _adminState.db = _drawerShareGetDb();
@@ -14255,6 +14924,8 @@ function reviewWrong(){
           titleEl.textContent = _adminState.editorOpen ? "通知管理" : (_settingsTitleMap[_settingsCurrentPage()] || "設定");
         }
         _settingsRefreshSummary();
+        _maintenanceRenderAdminForm();
+        _maintenanceRenderOverlay();
         try{ _appSyncInboxAdminButton(); }catch{}
       }
       function _adminEnsureAuthWatcher(){
@@ -16026,8 +16697,12 @@ function _openSearchResultByIndex(i){
       }
 
       const CHAT_HISTORY_KEY = "app.chat.history.v1";
+      const CHAT_HISTORY_META_KEY = "app.chat.history.meta.v1";
       const CHAT_MEMORY_KEY = "app.chat.memory.v1";
       const CHAT_HISTORY_MAX = 200;
+      const CHAT_REMOTE_HISTORY_MAX = 200;
+      const CHAT_REMOTE_SAVE_DEBOUNCE_MS = 900;
+      const CHAT_REMOTE_COLLECTION = "userChatHistory";
       const CHAT_TYPING_MIN_MS = 400;
       const CHAT_TYPING_MAX_MS = 800;
       const CHAT_TYPE_CHAR_MIN_MS = 20;
@@ -16180,6 +16855,12 @@ function _openSearchResultByIndex(i){
         intentSearchQuery: "",
         lastIntentId: "",
         pinTimer: 0,
+        remoteLoadedForUser: "",
+        remoteLoading: false,
+        remoteSaving: false,
+        remoteDirty: false,
+        remoteSaveTimer: 0,
+        remoteLastErrorAt: 0,
         aiMode: CHAT_AI_MODE_NORMAL,
         quota: { normalUsed: 0, normalLimit: CHAT_AI_MODE_LIMITS.normal, reasonUsed: 0, reasonLimit: CHAT_AI_MODE_LIMITS.reason },
         quotaResetAtMs: 0,
@@ -17078,6 +17759,209 @@ function _openSearchResultByIndex(i){
           return [];
         }
       }
+      function _chatReadHistoryMeta(){
+        try{
+          const raw = localStorage.getItem(CHAT_HISTORY_META_KEY);
+          if (!raw) return { userKey: "", updatedAtMs: 0 };
+          const obj = JSON.parse(raw);
+          return {
+            userKey: String(obj?.userKey || ""),
+            updatedAtMs: Number(obj?.updatedAtMs || 0)
+          };
+        }catch{
+          return { userKey: "", updatedAtMs: 0 };
+        }
+      }
+      function _chatBuildPersistableHistoryList(source){
+        const list = (Array.isArray(source) ? source : [])
+          .filter((m) => m && (m.role === "user" || m.role === "ai"))
+          .slice(-CHAT_REMOTE_HISTORY_MAX)
+          .map((m) => ({
+            ts: Number(m.ts) || Date.now(),
+            role: m.role,
+            text: String(m.text || "").slice(0, 3200),
+            intent: String(m.intent || "").slice(0, 42),
+            aiMeta: m.aiMeta ? _chatSanitizeAiMeta(m.aiMeta) : null
+          }));
+        return list;
+      }
+      function _chatRemoteUserKey(){
+        const user = (authState && typeof authState === "object") ? authState.user : null;
+        if (!user || typeof user !== "object") return "";
+        const id = String(user.id ?? user.userId ?? "").trim();
+        if (id) return `uid:${id}`;
+        const grade = String(user.gradePrefix || "").trim();
+        const nickname = String(user.nickname || "").trim().toLowerCase();
+        if (grade && nickname) return `gn:${grade}-${nickname}`;
+        return "";
+      }
+      function _chatRemoteCanSync(){
+        if (!_chatRemoteUserKey()) return false;
+        if (!window.firebase || typeof window.firebase.firestore !== "function") return false;
+        return true;
+      }
+      function _chatRemoteDocRef(){
+        if (!_chatRemoteCanSync()) return null;
+        const key = _chatRemoteUserKey();
+        if (!key) return null;
+        try{
+          const db = _drawerShareGetDb();
+          return db.collection(CHAT_REMOTE_COLLECTION).doc(key);
+        }catch{
+          return null;
+        }
+      }
+      function _chatRemoteNormalizeList(raw){
+        const parsed = Array.isArray(raw) ? raw : [];
+        const out = [];
+        for (const row of parsed){
+          const role = (row?.role === "user" || row?.role === "ai") ? row.role : "";
+          if (!role) continue;
+          const text = String(row?.text || "").trim();
+          if (!text) continue;
+          const clean = _chatSanitizeHistoryItem({
+            id: _chatMessageId(role),
+            ts: Number(row?.ts) || Date.now(),
+            role,
+            intent: String(row?.intent || "").slice(0, 42),
+            text,
+            aiMeta: _chatSanitizeAiMeta(row?.aiMeta || null)
+          });
+          if (!clean) continue;
+          out.push(clean);
+          if (out.length >= CHAT_REMOTE_HISTORY_MAX) break;
+        }
+        return out.slice(-CHAT_HISTORY_MAX);
+      }
+      function _chatRemoteNotifyError(err, phase){
+        const now = Date.now();
+        if (now - Number(_chatState.remoteLastErrorAt || 0) < 12000) return;
+        _chatState.remoteLastErrorAt = now;
+        const code = String(err?.code || "").trim();
+        const msg = String(err?.message || err || "").trim();
+        const prefix = phase === "load" ? "チャット同期(読込)" : "チャット同期(保存)";
+        if (code === "permission-denied"){
+          uiToast(`${prefix}に失敗しました: 権限設定を確認してください`);
+          return;
+        }
+        if (msg){
+          uiToast(`${prefix}に失敗しました`);
+        }
+      }
+      function _chatRemoteLatestTs(list){
+        let max = 0;
+        for (const item of (Array.isArray(list) ? list : [])){
+          const ts = Number(item?.ts || 0);
+          if (ts > max) max = ts;
+        }
+        return max;
+      }
+      function _chatRemoteQueueSave(reason = "history"){
+        void reason;
+        if (!_chatRemoteCanSync()) return;
+        _chatState.remoteDirty = true;
+        if (_chatState.remoteSaveTimer){
+          clearTimeout(_chatState.remoteSaveTimer);
+          _chatState.remoteSaveTimer = 0;
+        }
+        _chatState.remoteSaveTimer = window.setTimeout(() => {
+          _chatState.remoteSaveTimer = 0;
+          _chatRemoteSaveNow("debounced");
+        }, CHAT_REMOTE_SAVE_DEBOUNCE_MS);
+      }
+      async function _chatRemoteSaveNow(reason = "manual"){
+        void reason;
+        if (!_chatRemoteCanSync()) return;
+        if (_chatState.remoteSaving) return;
+        const ref = _chatRemoteDocRef();
+        if (!ref) return;
+        _chatState.remoteSaving = true;
+        try{
+          const history = _chatBuildPersistableHistoryList(_chatState.history);
+          const userKey = _chatRemoteUserKey();
+          const payload = {
+            schemaVersion: 1,
+            userKey,
+            history,
+            updatedAtMs: Date.now()
+          };
+          const fs = window.firebase?.firestore;
+          if (fs && fs.FieldValue && typeof fs.FieldValue.serverTimestamp === "function"){
+            payload.updatedAt = fs.FieldValue.serverTimestamp();
+          }
+          await ref.set(payload, { merge: true });
+          _chatState.remoteDirty = false;
+          _chatState.remoteLoadedForUser = userKey;
+        }catch(err){
+          console.warn("[ChatSync] save failed:", String(err?.message || err));
+          _chatRemoteNotifyError(err, "save");
+        }finally{
+          _chatState.remoteSaving = false;
+        }
+      }
+      async function _chatRemoteLoadIfNeeded(force = false){
+        if (!_chatRemoteCanSync()) return;
+        const userKey = _chatRemoteUserKey();
+        if (!userKey) return;
+        if (!force && _chatState.remoteLoadedForUser === userKey) return;
+        if (_chatState.remoteLoading) return;
+        _chatState.remoteLoading = true;
+        try{
+          const meta = _chatReadHistoryMeta();
+          const localOwner = String(meta.userKey || "");
+          if (localOwner && localOwner !== userKey){
+            _chatState.history = [];
+            _chatSaveHistory();
+          }
+          const ref = _chatRemoteDocRef();
+          if (!ref){
+            _chatState.remoteLoadedForUser = userKey;
+            return;
+          }
+          const snap = await ref.get();
+          if (!snap || !snap.exists){
+            _chatState.remoteLoadedForUser = userKey;
+            if (_chatState.history.length){
+              _chatRemoteQueueSave("seed-empty-remote");
+            }
+            return;
+          }
+          const body = snap.data() || {};
+          const remoteList = _chatRemoteNormalizeList(body.history);
+          const localList = Array.isArray(_chatState.history) ? _chatState.history : [];
+          const remoteLatest = _chatRemoteLatestTs(remoteList);
+          const localLatest = _chatRemoteLatestTs(localList);
+          const shouldUseRemote = (
+            (remoteList.length && !localList.length) ||
+            (remoteLatest >= localLatest && remoteList.length)
+          );
+          if (shouldUseRemote){
+            _chatState.history = remoteList.slice(-CHAT_HISTORY_MAX);
+            _chatSaveHistory();
+            _chatScheduleKnowledgeBuild("remote-history-load");
+            _appRenderChat({ forceScroll: true });
+          } else if (localList.length){
+            _chatRemoteQueueSave("local-newer");
+          }
+          _chatState.remoteLoadedForUser = userKey;
+        }catch(err){
+          console.warn("[ChatSync] load failed:", String(err?.message || err));
+          _chatRemoteNotifyError(err, "load");
+        }finally{
+          _chatState.remoteLoading = false;
+        }
+      }
+      function _chatOnAuthChanged(){
+        if (typeof _chatState !== "object") return;
+        if (_chatState.remoteSaveTimer){
+          clearTimeout(_chatState.remoteSaveTimer);
+          _chatState.remoteSaveTimer = 0;
+        }
+        _chatState.remoteLoadedForUser = "";
+        if (!_chatRemoteCanSync()) return;
+        _chatEnsureLoaded();
+        _chatRemoteLoadIfNeeded(true);
+      }
       function _chatReadMemory(){
         try{
           const raw = localStorage.getItem(CHAT_MEMORY_KEY);
@@ -17111,18 +17995,14 @@ function _openSearchResultByIndex(i){
       }
       function _chatSaveHistory(){
         try{
-          const list = (Array.isArray(_chatState.history) ? _chatState.history : [])
-            .filter((m) => m && (m.role === "user" || m.role === "ai"))
-            .slice(-CHAT_HISTORY_MAX)
-            .map((m) => ({
-              ts: Number(m.ts) || Date.now(),
-              role: m.role,
-              text: String(m.text || "").slice(0, 3200),
-              intent: String(m.intent || "").slice(0, 42),
-              aiMeta: m.aiMeta ? _chatSanitizeAiMeta(m.aiMeta) : null
-            }));
+          const list = _chatBuildPersistableHistoryList(_chatState.history);
           localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(list));
+          localStorage.setItem(CHAT_HISTORY_META_KEY, JSON.stringify({
+            userKey: _chatRemoteUserKey() || "guest",
+            updatedAtMs: Date.now()
+          }));
         }catch{}
+        _chatRemoteQueueSave("history-save");
       }
       function _chatEnsureLoaded(){
         if (_chatState.loaded) return;
@@ -17136,6 +18016,7 @@ function _openSearchResultByIndex(i){
         _chatScheduleKnowledgeBuild("init");
         _chatRenderModeUi();
         _chatRenderIntentBrowser();
+        _chatRemoteLoadIfNeeded(false);
       }
       function _chatPushHistory(role, text, intent = "", meta = {}){
         _chatEnsureLoaded();
@@ -17180,6 +18061,10 @@ function _openSearchResultByIndex(i){
         if (_chatState.intentSearchDebounce){
           clearTimeout(_chatState.intentSearchDebounce);
           _chatState.intentSearchDebounce = 0;
+        }
+        if (_chatState.remoteSaveTimer){
+          clearTimeout(_chatState.remoteSaveTimer);
+          _chatState.remoteSaveTimer = 0;
         }
         if (_chatState.rafId){
           cancelAnimationFrame(_chatState.rafId);
@@ -17281,6 +18166,11 @@ function _openSearchResultByIndex(i){
             _chatForceLatestPosition();
           }
         }, { passive: true });
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "hidden"){
+            _chatRemoteSaveNow("visibility-hidden");
+          }
+        });
         el.appChatComposer?.addEventListener("submit", (e) => {
           e.preventDefault();
           const submitterId = String(e?.submitter?.id || "");
@@ -19268,6 +20158,11 @@ function _openSearchResultByIndex(i){
           _appRenderInsightsCards();
           return;
         }
+        if (t.id === "adminMaintenanceEnabled" || t.id === "adminMaintenanceStartAt" || t.id === "adminMaintenanceEndAt"){
+          _maintenanceSetAdminStatus("");
+          _maintenanceRenderAdminPreview();
+          return;
+        }
         if (t.id === "appLibrarySubjectFilter"){
           _appLibraryFilter.subjectId = String(t.value || "ALL");
           _appRenderLibrary();
@@ -19276,6 +20171,11 @@ function _openSearchResultByIndex(i){
       document.addEventListener("input", (e) => {
         const t = e.target;
         if (!(t instanceof HTMLElement)) return;
+        if (t.id === "adminMaintenanceTitle" || t.id === "adminMaintenanceMessage"){
+          _maintenanceSetAdminStatus("");
+          _maintenanceRenderAdminPreview();
+          return;
+        }
         if (t.id === "appLibrarySearchInput"){
           _appLibraryFilter.query = String(t.value || "");
           _appRenderLibrary();
@@ -19419,6 +20319,9 @@ function _openSearchResultByIndex(i){
           const page = settingsNavBtn.getAttribute("data-settings-nav") || "root";
           _settingsPushPage(page);
           _settingsSyncControls();
+          if (page === "admin"){
+            _maintenanceCheckNow("admin-open", { silent: true, force: true });
+          }
           return;
         }
 
@@ -19485,6 +20388,46 @@ function _openSearchResultByIndex(i){
           uiToast("ヘルプ編集は準備中です");
           return;
         }
+        const maintenanceSaveBtn = e.target.closest("#adminMaintenanceSaveBtn");
+        if (maintenanceSaveBtn){
+          e.preventDefault();
+          _maintenanceSaveFromAdmin();
+          return;
+        }
+        const maintenanceClearExpiredBtn = e.target.closest("#adminMaintenanceClearExpiredBtn");
+        if (maintenanceClearExpiredBtn){
+          e.preventDefault();
+          _maintenanceClearExpiredFlagFromAdmin();
+          return;
+        }
+        const maintenanceReloadBtn = e.target.closest("#maintenanceReloadBtn");
+        if (maintenanceReloadBtn){
+          e.preventDefault();
+          location.reload();
+          return;
+        }
+        const maintenanceBypassBtn = e.target.closest("#maintenanceBypassBtn");
+        if (maintenanceBypassBtn){
+          e.preventDefault();
+          if (!_maintenanceCanBypass()){
+            _maintenanceSetOverlayStatus("管理者権限が必要です。", "error");
+            return;
+          }
+          _maintenanceState.bypass = true;
+          _maintenanceSetOverlayStatus("管理者として続行します。", "ok");
+          _maintenanceRenderOverlay();
+          return;
+        }
+        const maintenanceAdminLoginBtn = e.target.closest("#maintenanceAdminLoginBtn");
+        if (maintenanceAdminLoginBtn){
+          e.preventDefault();
+          await _adminStartLoginFlow(null, _maintenanceSetOverlayStatus);
+          if (_maintenanceCanBypass()){
+            _maintenanceSetOverlayStatus("管理者ログインを確認しました。", "ok");
+            _maintenanceRenderOverlay();
+          }
+          return;
+        }
 
         const backupCreateBtn = e.target.closest("#backupCreateNowBtn");
         if (backupCreateBtn){
@@ -19542,51 +20485,7 @@ function _openSearchResultByIndex(i){
         const loginBtn = e.target.closest("#adminLoginBtn");
         if (loginBtn){
           e.preventDefault();
-          _adminEnsureAuthWatcher();
-          const env = _adminCheckAuthEnvironment();
-          if (!env.ok){
-            _adminSetStatus(env.reason, "error");
-            return;
-          }
-          let auth;
-          try{
-            auth = _adminGetAuth();
-          }catch(err){
-            _adminSetStatus(`Firebase初期化エラー: ${String(err?.message || err)}`, "error");
-            return;
-          }
-          try{
-            loginBtn.disabled = true;
-            _adminSetStatus("Googleログインを開始しています…");
-            const provider = new window.firebase.auth.GoogleAuthProvider();
-            await auth.signInWithPopup(provider);
-            _adminSetStatus("ログインしました。", "ok");
-          }catch(err){
-            const code = String(err?.code || "AUTH_ERROR");
-            const msg = String(err?.message || "");
-            const fallbackCodes = new Set([
-              "auth/popup-blocked",
-              "auth/web-storage-unsupported",
-              "auth/operation-not-supported-in-this-environment"
-            ]);
-            if (fallbackCodes.has(code) && typeof auth.signInWithRedirect === "function"){
-              try{
-                _adminSetStatus(`ポップアップ不可のためリダイレクトで再試行します… (${code})`);
-                const provider = new window.firebase.auth.GoogleAuthProvider();
-                await auth.signInWithRedirect(provider);
-                return;
-              }catch(err2){
-                const code2 = String(err2?.code || "AUTH_ERROR");
-                const msg2 = String(err2?.message || "");
-                _adminSetStatus(`ログイン失敗: ${code2} / ${msg2}`, "error");
-              }
-            } else {
-              _adminSetStatus(`ログイン失敗: ${code} / ${msg}`, "error");
-            }
-          }finally{
-            loginBtn.disabled = false;
-            _adminRenderUI();
-          }
+          await _adminStartLoginFlow(loginBtn, _adminSetStatus);
           return;
         }
 
