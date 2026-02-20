@@ -17081,6 +17081,8 @@ function _openSearchResultByIndex(i){
         remoteDirty: false,
         remoteSaveTimer: 0,
         remoteLastErrorAt: 0,
+        remoteDisabled: false,
+        remoteDisabledReason: "",
         aiMode: CHAT_AI_MODE_NORMAL,
         quota: { normalUsed: 0, normalLimit: CHAT_AI_MODE_LIMITS.normal, reasonUsed: 0, reasonLimit: CHAT_AI_MODE_LIMITS.reason },
         quotaResetAtMs: 0,
@@ -18029,6 +18031,7 @@ function _openSearchResultByIndex(i){
         return "";
       }
       function _chatRemoteCanSync(){
+        if (_chatState.remoteDisabled) return false;
         if (!_chatRemoteUserKey()) return false;
         if (!window.firebase || typeof window.firebase.firestore !== "function") return false;
         return true;
@@ -18073,12 +18076,36 @@ function _openSearchResultByIndex(i){
         const code = String(err?.code || "").trim();
         const msg = String(err?.message || err || "").trim();
         const prefix = phase === "load" ? "チャット同期(読込)" : "チャット同期(保存)";
-        if (code === "permission-denied"){
-          uiToast(`${prefix}に失敗しました: 権限設定を確認してください`);
+        const permDenied = (code === "permission-denied" || /insufficient permissions|permission[- ]denied/i.test(msg));
+        if (permDenied){
+          _chatState.remoteDisabled = true;
+          _chatState.remoteDisabledReason = code || "permission-denied";
+          if (_chatState.remoteSaveTimer){
+            clearTimeout(_chatState.remoteSaveTimer);
+            _chatState.remoteSaveTimer = 0;
+          }
+          _chatState.remoteDirty = false;
+          uiToast("チャット同期は権限不足のため停止しました（この端末の保存は継続）");
           return;
         }
         if (msg){
           uiToast(`${prefix}に失敗しました`);
+        }
+      }
+      function _chatApiAllowsAuthHeader(url){
+        try{
+          const u = new URL(String(url || ""), location.href);
+          const origin = String(u.origin || "").toLowerCase();
+          const here = String(location.origin || "").toLowerCase();
+          // クロスオリジンのAI呼び出しでは Authorization を付けない。
+          // これにより preflight で Access-Control-Allow-Headers 不一致を回避する。
+          if (origin && here && origin !== here) return false;
+          const host = String(u.host || "").toLowerCase();
+          // chataivocabuquiz は現在 Authorization を許可していないため送らない
+          if (host === "chataivocabuquiz.rintyblog.workers.dev") return false;
+          return true;
+        }catch{
+          return false;
         }
       }
       function _chatRemoteLatestTs(list){
@@ -18190,6 +18217,8 @@ function _openSearchResultByIndex(i){
           clearTimeout(_chatState.remoteSaveTimer);
           _chatState.remoteSaveTimer = 0;
         }
+        _chatState.remoteDisabled = false;
+        _chatState.remoteDisabledReason = "";
         _chatState.remoteLoadedForUser = "";
         if (!_chatRemoteCanSync()) return;
         _chatEnsureLoaded();
@@ -18952,14 +18981,26 @@ function _openSearchResultByIndex(i){
         };
         const headers = { "Content-Type": "application/json" };
         const authToken = (typeof _authGetToken === "function") ? String(_authGetToken() || "").trim() : "";
-        if (authToken){
+        if (authToken && _chatApiAllowsAuthHeader(CHAT_AI_API_URL)){
           headers.Authorization = `Bearer ${authToken}`;
         }
-        const res = await fetch(CHAT_AI_API_URL, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload)
-        });
+        let res;
+        try{
+          res = await fetch(CHAT_AI_API_URL, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload)
+          });
+        }catch(err){
+          const canRetryNoAuth = !!headers.Authorization;
+          if (!canRetryNoAuth) throw err;
+          const fallbackHeaders = { "Content-Type": "application/json" };
+          res = await fetch(CHAT_AI_API_URL, {
+            method: "POST",
+            headers: fallbackHeaders,
+            body: JSON.stringify(payload)
+          });
+        }
         const raw = await res.text();
         let body = null;
         try{
