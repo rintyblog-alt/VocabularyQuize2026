@@ -8267,6 +8267,23 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
               </div>
               <div id="adminMaintenanceStatus" class="drawer-share-status" aria-live="polite"></div>
               <div id="adminMaintenancePreview" class="maintenance-admin-preview" aria-live="polite"></div>
+              <div class="settings-section-title">AI知識（RAG）</div>
+              <div id="adminAiIngestLockedNote" class="note">RAG登録はAdminログイン後に可能です。</div>
+              <div class="settings-group hidden" id="adminAiIngestGroup">
+                <label class="settings-row is-static" for="adminAiIngestKey">
+                  <span class="label">Admin Key</span>
+                  <input class="spell-input" id="adminAiIngestKey" type="password" autocomplete="off" placeholder="env.ADMIN_KEY" />
+                </label>
+                <label class="settings-row is-static" for="adminAiIngestJson">
+                  <span class="label">登録JSON</span>
+                  <textarea class="spell-input" id="adminAiIngestJson" rows="8" placeholder='{\"docs\":[{\"id\":\"help-001\",\"title\":\"共有機能\",\"tags\":[\"share\",\"qr\"],\"text\":\"本文...\",\"updatedAt\":1730000000000}]}'></textarea>
+                </label>
+                <button class="settings-row" id="adminAiIngestBtn" type="button">
+                  <span class="label">RAG登録</span>
+                  <span class="value">実行</span>
+                </button>
+              </div>
+              <div id="adminAiIngestStatus" class="drawer-share-status" aria-live="polite"></div>
             </section>
           </div>
 
@@ -10832,39 +10849,93 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
         hideLoading();
       };
 
-      function _authApiBase(){
-        return _shareApiBase();
+      function _authApiBaseCandidates(){
+        const list = [
+          String(AUTH_API_BASE || "").trim(),
+          String(AUTH_API_FALLBACK_BASE || "").trim()
+        ].map((v) => String(v || "").trim().replace(/\/+$/, ""))
+         .filter((v) => /^https?:\/\//i.test(v));
+        const out = [];
+        const seen = new Set();
+        for (const b of list){
+          if (seen.has(b)) continue;
+          seen.add(b);
+          out.push(b);
+        }
+        return out;
       }
-      function _authApiUrl(path){
+      function _authApiUrl(base, path){
+        const b = String(base || "").trim().replace(/\/+$/, "");
         const p = String(path || "");
         const pathPart = p.startsWith("/") ? p : `/${p}`;
-        return `${_authApiBase()}${pathPart}`;
+        return `${b}${pathPart}`;
       }
       async function _authFetch(path, opts = {}){
         showLoading(opts.loadingText || "認証処理中…");
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), AUTH_API_TIMEOUT_MS);
+        const bases = _authApiBaseCandidates();
+        if (!bases.length){
+          hideLoading();
+          throw new Error("認証APIの接続先が未設定です。");
+        }
+        let lastErr = null;
         try{
-          const headers = Object.assign(
-            { "Content-Type": "application/json" },
-            opts.headers || {}
-          );
-          const req = Object.assign({}, opts, { headers, signal: ctrl.signal });
-          const res = await fetch(_authApiUrl(path), req);
-          const txt = await res.text();
-          let body = null;
-          try{ body = txt ? JSON.parse(txt) : null; }catch{ body = null; }
-          if (!res.ok){
-            const msg = String(body?.message || body?.error || `${res.status} ${res.statusText}`);
-            const err = new Error(msg);
-            err.code = String(body?.code || `HTTP_${res.status}`);
-            err.status = Number(res.status || 0);
-            err.data = body || null;
-            throw err;
+          const headers = Object.assign({}, opts.headers || {});
+          const hasBody = Object.prototype.hasOwnProperty.call(opts, "body") && opts.body != null;
+          const hasContentType = Object.keys(headers).some((k) => String(k || "").toLowerCase() === "content-type");
+          if (hasBody && !hasContentType){
+            headers["Content-Type"] = "application/json";
           }
-          return body || {};
+          for (let i = 0; i < bases.length; i += 1){
+            const base = bases[i];
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), AUTH_API_TIMEOUT_MS);
+            try{
+              const req = Object.assign({}, opts, { headers, signal: ctrl.signal });
+              const res = await fetch(_authApiUrl(base, path), req);
+              const txt = await res.text();
+              let body = null;
+              try{ body = txt ? JSON.parse(txt) : null; }catch{ body = null; }
+              if (!res.ok){
+                const msg = String(body?.message || body?.error || `${res.status} ${res.statusText}`);
+                const err = new Error(msg);
+                err.code = String(body?.code || `HTTP_${res.status}`);
+                err.status = Number(res.status || 0);
+                err.data = body || null;
+                const retryable = (res.status >= 500 || res.status === 404);
+                if (retryable && i < bases.length - 1){
+                  console.warn("[AUTH] retry with fallback base", { base, path, status: res.status });
+                  lastErr = err;
+                  continue;
+                }
+                throw err;
+              }
+              return body || {};
+            } catch (err){
+              const isAbort = String(err?.name || "").toLowerCase() === "aborterror";
+              const status = Number(err?.status || 0);
+              const isNetwork = String(err?.message || "").toLowerCase().includes("failed to fetch")
+                || String(err?.message || "").toLowerCase().includes("networkerror");
+              const retryable = isAbort || isNetwork || status >= 500 || status === 404 || status === 0;
+              if (retryable && i < bases.length - 1){
+                console.warn("[AUTH] network/server error, fallback next", { base, path, status, message: String(err?.message || err) });
+                lastErr = err;
+                continue;
+              }
+              if (isNetwork && i >= bases.length - 1){
+                const e = new Error("認証APIに接続できませんでした。CORS設定またはネットワークを確認してください。");
+                e.code = "AUTH_NETWORK_OR_CORS";
+                e.status = 0;
+                e.data = null;
+                throw e;
+              }
+              throw err;
+            } finally {
+              clearTimeout(timer);
+            }
+          }
+          if (lastErr) throw lastErr;
+          throw new Error("認証APIへの接続に失敗しました。");
         } finally {
-          clearTimeout(timer);
           hideLoading();
         }
       }
@@ -11354,8 +11425,14 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
           await _authTransitionToHome();
           uiToast("登録しました");
         }catch(err){
+          const status = Number(err?.status || 0);
+          const code = String(err?.code || "");
+          const rawMsg = String(err?.message || err || "不明なエラー");
+          const msg = (status >= 500 || /duration/i.test(rawMsg))
+            ? "サーバーエラーが発生しました。時間をおいて再試行してください。"
+            : rawMsg;
           _authShowPanel("register");
-          _authSetStatus(el.authRegisterStatus, `登録失敗: ${String(err?.message || err)}`, "error");
+          _authSetStatus(el.authRegisterStatus, `登録失敗: ${code ? `${code} / ` : ""}${msg}`, "error");
         }finally{
           authState.tosSubmitting = false;
           _authUpdateTosSubmitState();
@@ -11399,7 +11476,13 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
           await _authTransitionToHome();
           uiToast("ログインしました");
         }catch(err){
-          _authSetStatus(el.authLoginStatus, `ログイン失敗: ${String(err?.message || err)}`, "error");
+          const status = Number(err?.status || 0);
+          const code = String(err?.code || "");
+          const rawMsg = String(err?.message || err || "不明なエラー");
+          const msg = (status >= 500 || /duration/i.test(rawMsg))
+            ? "サーバーエラーが発生しました。時間をおいて再試行してください。"
+            : rawMsg;
+          _authSetStatus(el.authLoginStatus, `ログイン失敗: ${code ? `${code} / ` : ""}${msg}`, "error");
         }finally{
           if (el.authLoginSubmitBtn) el.authLoginSubmitBtn.disabled = false;
         }
@@ -14217,7 +14300,8 @@ function reviewWrong(){
         isAdmin: false,
         editorOpen: false,
         notifItems: [],
-        loading: false
+        loading: false,
+        aiIngestBusy: false
       };
       const MAINTENANCE_COLLECTION = "appConfig";
       const MAINTENANCE_DOC_ID = "maintenance";
@@ -14394,6 +14478,27 @@ function reviewWrong(){
         elx.classList.remove("ok", "error");
         if (kind === "ok") elx.classList.add("ok");
         if (kind === "error") elx.classList.add("error");
+      }
+      function _adminSetAiIngestStatus(msg, kind){
+        const elx = document.getElementById("adminAiIngestStatus");
+        if (!elx){
+          if (msg) uiToast(String(msg));
+          return;
+        }
+        elx.textContent = String(msg || "");
+        elx.classList.remove("ok", "error");
+        if (kind === "ok") elx.classList.add("ok");
+        if (kind === "error") elx.classList.add("error");
+      }
+      function _adminSetAiIngestBusy(busy){
+        const on = !!busy;
+        _adminState.aiIngestBusy = on;
+        const ids = ["adminAiIngestKey", "adminAiIngestJson", "adminAiIngestBtn"];
+        for (const id of ids){
+          const node = document.getElementById(id);
+          if (!node) continue;
+          node.disabled = on || !_adminState.isAdmin;
+        }
       }
       function _adminUserIsAdmin(user){
         const email = String(user?.email || "").trim().toLowerCase();
@@ -14945,6 +15050,8 @@ function reviewWrong(){
         const maintenanceGroup = document.getElementById("adminMaintenanceGroup");
         const maintenanceLockedNote = document.getElementById("adminMaintenanceLockedNote");
         const maintenancePreview = document.getElementById("adminMaintenancePreview");
+        const aiIngestGroup = document.getElementById("adminAiIngestGroup");
+        const aiIngestLockedNote = document.getElementById("adminAiIngestLockedNote");
         const mainPane = document.getElementById("settingsMainPane");
         const editorPane = document.getElementById("adminNotifEditor");
         const titleEl = document.getElementById("settingsNavTitle");
@@ -14962,6 +15069,9 @@ function reviewWrong(){
         if (maintenanceGroup) maintenanceGroup.classList.toggle("hidden", !_adminState.isAdmin);
         if (maintenanceLockedNote) maintenanceLockedNote.classList.toggle("hidden", !!_adminState.isAdmin);
         if (maintenancePreview) maintenancePreview.classList.toggle("hidden", !_adminState.isAdmin);
+        if (aiIngestGroup) aiIngestGroup.classList.toggle("hidden", !_adminState.isAdmin);
+        if (aiIngestLockedNote) aiIngestLockedNote.classList.toggle("hidden", !!_adminState.isAdmin);
+        _adminSetAiIngestBusy(_adminState.aiIngestBusy);
         if (!_adminState.isAdmin && _adminState.editorOpen){
           _adminState.editorOpen = false;
         }
@@ -15011,6 +15121,67 @@ function reviewWrong(){
         }
         _adminRenderUI();
         return true;
+      }
+      async function _adminIngestRagDocs(){
+        if (!_adminState.isAdmin){
+          _adminSetAiIngestStatus("Adminログインが必要です。", "error");
+          return;
+        }
+        const keyEl = document.getElementById("adminAiIngestKey");
+        const jsonEl = document.getElementById("adminAiIngestJson");
+        const adminKey = String(keyEl?.value || "").trim();
+        const raw = String(jsonEl?.value || "").trim();
+        if (!adminKey){
+          _adminSetAiIngestStatus("Admin Key を入力してください。", "error");
+          return;
+        }
+        if (!raw){
+          _adminSetAiIngestStatus("登録JSONを入力してください。", "error");
+          return;
+        }
+        let parsed;
+        try{
+          parsed = JSON.parse(raw);
+        }catch(err){
+          _adminSetAiIngestStatus(`JSON解析失敗: ${String(err?.message || err)}`, "error");
+          return;
+        }
+        const docs = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.docs) ? parsed.docs : []);
+        if (!docs.length){
+          _adminSetAiIngestStatus("docs が空です。", "error");
+          return;
+        }
+        _adminSetAiIngestBusy(true);
+        _adminSetAiIngestStatus("RAG登録中…");
+        showLoading("RAG登録中…");
+        try{
+          const headers = { "Content-Type": "application/json" };
+          const authToken = (typeof _authGetToken === "function") ? String(_authGetToken() || "").trim() : "";
+          if (authToken){
+            headers.Authorization = `Bearer ${authToken}`;
+          }
+          const res = await fetch(CHAT_AI_INGEST_URL, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ adminKey, docs })
+          });
+          const txt = await res.text();
+          let body = null;
+          try{ body = txt ? JSON.parse(txt) : {}; }catch{ body = {}; }
+          if (!res.ok){
+            _adminSetAiIngestStatus(`登録失敗: ${String(body?.code || res.status)} / ${String(body?.message || txt || "")}`, "error");
+            return;
+          }
+          const inserted = Math.max(0, Number(body?.inserted || 0));
+          const chunks = Math.max(0, Number(body?.chunks || inserted));
+          _adminSetAiIngestStatus(`登録完了: ${inserted}件（${chunks}チャンク）`, "ok");
+          uiToast(`RAG登録完了: ${inserted}件`);
+        }catch(err){
+          _adminSetAiIngestStatus(`登録失敗: ${String(err?.message || err)}`, "error");
+        }finally{
+          _adminSetAiIngestBusy(false);
+          hideLoading();
+        }
       }
       function _adminClearNotifForm(){
         const idEl = document.getElementById("adminNotifDocId");
@@ -16993,7 +17164,8 @@ function _openSearchResultByIndex(i){
         }catch{}
       }
       function _chatNormalizeAiMode(raw){
-        return String(raw || "").trim().toLowerCase() === CHAT_AI_MODE_REASON
+        const v = String(raw || "").trim().toLowerCase();
+        return (v === CHAT_AI_MODE_REASON || v === "reasoning" || v === "deep")
           ? CHAT_AI_MODE_REASON
           : CHAT_AI_MODE_NORMAL;
       }
@@ -17066,14 +17238,13 @@ function _openSearchResultByIndex(i){
         }catch{}
       }
       function _chatSyncQuotaFromLocal(){
-        const q = _chatReadLocalQuota();
         _chatState.quota = {
-          normalUsed: Math.max(0, Number(q.normalUsed || 0)),
+          normalUsed: 0,
           normalLimit: CHAT_AI_MODE_LIMITS.normal,
-          reasonUsed: Math.max(0, Number(q.reasonUsed || 0)),
+          reasonUsed: 0,
           reasonLimit: CHAT_AI_MODE_LIMITS.reason
         };
-        _chatState.quotaResetAtMs = Number(q.resetAtMs || 0);
+        _chatState.quotaResetAtMs = _chatNextJstResetMs(Date.now());
       }
       function _chatIsAdminUnlimitedUser(){
         try{
@@ -17100,9 +17271,15 @@ function _openSearchResultByIndex(i){
             adminBypass: true
           };
         }
-        const q = _chatReadLocalQuota();
-        const limitToday = m === CHAT_AI_MODE_REASON ? CHAT_AI_MODE_LIMITS.reason : CHAT_AI_MODE_LIMITS.normal;
-        const used = m === CHAT_AI_MODE_REASON ? q.reasonUsed : q.normalUsed;
+        const q = (_chatState && typeof _chatState === "object" && _chatState.quota && typeof _chatState.quota === "object")
+          ? _chatState.quota
+          : { normalUsed: 0, normalLimit: CHAT_AI_MODE_LIMITS.normal, reasonUsed: 0, reasonLimit: CHAT_AI_MODE_LIMITS.reason };
+        const limitToday = m === CHAT_AI_MODE_REASON
+          ? Math.max(1, Number(q.reasonLimit || CHAT_AI_MODE_LIMITS.reason))
+          : Math.max(1, Number(q.normalLimit || CHAT_AI_MODE_LIMITS.normal));
+        const used = m === CHAT_AI_MODE_REASON
+          ? Math.max(0, Number(q.reasonUsed || 0))
+          : Math.max(0, Number(q.normalUsed || 0));
         const remainingToday = Math.max(0, limitToday - used);
         return {
           allowed: remainingToday > 0,
@@ -17110,20 +17287,33 @@ function _openSearchResultByIndex(i){
           used,
           limitToday,
           remainingToday,
-          resetAtMs: Number(q.resetAtMs || _chatNextJstResetMs(Date.now()))
+          resetAtMs: Number(_chatState.quotaResetAtMs || _chatNextJstResetMs(Date.now()))
         };
       }
       function _chatConsumeLocalQuota(mode){
         const m = _chatNormalizeAiMode(mode);
-        const q = _chatReadLocalQuota();
-        if (m === CHAT_AI_MODE_REASON){
-          q.reasonUsed = Math.max(0, Number(q.reasonUsed || 0)) + 1;
-        } else {
-          q.normalUsed = Math.max(0, Number(q.normalUsed || 0)) + 1;
-        }
-        q.resetAtMs = Number(q.resetAtMs || _chatNextJstResetMs(Date.now())) || _chatNextJstResetMs(Date.now());
-        _chatWriteLocalQuota(q);
-        _chatSyncQuotaFromLocal();
+        const q = {
+          normalUsed: Math.max(0, Number(_chatState?.quota?.normalUsed || 0)),
+          normalLimit: Math.max(1, Number(_chatState?.quota?.normalLimit || CHAT_AI_MODE_LIMITS.normal)),
+          reasonUsed: Math.max(0, Number(_chatState?.quota?.reasonUsed || 0)),
+          reasonLimit: Math.max(1, Number(_chatState?.quota?.reasonLimit || CHAT_AI_MODE_LIMITS.reason)),
+          resetAtMs: Number(_chatState?.quotaResetAtMs || _chatNextJstResetMs(Date.now())) || _chatNextJstResetMs(Date.now())
+        };
+        if (m === CHAT_AI_MODE_REASON) q.reasonUsed += 1;
+        else q.normalUsed += 1;
+        _chatState.quota = {
+          normalUsed: q.normalUsed,
+          normalLimit: q.normalLimit,
+          reasonUsed: q.reasonUsed,
+          reasonLimit: q.reasonLimit
+        };
+        _chatState.quotaResetAtMs = q.resetAtMs;
+        _chatWriteLocalQuota({
+          day: _chatJstYmd(Date.now()),
+          normalUsed: q.normalUsed,
+          reasonUsed: q.reasonUsed,
+          resetAtMs: q.resetAtMs
+        });
         const limitToday = m === CHAT_AI_MODE_REASON ? CHAT_AI_MODE_LIMITS.reason : CHAT_AI_MODE_LIMITS.normal;
         const used = m === CHAT_AI_MODE_REASON ? q.reasonUsed : q.normalUsed;
         return {
@@ -17293,12 +17483,6 @@ function _openSearchResultByIndex(i){
         };
         _chatState.quota = next;
         _chatState.quotaResetAtMs = Number(meta?.resetAtMs || _chatState.quotaResetAtMs || _chatNextJstResetMs(Date.now()));
-        _chatWriteLocalQuota({
-          day: _chatJstYmd(Date.now()),
-          normalUsed: next.normalUsed,
-          reasonUsed: next.reasonUsed,
-          resetAtMs: _chatState.quotaResetAtMs
-        });
         _chatRenderModeUi();
       }
       function _chatBuildIntentIndexIfNeeded(force = false){
@@ -18715,33 +18899,65 @@ function _openSearchResultByIndex(i){
         actions.push({ type: "openInsights", label: "Insightsを開く" });
         return actions.slice(0, 3);
       }
+      function _chatMapWorkerAction(actionRaw, stats){
+        const a = (actionRaw && typeof actionRaw === "object") ? actionRaw : {};
+        const key = String(a.action || a.type || "").trim().toLowerCase();
+        const label = String(a.label || "").trim();
+        const weakIds = Array.isArray(stats?.weakIds) ? stats.weakIds.slice(0, 20) : [];
+        if (key === "insight_recent" || key === "open_insights"){
+          return { type: "openInsights", label: label || "最近の動向を見る" };
+        }
+        if (key === "start_weak_top" || key === "start_exam_weak"){
+          return { type: "startExamWeak", label: label || "苦手TOPでEXAM開始", ids: weakIds };
+        }
+        if (key === "start_weak_write" || key === "start_write_weak"){
+          return { type: "startWriteWeak", label: label || "WRITEで復習開始", ids: weakIds };
+        }
+        if (key === "share_help" || key === "open_share"){
+          return { type: "openShare", label: label || "共有の使い方を開く" };
+        }
+        if (key === "open_inbox"){
+          return { type: "openInbox", label: label || "通知を開く" };
+        }
+        if (key === "open_settings"){
+          return { type: "openSettings", label: label || "設定を開く" };
+        }
+        if (key === "ask" || key === "ask_prompt"){
+          const prompt = String(a.prompt || "").trim();
+          if (!prompt) return null;
+          return { type: "askPrompt", label: label || "この内容で質問", prompt };
+        }
+        return null;
+      }
       async function _chatRequestWorkerAi(job, selectedIntent, cls){
         const stats = _chatBuildStats();
         const knowledge = _chatSearchKnowledge(job.text, String(selectedIntent?.title || cls.intent || ""), CHAT_RAG_TOPK);
         const mode = _chatNormalizeAiMode(_chatState.aiMode);
-        const gate = _chatLocalQuotaGate(mode);
-        if (!gate.allowed){
-          const err = new Error(`本日の利用上限です（解除: ${_chatFmtJstReset(gate.resetAtMs)}）`);
-          err.code = "QUOTA_EXCEEDED";
-          err.status = 429;
-          err.data = {
-            usage: {
-              remainingToday: 0,
-              limitToday: gate.limitToday,
-              resetAtMs: gate.resetAtMs
-            }
-          };
-          throw err;
-        }
+        const refs = _chatBuildApiRefs(knowledge);
+        const presetInfo = _appCurrentPresetInfo();
+        const insightFilter = (typeof _appGetInsightsFilterState === "function") ? _appGetInsightsFilterState() : null;
         const payload = {
           mode,
           text: String(job.text || "").trim(),
           message: String(job.text || "").trim(),
-          messages: _chatBuildApiMessages(job.text)
+          messages: _chatBuildApiMessages(job.text),
+          context: {
+            presetId: String(presetInfo?.id || ""),
+            selectedRange: String(insightFilter?.range || "ALL"),
+            app: "VocabuQuiz",
+            version: String(APP_VERSION || "v26"),
+            insightsSummary: _chatBuildInsightsSummaryForApi(stats),
+            refs
+          }
         };
+        const headers = { "Content-Type": "application/json" };
+        const authToken = (typeof _authGetToken === "function") ? String(_authGetToken() || "").trim() : "";
+        if (authToken){
+          headers.Authorization = `Bearer ${authToken}`;
+        }
         const res = await fetch(CHAT_AI_API_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(payload)
         });
         const raw = await res.text();
@@ -18771,46 +18987,47 @@ function _openSearchResultByIndex(i){
         const rawMeta = (body?.meta && typeof body.meta === "object") ? body.meta : {};
         const usage = (body?.usage && typeof body.usage === "object") ? body.usage : {};
         const modeResolved = _chatNormalizeAiMode(rawMeta.mode || mode);
-        let limitToday = Math.max(1, Number(usage.limitToday || (modeResolved === CHAT_AI_MODE_REASON ? 2 : 5)));
-        let remainingToday = Math.max(0, Number(usage.remainingToday || 0));
-        let usedToday = Math.max(0, limitToday - remainingToday);
-        let resetAtMs = Number(usage.resetAtMs || _chatState.quotaResetAtMs || _chatNextJstResetMs(Date.now()));
-        if (!(Number(usage.limitToday) > 0)){
-          const consumed = _chatConsumeLocalQuota(modeResolved);
-          limitToday = consumed.limitToday;
-          remainingToday = consumed.remainingToday;
-          usedToday = consumed.used;
-          resetAtMs = consumed.resetAtMs;
-        }
+        const normalLimit = Math.max(1, Number(rawMeta?.quota?.normalLimit || CHAT_AI_MODE_LIMITS.normal));
+        const reasonLimit = Math.max(1, Number(rawMeta?.quota?.reasonLimit || CHAT_AI_MODE_LIMITS.reason));
+        const remNormalRaw = Number(usage.remainingNormal);
+        const remReasonRaw = Number(usage.remainingReasoning);
+        const remainingNormal = Number.isFinite(remNormalRaw) ? Math.max(0, remNormalRaw) : null;
+        const remainingReasoning = Number.isFinite(remReasonRaw) ? Math.max(0, remReasonRaw) : null;
+        const resetAtMs = Number(usage.resetAtMs || rawMeta.resetAtMs || _chatState.quotaResetAtMs || _chatNextJstResetMs(Date.now()));
         const quotaNext = {
-          normalUsed: Math.max(0, Number(_chatState.quota?.normalUsed || 0)),
-          normalLimit: Math.max(1, Number(_chatState.quota?.normalLimit || CHAT_AI_MODE_LIMITS.normal)),
-          reasonUsed: Math.max(0, Number(_chatState.quota?.reasonUsed || 0)),
-          reasonLimit: Math.max(1, Number(_chatState.quota?.reasonLimit || CHAT_AI_MODE_LIMITS.reason))
+          normalUsed: remainingNormal == null ? Math.max(0, Number(_chatState.quota?.normalUsed || 0)) : Math.max(0, normalLimit - remainingNormal),
+          normalLimit,
+          reasonUsed: remainingReasoning == null ? Math.max(0, Number(_chatState.quota?.reasonUsed || 0)) : Math.max(0, reasonLimit - remainingReasoning),
+          reasonLimit
         };
-        if (modeResolved === CHAT_AI_MODE_REASON){
-          quotaNext.reasonUsed = usedToday;
-          quotaNext.reasonLimit = limitToday;
-        } else {
-          quotaNext.normalUsed = usedToday;
-          quotaNext.normalLimit = limitToday;
-        }
         const meta = {
           ...rawMeta,
           mode: modeResolved,
           quota: quotaNext,
           resetAtMs
         };
-        const sources = knowledge.map((row) => ({
-          label: String(row?.label || "参照"),
+        const citations = Array.isArray(body?.citations) ? body.citations : [];
+        const sources = citations.map((row) => ({
+          label: String(row?.docId || "RAG").slice(0, 80),
           title: String(row?.title || "").slice(0, 100),
-          snippet: String(row?.snippet || "").slice(0, 160)
-        })).filter((x) => x.title).slice(0, CHAT_RAG_TOPK);
+          snippet: String(row?.snippet || "").slice(0, 180)
+        })).filter((x) => x.title);
+        const suggested = Array.isArray(body?.suggestedActions) ? body.suggestedActions : [];
+        const actions = [];
+        for (const s of suggested){
+          const mapped = _chatMapWorkerAction(s, stats);
+          if (mapped) actions.push(mapped);
+          if (actions.length >= 4) break;
+        }
+        if (!actions.length){
+          actions.push(..._chatBuildAiResponseActions(stats, selectedIntent));
+        }
+        const charts = _chatBuildChartData(stats, String(job.text || ""), String(selectedIntent?.id || cls.intent || ""), String(selectedIntent?.type || ""));
         return {
           text: answer,
-          actions: _chatBuildAiResponseActions(stats, selectedIntent),
+          actions,
           sources,
-          charts: [],
+          charts,
           aiMeta: meta
         };
       }
@@ -19425,19 +19642,25 @@ function _openSearchResultByIndex(i){
             _chatUpdateQuotaFromMeta(reply?.aiMeta || {});
           }catch (err){
             const code = String(err?.code || "");
-            if (code === "QUOTA_EXCEEDED"){
+            if (code === "QUOTA_EXCEEDED" || code === "LIMIT_EXCEEDED"){
               const usage = (err?.data && typeof err.data === "object" && err.data.usage && typeof err.data.usage === "object")
                 ? err.data.usage
                 : {};
               const resetAtMs = Number(usage.resetAtMs || _chatState.quotaResetAtMs || _chatNextJstResetMs(Date.now()));
+              const normalLimit = Math.max(1, Number(_chatState.quota?.normalLimit || CHAT_AI_MODE_LIMITS.normal));
+              const reasonLimit = Math.max(1, Number(_chatState.quota?.reasonLimit || CHAT_AI_MODE_LIMITS.reason));
+              const remNRaw = Number(usage.remainingNormal);
+              const remRRaw = Number(usage.remainingReasoning);
+              const remN = Number.isFinite(remNRaw) ? Math.max(0, remNRaw) : null;
+              const remR = Number.isFinite(remRRaw) ? Math.max(0, remRRaw) : null;
               _chatUpdateQuotaFromMeta({
                 mode: _chatNormalizeAiMode(_chatState.aiMode),
                 resetAtMs,
                 quota: {
-                  normalUsed: Math.max(0, Number(_chatState.quota?.normalUsed || 0)),
-                  normalLimit: Math.max(1, Number(_chatState.quota?.normalLimit || CHAT_AI_MODE_LIMITS.normal)),
-                  reasonUsed: Math.max(0, Number(_chatState.quota?.reasonUsed || 0)),
-                  reasonLimit: Math.max(1, Number(_chatState.quota?.reasonLimit || CHAT_AI_MODE_LIMITS.reason))
+                  normalUsed: remN == null ? Math.max(0, Number(_chatState.quota?.normalUsed || 0)) : Math.max(0, normalLimit - remN),
+                  normalLimit,
+                  reasonUsed: remR == null ? Math.max(0, Number(_chatState.quota?.reasonUsed || 0)) : Math.max(0, reasonLimit - remR),
+                  reasonLimit
                 }
               });
               _chatOpenQuotaNotice(_chatState.aiMode, resetAtMs);
@@ -19449,9 +19672,10 @@ function _openSearchResultByIndex(i){
               return;
             } else {
               const msg = String(err?.message || "AI応答の取得に失敗しました。");
+              const isAuthErr = code === "UNAUTHORIZED";
               reply = {
-                text: `AI応答の取得に失敗しました。\n${msg}`,
-                actions: [{ type: "openSettings", label: "Settingsを開く" }],
+                text: isAuthErr ? `AIチャットを使うにはログインが必要です。\n${msg}` : `AI応答の取得に失敗しました。\n${msg}`,
+                actions: [{ type: "openSettings", label: isAuthErr ? "Settingsでログイン" : "Settingsを開く" }],
                 sources: [],
                 charts: [],
                 aiMeta: null
@@ -19486,13 +19710,6 @@ function _openSearchResultByIndex(i){
         const body = String(text || "").trim();
         if (!body){
           uiToast("メッセージを入力してください。");
-          return false;
-        }
-        const gate = _chatLocalQuotaGate(_chatNormalizeAiMode(_chatState.aiMode));
-        if (!gate.allowed){
-          _chatState.quotaResetAtMs = Number(gate.resetAtMs || _chatNextJstResetMs(Date.now()));
-          _chatOpenQuotaNotice(_chatState.aiMode, _chatState.quotaResetAtMs);
-          _chatRenderModeUi();
           return false;
         }
         _chatCancelPendingMatch(true);
@@ -20212,6 +20429,10 @@ function _openSearchResultByIndex(i){
           _maintenanceRenderAdminPreview();
           return;
         }
+        if (t.id === "adminAiIngestKey"){
+          _adminSetAiIngestStatus("");
+          return;
+        }
         if (t.id === "appLibrarySubjectFilter"){
           _appLibraryFilter.subjectId = String(t.value || "ALL");
           _appRenderLibrary();
@@ -20223,6 +20444,10 @@ function _openSearchResultByIndex(i){
         if (t.id === "adminMaintenanceTitle" || t.id === "adminMaintenanceMessage"){
           _maintenanceSetAdminStatus("");
           _maintenanceRenderAdminPreview();
+          return;
+        }
+        if (t.id === "adminAiIngestJson"){
+          _adminSetAiIngestStatus("");
           return;
         }
         if (t.id === "appLibrarySearchInput"){
@@ -20447,6 +20672,12 @@ function _openSearchResultByIndex(i){
         if (maintenanceClearExpiredBtn){
           e.preventDefault();
           _maintenanceClearExpiredFlagFromAdmin();
+          return;
+        }
+        const adminAiIngestBtn = e.target.closest("#adminAiIngestBtn");
+        if (adminAiIngestBtn){
+          e.preventDefault();
+          _adminIngestRagDocs();
           return;
         }
         const maintenanceReloadBtn = e.target.closest("#maintenanceReloadBtn");
@@ -23441,16 +23672,24 @@ function _openSearchResultByIndex(i){
       // =========================
       // Preset Share (Code + QR) via bundled Worker API (10 min TTL)
       // =========================
-      const API_BASE = "https://vocabuquiz-api.rintyblog.workers.dev";
-      const CHAT_AI_API_URL = "https://chataivocabuquiz.rintyblog.workers.dev/api/ai/chat";
+      const API_BASE = "https://chataivocabuquiz.rintyblog.workers.dev";
+      const AUTH_API_BASE = "https://vocabuquiz-api.rintyblog.workers.dev";
+      const AUTH_API_FALLBACK_BASE = "https://vocabuquiz-api2.rintyblog.workers.dev";
+      const SHARE_API_BASE = "https://vocabuquiz-api.rintyblog.workers.dev";
+      const CHAT_AI_BASE = String(API_BASE || "").trim().replace(/\/+$/, "");
+      const CHAT_AI_API_URL = `${CHAT_AI_BASE}/api/ai/chat`;
+      const CHAT_AI_INGEST_URL = `${CHAT_AI_BASE}/api/ai/ingest`;
       console.log("API_BASE", API_BASE);
+      console.log("AUTH_API_BASE", AUTH_API_BASE);
+      console.log("SHARE_API_BASE", SHARE_API_BASE);
+      console.log("CHAT_AI_BASE", CHAT_AI_BASE);
       const APP_VERSION = "v26";
       const SHARE_VALID_MS = 10 * 60 * 1000;
       const SHARE_CACHE_KEY = "app.share.cache.v1";
       const SHARE_QR_IMG = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=";
 
       function _shareApiBase(){
-        return String(API_BASE || "").trim().replace(/\/+$/, "");
+        return String(SHARE_API_BASE || "").trim().replace(/\/+$/, "");
       }
       function _shareApiReady(){
         const b = _shareApiBase();
