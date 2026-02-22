@@ -7114,6 +7114,9 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
         <button class="menu-item" type="button" data-menu-action="presetShare">
           <span class="ms">share</span><span>プリセットを共有</span>
         </button>
+        <button class="menu-item" type="button" data-menu-action="onlineBattle">
+          <span class="ms">sports_esports</span><span>オンライン対戦</span>
+        </button>
         <button class="menu-item" type="button" data-menu-action="terms">
           <span class="ms">policy</span><span>利用規約</span>
         </button>
@@ -28830,6 +28833,459 @@ function _openSearchResultByIndex(i){
         if (mode === "HAND") startMode("HAND");
         else startChoiceMode(getChoiceDefaultTimeLimitSec());
       }
+      function _battleState(){
+        if (!_menuState.battle || typeof _menuState.battle !== "object"){
+          _menuState.battle = {
+            mode: "EXAM",
+            presetId: "builtin:ALL",
+            count: 10,
+            queueId: "",
+            matchId: "",
+            match: null,
+            result: null,
+            statusMsg: "",
+            errorMsg: "",
+            busy: false,
+            polling: false,
+            pollTimerId: null,
+            questionShownIndex: -1,
+            questionShownAt: 0,
+            writeDraft: ""
+          };
+        }
+        return _menuState.battle;
+      }
+      function _battleStopPolling(){
+        try{
+          const st = _battleState();
+          if (st.pollTimerId){
+            clearInterval(st.pollTimerId);
+            st.pollTimerId = null;
+          }
+          st.polling = false;
+        }catch(_){}
+      }
+      function _battleRerender(){
+        if (_menuState.view !== "onlineBattle") return;
+        const content = document.getElementById("menuContent");
+        if (!content) return;
+        content.innerHTML = _renderOnlineBattleHTML();
+        _customSelectEnhance(content);
+        _battleInitView();
+      }
+      function _battleResetProgress(keepPrefs = true){
+        const st = _battleState();
+        const mode = st.mode;
+        const presetId = st.presetId;
+        const count = st.count;
+        _battleStopPolling();
+        st.queueId = "";
+        st.matchId = "";
+        st.match = null;
+        st.result = null;
+        st.statusMsg = "";
+        st.errorMsg = "";
+        st.busy = false;
+        st.questionShownIndex = -1;
+        st.questionShownAt = 0;
+        st.writeDraft = "";
+        if (!keepPrefs){
+          st.mode = "EXAM";
+          st.presetId = "builtin:ALL";
+          st.count = 10;
+        } else {
+          st.mode = mode;
+          st.presetId = presetId;
+          st.count = count;
+        }
+      }
+      function _battleAuthHeaders(){
+        const token = _authGetToken();
+        if (!token){
+          const err = new Error("ログインが必要です。");
+          err.code = "UNAUTHORIZED";
+          throw err;
+        }
+        return { Authorization: `Bearer ${token}` };
+      }
+      function _battleQuestionStartIfNeeded(){
+        const st = _battleState();
+        const you = st.match?.you;
+        const idx = Math.max(0, Number(you?.progress || 0));
+        if (st.questionShownIndex !== idx){
+          st.questionShownIndex = idx;
+          st.questionShownAt = Date.now();
+          st.writeDraft = "";
+        }
+      }
+      function _battleElapsedMs(){
+        const st = _battleState();
+        const base = Math.max(0, Number(st.questionShownAt || 0));
+        if (!base) return 0;
+        return Math.max(0, Date.now() - base);
+      }
+      function _battleModeLabel(mode){
+        return String(mode || "").toUpperCase() === "WRITE" ? "WRITE" : "EXAM";
+      }
+      function _battleStatusLabel(){
+        const st = _battleState();
+        if (st.errorMsg) return st.errorMsg;
+        if (st.statusMsg) return st.statusMsg;
+        if (st.busy) return "通信中…";
+        if (st.result) return "結果を表示中";
+        if (st.matchId && st.match) return "対戦中";
+        if (st.queueId) return "マッチング中…";
+        return "待機中";
+      }
+      function _battleApplyFormFromDom(){
+        const st = _battleState();
+        const modeEl = document.getElementById("battleModeSelect");
+        const presetEl = document.getElementById("battlePresetSelect");
+        const countEl = document.getElementById("battleCountSelect");
+        if (modeEl) st.mode = String(modeEl.value || "EXAM").toUpperCase() === "WRITE" ? "WRITE" : "EXAM";
+        if (presetEl) st.presetId = String(presetEl.value || "builtin:ALL");
+        if (countEl) st.count = Math.max(3, Math.min(20, Number(countEl.value || 10) || 10));
+      }
+      function _battleRenderPlayerRows(){
+        const st = _battleState();
+        const players = Array.isArray(st.match?.players) ? st.match.players : [];
+        const count = Math.max(1, Number(st.match?.count || st.count || 10));
+        if (!players.length) return `<div class="mini">プレイヤー情報を取得中…</div>`;
+        return players.map((p) => {
+          const uid = Number(p?.userId || 0);
+          const me = uid === Number(st.match?.you?.userId || 0);
+          const progress = Math.max(0, Number(p?.progress || 0));
+          const correct = Math.max(0, Number(p?.correct || 0));
+          const finished = !!p?.finished;
+          return `<div class="insight-card" style="padding:10px; margin-top:8px;">
+            <div style="display:flex; justify-content:space-between; gap:8px;">
+              <div><strong>${_escapeHtml(String(p?.nickname || `user-${uid}`))}</strong>${me ? ` <span class="mini">(あなた)</span>` : ``}</div>
+              <div class="mini">${finished ? "完了" : "進行中"}</div>
+            </div>
+            <div class="mini" style="margin-top:4px;">進捗 ${progress}/${count} ・ 正答 ${correct}</div>
+          </div>`;
+        }).join("");
+      }
+      function _battleRenderQuestionBlock(){
+        const st = _battleState();
+        if (!st.match) return "";
+        const mode = String(st.match.mode || st.mode || "EXAM").toUpperCase();
+        const questions = Array.isArray(st.match.questions) ? st.match.questions : [];
+        const you = st.match.you || {};
+        const idx = Math.max(0, Number(you.progress || 0));
+        const count = Math.max(1, Number(st.match.count || questions.length || st.count || 10));
+        if (idx >= count){
+          return `<div class="insight-card" style="padding:12px; margin-top:10px;">
+            <div style="font-weight:700;">あなたの回答は完了しました。</div>
+            <div class="mini" style="margin-top:4px;">相手の完了を待つか、結果を確認してください。</div>
+            <div class="row-actions" style="margin-top:10px;">
+              <button class="btn" type="button" data-battle-action="refreshMatch">更新</button>
+              <button class="textbtn" type="button" data-battle-action="showResult">結果を見る</button>
+            </div>
+          </div>`;
+        }
+        const q = questions[idx];
+        if (!q) return `<div class="insight-empty" style="margin-top:10px;">問題データの読み込みに失敗しました。</div>`;
+        const header = `<div class="mini">問題 ${idx + 1}/${count} ・ No.${Number(q.no || 0)}</div>`;
+        const prompt = `<div style="font-weight:700; font-size:16px; margin-top:6px; white-space:pre-wrap;">${_escapeHtml(String(q.prompt || ""))}</div>`;
+        if (mode === "WRITE"){
+          return `<div class="insight-card" style="padding:12px; margin-top:10px;">
+            ${header}
+            ${prompt}
+            <div style="margin-top:10px;">
+              <input id="battleWriteInput" class="spell-input" type="text" placeholder="答えを入力" value="${_escapeHtml(_battleState().writeDraft || "")}" />
+            </div>
+            <div class="row-actions" style="margin-top:10px;">
+              <button class="btn" type="button" data-battle-action="submitWrite"${st.busy ? " disabled" : ""}>送信</button>
+              <button class="textbtn" type="button" data-battle-action="refreshMatch">更新</button>
+            </div>
+          </div>`;
+        }
+        const choices = Array.isArray(q.choices) ? q.choices : [];
+        return `<div class="insight-card" style="padding:12px; margin-top:10px;">
+          ${header}
+          ${prompt}
+          <div style="display:grid; gap:8px; margin-top:10px;">
+            ${choices.map((c) => `<button class="btn" type="button" data-battle-action="chooseAnswer" data-battle-answer="${_escapeHtml(String(c || ""))}"${st.busy ? " disabled" : ""}>${_escapeHtml(String(c || ""))}</button>`).join("")}
+          </div>
+          <div class="row-actions" style="margin-top:10px;">
+            <button class="textbtn" type="button" data-battle-action="refreshMatch">更新</button>
+          </div>
+        </div>`;
+      }
+      function _renderOnlineBattleHTML(){
+        const st = _battleState();
+        const token = _authGetToken();
+        const mode = _battleModeLabel(st.mode);
+        const result = st.result;
+        let resultHtml = "";
+        if (result){
+          const players = Array.isArray(result.players) ? result.players : [];
+          resultHtml = `
+            <section class="insight-card" style="padding:12px; margin-top:10px;">
+              <div class="insight-head"><div class="insight-title">対戦結果</div><div class="insight-note">${_escapeHtml(_battleModeLabel(result.mode || st.mode))}</div></div>
+              <div class="mini">state: ${_escapeHtml(String(result.state || ""))}</div>
+              <div style="margin-top:8px;">${players.map((p)=>`<div class="mini">${_escapeHtml(String(p.nickname||""))} / 正答 ${Number(p.correct||0)} / 時間 ${Math.round(Number(p.totalTimeMs||0)/1000)}s${Number(result.winnerUserId||0)===Number(p.userId||0) ? " / 勝者" : ""}</div>`).join("")}</div>
+              <div class="row-actions" style="margin-top:10px;">
+                <button class="btn" type="button" data-battle-action="leaveBattle">閉じる</button>
+                <button class="textbtn" type="button" data-battle-action="refreshMatch">試合画面に戻る</button>
+              </div>
+            </section>`;
+        }
+        return `
+          <div class="menu-article">
+            <h3>オンライン対戦</h3>
+            <p class="mini">同じ問題順で回答し、正答数→合計時間で勝敗を決定します。正誤判定はサーバ側で行います。</p>
+            ${!token ? `<div class="insight-empty">ログインが必要です。先にアカウントでログインしてください。</div>` : `
+              <section class="insight-card" style="padding:12px;">
+                <div class="row-actions" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; align-items:end;">
+                  <div style="min-width:0;">
+                    <div class="mini">Mode</div>
+                    <select id="battleModeSelect" class="select">
+                      <option value="EXAM"${mode==="EXAM"?" selected":""}>EXAM</option>
+                      <option value="WRITE"${mode==="WRITE"?" selected":""}>WRITE</option>
+                    </select>
+                  </div>
+                  <div style="min-width:0;">
+                    <div class="mini">Preset</div>
+                    <select id="battlePresetSelect" class="select">
+                      <option value="builtin:ALL"${String(st.presetId)==="builtin:ALL"?" selected":""}>builtin:ALL</option>
+                      <option value="builtin:standard_all"${String(st.presetId)==="builtin:standard_all"?" selected":""}>standard_all</option>
+                    </select>
+                  </div>
+                  <div style="min-width:0;">
+                    <div class="mini">Count</div>
+                    <select id="battleCountSelect" class="select">
+                      <option value="5"${Number(st.count)===5?" selected":""}>5</option>
+                      <option value="10"${Number(st.count)===10?" selected":""}>10</option>
+                      <option value="20"${Number(st.count)===20?" selected":""}>20</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row-actions" style="margin-top:10px;">
+                  <button class="btn" type="button" data-battle-action="startQueue"${st.busy || !!st.queueId || !!st.matchId ? " disabled" : ""}>対戦を開始</button>
+                  <button class="textbtn" type="button" data-battle-action="cancelQueue"${!st.queueId ? " disabled" : ""}>キャンセル</button>
+                  <button class="textbtn" type="button" data-battle-action="refreshMatch"${(!st.queueId && !st.matchId) ? " disabled" : ""}>更新</button>
+                </div>
+                <div class="mini" id="battleStatusLine" style="margin-top:8px;">${_escapeHtml(_battleStatusLabel())}</div>
+              </section>
+              ${st.queueId ? `<section class="insight-card" style="padding:12px; margin-top:10px;"><div class="mini">queueId: ${_escapeHtml(st.queueId)}</div><div class="mini" style="margin-top:4px;">マッチング中… 2秒ごとに確認します。</div></section>` : ``}
+              ${st.match ? `<section class="insight-card" style="padding:12px; margin-top:10px;">
+                <div class="insight-head"><div class="insight-title">対戦中</div><div class="insight-note">${_escapeHtml(String(st.match.matchId || st.matchId || ""))}</div></div>
+                <div class="mini">Preset: ${_escapeHtml(String(st.match.presetId || st.presetId))} / Mode: ${_escapeHtml(_battleModeLabel(st.match.mode || st.mode))}</div>
+                ${_battleRenderPlayerRows()}
+              </section>${_battleRenderQuestionBlock()}` : ``}
+              ${resultHtml}
+            `}
+          </div>
+        `;
+      }
+      async function _battleQueueStart(){
+        const st = _battleState();
+        if (st.busy) return;
+        try{
+          _battleApplyFormFromDom();
+          st.busy = true;
+          st.errorMsg = "";
+          st.statusMsg = "マッチング要求を送信中…";
+          _battleRerender();
+          const body = await _authFetch("/api/battle/queue", {
+            method: "POST",
+            headers: _battleAuthHeaders(),
+            body: JSON.stringify({
+              presetId: st.presetId,
+              mode: st.mode,
+              count: st.count
+            })
+          });
+          if (String(body?.status || "") === "MATCHED" && body?.matchId){
+            st.queueId = "";
+            st.matchId = String(body.matchId);
+            st.statusMsg = "マッチ成立。試合を読み込みます。";
+            await _battleLoadMatch();
+          } else {
+            st.queueId = String(body?.queueId || "");
+            st.matchId = "";
+            st.match = null;
+            st.result = null;
+            st.statusMsg = "マッチング中…";
+            _battleBeginPolling();
+            _battleRerender();
+          }
+        }catch(err){
+          st.errorMsg = String(err?.message || "対戦開始に失敗しました。");
+          uiToast(st.errorMsg);
+        }finally{
+          st.busy = false;
+          _battleRerender();
+        }
+      }
+      async function _battleCancelQueue(){
+        const st = _battleState();
+        if (!st.queueId || st.busy) return;
+        try{
+          st.busy = true;
+          st.errorMsg = "";
+          await _authFetch("/api/battle/cancel", {
+            method: "POST",
+            headers: _battleAuthHeaders(),
+            body: JSON.stringify({ queueId: st.queueId })
+          });
+          _battleResetProgress(true);
+          st.statusMsg = "待機をキャンセルしました。";
+        }catch(err){
+          st.errorMsg = String(err?.message || "キャンセルに失敗しました。");
+          uiToast(st.errorMsg);
+        }finally{
+          st.busy = false;
+          _battleRerender();
+        }
+      }
+      async function _battlePollStatusOnce(){
+        const st = _battleState();
+        if (!st.queueId || st.busy) return;
+        try{
+          const body = await _authFetch(`/api/battle/status?queueId=${encodeURIComponent(st.queueId)}`, {
+            method: "GET",
+            headers: _battleAuthHeaders()
+          });
+          const status = String(body?.status || "");
+          if (status === "MATCHED" && body?.matchId){
+            st.queueId = "";
+            st.matchId = String(body.matchId);
+            st.statusMsg = "マッチ成立。試合を読み込みます。";
+            _battleStopPolling();
+            await _battleLoadMatch();
+            return;
+          }
+          if (status === "EXPIRED" || status === "NOT_FOUND"){
+            _battleStopPolling();
+            st.queueId = "";
+            st.statusMsg = "待機の有効期限が切れました。";
+            _battleRerender();
+            return;
+          }
+          st.statusMsg = "マッチング中…";
+          const line = document.getElementById("battleStatusLine");
+          if (line) line.textContent = _battleStatusLabel();
+        }catch(err){
+          st.errorMsg = String(err?.message || "status取得失敗");
+          const line = document.getElementById("battleStatusLine");
+          if (line) line.textContent = _battleStatusLabel();
+        }
+      }
+      function _battleBeginPolling(){
+        const st = _battleState();
+        _battleStopPolling();
+        if (!st.queueId) return;
+        st.polling = true;
+        st.pollTimerId = setInterval(() => {
+          if (_menuState.view !== "onlineBattle"){
+            _battleStopPolling();
+            return;
+          }
+          _battlePollStatusOnce().catch(() => {});
+        }, 2000);
+      }
+      async function _battleLoadMatch(){
+        const st = _battleState();
+        if (!st.matchId) return;
+        try{
+          st.busy = true;
+          st.errorMsg = "";
+          const body = await _authFetch(`/api/battle/match?matchId=${encodeURIComponent(st.matchId)}`, {
+            method: "GET",
+            headers: _battleAuthHeaders()
+          });
+          st.match = body || null;
+          st.statusMsg = "試合データを更新しました。";
+          st.result = null;
+          _battleQuestionStartIfNeeded();
+        }catch(err){
+          st.errorMsg = String(err?.message || "試合取得に失敗しました。");
+          uiToast(st.errorMsg);
+        }finally{
+          st.busy = false;
+          _battleRerender();
+        }
+      }
+      async function _battleSubmitAnswer(answerText){
+        const st = _battleState();
+        if (!st.matchId || !st.match || st.busy) return;
+        const you = st.match.you || {};
+        const index = Math.max(0, Number(you.progress || 0));
+        const text = String(answerText || "").trim();
+        if (!text){
+          uiToast("回答を入力してください。");
+          return;
+        }
+        try{
+          st.busy = true;
+          st.errorMsg = "";
+          const elapsedMs = _battleElapsedMs();
+          const body = await _authFetch("/api/battle/submit", {
+            method: "POST",
+            headers: _battleAuthHeaders(),
+            body: JSON.stringify({
+              matchId: st.matchId,
+              index,
+              answerText: text,
+              elapsedMs
+            })
+          });
+          st.statusMsg = body?.correct ? "正解" : "不正解";
+          if (!body?.correct && body?.correctAnswerPreview){
+            st.statusMsg += `（正解: ${String(body.correctAnswerPreview)})`;
+          }
+          st.writeDraft = "";
+          if (body?.matchFinished || body?.finished){
+            await _battleLoadMatch();
+            await _battleFetchResult(false);
+          } else {
+            await _battleLoadMatch();
+          }
+        }catch(err){
+          st.errorMsg = String(err?.message || "回答送信に失敗しました。");
+          uiToast(st.errorMsg);
+        }finally{
+          st.busy = false;
+          _battleRerender();
+        }
+      }
+      async function _battleFetchResult(rerender = true){
+        const st = _battleState();
+        if (!st.matchId) return;
+        try{
+          const body = await _authFetch(`/api/battle/result?matchId=${encodeURIComponent(st.matchId)}`, {
+            method: "GET",
+            headers: _battleAuthHeaders()
+          });
+          st.result = body || null;
+          st.statusMsg = "結果を取得しました。";
+        }catch(err){
+          st.errorMsg = String(err?.message || "結果取得に失敗しました。");
+          uiToast(st.errorMsg);
+        }finally{
+          if (rerender) _battleRerender();
+        }
+      }
+      function _battleLeave(){
+        _battleResetProgress(true);
+        _battleRerender();
+      }
+      function _battleInitView(){
+        if (_menuState.view !== "onlineBattle") return;
+        const st = _battleState();
+        _customSelectEnhance(document.getElementById("menuContent") || document);
+        const modeEl = document.getElementById("battleModeSelect");
+        const presetEl = document.getElementById("battlePresetSelect");
+        const countEl = document.getElementById("battleCountSelect");
+        if (modeEl) modeEl.value = _battleModeLabel(st.mode);
+        if (presetEl) presetEl.value = String(st.presetId || "builtin:ALL");
+        if (countEl) countEl.value = String(Number(st.count || 10));
+        if (st.match) _battleQuestionStartIfNeeded();
+        if (st.queueId) _battleBeginPolling();
+      }
       const DRAWER_SHARE_TTL_MS = 10 * 60 * 1000;
       let _drawerShareDb = null;
 
@@ -29458,6 +29914,9 @@ function _openSearchResultByIndex(i){
         } else if (_menuState.view === "presetShare"){
           _drawerShareInitView();
           _customSelectEnhance(document.getElementById("menuContent") || document);
+        } else if (_menuState.view === "onlineBattle"){
+          _battleInitView();
+          _customSelectEnhance(document.getElementById("menuContent") || document);
         }
       }
 
@@ -29489,10 +29948,12 @@ function _openSearchResultByIndex(i){
           else if(view === "memoCheck"){ ttl = "メモチェック"; html = _renderMemoCheckHTML(); }
           else if(view === "memoDay"){ ttl = "メモチェック"; html = _renderMemoDayHTML(_menuState.memoCheck.currentDate || _memoToYmd(Date.now())); }
           else if(view === "presetShare"){ ttl = "プリセットを共有"; html = _renderPresetShareHTML(); }
+          else if(view === "onlineBattle"){ ttl = "オンライン対戦"; html = _renderOnlineBattleHTML(); }
           else { ttl = "MENU"; html = _menuState.rootHtml; panel.classList.remove("has-back"); _menuState.view = "root"; }
         }
 
         if (view !== "presetShare") _drawerShareStopTimer();
+        if (view !== "onlineBattle"){ try{ _battleStopPolling(); }catch(_){} }
 
         const isMemoFull = (view === "memoCheck" || view === "memoDay");
         panel.classList.toggle("memo-full", isMemoFull);
@@ -29770,6 +30231,7 @@ function _openSearchResultByIndex(i){
         }
 
         _drawerShareStopTimer();
+        try{ _battleStopPolling(); }catch(_){}
 
         // Stop "sending" state when drawer is closed to avoid stuck UI on next open
         _menuState.sending = false;
@@ -29850,6 +30312,7 @@ function _openSearchResultByIndex(i){
         if(action === "report"){ _setMenuView("report"); return; }
         if(action === "memoCheck"){ _setMenuView("memoCheck"); return; }
         if(action === "presetShare"){ _setMenuView("presetShare"); return; }
+        if(action === "onlineBattle"){ _setMenuView("onlineBattle"); return; }
 
         if(action === "settings"){
           closeMenu();
@@ -29913,7 +30376,12 @@ function _openSearchResultByIndex(i){
           const menuBtn = e.target.closest("#menuBtn");
           if(menuBtn){
             e.preventDefault();
-            toggleMenu();
+            try{
+              toggleMenu();
+            }catch(err){
+              console.warn("[Menu] toggle failed:", err);
+              try{ uiToast("メニューを開けませんでした"); }catch(_){}
+            }
             return;
           }
 
@@ -30078,6 +30546,42 @@ function _openSearchResultByIndex(i){
             }
           }
 
+          const battleBtn = e.target.closest("[data-battle-action]");
+          if (battleBtn && battleBtn.closest("#menuPanel")){
+            e.preventDefault();
+            const act = String(battleBtn.getAttribute("data-battle-action") || "");
+            if (act === "startQueue"){
+              _battleQueueStart();
+              return;
+            }
+            if (act === "cancelQueue"){
+              _battleCancelQueue();
+              return;
+            }
+            if (act === "refreshMatch"){
+              if (_battleState().matchId) _battleLoadMatch();
+              else if (_battleState().queueId) _battlePollStatusOnce();
+              return;
+            }
+            if (act === "showResult"){
+              _battleFetchResult();
+              return;
+            }
+            if (act === "leaveBattle"){
+              _battleLeave();
+              return;
+            }
+            if (act === "submitWrite"){
+              const input = document.getElementById("battleWriteInput");
+              _battleSubmitAnswer(input ? input.value : "");
+              return;
+            }
+            if (act === "chooseAnswer"){
+              _battleSubmitAnswer(String(battleBtn.getAttribute("data-battle-answer") || ""));
+              return;
+            }
+          }
+
           const calDay = e.target.closest("[data-memo-date]");
           if (calDay && calDay.closest("#menuPanel")){
             e.preventDefault();
@@ -30197,6 +30701,10 @@ function _openSearchResultByIndex(i){
           const t = e.target;
           if (!(t instanceof Element)) return;
           if (!t.closest("#menuPanel")) return;
+          if (t.id === "battleModeSelect" || t.id === "battlePresetSelect" || t.id === "battleCountSelect"){
+            _battleApplyFormFromDom();
+            return;
+          }
           if (t.id === "memoInsightsPresetSelect" || t.id === "memoInsightsModeSelect" || t.id === "memoInsightsRangeSelect"){
             _memoRenderInsightsTop();
             return;
@@ -30209,16 +30717,20 @@ function _openSearchResultByIndex(i){
 
         document.addEventListener("input", (e)=>{
           const t = e.target;
-          if (!(t instanceof HTMLInputElement)) return;
+          if (!(t instanceof HTMLElement)) return;
           if (!t.closest("#menuPanel")) return;
-          if (t.id === "drawerShareImportCode"){
+          if (t instanceof HTMLInputElement && t.id === "drawerShareImportCode"){
             const code = _drawerShareSanitizeCode(t.value);
             if (code !== t.value) t.value = code;
             return;
           }
-          if (t.id === "faqSearchInput"){
+          if ((t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) && t.id === "faqSearchInput"){
             _faqFilterState.query = t.value || "";
             _faqScheduleFilter();
+            return;
+          }
+          if (t instanceof HTMLInputElement && t.id === "battleWriteInput"){
+            _battleState().writeDraft = t.value || "";
           }
         }, true);
 
@@ -30250,6 +30762,11 @@ function _openSearchResultByIndex(i){
           const t = e.target;
           if (!(t instanceof HTMLElement)) return;
           if (!t.closest("#menuPanel")) return;
+          if (t.id === "battleWriteInput" && e.key === "Enter" && !e.shiftKey){
+            e.preventDefault();
+            _battleSubmitAnswer((t instanceof HTMLInputElement) ? (t.value || "") : "");
+            return;
+          }
           if (t.id !== "drawerShareImportCode") return;
           if (e.key !== "Enter") return;
           e.preventDefault();
