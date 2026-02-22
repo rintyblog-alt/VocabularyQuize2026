@@ -30413,7 +30413,12 @@ function _openSearchResultByIndex(i){
 
         if (view !== "presetShare") _drawerShareStopTimer();
         if (view !== "onlineBattle"){ try{ _battleStopPolling(); }catch(_){} }
-        if (view !== "onlineBattleRealtime"){ try{ _rtBattleDisconnect(true); }catch(_){} }
+        if (view !== "onlineBattleRealtime"){
+          try{
+            const st = (_menuState && _menuState.rtBattle && typeof _menuState.rtBattle === "object") ? _menuState.rtBattle : null;
+            if (!(st && st.overlayOpen)) _rtBattleDisconnect(true);
+          }catch(_){}
+        }
 
         const isMemoFull = (view === "memoCheck" || view === "memoDay");
         panel.classList.toggle("memo-full", isMemoFull);
@@ -30774,7 +30779,16 @@ function _openSearchResultByIndex(i){
         if(action === "memoCheck"){ _setMenuView("memoCheck"); return; }
         if(action === "presetShare"){ _setMenuView("presetShare"); return; }
         if(action === "onlineBattle"){ _setMenuView("onlineBattle"); return; }
-        if(action === "onlineBattleRealtime"){ _setMenuView("onlineBattleRealtime"); return; }
+        if(action === "onlineBattleRealtime"){
+          try{ closeMenu(); }catch(_){}
+          try{
+            if (typeof _rtBattleOverlayOpen === "function") _rtBattleOverlayOpen("top");
+            else _setMenuView("onlineBattleRealtime");
+          }catch(err){
+            try{ uiToast("オンライン対戦を開けませんでした: " + (err?.message || err)); }catch(_){}
+          }
+          return;
+        }
 
         if(action === "settings"){
           closeMenu();
@@ -31045,9 +31059,10 @@ function _openSearchResultByIndex(i){
           }
 
           const rtBattleBtn = e.target.closest("[data-rt-battle-action]");
-          if (rtBattleBtn && rtBattleBtn.closest("#menuPanel")){
+          if (rtBattleBtn && rtBattleBtn.closest("#menuPanel, #onlineOverlay")){
             e.preventDefault();
             const act = String(rtBattleBtn.getAttribute("data-rt-battle-action") || "");
+            if (typeof _rtBattleOverlayHandleAction === "function" && _rtBattleOverlayHandleAction(act)) return;
             if (act === "start"){ _rtBattleStart(); return; }
             if (act === "disconnect"){ _rtBattleLeave(); return; }
             if (act === "reconnect"){ _rtBattleReconnect(); return; }
@@ -31187,13 +31202,17 @@ function _openSearchResultByIndex(i){
         document.addEventListener("change", (e)=>{
           const t = e.target;
           if (!(t instanceof Element)) return;
-          if (!t.closest("#menuPanel")) return;
+          if (!t.closest("#menuPanel") && !t.closest("#onlineOverlay")) return;
           if (t.id === "battleModeSelect" || t.id === "battlePresetSelect" || t.id === "battleCountSelect"){
             _battleApplyFormFromDom();
             return;
           }
-          if (t.id === "rtBattleModeSelect" || t.id === "rtBattlePresetSelect" || t.id === "rtBattleCountSelect"){
+          if (t.id === "rtBattleModeSelect" || t.id === "rtBattleCountSelect"){
             _rtBattleApplyFormFromDom();
+            return;
+          }
+          if (t.id === "rtBattlePresetSelect"){
+            if (typeof _rtBattleSendPresetSelection === "function") _rtBattleSendPresetSelection();
             return;
           }
           if (t.id === "memoInsightsPresetSelect" || t.id === "memoInsightsModeSelect" || t.id === "memoInsightsRangeSelect"){
@@ -31209,7 +31228,7 @@ function _openSearchResultByIndex(i){
         document.addEventListener("input", (e)=>{
           const t = e.target;
           if (!(t instanceof HTMLElement)) return;
-          if (!t.closest("#menuPanel")) return;
+          if (!t.closest("#menuPanel") && !t.closest("#onlineOverlay")) return;
           if (t instanceof HTMLInputElement && t.id === "drawerShareImportCode"){
             const code = _drawerShareSanitizeCode(t.value);
             if (code !== t.value) t.value = code;
@@ -31279,7 +31298,7 @@ function _openSearchResultByIndex(i){
         document.addEventListener("keydown", (e)=>{
           const t = e.target;
           if (!(t instanceof HTMLElement)) return;
-          if (!t.closest("#menuPanel")) return;
+          if (!t.closest("#menuPanel") && !t.closest("#onlineOverlay")) return;
           if (t.id === "battleWriteInput" && e.key === "Enter" && !e.shiftKey){
             e.preventDefault();
             _battleSubmitAnswer((t instanceof HTMLInputElement) ? (t.value || "") : "");
@@ -31300,6 +31319,11 @@ function _openSearchResultByIndex(i){
         document.addEventListener("keydown", (e)=>{
           if(e.key !== "Escape") return;
           if(typeof _isTyping === "function" && _isTyping()) return;
+          if (typeof _rtBattleOverlayIsOpen === "function" && _rtBattleOverlayIsOpen()){
+            e.preventDefault();
+            try{ _rtBattleOverlayClose(); }catch(_){}
+            return;
+          }
 
           const { panel } = _menuEls();
           if(panel && !panel.hidden){
@@ -31880,21 +31904,12 @@ function _openSearchResultByIndex(i){
       function _rtBattleRenderChatLogs(){
         const st = _rtBattleState();
         const rows = Array.isArray(st.chatLogs) ? st.chatLogs : [];
-        if (!rows.length) return `<div class="mini">チャットログはまだありません。</div>`;
-        return rows.slice(-40).map((row) => {
-          const ts = new Date(Number(row.ts || Date.now()));
-          const hh = String(ts.getHours()).padStart(2, "0");
-          const mm = String(ts.getMinutes()).padStart(2, "0");
-          if (row.kind === "chat"){
-            return `<div style="padding:6px 8px; border-bottom:1px solid var(--line);">
-              <div class="mini" style="margin-bottom:2px;">${_escapeHtml(String(row.fromNick || "user"))} <span style="opacity:.7">${hh}:${mm}</span></div>
-              <div style="white-space:pre-wrap; word-break:break-word;">${_escapeHtml(String(row.text || ""))}</div>
-            </div>`;
-          }
-          return `<div style="padding:6px 8px; border-bottom:1px solid var(--line); color:var(--muted);">
-            <span class="mini">${hh}:${mm}</span> ${_escapeHtml(String(row.text || ""))}
-          </div>`;
-        }).join("");
+        const list = rows.slice(-40);
+        if (!list.length) return `<div class="ov-chat-empty">チャットログはまだありません。</div>`;
+        if (typeof _rtBattleChatRowHtml === "function"){
+          return list.map((row, i) => _rtBattleChatRowHtml(row, i)).join("");
+        }
+        return list.map((row) => `<div class="ov-chat-row">${_escapeHtml(String(row?.text || ""))}</div>`).join("");
       }
       function _rtBattleRenderGameCard(){
         const st = _rtBattleState();
@@ -31902,7 +31917,8 @@ function _openSearchResultByIndex(i){
         const me = _rtBattleMePlayer();
         if (phase === "lobby"){
           const ready = !!me?.ready;
-          const canStart = _rtBattleIsHost() && _rtBattleAllReady();
+          const hasPreset = !!(_rtBattleState().room?.presetRef);
+          const canStart = _rtBattleIsHost() && _rtBattleAllReady() && hasPreset;
           return `<section class="insight-card" style="padding:12px; margin-top:10px;">
             <div class="insight-head"><div class="insight-title">待機画面</div><div class="insight-note">${_escapeHtml(String(st.room?.roomId || ""))}</div></div>
             <div class="mini" style="margin-top:6px;">Readyを押して待機し、ホストが開始します。</div>
@@ -31911,7 +31927,7 @@ function _openSearchResultByIndex(i){
               ${_rtBattleIsHost() ? `<button class="btn" type="button" data-rt-battle-action="gameStart"${(!st.connected || !canStart) ? " disabled" : ""}>Start</button>` : ""}
               <button class="textbtn" type="button" data-rt-battle-action="disconnect"${!st.connected && !st.connecting ? " disabled" : ""}>退出</button>
             </div>
-            ${_rtBattleIsHost() ? `<div class="mini" style="margin-top:8px;">${canStart ? "全員Ready。開始できます。" : "2人以上かつ全員Readyで開始できます。"}</div>` : ``}
+            ${_rtBattleIsHost() ? `<div class="mini" style="margin-top:8px;">${!hasPreset ? "プリセットを選択してください。" : (canStart ? "全員Ready。開始できます。" : "2人以上かつ全員Readyで開始できます。")}</div>` : ``}
           </section>`;
         }
         if (phase === "playing"){
@@ -32045,6 +32061,1027 @@ function _openSearchResultByIndex(i){
         if (st.phase === "playing") _rtBattleEnsureUiTimer();
         else _rtBattleStopUiTimer();
       }
+      // ROOM_DO_UI_V3_OVERLAY: fullscreen lobby/qr/preset/countdown/reconnect
+      const RT_BATTLE_LAST_ROOM_KEY = "vq.lastRoom";
+      const RT_QR_JS_URL = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
+      function _rtBattleState(){
+        if (!_menuState.rtBattle || typeof _menuState.rtBattle !== "object") _menuState.rtBattle = {};
+        const st = _menuState.rtBattle;
+        if (typeof st.overlayOpen !== "boolean") st.overlayOpen = false;
+        if (typeof st.overlayScene !== "string") st.overlayScene = "top";
+        if (!Array.isArray(st.overlayHistory)) st.overlayHistory = [];
+        if (typeof st.manualClose !== "boolean") st.manualClose = false;
+        if (typeof st.reconnectAttempts !== "number") st.reconnectAttempts = 0;
+        if (typeof st.reconnectTimerId !== "number" && st.reconnectTimerId !== null) st.reconnectTimerId = null;
+        if (typeof st.reconnecting !== "boolean") st.reconnecting = false;
+        if (!st.qr || typeof st.qr !== "object") st.qr = { status: "idle", url: "", error: "", timeoutId: null, reqId: 0 };
+        if (!st.scanner || typeof st.scanner !== "object") st.scanner = {
+          open: false, supported: null, status: "", error: "", stream: null, loopTimerId: null, videoReady: false, loadingLib: false
+        };
+        if (typeof st.feedbackKind !== "string") st.feedbackKind = "";
+        if (typeof st.feedbackTimerId !== "number" && st.feedbackTimerId !== null) st.feedbackTimerId = null;
+        if (typeof st.joinUrl !== "string") st.joinUrl = "";
+        if (!st.presetRef || typeof st.presetRef !== "object") st.presetRef = null;
+        if (typeof st.presetName !== "string") st.presetName = "";
+        if (!Array.isArray(st.presetOptionsCache)) st.presetOptionsCache = [];
+        return st;
+      }
+      function _rtBattleOverlayIsOpen(){ return !!_rtBattleState().overlayOpen; }
+      function _rtBattleStopReconnect(){
+        const st = _rtBattleState();
+        if (st.reconnectTimerId){
+          clearTimeout(st.reconnectTimerId);
+          st.reconnectTimerId = null;
+        }
+        st.reconnecting = false;
+      }
+      function _rtBattleClearFeedback(){
+        const st = _rtBattleState();
+        if (st.feedbackTimerId){ clearTimeout(st.feedbackTimerId); st.feedbackTimerId = null; }
+        st.feedbackKind = "";
+      }
+      function _rtBattleFeedback(kind){
+        const st = _rtBattleState();
+        _rtBattleClearFeedback();
+        st.feedbackKind = (kind === "ok") ? "ok" : "ng";
+        try{ if (typeof playSfx === "function") playSfx(kind === "ok" ? "ok" : "ng"); }catch(_){}
+        try{
+          if (navigator && typeof navigator.vibrate === "function"){
+            if (kind === "ok") navigator.vibrate(20);
+            else navigator.vibrate([20,30,20]);
+          }
+        }catch(_){}
+        st.feedbackTimerId = setTimeout(() => {
+          st.feedbackTimerId = null;
+          st.feedbackKind = "";
+          _rtBattleOverlayRender();
+        }, 260);
+        _rtBattleOverlayRender();
+      }
+      function _rtBattleSaveLastRoom(){
+        const st = _rtBattleState();
+        const roomId = String(st.roomId || st.joinRoomId || "");
+        const pw = String(st.roomPassword || st.joinPassword || "");
+        if (!roomId || !pw) return;
+        const payload = { roomId, pw, nickname: String(st.nickname || ""), ts: Date.now() };
+        try{ window.localStorage.setItem(RT_BATTLE_LAST_ROOM_KEY, JSON.stringify(payload)); }catch(_){}
+      }
+      function _rtBattleLoadLastRoom(){
+        try{
+          const raw = window.localStorage.getItem(RT_BATTLE_LAST_ROOM_KEY);
+          if (!raw) return null;
+          const d = JSON.parse(raw);
+          if (!d || typeof d !== "object") return null;
+          if ((Date.now() - Math.max(0, Number(d.ts || 0))) > 10 * 60 * 1000) return null;
+          return {
+            roomId: String(d.roomId || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0,6),
+            pw: String(d.pw || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0,6),
+            nickname: String(d.nickname || "").slice(0,32),
+            ts: Math.max(0, Number(d.ts || 0))
+          };
+        }catch(_){ return null; }
+      }
+      function _rtBattleJoinUrl(roomId, pw){
+        const u = new URL(location.href);
+        u.hash = `room=${encodeURIComponent(String(roomId || ""))}&pw=${encodeURIComponent(String(pw || ""))}`;
+        return u.toString();
+      }
+      function _rtBattleParseRoomHash(hashRaw){
+        const raw = String(hashRaw || location.hash || "").replace(/^#/, "");
+        if (!raw) return null;
+        const p = new URLSearchParams(raw);
+        const roomId = String(p.get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0,6);
+        const pw = String(p.get("pw") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0,6);
+        if (!roomId || !pw) return null;
+        return { roomId, pw };
+      }
+      function _rtBattleHashAutofill(){
+        const parsed = _rtBattleParseRoomHash(location.hash);
+        if (!parsed) return;
+        const st = _rtBattleState();
+        st.joinRoomId = parsed.roomId;
+        st.joinPassword = parsed.pw;
+        _rtBattleOverlayOpen("join");
+        _rtBattleOverlayRender();
+      }
+      let __rtQrScriptPromise = null;
+      function _rtBattleLoadQrForJoinUrl(joinUrl){
+        const st = _rtBattleState();
+        const qr = st.qr || (st.qr = { status: "idle", url: "", error: "", timeoutId: null, reqId: 0 });
+        qr.reqId = Math.max(0, Number(qr.reqId || 0)) + 1;
+        const rid = qr.reqId;
+        qr.status = "loading";
+        qr.error = "";
+        qr.url = "";
+        if (qr.timeoutId){ clearTimeout(qr.timeoutId); qr.timeoutId = null; }
+        _rtBattleOverlayRender();
+        const imgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(String(joinUrl || ""))}`;
+        const img = new Image();
+        let settled = false;
+        const done = (ok, errMsg="") => {
+          if (settled) return;
+          settled = true;
+          if (qr.timeoutId){ clearTimeout(qr.timeoutId); qr.timeoutId = null; }
+          if (rid !== qr.reqId) return;
+          if (ok){
+            qr.status = "ok";
+            qr.url = imgUrl;
+            qr.error = "";
+          } else {
+            qr.status = "error";
+            qr.url = "";
+            qr.error = errMsg || "QR生成に失敗しました（コード/URLで共有してください）";
+          }
+          _rtBattleOverlayRender();
+        };
+        img.onload = () => done(true);
+        img.onerror = () => done(false, "QR生成に失敗しました（コード/URLで共有してください）");
+        qr.timeoutId = setTimeout(() => done(false, "QR生成がタイムアウトしました（コード/URLで共有してください）"), 5000);
+        img.src = imgUrl;
+      }
+      function _rtBattleEnsureOverlayStyles(){
+        if (document.getElementById("onlineOverlayStyles")) return;
+        const style = document.createElement("style");
+        style.id = "onlineOverlayStyles";
+        style.textContent = `
+          #onlineOverlay{position:fixed; inset:0; z-index:99990; display:none;}
+          #onlineOverlay.is-open{display:block;}
+          #onlineOverlay .ov-bg{position:absolute; inset:0; background:rgba(0,0,0,.28);}
+          #onlineOverlay .ov-shell{position:absolute; inset:10px 10px calc(env(safe-area-inset-bottom,0px) + 10px) 10px; background:var(--bg,var(--panel,#fff)); color:var(--text,#111); border:1px solid var(--border,#ddd); border-radius:20px; box-shadow:var(--shadow,0 12px 30px rgba(0,0,0,.12)); display:flex; flex-direction:column; overflow:hidden;}
+          #onlineOverlay .ov-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-bottom:1px solid var(--bar-border,var(--line,var(--border,#ddd))); background:var(--bar-bg,var(--panel,#fff)); position:sticky; top:0; z-index:2;}
+          #onlineOverlay .ov-title{font-weight:800; font-size:16px;}
+          #onlineOverlay .ov-headbtn{min-height:40px; min-width:40px; border-radius:12px;}
+          #onlineOverlay .ov-body{flex:1; overflow:auto; padding:14px; background:var(--bg,#f7f7f8);}
+          #onlineOverlay .ov-scene{animation:ovFade .22s cubic-bezier(.22,1,.36,1);}
+          #onlineOverlay .ov-grid{display:grid; gap:10px;}
+          #onlineOverlay .ov-grid.cols2{grid-template-columns:repeat(2,minmax(0,1fr));}
+          #onlineOverlay .ov-card{background:var(--panel,#fff); border:1px solid var(--border,#ddd); border-radius:14px; padding:12px; box-shadow:0 1px 0 rgba(17,18,20,.04);}
+          #onlineOverlay .ov-card.is-click{cursor:pointer;}
+          #onlineOverlay .ov-card h4{margin:0 0 6px; font-size:15px;}
+          #onlineOverlay .ov-mini{font-size:12px; opacity:.8;}
+          #onlineOverlay .ov-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+          #onlineOverlay .ov-banner{padding:10px 12px; border-radius:14px; background:var(--panel,#fff); border:1px solid var(--border,#ddd); margin-bottom:10px; box-shadow:0 1px 0 rgba(17,18,20,.04);}
+          #onlineOverlay .ov-banner.err{background:rgba(255,0,0,.06);}
+          #onlineOverlay .ov-countdown{display:grid; place-items:center; min-height:40vh; text-align:center;}
+          #onlineOverlay .ov-countdown .n{font-size:clamp(48px,14vw,92px); font-weight:900; line-height:1; animation:ovPop .24s ease;}
+          #onlineOverlay .ov-qr{display:grid; place-items:center; min-height:260px; border-radius:14px; border:1px dashed var(--line,var(--border,#ddd)); background:var(--panel,#fff);}
+          #onlineOverlay .ov-qr img{max-width:240px; width:100%; height:auto; border-radius:12px;}
+          #onlineOverlay .ov-entry-card{display:flex; align-items:center; gap:12px; text-align:left;}
+          #onlineOverlay .ov-entry-icon{width:44px; height:44px; border-radius:12px; display:grid; place-items:center; flex-shrink:0; background:var(--panel2,#f3f4f6); border:1px solid var(--border,#ddd); color:var(--accent,#1f2a44);}
+          #onlineOverlay .ov-entry-icon .ms{font-size:24px; line-height:1;}
+          #onlineOverlay .ov-entry-copy{min-width:0;}
+          #onlineOverlay .ov-entry-copy h4{margin:0 0 4px;}
+          #onlineOverlay .ov-stage-grid{display:grid; gap:10px;}
+          #onlineOverlay .ov-stage-grid.is-lobby{grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);}
+          #onlineOverlay .ov-stage-grid.is-game{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);}
+          #onlineOverlay .ov-chat-scroll{max-height:240px; overflow:auto; border:1px solid var(--border,#ddd); border-radius:10px; background:var(--panel2,#fbfbfc);}
+          #onlineOverlay .ov-chat-list{display:block;}
+          #onlineOverlay .ov-chat-empty{padding:10px 12px; font-size:12px; color:var(--muted);}
+          #onlineOverlay .ov-chat-row{padding:8px 10px; border-bottom:1px solid var(--border,#ddd);}
+          #onlineOverlay .ov-chat-row:last-child{border-bottom:0;}
+          #onlineOverlay .ov-chat-row.is-system{font-size:12px; color:var(--muted);}
+          #onlineOverlay .ov-chat-meta{font-size:11px; color:var(--muted); margin-bottom:3px;}
+          #onlineOverlay .ov-chat-meta span{opacity:.8;}
+          #onlineOverlay .ov-chat-text{white-space:pre-wrap; word-break:break-word; color:var(--text);}
+          #onlineOverlay .ov-card.settings-group{overflow:hidden;}
+          #onlineOverlay .ov-card.settings-group .settings-row{background:transparent;}
+          #onlineOverlay .ov-card.settings-group .settings-row.is-static{cursor:default;}
+          #onlineOverlay .ov-scanner{position:absolute; inset:0; background:rgba(0,0,0,.45); display:none; z-index:4;}
+          #onlineOverlay .ov-scanner.is-open{display:block;}
+          #onlineOverlay .ov-scanner-panel{position:absolute; left:10px; right:10px; top:56px; bottom:10px; background:var(--panel,#fff); border-radius:18px; border:1px solid var(--border,#ddd); display:flex; flex-direction:column; overflow:hidden;}
+          #onlineOverlay .ov-scanner-head{display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid var(--line,var(--border,#ddd));}
+          #onlineOverlay .ov-scanner-view{position:relative; flex:1; background:#000; display:grid; place-items:center;}
+          #onlineOverlay .ov-scanner-view video{width:100%; height:100%; object-fit:cover;}
+          #onlineOverlay .ov-scanner-overlay{position:absolute; inset:0; pointer-events:none; border:2px solid rgba(255,255,255,.2);}
+          #onlineOverlay .ov-qcard.ok{box-shadow:0 0 0 2px rgba(64,190,106,.35) inset;}
+          #onlineOverlay .ov-qcard.ng{box-shadow:0 0 0 2px rgba(235,87,87,.35) inset;}
+          @keyframes ovFade{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}
+          @keyframes ovPop{from{opacity:.2; transform:scale(.9)}to{opacity:1; transform:scale(1)}}
+          @media (max-width: 760px){
+            #onlineOverlay .ov-shell{inset:0 0 calc(env(safe-area-inset-bottom,0px)) 0; border-radius:0;}
+            #onlineOverlay .ov-grid.cols2{grid-template-columns:1fr;}
+            #onlineOverlay .ov-body{padding:12px;}
+            #onlineOverlay .ov-stage-grid.is-lobby,
+            #onlineOverlay .ov-stage-grid.is-game{grid-template-columns:1fr;}
+            #onlineOverlay .ov-chat-scroll{max-height:200px;}
+          }
+        `;
+        document.head.appendChild(style);
+      }
+      function _rtBattleOverlayEnsureDom(){
+        _rtBattleEnsureOverlayStyles();
+        let root = document.getElementById("onlineOverlay");
+        if (root) return root;
+        root = document.createElement("div");
+        root.id = "onlineOverlay";
+        root.setAttribute("aria-hidden", "true");
+        root.innerHTML = `
+          <div class="ov-bg" data-rt-battle-action="overlayClose"></div>
+          <div class="ov-shell" role="dialog" aria-label="オンライン対戦">
+            <div class="ov-head">
+              <button class="btn ov-headbtn" type="button" id="onlineOverlayBackBtn" data-rt-battle-action="overlayBack">←</button>
+              <div class="ov-title" id="onlineOverlayTitle">オンライン対戦</div>
+              <button class="btn ov-headbtn" type="button" data-rt-battle-action="overlayClose">×</button>
+            </div>
+            <div class="ov-body" id="onlineOverlayBody"></div>
+            <div class="ov-scanner" id="rtQrScannerWrap"></div>
+          </div>`;
+        document.body.appendChild(root);
+        return root;
+      }
+      function _rtBattleOverlaySetBodyLock(on){
+        try{
+          document.documentElement.classList.toggle("rt-battle-overlay-open", !!on);
+          document.body.classList.toggle("rt-battle-overlay-open", !!on);
+          document.body.style.overflow = on ? "hidden" : "";
+        }catch(_){}
+      }
+      function _rtBattleOverlayPush(scene){
+        const st = _rtBattleState();
+        const cur = String(st.overlayScene || "top");
+        if (cur && cur !== scene) st.overlayHistory.push(cur);
+        st.overlayScene = scene;
+      }
+      function _rtBattleOverlayBack(){
+        const st = _rtBattleState();
+        if (st.scanner?.open){ _rtBattleScannerClose(); return; }
+        const prev = st.overlayHistory.pop();
+        if (prev){ st.overlayScene = prev; _rtBattleOverlayRender(); return; }
+        _rtBattleOverlayClose();
+      }
+      function _rtBattleOverlayOpen(scene = "top"){
+        const st = _rtBattleState();
+        st.overlayOpen = true;
+        if (!st.overlayScene) st.overlayScene = "top";
+        if (scene) st.overlayScene = String(scene);
+        if (!Array.isArray(st.overlayHistory)) st.overlayHistory = [];
+        _rtBattleOverlayEnsureDom();
+        _rtBattleOverlaySetBodyLock(true);
+        const root = document.getElementById("onlineOverlay");
+        if (root){
+          root.classList.add("is-open");
+          root.hidden = false;
+          root.setAttribute("aria-hidden", "false");
+        }
+        _rtBattleOverlayRender();
+      }
+      function _rtBattleOverlayClose(){
+        const st = _rtBattleState();
+        st.overlayOpen = false;
+        st.overlayHistory = [];
+        _rtBattleScannerClose(true);
+        _rtBattleStopReconnect();
+        _rtBattleDisconnect(true);
+        _rtBattleClearFeedback();
+        const root = document.getElementById("onlineOverlay");
+        if (root){
+          root.classList.remove("is-open");
+          root.hidden = true;
+          root.setAttribute("aria-hidden", "true");
+        }
+        _rtBattleOverlaySetBodyLock(false);
+      }
+      function _rtBattleSceneFromPhase(){
+        const st = _rtBattleState();
+        if (!st.connected) return String(st.overlayScene || "top");
+        const phase = String(st.phase || "lobby");
+        if (phase === "countdown") return "countdown";
+        if (phase === "playing") return "game";
+        if (phase === "result") return "result";
+        return "lobby";
+      }
+      function _rtBattleOverlaySyncSceneFromState(){
+        const st = _rtBattleState();
+        if (!st.overlayOpen) return;
+        const derived = _rtBattleSceneFromPhase();
+        if (st.connected) st.overlayScene = derived;
+      }
+      function _rtBattlePresetOptions(){
+        const builtins = [
+          { value: "builtin:ALL", label: "ALL" },
+          { value: "builtin:0-200", label: "0-200" },
+          { value: "builtin:200-400", label: "200-400" },
+          { value: "builtin:400-600", label: "400-600" }
+        ];
+        const out = builtins.slice();
+        try{
+          const raw = window.localStorage.getItem(PRESETS_KEY);
+          const arr = raw ? JSON.parse(raw) : [];
+          if (Array.isArray(arr)){
+            for (const p of arr){
+              if (!p || typeof p !== "object") continue;
+              const id = String(p.id || "");
+              const name = String(p.name || "");
+              if (!id || !name) continue;
+              out.push({ value: `custom:${id}`, label: `My: ${name}` });
+            }
+          }
+        }catch(_){}
+        return out.slice(0, 80);
+      }
+      function _rtBattlePresetDisplayName(ref, fallbackName = ""){
+        if (fallbackName) return String(fallbackName);
+        if (!ref || typeof ref !== "object") return "";
+        const type = String(ref.type || "");
+        if (type === "builtin") return String(ref.key || "builtin").replace(/^builtin:/, "");
+        if (type === "custom") return `My Preset`;
+        return "";
+      }
+      function _rtBattleSetPresetFromSelect(value){
+        const st = _rtBattleState();
+        const v = String(value || "");
+        if (!v){ st.presetRef = null; st.presetName = ""; return; }
+        if (v.startsWith("builtin:")){
+          st.presetRef = { type: "builtin", key: v };
+          st.presetName = v.replace(/^builtin:/, "");
+        } else if (v.startsWith("custom:")){
+          st.presetRef = { type: "custom", id: v.slice(7) };
+          st.presetName = v;
+          const opt = _rtBattlePresetOptions().find(o => o.value === v);
+          if (opt) st.presetName = opt.label;
+        }
+      }
+      function _rtBattleSendPresetSelection(){
+        const st = _rtBattleState();
+        if (!_rtBattleIsHost()) return;
+        if (!st.connected) return;
+        const sel = document.getElementById("rtBattlePresetSelect");
+        if (sel) _rtBattleSetPresetFromSelect(sel.value);
+        const ref = st.presetRef;
+        if (!st.room || typeof st.room !== "object") st.room = {};
+        st.room.presetRef = ref ? { ...ref } : null;
+        st.room.presetName = st.presetName || _rtBattlePresetDisplayName(ref);
+        try{ console.log("[preset:set]", ref); }catch(_){}
+        _rtBattleOverlayRender();
+        const ok = _rtBattleSafeSend({ type: "preset:set", presetRef: ref, presetName: st.presetName || _rtBattlePresetDisplayName(ref) });
+        if (!ok) try{ uiToast("プリセット同期に失敗しました"); }catch(_){}
+      }
+      function _rtBattleOverlayBanner(){
+        const st = _rtBattleState();
+        const parts = [];
+        if (st.errorMsg) parts.push({ cls: "err", text: st.errorMsg });
+        else if (st.reconnecting) parts.push({ cls: "", text: `接続が切れました。再接続中… (${Math.max(1, Number(st.reconnectAttempts || 1))}/5)` });
+        else if (st.statusMsg) parts.push({ cls: "", text: st.statusMsg });
+        return parts.map(b => `<div class="ov-banner ${b.cls}">${_escapeHtml(String(b.text || ""))}</div>`).join("");
+      }
+      function _rtBattleShareCardHtml(){
+        const st = _rtBattleState();
+        const roomId = String(st.roomId || "");
+        const pw = String(st.roomPassword || "");
+        if (!roomId || !pw) return "";
+        const joinUrl = String(st.joinUrl || _rtBattleJoinUrl(roomId, pw));
+        const qr = st.qr || {};
+        return `<section class="ov-card">
+          <div class="ov-grid cols2">
+            <div>
+              <h4>ルーム共有</h4>
+              <div class="ov-mini">ルームID</div>
+              <div style="font-size:24px; font-weight:900; letter-spacing:.08em; text-align:center; margin:8px 0;">${_escapeHtml(roomId)}</div>
+              <div class="ov-mini">パスワード: <code>${_escapeHtml(pw)}</code></div>
+              <div class="ov-actions">
+                <button class="btn" type="button" data-rt-battle-action="copyRoomId">ルームIDコピー</button>
+                <button class="btn" type="button" data-rt-battle-action="copyJoinUrl">参加URLコピー</button>
+              </div>
+              <div class="ov-mini" style="margin-top:8px; word-break:break-all;">${_escapeHtml(joinUrl)}</div>
+            </div>
+            <div>
+              <div class="ov-mini" style="margin-bottom:6px;">QR</div>
+              <div class="ov-qr">
+                ${qr.status === "ok" && qr.url ? `<img alt="room qr" src="${_escapeHtml(qr.url)}" />` : `<div class="ov-mini">${_escapeHtml(qr.status === "loading" ? "QR生成中…" : (qr.error || "QR未生成"))}</div>`}
+              </div>
+            </div>
+          </div>
+        </section>`;
+      }
+      function _rtBattleRenderPresetSection(){
+        const st = _rtBattleState();
+        const host = _rtBattleIsHost();
+        const opts = _rtBattlePresetOptions();
+        const roomPresetRef = st.room?.presetRef || st.presetRef || null;
+        const currentVal = roomPresetRef?.type === "builtin"
+          ? (String(roomPresetRef?.key || "").startsWith("builtin:") ? String(roomPresetRef?.key || "") : `builtin:${String(roomPresetRef?.key || "")}`)
+          : (roomPresetRef?.type === "custom" ? `custom:${String(roomPresetRef?.id || "")}` : "");
+        return `<section class="ov-card settings-group">
+          <div class="settings-row is-static">
+            <div class="label">出題プリセット</div>
+            <div class="value">${host ? "ホストのみ変更可" : "ホストのみ変更できます"}</div>
+          </div>
+          <div class="settings-row is-static" style="display:block; min-height:auto;">
+          <div class="ov-mini" style="margin-bottom:6px;">現在: ${_escapeHtml(_rtBattlePresetDisplayName(st.room?.presetRef, st.room?.presetName) || "未選択")}</div>
+          <select id="rtBattlePresetSelect" class="select settings-select" data-native-ui="1"${host ? "" : " disabled"}>
+            <option value="">選択してください</option>
+            ${opts.map(o => `<option value="${_escapeHtml(o.value)}"${o.value===currentVal?" selected":""}>${_escapeHtml(o.label)}</option>`).join("")}
+          </select>
+          ${host ? "" : `<div class="ov-mini" style="margin-top:8px;">ホストのみ変更できます</div>`}
+          </div>
+        </section>`;
+      }
+      function _rtBattleRenderTopScene(){
+        const last = _rtBattleLoadLastRoom();
+        return `<div class="ov-scene">
+          <div id="rtBattleBannerWrap">${_rtBattleOverlayBanner()}</div>
+          <div class="ov-grid cols2 ov-entry-grid">
+            <button class="ov-card ov-entry-card is-click" type="button" data-rt-battle-action="openCreate">
+              <div class="ov-entry-icon"><span class="ms" aria-hidden="true">add_circle</span></div>
+              <div class="ov-entry-copy">
+              <h4>ルーム作成</h4><div class="ov-mini">ルームIDを発行して参加者を招待します</div>
+              </div>
+            </button>
+            <button class="ov-card ov-entry-card is-click" type="button" data-rt-battle-action="openJoin">
+              <div class="ov-entry-icon"><span class="ms" aria-hidden="true">qr_code_scanner</span></div>
+              <div class="ov-entry-copy">
+              <h4>ルーム参加</h4><div class="ov-mini">ルームID + パスワード / QRで参加</div>
+              </div>
+            </button>
+          </div>
+          ${last ? `<section class="ov-card settings-group" style="margin-top:10px;">
+            <h4>前回のルームに戻る</h4>
+            <div class="ov-mini">Room <code>${_escapeHtml(last.roomId)}</code> / PW <code>${_escapeHtml(last.pw)}</code></div>
+            <div class="ov-actions"><button class="btn" type="button" data-rt-battle-action="joinLastRoom">前回のルームに戻る</button></div>
+          </section>` : ``}
+        </div>`;
+      }
+      function _rtBattleRenderCreateScene(){
+        const st = _rtBattleState();
+        return `<div class="ov-scene">
+          <div id="rtBattleBannerWrap">${_rtBattleOverlayBanner()}</div>
+          <section class="ov-card settings-group">
+            <h4>ルーム作成</h4>
+            <div class="ov-mini">ニックネーム（任意）</div>
+            <input id="rtRoomNickInput" class="spell-input" type="text" maxlength="32" placeholder="Rinto" value="${_escapeHtml(String(st.nickname || ""))}">
+            <div class="ov-mini" style="margin-top:8px;">パスワード（6桁、省略可）</div>
+            <input id="rtRoomCreatePasswordInput" class="spell-input" type="text" inputmode="latin" maxlength="6" placeholder="ABC123" value="${_escapeHtml(String(st.roomPassword || ""))}">
+            <div class="ov-actions">
+              <button class="btn" type="button" data-rt-battle-action="start"${st.busy || st.connecting ? " disabled" : ""}>作成して入室</button>
+              <button class="textbtn" type="button" data-rt-battle-action="overlayBack">戻る</button>
+            </div>
+          </section>
+        </div>`;
+      }
+      function _rtBattleRenderJoinScene(){
+        const st = _rtBattleState();
+        return `<div class="ov-scene">
+          <div id="rtBattleBannerWrap">${_rtBattleOverlayBanner()}</div>
+          <section class="ov-card settings-group">
+            <h4>ルーム参加</h4>
+            <div class="ov-mini">ニックネーム（任意）</div>
+            <input id="rtRoomNickInput" class="spell-input" type="text" maxlength="32" placeholder="Rinto" value="${_escapeHtml(String(st.nickname || ""))}">
+            <div class="ov-grid cols2" style="margin-top:8px;">
+              <div><div class="ov-mini">ルームID</div><input id="rtRoomJoinIdInput" class="spell-input" type="text" inputmode="latin" maxlength="6" placeholder="A1B2C3" value="${_escapeHtml(String(st.joinRoomId || ""))}"></div>
+              <div><div class="ov-mini">パスワード</div><input id="rtRoomJoinPasswordInput" class="spell-input" type="text" inputmode="latin" maxlength="6" placeholder="ABC123" value="${_escapeHtml(String(st.joinPassword || ""))}"></div>
+            </div>
+            <div class="ov-actions">
+              <button class="btn" type="button" data-rt-battle-action="reconnect"${st.busy || st.connecting ? " disabled" : ""}>参加</button>
+              <button class="btn" type="button" data-rt-battle-action="openScanner">QR読み取りで参加</button>
+              <button class="textbtn" type="button" data-rt-battle-action="overlayBack">戻る</button>
+            </div>
+            <div class="ov-mini" style="margin-top:8px;">QR非対応環境ではコード入力で参加してください。</div>
+          </section>
+        </div>`;
+      }
+      function _rtBattleRenderLobbyGameResultScene(){
+        const st = _rtBattleState();
+        const phase = String(st.phase || "lobby");
+        const sceneKind = (phase === "playing" || phase === "result") ? "is-game" : "is-lobby";
+        const gameInner = phase === "countdown" ? _rtBattleRenderCountdownInner() : (_rtBattleRenderGameCard() || `<div class="ov-mini">状態待ち…</div>`);
+        return `<div class="ov-scene">
+          <div id="rtBattleBannerWrap">${_rtBattleOverlayBanner()}</div>
+          <div id="rtBattleShareWrap">${_rtBattleShareCardHtml()}</div>
+          <section class="ov-card settings-group" id="rtBattleRoomMetaWrap" style="margin-top:10px;">
+            <div class="ov-mini">ルーム <code>${_escapeHtml(String(st.room?.roomId || st.roomId || ""))}</code> / 接続状態: ${_escapeHtml(_rtBattleStatusLabel())}</div>
+            <div class="ov-mini">${_rtBattleIsHost() ? "あなたはホストです" : "ホストを待機中"}</div>
+          </section>
+          <div id="rtBattlePresetWrap" style="margin-top:10px;">${phase === "lobby" ? _rtBattleRenderPresetSection() : ""}</div>
+          <div class="ov-stage-grid ${sceneKind}" style="margin-top:10px;">
+          <section class="ov-card settings-group" id="rtBattlePlayersWrap">
+            <h4>参加者 / スコア</h4>
+            ${_rtBattleRenderPlayerList()}
+          </section>
+          <section class="ov-card ov-qcard ${st.feedbackKind || ""}" id="rtBattleGameWrap">
+            ${gameInner}
+            <div id="rtBattleRoundResultWrap">${phase !== "countdown" ? _rtBattleRenderRoundResult() : ""}</div>
+          </section>
+          <section class="ov-card settings-group" id="rtBattleChatPanel">
+            <h4>チャット</h4>
+            <div id="rtBattleChatScroll" class="ov-chat-scroll"><div id="rtBattleChatList" class="ov-chat-list">${_rtBattleRenderChatLogs()}</div></div>
+            <div class="ov-actions">
+              <input id="rtBattleWriteInput" class="spell-input" type="text" placeholder="メッセージを入力" value="${_escapeHtml(String(st.writeDraft || ""))}">
+              <button class="btn" type="button" data-rt-battle-action="submitWrite"${!st.connected ? " disabled" : ""}>送信</button>
+            </div>
+            <div class="ov-actions">
+              <button class="textbtn" type="button" data-rt-battle-action="disconnect"${(!st.connected && !st.connecting) ? " disabled" : ""}>退出</button>
+            </div>
+          </section>
+          </div>
+        </div>`;
+      }
+      function _rtBattleCountdownNumber(){
+        const st = _rtBattleState();
+        const endsAt = Math.max(0, Number(st.game?.countdownEndsAtMs || 0));
+        const now = Date.now();
+        const remain = Math.max(0, endsAt - now);
+        if (!endsAt) return "…";
+        const sec = Math.ceil(remain / 1000);
+        return sec <= 0 ? "GO!" : String(sec);
+      }
+      function _rtBattleRenderCountdownInner(){
+        return `<div class="ov-countdown">
+          <div>
+            <div class="ov-mini">開始カウントダウン</div>
+            <div class="n" id="rtBattleCountdownBig">${_escapeHtml(_rtBattleCountdownNumber())}</div>
+          </div>
+        </div>`;
+      }
+      function _rtBattleOverlaySceneTitle(scene){
+        if (scene === "create") return "オンライン対戦 / ルーム作成";
+        if (scene === "join") return "オンライン対戦 / ルーム参加";
+        if (scene === "countdown") return "オンライン対戦 / カウントダウン";
+        if (scene === "game") return "オンライン対戦 / 対戦中";
+        if (scene === "result") return "オンライン対戦 / 結果";
+        if (scene === "lobby") return "オンライン対戦 / ロビー";
+        return "オンライン対戦";
+      }
+      function _rtBattleOverlayRenderScanner(){
+        const st = _rtBattleState();
+        const wrap = document.getElementById("rtQrScannerWrap");
+        if (!wrap) return;
+        const sc = st.scanner || {};
+        wrap.className = `ov-scanner${sc.open ? " is-open" : ""}`;
+        if (!sc.open){ wrap.innerHTML = ""; return; }
+        wrap.innerHTML = `
+          <div class="ov-scanner-panel">
+            <div class="ov-scanner-head">
+              <div class="ov-title">QR読み取り</div>
+              <button class="btn ov-headbtn" type="button" data-rt-battle-action="closeScanner">×</button>
+            </div>
+            <div class="ov-scanner-view">
+              <video id="rtQrScannerVideo" playsinline autoplay muted></video>
+              <canvas id="rtQrScannerCanvas" style="display:none;"></canvas>
+              <div class="ov-scanner-overlay"></div>
+            </div>
+            <div style="padding:10px 12px;" class="ov-mini">${_escapeHtml(String(sc.error || sc.status || "カメラを起動中…"))}</div>
+          </div>`;
+      }
+      function _rtBattleChatRowKey(row, idx){
+        const r = row && typeof row === "object" ? row : {};
+        return [
+          String(r.kind || "system"),
+          Math.max(0, Number(r.ts || 0)),
+          Math.max(0, Number(r.fromId || 0)),
+          String(r.fromNick || ""),
+          String(r.text || "").slice(0, 120),
+          Math.max(0, Number(idx || 0))
+        ].join("|");
+      }
+      function _rtBattleChatRowHtml(row, idx){
+        const r = row && typeof row === "object" ? row : {};
+        const key = _rtBattleChatRowKey(r, idx);
+        const ts = new Date(Math.max(0, Number(r.ts || Date.now())));
+        const hh = String(ts.getHours()).padStart(2, "0");
+        const mm = String(ts.getMinutes()).padStart(2, "0");
+        if (String(r.kind || "") === "chat"){
+          return `<div class="ov-chat-row" data-chat-key="${_escapeHtml(key)}">
+            <div class="ov-chat-meta">${_escapeHtml(String(r.fromNick || "user"))} <span>${hh}:${mm}</span></div>
+            <div class="ov-chat-text">${_escapeHtml(String(r.text || ""))}</div>
+          </div>`;
+        }
+        return `<div class="ov-chat-row is-system" data-chat-key="${_escapeHtml(key)}"><span class="ov-chat-meta">${hh}:${mm}</span> ${_escapeHtml(String(r.text || ""))}</div>`;
+      }
+      function _rtBattleChatShouldStick(scroller){
+        if (!(scroller instanceof HTMLElement)) return true;
+        const remain = scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight);
+        return remain <= 28;
+      }
+      function _rtBattleOverlayPatchChat(force){
+        const root = document.getElementById("onlineOverlay");
+        if (!root || !root.classList.contains("is-open")) return false;
+        const listEl = root.querySelector("#rtBattleChatList");
+        const scrollEl = root.querySelector("#rtBattleChatScroll");
+        if (!(listEl instanceof HTMLElement)) return false;
+        const rows = Array.isArray(_rtBattleState().chatLogs) ? _rtBattleState().chatLogs.slice(-40) : [];
+        const shouldStick = _rtBattleChatShouldStick(scrollEl);
+        if (force || !listEl.children.length){
+          listEl.innerHTML = rows.length ? rows.map((r, i) => _rtBattleChatRowHtml(r, i)).join("") : `<div class="ov-chat-empty">チャットログはまだありません。</div>`;
+          if (scrollEl && shouldStick) scrollEl.scrollTop = scrollEl.scrollHeight;
+          return true;
+        }
+        const existingKeys = Array.from(listEl.children).map((el) => el.getAttribute("data-chat-key") || "");
+        const newKeys = rows.map((r, i) => _rtBattleChatRowKey(r, i));
+        let prefixOk = existingKeys.length <= newKeys.length;
+        for (let i = 0; i < existingKeys.length && prefixOk; i++){
+          if (existingKeys[i] !== newKeys[i]) prefixOk = false;
+        }
+        if (!prefixOk){
+          listEl.innerHTML = rows.length ? rows.map((r, i) => _rtBattleChatRowHtml(r, i)).join("") : `<div class="ov-chat-empty">チャットログはまだありません。</div>`;
+        } else {
+          if (listEl.querySelector(".ov-chat-empty")) listEl.innerHTML = "";
+          for (let i = existingKeys.length; i < rows.length; i++){
+            listEl.insertAdjacentHTML("beforeend", _rtBattleChatRowHtml(rows[i], i));
+          }
+        }
+        if (scrollEl && shouldStick) scrollEl.scrollTop = scrollEl.scrollHeight;
+        return true;
+      }
+      function _rtBattleOverlayPatchDynamic(scene){
+        const root = document.getElementById("onlineOverlay");
+        if (!root) return false;
+        const body = root.querySelector("#onlineOverlayBody");
+        if (!(body instanceof HTMLElement)) return false;
+        if (String(body.dataset.scene || "") !== String(scene || "")) return false;
+        const st = _rtBattleState();
+        const bannerWrap = body.querySelector("#rtBattleBannerWrap");
+        if (bannerWrap) bannerWrap.innerHTML = _rtBattleOverlayBanner();
+        const roomMeta = body.querySelector("#rtBattleRoomMetaWrap");
+        if (roomMeta){
+          roomMeta.innerHTML = `<div class="ov-mini">ルーム <code>${_escapeHtml(String(st.room?.roomId || st.roomId || ""))}</code> / 接続状態: ${_escapeHtml(_rtBattleStatusLabel())}</div>
+            <div class="ov-mini">${_rtBattleIsHost() ? "あなたはホストです" : "ホストを待機中"}</div>`;
+        }
+        const presetWrap = body.querySelector("#rtBattlePresetWrap");
+        if (presetWrap){
+          const phase = String(st.phase || "lobby");
+          presetWrap.innerHTML = phase === "lobby" ? _rtBattleRenderPresetSection() : "";
+        }
+        const playersWrap = body.querySelector("#rtBattlePlayersWrap");
+        if (playersWrap){
+          playersWrap.innerHTML = `<h4>参加者 / スコア</h4>${_rtBattleRenderPlayerList()}`;
+        }
+        const gameWrap = body.querySelector("#rtBattleGameWrap");
+        if (gameWrap){
+          const phase = String(st.phase || "lobby");
+          const gameInner = phase === "countdown" ? _rtBattleRenderCountdownInner() : (_rtBattleRenderGameCard() || `<div class="ov-mini">状態待ち…</div>`);
+          gameWrap.className = `ov-card ov-qcard ${st.feedbackKind || ""}`;
+          gameWrap.innerHTML = `${gameInner}<div id="rtBattleRoundResultWrap">${phase !== "countdown" ? _rtBattleRenderRoundResult() : ""}</div>`;
+        }
+        _rtBattleOverlayPatchChat(false);
+        const presetEl = body.querySelector("#rtBattlePresetSelect");
+        if (presetEl instanceof HTMLSelectElement){
+          presetEl.dataset.nativeUi = "1";
+          presetEl.disabled = !_rtBattleIsHost();
+        }
+        return true;
+      }
+      function _rtBattleOverlayRender(){
+        const st = _rtBattleState();
+        if (!st.overlayOpen) return;
+        const root = _rtBattleOverlayEnsureDom();
+        if (!root) return;
+        _rtBattleOverlaySyncSceneFromState();
+        const scene = _rtBattleSceneFromPhase();
+        const body = root.querySelector("#onlineOverlayBody");
+        const title = root.querySelector("#onlineOverlayTitle");
+        const backBtn = root.querySelector("#onlineOverlayBackBtn");
+        if (title) title.textContent = _rtBattleOverlaySceneTitle(scene);
+        if (backBtn) {
+          const showBack = (scene === "create" || scene === "join") || !!(_rtBattleState().scanner?.open);
+          backBtn.style.visibility = showBack ? "visible" : "hidden";
+          backBtn.disabled = !showBack;
+        }
+        const patched = _rtBattleOverlayPatchDynamic(scene);
+        if (body){
+          if (!patched){
+            let html = "";
+            if (scene === "top") html = _rtBattleRenderTopScene();
+            else if (scene === "create") html = _rtBattleRenderCreateScene();
+            else if (scene === "join") html = _rtBattleRenderJoinScene();
+            else html = _rtBattleRenderLobbyGameResultScene();
+            body.innerHTML = html;
+            body.dataset.scene = scene;
+            _rtBattleOverlayPatchChat(true);
+          }
+        }
+        _rtBattleOverlayRenderScanner();
+        _customSelectEnhance(root);
+        const presetEl = root.querySelector("#rtBattlePresetSelect");
+        if (presetEl instanceof HTMLSelectElement){
+          presetEl.dataset.nativeUi = "1";
+          presetEl.disabled = !_rtBattleIsHost();
+        }
+      }
+      function _rtBattleRerender(){
+        if (_rtBattleOverlayIsOpen()){
+          _rtBattleOverlayRender();
+          return;
+        }
+        if (_menuState.view !== "onlineBattleRealtime") return;
+        const content = document.getElementById("menuContent");
+        if (!content) return;
+        content.innerHTML = _renderOnlineBattleRealtimeHTML();
+        _rtBattleInitView();
+      }
+      function _rtBattleEnsureUiTimer(){
+        const st = _rtBattleState();
+        if (st.uiTimerId) return;
+        st.uiTimerId = setInterval(() => {
+          if (!_rtBattleOverlayIsOpen() && _menuState.view !== "onlineBattleRealtime") return;
+          const qEl = document.getElementById("rtBattleCountdownText");
+          if (qEl) qEl.textContent = `${Math.max(0, Math.ceil(_rtBattleRemainingMs() / 1000))}秒`;
+          const cEl = document.getElementById("rtBattleCountdownBig");
+          if (cEl) cEl.textContent = _rtBattleCountdownNumber();
+        }, 250);
+      }
+      function _rtBattleStopQrLoadTimeout(){
+        const qr = _rtBattleState().qr;
+        if (qr && qr.timeoutId){ clearTimeout(qr.timeoutId); qr.timeoutId = null; }
+      }
+      function _rtBattleScannerStopLoop(){
+        const sc = _rtBattleState().scanner;
+        if (!sc) return;
+        if (sc.loopTimerId){ clearTimeout(sc.loopTimerId); sc.loopTimerId = null; }
+      }
+      function _rtBattleScannerStopStream(){
+        const sc = _rtBattleState().scanner;
+        if (!sc || !sc.stream) return;
+        try{ for (const tr of sc.stream.getTracks()) tr.stop(); }catch(_){}
+        sc.stream = null;
+      }
+      function _rtBattleScannerClose(silent = false){
+        const st = _rtBattleState();
+        if (!st.scanner) return;
+        _rtBattleScannerStopLoop();
+        _rtBattleScannerStopStream();
+        st.scanner.open = false;
+        st.scanner.status = "";
+        if (!silent) _rtBattleOverlayRender();
+      }
+      async function _rtBattleEnsureJsQr(){
+        if (window.jsQR) return true;
+        if (__rtQrScriptPromise) return __rtQrScriptPromise;
+        __rtQrScriptPromise = new Promise((resolve) => {
+          const s = document.createElement("script");
+          s.src = RT_QR_JS_URL;
+          s.async = true;
+          s.onload = () => resolve(!!window.jsQR);
+          s.onerror = () => resolve(false);
+          document.head.appendChild(s);
+        });
+        return __rtQrScriptPromise;
+      }
+      function _rtBattleApplyScannedJoinText(raw){
+        const txt = String(raw || "").trim();
+        if (!txt) return false;
+        let roomId = "", pw = "";
+        try{
+          const u = new URL(txt, location.href);
+          const h = _rtBattleParseRoomHash(u.hash);
+          if (h){ roomId = h.roomId; pw = h.pw; }
+          if (!roomId){
+            roomId = String(u.searchParams.get("room") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0,6);
+            pw = String(u.searchParams.get("pw") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0,6);
+          }
+        }catch{
+          const h = _rtBattleParseRoomHash(txt.startsWith("#") ? txt : ("#" + txt));
+          if (h){ roomId = h.roomId; pw = h.pw; }
+        }
+        if (!roomId || !pw) return false;
+        const st = _rtBattleState();
+        st.joinRoomId = roomId;
+        st.joinPassword = pw;
+        st.overlayScene = "join";
+        _rtBattleScannerClose(true);
+        st.statusMsg = "QRを読み取りました。参加を押してください。";
+        _rtBattleOverlayRender();
+        return true;
+      }
+      async function _rtBattleScannerDecodeLoop(){
+        const st = _rtBattleState();
+        const sc = st.scanner;
+        if (!sc || !sc.open) return;
+        const video = document.getElementById("rtQrScannerVideo");
+        const canvas = document.getElementById("rtQrScannerCanvas");
+        if (!(video instanceof HTMLVideoElement) || !(canvas instanceof HTMLCanvasElement)){
+          sc.loopTimerId = setTimeout(_rtBattleScannerDecodeLoop, 250);
+          return;
+        }
+        try{
+          if ("BarcodeDetector" in window){
+            sc.supported = true;
+            const detector = sc._detector || (sc._detector = new BarcodeDetector({ formats: ["qr_code"] }));
+            const codes = await detector.detect(video).catch(() => []);
+            if (codes && codes[0] && _rtBattleApplyScannedJoinText(codes[0].rawValue || "")) return;
+          } else {
+            sc.supported = false;
+            const okLib = await _rtBattleEnsureJsQr();
+            if (!okLib){
+              sc.error = "QR読み取りライブラリを読み込めませんでした。コード入力で参加してください。";
+              _rtBattleOverlayRender();
+              return;
+            }
+            const w = Math.max(2, video.videoWidth || 0);
+            const h = Math.max(2, video.videoHeight || 0);
+            if (w > 1 && h > 1){
+              canvas.width = w;
+              canvas.height = h;
+              const ctx = canvas.getContext("2d", { willReadFrequently: true });
+              if (ctx){
+                ctx.drawImage(video, 0, 0, w, h);
+                const img = ctx.getImageData(0, 0, w, h);
+                const r = window.jsQR ? window.jsQR(img.data, w, h) : null;
+                if (r && _rtBattleApplyScannedJoinText(r.data || "")) return;
+              }
+            }
+          }
+          sc.status = "QRをカメラに映してください";
+        }catch(err){
+          sc.error = String(err?.message || "QR読み取りに失敗しました。");
+        }finally{
+          if (sc.open){
+            _rtBattleOverlayRender();
+            sc.loopTimerId = setTimeout(_rtBattleScannerDecodeLoop, 180);
+          }
+        }
+      }
+      async function _rtBattleScannerOpen(){
+        const st = _rtBattleState();
+        const sc = st.scanner || (st.scanner = {});
+        sc.open = true;
+        sc.error = "";
+        sc.status = "カメラを起動中…";
+        _rtBattleOverlayRender();
+        const video = document.getElementById("rtQrScannerVideo");
+        if (!(video instanceof HTMLVideoElement)) return;
+        try{
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+          sc.stream = stream;
+          video.srcObject = stream;
+          await video.play().catch(()=>{});
+          sc.status = "QRをカメラに映してください";
+          _rtBattleScannerDecodeLoop();
+        }catch(err){
+          sc.error = `カメラを起動できませんでした: ${String(err?.message || err || "")}`;
+          _rtBattleOverlayRender();
+        }
+      }
+      function _rtBattleScheduleReconnect(){
+        const st = _rtBattleState();
+        if (st.manualClose) return;
+        if (!st.overlayOpen) return;
+        if (!st.roomId || !(st.roomPassword || st.joinPassword)) return;
+        if (st.reconnectAttempts >= 5) return;
+        _rtBattleStopReconnect();
+        st.reconnectAttempts = Math.max(0, Number(st.reconnectAttempts || 0)) + 1;
+        st.reconnecting = true;
+        const delay = Math.min(8000, 600 * (2 ** (st.reconnectAttempts - 1)));
+        st.reconnectTimerId = setTimeout(() => {
+          st.reconnectTimerId = null;
+          if (!st.overlayOpen || st.connected || st.connecting) return;
+          _rtBattleReconnect();
+        }, delay);
+        _rtBattleOverlayRender();
+      }
+      function _rtBattleOverlayHandleAction(act){
+        const st = _rtBattleState();
+        if (act === "overlayClose"){ _rtBattleOverlayClose(); return true; }
+        if (act === "overlayBack"){ _rtBattleOverlayBack(); return true; }
+        if (act === "openCreate"){ _rtBattleOverlayPush("create"); _rtBattleOverlayRender(); return true; }
+        if (act === "openJoin"){ _rtBattleOverlayPush("join"); _rtBattleOverlayRender(); return true; }
+        if (act === "joinLastRoom"){
+          const last = _rtBattleLoadLastRoom();
+          if (!last){ try{ uiToast("前回のルーム情報がありません"); }catch(_){} return true; }
+          st.joinRoomId = last.roomId; st.joinPassword = last.pw; if (!st.nickname) st.nickname = last.nickname || "";
+          _rtBattleOverlayPush("join");
+          _rtBattleOverlayRender();
+          return true;
+        }
+        if (act === "copyRoomId"){
+          _copyText(String(st.roomId || st.joinRoomId || "")).then(ok => uiToast(ok ? "ルームIDをコピーしました" : "コピーに失敗しました"));
+          return true;
+        }
+        if (act === "copyJoinUrl"){
+          const url = String(st.joinUrl || _rtBattleJoinUrl(st.roomId || st.joinRoomId, st.roomPassword || st.joinPassword));
+          _copyText(url).then(ok => uiToast(ok ? "参加URLをコピーしました" : "コピーに失敗しました"));
+          return true;
+        }
+        if (act === "openScanner"){ _rtBattleScannerOpen(); return true; }
+        if (act === "closeScanner"){ _rtBattleScannerClose(); return true; }
+        return false;
+      }
+      function _rtBattleOverlayInitHooks(){
+        if (window.__rtBattleOverlayHooked) return;
+        window.__rtBattleOverlayHooked = true;
+        window.addEventListener("hashchange", () => {
+          try{ _rtBattleHashAutofill(); }catch(_){}
+        });
+      }
+      // wrap/override some existing functions for overlay behavior
+      const __rtBattleHandleMessageBase = _rtBattleHandleMessage;
+      _rtBattleHandleMessage = function(msg){
+        const st = _rtBattleState();
+        const type = String(msg?.type || "").toLowerCase();
+        if (type === "countdown:start"){
+          st.phase = "countdown";
+          st.game = st.game && typeof st.game === "object" ? st.game : {};
+          st.game.countdownStartAtMs = Math.max(0, Number(msg?.startAtMs || Date.now()));
+          st.game.countdownEndsAtMs = Math.max(0, Number(msg?.endsAtMs || (Date.now()+3000)));
+          st.statusMsg = "開始カウントダウン";
+          _rtBattleEnsureUiTimer();
+          _rtBattleOverlaySyncSceneFromState();
+          _rtBattleOverlayRender();
+        }
+        let restoreRerender = null;
+        if (type === "chat" && _rtBattleOverlayIsOpen()){
+          const _baseRerender = _rtBattleRerender;
+          _rtBattleRerender = function(){
+            if (!_rtBattleOverlayIsOpen()) return _baseRerender.apply(this, arguments);
+          };
+          restoreRerender = () => { _rtBattleRerender = _baseRerender; };
+        }
+        __rtBattleHandleMessageBase(msg);
+        if (restoreRerender) restoreRerender();
+        const st2 = _rtBattleState();
+        if (type === "countdown:start" || type === "room:snapshot" || type === "state" || type === "game:question"){
+          if (st2.phase === "playing" || st2.phase === "countdown") _rtBattleEnsureUiTimer();
+          else _rtBattleStopUiTimer();
+        }
+        if (type === "room:snapshot" || type === "state" || type === "joined" || type === "game:question" || type === "game:final" || type === "game:result"){
+          if (st2.connected) _rtBattleSaveLastRoom();
+          _rtBattleOverlaySyncSceneFromState();
+        }
+        if (type === "joined"){
+          st2.reconnectAttempts = 0;
+          st2.reconnecting = false;
+          st2.joinUrl = _rtBattleJoinUrl(st2.roomId || st2.joinRoomId, st2.roomPassword || st2.joinPassword);
+          _rtBattleLoadQrForJoinUrl(st2.joinUrl);
+        }
+        if (type === "room:snapshot" || type === "state"){
+          try{ console.log("[preset:state]", st2.room?.presetRef || null); }catch(_){}
+        }
+        if (type === "chat" && _rtBattleOverlayIsOpen()){
+          _rtBattleOverlayPatchChat(false);
+          return;
+        }
+        if (type === "game:result"){
+          const me = _rtBattleMePlayer();
+          const arr = Array.isArray(msg?.answersSummary) ? msg.answersSummary : [];
+          const my = arr.find(x => Math.max(0, Number(x?.userId || 0)) === _rtBattleMyUserId());
+          if (my && my.answered) _rtBattleFeedback(my.correct ? "ok" : "ng");
+        }
+      };
+      const __rtBattleConnectBase = _rtBattleConnect;
+      _rtBattleConnect = function(wsUrlRaw){
+        const st = _rtBattleState();
+        st.manualClose = false;
+        __rtBattleConnectBase(wsUrlRaw);
+        st.manualClose = false;
+        // onclose/onerror wrappers are set inside base; detect reconnect via polling state change hooks from messages/close
+      };
+      const __rtBattleDisconnectBase = _rtBattleDisconnect;
+      _rtBattleDisconnect = function(silent = false){
+        const st = _rtBattleState();
+        st.manualClose = true;
+        _rtBattleStopReconnect();
+        _rtBattleScannerClose(true);
+        _rtBattleStopQrLoadTimeout();
+        __rtBattleDisconnectBase(silent);
+      };
+      const __rtBattleSafeCloseSocketBase = _rtBattleSafeCloseSocket;
+      _rtBattleSafeCloseSocket = function(){
+        __rtBattleSafeCloseSocketBase();
+      };
+      // hook reconnect on socket close via patched rerender/status path: periodic monitor
+      setInterval(() => {
+        const st = _rtBattleState();
+        if (!st.overlayOpen) return;
+        if (st.manualClose) return;
+        if (st.connected || st.connecting) return;
+        if (!st.roomId || !(st.roomPassword || st.joinPassword)) return;
+        if (String(st.phase || "lobby") === "lobby" || String(st.phase || "countdown") === "countdown" || String(st.phase || "playing") === "playing" || String(st.phase || "result") === "result"){
+          _rtBattleScheduleReconnect();
+        }
+      }, 1200);
+      const __rtBattleStartBase = _rtBattleStart;
+      _rtBattleStart = async function(){
+        const st = _rtBattleState();
+        await __rtBattleStartBase();
+        st.overlayScene = "lobby";
+        st.joinUrl = _rtBattleJoinUrl(st.roomId || st.joinRoomId, st.roomPassword || st.joinPassword);
+        _rtBattleLoadQrForJoinUrl(st.joinUrl);
+        _rtBattleSaveLastRoom();
+        _rtBattleOverlayOpen("lobby");
+      };
+      const __rtBattleReconnectBase = _rtBattleReconnect;
+      _rtBattleReconnect = async function(){
+        const st = _rtBattleState();
+        await __rtBattleReconnectBase();
+        st.overlayScene = "lobby";
+        st.joinUrl = _rtBattleJoinUrl(st.roomId || st.joinRoomId, st.roomPassword || st.joinPassword);
+        _rtBattleSaveLastRoom();
+        _rtBattleOverlayOpen("lobby");
+      };
+      const __rtBattleLeaveBase = _rtBattleLeave;
+      _rtBattleLeave = function(){
+        __rtBattleLeaveBase();
+        const st = _rtBattleState();
+        st.overlayScene = "top";
+        st.overlayHistory = [];
+        _rtBattleOverlayRender();
+      };
+      // overlay-specific actions are handled via click delegation extension below (existing handler calls this)
+      const __rtBattleInitViewBase = _rtBattleInitView;
+      _rtBattleInitView = function(){
+        __rtBattleInitViewBase();
+        _rtBattleOverlayInitHooks();
+      };
+      setTimeout(() => { try{ _rtBattleOverlayInitHooks(); _rtBattleHashAutofill(); }catch(_){} }, 0);
 
       function _lockViewportZoom(){
         if (window.__vqZoomLocked) return;
