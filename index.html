@@ -31051,13 +31051,20 @@ function _openSearchResultByIndex(i){
             if (act === "start"){ _rtBattleStart(); return; }
             if (act === "disconnect"){ _rtBattleLeave(); return; }
             if (act === "reconnect"){ _rtBattleReconnect(); return; }
+            if (act === "readyToggle"){
+              const me = (typeof _rtBattleMePlayer === "function") ? _rtBattleMePlayer() : null;
+              _rtBattleSetReady(!(me && me.ready));
+              return;
+            }
+            if (act === "gameStart"){ _rtBattleStartGame(); return; }
+            if (act === "rematch"){ _rtBattleRematch(); return; }
             if (act === "submitWrite"){
               const input = document.getElementById("rtBattleWriteInput");
               _rtBattleSubmitAnswer(input ? input.value : "");
               return;
             }
             if (act === "chooseAnswer"){
-              _rtBattleSubmitAnswer(String(rtBattleBtn.getAttribute("data-rt-battle-answer") || ""));
+              _rtBattleSubmitChoice(String(rtBattleBtn.getAttribute("data-rt-battle-answer") || ""));
               return;
             }
           }
@@ -31219,6 +31226,29 @@ function _openSearchResultByIndex(i){
           }
           if (t instanceof HTMLInputElement && t.id === "rtBattleWriteInput"){
             _rtBattleState().writeDraft = t.value || "";
+            return;
+          }
+          if (t instanceof HTMLInputElement && t.id === "rtRoomCreatePasswordInput"){
+            const v = String(t.value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+            _rtBattleState().roomPassword = v;
+            if (t.value !== v) t.value = v;
+            return;
+          }
+          if (t instanceof HTMLInputElement && t.id === "rtRoomJoinIdInput"){
+            const v = String(t.value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+            _rtBattleState().joinRoomId = v;
+            if (t.value !== v) t.value = v;
+            return;
+          }
+          if (t instanceof HTMLInputElement && t.id === "rtRoomJoinPasswordInput"){
+            const v = String(t.value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+            _rtBattleState().joinPassword = v;
+            if (t.value !== v) t.value = v;
+            return;
+          }
+          if (t instanceof HTMLInputElement && t.id === "rtRoomNickInput"){
+            _rtBattleState().nickname = String(t.value || "").trim().slice(0, 32);
+            return;
           }
         }, true);
 
@@ -31294,7 +31324,7 @@ function _openSearchResultByIndex(i){
           }, 0);
         }
       }
-      // ROOM_DO_UI_V1: override old realtime-battle UI with room-based WebSocket chat (max 4 players)
+      // ROOM_DO_UI_V2_GAME: room-based WebSocket chat + realtime vocab battle (MVP 3 questions)
       function _rtBattleState(){
         if (!_menuState.rtBattle || typeof _menuState.rtBattle !== "object") _menuState.rtBattle = {};
         const st = _menuState.rtBattle;
@@ -31307,7 +31337,7 @@ function _openSearchResultByIndex(i){
         if (!(st.socket instanceof WebSocket)) st.socket = null;
         if (typeof st.connecting !== "boolean") st.connecting = false;
         if (typeof st.connected !== "boolean") st.connected = false;
-        if (typeof st.phase !== "string") st.phase = "waiting";
+        if (typeof st.phase !== "string") st.phase = "lobby";
         if (typeof st.statusMsg !== "string") st.statusMsg = "";
         if (typeof st.errorMsg !== "string") st.errorMsg = "";
         if (typeof st.writeDraft !== "string") st.writeDraft = "";
@@ -31315,9 +31345,13 @@ function _openSearchResultByIndex(i){
         if (!Array.isArray(st.players)) st.players = [];
         if (!st.room || typeof st.room !== "object") st.room = null;
         if (!st.you || typeof st.you !== "object") st.you = null;
-        if (typeof st.autoReadySent !== "boolean") st.autoReadySent = false;
+        if (!st.game || typeof st.game !== "object") st.game = null;
+        if (!st.currentQuestion || typeof st.currentQuestion !== "object") st.currentQuestion = null;
+        if (!st.lastRoundResult || typeof st.lastRoundResult !== "object") st.lastRoundResult = null;
+        if (!st.finalResult || typeof st.finalResult !== "object") st.finalResult = null;
         if (typeof st.busy !== "boolean") st.busy = false;
         if (typeof st.pingTimerId !== "number" && st.pingTimerId !== null) st.pingTimerId = null;
+        if (typeof st.uiTimerId !== "number" && st.uiTimerId !== null) st.uiTimerId = null;
         return st;
       }
       function _rtBattlePushLog(kind, text, extra = {}){
@@ -31338,6 +31372,24 @@ function _openSearchResultByIndex(i){
           st.pingTimerId = null;
         }
       }
+      function _rtBattleStopUiTimer(){
+        const st = _rtBattleState();
+        if (st.uiTimerId){
+          clearInterval(st.uiTimerId);
+          st.uiTimerId = null;
+        }
+      }
+      function _rtBattleEnsureUiTimer(){
+        const st = _rtBattleState();
+        if (st.uiTimerId) return;
+        st.uiTimerId = setInterval(() => {
+          if (_menuState.view !== "onlineBattleRealtime") return;
+          const elx = document.getElementById("rtBattleCountdownText");
+          if (!elx) return;
+          const remain = _rtBattleRemainingMs();
+          elx.textContent = `${Math.max(0, Math.ceil(remain / 1000))}秒`;
+        }, 250);
+      }
       function _rtBattleSafeCloseSocket(){
         const st = _rtBattleState();
         const ws = st.socket;
@@ -31350,10 +31402,10 @@ function _openSearchResultByIndex(i){
       function _rtBattleDisconnect(silent = false){
         const st = _rtBattleState();
         _rtBattleStopPing();
+        _rtBattleStopUiTimer();
         _rtBattleSafeCloseSocket();
         st.connecting = false;
         st.connected = false;
-        st.autoReadySent = false;
         if (!silent){
           st.statusMsg = "接続を終了しました。";
           _rtBattlePushLog("system", "接続を終了しました。");
@@ -31370,12 +31422,16 @@ function _openSearchResultByIndex(i){
         _rtBattleDisconnect(true);
         st.roomId = "";
         st.wsUrl = "";
-        st.phase = "waiting";
+        st.phase = "lobby";
         st.statusMsg = "";
         st.errorMsg = "";
         st.players = [];
         st.room = null;
         st.you = null;
+        st.game = null;
+        st.currentQuestion = null;
+        st.lastRoundResult = null;
+        st.finalResult = null;
         st.writeDraft = "";
         st.chatLogs = [];
         st.busy = false;
@@ -31395,6 +31451,28 @@ function _openSearchResultByIndex(i){
         }
         return token;
       }
+      function _rtBattleMyUserId(){
+        const raw = authState?.user?.id ?? authState?.user?.userId ?? 0;
+        return Math.max(0, Number(raw || 0));
+      }
+      function _rtBattleMePlayer(){
+        const uid = _rtBattleMyUserId();
+        return (_rtBattleState().players || []).find((p) => Math.max(0, Number(p?.userId || 0)) === uid) || null;
+      }
+      function _rtBattleIsHost(){
+        const st = _rtBattleState();
+        const hostUid = Math.max(0, Number(st.room?.hostUserId || 0));
+        return !!hostUid && hostUid === _rtBattleMyUserId();
+      }
+      function _rtBattleAllReady(){
+        const players = (_rtBattleState().players || []).filter((p) => !!p?.connected);
+        return players.length >= 2 && players.every((p) => !!p.ready);
+      }
+      function _rtBattleRemainingMs(){
+        const endsAt = Math.max(0, Number(_rtBattleState().game?.questionEndsAtMs || 0));
+        if (!endsAt) return 0;
+        return Math.max(0, endsAt - Date.now());
+      }
       function _rtBattleApplyFormFromDom(){
         const st = _rtBattleState();
         const createPwEl = document.getElementById("rtRoomCreatePasswordInput");
@@ -31411,7 +31489,7 @@ function _openSearchResultByIndex(i){
         if (st.errorMsg) return st.errorMsg;
         if (st.statusMsg) return st.statusMsg;
         if (st.connecting) return "接続中…";
-        if (st.connected) return `接続済み (${String(st.phase || "waiting")})`;
+        if (st.connected) return `接続済み (${String(st.phase || "lobby")})`;
         return "未接続";
       }
       function _rtBattleSafeSend(payload){
@@ -31432,15 +31510,39 @@ function _openSearchResultByIndex(i){
         content.innerHTML = _renderOnlineBattleRealtimeHTML();
         _rtBattleInitView();
       }
+      function _rtBattleApplySnapshot(snapshot){
+        const st = _rtBattleState();
+        if (!snapshot || typeof snapshot !== "object") return;
+        st.room = (snapshot.room && typeof snapshot.room === "object") ? snapshot.room : st.room;
+        st.players = Array.isArray(snapshot.players) ? snapshot.players : st.players;
+        st.phase = String(snapshot.phase || st.phase || "lobby").toLowerCase();
+        st.game = (snapshot.game && typeof snapshot.game === "object") ? snapshot.game : st.game;
+        if (st.game?.currentQuestion) {
+          st.currentQuestion = st.game.currentQuestion;
+        } else if (st.phase !== "playing") {
+          st.currentQuestion = null;
+        }
+      }
       function _rtBattleHandleMessage(msg){
         const st = _rtBattleState();
         const type = String(msg?.type || "").toLowerCase();
         if (!type) return;
+        if (type === "room:snapshot"){
+          _rtBattleApplySnapshot(msg);
+          if (st.connected) st.statusMsg = `状態同期: ${st.phase}`;
+          if (st.phase === "playing") _rtBattleEnsureUiTimer();
+          else _rtBattleStopUiTimer();
+          _rtBattleRerender();
+          return;
+        }
         if (type === "state"){
-          st.room = (msg && typeof msg.room === "object") ? msg.room : st.room;
-          st.players = Array.isArray(msg?.players) ? msg.players : [];
-          st.phase = String(msg?.phase || st.phase || "waiting");
-          st.statusMsg = st.connected ? `状態同期: ${st.phase}` : st.statusMsg;
+          if (msg?.state && typeof msg.state === "object") {
+            _rtBattleApplySnapshot(msg.state);
+          } else {
+            _rtBattleApplySnapshot(msg);
+          }
+          if (st.phase === "playing") _rtBattleEnsureUiTimer();
+          else _rtBattleStopUiTimer();
           _rtBattleRerender();
           return;
         }
@@ -31449,10 +31551,6 @@ function _openSearchResultByIndex(i){
           st.room = (msg && typeof msg.room === "object") ? msg.room : st.room;
           st.statusMsg = "ルームに参加しました。";
           _rtBattlePushLog("system", `参加しました（${st.you?.nick || "you"}）`);
-          if (!st.autoReadySent){
-            st.autoReadySent = true;
-            _rtBattleSafeSend({ type: "ready" });
-          }
           _rtBattleRerender();
           return;
         }
@@ -31461,6 +31559,42 @@ function _openSearchResultByIndex(i){
           const fromId = Number(msg?.from?.id || 0);
           const text = String(msg?.text || "");
           _rtBattlePushLog("chat", text, { fromNick, fromId, ts: Number(msg?.ts || Date.now()) });
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "game:question"){
+          st.phase = "playing";
+          st.currentQuestion = {
+            qid: String(msg?.qid || ""),
+            no: Math.max(0, Number(msg?.no || 0)),
+            prompt: String(msg?.prompt || ""),
+            choices: Array.isArray(msg?.choices) ? msg.choices.map((x)=>String(x || "")) : [],
+            round: Math.max(1, Number(msg?.round || 1)),
+            totalRounds: Math.max(1, Number(msg?.totalRounds || 3))
+          };
+          st.lastRoundResult = null;
+          st.finalResult = null;
+          st.game = st.game && typeof st.game === "object" ? st.game : {};
+          st.game.round = Math.max(0, Number(msg?.round || 1) - 1);
+          st.game.totalRounds = Math.max(1, Number(msg?.totalRounds || 3));
+          st.game.questionEndsAtMs = Math.max(0, Number(msg?.endsAtMs || 0));
+          st.game.questionStartedAtMs = Math.max(0, Number(st.game.questionStartedAtMs || (st.game.questionEndsAtMs ? (st.game.questionEndsAtMs - 10000) : 0)));
+          _rtBattleEnsureUiTimer();
+          st.statusMsg = `問題 ${st.currentQuestion.round}/${st.currentQuestion.totalRounds}`;
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "game:result"){
+          st.lastRoundResult = msg && typeof msg === "object" ? msg : null;
+          st.statusMsg = `問題 ${Math.max(1, Number(msg?.round || 1))} の結果`;
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "game:final"){
+          st.phase = "result";
+          st.finalResult = msg && typeof msg === "object" ? msg : null;
+          st.statusMsg = "対戦終了";
+          _rtBattleStopUiTimer();
           _rtBattleRerender();
           return;
         }
@@ -31498,7 +31632,6 @@ function _openSearchResultByIndex(i){
         st.errorMsg = "";
         st.statusMsg = "接続中…";
         st.wsUrl = wsUrlSafe;
-        st.autoReadySent = false;
         _rtBattleRerender();
         let finalUrl = wsUrlSafe;
         try{
@@ -31553,6 +31686,7 @@ function _openSearchResultByIndex(i){
         ws.onclose = () => {
           if (_rtBattleState().socket === ws) st.socket = null;
           _rtBattleStopPing();
+          _rtBattleStopUiTimer();
           st.connecting = false;
           const wasConnected = st.connected;
           st.connected = false;
@@ -31583,6 +31717,9 @@ function _openSearchResultByIndex(i){
           st.wsUrl = String(body?.wsUrl || "");
           if (!st.wsUrl || !st.roomId) throw new Error("ルーム情報の取得に失敗しました。");
           st.chatLogs = [];
+          st.currentQuestion = null;
+          st.lastRoundResult = null;
+          st.finalResult = null;
           _rtBattlePushLog("system", `ルーム作成: ${st.roomId} / PW: ${st.roomPassword}`);
           st.statusMsg = "ルーム作成完了。接続中…";
           _rtBattleConnect(st.wsUrl);
@@ -31636,10 +31773,14 @@ function _openSearchResultByIndex(i){
         _rtBattleSafeSend({ type: "leave" });
         _rtBattleDisconnect(true);
         st.statusMsg = "切断しました。";
-        st.phase = "waiting";
+        st.phase = "lobby";
         st.players = [];
         st.room = null;
         st.you = null;
+        st.game = null;
+        st.currentQuestion = null;
+        st.lastRoundResult = null;
+        st.finalResult = null;
         _rtBattlePushLog("system", "切断しました。");
         _rtBattleRerender();
       }
@@ -31662,17 +31803,77 @@ function _openSearchResultByIndex(i){
         st.writeDraft = "";
         _rtBattleRerender();
       }
+      function _rtBattleSubmitChoice(choiceIndexRaw){
+        const st = _rtBattleState();
+        const me = _rtBattleMePlayer();
+        if (!st.connected || String(st.phase || "") !== "playing"){
+          try{ uiToast("対戦中ではありません。"); }catch(_){}
+          return;
+        }
+        if (me && me.answeredCurrent){
+          try{ uiToast("この問題は回答済みです。"); }catch(_){}
+          return;
+        }
+        if (_rtBattleRemainingMs() <= 0){
+          try{ uiToast("この問題の回答時間は終了しました。"); }catch(_){}
+          return;
+        }
+        const choiceIndex = Math.trunc(Number(choiceIndexRaw));
+        if (!(choiceIndex >= 0 && choiceIndex <= 3)) return;
+        const ok = _rtBattleSafeSend({ type: "answer:submit", choiceIndex });
+        if (!ok){
+          try{ uiToast("送信に失敗しました。"); }catch(_){}
+          return;
+        }
+        st.statusMsg = "回答を送信しました。";
+      }
+      function _rtBattleSetReady(ready){
+        const st = _rtBattleState();
+        if (!st.connected){
+          try{ uiToast("接続されていません。"); }catch(_){}
+          return;
+        }
+        const ok = _rtBattleSafeSend({ type: "ready:set", ready: !!ready });
+        if (!ok) try{ uiToast("Ready更新に失敗しました。"); }catch(_){}
+      }
+      function _rtBattleStartGame(){
+        const st = _rtBattleState();
+        if (!st.connected){
+          try{ uiToast("接続されていません。"); }catch(_){}
+          return;
+        }
+        if (!_rtBattleIsHost()){
+          try{ uiToast("ホストのみ開始できます。"); }catch(_){}
+          return;
+        }
+        const ok = _rtBattleSafeSend({ type: "game:start" });
+        if (!ok) try{ uiToast("開始送信に失敗しました。"); }catch(_){}
+      }
+      function _rtBattleRematch(){
+        const st = _rtBattleState();
+        if (!st.connected){
+          try{ uiToast("接続されていません。"); }catch(_){}
+          return;
+        }
+        if (!_rtBattleIsHost()){
+          try{ uiToast("ホストのみ再戦できます。"); }catch(_){}
+          return;
+        }
+        const ok = _rtBattleSafeSend({ type: "game:rematch" });
+        if (!ok) try{ uiToast("再戦送信に失敗しました。"); }catch(_){}
+      }
       function _rtBattleRenderPlayerList(){
         const st = _rtBattleState();
         const players = Array.isArray(st.players) ? st.players : [];
         if (!players.length) return `<div class="mini">参加者はまだいません。</div>`;
         return players.map((p) => {
-          const isYou = st.you && Number(st.you.id || 0) === Number(p?.id || 0);
+          const isYou = Math.max(0, Number(p?.userId || 0)) === _rtBattleMyUserId();
           return `<div class="insight-card" style="padding:10px; margin-top:8px;">
             <div style="display:flex; justify-content:space-between; gap:8px;">
               <div><strong>${_escapeHtml(String(p?.nick || "Guest"))}</strong>${isYou ? ' <span class="mini">(あなた)</span>' : ''}</div>
-              <div class="mini">${String(p?.connected) === "false" || !p?.connected ? "切断" : (p?.ready ? "READY" : "参加中")}</div>
+              <div class="mini">${!p?.connected ? "切断" : (p?.ready ? "READY" : "待機")}</div>
             </div>
+            <div class="mini" style="margin-top:4px;">score ${Math.max(0, Number(p?.score || 0))} / time ${Math.round(Math.max(0, Number(p?.answeredAtMsTotal || 0))/100)/10}s ${p?.answeredCurrent ? " / 回答済" : ""}</div>
           </div>`;
         }).join("");
       }
@@ -31695,6 +31896,73 @@ function _openSearchResultByIndex(i){
           </div>`;
         }).join("");
       }
+      function _rtBattleRenderGameCard(){
+        const st = _rtBattleState();
+        const phase = String(st.phase || "lobby");
+        const me = _rtBattleMePlayer();
+        if (phase === "lobby"){
+          const ready = !!me?.ready;
+          const canStart = _rtBattleIsHost() && _rtBattleAllReady();
+          return `<section class="insight-card" style="padding:12px; margin-top:10px;">
+            <div class="insight-head"><div class="insight-title">待機画面</div><div class="insight-note">${_escapeHtml(String(st.room?.roomId || ""))}</div></div>
+            <div class="mini" style="margin-top:6px;">Readyを押して待機し、ホストが開始します。</div>
+            <div class="row-actions" style="margin-top:10px; gap:8px; flex-wrap:wrap;">
+              <button class="btn" type="button" data-rt-battle-action="readyToggle"${!st.connected ? " disabled" : ""}>${ready ? "Ready解除" : "Ready"}</button>
+              ${_rtBattleIsHost() ? `<button class="btn" type="button" data-rt-battle-action="gameStart"${(!st.connected || !canStart) ? " disabled" : ""}>Start</button>` : ""}
+              <button class="textbtn" type="button" data-rt-battle-action="disconnect"${!st.connected && !st.connecting ? " disabled" : ""}>退出</button>
+            </div>
+            ${_rtBattleIsHost() ? `<div class="mini" style="margin-top:8px;">${canStart ? "全員Ready。開始できます。" : "2人以上かつ全員Readyで開始できます。"}</div>` : ``}
+          </section>`;
+        }
+        if (phase === "playing"){
+          const q = st.currentQuestion || st.game?.currentQuestion || null;
+          if (!q){
+            return `<section class="insight-card" style="padding:12px; margin-top:10px;"><div class="mini">問題を待っています…</div></section>`;
+          }
+          const answered = !!me?.answeredCurrent;
+          const roundNo = Math.max(1, Number(q.round || (Number(st.game?.round || 0) + 1)));
+          const totalRounds = Math.max(1, Number(q.totalRounds || st.game?.totalRounds || 3));
+          return `<section class="insight-card" style="padding:12px; margin-top:10px;">
+            <div class="insight-head"><div class="insight-title">問題 ${roundNo}/${totalRounds}</div><div class="insight-note">残り <span id="rtBattleCountdownText">${Math.max(0, Math.ceil(_rtBattleRemainingMs()/1000))}秒</span></div></div>
+            <div class="mini" style="margin-top:6px;">No.${Math.max(0, Number(q.no || 0))}</div>
+            <div style="font-weight:700; font-size:16px; margin-top:6px; white-space:pre-wrap;">${_escapeHtml(String(q.prompt || ""))}</div>
+            <div style="display:grid; gap:8px; margin-top:10px;">
+              ${(Array.isArray(q.choices) ? q.choices : []).slice(0,4).map((c, idx) => `<button class="btn" type="button" data-rt-battle-action="chooseAnswer" data-rt-battle-answer="${idx}"${(!st.connected || answered || _rtBattleRemainingMs()<=0) ? " disabled" : ""}>${_escapeHtml(String(c || ""))}</button>`).join("")}
+            </div>
+            <div class="mini" style="margin-top:8px;">${answered ? "回答済み（結果待ち）" : "未送信"}</div>
+          </section>`;
+        }
+        if (phase === "result"){
+          const leaderboard = Array.isArray(st.finalResult?.leaderboard) ? st.finalResult.leaderboard : (Array.isArray(st.game?.finalLeaderboard) ? st.game.finalLeaderboard : []);
+          return `<section class="insight-card" style="padding:12px; margin-top:10px;">
+            <div class="insight-head"><div class="insight-title">結果</div><div class="insight-note">3問</div></div>
+            <div style="margin-top:8px;">
+              ${leaderboard.length ? leaderboard.map((row, i)=>`<div class="insight-card" style="padding:10px; margin-top:8px;">
+                <div style="display:flex; justify-content:space-between; gap:8px;">
+                  <div>${i+1}. <strong>${_escapeHtml(String(row?.nick || "Guest"))}</strong></div>
+                  <div class="mini">${Math.max(0, Number(row?.score || 0))}点 / ${Math.round(Math.max(0, Number(row?.answeredAtMsTotal || 0))/100)/10}s</div>
+                </div>
+              </div>`).join("") : `<div class="mini">結果データを待っています…</div>`}
+            </div>
+            <div class="row-actions" style="margin-top:10px;">
+              ${_rtBattleIsHost() ? `<button class="btn" type="button" data-rt-battle-action="rematch"${!st.connected ? " disabled" : ""}>もう一回（再戦）</button>` : ``}
+              <button class="textbtn" type="button" data-rt-battle-action="disconnect"${!st.connected && !st.connecting ? " disabled" : ""}>退出</button>
+            </div>
+          </section>`;
+        }
+        return "";
+      }
+      function _rtBattleRenderRoundResult(){
+        const r = _rtBattleState().lastRoundResult;
+        if (!r || typeof r !== "object") return "";
+        return `<section class="insight-card" style="padding:12px; margin-top:10px;">
+          <div class="insight-head"><div class="insight-title">この問題の結果</div><div class="insight-note">${Math.max(1, Number(r.round || 1))}/${Math.max(1, Number(r.totalRounds || 3))}</div></div>
+          <div class="mini">正解: 選択肢 ${Math.max(0, Number(r.correctIndex || 0)) + 1}</div>
+          <div style="margin-top:8px;">
+            ${(Array.isArray(r.answersSummary) ? r.answersSummary : []).map((a)=>`<div class="mini">${_escapeHtml(String(a?.nick || "Guest"))}: ${a?.answered ? `選択肢${Math.max(0, Number(a.choiceIndex || 0))+1}` : "未回答"} ${a?.correct ? "✓" : ""}</div>`).join("")}
+          </div>
+        </section>`;
+      }
       function _renderOnlineBattleRealtimeHTML(){
         const st = _rtBattleState();
         const token = _authGetToken();
@@ -31703,7 +31971,7 @@ function _openSearchResultByIndex(i){
         return `
           <div class="menu-article">
             <h3>オンライン対戦（リアルタイム）</h3>
-            <p class="mini">ルームID + パスワードで最大4人まで参加できます。接続後は状態同期とチャットが有効になります。</p>
+            <p class="mini">最大4人。Ready → ホストStart → 3問の4択対戦。チャットは同じ接続で使えます。</p>
             ${!token ? `<div class="insight-empty">ログインが必要です。先にログインしてください。</div>` : `
               <section class="insight-card" style="padding:12px;">
                 <div class="mini">ニックネーム（任意）</div>
@@ -31737,10 +32005,13 @@ function _openSearchResultByIndex(i){
               </section>
 
               <section class="insight-card" style="padding:12px; margin-top:10px;">
-                <div class="insight-head"><div class="insight-title">ルーム状態</div><div class="insight-note">${_escapeHtml(String(st.phase || "waiting"))}</div></div>
-                <div class="mini">人数: ${Number(st.room?.count || st.players?.length || 0)}/${Number(st.room?.max || 4)}</div>
+                <div class="insight-head"><div class="insight-title">参加者 / スコア</div><div class="insight-note">${_escapeHtml(String(st.phase || "lobby"))}</div></div>
+                <div class="mini">人数: ${Number(st.room?.count || st.players?.length || 0)}/${Number(st.room?.max || 4)}${_rtBattleIsHost() ? " / Host" : ""}</div>
                 <div style="margin-top:8px;">${_rtBattleRenderPlayerList()}</div>
               </section>
+
+              ${_rtBattleRenderGameCard()}
+              ${_rtBattleRenderRoundResult()}
 
               <section class="insight-card" style="padding:12px; margin-top:10px;">
                 <div class="insight-head"><div class="insight-title">チャット</div><div class="insight-note">${st.connected ? "接続中" : "未接続"}</div></div>
@@ -31771,6 +32042,8 @@ function _openSearchResultByIndex(i){
         if (joinPwEl) joinPwEl.value = String(st.joinPassword || "");
         if (nickEl) nickEl.value = String(st.nickname || "");
         if (chatEl) chatEl.value = String(st.writeDraft || "");
+        if (st.phase === "playing") _rtBattleEnsureUiTimer();
+        else _rtBattleStopUiTimer();
       }
 
       function _lockViewportZoom(){
