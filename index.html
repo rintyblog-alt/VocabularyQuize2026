@@ -32161,6 +32161,34 @@ function _openSearchResultByIndex(i){
         if (!st.eventToastActive || typeof st.eventToastActive !== "object") st.eventToastActive = null;
         if (typeof st.eventToastTimerId !== "number" && st.eventToastTimerId !== null) st.eventToastTimerId = null;
         if (typeof st.eventToastAnimTimerId !== "number" && st.eventToastAnimTimerId !== null) st.eventToastAnimTimerId = null;
+        if (!st.b3d || typeof st.b3d !== "object") st.b3d = {};
+        const b3 = st.b3d;
+        if (typeof b3.open !== "boolean") b3.open = false;
+        if (typeof b3.loading !== "boolean") b3.loading = false;
+        if (typeof b3.error !== "string") b3.error = "";
+        if (typeof b3.status !== "string") b3.status = "";
+        if (typeof b3.connectedWeak !== "boolean") b3.connectedWeak = false;
+        if (typeof b3.lastNetTs !== "number") b3.lastNetTs = 0;
+        if (typeof b3.pingMs !== "number") b3.pingMs = 0;
+        if (typeof b3.awaitingPingTs !== "number") b3.awaitingPingTs = 0;
+        if (typeof b3.lastSendAt !== "number") b3.lastSendAt = 0;
+        if (typeof b3.rafId !== "number" && b3.rafId !== null) b3.rafId = null;
+        if (typeof b3.netTimerId !== "number" && b3.netTimerId !== null) b3.netTimerId = null;
+        if (typeof b3.uiTimerId !== "number" && b3.uiTimerId !== null) b3.uiTimerId = null;
+        if (typeof b3.resizeBound !== "boolean") b3.resizeBound = false;
+        if (typeof b3.overlayScene !== "string") b3.overlayScene = "play";
+        if (typeof b3.quizOpen !== "boolean") b3.quizOpen = false;
+        if (typeof b3.quizAnswered !== "boolean") b3.quizAnswered = false;
+        if (typeof b3.quizError !== "string") b3.quizError = "";
+        if (typeof b3.gateOpen !== "boolean") b3.gateOpen = false;
+        if (typeof b3.gateRaised !== "number") b3.gateRaised = 0;
+        if (typeof b3.localFinished !== "boolean") b3.localFinished = false;
+        if (!Array.isArray(b3.finishOrder)) b3.finishOrder = [];
+        if (typeof b3.winnerUserId !== "number") b3.winnerUserId = 0;
+        if (typeof b3.winnerNick !== "string") b3.winnerNick = "";
+        if (!b3.remoteStates || typeof b3.remoteStates !== "object") b3.remoteStates = {};
+        if (!b3.remoteMeshes || typeof b3.remoteMeshes !== "object") b3.remoteMeshes = {};
+        if (!b3.input || typeof b3.input !== "object") b3.input = { fwd:false, back:false, left:false, right:false, jump:false };
         return st;
       }
       function _rtBattleOverlayIsOpen(){ return !!_rtBattleState().overlayOpen; }
@@ -32966,6 +32994,13 @@ function _openSearchResultByIndex(i){
             </select>
             <div class="ov-mini" style="margin-top:8px;">ホストのみ変更できます</div>
           </section>
+          <section class="ov-card settings-group">
+            <div class="ov-sheet-headline">3D対戦（BETA）</div>
+            <div class="ov-mini">同じルーム接続を使って3Dステージの最小デモを開始します。</div>
+            <div class="ov-actions" style="margin-top:8px;">
+              <button class="btn primary" type="button" data-rt-battle-action="open3dBeta"${!st.connected ? " disabled" : ""}>3D対戦を開く</button>
+            </div>
+          </section>
         </div>`;
       }
       function _rtBattleRenderMembersSheet(){
@@ -33755,6 +33790,1051 @@ function _openSearchResultByIndex(i){
         _rtBattleOverlayInitHooks();
       };
       setTimeout(() => { try{ _rtBattleOverlayInitHooks(); _rtBattleHashAutofill(); }catch(_){} }, 0);
+
+      // ROOM_DO_UI_V4_3D_BETA: minimal 3D realtime battle demo overlay using existing room WS
+      const RT3D_THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js";
+      let __rt3dThreePromise = null;
+      function _rtBattle3dState(){
+        const st = _rtBattleState();
+        if (!st.b3d || typeof st.b3d !== "object") st.b3d = {};
+        const b = st.b3d;
+        if (typeof b.open !== "boolean") b.open = false;
+        if (typeof b.loading !== "boolean") b.loading = false;
+        if (typeof b.error !== "string") b.error = "";
+        if (typeof b.status !== "string") b.status = "";
+        if (typeof b.sceneMode !== "string") b.sceneMode = "play"; // play|result
+        if (typeof b.pingMs !== "number") b.pingMs = 0;
+        if (typeof b.lastNetTs !== "number") b.lastNetTs = 0;
+        if (typeof b.awaitingPingTs !== "number") b.awaitingPingTs = 0;
+        if (typeof b.pingTimerId !== "number" && b.pingTimerId !== null) b.pingTimerId = null;
+        if (typeof b.uiTimerId !== "number" && b.uiTimerId !== null) b.uiTimerId = null;
+        if (typeof b.rafId !== "number" && b.rafId !== null) b.rafId = null;
+        if (typeof b.netSendTimerId !== "number" && b.netSendTimerId !== null) b.netSendTimerId = null;
+        if (typeof b.resizeListenerBound !== "boolean") b.resizeListenerBound = false;
+        if (typeof b.quizOpen !== "boolean") b.quizOpen = false;
+        if (typeof b.quizAnswered !== "boolean") b.quizAnswered = false;
+        if (typeof b.quizError !== "string") b.quizError = "";
+        if (typeof b.gateOpen !== "boolean") b.gateOpen = false;
+        if (typeof b.gateAnim !== "number") b.gateAnim = 0;
+        if (typeof b.localFinished !== "boolean") b.localFinished = false;
+        if (typeof b.resultOpen !== "boolean") b.resultOpen = false;
+        if (typeof b.winnerUserId !== "number") b.winnerUserId = 0;
+        if (typeof b.winnerNick !== "string") b.winnerNick = "";
+        if (!Array.isArray(b.finishOrder)) b.finishOrder = [];
+        if (!b.input || typeof b.input !== "object") b.input = { fwd:false, back:false, left:false, right:false, jump:false };
+        if (typeof b.jumpQueued !== "boolean") b.jumpQueued = false;
+        if (!b.local || typeof b.local !== "object"){
+          b.local = { x:0, y:0.9, z:4, vx:0, vy:0, vz:0, rotY:0, grounded:true, action:"idle", ts:0 };
+        }
+        if (!b.remoteStates || typeof b.remoteStates !== "object") b.remoteStates = {};
+        if (!b.remoteMeshes || typeof b.remoteMeshes !== "object") b.remoteMeshes = {};
+        if (!b.runtime || typeof b.runtime !== "object") b.runtime = {};
+        if (typeof b.runtime.inited !== "boolean") b.runtime.inited = false;
+        if (typeof b.runtime.lastTickTs !== "number") b.runtime.lastTickTs = 0;
+        if (typeof b.runtime.lastHudRenderTs !== "number") b.runtime.lastHudRenderTs = 0;
+        if (typeof b.runtime.lastSyncSentTs !== "number") b.runtime.lastSyncSentTs = 0;
+        if (typeof b.runtime.toastTimerId !== "number" && b.runtime.toastTimerId !== null) b.runtime.toastTimerId = null;
+        if (!Array.isArray(b.runtime.toastQueue)) b.runtime.toastQueue = [];
+        if (typeof b.runtime.toastActive !== "boolean") b.runtime.toastActive = false;
+        if (typeof b.runtime.lastShownFinishCount !== "number") b.runtime.lastShownFinishCount = 0;
+        if (typeof b.runtime.seenGatePrompt !== "boolean") b.runtime.seenGatePrompt = false;
+        return b;
+      }
+      function _rtBattle3dEnsureStyles(){
+        if (document.getElementById("rt3dOverlayStyles")) return;
+        const s = document.createElement("style");
+        s.id = "rt3dOverlayStyles";
+        s.textContent = `
+          #rt3dOverlay{position:fixed; inset:0; z-index:100040; display:none;}
+          #rt3dOverlay.is-open{display:block;}
+          #rt3dOverlay .b3d-bg{position:absolute; inset:0; background:rgba(8,10,14,.2);}
+          #rt3dOverlay .b3d-shell{position:absolute; inset:0; display:flex; flex-direction:column; background:var(--bg,#f7f7f8);}
+          #rt3dOverlay .b3d-head{position:sticky; top:0; z-index:5; display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--border,#ddd); background:rgba(255,255,255,.9); backdrop-filter:saturate(1.1);}
+          #rt3dOverlay .b3d-head-left,#rt3dOverlay .b3d-head-right{display:flex; align-items:center; gap:8px;}
+          #rt3dOverlay .b3d-title{font-weight:800; font-size:15px; line-height:1.15;}
+          #rt3dOverlay .b3d-sub{font-size:11px; color:var(--muted,#666);}
+          #rt3dOverlay .b3d-pill{display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 10px; border-radius:999px; border:1px solid var(--border,#ddd); background:var(--panel,#fff); font-size:12px;}
+          #rt3dOverlay .b3d-main{position:relative; flex:1; min-height:0; overflow:hidden;}
+          #rt3dOverlay #rt3dCanvasWrap{position:absolute; inset:0; background:linear-gradient(180deg,#edf2f7,#f7f7f8);}
+          #rt3dOverlay #rt3dCanvasWrap canvas{display:block; width:100%; height:100%; touch-action:none;}
+          #rt3dOverlay .b3d-hud{position:absolute; top:12px; left:12px; right:12px; z-index:4; display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; align-items:start; pointer-events:none;}
+          #rt3dOverlay .b3d-hud-card{pointer-events:auto; min-width:0; border:1px solid var(--border,#ddd); background:rgba(255,255,255,.9); border-radius:14px; padding:8px 10px; box-shadow:0 2px 8px rgba(0,0,0,.06);}
+          #rt3dOverlay .b3d-hud-card .t{font-size:11px; color:var(--muted,#666);}
+          #rt3dOverlay .b3d-hud-card .v{font-weight:700; font-size:13px; color:var(--text,#111);}
+          #rt3dOverlay .b3d-score-panel{position:absolute; top:66px; right:12px; z-index:4; width:min(280px, calc(100vw - 24px)); max-height:180px; overflow:auto; border:1px solid var(--border,#ddd); background:rgba(255,255,255,.9); border-radius:14px; padding:8px; box-shadow:0 2px 8px rgba(0,0,0,.06);}
+          #rt3dOverlay .b3d-score-row{display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:8px; align-items:center; margin:4px 0;}
+          #rt3dOverlay .b3d-score-name{font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:86px;}
+          #rt3dOverlay .b3d-score-track{height:8px; border-radius:999px; background:var(--panel2,#f0f2f5); border:1px solid rgba(0,0,0,.04); overflow:hidden;}
+          #rt3dOverlay .b3d-score-fill{height:100%; border-radius:999px; background:rgba(31,42,68,.18);}
+          #rt3dOverlay .b3d-score-val{font-size:11px; color:var(--muted,#666);}
+          #rt3dOverlay .b3d-toast-wrap{position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:6; pointer-events:none; display:grid; gap:8px; width:min(420px, calc(100vw - 28px));}
+          #rt3dOverlay .b3d-toast{opacity:0; transform:translateY(-8px); transition:opacity .22s cubic-bezier(.22,1,.36,1), transform .22s cubic-bezier(.22,1,.36,1); border:1px solid var(--border,#ddd); background:rgba(255,255,255,.95); border-radius:12px; padding:8px 10px; box-shadow:0 2px 8px rgba(0,0,0,.06); display:flex; align-items:center; gap:8px; font-size:12px;}
+          #rt3dOverlay .b3d-toast.is-show{opacity:1; transform:translateY(0);}
+          #rt3dOverlay .b3d-toast .badge{min-width:38px; height:20px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; border:1px solid var(--border,#ddd); color:var(--muted,#666);}
+          #rt3dOverlay .b3d-toast.ok .badge{background:rgba(64,190,106,.10); color:#1e7a45;}
+          #rt3dOverlay .b3d-toast.ng .badge{background:rgba(235,87,87,.10); color:#b03939;}
+          #rt3dOverlay .b3d-toast.info .badge{background:rgba(31,42,68,.08); color:#324a78;}
+          #rt3dOverlay .b3d-quiz{position:absolute; inset:auto 12px calc(120px + env(safe-area-inset-bottom,0px)) 12px; z-index:7; max-width:680px; margin:0 auto; border:1px solid var(--border,#ddd); background:rgba(255,255,255,.98); border-radius:16px; padding:12px; box-shadow:0 8px 20px rgba(0,0,0,.10); display:none;}
+          #rt3dOverlay .b3d-quiz.is-open{display:block; animation:b3dFadeIn .2s cubic-bezier(.22,1,.36,1);}
+          #rt3dOverlay .b3d-quiz h4{margin:0 0 6px; font-size:14px;}
+          #rt3dOverlay .b3d-quiz .q{font-size:16px; font-weight:800; line-height:1.35; margin-bottom:8px;}
+          #rt3dOverlay .b3d-quiz .choices{display:grid; gap:8px;}
+          #rt3dOverlay .b3d-quiz .choices button{min-height:44px;}
+          #rt3dOverlay .b3d-quiz .err{font-size:12px; color:#b03939; min-height:16px; margin-top:8px;}
+          #rt3dOverlay .b3d-bottom{position:absolute; left:0; right:0; bottom:0; z-index:5; padding:8px 10px calc(env(safe-area-inset-bottom,0px) + 8px); pointer-events:none;}
+          #rt3dOverlay .b3d-controls{display:flex; justify-content:space-between; align-items:flex-end; gap:12px;}
+          #rt3dOverlay .b3d-dpad,#rt3dOverlay .b3d-actions{pointer-events:auto; display:grid; gap:8px;}
+          #rt3dOverlay .b3d-dpad{grid-template-columns:repeat(3,56px); grid-template-rows:repeat(2,56px);}
+          #rt3dOverlay .b3d-dpad .sp{visibility:hidden;}
+          #rt3dOverlay .b3d-mbtn{width:56px; height:56px; border-radius:16px; border:1px solid var(--border,#ddd); background:rgba(255,255,255,.92); box-shadow:0 2px 8px rgba(0,0,0,.06); font-weight:800; display:grid; place-items:center; touch-action:none; user-select:none;}
+          #rt3dOverlay .b3d-mbtn:active,#rt3dOverlay .b3d-mbtn.is-active{transform:scale(.97); background:rgba(31,42,68,.08);}
+          #rt3dOverlay .b3d-jump{width:76px; height:76px; border-radius:20px;}
+          #rt3dOverlay .b3d-status-bar{position:absolute; left:12px; bottom:calc(env(safe-area-inset-bottom,0px) + 12px); z-index:5; max-width:min(52vw,420px); border:1px solid var(--border,#ddd); background:rgba(255,255,255,.92); border-radius:12px; padding:6px 10px; font-size:12px; color:var(--muted,#666); box-shadow:0 2px 8px rgba(0,0,0,.06);}
+          #rt3dOverlay .b3d-result{position:absolute; inset:70px 12px 120px; z-index:8; display:none; align-items:center; justify-content:center; pointer-events:none;}
+          #rt3dOverlay .b3d-result.is-open{display:flex;}
+          #rt3dOverlay .b3d-result-card{pointer-events:auto; width:min(640px,100%); border:1px solid var(--border,#ddd); background:rgba(255,255,255,.98); border-radius:16px; padding:14px; box-shadow:0 10px 24px rgba(0,0,0,.12); display:grid; gap:10px;}
+          #rt3dOverlay .b3d-result-title{font-size:16px; font-weight:800;}
+          #rt3dOverlay .b3d-result-list{display:grid; gap:6px; max-height:220px; overflow:auto;}
+          #rt3dOverlay .b3d-result-row{display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:8px; align-items:center; border:1px solid var(--border,#ddd); background:var(--panel2,#fbfbfc); border-radius:10px; padding:8px 10px; font-size:13px;}
+          #rt3dOverlay .b3d-result-actions{display:flex; gap:8px; flex-wrap:wrap;}
+          #rt3dOverlay .b3d-overlay-msg{position:absolute; inset:0; z-index:9; display:none; place-items:center; background:rgba(0,0,0,.12);}
+          #rt3dOverlay .b3d-overlay-msg.is-open{display:grid;}
+          #rt3dOverlay .b3d-overlay-card{width:min(480px, calc(100vw - 24px)); border:1px solid var(--border,#ddd); background:rgba(255,255,255,.98); border-radius:16px; padding:14px; box-shadow:0 10px 24px rgba(0,0,0,.12);}
+          #rt3dOverlay .b3d-overlay-card h4{margin:0 0 6px;}
+          #rt3dOverlay .b3d-overlay-card .mini{line-height:1.4;}
+          @media (max-width: 768px){
+            #rt3dOverlay .b3d-head{grid-template-columns:auto 1fr; grid-template-areas:"left right" "center center";}
+            #rt3dOverlay .b3d-head-left{grid-area:left;}
+            #rt3dOverlay .b3d-head-right{grid-area:right; justify-content:flex-end;}
+            #rt3dOverlay .b3d-head-center{grid-area:center;}
+            #rt3dOverlay .b3d-hud{grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"a b" "c c";}
+            #rt3dOverlay .b3d-hud .b3d-hud-card:nth-child(1){grid-area:a;}
+            #rt3dOverlay .b3d-hud .b3d-hud-card:nth-child(2){grid-area:b;}
+            #rt3dOverlay .b3d-hud .b3d-hud-card:nth-child(3){grid-area:c;}
+            #rt3dOverlay .b3d-score-panel{top:auto; bottom:calc(env(safe-area-inset-bottom,0px) + 96px); left:12px; right:12px; width:auto; max-height:140px;}
+            #rt3dOverlay .b3d-quiz{inset:auto 12px calc(env(safe-area-inset-bottom,0px) + 110px) 12px;}
+            #rt3dOverlay .b3d-dpad{grid-template-columns:repeat(3,52px); grid-template-rows:repeat(2,52px);}
+            #rt3dOverlay .b3d-mbtn{width:52px; height:52px;}
+            #rt3dOverlay .b3d-jump{width:68px; height:68px;}
+            #rt3dOverlay .b3d-status-bar{max-width:calc(100vw - 24px);}
+          }
+          @keyframes b3dFadeIn{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+        `;
+        document.head.appendChild(s);
+      }
+      function _rtBattle3dEnsureRoot(){
+        let root = document.getElementById("rt3dOverlay");
+        if (root) return root;
+        root = document.createElement("div");
+        root.id = "rt3dOverlay";
+        root.setAttribute("aria-hidden", "true");
+        root.innerHTML = `
+          <div class="b3d-bg" data-rt-battle-action="b3dClose"></div>
+          <div class="b3d-shell">
+            <div class="b3d-head">
+              <div class="b3d-head-left">
+                <button class="btn ov-headbtn" type="button" data-rt-battle-action="b3dClose">←</button>
+                <div>
+                  <div class="b3d-title">3D対戦（BETA）</div>
+                  <div class="b3d-sub" id="rt3dSubLine">読み込み前</div>
+                </div>
+              </div>
+              <div class="b3d-head-center">
+                <span class="b3d-pill" id="rt3dRoomPill">ROOM ------</span>
+                <span class="b3d-pill" id="rt3dPingPill">PING --ms</span>
+                <span class="b3d-pill" id="rt3dSyncPill">SYNC --</span>
+              </div>
+              <div class="b3d-head-right">
+                <button class="btn ov-iconbtn" type="button" data-rt-battle-action="b3dRetry" aria-label="再接続"><span class="ms">wifi</span></button>
+                <button class="btn ov-iconbtn" type="button" data-rt-battle-action="b3dReset" aria-label="再戦"><span class="ms">restart_alt</span></button>
+              </div>
+            </div>
+            <div class="b3d-main">
+              <div id="rt3dCanvasWrap"></div>
+              <div class="b3d-hud">
+                <div class="b3d-hud-card"><div class="t">プレイヤー</div><div class="v" id="rt3dHudPlayers">0 / 4</div></div>
+                <div class="b3d-hud-card"><div class="t">あなた</div><div class="v" id="rt3dHudMe">-</div></div>
+                <div class="b3d-hud-card"><div class="t">ステータス</div><div class="v" id="rt3dHudStatus">待機中</div></div>
+              </div>
+              <div class="b3d-score-panel" id="rt3dScorePanel"></div>
+              <div class="b3d-toast-wrap" id="rt3dToastWrap"></div>
+              <div class="b3d-quiz" id="rt3dQuizCard" aria-hidden="true">
+                <h4>クイズゲート</h4>
+                <div class="q" id="rt3dQuizPrompt"></div>
+                <div class="choices" id="rt3dQuizChoices"></div>
+                <div class="err" id="rt3dQuizError"></div>
+              </div>
+              <div class="b3d-result" id="rt3dResultLayer" aria-hidden="true">
+                <div class="b3d-result-card">
+                  <div class="b3d-result-title">結果</div>
+                  <div class="mini" id="rt3dResultSub"></div>
+                  <div class="b3d-result-list" id="rt3dResultList"></div>
+                  <div class="b3d-result-actions">
+                    <button class="btn" type="button" data-rt-battle-action="b3dReset">もう一度</button>
+                    <button class="textbtn" type="button" data-rt-battle-action="b3dClose">ロビーへ戻る</button>
+                  </div>
+                </div>
+              </div>
+              <div class="b3d-overlay-msg" id="rt3dOverlayMsg" aria-hidden="true">
+                <div class="b3d-overlay-card">
+                  <h4 id="rt3dErrTitle">3D対戦を開始できません</h4>
+                  <div class="mini" id="rt3dErrText"></div>
+                  <div class="ov-actions">
+                    <button class="btn" type="button" data-rt-battle-action="b3dRetry">再接続</button>
+                    <button class="textbtn" type="button" data-rt-battle-action="b3dClose">戻る</button>
+                  </div>
+                </div>
+              </div>
+              <div class="b3d-status-bar" id="rt3dStatusBar">接続待機</div>
+            </div>
+            <div class="b3d-bottom">
+              <div class="b3d-controls">
+                <div class="b3d-dpad" id="rt3dDpad">
+                  <button class="b3d-mbtn sp" type="button" tabindex="-1" aria-hidden="true"></button>
+                  <button class="b3d-mbtn" type="button" data-rt-battle-action="b3dHoldUp">▲</button>
+                  <button class="b3d-mbtn sp" type="button" tabindex="-1" aria-hidden="true"></button>
+                  <button class="b3d-mbtn" type="button" data-rt-battle-action="b3dHoldLeft">◀</button>
+                  <button class="b3d-mbtn" type="button" data-rt-battle-action="b3dHoldDown">▼</button>
+                  <button class="b3d-mbtn" type="button" data-rt-battle-action="b3dHoldRight">▶</button>
+                </div>
+                <div class="b3d-actions">
+                  <button class="b3d-mbtn b3d-jump" type="button" data-rt-battle-action="b3dHoldJump">JUMP</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(root);
+        return root;
+      }
+      function _rtBattle3dIsOpen(){ return !!_rtBattle3dState().open; }
+      function _rtBattle3dEnsureThree(){
+        if (window.THREE) return Promise.resolve(window.THREE);
+        if (__rt3dThreePromise) return __rt3dThreePromise;
+        __rt3dThreePromise = new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = RT3D_THREE_URL;
+          s.async = true;
+          s.onload = () => window.THREE ? resolve(window.THREE) : reject(new Error("Three.js の読み込みに失敗しました"));
+          s.onerror = () => reject(new Error("Three.js を読み込めませんでした"));
+          document.head.appendChild(s);
+        });
+        return __rt3dThreePromise;
+      }
+      function _rtBattle3dQuestionData(){
+        return {
+          id: "gate_q_001",
+          prompt: "demand の意味として最も近いものは？",
+          choices: ["需要", "供給", "価格", "契約"],
+          correctIndex: 0
+        };
+      }
+      function _rtBattle3dActiveInputIsEditable(){
+        const ae = document.activeElement;
+        if (!ae) return false;
+        if (ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement) return true;
+        return !!ae.isContentEditable;
+      }
+      function _rtBattle3dShowError(msg){
+        const b = _rtBattle3dState();
+        b.error = String(msg || "3D対戦を開始できません。");
+        const layer = document.getElementById("rt3dOverlayMsg");
+        const text = document.getElementById("rt3dErrText");
+        if (text) text.textContent = b.error;
+        if (layer){ layer.classList.add("is-open"); layer.setAttribute("aria-hidden", "false"); }
+        const status = document.getElementById("rt3dStatusBar");
+        if (status) status.textContent = b.error;
+      }
+      function _rtBattle3dHideError(){
+        const b = _rtBattle3dState();
+        b.error = "";
+        const layer = document.getElementById("rt3dOverlayMsg");
+        if (layer){ layer.classList.remove("is-open"); layer.setAttribute("aria-hidden", "true"); }
+      }
+      function _rtBattle3dPushToast(kind, text){
+        const b = _rtBattle3dState();
+        const q = Array.isArray(b.runtime?.toastQueue) ? b.runtime.toastQueue : (b.runtime.toastQueue = []);
+        if (q.length >= 3) q.shift();
+        q.push({ kind: kind || "info", text: String(text || "") });
+        _rtBattle3dDrainToastQueue();
+      }
+      function _rtBattle3dDrainToastQueue(){
+        const b = _rtBattle3dState();
+        if (!b.open) return;
+        const rt = b.runtime || (b.runtime = {});
+        if (rt.toastActive) return;
+        const q = Array.isArray(rt.toastQueue) ? rt.toastQueue : [];
+        const next = q.shift();
+        if (!next) return;
+        const wrap = document.getElementById("rt3dToastWrap");
+        if (!wrap) return;
+        rt.toastActive = true;
+        const el = document.createElement("div");
+        el.className = `b3d-toast ${next.kind || "info"}`;
+        el.innerHTML = `<span class="badge">${_escapeHtml(String((next.kind || "info").toUpperCase()).slice(0,3))}</span><span>${_escapeHtml(next.text)}</span>`;
+        wrap.appendChild(el);
+        requestAnimationFrame(() => el.classList.add("is-show"));
+        if (rt.toastTimerId) clearTimeout(rt.toastTimerId);
+        rt.toastTimerId = setTimeout(() => {
+          el.classList.remove("is-show");
+          setTimeout(() => {
+            try{ el.remove(); }catch(_){}
+            rt.toastActive = false;
+            rt.toastTimerId = null;
+            _rtBattle3dDrainToastQueue();
+          }, 240);
+        }, 1600);
+      }
+      function _rtBattle3dRenderQuizUi(){
+        const b = _rtBattle3dState();
+        const card = document.getElementById("rt3dQuizCard");
+        const promptEl = document.getElementById("rt3dQuizPrompt");
+        const choicesEl = document.getElementById("rt3dQuizChoices");
+        const errEl = document.getElementById("rt3dQuizError");
+        if (!card || !promptEl || !choicesEl || !errEl) return;
+        const q = _rtBattle3dQuestionData();
+        promptEl.textContent = q.prompt;
+        errEl.textContent = String(b.quizError || "");
+        choicesEl.innerHTML = q.choices.map((c, idx) =>
+          `<button class="btn" type="button" data-rt-battle-action="b3dQuizChoice" data-b3d-choice="${idx}"${b.quizAnswered ? " disabled" : ""}>${_escapeHtml(String(c))}</button>`
+        ).join("");
+        if (b.quizOpen){
+          card.classList.add("is-open");
+          card.setAttribute("aria-hidden", "false");
+        } else {
+          card.classList.remove("is-open");
+          card.setAttribute("aria-hidden", "true");
+        }
+      }
+      function _rtBattle3dUpdateStatusUi(){
+        const st = _rtBattleState();
+        const b = _rtBattle3dState();
+        const players = asArray(st.players);
+        const roomId = String(st.room?.roomId || st.roomId || "");
+        const me = _rtBattleMePlayer();
+        const roomPill = document.getElementById("rt3dRoomPill");
+        const pingPill = document.getElementById("rt3dPingPill");
+        const syncPill = document.getElementById("rt3dSyncPill");
+        const sub = document.getElementById("rt3dSubLine");
+        const hudPlayers = document.getElementById("rt3dHudPlayers");
+        const hudMe = document.getElementById("rt3dHudMe");
+        const hudStatus = document.getElementById("rt3dHudStatus");
+        const bar = document.getElementById("rt3dStatusBar");
+        if (roomPill) roomPill.textContent = `ROOM ${roomId || "------"}`;
+        if (pingPill) pingPill.textContent = `PING ${Math.max(0, Math.round(Number(b.pingMs || 0)))}ms`;
+        const staleMs = b.lastNetTs ? (Date.now() - b.lastNetTs) : 999999;
+        if (syncPill) syncPill.textContent = staleMs < 2500 ? "SYNC OK" : "SYNC WEAK";
+        if (sub) sub.textContent = `${players.filter((p)=>!!p?.connected).length}/${Math.max(1, Number(st.room?.max || 4))}人 ・ ${_rtBattleIsHost() ? "HOST" : "GUEST"}`;
+        if (hudPlayers) hudPlayers.textContent = `${players.filter((p)=>!!p?.connected).length} / ${Math.max(1, Number(st.room?.max || 4))}`;
+        if (hudMe) hudMe.textContent = String(me?.nick || st.nickname || "You");
+        const statusTxt = b.resultOpen ? "結果表示" : (b.quizOpen ? "ゲート問題に回答中" : (b.gateOpen ? "ゲートOPEN" : "ゲート未解除"));
+        if (hudStatus) hudStatus.textContent = statusTxt;
+        if (bar) bar.textContent = b.error ? b.error : (b.status || (st.connected ? "操作可能" : "未接続"));
+      }
+      function _rtBattle3dRenderScoreboard(){
+        const st = _rtBattleState();
+        const box = document.getElementById("rt3dScorePanel");
+        if (!box) return;
+        const players = asArray(st.players);
+        const total = Math.max(1, Number(st.room?.settings?.questionCount || st.game?.totalRounds || st.questionCount || 20));
+        if (!players.length){
+          box.innerHTML = `<div class="mini">参加者なし</div>`;
+          return;
+        }
+        const maxScore = Math.max(1, ...players.map((p)=>Math.max(0, Number(p?.score || 0))));
+        const html = players.map((p)=>{
+          const score = Math.max(0, Number(p?.score || 0));
+          const width = Math.max(4, Math.round((score / maxScore) * 100));
+          const you = Math.max(0, Number(p?.userId || 0)) === _rtBattleMyUserId();
+          return `<div class="b3d-score-row${you ? " is-you" : ""}">
+            <div class="b3d-score-name">${_escapeHtml(String(p?.nick || "Guest"))}${you ? " *" : ""}</div>
+            <div class="b3d-score-track"><div class="b3d-score-fill" style="width:${width}%"></div></div>
+            <div class="b3d-score-val">${score}/${total}</div>
+          </div>`;
+        }).join("");
+        if (box.dataset.hash !== html){
+          box.dataset.hash = html;
+          box.innerHTML = html;
+        }
+      }
+      function _rtBattle3dRenderResult(){
+        const b = _rtBattle3dState();
+        const layer = document.getElementById("rt3dResultLayer");
+        const sub = document.getElementById("rt3dResultSub");
+        const list = document.getElementById("rt3dResultList");
+        if (!layer || !sub || !list) return;
+        if (!b.resultOpen){
+          layer.classList.remove("is-open");
+          layer.setAttribute("aria-hidden", "true");
+          return;
+        }
+        layer.classList.add("is-open");
+        layer.setAttribute("aria-hidden", "false");
+        const rows = asArray(b.finishOrder);
+        const myUid = _rtBattleMyUserId();
+        const myRow = rows.find((r)=>Math.max(0, Number(r?.userId||0))===myUid) || null;
+        const winnerNick = String(b.winnerNick || rows[0]?.nick || "");
+        sub.textContent = winnerNick ? `勝者: ${winnerNick}${myRow ? ` / あなたの順位: ${myRow.rank}位` : ""}` : "結果待機中";
+        const html = rows.length ? rows.map((r)=>`<div class="b3d-result-row"><div>#${Math.max(1,Number(r?.rank||0))}</div><div>${_escapeHtml(String(r?.nick || "Guest"))}</div><div class="mini">${new Date(Math.max(0,Number(r?.ts||0))).toLocaleTimeString()}</div></div>`).join("") : `<div class="mini">まだゴールしたプレイヤーはいません。</div>`;
+        if (list.dataset.hash !== html){
+          list.dataset.hash = html;
+          list.innerHTML = html;
+        }
+      }
+      function _rtBattle3dSyncFromSnapshot(snapshotLike){
+        const st = _rtBattleState();
+        const b = _rtBattle3dState();
+        const src = (snapshotLike && typeof snapshotLike === "object") ? snapshotLike : null;
+        const g3 = (src?.game3d && typeof src.game3d === "object")
+          ? src.game3d
+          : ((src?.state?.game3d && typeof src.state.game3d === "object")
+            ? src.state.game3d
+            : ((st.room && st.room.game3d && typeof st.room.game3d === "object")
+              ? st.room.game3d
+              : ((st.game?.game3d && typeof st.game.game3d === "object") ? st.game.game3d : null)));
+        if (!g3) return;
+        b.lastNetTs = Date.now();
+        b.gateOpen = !!g3.gateOpen;
+        b.winnerUserId = Math.max(0, Number(g3.winnerUserId || 0));
+        b.winnerNick = String(g3.winnerNick || "");
+        b.finishOrder = asArray(g3.finishOrder).map((x)=>({ userId:Math.max(0,Number(x?.userId||0)), nick:String(x?.nick||""), rank:Math.max(1,Number(x?.rank||1)), ts:Math.max(0,Number(x?.ts||0)) }));
+        const rs = {};
+        const srcPlayers = (g3.players && typeof g3.players === "object") ? g3.players : {};
+        for (const [k,v] of Object.entries(srcPlayers)){
+          const uid = String(Math.max(0, Number(k)));
+          rs[uid] = {
+            x:Number(v?.x||0), y:Number(v?.y||0.9), z:Number(v?.z||0),
+            vx:Number(v?.vx||0), vy:Number(v?.vy||0), vz:Number(v?.vz||0),
+            rotY:Number(v?.rotY||0), action:String(v?.action||"idle"), ts:Number(v?.ts||0),
+            lastSeen: Date.now()
+          };
+        }
+        b.remoteStates = rs;
+        if (b.gateOpen && b.quizOpen){
+          b.quizOpen = false;
+          b.quizAnswered = true;
+          b.quizError = "";
+          _rtBattle3dRenderQuizUi();
+        }
+        if (b.winnerUserId && !b.resultOpen){
+          b.resultOpen = true;
+          b.status = "勝敗が決まりました";
+          _rtBattle3dPushToast("ok", `${b.winnerNick || "誰か"}さんがゴールしました`);
+        }
+        _rtBattle3dRenderScoreboard();
+        _rtBattle3dRenderResult();
+        _rtBattle3dUpdateStatusUi();
+      }
+      function _rtBattle3dEnsureScene(){
+        const b = _rtBattle3dState();
+        const rt = b.runtime || (b.runtime = {});
+        if (rt.inited) return;
+        const THREE = window.THREE;
+        if (!THREE) throw new Error("THREE が読み込まれていません。");
+        const wrap = document.getElementById("rt3dCanvasWrap");
+        if (!wrap) throw new Error("3D描画領域が見つかりません。");
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "low-power" });
+        renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+        renderer.setSize(Math.max(1, wrap.clientWidth), Math.max(1, wrap.clientHeight), false);
+        renderer.outputColorSpace = THREE.SRGBColorSpace || undefined;
+        wrap.innerHTML = "";
+        wrap.appendChild(renderer.domElement);
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf3f5f8);
+        const camera = new THREE.PerspectiveCamera(60, Math.max(1, wrap.clientWidth) / Math.max(1, wrap.clientHeight), 0.1, 100);
+        const hemi = new THREE.HemisphereLight(0xffffff, 0xd9dde5, 1.1);
+        hemi.position.set(0, 10, 0);
+        scene.add(hemi);
+        const dir = new THREE.DirectionalLight(0xffffff, 0.35);
+        dir.position.set(4, 8, 2);
+        scene.add(dir);
+        const ground = new THREE.Mesh(
+          new THREE.BoxGeometry(12, 0.2, 26),
+          new THREE.MeshStandardMaterial({ color: 0xe7ebf2, roughness: 0.95, metalness: 0.02 })
+        );
+        ground.position.set(0, -0.1, -6);
+        scene.add(ground);
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xd6dbe5, roughness: 0.92 });
+        const walls = [];
+        const mkWall = (x,y,z,w,h,d) => {
+          const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), wallMat);
+          m.position.set(x,y,z);
+          scene.add(m);
+          walls.push({ x:x, y:y, z:z, w:w, h:h, d:d });
+          return m;
+        };
+        mkWall(-5.6, 1.2, -6, 0.3, 2.6, 25.5);
+        mkWall(5.6, 1.2, -6, 0.3, 2.6, 25.5);
+        mkWall(0, 1.2, 6.5, 11.5, 2.6, 0.3);
+        mkWall(0, 1.2, -18.5, 11.5, 2.6, 0.3);
+        const gatePostMat = new THREE.MeshStandardMaterial({ color: 0xc3cad8, roughness: 0.9 });
+        const gateDoorMat = new THREE.MeshStandardMaterial({ color: 0x8794ad, roughness: 0.85 });
+        const gateL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.4, 0.6), gatePostMat);
+        const gateR = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.4, 0.6), gatePostMat);
+        gateL.position.set(-2.0, 1.2, -4.0); gateR.position.set(2.0, 1.2, -4.0);
+        scene.add(gateL); scene.add(gateR);
+        const gateDoor = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.0, 0.35), gateDoorMat);
+        gateDoor.position.set(0, 1.0, -4.0);
+        scene.add(gateDoor);
+        const gateFrame = new THREE.Group(); gateFrame.add(gateL); gateFrame.add(gateR); gateFrame.add(gateDoor); scene.add(gateFrame);
+        const goalRing = new THREE.Mesh(
+          new THREE.TorusGeometry(0.9, 0.14, 10, 24),
+          new THREE.MeshStandardMaterial({ color: 0x74b7ff, roughness: 0.55, metalness: 0.05 })
+        );
+        goalRing.position.set(0, 1.6, -14.6);
+        goalRing.rotation.x = Math.PI / 2;
+        scene.add(goalRing);
+        const goalPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,3.2,10), new THREE.MeshStandardMaterial({ color: 0xb8c2d6, roughness: 0.8 }));
+        goalPole.position.set(0, 1.6, -14.6);
+        scene.add(goalPole);
+        const localColor = _rtBattle3dColorForUser(_rtBattleMyUserId());
+        const localMesh = _rtBattle3dBuildPlayerMesh(localColor);
+        scene.add(localMesh);
+        rt.renderer = renderer;
+        rt.scene = scene;
+        rt.camera = camera;
+        rt.wrap = wrap;
+        rt.walls = walls;
+        rt.gateDoor = gateDoor;
+        rt.goalRing = goalRing;
+        rt.localMesh = localMesh;
+        rt.inited = true;
+        rt.lastTickTs = performance.now();
+        _rtBattle3dResize();
+      }
+      function _rtBattle3dBuildPlayerMesh(colorHex){
+        const THREE = window.THREE;
+        const g = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.86, metalness: 0.02 });
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 0.62, 10), mat);
+        body.position.y = 0.48;
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), mat);
+        head.position.y = 0.88;
+        g.add(body, head);
+        const dir = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.05,0.22), new THREE.MeshStandardMaterial({ color: 0x1f2a44, roughness: 0.7 }));
+        dir.position.set(0,0.6,0.28);
+        g.add(dir);
+        g.position.set(0, 0, 0);
+        return g;
+      }
+      function _rtBattle3dColorForUser(uid){
+        const id = Math.max(1, Number(uid || 1));
+        const palette = [0x4f8cff,0x56c27d,0xff9f43,0xff6b81,0x8e7dff,0x36b0b7];
+        return palette[id % palette.length];
+      }
+      function _rtBattle3dResize(){
+        const b = _rtBattle3dState();
+        const rt = b.runtime || {};
+        const renderer = rt.renderer, camera = rt.camera, wrap = rt.wrap;
+        if (!renderer || !camera || !wrap) return;
+        const w = Math.max(1, wrap.clientWidth);
+        const h = Math.max(1, wrap.clientHeight);
+        renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+      function _rtBattle3dClampWorld(){
+        const b = _rtBattle3dState();
+        const p = b.local;
+        const r = 0.32;
+        p.x = Math.max(-5.15 + r, Math.min(5.15 - r, p.x));
+        p.z = Math.max(-18.05 + r, Math.min(6.05 - r, p.z));
+        if (!b.gateOpen){
+          const gateZ = -4.0;
+          const halfDepth = 0.26;
+          const halfWidth = 1.65;
+          if (Math.abs(p.x) < halfWidth && Math.abs(p.z - gateZ) < (halfDepth + r)){
+            if (p.z < gateZ) p.z = gateZ - halfDepth - r;
+            else p.z = gateZ + halfDepth + r;
+          }
+        }
+      }
+      function _rtBattle3dOpenQuiz(){
+        const b = _rtBattle3dState();
+        if (b.quizOpen || b.gateOpen) return;
+        b.quizOpen = true;
+        b.quizAnswered = false;
+        b.quizError = "";
+        b.status = "クイズゲートに回答してください";
+        _rtBattle3dRenderQuizUi();
+        _rtBattle3dUpdateStatusUi();
+      }
+      function _rtBattle3dSubmitQuizChoice(idx){
+        const b = _rtBattle3dState();
+        const q = _rtBattle3dQuestionData();
+        if (!b.quizOpen || b.quizAnswered) return;
+        const choice = Math.trunc(Number(idx));
+        if (!(choice >= 0 && choice < q.choices.length)) return;
+        b.quizAnswered = true;
+        if (choice === q.correctIndex){
+          b.quizError = "";
+          b.quizOpen = false;
+          b.gateOpen = true;
+          b.status = "正解！ゲートが開きました";
+          try{ if (typeof playSfx === "function") playSfx("ok"); }catch(_){}
+          try{ if (navigator?.vibrate) navigator.vibrate(18); }catch(_){}
+          _rtBattle3dPushToast("ok", "正解！ゲートが開きました");
+          _rtBattleSafeSend({ type: "game3d:gate", open: true });
+        } else {
+          b.quizError = "不正解です。もう一度選んでください。";
+          b.quizAnswered = false;
+          try{ if (typeof playSfx === "function") playSfx("ng"); }catch(_){}
+          try{ if (navigator?.vibrate) navigator.vibrate([14,18,14]); }catch(_){}
+          _rtBattle3dPushToast("ng", "不正解でした");
+        }
+        _rtBattle3dRenderQuizUi();
+        _rtBattle3dUpdateStatusUi();
+      }
+      function _rtBattle3dMaybeTriggerWorldEvents(){
+        const b = _rtBattle3dState();
+        const p = b.local;
+        if (!b.gateOpen && !b.quizOpen && !b.localFinished){
+          const inGateTrigger = Math.abs(p.x) < 2.1 && p.z < -2.3 && p.z > -3.8;
+          if (inGateTrigger) _rtBattle3dOpenQuiz();
+        }
+        if (b.gateOpen && !b.localFinished){
+          const inGoal = Math.abs(p.x) < 2.0 && p.z < -13.8;
+          if (inGoal){
+            b.localFinished = true;
+            b.status = "ゴール到達！";
+            _rtBattleSafeSend({ type: "game3d:goal" });
+            _rtBattle3dPushToast("ok", "ゴールしました");
+          }
+        }
+      }
+      function _rtBattle3dUpdateLocalMeshAndCamera(dt){
+        const b = _rtBattle3dState();
+        const rt = b.runtime || {};
+        const m = rt.localMesh, cam = rt.camera;
+        if (m){
+          m.position.set(b.local.x, Math.max(0, Number(b.local.y || 0.9) - 0.9), b.local.z);
+          m.rotation.y = b.local.rotY || 0;
+        }
+        if (cam){
+          const target = new window.THREE.Vector3(b.local.x, 0.9, b.local.z);
+          const desired = new window.THREE.Vector3(b.local.x + 4.0, 4.3, b.local.z + 6.2);
+          cam.position.lerp(desired, Math.min(1, dt * 6));
+          cam.lookAt(target);
+        }
+      }
+      function _rtBattle3dSyncRemoteMeshes(dt){
+        const b = _rtBattle3dState();
+        const rt = b.runtime || {};
+        const scene = rt.scene;
+        if (!scene || !window.THREE) return;
+        const myUid = _rtBattleMyUserId();
+        const states = b.remoteStates && typeof b.remoteStates === "object" ? b.remoteStates : {};
+        const keep = new Set();
+        for (const [uidKey, rs] of Object.entries(states)){
+          const uid = Math.max(0, Number(uidKey || 0));
+          if (!uid || uid === myUid) continue;
+          keep.add(String(uid));
+          let mesh = b.remoteMeshes[String(uid)];
+          if (!mesh){
+            mesh = _rtBattle3dBuildPlayerMesh(_rtBattle3dColorForUser(uid));
+            scene.add(mesh);
+            b.remoteMeshes[String(uid)] = mesh;
+          }
+          const tx = Number(rs?.x || 0), tz = Number(rs?.z || 0);
+          const targetY = 0;
+          mesh.position.x += (tx - mesh.position.x) * Math.min(1, dt * 8);
+          mesh.position.y += ((((Number(rs?.y || 0.9) - 0.9) || targetY)) - mesh.position.y) * Math.min(1, dt * 8);
+          mesh.position.z += (tz - mesh.position.z) * Math.min(1, dt * 8);
+          const tr = Number(rs?.rotY || 0);
+          mesh.rotation.y += (tr - mesh.rotation.y) * Math.min(1, dt * 8);
+        }
+        for (const [uid, mesh] of Object.entries(b.remoteMeshes || {})){
+          if (!keep.has(uid)){
+            try{ mesh.parent && mesh.parent.remove(mesh); }catch(_){}
+            delete b.remoteMeshes[uid];
+          }
+        }
+      }
+      function _rtBattle3dStepPhysics(dt){
+        const b = _rtBattle3dState();
+        const p = b.local;
+        if (b.quizOpen || b.resultOpen){
+          p.vx *= 0.85; p.vz *= 0.85;
+          return;
+        }
+        const speed = 4.6;
+        let ix = 0, iz = 0;
+        if (b.input.left) ix -= 1;
+        if (b.input.right) ix += 1;
+        if (b.input.fwd) iz -= 1;
+        if (b.input.back) iz += 1;
+        const len = Math.hypot(ix, iz) || 1;
+        ix /= len; iz /= len;
+        p.vx = ix * speed;
+        p.vz = iz * speed;
+        if ((b.jumpQueued || b.input.jump) && p.grounded){
+          p.vy = 7.2;
+          p.grounded = false;
+          b.jumpQueued = false;
+        }
+        if (Math.abs(ix) > 0.01 || Math.abs(iz) > 0.01){
+          p.rotY = Math.atan2(ix, iz);
+          p.action = "run";
+        } else {
+          p.action = "idle";
+        }
+        p.vy += -18 * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        if (p.y <= 0.9){
+          p.y = 0.9; p.vy = 0; p.grounded = true;
+        }
+        _rtBattle3dClampWorld();
+      }
+      function _rtBattle3dAnimateWorld(dt){
+        const b = _rtBattle3dState();
+        const rt = b.runtime || {};
+        b.gateAnim += ((b.gateOpen ? 1 : 0) - Number(b.gateAnim || 0)) * Math.min(1, dt * 4.5);
+        if (rt.gateDoor){
+          rt.gateDoor.position.y = 1.0 + (b.gateAnim * 3.2);
+        }
+        if (rt.goalRing){
+          rt.goalRing.rotation.z += dt * 0.8;
+        }
+      }
+      function _rtBattle3dSendLocalState(force = false){
+        const st = _rtBattleState();
+        const b = _rtBattle3dState();
+        if (!st.connected) return;
+        const now = Date.now();
+        if (!force && (now - Math.max(0, Number(b.runtime?.lastSyncSentTs || 0))) < 80) return;
+        const p = b.local;
+        const payload = {
+          type: "player3d:update",
+          state: {
+            x: Math.round(p.x * 100) / 100,
+            y: Math.round(p.y * 100) / 100,
+            z: Math.round(p.z * 100) / 100,
+            vx: Math.round(p.vx * 100) / 100,
+            vy: Math.round(p.vy * 100) / 100,
+            vz: Math.round(p.vz * 100) / 100,
+            rotY: Math.round((p.rotY || 0) * 1000) / 1000,
+            action: String(p.action || "idle"),
+            ts: now
+          }
+        };
+        if (_rtBattleSafeSend(payload)){
+          b.runtime.lastSyncSentTs = now;
+        }
+      }
+      function _rtBattle3dTick(tsNow){
+        const b = _rtBattle3dState();
+        const rt = b.runtime || {};
+        if (!b.open || !rt.inited || !rt.renderer || !rt.scene || !rt.camera) return;
+        const prev = Math.max(0, Number(rt.lastTickTs || tsNow));
+        const dt = Math.min(0.05, Math.max(0.001, (tsNow - prev) / 1000));
+        rt.lastTickTs = tsNow;
+        _rtBattle3dStepPhysics(dt);
+        _rtBattle3dMaybeTriggerWorldEvents();
+        _rtBattle3dAnimateWorld(dt);
+        _rtBattle3dUpdateLocalMeshAndCamera(dt);
+        _rtBattle3dSyncRemoteMeshes(dt);
+        rt.renderer.render(rt.scene, rt.camera);
+        _rtBattle3dSendLocalState(false);
+        if ((tsNow - Math.max(0, Number(rt.lastHudRenderTs || 0))) > 180){
+          rt.lastHudRenderTs = tsNow;
+          _rtBattle3dRenderScoreboard();
+          _rtBattle3dRenderResult();
+          _rtBattle3dUpdateStatusUi();
+        }
+        b.rafId = requestAnimationFrame(_rtBattle3dTick);
+      }
+      function _rtBattle3dStartLoops(){
+        const b = _rtBattle3dState();
+        if (!b.rafId) b.rafId = requestAnimationFrame(_rtBattle3dTick);
+        if (!b.uiTimerId){
+          b.uiTimerId = setInterval(() => {
+            if (!_rtBattle3dIsOpen()) return;
+            _rtBattle3dUpdateStatusUi();
+          }, 500);
+        }
+        if (!b.pingTimerId){
+          b.pingTimerId = setInterval(() => {
+            if (!_rtBattle3dIsOpen()) return;
+            const st = _rtBattleState();
+            if (!st.connected) return;
+            b.awaitingPingTs = Date.now();
+            _rtBattleSafeSend({ type: "ping" });
+          }, 5000);
+        }
+      }
+      function _rtBattle3dStopLoops(){
+        const b = _rtBattle3dState();
+        if (b.rafId){ cancelAnimationFrame(b.rafId); b.rafId = null; }
+        if (b.uiTimerId){ clearInterval(b.uiTimerId); b.uiTimerId = null; }
+        if (b.pingTimerId){ clearInterval(b.pingTimerId); b.pingTimerId = null; }
+      }
+      function _rtBattle3dDestroyScene(){
+        const b = _rtBattle3dState();
+        const rt = b.runtime || {};
+        _rtBattle3dStopLoops();
+        if (rt.toastTimerId){ clearTimeout(rt.toastTimerId); rt.toastTimerId = null; }
+        if (rt.scene && b.remoteMeshes){
+          for (const mesh of Object.values(b.remoteMeshes)){ try{ mesh.parent && mesh.parent.remove(mesh); }catch(_){} }
+        }
+        b.remoteMeshes = {};
+        try{
+          if (rt.renderer){
+            rt.renderer.dispose?.();
+            const c = rt.renderer.domElement;
+            c && c.parentNode && c.parentNode.removeChild(c);
+          }
+        }catch(_){}
+        b.runtime = { inited:false, toastQueue:[], toastActive:false, lastShownFinishCount:0, seenGatePrompt:false };
+      }
+      function _rtBattle3dKeyboardHandler(e, down){
+        if (!_rtBattle3dIsOpen()) return;
+        if (_rtBattle3dActiveInputIsEditable()) return;
+        const b = _rtBattle3dState();
+        const k = String(e.key || "").toLowerCase();
+        if (["w","arrowup"].includes(k)){ b.input.fwd = down; e.preventDefault(); }
+        else if (["s","arrowdown"].includes(k)){ b.input.back = down; e.preventDefault(); }
+        else if (["a","arrowleft"].includes(k)){ b.input.left = down; e.preventDefault(); }
+        else if (["d","arrowright"].includes(k)){ b.input.right = down; e.preventDefault(); }
+        else if (k === " " || k === "spacebar"){ b.input.jump = down; if (down) b.jumpQueued = true; e.preventDefault(); }
+        else if (k === "escape" && down){ _rtBattle3dClose(); e.preventDefault(); }
+      }
+      function _rtBattle3dBindGlobalHandlers(){
+        if (window.__rt3dGlobalBound) return;
+        window.__rt3dGlobalBound = true;
+        window.addEventListener("keydown", (e) => _rtBattle3dKeyboardHandler(e, true), true);
+        window.addEventListener("keyup", (e) => _rtBattle3dKeyboardHandler(e, false), true);
+        window.addEventListener("resize", () => { if (_rtBattle3dIsOpen()) _rtBattle3dResize(); }, { passive:true });
+        document.addEventListener("click", (e) => {
+          const btn = e.target && e.target.closest ? e.target.closest("[data-rt-battle-action]") : null;
+          if (!btn) return;
+          if (!btn.closest("#rt3dOverlay")) return;
+          const act = String(btn.getAttribute("data-rt-battle-action") || "");
+          if (_rtBattle3dHandleAction(act, btn)) return;
+        }, true);
+        const holdPointer = (down) => {
+          document.addEventListener(down ? "pointerdown" : "pointerup", (e) => {
+            const btn = e.target && e.target.closest ? e.target.closest("#rt3dOverlay [data-rt-battle-action^='b3dHold']") : null;
+            if (!btn) return;
+            const act = String(btn.getAttribute("data-rt-battle-action") || "");
+            const map = { b3dHoldUp:"fwd", b3dHoldDown:"back", b3dHoldLeft:"left", b3dHoldRight:"right", b3dHoldJump:"jump" };
+            const key = map[act];
+            if (!key) return;
+            const b = _rtBattle3dState();
+            b.input[key] = down;
+            if (key === "jump" && down) b.jumpQueued = true;
+            btn.classList.toggle("is-active", down);
+            if (down){
+              try{ btn.setPointerCapture && btn.setPointerCapture(e.pointerId); }catch(_){}
+            }
+            e.preventDefault();
+          }, true);
+        };
+        holdPointer(true);
+        holdPointer(false);
+        window.addEventListener("pointerup", () => {
+          if (!_rtBattle3dIsOpen()) return;
+          const b = _rtBattle3dState();
+          b.input.fwd = b.input.back = b.input.left = b.input.right = false;
+          b.input.jump = false;
+          document.querySelectorAll("#rt3dOverlay .b3d-mbtn.is-active").forEach((el) => el.classList.remove("is-active"));
+        }, true);
+        document.addEventListener("pointercancel", (e) => {
+          const btn = e.target && e.target.closest ? e.target.closest("#rt3dOverlay [data-rt-battle-action^='b3dHold']") : null;
+          if (!btn) return;
+          const act = String(btn.getAttribute("data-rt-battle-action") || "");
+          const map = { b3dHoldUp:"fwd", b3dHoldDown:"back", b3dHoldLeft:"left", b3dHoldRight:"right", b3dHoldJump:"jump" };
+          const key = map[act];
+          if (!key) return;
+          const b = _rtBattle3dState();
+          b.input[key] = false;
+          btn.classList.remove("is-active");
+        }, true);
+      }
+      async function _rtBattle3dOpen(){
+        const st = _rtBattleState();
+        const b = _rtBattle3dState();
+        if (!st.connected){
+          try{ uiToast("先にルームへ接続してください。"); }catch(_){}
+          return;
+        }
+        _rtBattle3dEnsureStyles();
+        _rtBattle3dBindGlobalHandlers();
+        const root = _rtBattle3dEnsureRoot();
+        b.open = true;
+        b.loading = true;
+        b.error = "";
+        b.status = "3Dシーンを準備中…";
+        b.sceneMode = "play";
+        b.resultOpen = false;
+        b.localFinished = false;
+        b.quizOpen = false;
+        b.quizAnswered = false;
+        b.quizError = "";
+        b.runtime = { inited:false, toastQueue:[], toastActive:false, lastShownFinishCount:0, seenGatePrompt:false };
+        b.local = { x:0, y:0.9, z:4, vx:0, vy:0, vz:0, rotY:0, grounded:true, action:"idle", ts:Date.now() };
+        root.classList.add("is-open");
+        root.hidden = false;
+        root.setAttribute("aria-hidden", "false");
+        b._prevBodyOverflow = document.body.style.overflow || "";
+        document.body.style.overflow = "hidden";
+        _rtBattle3dHideError();
+        _rtBattle3dRenderQuizUi();
+        _rtBattle3dRenderResult();
+        _rtBattle3dUpdateStatusUi();
+        try{
+          await _rtBattle3dEnsureThree();
+          _rtBattle3dEnsureScene();
+          _rtBattle3dSyncFromSnapshot();
+          _rtBattle3dSendLocalState(true);
+          _rtBattle3dStartLoops();
+          b.loading = false;
+          b.status = "操作可能";
+          _rtBattle3dUpdateStatusUi();
+          _rtBattle3dPushToast("info", "ゲートに近づくと問題が出ます");
+        }catch(err){
+          b.loading = false;
+          _rtBattle3dShowError(String(err?.message || "3D初期化に失敗しました。"));
+        }
+      }
+      function _rtBattle3dClose(){
+        const b = _rtBattle3dState();
+        if (!b.open) return;
+        b.open = false;
+        b.loading = false;
+        b.quizOpen = false;
+        _rtBattle3dStopLoops();
+        _rtBattle3dDestroyScene();
+        const root = document.getElementById("rt3dOverlay");
+        if (root){
+          root.classList.remove("is-open");
+          root.setAttribute("aria-hidden", "true");
+          root.hidden = true;
+        }
+        document.body.style.overflow = (typeof b._prevBodyOverflow === "string") ? b._prevBodyOverflow : "";
+      }
+      function _rtBattle3dHandleAction(act, el){
+        const b = _rtBattle3dState();
+        if (act === "open3dBeta"){ _rtBattle3dOpen(); return true; }
+        if (!_rtBattle3dIsOpen()) return false;
+        if (act === "b3dClose"){ _rtBattle3dClose(); return true; }
+        if (act === "b3dRetry"){
+          if (!_rtBattleState().connected) _rtBattleReconnect();
+          else { _rtBattle3dClose(); setTimeout(() => { _rtBattle3dOpen(); }, 50); }
+          return true;
+        }
+        if (act === "b3dReset"){
+          if (_rtBattleIsHost()) _rtBattleSafeSend({ type: "game3d:reset" });
+          b.resultOpen = false;
+          b.localFinished = false;
+          b.winnerUserId = 0;
+          b.winnerNick = "";
+          b.finishOrder = [];
+          b.quizOpen = false;
+          b.quizAnswered = false;
+          b.quizError = "";
+          b.gateOpen = false;
+          b.local = { x:0, y:0.9, z:4, vx:0, vy:0, vz:0, rotY:0, grounded:true, action:"idle", ts:Date.now() };
+          _rtBattle3dRenderQuizUi();
+          _rtBattle3dRenderResult();
+          _rtBattle3dUpdateStatusUi();
+          _rtBattle3dSendLocalState(true);
+          return true;
+        }
+        if (act === "b3dQuizChoice"){
+          const idx = Number(el?.getAttribute?.("data-b3d-choice") || -1);
+          _rtBattle3dSubmitQuizChoice(idx);
+          return true;
+        }
+        return false;
+      }
+      // hook overlay actions so existing Game sheet button opens 3D demo
+      const __rtBattleOverlayHandleActionV4Base = _rtBattleOverlayHandleAction;
+      _rtBattleOverlayHandleAction = function(act, el){
+        if (_rtBattle3dHandleAction(act, el)) return true;
+        return __rtBattleOverlayHandleActionV4Base.apply(this, arguments);
+      };
+      // hook WS messages for 3D sync events/state
+      const __rtBattleHandleMessageV4Base = _rtBattleHandleMessage;
+      _rtBattleHandleMessage = function(msg){
+        __rtBattleHandleMessageV4Base.apply(this, arguments);
+        const type = String(msg?.type || "").toLowerCase();
+        const st = _rtBattleState();
+        const b = _rtBattle3dState();
+        if (type === "pong"){
+          if (b.awaitingPingTs > 0){
+            b.pingMs = Math.max(0, Date.now() - b.awaitingPingTs);
+            b.awaitingPingTs = 0;
+          }
+          b.lastNetTs = Date.now();
+          if (_rtBattle3dIsOpen()) _rtBattle3dUpdateStatusUi();
+          return;
+        }
+        if (type === "room:snapshot" || type === "state"){
+          _rtBattle3dSyncFromSnapshot(msg);
+          return;
+        }
+        if (type === "game3d:player"){
+          const uid = Math.max(0, Number(msg?.userId || msg?.id || 0));
+          if (uid && uid !== _rtBattleMyUserId()){
+            const rs = (msg?.state && typeof msg.state === "object") ? msg.state : {};
+            b.remoteStates[String(uid)] = {
+              x:Number(rs.x||0), y:Number(rs.y||0.9), z:Number(rs.z||0),
+              vx:Number(rs.vx||0), vy:Number(rs.vy||0), vz:Number(rs.vz||0),
+              rotY:Number(rs.rotY||0), action:String(rs.action||"idle"),
+              ts:Number(rs.ts||Date.now()), lastSeen: Date.now(), nick:String(msg?.nick || "")
+            };
+          }
+          b.lastNetTs = Date.now();
+          return;
+        }
+        if (type === "game3d:world"){
+          if (msg?.game3d && typeof msg.game3d === "object"){
+            if (typeof msg.game3d.gateOpen !== "undefined") b.gateOpen = !!msg.game3d.gateOpen;
+            if (typeof msg.game3d.winnerUserId !== "undefined") b.winnerUserId = Math.max(0, Number(msg.game3d.winnerUserId || 0));
+            if (typeof msg.game3d.winnerNick !== "undefined") b.winnerNick = String(msg.game3d.winnerNick || "");
+            if (Array.isArray(msg.game3d.finishOrder)) b.finishOrder = msg.game3d.finishOrder.map((x)=>({ userId:Math.max(0,Number(x?.userId||0)), nick:String(x?.nick||""), rank:Math.max(1,Number(x?.rank||1)), ts:Math.max(0,Number(x?.ts||0)) }));
+          }
+          if (b.gateOpen && b.quizOpen){ b.quizOpen = false; b.quizAnswered = true; b.quizError = ""; _rtBattle3dRenderQuizUi(); }
+          if (!b.gateOpen && !b.winnerUserId && asArray(b.finishOrder).length === 0){
+            b.resultOpen = false;
+            b.localFinished = false;
+            b.quizOpen = false;
+            b.quizAnswered = false;
+            b.quizError = "";
+            b.local = { x:0, y:0.9, z:4, vx:0, vy:0, vz:0, rotY:0, grounded:true, action:"idle", ts:Date.now() };
+          }
+          _rtBattle3dRenderResult();
+          _rtBattle3dUpdateStatusUi();
+          b.lastNetTs = Date.now();
+          return;
+        }
+        if (type === "game3d:finish"){
+          const g3 = (msg?.game3d && typeof msg.game3d === "object") ? msg.game3d : {};
+          b.winnerUserId = Math.max(0, Number(g3.winnerUserId || msg?.winner?.userId || 0));
+          b.winnerNick = String(g3.winnerNick || msg?.winner?.nick || "");
+          b.finishOrder = Array.isArray(g3.finishOrder) ? g3.finishOrder : (Array.isArray(msg?.leaderboard) ? msg.leaderboard : []);
+          b.resultOpen = true;
+          b.lastNetTs = Date.now();
+          _rtBattle3dPushToast("ok", `${b.winnerNick || "プレイヤー"}さんがゴールしました`);
+          _rtBattle3dRenderResult();
+          _rtBattle3dUpdateStatusUi();
+          return;
+        }
+      };
+      // ensure close/leave disconnect also closes 3D overlay and frees resources
+      const __rtBattleDisconnectV4Base = _rtBattleDisconnect;
+      _rtBattleDisconnect = function(silent = false){
+        try{ _rtBattle3dClose(); }catch(_){}
+        return __rtBattleDisconnectV4Base.apply(this, arguments);
+      };
+      const __rtBattleLeaveV4Base = _rtBattleLeave;
+      _rtBattleLeave = function(){
+        try{ _rtBattle3dClose(); }catch(_){}
+        return __rtBattleLeaveV4Base.apply(this, arguments);
+      };
 
       function _lockViewportZoom(){
         if (window.__vqZoomLocked) return;
