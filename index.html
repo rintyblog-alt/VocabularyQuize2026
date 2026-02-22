@@ -31294,6 +31294,485 @@ function _openSearchResultByIndex(i){
           }, 0);
         }
       }
+      // ROOM_DO_UI_V1: override old realtime-battle UI with room-based WebSocket chat (max 4 players)
+      function _rtBattleState(){
+        if (!_menuState.rtBattle || typeof _menuState.rtBattle !== "object") _menuState.rtBattle = {};
+        const st = _menuState.rtBattle;
+        if (typeof st.roomId !== "string") st.roomId = "";
+        if (typeof st.roomPassword !== "string") st.roomPassword = "";
+        if (typeof st.joinRoomId !== "string") st.joinRoomId = "";
+        if (typeof st.joinPassword !== "string") st.joinPassword = "";
+        if (typeof st.nickname !== "string") st.nickname = "";
+        if (typeof st.wsUrl !== "string") st.wsUrl = "";
+        if (!(st.socket instanceof WebSocket)) st.socket = null;
+        if (typeof st.connecting !== "boolean") st.connecting = false;
+        if (typeof st.connected !== "boolean") st.connected = false;
+        if (typeof st.phase !== "string") st.phase = "waiting";
+        if (typeof st.statusMsg !== "string") st.statusMsg = "";
+        if (typeof st.errorMsg !== "string") st.errorMsg = "";
+        if (typeof st.writeDraft !== "string") st.writeDraft = "";
+        if (!Array.isArray(st.chatLogs)) st.chatLogs = [];
+        if (!Array.isArray(st.players)) st.players = [];
+        if (!st.room || typeof st.room !== "object") st.room = null;
+        if (!st.you || typeof st.you !== "object") st.you = null;
+        if (typeof st.autoReadySent !== "boolean") st.autoReadySent = false;
+        if (typeof st.busy !== "boolean") st.busy = false;
+        if (typeof st.pingTimerId !== "number" && st.pingTimerId !== null) st.pingTimerId = null;
+        return st;
+      }
+      function _rtBattlePushLog(kind, text, extra = {}){
+        const st = _rtBattleState();
+        const msg = {
+          kind: String(kind || "system"),
+          text: String(text || ""),
+          ts: Date.now(),
+          ...((extra && typeof extra === "object") ? extra : {})
+        };
+        st.chatLogs.push(msg);
+        if (st.chatLogs.length > 120) st.chatLogs = st.chatLogs.slice(-120);
+      }
+      function _rtBattleStopPing(){
+        const st = _rtBattleState();
+        if (st.pingTimerId){
+          clearInterval(st.pingTimerId);
+          st.pingTimerId = null;
+        }
+      }
+      function _rtBattleSafeCloseSocket(){
+        const st = _rtBattleState();
+        const ws = st.socket;
+        st.socket = null;
+        if (ws){
+          try{ ws.onopen = ws.onclose = ws.onerror = ws.onmessage = null; }catch(_){}
+          try{ ws.close(); }catch(_){}
+        }
+      }
+      function _rtBattleDisconnect(silent = false){
+        const st = _rtBattleState();
+        _rtBattleStopPing();
+        _rtBattleSafeCloseSocket();
+        st.connecting = false;
+        st.connected = false;
+        st.autoReadySent = false;
+        if (!silent){
+          st.statusMsg = "接続を終了しました。";
+          _rtBattlePushLog("system", "接続を終了しました。");
+        }
+      }
+      function _rtBattleReset(keepInputs = true){
+        const st = _rtBattleState();
+        const keep = keepInputs ? {
+          roomPassword: st.roomPassword,
+          joinRoomId: st.joinRoomId,
+          joinPassword: st.joinPassword,
+          nickname: st.nickname
+        } : null;
+        _rtBattleDisconnect(true);
+        st.roomId = "";
+        st.wsUrl = "";
+        st.phase = "waiting";
+        st.statusMsg = "";
+        st.errorMsg = "";
+        st.players = [];
+        st.room = null;
+        st.you = null;
+        st.writeDraft = "";
+        st.chatLogs = [];
+        st.busy = false;
+        if (keep){
+          st.roomPassword = keep.roomPassword;
+          st.joinRoomId = keep.joinRoomId;
+          st.joinPassword = keep.joinPassword;
+          st.nickname = keep.nickname;
+        }
+      }
+      function _rtBattleAuthTokenRequired(){
+        const token = _authGetToken();
+        if (!token){
+          const err = new Error("ログインが必要です。");
+          err.code = "UNAUTHORIZED";
+          throw err;
+        }
+        return token;
+      }
+      function _rtBattleApplyFormFromDom(){
+        const st = _rtBattleState();
+        const createPwEl = document.getElementById("rtRoomCreatePasswordInput");
+        const joinIdEl = document.getElementById("rtRoomJoinIdInput");
+        const joinPwEl = document.getElementById("rtRoomJoinPasswordInput");
+        const nickEl = document.getElementById("rtRoomNickInput");
+        if (createPwEl) st.roomPassword = String(createPwEl.value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+        if (joinIdEl) st.joinRoomId = String(joinIdEl.value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+        if (joinPwEl) st.joinPassword = String(joinPwEl.value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+        if (nickEl) st.nickname = String(nickEl.value || "").trim().slice(0, 32);
+      }
+      function _rtBattleStatusLabel(){
+        const st = _rtBattleState();
+        if (st.errorMsg) return st.errorMsg;
+        if (st.statusMsg) return st.statusMsg;
+        if (st.connecting) return "接続中…";
+        if (st.connected) return `接続済み (${String(st.phase || "waiting")})`;
+        return "未接続";
+      }
+      function _rtBattleSafeSend(payload){
+        const st = _rtBattleState();
+        const ws = st.socket;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+        try{
+          ws.send(JSON.stringify(payload || {}));
+          return true;
+        }catch{
+          return false;
+        }
+      }
+      function _rtBattleRerender(){
+        if (_menuState.view !== "onlineBattleRealtime") return;
+        const content = document.getElementById("menuContent");
+        if (!content) return;
+        content.innerHTML = _renderOnlineBattleRealtimeHTML();
+        _rtBattleInitView();
+      }
+      function _rtBattleHandleMessage(msg){
+        const st = _rtBattleState();
+        const type = String(msg?.type || "").toLowerCase();
+        if (!type) return;
+        if (type === "state"){
+          st.room = (msg && typeof msg.room === "object") ? msg.room : st.room;
+          st.players = Array.isArray(msg?.players) ? msg.players : [];
+          st.phase = String(msg?.phase || st.phase || "waiting");
+          st.statusMsg = st.connected ? `状態同期: ${st.phase}` : st.statusMsg;
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "joined"){
+          st.you = (msg && typeof msg.you === "object") ? msg.you : st.you;
+          st.room = (msg && typeof msg.room === "object") ? msg.room : st.room;
+          st.statusMsg = "ルームに参加しました。";
+          _rtBattlePushLog("system", `参加しました（${st.you?.nick || "you"}）`);
+          if (!st.autoReadySent){
+            st.autoReadySent = true;
+            _rtBattleSafeSend({ type: "ready" });
+          }
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "chat"){
+          const fromNick = String(msg?.from?.nick || "unknown");
+          const fromId = Number(msg?.from?.id || 0);
+          const text = String(msg?.text || "");
+          _rtBattlePushLog("chat", text, { fromNick, fromId, ts: Number(msg?.ts || Date.now()) });
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "error"){
+          st.errorMsg = String(msg?.message || msg?.code || "通信エラー");
+          _rtBattlePushLog("system", `エラー: ${st.errorMsg}`);
+          try{ uiToast(st.errorMsg); }catch(_){}
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "pong"){
+          return;
+        }
+      }
+      function _rtBattleConnect(wsUrlRaw){
+        const st = _rtBattleState();
+        const token = _rtBattleAuthTokenRequired();
+        const wsUrlSafe = String(wsUrlRaw || st.wsUrl || "").trim();
+        if (!wsUrlSafe){
+          st.errorMsg = "WebSocket URLがありません。";
+          try{ uiToast(st.errorMsg); }catch(_){}
+          _rtBattleRerender();
+          return;
+        }
+        if (typeof WebSocket !== "function"){
+          st.errorMsg = "このブラウザはWebSocket未対応です。";
+          try{ uiToast(st.errorMsg); }catch(_){}
+          _rtBattleRerender();
+          return;
+        }
+        _rtBattleApplyFormFromDom();
+        _rtBattleDisconnect(true);
+        st.connecting = true;
+        st.connected = false;
+        st.errorMsg = "";
+        st.statusMsg = "接続中…";
+        st.wsUrl = wsUrlSafe;
+        st.autoReadySent = false;
+        _rtBattleRerender();
+        let finalUrl = wsUrlSafe;
+        try{
+          const u = new URL(wsUrlSafe, location.href);
+          if (st.joinPassword || st.roomPassword) u.searchParams.set("pw", st.joinPassword || st.roomPassword);
+          if (st.nickname) u.searchParams.set("nick", st.nickname);
+          u.searchParams.set("token", token);
+          finalUrl = u.toString();
+        }catch{
+          const qp = [];
+          if (st.joinPassword || st.roomPassword) qp.push(`pw=${encodeURIComponent(st.joinPassword || st.roomPassword)}`);
+          if (st.nickname) qp.push(`nick=${encodeURIComponent(st.nickname)}`);
+          qp.push(`token=${encodeURIComponent(token)}`);
+          finalUrl = wsUrlSafe + (wsUrlSafe.includes("?") ? "&" : "?") + qp.join("&");
+        }
+        let ws = null;
+        try{
+          ws = new WebSocket(finalUrl);
+        }catch(err){
+          st.connecting = false;
+          st.connected = false;
+          st.errorMsg = String(err?.message || "WebSocket接続に失敗しました。");
+          _rtBattlePushLog("system", `接続失敗: ${st.errorMsg}`);
+          _rtBattleRerender();
+          return;
+        }
+        st.socket = ws;
+        ws.onopen = () => {
+          if (_rtBattleState().socket !== ws) return;
+          st.connecting = false;
+          st.connected = true;
+          st.statusMsg = "接続しました。";
+          st.errorMsg = "";
+          _rtBattleSafeSend({ type: "hello", pw: st.joinPassword || st.roomPassword || "", nick: st.nickname || "" });
+          _rtBattleStopPing();
+          st.pingTimerId = setInterval(() => { _rtBattleSafeSend({ type: "ping" }); }, 15000);
+          _rtBattleRerender();
+        };
+        ws.onmessage = (ev) => {
+          let msg = null;
+          try{ msg = JSON.parse(String(ev?.data || "")); }catch{ msg = null; }
+          if (msg) _rtBattleHandleMessage(msg);
+        };
+        ws.onerror = () => {
+          if (_rtBattleState().socket !== ws) return;
+          st.connecting = false;
+          st.connected = false;
+          st.errorMsg = "WebSocket通信エラー";
+          _rtBattlePushLog("system", st.errorMsg);
+          _rtBattleRerender();
+        };
+        ws.onclose = () => {
+          if (_rtBattleState().socket === ws) st.socket = null;
+          _rtBattleStopPing();
+          st.connecting = false;
+          const wasConnected = st.connected;
+          st.connected = false;
+          if (wasConnected) _rtBattlePushLog("system", "接続が切れました。");
+          if (!st.errorMsg) st.statusMsg = "未接続";
+          _rtBattleRerender();
+        };
+      }
+      async function _rtBattleStart(){
+        const st = _rtBattleState();
+        if (st.busy || st.connecting) return;
+        try{
+          _rtBattleApplyFormFromDom();
+          st.busy = true;
+          st.errorMsg = "";
+          st.statusMsg = "ルームを作成中…";
+          _rtBattleRerender();
+          const token = _rtBattleAuthTokenRequired();
+          const body = await _authFetch("/api/room/create", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ password: st.roomPassword || undefined })
+          });
+          st.roomId = String(body?.roomId || "").toUpperCase();
+          st.roomPassword = String(body?.password || st.roomPassword || "").toUpperCase();
+          st.joinRoomId = st.roomId;
+          st.joinPassword = st.roomPassword;
+          st.wsUrl = String(body?.wsUrl || "");
+          if (!st.wsUrl || !st.roomId) throw new Error("ルーム情報の取得に失敗しました。");
+          st.chatLogs = [];
+          _rtBattlePushLog("system", `ルーム作成: ${st.roomId} / PW: ${st.roomPassword}`);
+          st.statusMsg = "ルーム作成完了。接続中…";
+          _rtBattleConnect(st.wsUrl);
+        }catch(err){
+          st.errorMsg = String(err?.message || "ルーム作成に失敗しました。");
+          try{ uiToast(st.errorMsg); }catch(_){}
+          _rtBattleRerender();
+        }finally{
+          st.busy = false;
+          _rtBattleRerender();
+        }
+      }
+      async function _rtBattleReconnect(){
+        const st = _rtBattleState();
+        if (st.busy || st.connecting) return;
+        try{
+          _rtBattleApplyFormFromDom();
+          const roomId = String(st.joinRoomId || "").toUpperCase();
+          const password = String(st.joinPassword || "").toUpperCase();
+          const nick = String(st.nickname || "").trim();
+          if (!roomId || roomId.length !== 6) throw new Error("ルームIDを6桁で入力してください。");
+          if (!password || password.length !== 6) throw new Error("パスワードを6桁で入力してください。");
+          st.busy = true;
+          st.errorMsg = "";
+          st.statusMsg = "参加チェック中…";
+          _rtBattleRerender();
+          const token = _rtBattleAuthTokenRequired();
+          const body = await _authFetch("/api/room/join", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ roomId, password, nickname: nick || undefined })
+          });
+          st.roomId = roomId;
+          st.roomPassword = password;
+          st.wsUrl = String(body?.wsUrl || "");
+          if (!st.wsUrl) throw new Error("wsUrl を取得できませんでした。");
+          if (!st.chatLogs.length) _rtBattlePushLog("system", `ルーム参加: ${roomId}`);
+          st.statusMsg = "参加OK。接続中…";
+          _rtBattleConnect(st.wsUrl);
+        }catch(err){
+          st.errorMsg = String(err?.message || "ルーム参加に失敗しました。");
+          try{ uiToast(st.errorMsg); }catch(_){}
+          _rtBattleRerender();
+        }finally{
+          st.busy = false;
+          _rtBattleRerender();
+        }
+      }
+      function _rtBattleLeave(){
+        const st = _rtBattleState();
+        _rtBattleSafeSend({ type: "leave" });
+        _rtBattleDisconnect(true);
+        st.statusMsg = "切断しました。";
+        st.phase = "waiting";
+        st.players = [];
+        st.room = null;
+        st.you = null;
+        _rtBattlePushLog("system", "切断しました。");
+        _rtBattleRerender();
+      }
+      function _rtBattleSubmitAnswer(text){
+        const st = _rtBattleState();
+        const msg = String((text ?? st.writeDraft) || "").trim();
+        if (!msg){
+          try{ uiToast("チャットを入力してください。"); }catch(_){}
+          return;
+        }
+        if (!st.connected){
+          try{ uiToast("接続されていません。"); }catch(_){}
+          return;
+        }
+        const ok = _rtBattleSafeSend({ type: "chat", text: msg });
+        if (!ok){
+          try{ uiToast("送信に失敗しました。"); }catch(_){}
+          return;
+        }
+        st.writeDraft = "";
+        _rtBattleRerender();
+      }
+      function _rtBattleRenderPlayerList(){
+        const st = _rtBattleState();
+        const players = Array.isArray(st.players) ? st.players : [];
+        if (!players.length) return `<div class="mini">参加者はまだいません。</div>`;
+        return players.map((p) => {
+          const isYou = st.you && Number(st.you.id || 0) === Number(p?.id || 0);
+          return `<div class="insight-card" style="padding:10px; margin-top:8px;">
+            <div style="display:flex; justify-content:space-between; gap:8px;">
+              <div><strong>${_escapeHtml(String(p?.nick || "Guest"))}</strong>${isYou ? ' <span class="mini">(あなた)</span>' : ''}</div>
+              <div class="mini">${String(p?.connected) === "false" || !p?.connected ? "切断" : (p?.ready ? "READY" : "参加中")}</div>
+            </div>
+          </div>`;
+        }).join("");
+      }
+      function _rtBattleRenderChatLogs(){
+        const st = _rtBattleState();
+        const rows = Array.isArray(st.chatLogs) ? st.chatLogs : [];
+        if (!rows.length) return `<div class="mini">チャットログはまだありません。</div>`;
+        return rows.slice(-40).map((row) => {
+          const ts = new Date(Number(row.ts || Date.now()));
+          const hh = String(ts.getHours()).padStart(2, "0");
+          const mm = String(ts.getMinutes()).padStart(2, "0");
+          if (row.kind === "chat"){
+            return `<div style="padding:6px 8px; border-bottom:1px solid var(--line);">
+              <div class="mini" style="margin-bottom:2px;">${_escapeHtml(String(row.fromNick || "user"))} <span style="opacity:.7">${hh}:${mm}</span></div>
+              <div style="white-space:pre-wrap; word-break:break-word;">${_escapeHtml(String(row.text || ""))}</div>
+            </div>`;
+          }
+          return `<div style="padding:6px 8px; border-bottom:1px solid var(--line); color:var(--muted);">
+            <span class="mini">${hh}:${mm}</span> ${_escapeHtml(String(row.text || ""))}
+          </div>`;
+        }).join("");
+      }
+      function _renderOnlineBattleRealtimeHTML(){
+        const st = _rtBattleState();
+        const token = _authGetToken();
+        const roomId = String(st.roomId || st.joinRoomId || "");
+        const roomPw = String(st.roomPassword || st.joinPassword || "");
+        return `
+          <div class="menu-article">
+            <h3>オンライン対戦（リアルタイム）</h3>
+            <p class="mini">ルームID + パスワードで最大4人まで参加できます。接続後は状態同期とチャットが有効になります。</p>
+            ${!token ? `<div class="insight-empty">ログインが必要です。先にログインしてください。</div>` : `
+              <section class="insight-card" style="padding:12px;">
+                <div class="mini">ニックネーム（任意）</div>
+                <input id="rtRoomNickInput" class="spell-input" type="text" maxlength="32" placeholder="Rinto" value="${_escapeHtml(String(st.nickname || ""))}" />
+                <div class="row-actions" style="margin-top:10px; align-items:end;">
+                  <div style="flex:1; min-width:0;">
+                    <div class="mini">ルーム作成（PW省略可）</div>
+                    <input id="rtRoomCreatePasswordInput" class="spell-input" type="text" inputmode="latin" maxlength="6" placeholder="ABC123" value="${_escapeHtml(String(st.roomPassword || ""))}" />
+                  </div>
+                  <button class="btn" type="button" data-rt-battle-action="start"${st.busy || st.connecting ? " disabled" : ""}>ルーム作成</button>
+                </div>
+              </section>
+
+              <section class="insight-card" style="padding:12px; margin-top:10px;">
+                <div class="row-actions" style="display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:end;">
+                  <div style="min-width:0;">
+                    <div class="mini">ルームID</div>
+                    <input id="rtRoomJoinIdInput" class="spell-input" type="text" inputmode="latin" maxlength="6" placeholder="A1B2C3" value="${_escapeHtml(String(st.joinRoomId || ""))}" />
+                  </div>
+                  <div style="min-width:0;">
+                    <div class="mini">パスワード</div>
+                    <input id="rtRoomJoinPasswordInput" class="spell-input" type="text" inputmode="latin" maxlength="6" placeholder="ABC123" value="${_escapeHtml(String(st.joinPassword || ""))}" />
+                  </div>
+                  <button class="btn" type="button" data-rt-battle-action="reconnect"${st.busy || st.connecting ? " disabled" : ""}>参加</button>
+                </div>
+                <div class="row-actions" style="margin-top:10px;">
+                  <button class="textbtn" type="button" data-rt-battle-action="disconnect"${(!st.connected && !st.connecting) ? " disabled" : ""}>切断</button>
+                  ${roomId ? `<span class="mini">現在ルーム: <code>${_escapeHtml(roomId)}</code>${roomPw ? ` / PW <code>${_escapeHtml(roomPw)}</code>` : ""}</span>` : ""}
+                </div>
+                <div class="mini" id="rtBattleStatusLine" style="margin-top:8px;">${_escapeHtml(_rtBattleStatusLabel())}</div>
+              </section>
+
+              <section class="insight-card" style="padding:12px; margin-top:10px;">
+                <div class="insight-head"><div class="insight-title">ルーム状態</div><div class="insight-note">${_escapeHtml(String(st.phase || "waiting"))}</div></div>
+                <div class="mini">人数: ${Number(st.room?.count || st.players?.length || 0)}/${Number(st.room?.max || 4)}</div>
+                <div style="margin-top:8px;">${_rtBattleRenderPlayerList()}</div>
+              </section>
+
+              <section class="insight-card" style="padding:12px; margin-top:10px;">
+                <div class="insight-head"><div class="insight-title">チャット</div><div class="insight-note">${st.connected ? "接続中" : "未接続"}</div></div>
+                <div style="max-height:220px; overflow:auto; border:1px solid var(--line); border-radius:10px; margin-top:8px; background:var(--card);">
+                  ${_rtBattleRenderChatLogs()}
+                </div>
+                <div class="row-actions" style="margin-top:10px;">
+                  <input id="rtBattleWriteInput" class="spell-input" type="text" placeholder="メッセージを入力" value="${_escapeHtml(String(st.writeDraft || ""))}" />
+                  <button class="btn" type="button" data-rt-battle-action="submitWrite"${!st.connected ? " disabled" : ""}>送信</button>
+                </div>
+              </section>
+            `}
+          </div>
+        `;
+      }
+      function _rtBattleInitView(){
+        if (_menuState.view !== "onlineBattleRealtime") return;
+        const st = _rtBattleState();
+        const content = document.getElementById("menuContent") || document;
+        _customSelectEnhance(content);
+        const createPwEl = document.getElementById("rtRoomCreatePasswordInput");
+        const joinIdEl = document.getElementById("rtRoomJoinIdInput");
+        const joinPwEl = document.getElementById("rtRoomJoinPasswordInput");
+        const nickEl = document.getElementById("rtRoomNickInput");
+        const chatEl = document.getElementById("rtBattleWriteInput");
+        if (createPwEl) createPwEl.value = String(st.roomPassword || "");
+        if (joinIdEl) joinIdEl.value = String(st.joinRoomId || "");
+        if (joinPwEl) joinPwEl.value = String(st.joinPassword || "");
+        if (nickEl) nickEl.value = String(st.nickname || "");
+        if (chatEl) chatEl.value = String(st.writeDraft || "");
+      }
+
       function _lockViewportZoom(){
         if (window.__vqZoomLocked) return;
         window.__vqZoomLocked = true;
