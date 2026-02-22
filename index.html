@@ -31072,6 +31072,7 @@ function _openSearchResultByIndex(i){
               return;
             }
             if (act === "gameStart"){ _rtBattleStartGame(); return; }
+            if (act === "backLobby"){ _rtBattleRematch(); return; }
             if (act === "rematch"){ _rtBattleRematch(); return; }
             if (act === "submitWrite"){
               const input = document.getElementById("rtBattleWriteInput");
@@ -31215,6 +31216,10 @@ function _openSearchResultByIndex(i){
             if (typeof _rtBattleSendPresetSelection === "function") _rtBattleSendPresetSelection();
             return;
           }
+          if (t.id === "rtBattleQuestionCountSelect"){
+            if (typeof _rtBattleSendRoomSettings === "function") _rtBattleSendRoomSettings();
+            return;
+          }
           if (t.id === "memoInsightsPresetSelect" || t.id === "memoInsightsModeSelect" || t.id === "memoInsightsRangeSelect"){
             _memoRenderInsightsTop();
             return;
@@ -31349,6 +31354,8 @@ function _openSearchResultByIndex(i){
         }
       }
       // ROOM_DO_UI_V2_GAME: room-based WebSocket chat + realtime vocab battle (MVP 3 questions)
+      const asArray = (v)=>Array.isArray(v)?v:[];
+      const asStr = (v)=>(typeof v==="string")?v:"";
       function _rtBattleState(){
         if (!_menuState.rtBattle || typeof _menuState.rtBattle !== "object") _menuState.rtBattle = {};
         const st = _menuState.rtBattle;
@@ -31367,12 +31374,15 @@ function _openSearchResultByIndex(i){
         if (typeof st.writeDraft !== "string") st.writeDraft = "";
         if (!Array.isArray(st.chatLogs)) st.chatLogs = [];
         if (!Array.isArray(st.players)) st.players = [];
+        if (!Array.isArray(st.messages)) st.messages = [];
+        if (!Array.isArray(st.participants)) st.participants = [];
         if (!st.room || typeof st.room !== "object") st.room = null;
         if (!st.you || typeof st.you !== "object") st.you = null;
         if (!st.game || typeof st.game !== "object") st.game = null;
         if (!st.currentQuestion || typeof st.currentQuestion !== "object") st.currentQuestion = null;
         if (!st.lastRoundResult || typeof st.lastRoundResult !== "object") st.lastRoundResult = null;
         if (!st.finalResult || typeof st.finalResult !== "object") st.finalResult = null;
+        if (!Array.isArray(st.roundLogs)) st.roundLogs = [];
         if (typeof st.busy !== "boolean") st.busy = false;
         if (typeof st.pingTimerId !== "number" && st.pingTimerId !== null) st.pingTimerId = null;
         if (typeof st.uiTimerId !== "number" && st.uiTimerId !== null) st.uiTimerId = null;
@@ -31386,8 +31396,9 @@ function _openSearchResultByIndex(i){
           ts: Date.now(),
           ...((extra && typeof extra === "object") ? extra : {})
         };
+        st.chatLogs = asArray(st.chatLogs);
         st.chatLogs.push(msg);
-        if (st.chatLogs.length > 120) st.chatLogs = st.chatLogs.slice(-120);
+        if (asArray(st.chatLogs).length > 120) st.chatLogs = asArray(st.chatLogs).slice(-120);
       }
       function _rtBattleStopPing(){
         const st = _rtBattleState();
@@ -31489,8 +31500,8 @@ function _openSearchResultByIndex(i){
         return !!hostUid && hostUid === _rtBattleMyUserId();
       }
       function _rtBattleAllReady(){
-        const players = (_rtBattleState().players || []).filter((p) => !!p?.connected);
-        return players.length >= 2 && players.every((p) => !!p.ready);
+        const players = asArray(_rtBattleState().players).filter((p) => !!p?.connected);
+        return asArray(players).length >= 2 && players.every((p) => !!p.ready);
       }
       function _rtBattleRemainingMs(){
         const endsAt = Math.max(0, Number(_rtBattleState().game?.questionEndsAtMs || 0));
@@ -31539,8 +31550,14 @@ function _openSearchResultByIndex(i){
         if (!snapshot || typeof snapshot !== "object") return;
         st.room = (snapshot.room && typeof snapshot.room === "object") ? snapshot.room : st.room;
         st.players = Array.isArray(snapshot.players) ? snapshot.players : st.players;
+        if (typeof snapshot.lastEventId !== "undefined" || Array.isArray(snapshot.events)){
+          _rtBattleConsumeRoomEvents(snapshot);
+        }
         st.phase = String(snapshot.phase || st.phase || "lobby").toLowerCase();
         st.game = (snapshot.game && typeof snapshot.game === "object") ? snapshot.game : st.game;
+        if (typeof st.room?.settings?.questionCount !== "undefined"){
+          st.questionCount = _rtBattleNormalizeQuestionCountValue(st.room.settings.questionCount);
+        }
         if (st.game?.currentQuestion) {
           st.currentQuestion = st.game.currentQuestion;
         } else if (st.phase !== "playing") {
@@ -31594,13 +31611,13 @@ function _openSearchResultByIndex(i){
             prompt: String(msg?.prompt || ""),
             choices: Array.isArray(msg?.choices) ? msg.choices.map((x)=>String(x || "")) : [],
             round: Math.max(1, Number(msg?.round || 1)),
-            totalRounds: Math.max(1, Number(msg?.totalRounds || 3))
+            totalRounds: Math.max(1, Number(msg?.totalRounds || st.game?.totalRounds || 1))
           };
           st.lastRoundResult = null;
           st.finalResult = null;
           st.game = st.game && typeof st.game === "object" ? st.game : {};
           st.game.round = Math.max(0, Number(msg?.round || 1) - 1);
-          st.game.totalRounds = Math.max(1, Number(msg?.totalRounds || 3));
+          st.game.totalRounds = Math.max(1, Number(msg?.totalRounds || st.game?.totalRounds || 1));
           st.game.questionEndsAtMs = Math.max(0, Number(msg?.endsAtMs || 0));
           st.game.questionStartedAtMs = Math.max(0, Number(st.game.questionStartedAtMs || (st.game.questionEndsAtMs ? (st.game.questionEndsAtMs - 10000) : 0)));
           _rtBattleEnsureUiTimer();
@@ -31761,11 +31778,11 @@ function _openSearchResultByIndex(i){
         if (st.busy || st.connecting) return;
         try{
           _rtBattleApplyFormFromDom();
-          const roomId = String(st.joinRoomId || "").toUpperCase();
-          const password = String(st.joinPassword || "").toUpperCase();
+          const roomId = asStr(st.joinRoomId).toUpperCase();
+          const password = asStr(st.joinPassword).toUpperCase();
           const nick = String(st.nickname || "").trim();
-          if (!roomId || roomId.length !== 6) throw new Error("ルームIDを6桁で入力してください。");
-          if (!password || password.length !== 6) throw new Error("パスワードを6桁で入力してください。");
+          if (!roomId || asStr(roomId).length !== 6) throw new Error("ルームIDを6桁で入力してください。");
+          if (!password || asStr(password).length !== 6) throw new Error("パスワードを6桁で入力してください。");
           st.busy = true;
           st.errorMsg = "";
           st.statusMsg = "参加チェック中…";
@@ -31780,7 +31797,7 @@ function _openSearchResultByIndex(i){
           st.roomPassword = password;
           st.wsUrl = String(body?.wsUrl || "");
           if (!st.wsUrl) throw new Error("wsUrl を取得できませんでした。");
-          if (!st.chatLogs.length) _rtBattlePushLog("system", `ルーム参加: ${roomId}`);
+          if (!asArray(st.chatLogs).length) _rtBattlePushLog("system", `ルーム参加: ${roomId}`);
           st.statusMsg = "参加OK。接続中…";
           _rtBattleConnect(st.wsUrl);
         }catch(err){
@@ -31888,8 +31905,8 @@ function _openSearchResultByIndex(i){
       }
       function _rtBattleRenderPlayerList(){
         const st = _rtBattleState();
-        const players = Array.isArray(st.players) ? st.players : [];
-        if (!players.length) return `<div class="mini">参加者はまだいません。</div>`;
+        const players = asArray(st.players);
+        if (!asArray(players).length) return `<div class="mini">参加者はまだいません。</div>`;
         return players.map((p) => {
           const isYou = Math.max(0, Number(p?.userId || 0)) === _rtBattleMyUserId();
           return `<div class="insight-card" style="padding:10px; margin-top:8px;">
@@ -31903,9 +31920,9 @@ function _openSearchResultByIndex(i){
       }
       function _rtBattleRenderChatLogs(){
         const st = _rtBattleState();
-        const rows = Array.isArray(st.chatLogs) ? st.chatLogs : [];
-        const list = rows.slice(-40);
-        if (!list.length) return `<div class="ov-chat-empty">チャットログはまだありません。</div>`;
+        const rows = asArray(st.chatLogs);
+        const list = asArray(rows).slice(-40);
+        if (!asArray(list).length) return `<div class="ov-chat-empty">チャットログはまだありません。</div>`;
         if (typeof _rtBattleChatRowHtml === "function"){
           return list.map((row, i) => _rtBattleChatRowHtml(row, i)).join("");
         }
@@ -31937,33 +31954,84 @@ function _openSearchResultByIndex(i){
           }
           const answered = !!me?.answeredCurrent;
           const roundNo = Math.max(1, Number(q.round || (Number(st.game?.round || 0) + 1)));
-          const totalRounds = Math.max(1, Number(q.totalRounds || st.game?.totalRounds || 3));
-          return `<section class="insight-card" style="padding:12px; margin-top:10px;">
-            <div class="insight-head"><div class="insight-title">問題 ${roundNo}/${totalRounds}</div><div class="insight-note">残り <span id="rtBattleCountdownText">${Math.max(0, Math.ceil(_rtBattleRemainingMs()/1000))}秒</span></div></div>
-            <div class="mini" style="margin-top:6px;">No.${Math.max(0, Number(q.no || 0))}</div>
-            <div style="font-weight:700; font-size:16px; margin-top:6px; white-space:pre-wrap;">${_escapeHtml(String(q.prompt || ""))}</div>
-            <div style="display:grid; gap:8px; margin-top:10px;">
-              ${(Array.isArray(q.choices) ? q.choices : []).slice(0,4).map((c, idx) => `<button class="btn" type="button" data-rt-battle-action="chooseAnswer" data-rt-battle-answer="${idx}"${(!st.connected || answered || _rtBattleRemainingMs()<=0) ? " disabled" : ""}>${_escapeHtml(String(c || ""))}</button>`).join("")}
+          const totalRounds = Math.max(1, Number(q.totalRounds || st.game?.totalRounds || 1));
+          const remainSec = Math.max(0, Math.ceil(_rtBattleRemainingMs()/1000));
+          const myScore = Math.max(0, Number(me?.score || 0));
+          const remainQuestions = Math.max(0, totalRounds - roundNo);
+          const roomId = String(st.room?.roomId || st.roomId || "");
+          return `<section class="ov-playing-shell" aria-label="オンライン対戦 問題画面">
+            <div class="ov-playing-top">
+              <div class="ov-playing-hud">
+                <div class="ov-hud-left">
+                  <div class="ov-hud-line"><span class="ov-mini">ROOM</span> <code>${_escapeHtml(roomId || "------")}</code></div>
+                  <div class="ov-hud-line"><span class="ov-mini">進捗</span> Q ${roundNo}/${totalRounds} ・ 残り ${remainQuestions}問</div>
+                </div>
+                <div class="ov-hud-center">
+                  <div class="ov-hud-timer" id="rtBattleCountdownText">${remainSec}</div>
+                  <div class="ov-mini">sec</div>
+                </div>
+                <div class="ov-hud-right">
+                  <div class="ov-hud-line"><span class="ov-mini">SCORE</span> ${myScore}</div>
+                  <div class="ov-actions" style="justify-content:flex-end; margin-top:6px;">
+                    <button class="textbtn" type="button" data-rt-battle-action="disconnect"${(!st.connected && !st.connecting) ? " disabled" : ""}>退出</button>
+                  </div>
+                </div>
+              </div>
+              ${_rtBattleRenderScoreboardBars()}
             </div>
-            <div class="mini" style="margin-top:8px;">${answered ? "回答済み（結果待ち）" : "未送信"}</div>
+            <div class="card ov-play-card ov-question-stage ${st.feedbackKind || ""}">
+              <div class="meta">
+                <div class="no">No.${Math.max(0, Number(q.no || 0))}</div>
+                <div class="dir"><span>ONLINE BATTLE</span><span class="judge">${answered ? "送信済" : "解答中"}</span></div>
+              </div>
+              <div class="prompt">${_escapeHtml(String(q.prompt || ""))}</div>
+              <div class="ov-mini" style="margin-top:6px;">${_escapeHtml(String(st.room?.presetName || _rtBattlePresetDisplayName(st.room?.presetRef, "") || ""))}</div>
+              <div class="choice-wrap" aria-label="4択">
+                <div class="choice-label">CHOICES</div>
+                <div class="choices ov-choice-grid">
+                  ${(Array.isArray(q.choices) ? q.choices : []).slice(0,4).map((c, idx) => `<button class="choice-btn" type="button" data-rt-battle-action="chooseAnswer" data-rt-battle-answer="${idx}"${(!st.connected || answered || _rtBattleRemainingMs()<=0) ? " disabled" : ""}><span class="k">${String.fromCharCode(65+idx)}</span>${_escapeHtml(String(c || ""))}</button>`).join("")}
+                </div>
+              </div>
+              <div class="ov-play-foot">
+                <div class="mini">${answered ? "回答済み（他プレイヤーの回答待ち）" : "未送信"}</div>
+                <div class="mini">回答は1回のみ送信されます</div>
+              </div>
+            </div>
           </section>`;
         }
         if (phase === "result"){
           const leaderboard = Array.isArray(st.finalResult?.leaderboard) ? st.finalResult.leaderboard : (Array.isArray(st.game?.finalLeaderboard) ? st.game.finalLeaderboard : []);
-          return `<section class="insight-card" style="padding:12px; margin-top:10px;">
-            <div class="insight-head"><div class="insight-title">結果</div><div class="insight-note">3問</div></div>
-            <div style="margin-top:8px;">
-              ${leaderboard.length ? leaderboard.map((row, i)=>`<div class="insight-card" style="padding:10px; margin-top:8px;">
-                <div style="display:flex; justify-content:space-between; gap:8px;">
-                  <div>${i+1}. <strong>${_escapeHtml(String(row?.nick || "Guest"))}</strong></div>
-                  <div class="mini">${Math.max(0, Number(row?.score || 0))}点 / ${Math.round(Math.max(0, Number(row?.answeredAtMsTotal || 0))/100)/10}s</div>
-                </div>
-              </div>`).join("") : `<div class="mini">結果データを待っています…</div>`}
+          const totalRounds = Math.max(1, Number(st.game?.totalRounds || st.finalResult?.scores?.[0]?.totalRounds || 1));
+          return `<section class="ov-result-shell">
+            <div class="quiz-header">
+              <div class="progress"><span>RESULT</span></div>
+              <div class="pill">${_escapeHtml(_rtBattleQuestionCountLabel(totalRounds))}問</div>
+              <div class="pill">${asArray(leaderboard).length}人</div>
             </div>
-            <div class="row-actions" style="margin-top:10px;">
-              ${_rtBattleIsHost() ? `<button class="btn" type="button" data-rt-battle-action="rematch"${!st.connected ? " disabled" : ""}>もう一回（再戦）</button>` : ``}
-              <button class="textbtn" type="button" data-rt-battle-action="disconnect"${!st.connected && !st.connecting ? " disabled" : ""}>退出</button>
-            </div>
+            ${_rtBattleRenderResultSummaryCard()}
+            <section class="card ov-result-card">
+              <div class="ov-result-title">順位表</div>
+              <div class="ov-result-table-wrap">
+                <table class="ov-result-table">
+                  <thead><tr><th>#</th><th>プレイヤー</th><th>正答数</th><th>時間</th></tr></thead>
+                  <tbody>
+                  ${asArray(leaderboard).length ? asArray(leaderboard).map((row, i)=>`<tr>
+                    <td>${i+1}</td>
+                    <td>${_escapeHtml(String(row?.nick || "Guest"))}</td>
+                    <td>${Math.max(0, Number(row?.score || 0))}/${totalRounds}</td>
+                    <td>${Math.round(Math.max(0, Number(row?.answeredAtMsTotal || 0))/100)/10}s</td>
+                  </tr>`).join("") : `<tr><td colspan="4" class="ov-emptycell">結果データを待っています…</td></tr>`}
+                  </tbody>
+                </table>
+              </div>
+              <div class="row-actions" style="margin-top:12px;">
+                ${_rtBattleIsHost() ? `<button class="btn" type="button" data-rt-battle-action="backLobby"${!st.connected ? " disabled" : ""}>ロビーに戻る</button>` : `<button class="btn" type="button" disabled>ホスト待機</button>`}
+                ${_rtBattleIsHost() ? `<button class="textbtn" type="button" data-rt-battle-action="rematch"${!st.connected ? " disabled" : ""}>もう一回（再戦）</button>` : ``}
+                <button class="textbtn" type="button" data-rt-battle-action="disconnect"${!st.connected && !st.connecting ? " disabled" : ""}>退出</button>
+                <button class="textbtn" type="button" data-rt-battle-action="overlayClose">ホームへ</button>
+              </div>
+            </section>
+            ${_rtBattleRenderRoundHistory()}
           </section>`;
         }
         return "";
@@ -31971,8 +32039,9 @@ function _openSearchResultByIndex(i){
       function _rtBattleRenderRoundResult(){
         const r = _rtBattleState().lastRoundResult;
         if (!r || typeof r !== "object") return "";
+        const totalRounds = Math.max(1, Number(r.totalRounds || _rtBattleState().game?.totalRounds || 1));
         return `<section class="insight-card" style="padding:12px; margin-top:10px;">
-          <div class="insight-head"><div class="insight-title">この問題の結果</div><div class="insight-note">${Math.max(1, Number(r.round || 1))}/${Math.max(1, Number(r.totalRounds || 3))}</div></div>
+          <div class="insight-head"><div class="insight-title">この問題の結果</div><div class="insight-note">${Math.max(1, Number(r.round || 1))}/${totalRounds}</div></div>
           <div class="mini">正解: 選択肢 ${Math.max(0, Number(r.correctIndex || 0)) + 1}</div>
           <div style="margin-top:8px;">
             ${(Array.isArray(r.answersSummary) ? r.answersSummary : []).map((a)=>`<div class="mini">${_escapeHtml(String(a?.nick || "Guest"))}: ${a?.answered ? `選択肢${Math.max(0, Number(a.choiceIndex || 0))+1}` : "未回答"} ${a?.correct ? "✓" : ""}</div>`).join("")}
@@ -31987,7 +32056,7 @@ function _openSearchResultByIndex(i){
         return `
           <div class="menu-article">
             <h3>オンライン対戦（リアルタイム）</h3>
-            <p class="mini">最大4人。Ready → ホストStart → 3問の4択対戦。チャットは同じ接続で使えます。</p>
+            <p class="mini">最大4人。Ready → ホストStart → 同期された問題数で対戦。チャットは同じ接続で使えます。</p>
             ${!token ? `<div class="insight-empty">ログインが必要です。先にログインしてください。</div>` : `
               <section class="insight-card" style="padding:12px;">
                 <div class="mini">ニックネーム（任意）</div>
@@ -32022,7 +32091,7 @@ function _openSearchResultByIndex(i){
 
               <section class="insight-card" style="padding:12px; margin-top:10px;">
                 <div class="insight-head"><div class="insight-title">参加者 / スコア</div><div class="insight-note">${_escapeHtml(String(st.phase || "lobby"))}</div></div>
-                <div class="mini">人数: ${Number(st.room?.count || st.players?.length || 0)}/${Number(st.room?.max || 4)}${_rtBattleIsHost() ? " / Host" : ""}</div>
+                <div class="mini">人数: ${Number(st.room?.count || asArray(st.players).length || 0)}/${Number(st.room?.max || 4)}${_rtBattleIsHost() ? " / Host" : ""}</div>
                 <div style="margin-top:8px;">${_rtBattleRenderPlayerList()}</div>
               </section>
 
@@ -32083,7 +32152,13 @@ function _openSearchResultByIndex(i){
         if (typeof st.joinUrl !== "string") st.joinUrl = "";
         if (!st.presetRef || typeof st.presetRef !== "object") st.presetRef = null;
         if (typeof st.presetName !== "string") st.presetName = "";
+        if (typeof st.questionCount === "undefined") st.questionCount = 20;
         if (!Array.isArray(st.presetOptionsCache)) st.presetOptionsCache = [];
+        if (typeof st.lastSeenEventId !== "number") st.lastSeenEventId = 0;
+        if (!Array.isArray(st.eventToastQueue)) st.eventToastQueue = [];
+        if (!st.eventToastActive || typeof st.eventToastActive !== "object") st.eventToastActive = null;
+        if (typeof st.eventToastTimerId !== "number" && st.eventToastTimerId !== null) st.eventToastTimerId = null;
+        if (typeof st.eventToastAnimTimerId !== "number" && st.eventToastAnimTimerId !== null) st.eventToastAnimTimerId = null;
         return st;
       }
       function _rtBattleOverlayIsOpen(){ return !!_rtBattleState().overlayOpen; }
@@ -32255,8 +32330,64 @@ function _openSearchResultByIndex(i){
           #onlineOverlay .ov-scanner-overlay{position:absolute; inset:0; pointer-events:none; border:2px solid rgba(255,255,255,.2);}
           #onlineOverlay .ov-qcard.ok{box-shadow:0 0 0 2px rgba(64,190,106,.35) inset;}
           #onlineOverlay .ov-qcard.ng{box-shadow:0 0 0 2px rgba(235,87,87,.35) inset;}
+          #onlineOverlay .ov-playing-shell{display:grid; gap:10px;}
+          #onlineOverlay .ov-playing-top{display:grid; grid-template-columns:minmax(0,1fr); gap:10px; position:sticky; top:0; z-index:2;}
+          #onlineOverlay .ov-playing-hud{display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:10px; align-items:center; background:var(--panel,#fff); border:1px solid var(--border,#ddd); border-radius:14px; padding:10px 12px; box-shadow:0 1px 0 rgba(17,18,20,.04);}
+          #onlineOverlay .ov-hud-left,#onlineOverlay .ov-hud-right{display:grid; gap:4px; min-width:0;}
+          #onlineOverlay .ov-hud-right{text-align:right; justify-items:end;}
+          #onlineOverlay .ov-hud-center{display:grid; justify-items:center; align-content:center; min-width:64px;}
+          #onlineOverlay .ov-hud-line{font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+          #onlineOverlay .ov-hud-line code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px;}
+          #onlineOverlay .ov-hud-timer{font-size:clamp(26px,5vw,36px); line-height:1; font-weight:900; font-variant-numeric:tabular-nums; letter-spacing:.02em;}
+          #onlineOverlay .ov-play-card{padding:14px;}
+          #onlineOverlay .ov-play-card.ov-question-stage{animation:ovQuestionIn .22s cubic-bezier(.22,1,.36,1);}
+          #onlineOverlay .ov-play-card .prompt{font-size:18px; line-height:1.45; margin-top:10px;}
+          #onlineOverlay .ov-play-card .choice-wrap{display:block; margin-top:12px;}
+          #onlineOverlay .ov-play-card .choice-label{font-size:12px; color:var(--muted); margin-bottom:8px; letter-spacing:.08em;}
+          #onlineOverlay .ov-play-card .ov-choice-grid{display:grid; grid-template-columns:1fr; gap:10px;}
+          #onlineOverlay .ov-play-card .choice-btn{width:100%; justify-content:flex-start; text-align:left; min-height:48px;}
+          #onlineOverlay .ov-play-foot{display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:12px;}
+          #onlineOverlay .ov-scoreboard{background:var(--panel,#fff); border:1px solid var(--border,#ddd); border-radius:14px; padding:10px; box-shadow:0 1px 0 rgba(17,18,20,.04);}
+          #onlineOverlay .ov-score-title{font-size:12px; font-weight:700; color:var(--muted); margin-bottom:8px;}
+          #onlineOverlay .ov-score-list{display:grid; gap:8px; max-height:160px; overflow:auto;}
+          #onlineOverlay .ov-score-row{display:grid; gap:4px;}
+          #onlineOverlay .ov-score-row.is-me .ov-score-name{font-weight:800;}
+          #onlineOverlay .ov-score-head{display:flex; justify-content:space-between; gap:8px; align-items:center;}
+          #onlineOverlay .ov-score-name{font-size:12px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+          #onlineOverlay .ov-score-val{font-size:11px; color:var(--muted); flex-shrink:0;}
+          #onlineOverlay .ov-score-bar{height:8px; border-radius:999px; background:var(--panel2,#f3f4f6); border:1px solid var(--border,#ddd); overflow:hidden;}
+          #onlineOverlay .ov-score-bar i{display:block; height:100%; border-radius:999px; background:linear-gradient(90deg, rgba(31,42,68,.88), rgba(31,42,68,.62));}
+          #onlineOverlay .ov-event-toast{position:sticky; top:0; z-index:5; margin:0 auto 10px; width:fit-content; max-width:min(92%,520px); pointer-events:none; padding:10px 14px; border-radius:12px; border:1px solid var(--border,#ddd); background:rgba(255,255,255,.94); color:var(--text); box-shadow:0 10px 24px rgba(0,0,0,.10); animation:ovToastIn .24s cubic-bezier(.22,1,.36,1); display:flex; align-items:center; gap:8px;}
+          #onlineOverlay .ov-event-badge{display:inline-flex; align-items:center; justify-content:center; min-width:44px; height:22px; padding:0 8px; border-radius:999px; border:1px solid var(--border,#ddd); background:var(--panel2,#f5f6f8); color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.04em;}
+          #onlineOverlay .ov-event-toast.is-ok .ov-event-badge{color:#1e7a45; background:rgba(64,190,106,.10);}
+          #onlineOverlay .ov-event-toast.is-ng .ov-event-badge{color:#b03939; background:rgba(235,87,87,.10);}
+          #onlineOverlay .ov-event-toast.is-info .ov-event-badge{color:var(--accent,#1f2a44);}
+          #onlineOverlay .ov-event-toast.is-hide{animation:ovToastOut .22s cubic-bezier(.22,1,.36,1) forwards;}
+          #onlineOverlay .ov-result-shell{display:grid; gap:10px;}
+          #onlineOverlay .ov-result-summary{padding:14px;}
+          #onlineOverlay .ov-result-summary-grid{display:grid; gap:10px; grid-template-columns:repeat(4,minmax(0,1fr));}
+          #onlineOverlay .ov-result-stat{border:1px solid var(--border,#ddd); border-radius:12px; background:var(--panel2,#fbfbfc); padding:10px;}
+          #onlineOverlay .ov-result-stat .k{display:block; font-size:11px; color:var(--muted); margin-bottom:4px;}
+          #onlineOverlay .ov-result-stat strong{display:block; font-size:17px; line-height:1.2;}
+          #onlineOverlay .ov-result-card{padding:14px;}
+          #onlineOverlay .ov-result-title{font-weight:800; font-size:17px; margin-bottom:8px;}
+          #onlineOverlay .ov-result-table-wrap{overflow:auto; border:1px solid var(--border,#ddd); border-radius:12px; background:var(--panel2,#fbfbfc);}
+          #onlineOverlay .ov-result-table{width:100%; border-collapse:collapse; font-size:13px;}
+          #onlineOverlay .ov-result-table th, #onlineOverlay .ov-result-table td{padding:10px 12px; border-bottom:1px solid var(--border,#ddd); text-align:left; white-space:nowrap;}
+          #onlineOverlay .ov-result-table thead th{position:sticky; top:0; background:var(--panel,#fff); z-index:1;}
+          #onlineOverlay .ov-result-table tbody tr:last-child td{border-bottom:0;}
+          #onlineOverlay .ov-emptycell{color:var(--muted); text-align:center;}
+          #onlineOverlay .ov-roundlog-card{padding:14px;}
+          #onlineOverlay .ov-roundlog-list{display:grid; gap:8px; max-height:260px; overflow:auto;}
+          #onlineOverlay .ov-roundlog-item{border:1px solid var(--border,#ddd); border-radius:12px; background:var(--panel2,#fbfbfc); padding:10px;}
+          #onlineOverlay .ov-roundlog-item.is-ok{box-shadow:inset 0 0 0 1px rgba(64,190,106,.18);}
+          #onlineOverlay .ov-roundlog-item.is-ng{box-shadow:inset 0 0 0 1px rgba(235,87,87,.16);}
+          #onlineOverlay .ov-roundlog-top{display:flex; align-items:center; justify-content:space-between; gap:8px;}
           @keyframes ovFade{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}
           @keyframes ovPop{from{opacity:.2; transform:scale(.9)}to{opacity:1; transform:scale(1)}}
+          @keyframes ovQuestionIn{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}
+          @keyframes ovToastIn{from{opacity:0; transform:translateY(-8px)}to{opacity:1; transform:none}}
+          @keyframes ovToastOut{from{opacity:1; transform:none}to{opacity:0; transform:translateY(-8px)}}
           @media (max-width: 760px){
             #onlineOverlay .ov-shell{inset:0 0 calc(env(safe-area-inset-bottom,0px)) 0; border-radius:0;}
             #onlineOverlay .ov-grid.cols2{grid-template-columns:1fr;}
@@ -32264,6 +32395,15 @@ function _openSearchResultByIndex(i){
             #onlineOverlay .ov-stage-grid.is-lobby,
             #onlineOverlay .ov-stage-grid.is-game{grid-template-columns:1fr;}
             #onlineOverlay .ov-chat-scroll{max-height:200px;}
+            #onlineOverlay .ov-playing-hud{grid-template-columns:1fr auto; align-items:start;}
+            #onlineOverlay .ov-hud-left{grid-column:1/2;}
+            #onlineOverlay .ov-hud-center{grid-column:2/3; grid-row:1 / span 2; align-self:center;}
+            #onlineOverlay .ov-hud-right{grid-column:1/3; justify-items:start; text-align:left; margin-top:2px;}
+            #onlineOverlay .ov-hud-right .ov-actions{justify-content:flex-start !important;}
+            #onlineOverlay .ov-play-card .prompt{font-size:16px;}
+            #onlineOverlay .ov-play-card .ov-choice-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+            #onlineOverlay .ov-play-card .choice-btn{min-height:52px;}
+            #onlineOverlay .ov-result-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
           }
         `;
         document.head.appendChild(style);
@@ -32387,6 +32527,198 @@ function _openSearchResultByIndex(i){
         if (type === "custom") return `My Preset`;
         return "";
       }
+      function _rtBattleNormalizeQuestionCountValue(v){
+        const raw = String(v ?? "").trim().toUpperCase();
+        if (raw === "ALL") return "ALL";
+        const n = Math.trunc(Number(v));
+        if ([10, 20, 30, 50].includes(n)) return n;
+        return 20;
+      }
+      function _rtBattleQuestionCountValue(){
+        const st = _rtBattleState();
+        const roomVal = st.room?.settings?.questionCount;
+        const localVal = typeof st.questionCount !== "undefined" ? st.questionCount : roomVal;
+        return _rtBattleNormalizeQuestionCountValue(localVal);
+      }
+      function _rtBattleQuestionCountLabel(v){
+        const q = _rtBattleNormalizeQuestionCountValue(v);
+        return q === "ALL" ? "ALL" : String(q);
+      }
+      function _rtBattleQuestionCountOptions(){
+        return ["10", "20", "30", "50", "ALL"].map((v) => ({ value: v, label: v === "ALL" ? "ALL" : `${v}問` }));
+      }
+      function _rtBattleSendRoomSettings(){
+        const st = _rtBattleState();
+        if (!_rtBattleIsHost() || !st.connected) return;
+        const sel = document.getElementById("rtBattleQuestionCountSelect");
+        const qVal = _rtBattleNormalizeQuestionCountValue(sel ? sel.value : st.questionCount);
+        st.questionCount = qVal;
+        if (!st.room || typeof st.room !== "object") st.room = {};
+        if (!st.room.settings || typeof st.room.settings !== "object") st.room.settings = {};
+        st.room.settings.questionCount = qVal;
+        try{ console.log("[room:settings]", { questionCount: qVal }); }catch(_){}
+        _rtBattleOverlayRender();
+        const ok = _rtBattleSafeSend({ type: "settings:set", questionCount: qVal });
+        if (!ok) try{ uiToast("出題数の同期に失敗しました"); }catch(_){}
+      }
+      function _rtBattleScoreRows(){
+        const st = _rtBattleState();
+        const players = asArray(st.players);
+        const total = Math.max(1, Number(st.game?.totalRounds || (st.currentQuestion?.totalRounds) || 1));
+        const maxCorrect = Math.max(1, ...players.map((p) => Math.max(0, Number(p?.score || 0))));
+        return players
+          .map((p) => {
+            const correct = Math.max(0, Number(p?.score || 0));
+            return {
+              id: Math.max(0, Number(p?.id || 0)),
+              userId: Math.max(0, Number(p?.userId || 0)),
+              nick: String(p?.nick || "Guest"),
+              correct,
+              total,
+              ratio: Math.max(6, Math.round((correct / maxCorrect) * 100)),
+              answeredCurrent: !!p?.answeredCurrent
+            };
+          })
+          .sort((a, b) => {
+            if (b.correct !== a.correct) return b.correct - a.correct;
+            return a.id - b.id;
+          });
+      }
+      function _rtBattleRenderScoreboardBars(){
+        const rows = _rtBattleScoreRows();
+        if (!rows.length) return "";
+        const meUid = _rtBattleMyUserId();
+        return `<div class="ov-scoreboard" id="rtBattleScoreboard">
+          <div class="ov-score-title">進捗 / スコア</div>
+          <div class="ov-score-list">
+            ${rows.map((r) => `<div class="ov-score-row${r.userId===meUid ? " is-me" : ""}">
+              <div class="ov-score-head">
+                <span class="ov-score-name">${_escapeHtml(r.nick)}${r.userId===meUid ? " (あなた)" : ""}</span>
+                <span class="ov-score-val">${r.correct}/${r.total}</span>
+              </div>
+              <div class="ov-score-bar"><i style="width:${Math.max(6, Math.min(100, r.ratio))}%"></i></div>
+            </div>`).join("")}
+          </div>
+        </div>`;
+      }
+      function _rtBattleResultSummary(){
+        const st = _rtBattleState();
+        const leaderboard = asArray(st.finalResult?.leaderboard || st.game?.finalLeaderboard);
+        const meUid = _rtBattleMyUserId();
+        const totalRounds = Math.max(1, Number(st.game?.totalRounds || 1));
+        const rankIndex = leaderboard.findIndex((r) => Math.max(0, Number(r?.userId || 0)) === meUid);
+        const me = rankIndex >= 0 ? leaderboard[rankIndex] : null;
+        const correct = Math.max(0, Number(me?.score || 0));
+        const accuracy = Math.round((correct / totalRounds) * 100);
+        return {
+          rank: rankIndex >= 0 ? (rankIndex + 1) : null,
+          correct,
+          totalRounds,
+          accuracy,
+          totalTimeSec: Math.round(Math.max(0, Number(me?.answeredAtMsTotal || 0)) / 100) / 10
+        };
+      }
+      function _rtBattleRenderResultSummaryCard(){
+        const st = _rtBattleState();
+        const s = _rtBattleResultSummary();
+        return `<section class="ov-card ov-result-summary">
+          <div class="ov-result-title">結果サマリー</div>
+          <div class="ov-result-summary-grid">
+            <div class="ov-result-stat"><span class="k">順位</span><strong>${s.rank ? `${s.rank}位` : "—"}</strong></div>
+            <div class="ov-result-stat"><span class="k">正答数</span><strong>${s.correct}/${s.totalRounds}</strong></div>
+            <div class="ov-result-stat"><span class="k">正答率</span><strong>${Number.isFinite(s.accuracy) ? `${s.accuracy}%` : "—"}</strong></div>
+            <div class="ov-result-stat"><span class="k">合計時間</span><strong>${Number.isFinite(s.totalTimeSec) ? `${s.totalTimeSec}s` : "—"}</strong></div>
+          </div>
+          <div style="margin-top:10px;">${_rtBattleRenderScoreboardBars()}</div>
+        </section>`;
+      }
+      function _rtBattleRenderRoundHistory(){
+        const rows = asArray(_rtBattleState().roundLogs);
+        return `<section class="ov-card ov-roundlog-card">
+          <div class="ov-result-title">ラウンド履歴</div>
+          <div class="ov-roundlog-list">
+            ${rows.length ? rows.map((r) => `<div class="ov-roundlog-item${r.correct ? " is-ok" : (r.answered ? " is-ng" : "")}">
+              <div class="ov-roundlog-top">
+                <div><strong>Q${Math.max(1, Number(r.round || 1))}</strong>${r.no ? ` / No.${Math.max(0, Number(r.no || 0))}` : ""}</div>
+                <div class="ov-mini">${r.answered ? (r.correct ? "正解" : "不正解") : "未回答"}</div>
+              </div>
+              <div class="ov-mini" style="margin-top:4px; white-space:pre-wrap;">${_escapeHtml(String(r.prompt || ""))}</div>
+              <div class="ov-mini" style="margin-top:6px;">正解: 選択肢 ${Math.max(0, Number(r.correctIndex || 0)) + 1}${r.answered ? ` / あなた: 選択肢 ${Math.max(0, Number(r.yourChoiceIndex || 0)) + 1}` : ""}</div>
+            </div>`).join("") : `<div class="ov-emptycell">ラウンド履歴はまだありません。</div>`}
+          </div>
+        </section>`;
+      }
+      function _rtBattleToastClear(){
+        const st = _rtBattleState();
+        if (st.eventToastTimerId){ clearTimeout(st.eventToastTimerId); st.eventToastTimerId = null; }
+        if (st.eventToastAnimTimerId){ clearTimeout(st.eventToastAnimTimerId); st.eventToastAnimTimerId = null; }
+        st.eventToastActive = null;
+      }
+      function _rtBattleToastPump(){
+        const st = _rtBattleState();
+        if (String(st.phase || "") !== "playing") {
+          _rtBattleToastClear();
+          st.eventToastQueue = [];
+          _rtBattleOverlayRender();
+          return;
+        }
+        if (st.eventToastActive || !asArray(st.eventToastQueue).length) return;
+        st.eventToastActive = st.eventToastQueue.shift();
+        _rtBattleOverlayRender();
+        st.eventToastAnimTimerId = setTimeout(() => {
+          if (st.eventToastActive) st.eventToastActive.hiding = true;
+          _rtBattleOverlayRender();
+        }, 1300);
+        st.eventToastTimerId = setTimeout(() => {
+          st.eventToastTimerId = null;
+          st.eventToastAnimTimerId = null;
+          st.eventToastActive = null;
+          _rtBattleOverlayRender();
+          _rtBattleToastPump();
+        }, 1600);
+      }
+      function _rtBattleQueueAnswerToast(ev){
+        const st = _rtBattleState();
+        if (String(st.phase || "") !== "playing") return;
+        if (!ev || String(ev.type || "").toUpperCase() !== "ANSWERED") return;
+        const myUid = _rtBattleMyUserId();
+        if (Math.max(0, Number(ev.userId || 0)) === myUid) return;
+        const nickname = String(ev.nickname || "誰か");
+        const suffix = (typeof ev.correct === "boolean")
+          ? (ev.correct ? "が正解しました" : "が不正解でした")
+          : "が解答しました";
+        st.eventToastQueue = asArray(st.eventToastQueue);
+        st.eventToastQueue.push({
+          id: Math.max(0, Number(ev.id || 0)),
+          text: `${nickname}さん${suffix}`,
+          ts: Date.now(),
+          kind: (typeof ev.correct === "boolean") ? (ev.correct ? "ok" : "ng") : "info",
+          hiding: false
+        });
+        while (st.eventToastQueue.length > 3) st.eventToastQueue.shift();
+        _rtBattleToastPump();
+      }
+      function _rtBattleConsumeRoomEvents(packet){
+        const st = _rtBattleState();
+        const events = asArray(packet?.events);
+        const lastId = Math.max(0, Number(packet?.lastEventId || 0));
+        if (!events.length && !lastId) return;
+        const seen = Math.max(0, Number(st.lastSeenEventId || 0));
+        for (const ev of events){
+          const eid = Math.max(0, Number(ev?.id || 0));
+          if (!eid || eid <= seen) continue;
+          _rtBattleQueueAnswerToast(ev);
+        }
+        st.lastSeenEventId = Math.max(seen, lastId, ...events.map((e) => Math.max(0, Number(e?.id || 0))));
+      }
+      function _rtBattleRenderEventToast(){
+        const st = _rtBattleState();
+        const t = st.eventToastActive;
+        if (!t || String(st.phase || "") !== "playing") return "";
+        const kind = String(t.kind || "info");
+        const badge = kind === "ok" ? "OK" : (kind === "ng" ? "NG" : "INFO");
+        return `<div class="ov-event-toast is-${_escapeHtml(kind)}${t.hiding ? " is-hide" : ""}" aria-live="polite"><span class="ov-event-badge">${badge}</span><span>${_escapeHtml(String(t.text || ""))}</span></div>`;
+      }
       function _rtBattleSetPresetFromSelect(value){
         const st = _rtBattleState();
         const v = String(value || "");
@@ -32457,6 +32789,8 @@ function _openSearchResultByIndex(i){
         const st = _rtBattleState();
         const host = _rtBattleIsHost();
         const opts = _rtBattlePresetOptions();
+        const countOpts = _rtBattleQuestionCountOptions();
+        const currentCount = _rtBattleQuestionCountLabel(_rtBattleQuestionCountValue());
         const roomPresetRef = st.room?.presetRef || st.presetRef || null;
         const currentVal = roomPresetRef?.type === "builtin"
           ? (String(roomPresetRef?.key || "").startsWith("builtin:") ? String(roomPresetRef?.key || "") : `builtin:${String(roomPresetRef?.key || "")}`)
@@ -32473,6 +32807,13 @@ function _openSearchResultByIndex(i){
             ${opts.map(o => `<option value="${_escapeHtml(o.value)}"${o.value===currentVal?" selected":""}>${_escapeHtml(o.label)}</option>`).join("")}
           </select>
           ${host ? "" : `<div class="ov-mini" style="margin-top:8px;">ホストのみ変更できます</div>`}
+          </div>
+          <div class="settings-row is-static" style="display:block; min-height:auto;">
+            <div class="ov-mini" style="margin-bottom:6px;">出題数</div>
+            <select id="rtBattleQuestionCountSelect" class="select settings-select" data-native-ui="1"${host ? "" : " disabled"}>
+              ${countOpts.map(o => `<option value="${_escapeHtml(o.value)}"${o.value===currentCount?" selected":""}>${_escapeHtml(o.label)}</option>`).join("")}
+            </select>
+            <div class="ov-mini" style="margin-top:8px;">現在: ${_escapeHtml(currentCount === "ALL" ? "ALL" : `${currentCount}問`)}</div>
           </div>
         </section>`;
       }
@@ -32544,12 +32885,14 @@ function _openSearchResultByIndex(i){
         const phase = String(st.phase || "lobby");
         const sceneKind = (phase === "playing" || phase === "result") ? "is-game" : "is-lobby";
         const gameInner = phase === "countdown" ? _rtBattleRenderCountdownInner() : (_rtBattleRenderGameCard() || `<div class="ov-mini">状態待ち…</div>`);
+        const showChat = (phase === "lobby");
         return `<div class="ov-scene">
+          ${_rtBattleRenderEventToast()}
           <div id="rtBattleBannerWrap">${_rtBattleOverlayBanner()}</div>
           <div id="rtBattleShareWrap">${_rtBattleShareCardHtml()}</div>
           <section class="ov-card settings-group" id="rtBattleRoomMetaWrap" style="margin-top:10px;">
             <div class="ov-mini">ルーム <code>${_escapeHtml(String(st.room?.roomId || st.roomId || ""))}</code> / 接続状態: ${_escapeHtml(_rtBattleStatusLabel())}</div>
-            <div class="ov-mini">${_rtBattleIsHost() ? "あなたはホストです" : "ホストを待機中"}</div>
+            <div class="ov-mini">${_rtBattleIsHost() ? "あなたはホストです" : "ホストを待機中"} / 出題数: ${_escapeHtml(_rtBattleQuestionCountLabel(st.room?.settings?.questionCount || st.questionCount))}</div>
           </section>
           <div id="rtBattlePresetWrap" style="margin-top:10px;">${phase === "lobby" ? _rtBattleRenderPresetSection() : ""}</div>
           <div class="ov-stage-grid ${sceneKind}" style="margin-top:10px;">
@@ -32561,7 +32904,7 @@ function _openSearchResultByIndex(i){
             ${gameInner}
             <div id="rtBattleRoundResultWrap">${phase !== "countdown" ? _rtBattleRenderRoundResult() : ""}</div>
           </section>
-          <section class="ov-card settings-group" id="rtBattleChatPanel">
+          <section class="ov-card settings-group" id="rtBattleChatPanel"${showChat ? "" : ` style="display:none;"`}>
             <h4>チャット</h4>
             <div id="rtBattleChatScroll" class="ov-chat-scroll"><div id="rtBattleChatList" class="ov-chat-list">${_rtBattleRenderChatLogs()}</div></div>
             <div class="ov-actions">
@@ -32655,27 +32998,29 @@ function _openSearchResultByIndex(i){
       function _rtBattleOverlayPatchChat(force){
         const root = document.getElementById("onlineOverlay");
         if (!root || !root.classList.contains("is-open")) return false;
+        const phase = String(_rtBattleState().phase || "");
+        if (!force && (phase === "playing" || phase === "countdown")) return false;
         const listEl = root.querySelector("#rtBattleChatList");
         const scrollEl = root.querySelector("#rtBattleChatScroll");
         if (!(listEl instanceof HTMLElement)) return false;
-        const rows = Array.isArray(_rtBattleState().chatLogs) ? _rtBattleState().chatLogs.slice(-40) : [];
+        const rows = asArray(_rtBattleState().chatLogs).slice(-40);
         const shouldStick = _rtBattleChatShouldStick(scrollEl);
         if (force || !listEl.children.length){
-          listEl.innerHTML = rows.length ? rows.map((r, i) => _rtBattleChatRowHtml(r, i)).join("") : `<div class="ov-chat-empty">チャットログはまだありません。</div>`;
+          listEl.innerHTML = asArray(rows).length ? rows.map((r, i) => _rtBattleChatRowHtml(r, i)).join("") : `<div class="ov-chat-empty">チャットログはまだありません。</div>`;
           if (scrollEl && shouldStick) scrollEl.scrollTop = scrollEl.scrollHeight;
           return true;
         }
-        const existingKeys = Array.from(listEl.children).map((el) => el.getAttribute("data-chat-key") || "");
-        const newKeys = rows.map((r, i) => _rtBattleChatRowKey(r, i));
-        let prefixOk = existingKeys.length <= newKeys.length;
-        for (let i = 0; i < existingKeys.length && prefixOk; i++){
+        const existingKeys = asArray(Array.from(listEl.children).map((el) => el.getAttribute("data-chat-key") || ""));
+        const newKeys = asArray(rows.map((r, i) => _rtBattleChatRowKey(r, i)));
+        let prefixOk = asArray(existingKeys).length <= asArray(newKeys).length;
+        for (let i = 0; i < asArray(existingKeys).length && prefixOk; i++){
           if (existingKeys[i] !== newKeys[i]) prefixOk = false;
         }
         if (!prefixOk){
-          listEl.innerHTML = rows.length ? rows.map((r, i) => _rtBattleChatRowHtml(r, i)).join("") : `<div class="ov-chat-empty">チャットログはまだありません。</div>`;
+          listEl.innerHTML = asArray(rows).length ? rows.map((r, i) => _rtBattleChatRowHtml(r, i)).join("") : `<div class="ov-chat-empty">チャットログはまだありません。</div>`;
         } else {
           if (listEl.querySelector(".ov-chat-empty")) listEl.innerHTML = "";
-          for (let i = existingKeys.length; i < rows.length; i++){
+          for (let i = asArray(existingKeys).length; i < asArray(rows).length; i++){
             listEl.insertAdjacentHTML("beforeend", _rtBattleChatRowHtml(rows[i], i));
           }
         }
@@ -32694,7 +33039,7 @@ function _openSearchResultByIndex(i){
         const roomMeta = body.querySelector("#rtBattleRoomMetaWrap");
         if (roomMeta){
           roomMeta.innerHTML = `<div class="ov-mini">ルーム <code>${_escapeHtml(String(st.room?.roomId || st.roomId || ""))}</code> / 接続状態: ${_escapeHtml(_rtBattleStatusLabel())}</div>
-            <div class="ov-mini">${_rtBattleIsHost() ? "あなたはホストです" : "ホストを待機中"}</div>`;
+            <div class="ov-mini">${_rtBattleIsHost() ? "あなたはホストです" : "ホストを待機中"} / 出題数: ${_escapeHtml(_rtBattleQuestionCountLabel(st.room?.settings?.questionCount || st.questionCount))}</div>`;
         }
         const presetWrap = body.querySelector("#rtBattlePresetWrap");
         if (presetWrap){
@@ -32712,11 +33057,29 @@ function _openSearchResultByIndex(i){
           gameWrap.className = `ov-card ov-qcard ${st.feedbackKind || ""}`;
           gameWrap.innerHTML = `${gameInner}<div id="rtBattleRoundResultWrap">${phase !== "countdown" ? _rtBattleRenderRoundResult() : ""}</div>`;
         }
-        _rtBattleOverlayPatchChat(false);
+        const chatPanel = body.querySelector("#rtBattleChatPanel");
+        const phaseNow = String(st.phase || "");
+        const isPlayingLike = (phaseNow === "playing" || phaseNow === "countdown");
+        if (chatPanel instanceof HTMLElement) chatPanel.style.display = (phaseNow === "lobby") ? "" : "none";
+        if (phaseNow === "lobby") _rtBattleOverlayPatchChat(false);
+        const toastHtml = _rtBattleRenderEventToast();
+        const oldToast = body.querySelector(".ov-event-toast");
+        if (toastHtml){
+          if (oldToast) oldToast.outerHTML = toastHtml;
+          else body.insertAdjacentHTML("afterbegin", toastHtml);
+        } else if (oldToast) {
+          oldToast.remove();
+        }
         const presetEl = body.querySelector("#rtBattlePresetSelect");
         if (presetEl instanceof HTMLSelectElement){
           presetEl.dataset.nativeUi = "1";
           presetEl.disabled = !_rtBattleIsHost();
+        }
+        const countEl = body.querySelector("#rtBattleQuestionCountSelect");
+        if (countEl instanceof HTMLSelectElement){
+          countEl.dataset.nativeUi = "1";
+          countEl.value = _rtBattleQuestionCountLabel(_rtBattleQuestionCountValue());
+          countEl.disabled = !_rtBattleIsHost();
         }
         return true;
       }
@@ -32746,7 +33109,9 @@ function _openSearchResultByIndex(i){
             else html = _rtBattleRenderLobbyGameResultScene();
             body.innerHTML = html;
             body.dataset.scene = scene;
-            _rtBattleOverlayPatchChat(true);
+            if (!(String(_rtBattleState().phase || "") === "playing" || String(_rtBattleState().phase || "") === "countdown")){
+              _rtBattleOverlayPatchChat(true);
+            }
           }
         }
         _rtBattleOverlayRenderScanner();
@@ -32755,6 +33120,12 @@ function _openSearchResultByIndex(i){
         if (presetEl instanceof HTMLSelectElement){
           presetEl.dataset.nativeUi = "1";
           presetEl.disabled = !_rtBattleIsHost();
+        }
+        const countEl = root.querySelector("#rtBattleQuestionCountSelect");
+        if (countEl instanceof HTMLSelectElement){
+          countEl.dataset.nativeUi = "1";
+          countEl.value = _rtBattleQuestionCountLabel(_rtBattleQuestionCountValue());
+          countEl.disabled = !_rtBattleIsHost();
         }
       }
       function _rtBattleRerender(){
@@ -32969,6 +33340,9 @@ function _openSearchResultByIndex(i){
         const type = String(msg?.type || "").toLowerCase();
         if (type === "countdown:start"){
           st.phase = "countdown";
+          st.roundLogs = [];
+          st.lastRoundResult = null;
+          st.finalResult = null;
           st.game = st.game && typeof st.game === "object" ? st.game : {};
           st.game.countdownStartAtMs = Math.max(0, Number(msg?.startAtMs || Date.now()));
           st.game.countdownEndsAtMs = Math.max(0, Number(msg?.endsAtMs || (Date.now()+3000)));
@@ -33006,13 +33380,33 @@ function _openSearchResultByIndex(i){
           try{ console.log("[preset:state]", st2.room?.presetRef || null); }catch(_){}
         }
         if (type === "chat" && _rtBattleOverlayIsOpen()){
-          _rtBattleOverlayPatchChat(false);
+          if (String(st2.phase || "") !== "playing" && String(st2.phase || "") !== "countdown"){
+            _rtBattleOverlayPatchChat(false);
+          }
           return;
         }
         if (type === "game:result"){
           const me = _rtBattleMePlayer();
           const arr = Array.isArray(msg?.answersSummary) ? msg.answersSummary : [];
           const my = arr.find(x => Math.max(0, Number(x?.userId || 0)) === _rtBattleMyUserId());
+          try{
+            const roundNo = Math.max(1, Number(msg?.round || 1));
+            const q = _rtBattleState().currentQuestion || {};
+            const myRow = arr.find(x => Math.max(0, Number(x?.userId || 0)) === _rtBattleMyUserId()) || null;
+            const entry = {
+              round: roundNo,
+              no: Math.max(0, Number(q?.no || 0)),
+              prompt: String(q?.prompt || ""),
+              correctIndex: Math.max(0, Number(msg?.correctIndex || 0)),
+              answered: !!myRow?.answered,
+              yourChoiceIndex: myRow && Number.isInteger(Number(myRow.choiceIndex)) ? Number(myRow.choiceIndex) : -1,
+              correct: !!myRow?.correct
+            };
+            const stx = _rtBattleState();
+            stx.roundLogs = asArray(stx.roundLogs).filter((x) => Math.max(0, Number(x?.round || 0)) !== roundNo);
+            stx.roundLogs.push(entry);
+            stx.roundLogs.sort((a,b) => Math.max(0, Number(a?.round||0)) - Math.max(0, Number(b?.round||0)));
+          }catch(_){}
           if (my && my.answered) _rtBattleFeedback(my.correct ? "ok" : "ng");
         }
       };
