@@ -7114,8 +7114,8 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
         <button class="menu-item" type="button" data-menu-action="presetShare">
           <span class="ms">share</span><span>プリセットを共有</span>
         </button>
-        <button class="menu-item" type="button" data-menu-action="onlineBattle">
-          <span class="ms">sports_esports</span><span>オンライン対戦</span>
+        <button class="menu-item" type="button" data-menu-action="onlineBattleRealtime">
+          <span class="ms">wifi_tethering</span><span>オンライン対戦（リアルタイム）</span>
         </button>
         <button class="menu-item" type="button" data-menu-action="terms">
           <span class="ms">policy</span><span>利用規約</span>
@@ -29286,6 +29286,461 @@ function _openSearchResultByIndex(i){
         if (st.match) _battleQuestionStartIfNeeded();
         if (st.queueId) _battleBeginPolling();
       }
+      function _rtBattleState(){
+        if (!_menuState.rtBattle || typeof _menuState.rtBattle !== "object"){
+          _menuState.rtBattle = {
+            mode: "EXAM",
+            presetId: "builtin:ALL",
+            count: 10,
+            roomId: "",
+            wsUrl: "",
+            socket: null,
+            connecting: false,
+            connected: false,
+            busy: false,
+            phase: "IDLE",
+            countdown: 0,
+            serverState: null,
+            result: null,
+            statusMsg: "",
+            errorMsg: "",
+            writeDraft: "",
+            questionShownIndex: -1,
+            questionShownAt: 0,
+            pingTimerId: null
+          };
+        }
+        return _menuState.rtBattle;
+      }
+      function _rtBattleStopPing(){
+        const st = _rtBattleState();
+        if (st.pingTimerId){
+          clearInterval(st.pingTimerId);
+          st.pingTimerId = null;
+        }
+      }
+      function _rtBattleSafeCloseSocket(){
+        const st = _rtBattleState();
+        const ws = st.socket;
+        st.socket = null;
+        if (ws){
+          try{ ws.onopen = ws.onclose = ws.onerror = ws.onmessage = null; }catch(_){}
+          try{ ws.close(); }catch(_){}
+        }
+      }
+      function _rtBattleDisconnect(silent = false){
+        const st = _rtBattleState();
+        _rtBattleStopPing();
+        _rtBattleSafeCloseSocket();
+        st.connecting = false;
+        st.connected = false;
+        if (!silent){
+          st.statusMsg = st.statusMsg || "接続を終了しました。";
+        }
+      }
+      function _rtBattleReset(keepPrefs = true){
+        const st = _rtBattleState();
+        const mode = st.mode;
+        const presetId = st.presetId;
+        const count = st.count;
+        _rtBattleDisconnect(true);
+        st.roomId = "";
+        st.wsUrl = "";
+        st.busy = false;
+        st.phase = "IDLE";
+        st.countdown = 0;
+        st.serverState = null;
+        st.result = null;
+        st.statusMsg = "";
+        st.errorMsg = "";
+        st.writeDraft = "";
+        st.questionShownIndex = -1;
+        st.questionShownAt = 0;
+        if (!keepPrefs){
+          st.mode = "EXAM";
+          st.presetId = "builtin:ALL";
+          st.count = 10;
+        } else {
+          st.mode = mode;
+          st.presetId = presetId;
+          st.count = count;
+        }
+      }
+      function _rtBattleAuthTokenRequired(){
+        const token = _authGetToken();
+        if (!token){
+          const err = new Error("ログインが必要です。");
+          err.code = "UNAUTHORIZED";
+          throw err;
+        }
+        return token;
+      }
+      function _rtBattleApplyFormFromDom(){
+        const st = _rtBattleState();
+        const modeEl = document.getElementById("rtBattleModeSelect");
+        const presetEl = document.getElementById("rtBattlePresetSelect");
+        const countEl = document.getElementById("rtBattleCountSelect");
+        if (modeEl) st.mode = String(modeEl.value || "EXAM").toUpperCase() === "WRITE" ? "WRITE" : "EXAM";
+        if (presetEl) st.presetId = String(presetEl.value || "builtin:ALL");
+        if (countEl) st.count = Math.max(3, Math.min(20, Number(countEl.value || 10) || 10));
+      }
+      function _rtBattleMyUserId(){
+        const raw = authState?.user?.id ?? authState?.user?.userId ?? 0;
+        return Math.max(0, Number(raw || 0));
+      }
+      function _rtBattlePlayers(){
+        const list = Array.isArray(_rtBattleState().serverState?.players) ? _rtBattleState().serverState.players : [];
+        return list.map((p) => ({
+          userId: Math.max(0, Number(p?.userId || 0)),
+          nickname: String(p?.nickname || ""),
+          connected: !!p?.connected,
+          ready: !!p?.ready,
+          correct: Math.max(0, Number(p?.correct || 0)),
+          totalTimeMs: Math.max(0, Number(p?.totalTimeMs || 0)),
+          progressIndex: Math.max(0, Number(p?.progressIndex || 0)),
+          finished: !!p?.finished
+        }));
+      }
+      function _rtBattleMe(){
+        const uid = _rtBattleMyUserId();
+        return _rtBattlePlayers().find((p) => p.userId === uid) || null;
+      }
+      function _rtBattleCurrentQuestion(){
+        const st = _rtBattleState();
+        const me = _rtBattleMe();
+        const idx = Math.max(0, Number(me?.progressIndex || 0));
+        const qs = Array.isArray(st.serverState?.questions) ? st.serverState.questions : [];
+        const count = Math.max(1, Number(st.serverState?.count || st.count || qs.length || 1));
+        return { index: idx, count, done: idx >= count, q: qs[idx] || null };
+      }
+      function _rtBattleQuestionStartIfNeeded(){
+        const st = _rtBattleState();
+        const cur = _rtBattleCurrentQuestion();
+        if (st.questionShownIndex !== cur.index){
+          st.questionShownIndex = cur.index;
+          st.questionShownAt = Date.now();
+          st.writeDraft = "";
+        }
+      }
+      function _rtBattleElapsedMs(){
+        const st = _rtBattleState();
+        const base = Math.max(0, Number(st.questionShownAt || 0));
+        if (!base) return 0;
+        return Math.max(0, Date.now() - base);
+      }
+      function _rtBattleStatusLabel(){
+        const st = _rtBattleState();
+        if (st.errorMsg) return st.errorMsg;
+        if (st.statusMsg) return st.statusMsg;
+        if (st.connecting) return "接続中…";
+        if (!st.roomId) return "待機中";
+        if (st.countdown > 0) return `開始まで ${st.countdown} 秒`;
+        if (st.phase === "WAITING") return "相手を待っています…";
+        if (st.phase === "COUNTDOWN") return "開始カウントダウン中";
+        if (st.phase === "RUNNING") return "対戦中";
+        if (st.phase === "FINISHED") return "対戦終了";
+        return st.connected ? "接続済み" : "未接続";
+      }
+      function _rtBattleModeLabel(mode){
+        return String(mode || "").toUpperCase() === "WRITE" ? "WRITE" : "EXAM";
+      }
+      function _rtBattleSafeSend(payload){
+        const st = _rtBattleState();
+        const ws = st.socket;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+        try{ ws.send(JSON.stringify(payload || {})); return true; }catch{ return false; }
+      }
+      function _rtBattleRerender(){
+        if (_menuState.view !== "onlineBattleRealtime") return;
+        const content = document.getElementById("menuContent");
+        if (!content) return;
+        content.innerHTML = _renderOnlineBattleRealtimeHTML();
+        _customSelectEnhance(content);
+        _rtBattleInitView();
+      }
+      function _rtBattleHandleMessage(msg){
+        const st = _rtBattleState();
+        const type = String(msg?.type || "").toUpperCase();
+        if (!type) return;
+        if (type === "STATE"){
+          st.serverState = (msg && typeof msg.state === "object") ? msg.state : null;
+          st.phase = String(st.serverState?.phase || st.phase || "WAITING");
+          if (st.phase !== "COUNTDOWN") st.countdown = 0;
+          _rtBattleQuestionStartIfNeeded();
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "COUNTDOWN"){
+          st.phase = "COUNTDOWN";
+          st.countdown = Math.max(0, Number(msg?.t || 0));
+          st.statusMsg = st.countdown > 0 ? `開始まで ${st.countdown} 秒` : "開始します…";
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "RESULT"){
+          st.busy = false;
+          const correct = !!msg?.correct;
+          st.statusMsg = correct ? "正解" : "不正解";
+          const preview = String(msg?.correctAnswerPreview || "");
+          if (!correct && preview) st.statusMsg += `（正解: ${preview}）`;
+          st.writeDraft = "";
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "FINISH"){
+          st.busy = false;
+          st.phase = "FINISHED";
+          st.result = msg || null;
+          st.statusMsg = "対戦終了";
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "ERROR"){
+          st.busy = false;
+          st.errorMsg = String(msg?.message || msg?.code || "通信エラー");
+          uiToast(st.errorMsg);
+          _rtBattleRerender();
+          return;
+        }
+        if (type === "OPPONENT"){
+          _rtBattleRerender();
+          return;
+        }
+      }
+      function _rtBattleConnect(wsUrlRaw){
+        const st = _rtBattleState();
+        const token = _rtBattleAuthTokenRequired();
+        const wsUrlSafe = String(wsUrlRaw || st.wsUrl || "").trim();
+        if (!wsUrlSafe){ uiToast("WebSocket URLがありません。"); return; }
+        if (typeof WebSocket !== "function"){ uiToast("このブラウザではWebSocketを利用できません。"); return; }
+        _rtBattleDisconnect(true);
+        st.errorMsg = "";
+        st.statusMsg = "接続中…";
+        st.connecting = true;
+        st.connected = false;
+        st.wsUrl = wsUrlSafe;
+        _rtBattleRerender();
+        let finalUrl = wsUrlSafe;
+        try{
+          const u = new URL(wsUrlSafe, location.href);
+          u.searchParams.set("token", token);
+          finalUrl = u.toString();
+        }catch{
+          finalUrl = wsUrlSafe + (wsUrlSafe.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token);
+        }
+        const ws = new WebSocket(finalUrl);
+        st.socket = ws;
+        ws.onopen = () => {
+          if (_rtBattleState().socket !== ws) return;
+          st.connecting = false;
+          st.connected = true;
+          st.statusMsg = "接続しました。相手を待っています…";
+          st.errorMsg = "";
+          _rtBattleSafeSend({ type: "READY" });
+          _rtBattleStopPing();
+          st.pingTimerId = setInterval(() => {
+            if (!_rtBattleSafeSend({ type: "PING" })) _rtBattleStopPing();
+          }, 15000);
+          _rtBattleRerender();
+        };
+        ws.onmessage = (ev) => {
+          let msg = null;
+          try{ msg = JSON.parse(String(ev?.data || "")); }catch{ msg = null; }
+          if (!msg) return;
+          _rtBattleHandleMessage(msg);
+        };
+        ws.onerror = () => {
+          if (_rtBattleState().socket !== ws) return;
+          st.errorMsg = "通信エラーが発生しました。";
+          st.connecting = false;
+          st.connected = false;
+          st.busy = false;
+          _rtBattleRerender();
+        };
+        ws.onclose = () => {
+          if (_rtBattleState().socket === ws) st.socket = null;
+          _rtBattleStopPing();
+          st.connecting = false;
+          st.connected = false;
+          st.busy = false;
+          if (_menuState.view === "onlineBattleRealtime" && st.roomId && st.phase !== "FINISHED"){
+            st.statusMsg = "接続が切れました。再接続してください。";
+          }
+          _rtBattleRerender();
+        };
+      }
+      async function _rtBattleStart(){
+        const st = _rtBattleState();
+        if (st.busy || st.connecting) return;
+        try{
+          _rtBattleApplyFormFromDom();
+          st.busy = true;
+          st.errorMsg = "";
+          st.statusMsg = "マッチング中…";
+          _rtBattleRerender();
+          const body = await _authFetch("/api/rt/matchmake", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${_rtBattleAuthTokenRequired()}` },
+            body: JSON.stringify({
+              presetId: st.presetId,
+              mode: st.mode,
+              count: st.count
+            })
+          });
+          st.roomId = String(body?.roomId || "");
+          st.wsUrl = String(body?.wsUrl || "");
+          st.phase = "WAITING";
+          st.result = null;
+          st.serverState = null;
+          st.statusMsg = String(body?.status || "") === "MATCHED" ? "マッチ成立。接続します…" : "待機ルームに入りました。";
+          if (!st.wsUrl || !st.roomId) throw new Error("ルーム情報の取得に失敗しました。");
+          _rtBattleConnect(st.wsUrl);
+        }catch(err){
+          st.errorMsg = String(err?.message || "リアルタイム対戦の開始に失敗しました。");
+          st.busy = false;
+          uiToast(st.errorMsg);
+          _rtBattleRerender();
+          return;
+        }finally{
+          st.busy = false;
+          _rtBattleRerender();
+        }
+      }
+      function _rtBattleReconnect(){
+        const st = _rtBattleState();
+        if (!st.wsUrl){ uiToast("先に対戦を開始してください。"); return; }
+        _rtBattleConnect(st.wsUrl);
+      }
+      function _rtBattleLeave(){
+        _rtBattleSafeSend({ type: "LEAVE" });
+        _rtBattleReset(true);
+        _rtBattleRerender();
+      }
+      function _rtBattleSubmitAnswer(answerText){
+        const st = _rtBattleState();
+        if (!st.connected || st.busy) return;
+        const cur = _rtBattleCurrentQuestion();
+        if (!cur.q || cur.done){ uiToast("回答できる問題がありません。"); return; }
+        const text = String(answerText || "").trim();
+        if (!text){ uiToast("回答を入力してください。"); return; }
+        const ok = _rtBattleSafeSend({
+          type: "ANSWER",
+          index: cur.index,
+          answerText: text,
+          elapsedMs: _rtBattleElapsedMs()
+        });
+        if (!ok){ uiToast("接続されていません。再接続してください。"); return; }
+        st.busy = true;
+        st.errorMsg = "";
+        st.statusMsg = "送信中…";
+        _rtBattleRerender();
+      }
+      function _rtBattleRenderPlayers(){
+        const st = _rtBattleState();
+        const players = _rtBattlePlayers();
+        const myUid = _rtBattleMyUserId();
+        const count = Math.max(1, Number(st.serverState?.count || st.count || 10));
+        if (!players.length) return `<div class="mini">プレイヤーを待っています…</div>`;
+        return players.map((p) => `<div class="insight-card" style="padding:10px; margin-top:8px;">
+          <div style="display:flex; justify-content:space-between; gap:8px;">
+            <div><strong>${_escapeHtml(p.nickname || `user-${p.userId}`)}</strong>${p.userId === myUid ? ` <span class="mini">(あなた)</span>` : ``}</div>
+            <div class="mini">${p.connected ? (p.ready ? "準備完了" : "接続中") : "切断"}</div>
+          </div>
+          <div class="mini" style="margin-top:4px;">進捗 ${p.progressIndex}/${count} ・ 正答 ${p.correct} ・ ${Math.round(p.totalTimeMs/1000)}s</div>
+        </div>`).join("");
+      }
+      function _rtBattleRenderQuestionBlock(){
+        const st = _rtBattleState();
+        const cur = _rtBattleCurrentQuestion();
+        const phase = String(st.serverState?.phase || st.phase || "WAITING");
+        if (!st.serverState) return "";
+        if (phase === "WAITING"){
+          return `<div class="insight-card" style="padding:12px; margin-top:10px;"><div class="mini">相手の接続と準備完了を待っています。</div></div>`;
+        }
+        if (phase === "COUNTDOWN"){
+          return `<div class="insight-card" style="padding:12px; margin-top:10px;"><div style="font-weight:700;">開始まで ${Math.max(0, Number(st.countdown || 0))} 秒</div></div>`;
+        }
+        if (cur.done){
+          return `<div class="insight-card" style="padding:12px; margin-top:10px;"><div style="font-weight:700;">あなたの回答は完了しました。</div><div class="mini" style="margin-top:4px;">相手の完了を待っています…</div></div>`;
+        }
+        const q = cur.q;
+        if (!q) return `<div class="insight-empty" style="margin-top:10px;">問題データを取得中…</div>`;
+        const mode = _rtBattleModeLabel(st.serverState?.mode || st.mode);
+        const header = `<div class="mini">問題 ${cur.index + 1}/${cur.count} ・ No.${Number(q.no || 0)}</div>`;
+        const prompt = `<div style="font-weight:700; font-size:16px; margin-top:6px; white-space:pre-wrap;">${_escapeHtml(String(q.prompt || ""))}</div>`;
+        if (mode === "WRITE"){
+          return `<div class="insight-card" style="padding:12px; margin-top:10px;">
+            ${header}${prompt}
+            <div style="margin-top:10px;"><input id="rtBattleWriteInput" class="spell-input" type="text" placeholder="答えを入力" value="${_escapeHtml(st.writeDraft || "")}" /></div>
+            <div class="row-actions" style="margin-top:10px;">
+              <button class="btn" type="button" data-rt-battle-action="submitWrite"${(!st.connected || st.busy) ? " disabled" : ""}>送信</button>
+              <button class="textbtn" type="button" data-rt-battle-action="reconnect">再接続</button>
+            </div>
+          </div>`;
+        }
+        const choices = Array.isArray(q.choices) ? q.choices : [];
+        return `<div class="insight-card" style="padding:12px; margin-top:10px;">
+          ${header}${prompt}
+          <div style="display:grid; gap:8px; margin-top:10px;">
+            ${choices.map((c) => `<button class="btn" type="button" data-rt-battle-action="chooseAnswer" data-rt-battle-answer="${_escapeHtml(String(c || ""))}"${(!st.connected || st.busy) ? " disabled" : ""}>${_escapeHtml(String(c || ""))}</button>`).join("")}
+          </div>
+          <div class="row-actions" style="margin-top:10px;"><button class="textbtn" type="button" data-rt-battle-action="reconnect">再接続</button></div>
+        </div>`;
+      }
+      function _renderOnlineBattleRealtimeHTML(){
+        const st = _rtBattleState();
+        const token = _authGetToken();
+        const state = st.serverState || {};
+        const mode = _rtBattleModeLabel(st.mode);
+        const result = st.result;
+        const resultHtml = result ? `<section class="insight-card" style="padding:12px; margin-top:10px;">
+            <div class="insight-head"><div class="insight-title">対戦結果</div><div class="insight-note">${_escapeHtml(_rtBattleModeLabel(state.mode || st.mode))}</div></div>
+            <div class="mini">勝者: ${_escapeHtml(String(result?.winner?.nickname || "未確定"))}</div>
+            <div style="margin-top:8px;">${_rtBattlePlayers().map((p)=>`<div class="mini">${_escapeHtml(p.nickname)} / 正答 ${p.correct} / ${Math.round(p.totalTimeMs/1000)}s</div>`).join("")}</div>
+          </section>` : ``;
+        return `
+          <div class="menu-article">
+            <h3>オンライン対戦（リアルタイム）</h3>
+            <p class="mini">Durable Object + WebSocketで進捗を同期します。採点はサーバ側で行います。</p>
+            ${!token ? `<div class="insight-empty">ログインが必要です。先にアカウントでログインしてください。</div>` : `
+              <section class="insight-card" style="padding:12px;">
+                <div class="row-actions" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; align-items:end;">
+                  <div style="min-width:0;"><div class="mini">Mode</div><select id="rtBattleModeSelect" class="select"><option value="EXAM"${mode==="EXAM"?" selected":""}>EXAM</option><option value="WRITE"${mode==="WRITE"?" selected":""}>WRITE</option></select></div>
+                  <div style="min-width:0;"><div class="mini">Preset</div><select id="rtBattlePresetSelect" class="select"><option value="builtin:ALL"${String(st.presetId)==="builtin:ALL"?" selected":""}>builtin:ALL</option><option value="builtin:0-200"${String(st.presetId)==="builtin:0-200"?" selected":""}>builtin:0-200</option></select></div>
+                  <div style="min-width:0;"><div class="mini">Count</div><select id="rtBattleCountSelect" class="select"><option value="5"${Number(st.count)===5?" selected":""}>5</option><option value="10"${Number(st.count)===10?" selected":""}>10</option><option value="20"${Number(st.count)===20?" selected":""}>20</option></select></div>
+                </div>
+                <div class="row-actions" style="margin-top:10px;">
+                  <button class="btn" type="button" data-rt-battle-action="start"${st.busy || st.connecting ? " disabled" : ""}>開始</button>
+                  <button class="textbtn" type="button" data-rt-battle-action="reconnect"${!st.wsUrl ? " disabled" : ""}>再接続</button>
+                  <button class="textbtn" type="button" data-rt-battle-action="disconnect"${(!st.roomId && !st.connected && !st.connecting) ? " disabled" : ""}>切断</button>
+                </div>
+                <div class="mini" id="rtBattleStatusLine" style="margin-top:8px;">${_escapeHtml(_rtBattleStatusLabel())}</div>
+                ${st.roomId ? `<div class="mini" style="margin-top:4px;">roomId: ${_escapeHtml(st.roomId)}</div>` : ``}
+              </section>
+              ${(st.serverState || st.roomId) ? `<section class="insight-card" style="padding:12px; margin-top:10px;">
+                <div class="insight-head"><div class="insight-title">進行状況</div><div class="insight-note">${_escapeHtml(String(state.phase || st.phase || "WAITING"))}</div></div>
+                <div class="mini">Preset: ${_escapeHtml(String(state.presetId || st.presetId || ""))} / Mode: ${_escapeHtml(_rtBattleModeLabel(state.mode || st.mode))}</div>
+                ${_rtBattleRenderPlayers()}
+              </section>` : ``}
+              ${_rtBattleRenderQuestionBlock()}
+              ${resultHtml}
+            `}
+          </div>
+        `;
+      }
+      function _rtBattleInitView(){
+        if (_menuState.view !== "onlineBattleRealtime") return;
+        const st = _rtBattleState();
+        const content = document.getElementById("menuContent") || document;
+        _customSelectEnhance(content);
+        const modeEl = document.getElementById("rtBattleModeSelect");
+        const presetEl = document.getElementById("rtBattlePresetSelect");
+        const countEl = document.getElementById("rtBattleCountSelect");
+        if (modeEl) modeEl.value = _rtBattleModeLabel(st.mode);
+        if (presetEl) presetEl.value = String(st.presetId || "builtin:ALL");
+        if (countEl) countEl.value = String(Number(st.count || 10));
+        if (st.serverState) _rtBattleQuestionStartIfNeeded();
+      }
       const DRAWER_SHARE_TTL_MS = 10 * 60 * 1000;
       let _drawerShareDb = null;
 
@@ -29917,6 +30372,9 @@ function _openSearchResultByIndex(i){
         } else if (_menuState.view === "onlineBattle"){
           _battleInitView();
           _customSelectEnhance(document.getElementById("menuContent") || document);
+        } else if (_menuState.view === "onlineBattleRealtime"){
+          _rtBattleInitView();
+          _customSelectEnhance(document.getElementById("menuContent") || document);
         }
       }
 
@@ -29949,11 +30407,13 @@ function _openSearchResultByIndex(i){
           else if(view === "memoDay"){ ttl = "メモチェック"; html = _renderMemoDayHTML(_menuState.memoCheck.currentDate || _memoToYmd(Date.now())); }
           else if(view === "presetShare"){ ttl = "プリセットを共有"; html = _renderPresetShareHTML(); }
           else if(view === "onlineBattle"){ ttl = "オンライン対戦"; html = _renderOnlineBattleHTML(); }
+          else if(view === "onlineBattleRealtime"){ ttl = "オンライン対戦（リアルタイム）"; html = _renderOnlineBattleRealtimeHTML(); }
           else { ttl = "MENU"; html = _menuState.rootHtml; panel.classList.remove("has-back"); _menuState.view = "root"; }
         }
 
         if (view !== "presetShare") _drawerShareStopTimer();
         if (view !== "onlineBattle"){ try{ _battleStopPolling(); }catch(_){} }
+        if (view !== "onlineBattleRealtime"){ try{ _rtBattleDisconnect(true); }catch(_){} }
 
         const isMemoFull = (view === "memoCheck" || view === "memoDay");
         panel.classList.toggle("memo-full", isMemoFull);
@@ -30232,6 +30692,7 @@ function _openSearchResultByIndex(i){
 
         _drawerShareStopTimer();
         try{ _battleStopPolling(); }catch(_){}
+        try{ _rtBattleDisconnect(true); }catch(_){}
 
         // Stop "sending" state when drawer is closed to avoid stuck UI on next open
         _menuState.sending = false;
@@ -30313,6 +30774,7 @@ function _openSearchResultByIndex(i){
         if(action === "memoCheck"){ _setMenuView("memoCheck"); return; }
         if(action === "presetShare"){ _setMenuView("presetShare"); return; }
         if(action === "onlineBattle"){ _setMenuView("onlineBattle"); return; }
+        if(action === "onlineBattleRealtime"){ _setMenuView("onlineBattleRealtime"); return; }
 
         if(action === "settings"){
           closeMenu();
@@ -30582,6 +31044,24 @@ function _openSearchResultByIndex(i){
             }
           }
 
+          const rtBattleBtn = e.target.closest("[data-rt-battle-action]");
+          if (rtBattleBtn && rtBattleBtn.closest("#menuPanel")){
+            e.preventDefault();
+            const act = String(rtBattleBtn.getAttribute("data-rt-battle-action") || "");
+            if (act === "start"){ _rtBattleStart(); return; }
+            if (act === "disconnect"){ _rtBattleLeave(); return; }
+            if (act === "reconnect"){ _rtBattleReconnect(); return; }
+            if (act === "submitWrite"){
+              const input = document.getElementById("rtBattleWriteInput");
+              _rtBattleSubmitAnswer(input ? input.value : "");
+              return;
+            }
+            if (act === "chooseAnswer"){
+              _rtBattleSubmitAnswer(String(rtBattleBtn.getAttribute("data-rt-battle-answer") || ""));
+              return;
+            }
+          }
+
           const calDay = e.target.closest("[data-memo-date]");
           if (calDay && calDay.closest("#menuPanel")){
             e.preventDefault();
@@ -30705,6 +31185,10 @@ function _openSearchResultByIndex(i){
             _battleApplyFormFromDom();
             return;
           }
+          if (t.id === "rtBattleModeSelect" || t.id === "rtBattlePresetSelect" || t.id === "rtBattleCountSelect"){
+            _rtBattleApplyFormFromDom();
+            return;
+          }
           if (t.id === "memoInsightsPresetSelect" || t.id === "memoInsightsModeSelect" || t.id === "memoInsightsRangeSelect"){
             _memoRenderInsightsTop();
             return;
@@ -30731,6 +31215,10 @@ function _openSearchResultByIndex(i){
           }
           if (t instanceof HTMLInputElement && t.id === "battleWriteInput"){
             _battleState().writeDraft = t.value || "";
+            return;
+          }
+          if (t instanceof HTMLInputElement && t.id === "rtBattleWriteInput"){
+            _rtBattleState().writeDraft = t.value || "";
           }
         }, true);
 
@@ -30765,6 +31253,11 @@ function _openSearchResultByIndex(i){
           if (t.id === "battleWriteInput" && e.key === "Enter" && !e.shiftKey){
             e.preventDefault();
             _battleSubmitAnswer((t instanceof HTMLInputElement) ? (t.value || "") : "");
+            return;
+          }
+          if (t.id === "rtBattleWriteInput" && e.key === "Enter" && !e.shiftKey){
+            e.preventDefault();
+            _rtBattleSubmitAnswer((t instanceof HTMLInputElement) ? (t.value || "") : "");
             return;
           }
           if (t.id !== "drawerShareImportCode") return;
