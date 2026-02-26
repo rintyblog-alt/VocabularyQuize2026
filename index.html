@@ -183,6 +183,7 @@
       font-weight:650;
       letter-spacing:.02em;
       color:var(--accent);
+      cursor:pointer;
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
@@ -2474,6 +2475,419 @@ a{ color: inherit; }
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
     }
+
+    /* ===== Scan Generator ===== */
+    .scan-gen-overlay{
+      position: fixed;
+      inset: 0;
+      z-index: 2300;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .26s ease;
+    }
+    .scan-gen-overlay.hidden{
+      display: none !important;
+    }
+    .scan-gen-overlay.is-open{
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .scan-gen-backdrop{
+      position: absolute;
+      inset: 0;
+      border: 0;
+      background: rgba(12,14,18,.34);
+      cursor: pointer;
+      padding: 0;
+    }
+    @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))){
+      .scan-gen-backdrop{
+        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(6px);
+      }
+    }
+    .scan-gen-sheet{
+      position: relative;
+      width: min(960px, 100vw);
+      height: 92vh;
+      max-height: 92vh;
+      border: 1px solid var(--border);
+      border-bottom: 0;
+      border-radius: 18px 18px 0 0;
+      background: var(--panel);
+      box-shadow: 0 -18px 54px rgba(0,0,0,.16);
+      transform: translateY(28px);
+      transition: transform .26s ease;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+    .scan-gen-overlay.is-open .scan-gen-sheet{
+      transform: translateY(0);
+    }
+    .scan-gen-head{
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--panel) 94%, #fff 6%);
+    }
+    .scan-gen-title{
+      font-weight: 700;
+      color: var(--text);
+      font-size: 15px;
+      letter-spacing: .01em;
+    }
+    .scan-gen-body{
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 14px 16px 16px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .scan-gen-foot{
+      border-top: 1px solid var(--border);
+      background: color-mix(in srgb, var(--panel) 96%, #fff 4%);
+      padding: 10px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .scan-card{
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel2);
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .scan-card h4{
+      margin: 0;
+      font-size: 13px;
+      color: var(--text);
+      letter-spacing: .01em;
+    }
+    .scan-sub{
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .scan-row{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .scan-type-chip{
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 999px;
+      min-height: 34px;
+      padding: 6px 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text);
+    }
+    .scan-file-btn{
+      position: relative;
+      overflow: hidden;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .scan-file-btn input[type="file"]{
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .scan-thumb-list{
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .scan-thumb{
+      position: relative;
+      width: 112px;
+      height: 112px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      box-shadow: inset 0 0 0 1px rgba(17,18,20,.03);
+    }
+    .scan-thumb img{
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .scan-thumb button{
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 26px;
+      height: 26px;
+      border: 1px solid rgba(255,255,255,.8);
+      border-radius: 999px;
+      background: rgba(0,0,0,.55);
+      color: #fff;
+      cursor: pointer;
+      line-height: 1;
+      font-size: 13px;
+    }
+    .scan-grid{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .scan-grid .scan-field{
+      display: grid;
+      gap: 6px;
+    }
+    .scan-grid label{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .scan-grid .spell-input,
+    .scan-grid .select{
+      min-width: 0;
+      width: 100%;
+    }
+    .scan-formats{
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .scan-format-chip{
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 999px;
+      min-height: 34px;
+      padding: 6px 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text);
+    }
+    .scan-status{
+      min-height: 18px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .scan-status.error{
+      color: #b42318;
+    }
+    .scan-status.ok{
+      color: #198754;
+    }
+    .scan-steps{
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 6px;
+    }
+    .scan-step{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .scan-step .dot{
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(31,42,68,.2);
+      flex-shrink: 0;
+    }
+    .scan-step.is-active{
+      color: var(--text);
+    }
+    .scan-step.is-active .dot{
+      background: rgba(31,42,68,.55);
+      animation: scanPulse 1s ease infinite;
+    }
+    .scan-step.is-done{
+      color: var(--text);
+    }
+    .scan-step.is-done .dot{
+      background: rgba(25,135,84,.56);
+      animation: none;
+    }
+    @keyframes scanPulse{
+      0%{ transform: scale(1); opacity: .95; }
+      50%{ transform: scale(1.22); opacity: .55; }
+      100%{ transform: scale(1); opacity: .95; }
+    }
+    .scan-result{
+      display: grid;
+      gap: 10px;
+    }
+    .scan-result-meta{
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .scan-reconstructed{
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+      padding: 12px;
+      max-height: 260px;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      line-height: 1.65;
+      font-size: 14px;
+    }
+    .scan-reconstructed h1,
+    .scan-reconstructed h3{
+      margin: 0 0 8px;
+      line-height: 1.4;
+    }
+    .scan-reconstructed p{
+      margin: 0 0 9px;
+    }
+    .scan-reconstructed .author{
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .scan-reconstructed .m{
+      border-radius: 4px;
+      padding: 0 1px;
+    }
+    .scan-reconstructed .m.u{
+      text-decoration: underline 2px;
+      text-underline-offset: 2px;
+      text-decoration-color: rgba(31,42,68,.45);
+      background: rgba(31,42,68,.06);
+    }
+    .scan-reconstructed .m.box{
+      border: 1px solid rgba(31,42,68,.32);
+      background: rgba(31,42,68,.05);
+      padding: 0 3px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .scan-reconstructed .m.box .badge{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      font-size: 10px;
+      line-height: 1;
+      background: rgba(31,42,68,.75);
+      color: #fff;
+    }
+    .scan-reconstructed .m.blank{
+      border-bottom: 2px solid rgba(31,42,68,.45);
+      min-width: 32px;
+      display: inline-flex;
+      justify-content: center;
+      color: var(--muted);
+    }
+    .scan-question-list{
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+    .scan-question-item{
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      display: grid;
+      gap: 6px;
+    }
+    .scan-question-item:first-child{
+      border-top: 0;
+    }
+    .scan-question-q{
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.55;
+    }
+    .scan-question-a{
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .scan-question-type{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .scan-question-rest{
+      margin: 8px 0 0;
+      border-top: 1px solid var(--border);
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .scan-result-actions{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .scan-debug{
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+      padding: 8px 10px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .scan-debug > summary{
+      cursor: pointer;
+      user-select: none;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      list-style: none;
+    }
+    .scan-debug > summary::-webkit-details-marker{ display: none; }
+    .scan-debug pre{
+      margin: 8px 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      line-height: 1.5;
+    }
+    @media (max-width: 760px){
+      .scan-grid{
+        grid-template-columns: 1fr;
+      }
+      .scan-gen-body{
+        padding: 12px 12px 14px;
+      }
+      .scan-gen-foot{
+        padding: 10px 12px;
+      }
+    }
+
     .math-preview{
       min-height: 28px;
       line-height: 1.5;
@@ -3146,8 +3560,8 @@ a{ color: inherit; }
 #searchOverlay .search-sheet{
   width: min(520px, calc(100vw - 24px));
   max-height: min(72vh, 620px);
-  border-radius: 18px;
-  box-shadow: 0 18px 45px rgba(0,0,0,.18);
+  border-radius: 20px;
+  box-shadow: 0 16px 34px rgba(15,23,42,.14);
   border: 1px solid var(--border);
   overflow: hidden;
   transform-origin: top right;
@@ -3168,31 +3582,50 @@ a{ color: inherit; }
 #searchOverlay .search-input-wrap{ padding: 0 2px 2px; }
 #searchOverlay #searchInput{
   width: 100%;
+  min-height: 46px;
   border-radius: 14px;
+  border: 1px solid var(--input-border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 14px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22);
+}
+#searchOverlay #searchInput::placeholder{
+  color: var(--muted);
+}
+#searchOverlay #searchInput:focus-visible{
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent, #2563eb) 48%, var(--input-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #2563eb) 18%, transparent);
 }
 #searchOverlay .search-empty{
-  padding: 10px 4px 6px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel2) 72%, transparent);
   color: var(--muted);
   font-size: 13px;
+  text-align: center;
 }
 #searchOverlay .search-list{
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   max-height: 360px;
   overflow: auto;
-  padding: 4px 2px 0;
+  padding: 2px 2px 0;
   scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 .search-item{
   width: 100%;
   text-align: left;
-  border-radius: 14px;
-  padding: 12px 12px;
+  border-radius: 15px;
+  padding: 12px 13px;
   border: 1px solid var(--border);
-  background: var(--panel);
-  box-shadow: 0 10px 24px rgba(0,0,0,.08);
-  transition: transform .18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .18s cubic-bezier(0.22, 1, 0.36, 1), background .18s cubic-bezier(0.22, 1, 0.36, 1);
+  background: color-mix(in srgb, var(--panel) 85%, var(--panel2));
+  box-shadow: 0 6px 14px rgba(15,23,42,.06);
+  transition: transform .18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .18s cubic-bezier(0.22, 1, 0.36, 1), border-color .18s cubic-bezier(0.22, 1, 0.36, 1), background .18s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .search-item:focus-visible{ outline: 2px solid var(--focus); outline-offset: 2px; }
 .search-item .row{
@@ -3227,14 +3660,24 @@ a{ color: inherit; }
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+.search-item .preset{
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
 @media (hover:hover) and (pointer:fine){
   .search-item:hover{
     transform: translateY(-1px);
-    box-shadow: 0 14px 30px rgba(0,0,0,.11);
-    background: var(--panel2);
+    border-color: color-mix(in srgb, var(--accent, #2563eb) 26%, var(--border));
+    box-shadow: 0 10px 22px rgba(15,23,42,.10);
+    background: var(--panel);
   }
 }
-.search-item:active{ transform: scale(.985); }
+.search-item:active{
+  transform: translateY(0) scale(.986);
+  box-shadow: 0 4px 10px rgba(15,23,42,.08);
+}
 
 
 /* ─────────────────────────────────────────────────────────────
@@ -4274,7 +4717,7 @@ body[data-app-tab="home"] #viewTitle .hero{
 }
 body[data-app-tab="library"] #viewTitle .hero,
 body[data-app-tab="inbox"] #viewTitle .hero,
-body[data-app-tab="insights"] #viewTitle .hero,
+body[data-app-tab="insight"] #viewTitle .hero,
 body[data-app-tab="chat"] #viewTitle .hero{
   display: none;
 }
@@ -4285,7 +4728,7 @@ body[data-app-tab="chat"] #viewTitle .hero{
 }
 body[data-app-tab="library"] #appLibraryPage,
 body[data-app-tab="inbox"] #appInboxPage,
-body[data-app-tab="insights"] #appInsightsPage,
+body[data-app-tab="insight"] #appInsightsPage,
 body[data-app-tab="chat"] #appChatPage{
   display: block;
 }
@@ -5112,16 +5555,19 @@ main{
 .settings-row,
 .app-settings-row{
   min-height:44px;
-  border-radius:14px;
+  border-radius:15px;
   border:1px solid var(--btn-border) !important;
   background:var(--btn-bg) !important;
   color:var(--btn-text) !important;
+  box-shadow: 0 4px 12px rgba(15,23,42,.06);
   transition:
     transform .24s cubic-bezier(0.22, 1, 0.36, 1),
     opacity .24s cubic-bezier(0.22, 1, 0.36, 1),
     filter .24s cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow .24s cubic-bezier(0.22, 1, 0.36, 1);
-  transition-property: transform, opacity, filter, box-shadow;
+    box-shadow .24s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color .24s cubic-bezier(0.22, 1, 0.36, 1),
+    background .24s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-property: transform, opacity, filter, box-shadow, border-color, background;
 }
 @media (hover:hover) and (pointer:fine){
   .btn:hover,
@@ -5139,9 +5585,9 @@ main{
   .menu-item:hover,
   .settings-row:hover,
   .app-settings-row:hover{
-    transform:none !important;
-    filter:brightness(.995);
-    box-shadow:0 8px 18px rgba(17,18,20,.10);
+    transform:translateY(-1px) !important;
+    filter:brightness(1.01);
+    box-shadow:0 10px 20px rgba(15,23,42,.10);
     border-color:var(--border);
   }
 }
@@ -5184,7 +5630,7 @@ main{
 .menu-item:active,
 .settings-row:active,
 .app-settings-row:active{
-  transform:scale(.98);
+  transform:translateY(0) scale(.985);
 }
 .btn[disabled],
 .navbtn[disabled],
@@ -5198,6 +5644,10 @@ main{
 .app-settings-row[disabled]{
   opacity:.56;
   cursor:not-allowed;
+  box-shadow:none;
+}
+.app-tab-btn{
+  border-radius: 999px;
 }
 
 .btn.primary,
@@ -5237,8 +5687,8 @@ main{
 
 /* hover jitter fix (PC): keep hitbox stable, avoid hover on/off loops */
 @media (hover:hover) and (pointer:fine){
-  button:hover,
-  [role="button"]:hover,
+  button:not(.btn):not(.navbtn):not(.textbtn):not(.app-tab-btn):not(.search-item):hover,
+  [role="button"]:not(.btn):not(.navbtn):not(.textbtn):not(.app-tab-btn):not(.search-item):hover,
   [data-action]:hover,
   [data-rt-battle-action]:hover{
     transform:none !important;
@@ -5420,7 +5870,7 @@ body[data-app-tab="home"] .home-preset-row .navbtn{
   align-content: start;
   position: relative;
 }
-body[data-app-tab="insights"] #appInsightsPage{
+body[data-app-tab="insight"] #appInsightsPage{
   display: grid !important;
 }
 #appInsightsPage .app-page-head{
@@ -6853,6 +7303,253 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
   font-size: calc(1em * var(--ui-font-scale));
 }
 
+/* Inbox: chat-thread refresh */
+:root{
+  --inbox-thread-bg:#ffffff;
+  --inbox-bubble-bg:var(--chat-bubble-ai, var(--panel));
+  --inbox-bubble-border:var(--chat-border, var(--border));
+  --inbox-avatar-bg:var(--chat-surface-soft, var(--panel2));
+  --inbox-avatar-text:color-mix(in srgb, var(--text) 70%, transparent);
+  --inbox-high-chip-bg:rgba(37,99,235,.10);
+  --inbox-high-chip-border:rgba(37,99,235,.22);
+}
+:root[data-theme-mode="dark"]{
+  --inbox-thread-bg:#171b24;
+  --inbox-bubble-bg:#171b24;
+  --inbox-bubble-border:rgba(255,255,255,.14);
+  --inbox-avatar-bg:#1e2430;
+  --inbox-avatar-text:rgba(245,246,247,.86);
+  --inbox-high-chip-bg:rgba(143,182,255,.15);
+  --inbox-high-chip-border:rgba(143,182,255,.26);
+}
+
+#appInboxPage{
+  gap: 12px;
+}
+body[data-app-tab="inbox"] #appInboxPage{
+  display: grid !important;
+}
+#appInboxPage #appInboxListPane,
+#appInboxPage #appInboxDetailPane{
+  border: 1px solid var(--inbox-bubble-border);
+  border-radius: 20px;
+  background: var(--inbox-thread-bg);
+  box-shadow: 0 10px 26px rgba(15,23,42,.07);
+}
+#appInboxPage #appInboxListPane{
+  max-height: min(74dvh, 780px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+}
+#appInboxPage #appInboxDetailPane{
+  max-height: min(74dvh, 780px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+#appInboxPage .app-inbox-list{
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+#appInboxPage .app-inbox-item{
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0;
+  max-width: 100%;
+}
+#appInboxPage .app-inbox-avatar{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--inbox-bubble-border);
+  background: var(--inbox-avatar-bg);
+  color: var(--inbox-avatar-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  flex-shrink: 0;
+}
+#appInboxPage .app-inbox-body{
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+#appInboxPage .app-inbox-bubble{
+  position: relative;
+  border: 1px solid var(--inbox-bubble-border) !important;
+  border-radius: 16px !important;
+  background: var(--inbox-bubble-bg) !important;
+  box-shadow: 0 6px 18px rgba(15,23,42,.05);
+  padding: 10px 12px;
+}
+#appInboxPage .app-inbox-item.unread .app-inbox-bubble{
+  border-color: color-mix(in srgb, var(--accent, #2563eb) 36%, var(--inbox-bubble-border)) !important;
+}
+#appInboxPage .app-inbox-unread-dot{
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #2563eb) 78%, #ffffff);
+  box-shadow: 0 0 0 2px var(--inbox-thread-bg);
+}
+#appInboxPage .app-inbox-item:not(.unread) .app-inbox-unread-dot{
+  display: none;
+}
+#appInboxPage .app-inbox-bubble-head{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+#appInboxPage .app-inbox-title{
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+#appInboxPage .app-inbox-category{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--inbox-bubble-border);
+  background: var(--chat-surface-soft, var(--panel2));
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+#appInboxPage .app-inbox-item.priority-high .app-inbox-category{
+  background: var(--inbox-high-chip-bg);
+  border-color: var(--inbox-high-chip-border);
+}
+#appInboxPage .app-inbox-preview{
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#appInboxPage .app-inbox-bubble-meta{
+  margin-top: 7px;
+  display: flex;
+  justify-content: flex-end;
+}
+#appInboxPage .app-inbox-time{
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+#appInboxPage .app-inbox-action-row{
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+#appInboxPage .app-inbox-read-state{
+  font-size: 11px;
+  color: var(--muted);
+}
+#appInboxPage .app-inbox-action-btn{
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 0 12px;
+}
+
+#appInboxPage .app-inbox-detail-shell{
+  min-height: 100%;
+}
+#appInboxPage .app-inbox-detail-head{
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  border-bottom: 1px solid var(--inbox-bubble-border);
+  background: var(--inbox-thread-bg);
+  padding: 12px 12px 10px;
+}
+#appInboxPage .app-inbox-detail-head-actions{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+#appInboxPage .app-inbox-close-btn{
+  appearance: none;
+  border: 1px solid var(--inbox-bubble-border);
+  background: var(--inbox-thread-bg);
+  color: var(--text);
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+#appInboxPage .app-inbox-close-btn .ms{
+  font-size: 18px;
+}
+#appInboxPage .app-detail-title{
+  margin: 10px 0 6px;
+  font-size: 20px;
+  line-height: 1.4;
+}
+#appInboxPage .app-detail-meta{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 0;
+}
+#appInboxPage .app-inbox-detail-chip{
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--inbox-bubble-border);
+  background: var(--chat-surface-soft, var(--panel2));
+  color: var(--muted);
+  font-size: 11px;
+}
+#appInboxPage .app-inbox-detail-chip.is-high{
+  background: var(--inbox-high-chip-bg);
+  border-color: var(--inbox-high-chip-border);
+}
+#appInboxPage .app-detail-content{
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 14px 14px 18px;
+}
+#appInboxPage .app-detail-content .notify-detail-text{
+  font-size: 14px;
+  line-height: 1.72;
+}
+#appInboxPage .app-empty{
+  padding: 14px 4px 8px;
+}
+
 </style>
 </head>
 <body class="app-tabs-visible auth-booting" data-app-tab="home">
@@ -7364,10 +8061,19 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
               <div class="app-empty hidden" id="appInboxEmpty">通知はありません。</div>
             </div>
             <div id="appInboxDetailPane" class="hidden">
-              <button class="textbtn" type="button" data-inbox-action="back">一覧へ戻る</button>
-              <h3 id="appInboxDetailTitle" class="app-detail-title"></h3>
-              <div id="appInboxDetailMeta" class="app-detail-meta"></div>
-              <div id="appInboxDetailContent" class="app-detail-content"></div>
+              <div class="app-inbox-detail-shell">
+                <div class="app-inbox-detail-head">
+                  <div class="app-inbox-detail-head-actions">
+                    <button class="textbtn app-inbox-back-btn" type="button" data-inbox-action="back">一覧へ戻る</button>
+                    <button class="app-inbox-close-btn" type="button" data-inbox-action="back" aria-label="閉じる">
+                      <span class="ms" aria-hidden="true">close</span>
+                    </button>
+                  </div>
+                  <h3 id="appInboxDetailTitle" class="app-detail-title"></h3>
+                  <div id="appInboxDetailMeta" class="app-detail-meta"></div>
+                </div>
+                <div id="appInboxDetailContent" class="app-detail-content"></div>
+              </div>
             </div>
           </section>
 
@@ -7676,7 +8382,7 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
         <span class="ms" aria-hidden="true">inbox</span>
         <span>Inbox</span>
       </button>
-      <button class="app-tab-btn" type="button" data-app-tab="insights" aria-selected="false">
+      <button class="app-tab-btn" type="button" data-app-tab="insight" aria-selected="false">
         <span class="ms" aria-hidden="true">query_stats</span>
         <span>Insights</span>
       </button>
@@ -7704,6 +8410,7 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
               <button class="textbtn" id="presetImportBtn" type="button">JSON読み込み</button>
               <button class="textbtn" id="presetShareImportBtn" type="button">共有から追加</button>
+              <button class="textbtn" id="presetScanBtn" type="button">スキャンして問題生成</button>
               <button class="textbtn" id="presetNewBtn" type="button">新規</button>
             </div>
             <input id="presetImportFile" type="file" accept="application/json" style="display:none" />
@@ -8051,6 +8758,142 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
           <button class="textbtn" id="presetCloseBtn2" type="button">閉じる</button>
         </div>
       </div>
+    </div>
+
+    <div class="scan-gen-overlay hidden" id="scanGenOverlay" role="dialog" aria-modal="true" aria-label="スキャンして問題生成">
+      <button class="scan-gen-backdrop" type="button" data-scan-action="close" aria-label="閉じる"></button>
+      <section class="scan-gen-sheet" aria-live="polite">
+        <header class="scan-gen-head">
+          <div>
+            <div class="scan-gen-title">スキャンして問題生成</div>
+            <p class="scan-sub">画像上に重ね描画せず、本文再構築テキストへマーカーを挿入して生成します。</p>
+          </div>
+          <button class="icon-btn" type="button" data-scan-action="close" aria-label="閉じる">✕</button>
+        </header>
+
+        <div class="scan-gen-body">
+          <section class="scan-card">
+            <h4>1) スキャン種類</h4>
+            <div class="scan-row">
+              <label class="scan-type-chip">
+                <input type="radio" name="scanGenType" value="single" checked />
+                <span>Single（本文のみ）</span>
+              </label>
+              <label class="scan-type-chip">
+                <input type="radio" name="scanGenType" value="double" />
+                <span>Double（本文＋参考）</span>
+              </label>
+            </div>
+          </section>
+
+          <section class="scan-card">
+            <h4>2) 画像アップロード</h4>
+            <div class="scan-row">
+              <label class="textbtn scan-file-btn">
+                本文画像を選択
+                <input id="scanMainImageInput" type="file" accept="image/*" />
+              </label>
+              <span class="scan-sub">本文画像は必須です。</span>
+            </div>
+            <div id="scanMainThumbList" class="scan-thumb-list"></div>
+            <div id="scanImageMeta" class="scan-sub"></div>
+            <div id="scanRefBlock" class="hidden" style="display:grid; gap:10px;">
+              <div class="scan-row">
+                <label class="textbtn scan-file-btn">
+                  参考画像を選択
+                  <input id="scanRefImageInput" type="file" accept="image/*" />
+                </label>
+                <span class="scan-sub">Double時のみ使用（任意）。</span>
+              </div>
+              <div id="scanRefThumbList" class="scan-thumb-list"></div>
+            </div>
+          </section>
+
+          <section class="scan-card">
+            <h4>3) 生成指示</h4>
+            <textarea id="scanPromptInput" class="spell-input" style="min-height:112px; resize:vertical;" placeholder="このプリントから4択を24問作って。傍線部のア〜エ選択問題を多めに。要約穴埋めも入れて。"></textarea>
+          </section>
+
+          <section class="scan-card">
+            <h4>4) 問題形式（複数選択可）</h4>
+            <div class="scan-formats">
+              <label class="scan-format-chip"><input type="checkbox" data-scan-format="mcq" checked /> 4択</label>
+              <label class="scan-format-chip"><input type="checkbox" data-scan-format="write" checked /> 記述</label>
+              <label class="scan-format-chip"><input type="checkbox" data-scan-format="select" checked /> 選択式</label>
+            </div>
+          </section>
+
+          <section class="scan-card">
+            <h4>5) 詳細設定</h4>
+            <div class="scan-grid">
+              <div class="scan-field">
+                <label for="scanCountInput">生成問数（12〜60）</label>
+                <input id="scanCountInput" class="spell-input" type="number" min="12" max="60" step="1" value="24" />
+              </div>
+              <div class="scan-field">
+                <label for="scanMarkerInput">マーカー数</label>
+                <input id="scanMarkerInput" class="spell-input" type="number" min="1" max="60" step="1" value="4" />
+              </div>
+              <div class="scan-field">
+                <label for="scanExtractCharsSelect">抜き出し文字数</label>
+                <select id="scanExtractCharsSelect" class="select">
+                  <option value="10">10</option>
+                  <option value="15" selected>15</option>
+                  <option value="20">20</option>
+                  <option value="30">30</option>
+                </select>
+              </div>
+              <div class="scan-field">
+                <label for="scanDifficultySelect">難易度</label>
+                <select id="scanDifficultySelect" class="select">
+                  <option value="easy">easy</option>
+                  <option value="normal" selected>normal</option>
+                  <option value="hard">hard</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          <section class="scan-card">
+            <h4>6) 生成進捗</h4>
+            <ul id="scanStepList" class="scan-steps">
+              <li class="scan-step" data-step-index="0"><span class="dot"></span><span>画像解析</span></li>
+              <li class="scan-step" data-step-index="1"><span class="dot"></span><span>文字起こし</span></li>
+              <li class="scan-step" data-step-index="2"><span class="dot"></span><span>本文整形</span></li>
+              <li class="scan-step" data-step-index="3"><span class="dot"></span><span>マーカー生成</span></li>
+              <li class="scan-step" data-step-index="4"><span class="dot"></span><span>問題生成</span></li>
+              <li class="scan-step" data-step-index="5"><span class="dot"></span><span>検証</span></li>
+              <li class="scan-step" data-step-index="6"><span class="dot"></span><span>完了</span></li>
+            </ul>
+            <div id="scanStatus" class="scan-status"></div>
+            <details id="scanDebugDetails" class="scan-debug hidden">
+              <summary>debug</summary>
+              <pre id="scanDebugPre"></pre>
+            </details>
+            <div class="scan-row">
+              <button class="navbtn" type="button" data-scan-action="run">生成開始</button>
+              <button class="textbtn" type="button" data-scan-action="cancel">キャンセル</button>
+              <button class="textbtn hidden" id="scanRetryBtn" type="button" data-scan-action="retry">再試行</button>
+            </div>
+          </section>
+
+          <section id="scanResultCard" class="scan-card hidden">
+            <h4>生成結果プレビュー</h4>
+            <div id="scanResultMeta" class="scan-result-meta"></div>
+            <div id="scanReconstructedView" class="scan-reconstructed"></div>
+            <div id="scanQuestionList" class="scan-question-list"></div>
+            <div class="scan-result-actions">
+              <button class="navbtn" type="button" data-scan-action="addPreset">このプリセットを追加</button>
+              <button class="textbtn" type="button" data-scan-action="copyJson">JSONをコピー</button>
+              <button class="textbtn" type="button" data-scan-action="close">閉じる</button>
+            </div>
+          </section>
+        </div>
+
+        <footer class="scan-gen-foot">
+          <button class="textbtn" type="button" data-scan-action="close">閉じる</button>
+        </footer>
+      </section>
     </div>
 
     <div class="overlay hidden" id="settingsOverlay" role="dialog" aria-modal="true" aria-label="設定">
@@ -8706,7 +9549,7 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
             inputmode="text" autocomplete="off" autocapitalize="none" spellcheck="false" />
         </div>
 
-        <div class="search-empty hidden" id="searchEmpty">一致なし　もう一度やり直してください。</div>
+        <div class="search-empty hidden" id="searchEmpty">No results. 一致する語がありません。</div>
         <div class="search-list" id="searchList" role="listbox" aria-label="検索結果"></div>
       </div>
     </div>
@@ -16478,7 +17321,7 @@ function reviewWrong(){
         }
 
         if (!results.length){
-          emptyEl.textContent = "一致なし";
+          emptyEl.textContent = "No results. 一致する語がありません。";
           emptyEl.classList.remove("hidden");
           return;
         }
@@ -16589,9 +17432,35 @@ function _openSearchResultByIndex(i){
       }
 
       const HOME_RESUME_KEY = "app.home.resume.v1";
-      const APP_TAB_LIST = ["home", "library", "inbox", "insights", "chat"];
-      let _appCurrentTab = "home";
+      const APP_TAB_KEY = Object.freeze({
+        HOME: "home",
+        LIBRARY: "library",
+        INBOX: "inbox",
+        INSIGHT: "insight",
+        CHAT: "chat"
+      });
+      const APP_TAB_LIST = Object.freeze([
+        APP_TAB_KEY.HOME,
+        APP_TAB_KEY.LIBRARY,
+        APP_TAB_KEY.INBOX,
+        APP_TAB_KEY.INSIGHT,
+        APP_TAB_KEY.CHAT
+      ]);
+      const APP_TAB_ALIAS = Object.freeze({
+        home: APP_TAB_KEY.HOME,
+        library: APP_TAB_KEY.LIBRARY,
+        inbox: APP_TAB_KEY.INBOX,
+        insight: APP_TAB_KEY.INSIGHT,
+        insights: APP_TAB_KEY.INSIGHT,
+        chat: APP_TAB_KEY.CHAT
+      });
+      function _appNormalizeTabKey(tab){
+        const k = String(tab || "").trim().toLowerCase();
+        return APP_TAB_ALIAS[k] || APP_TAB_KEY.HOME;
+      }
+      let _appCurrentTab = APP_TAB_KEY.HOME;
       let _appInboxDetailId = "";
+      const _appInboxRowById = new Map();
       const _appLibraryFilter = {
         subjectId: "ALL",
         tagIds: [],
@@ -16607,15 +17476,15 @@ function _openSearchResultByIndex(i){
           subEl.textContent = "v.1 Public";
           return;
         }
-        if (tab === "home"){
+        if (tab === APP_TAB_KEY.HOME){
           subEl.textContent = "Quick Start";
-        } else if (tab === "library"){
+        } else if (tab === APP_TAB_KEY.LIBRARY){
           subEl.textContent = "Preset";
-        } else if (tab === "inbox"){
+        } else if (tab === APP_TAB_KEY.INBOX){
           subEl.textContent = "Notifications";
-        } else if (tab === "insights"){
+        } else if (tab === APP_TAB_KEY.INSIGHT){
           subEl.textContent = "Analytics";
-        } else if (tab === "chat"){
+        } else if (tab === APP_TAB_KEY.CHAT){
           subEl.textContent = "VQ AI mini-1";
         } else if (tab === "settings"){
           subEl.textContent = "Control";
@@ -16935,6 +17804,124 @@ function _openSearchResultByIndex(i){
         if (el.appInboxListPane) el.appInboxListPane.classList.remove("hidden");
         if (el.appInboxDetailPane) el.appInboxDetailPane.classList.add("hidden");
         if (el.appInboxDetailContent) el.appInboxDetailContent.replaceChildren();
+        if (el.appInboxDetailTitle) el.appInboxDetailTitle.textContent = "";
+        if (el.appInboxDetailMeta) el.appInboxDetailMeta.textContent = "";
+      }
+
+      function _appInboxRelativeTime(ts){
+        const n = Number(ts) || 0;
+        if (!n) return "—";
+        const diff = Date.now() - n;
+        const abs = Math.abs(diff);
+        const suffix = diff >= 0 ? "前" : "後";
+        if (abs < 60000) return diff >= 0 ? "たった今" : "まもなく";
+        const min = Math.floor(abs / 60000);
+        if (min < 60) return `${min}分${suffix}`;
+        const hour = Math.floor(abs / 3600000);
+        if (hour < 24) return `${hour}時間${suffix}`;
+        const day = Math.floor(abs / 86400000);
+        if (day < 30) return `${day}日${suffix}`;
+        const month = Math.floor(day / 30);
+        if (month < 12) return `${month}か月${suffix}`;
+        const year = Math.floor(day / 365);
+        return `${year}年${suffix}`;
+      }
+
+      function _appInboxCreateRow(id){
+        const row = document.createElement("article");
+        row.className = "app-inbox-item app-chat-msg is-ai";
+        row.dataset.id = String(id || "");
+
+        const avatar = document.createElement("div");
+        avatar.className = "app-inbox-avatar";
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.textContent = "VQ";
+
+        const body = document.createElement("div");
+        body.className = "app-inbox-body";
+
+        const bubble = document.createElement("div");
+        bubble.className = "app-chat-bubble app-inbox-bubble";
+
+        const unreadDot = document.createElement("span");
+        unreadDot.className = "app-inbox-unread-dot";
+        unreadDot.setAttribute("aria-hidden", "true");
+
+        const bubbleHead = document.createElement("div");
+        bubbleHead.className = "app-inbox-bubble-head";
+        const title = document.createElement("h3");
+        title.className = "app-inbox-title";
+        const category = document.createElement("span");
+        category.className = "app-inbox-category";
+        bubbleHead.appendChild(title);
+        bubbleHead.appendChild(category);
+
+        const preview = document.createElement("p");
+        preview.className = "app-inbox-preview";
+
+        const bubbleMeta = document.createElement("div");
+        bubbleMeta.className = "app-inbox-bubble-meta";
+        const time = document.createElement("span");
+        time.className = "app-inbox-time";
+        bubbleMeta.appendChild(time);
+
+        bubble.appendChild(unreadDot);
+        bubble.appendChild(bubbleHead);
+        bubble.appendChild(preview);
+        bubble.appendChild(bubbleMeta);
+
+        const actionRow = document.createElement("div");
+        actionRow.className = "app-inbox-action-row";
+        const readState = document.createElement("span");
+        readState.className = "app-inbox-read-state";
+        const detail = document.createElement("button");
+        detail.type = "button";
+        detail.className = "textbtn app-inbox-action-btn";
+        detail.textContent = "詳細を見る";
+        detail.dataset.inboxAction = "openDetail";
+        detail.dataset.id = String(id || "");
+        actionRow.appendChild(readState);
+        actionRow.appendChild(detail);
+
+        body.appendChild(bubble);
+        body.appendChild(actionRow);
+        row.appendChild(avatar);
+        row.appendChild(body);
+
+        row._appInboxRefs = { title, category, preview, time, readState, detail };
+        return row;
+      }
+
+      function _appInboxPatchRow(row, item, unread){
+        if (!row || !item) return;
+        const refs = row._appInboxRefs || {};
+        const id = String(item.id || "");
+        const title = item.title || "(untitled)";
+        const preview = _notifyPreviewText(item.body || "");
+        const category = item.category || "Update";
+        const priority = String(item.priority || "normal");
+        const ts = Number(item.ts) || 0;
+        const absoluteTime = ts ? formatDateTime(ts) : "—";
+        const relativeTime = ts ? _appInboxRelativeTime(ts) : "—";
+
+        row.classList.toggle("unread", !!unread);
+        row.classList.toggle("priority-high", priority === "high");
+        row.dataset.id = id;
+
+        if (refs.title && refs.title.textContent !== title) refs.title.textContent = title;
+        if (refs.preview && refs.preview.textContent !== preview) refs.preview.textContent = preview;
+        if (refs.category && refs.category.textContent !== category) refs.category.textContent = category;
+        if (refs.time){
+          refs.time.textContent = relativeTime;
+          refs.time.title = absoluteTime;
+        }
+        if (refs.readState){
+          refs.readState.textContent = unread ? "未読" : "既読";
+          refs.readState.title = absoluteTime;
+        }
+        if (refs.detail){
+          refs.detail.dataset.id = id;
+        }
       }
 
       function _appInboxOpenDetail(id){
@@ -16950,14 +17937,27 @@ function _openSearchResultByIndex(i){
         _appInboxDetailId = String(id || "");
         if (el.appInboxDetailTitle) el.appInboxDetailTitle.textContent = item.title || "(untitled)";
         if (el.appInboxDetailMeta){
-          el.appInboxDetailMeta.innerHTML = `<span>${escapeHtml(item.category || "Update")}</span><span>${escapeHtml(item.priority || "normal")}</span><span>${escapeHtml(item.ts ? formatDateTime(item.ts) : "—")}</span>`;
+          const category = escapeHtml(item.category || "Update");
+          const priorityRaw = String(item.priority || "normal");
+          const priority = escapeHtml(priorityRaw);
+          const absolute = escapeHtml(item.ts ? formatDateTime(item.ts) : "—");
+          const relative = escapeHtml(item.ts ? _appInboxRelativeTime(item.ts) : "—");
+          const highClass = priorityRaw === "high" ? " is-high" : "";
+          el.appInboxDetailMeta.innerHTML =
+            `<span class="app-inbox-detail-chip">${category}</span>` +
+            `<span class="app-inbox-detail-chip${highClass}">${priority}</span>` +
+            `<span class="app-inbox-detail-chip">${relative}</span>` +
+            `<span class="app-inbox-detail-chip">${absolute}</span>`;
         }
         if (el.appInboxDetailContent){
           el.appInboxDetailContent.replaceChildren();
           el.appInboxDetailContent.appendChild(_notifyRenderDetailContent(item.body || ""));
         }
         if (el.appInboxListPane) el.appInboxListPane.classList.add("hidden");
-        if (el.appInboxDetailPane) el.appInboxDetailPane.classList.remove("hidden");
+        if (el.appInboxDetailPane){
+          el.appInboxDetailPane.classList.remove("hidden");
+          el.appInboxDetailPane.scrollTop = 0;
+        }
       }
 
       function _appSyncInboxAdminButton(){
@@ -16968,44 +17968,37 @@ function _openSearchResultByIndex(i){
       function _appRenderInbox(){
         if (!el.appInboxList || !el.appInboxEmpty) return;
         _appSyncInboxAdminButton();
-        _appInboxBackToList();
         const seenAt = _notifSeenAt();
         const list = loadNotifications().sort((a,b)=>(b.ts||0)-(a.ts||0));
-        el.appInboxList.replaceChildren();
+        const keepIds = new Set();
         if (!list.length){
           el.appInboxEmpty.textContent = "通知はありません。";
           el.appInboxEmpty.classList.remove("hidden");
+          for (const [id, row] of _appInboxRowById.entries()){
+            if (row && row.parentNode) row.parentNode.removeChild(row);
+            _appInboxRowById.delete(id);
+          }
           return;
         }
         el.appInboxEmpty.classList.add("hidden");
         const frag = document.createDocumentFragment();
         for (const n of list){
+          const id = String(n?.id || "").trim();
+          if (!id) continue;
           const unread = (Number(n.ts) || 0) > seenAt;
-          const row = document.createElement("article");
-          row.className = "app-inbox-item" + (unread ? " unread" : "");
-          const t = document.createElement("h3");
-          t.className = "app-inbox-title";
-          t.textContent = n.title || "(untitled)";
-          const p = document.createElement("p");
-          p.className = "app-inbox-preview";
-          p.textContent = _notifyPreviewText(n.body || "");
-          const m = document.createElement("div");
-          m.className = "app-inbox-meta";
-          m.textContent = `${n.category || "Update"} / ${n.priority || "normal"} / ${n.ts ? formatDateTime(n.ts) : "—"}`;
-          const actions = document.createElement("div");
-          actions.className = "app-preset-actions";
-          const detail = document.createElement("button");
-          detail.type = "button";
-          detail.className = "textbtn";
-          detail.textContent = "詳細を見る";
-          detail.dataset.inboxAction = "openDetail";
-          detail.dataset.id = String(n.id || "");
-          actions.appendChild(detail);
-          row.appendChild(t);
-          row.appendChild(p);
-          row.appendChild(m);
-          row.appendChild(actions);
+          let row = _appInboxRowById.get(id);
+          if (!row || !row.isConnected){
+            row = _appInboxCreateRow(id);
+            _appInboxRowById.set(id, row);
+          }
+          _appInboxPatchRow(row, n, unread);
+          keepIds.add(id);
           frag.appendChild(row);
+        }
+        for (const [id, row] of _appInboxRowById.entries()){
+          if (keepIds.has(id)) continue;
+          if (row && row.parentNode) row.parentNode.removeChild(row);
+          _appInboxRowById.delete(id);
         }
         el.appInboxList.appendChild(frag);
       }
@@ -20235,7 +21228,7 @@ function _openSearchResultByIndex(i){
           return;
         }
         if (type === "openInsights"){
-          _appSetTab("insights");
+          _appSetTab(APP_TAB_KEY.INSIGHT);
           return;
         }
         if (type === "openInbox"){
@@ -20314,7 +21307,7 @@ function _openSearchResultByIndex(i){
 
       function _appRenderCurrentTab(){
         if (state.view !== "TITLE") return;
-        const tab = APP_TAB_LIST.includes(_appCurrentTab) ? _appCurrentTab : "home";
+        const tab = APP_TAB_LIST.includes(_appCurrentTab) ? _appCurrentTab : APP_TAB_KEY.HOME;
         document.body.dataset.appTab = tab;
         const btns = document.querySelectorAll(".app-tab-btn[data-app-tab]");
         btns.forEach((b) => {
@@ -20323,11 +21316,11 @@ function _openSearchResultByIndex(i){
           b.setAttribute("aria-selected", String(on));
         });
         _appSetTopTitleByTab(tab);
-        if (tab === "home") _appRenderHomeOverview();
-        if (tab === "library") _appRenderLibrary();
-        if (tab === "inbox") _appRenderInbox();
-        if (tab === "insights") _appRenderInsightsCards();
-        if (tab === "chat"){
+        if (tab === APP_TAB_KEY.HOME) _appRenderHomeOverview();
+        if (tab === APP_TAB_KEY.LIBRARY) _appRenderLibrary();
+        if (tab === APP_TAB_KEY.INBOX) _appRenderInbox();
+        if (tab === APP_TAB_KEY.INSIGHT) _appRenderInsightsCards();
+        if (tab === APP_TAB_KEY.CHAT){
           _chatState.followBottom = true;
           _appRenderChat({ forceScroll: true });
           _chatStartPinLatest();
@@ -20352,25 +21345,27 @@ function _openSearchResultByIndex(i){
           });
           return;
         }
-        const t = APP_TAB_LIST.includes(raw) ? raw : "home";
+        const t = _appNormalizeTabKey(raw);
         _appCurrentTab = t;
         if (state.view !== "TITLE"){
           goTitle();
         }
         _runIdle(() => {
           _appRenderCurrentTab();
-          if (t === "chat"){
+          if (t === APP_TAB_KEY.CHAT){
             _chatState.followBottom = true;
             setTimeout(_chatForceLatestPosition, 24);
             setTimeout(_chatForceLatestPosition, 280);
             setTimeout(_chatForceLatestPosition, 760);
           }
-          if (t === "inbox"){
+          if (t === APP_TAB_KEY.INBOX){
+            _appInboxBackToList();
             const list = loadNotifications();
             _notifMarkSeenByList(list);
             updateNotifyDot();
+            _appRenderInbox();
             _refreshNotificationsFromFirestore().then(() => {
-              if (_appCurrentTab === "inbox") _appRenderInbox();
+              if (_appCurrentTab === APP_TAB_KEY.INBOX) _appRenderInbox();
             }).catch(() => {});
           }
         });
@@ -20727,6 +21722,12 @@ function _openSearchResultByIndex(i){
           if (!picker){
             _chatSetModeMenuOpen(false);
           }
+        }
+        const brandTitle = e.target.closest(".brand-title");
+        if (brandTitle && brandTitle.closest(".topbar")){
+          e.preventDefault();
+          _appSetTab("home");
+          return;
         }
         const appTabBtn = e.target.closest("[data-app-tab]");
         if (appTabBtn && appTabBtn.closest("#appTabBar")){
@@ -21221,6 +22222,20 @@ function _openSearchResultByIndex(i){
         // If modal is open, let it handle keys (avoid accidental dropdown closes)
         if (uiModal.root && uiModal.root.classList.contains("is-open")) return;
 
+        // scan generator open: Esc only
+        if (scanGenOverlay && !scanGenOverlay.classList.contains("hidden") && scanGenOverlay.classList.contains("is-open")){
+          if (e.key === "Escape"){
+            e.preventDefault();
+            _scanClosePanel();
+            return;
+          }
+          const aeScan = document.activeElement;
+          if (aeScan && scanGenOverlay.contains(aeScan)){
+            return;
+          }
+          return;
+        }
+
         // settings open: only Esc
         if (el.settingsOverlay && !el.settingsOverlay.classList.contains("hidden")){
           const aeSettings = document.activeElement;
@@ -21361,6 +22376,29 @@ function _openSearchResultByIndex(i){
       const presetShareImportBtn = document.getElementById("presetShareImportBtn");
       const presetImportBtn = document.getElementById("presetImportBtn");
       const presetImportFile = document.getElementById("presetImportFile");
+      const presetScanBtn = document.getElementById("presetScanBtn");
+
+      const scanGenOverlay = document.getElementById("scanGenOverlay");
+      const scanMainImageInput = document.getElementById("scanMainImageInput");
+      const scanRefImageInput = document.getElementById("scanRefImageInput");
+      const scanMainThumbList = document.getElementById("scanMainThumbList");
+      const scanImageMeta = document.getElementById("scanImageMeta");
+      const scanRefThumbList = document.getElementById("scanRefThumbList");
+      const scanRefBlock = document.getElementById("scanRefBlock");
+      const scanPromptInput = document.getElementById("scanPromptInput");
+      const scanCountInput = document.getElementById("scanCountInput");
+      const scanMarkerInput = document.getElementById("scanMarkerInput");
+      const scanExtractCharsSelect = document.getElementById("scanExtractCharsSelect");
+      const scanDifficultySelect = document.getElementById("scanDifficultySelect");
+      const scanStepList = document.getElementById("scanStepList");
+      const scanStatus = document.getElementById("scanStatus");
+      const scanDebugDetails = document.getElementById("scanDebugDetails");
+      const scanDebugPre = document.getElementById("scanDebugPre");
+      const scanRetryBtn = document.getElementById("scanRetryBtn");
+      const scanResultCard = document.getElementById("scanResultCard");
+      const scanResultMeta = document.getElementById("scanResultMeta");
+      const scanReconstructedView = document.getElementById("scanReconstructedView");
+      const scanQuestionList = document.getElementById("scanQuestionList");
 
       const presetNameInput = document.getElementById("presetNameInput");
       const presetSubjectSelect = document.getElementById("presetSubjectSelect");
@@ -23931,7 +24969,1122 @@ function _openSearchResultByIndex(i){
 
       let editingPresetId = null;
       let editingPresetTagIds = [];
-      _applyPresetEditorSubjectUI("sub:english");
+      const scanState = {
+        type: "single",
+        mainFile: null,
+        refFile: null,
+        mainSourceFile: null,
+        refSourceFile: null,
+        mainMeta: null,
+        refMeta: null,
+        mainUrl: "",
+        refUrl: "",
+        running: false,
+        abortCtl: null,
+        progressIndex: -1,
+        progressTimer: null,
+        statusKind: "",
+        statusText: "",
+        imageMetaText: "",
+        autoRetryCount: 0,
+        debug: null,
+        result: null
+      };
+      const SCAN_UPLOAD_MAX_BYTES = 700 * 1024;
+      const SCAN_COMPRESS_DIMS = Object.freeze([1280, 1024, 896]);
+      const SCAN_COMPRESS_QUALITIES = Object.freeze([0.72, 0.62, 0.52, 0.42, 0.35]);
+      const SCAN_FETCH_TIMEOUT_MS = 30000;
+      const SCAN_AUTO_RETRY_LIMIT = 2;
+
+      function _scanRevokeUrl(kind){
+        if (kind === "main"){
+          if (scanState.mainUrl){ try{ URL.revokeObjectURL(scanState.mainUrl); }catch{} }
+          scanState.mainUrl = "";
+          return;
+        }
+        if (kind === "ref"){
+          if (scanState.refUrl){ try{ URL.revokeObjectURL(scanState.refUrl); }catch{} }
+          scanState.refUrl = "";
+        }
+      }
+
+      function _scanSetStatus(msg, kind = ""){
+        scanState.statusText = String(msg || "");
+        scanState.statusKind = String(kind || "");
+        if (!scanStatus) return;
+        scanStatus.textContent = scanState.statusText;
+        scanStatus.classList.remove("ok", "error");
+        if (scanState.statusKind === "ok") scanStatus.classList.add("ok");
+        if (scanState.statusKind === "error") scanStatus.classList.add("error");
+      }
+
+      function _scanSetImageMeta(text){
+        scanState.imageMetaText = String(text || "");
+        if (scanImageMeta) scanImageMeta.textContent = scanState.imageMetaText;
+      }
+
+      function _scanSetDebug(data){
+        scanState.debug = data && typeof data === "object" ? data : null;
+        if (!scanDebugDetails || !scanDebugPre) return;
+        if (!scanState.debug){
+          scanDebugDetails.classList.add("hidden");
+          scanDebugPre.textContent = "";
+          scanDebugDetails.open = false;
+          return;
+        }
+        scanDebugPre.textContent = JSON.stringify(scanState.debug, null, 2);
+        scanDebugDetails.classList.remove("hidden");
+      }
+
+      function _scanIsSupportedMime(mimeRaw){
+        const mime = String(mimeRaw || "").toLowerCase();
+        if (!mime) return false;
+        return mime === "image/jpeg" || mime === "image/jpg" || mime === "image/png" || mime === "image/webp";
+      }
+
+      function _scanLooksLikeHeic(file){
+        const mime = String(file?.type || "").toLowerCase();
+        const name = String(file?.name || "").toLowerCase();
+        return mime.includes("heic") || mime.includes("heif") || /\.(heic|heif)$/i.test(name);
+      }
+
+      function _scanSetProgress(idx){
+        scanState.progressIndex = Number(idx);
+        if (!scanStepList) return;
+        const rows = scanStepList.querySelectorAll(".scan-step");
+        rows.forEach((row) => {
+          const i = Number(row.getAttribute("data-step-index") || -1);
+          row.classList.remove("is-active", "is-done");
+          if (i < scanState.progressIndex) row.classList.add("is-done");
+          else if (i === scanState.progressIndex) row.classList.add("is-active");
+        });
+      }
+
+      function _scanStartProgressTicker(){
+        _scanStopProgressTicker();
+        _scanSetProgress(0);
+        scanState.progressTimer = setInterval(() => {
+          if (!scanState.running) return;
+          if (scanState.progressIndex >= 5) return;
+          _scanSetProgress(scanState.progressIndex + 1);
+        }, 1100);
+      }
+
+      function _scanStopProgressTicker(){
+        if (scanState.progressTimer){
+          clearInterval(scanState.progressTimer);
+          scanState.progressTimer = null;
+        }
+      }
+
+      function _scanExtByMime(mime){
+        const m = String(mime || "").toLowerCase();
+        if (m.includes("png")) return "png";
+        if (m.includes("webp")) return "webp";
+        return "jpg";
+      }
+
+      function _scanBlobToFile(blob, baseName = "scan"){
+        const ext = _scanExtByMime(blob?.type || "image/jpeg");
+        const safeBase = String(baseName || "scan").replace(/\.[A-Za-z0-9]+$/, "");
+        return new File([blob], `${safeBase}.${ext}`, { type: blob?.type || "image/jpeg", lastModified: Date.now() });
+      }
+
+      function _scanToBlob(canvas, mime, quality){
+        return new Promise((resolve) => {
+          try {
+            canvas.toBlob((b) => resolve(b || null), mime, quality);
+          } catch {
+            resolve(null);
+          }
+        });
+      }
+
+      async function _scanDecodeImage(file){
+        if (typeof createImageBitmap === "function"){
+          try {
+            const bmp = await createImageBitmap(file);
+            return { width: bmp.width, height: bmp.height, draw: (ctx, w, h) => ctx.drawImage(bmp, 0, 0, w, h), close: () => { try { bmp.close(); } catch {} } };
+          } catch {}
+        }
+        const url = URL.createObjectURL(file);
+        try {
+          const img = await new Promise((resolve, reject) => {
+            const el = new Image();
+            el.onload = () => resolve(el);
+            el.onerror = reject;
+            el.src = url;
+          });
+          return { width: img.naturalWidth || img.width, height: img.naturalHeight || img.height, draw: (ctx, w, h) => ctx.drawImage(img, 0, 0, w, h), close: () => {} };
+        } finally {
+          try { URL.revokeObjectURL(url); } catch {}
+        }
+      }
+
+      async function _scanNormalizeImageFile(file, profile = null){
+        if (!file || !/^image\//i.test(String(file.type || ""))) {
+          return {
+            file,
+            mime: String(file?.type || ""),
+            sourceWidth: 0,
+            sourceHeight: 0,
+            outputWidth: 0,
+            outputHeight: 0,
+            inputBytes: Number(file?.size || 0),
+            outputBytes: Number(file?.size || 0),
+            converted: false
+          };
+        }
+        if (_scanLooksLikeHeic(file)) {
+          return {
+            file: null,
+            mime: String(file?.type || ""),
+            sourceWidth: 0,
+            sourceHeight: 0,
+            outputWidth: 0,
+            outputHeight: 0,
+            inputBytes: Number(file?.size || 0),
+            outputBytes: 0,
+            converted: false,
+            error: "UNSUPPORTED_IMAGE_HEIC",
+            errorMessage: "HEIC/HEIF は未対応です。JPEG/PNG/WebPに変換して再試行してください。"
+          };
+        }
+        const dimCandidates = Array.isArray(profile?.dims) && profile.dims.length
+          ? Array.from(new Set(profile.dims.map((v) => Math.trunc(Number(v || 0))).filter((v) => v >= 320))).sort((a, b) => b - a)
+          : [...SCAN_COMPRESS_DIMS];
+        const qualityCandidates = Array.isArray(profile?.qualities) && profile.qualities.length
+          ? Array.from(new Set(profile.qualities.map((v) => Number(v || 0)).filter((v) => v > 0 && v <= 1))).sort((a, b) => b - a)
+          : [...SCAN_COMPRESS_QUALITIES];
+        if (!dimCandidates.length) dimCandidates.push(1280);
+        if (!qualityCandidates.length) qualityCandidates.push(0.72, 0.52, 0.35);
+        const targetMaxBytes = Math.max(120 * 1024, Number(profile?.targetMaxBytes || SCAN_UPLOAD_MAX_BYTES));
+        let decoder = null;
+        try {
+          decoder = await _scanDecodeImage(file);
+          const srcW = Math.max(1, Number(decoder.width || 1));
+          const srcH = Math.max(1, Number(decoder.height || 1));
+          const build = async (maxDim) => {
+            const scale = Math.min(1, maxDim / Math.max(srcW, srcH));
+            const w = Math.max(1, Math.round(srcW * scale));
+            const h = Math.max(1, Math.round(srcH * scale));
+            const canvas = document.createElement("canvas");
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d", { alpha: false });
+            if (!ctx) return null;
+            decoder.draw(ctx, w, h);
+            let best = null;
+            for (const quality of qualityCandidates) {
+              const q = Math.max(0.35, Math.min(0.95, Number(quality || 0.72)));
+              const blob = await _scanToBlob(canvas, "image/jpeg", q);
+              if (!blob) continue;
+              if (!best || Number(blob.size || 0) < Number(best.blob?.size || Infinity)) {
+                best = { blob, w, h, quality: q, maxDim };
+              }
+              if (blob.size <= targetMaxBytes) {
+                return { blob, w, h, quality: q, maxDim, overLimit: false };
+              }
+            }
+            if (best) {
+              return { ...best, overLimit: Number(best.blob?.size || 0) > targetMaxBytes };
+            }
+            return null;
+          };
+          let out = null;
+          let best = null;
+          for (const maxDim of dimCandidates) {
+            const current = await build(maxDim);
+            if (!current?.blob) continue;
+            if (!best || Number(current.blob.size || 0) < Number(best.blob?.size || Infinity)) {
+              best = current;
+            }
+            if (!current.overLimit) {
+              out = current;
+              break;
+            }
+          }
+          if (!out && best) {
+            out = best;
+          }
+          if (!out?.blob) {
+            return {
+              file,
+              mime: String(file.type || ""),
+              sourceWidth: srcW,
+              sourceHeight: srcH,
+              outputWidth: srcW,
+              outputHeight: srcH,
+              inputBytes: Number(file.size || 0),
+              outputBytes: Number(file.size || 0),
+              converted: false
+            };
+          }
+          const convertedFile = _scanBlobToFile(out.blob, file.name || "scan");
+          return {
+            file: convertedFile,
+            mime: String(convertedFile?.type || file?.type || "image/jpeg"),
+            sourceWidth: srcW,
+            sourceHeight: srcH,
+            outputWidth: out.w || srcW,
+            outputHeight: out.h || srcH,
+            inputBytes: Number(file.size || 0),
+            outputBytes: Number(convertedFile.size || 0),
+            converted: true,
+            outputQuality: Number(out.quality || 0),
+            targetMaxBytes,
+            maxDimUsed: Number(out.maxDim || 0),
+            overLimit: Number(convertedFile.size || 0) > targetMaxBytes
+          };
+        } catch {
+          return {
+            file,
+            mime: String(file.type || ""),
+            sourceWidth: 0,
+            sourceHeight: 0,
+            outputWidth: 0,
+            outputHeight: 0,
+            inputBytes: Number(file.size || 0),
+            outputBytes: Number(file.size || 0),
+            converted: false
+          };
+        } finally {
+          try { decoder?.close?.(); } catch {}
+        }
+      }
+
+      function _scanFileToDataUrl(file){
+        return new Promise((resolve, reject) => {
+          if (!file) {
+            reject(new Error("IMAGE_REQUIRED"));
+            return;
+          }
+          const reader = new FileReader();
+          reader.onerror = () => reject(new Error("READ_AS_DATAURL_FAILED"));
+          reader.onload = () => resolve(String(reader.result || ""));
+          try {
+            reader.readAsDataURL(file);
+          } catch (err) {
+            reject(err);
+          }
+        });
+      }
+
+      function _scanRenderThumb(targetEl, file, kind){
+        if (!targetEl) return;
+        targetEl.replaceChildren();
+        if (!file) return;
+        const wrap = document.createElement("div");
+        wrap.className = "scan-thumb";
+        const img = document.createElement("img");
+        const url = URL.createObjectURL(file);
+        if (kind === "main"){
+          _scanRevokeUrl("main");
+          scanState.mainUrl = url;
+        } else {
+          _scanRevokeUrl("ref");
+          scanState.refUrl = url;
+        }
+        img.src = url;
+        img.alt = kind === "main" ? "本文画像" : "参考画像";
+        const rm = document.createElement("button");
+        rm.type = "button";
+        rm.textContent = "✕";
+        rm.setAttribute("data-scan-action", kind === "main" ? "removeMainImage" : "removeRefImage");
+        wrap.appendChild(img);
+        wrap.appendChild(rm);
+        targetEl.appendChild(wrap);
+      }
+
+      function _scanUpdateTypeUI(){
+        const showRef = scanState.type === "double";
+        if (scanRefBlock) scanRefBlock.classList.toggle("hidden", !showRef);
+      }
+
+      function _scanCollectFormats(){
+        if (!scanGenOverlay) return [];
+        const out = [];
+        scanGenOverlay.querySelectorAll("input[data-scan-format]").forEach((elx) => {
+          if (!elx.checked) return;
+          const v = String(elx.getAttribute("data-scan-format") || "").trim();
+          if (!v) return;
+          out.push(v);
+        });
+        return Array.from(new Set(out));
+      }
+
+      function _scanCollectSettings(){
+        return {
+          count: Math.trunc(clamp(Number(scanCountInput?.value || 24), 12, 60)),
+          markerCount: Math.trunc(clamp(Number(scanMarkerInput?.value || 4), 1, 60)),
+          extractChars: Math.trunc(clamp(Number(scanExtractCharsSelect?.value || 15), 5, 80)),
+          difficulty: String(scanDifficultySelect?.value || "normal")
+        };
+      }
+
+      function _scanResetResultView(){
+        scanState.result = null;
+        if (scanResultCard) scanResultCard.classList.add("hidden");
+        if (scanResultMeta) scanResultMeta.textContent = "";
+        if (scanReconstructedView) scanReconstructedView.textContent = "";
+        if (scanQuestionList) scanQuestionList.textContent = "";
+        _scanSetDebug(null);
+      }
+
+      function _scanSetRunning(on){
+        scanState.running = !!on;
+        if (scanRetryBtn) scanRetryBtn.classList.toggle("hidden", scanState.running || !scanState.statusText || scanState.statusKind !== "error");
+      }
+
+      function _scanSanitizeGeneratedHtml(raw){
+        const src = String(raw || "");
+        if (!src) return "";
+        const template = document.createElement("template");
+        template.innerHTML = src;
+        const allowTags = new Set(["H1", "H3", "P", "DIV", "SPAN", "STRONG", "BR"]);
+        const allowClasses = new Set(["author", "m", "u", "box", "badge", "blank"]);
+        const walk = (node) => {
+          if (!node) return;
+          const children = Array.from(node.childNodes || []);
+          for (const child of children){
+            if (child.nodeType === Node.ELEMENT_NODE){
+              const tag = child.tagName;
+              if (!allowTags.has(tag)){
+                const txt = document.createTextNode(child.textContent || "");
+                child.replaceWith(txt);
+                continue;
+              }
+              const attrs = Array.from(child.attributes || []);
+              for (const at of attrs){
+                const nm = String(at.name || "").toLowerCase();
+                if (nm === "class"){
+                  const cls = String(at.value || "")
+                    .split(/\s+/)
+                    .filter((c) => allowClasses.has(c))
+                    .join(" ");
+                  if (cls) child.setAttribute("class", cls);
+                  else child.removeAttribute("class");
+                  continue;
+                }
+                if (nm === "data-qid" || nm === "data-p") continue;
+                child.removeAttribute(at.name);
+              }
+              walk(child);
+            } else if (child.nodeType === Node.COMMENT_NODE){
+              child.remove();
+            }
+          }
+        };
+        walk(template.content);
+        return template.innerHTML;
+      }
+
+      function _scanRenderQuestionsPreview(questions){
+        if (!scanQuestionList) return;
+        scanQuestionList.replaceChildren();
+        const list = Array.isArray(questions) ? questions : [];
+        if (!list.length){
+          const empty = document.createElement("div");
+          empty.className = "scan-question-item";
+          empty.textContent = "問題がありません。";
+          scanQuestionList.appendChild(empty);
+          return;
+        }
+        const top = list.slice(0, 10);
+        for (const q of top){
+          const row = document.createElement("article");
+          row.className = "scan-question-item";
+          const type = document.createElement("div");
+          type.className = "scan-question-type";
+          type.textContent = `No.${Number(q.no || 0)} / ${String(q.type || "")} / ${String(q.qid || "")}`;
+          const qq = document.createElement("div");
+          qq.className = "scan-question-q";
+          qq.textContent = String(q.q || "");
+          const aa = document.createElement("div");
+          aa.className = "scan-question-a";
+          const ans = Array.isArray(q.a) ? q.a.join(" / ") : String(q.a || "");
+          aa.textContent = `答え: ${ans}`;
+          row.appendChild(type);
+          row.appendChild(qq);
+          aa && row.appendChild(aa);
+          if (Array.isArray(q.choices) && q.choices.length){
+            const cc = document.createElement("div");
+            cc.className = "scan-question-a";
+            cc.textContent = `選択肢: ${q.choices.join(" | ")}`;
+            row.appendChild(cc);
+          }
+          scanQuestionList.appendChild(row);
+        }
+        if (list.length > 10){
+          const rest = document.createElement("details");
+          rest.className = "scan-question-rest";
+          const sum = document.createElement("summary");
+          sum.textContent = `残り ${list.length - 10} 問`;
+          rest.appendChild(sum);
+          const pre = document.createElement("pre");
+          pre.style.whiteSpace = "pre-wrap";
+          pre.style.margin = "8px 0 0";
+          pre.style.fontSize = "11px";
+          pre.style.lineHeight = "1.5";
+          pre.textContent = JSON.stringify(list.slice(10), null, 2);
+          rest.appendChild(pre);
+          scanQuestionList.appendChild(rest);
+        }
+      }
+
+      function _scanRenderResult(payload){
+        const result = payload && typeof payload === "object" ? payload : null;
+        scanState.result = result;
+        if (!result){
+          _scanResetResultView();
+          return;
+        }
+        if (scanResultCard) scanResultCard.classList.remove("hidden");
+        const meta = result.meta || {};
+        if (scanResultMeta){
+          const tags = [];
+          tags.push(`タイトル: ${meta.title || "（不明）"}`);
+          tags.push(`作者: ${meta.author || "（不明）"}`);
+          tags.push(`言語: ${meta.lang || "（不明）"}`);
+          tags.push(`科目推定: ${meta.subjectGuess || "（不明）"}`);
+          scanResultMeta.textContent = tags.join(" / ");
+        }
+        if (scanReconstructedView){
+          const html = _scanSanitizeGeneratedHtml(result.reconstructed?.html || "");
+          if (html) {
+            scanReconstructedView.innerHTML = html;
+          } else if (result.partial && result.ocrText) {
+            const pre = document.createElement("pre");
+            pre.style.whiteSpace = "pre-wrap";
+            pre.style.margin = "0";
+            pre.style.fontSize = "12px";
+            pre.style.lineHeight = "1.55";
+            pre.textContent = String(result.ocrText || "");
+            scanReconstructedView.replaceChildren(pre);
+          } else {
+            scanReconstructedView.innerHTML = "<div class='scan-sub'>本文がありません。</div>";
+          }
+        }
+        _scanRenderQuestionsPreview(result.questions || []);
+        _scanSetDebug(result.debug || null);
+      }
+
+      function _scanPresetFromResult(result){
+        const srcPreset = result && result.preset && typeof result.preset === "object" ? result.preset : {};
+        const srcWords = Array.isArray(srcPreset.words) ? srcPreset.words : [];
+        const words = [];
+        for (const row of srcWords){
+          const id = Number(row?.id || words.length + 1);
+          const word = String(row?.word || "").trim();
+          const meaning = String(row?.meaning || "").trim();
+          if (!word || !meaning) continue;
+          const item = normalizeWordEntry({ id, word, meaning });
+          if (!item) continue;
+          if (row && row.mcq && Array.isArray(row.mcq.choices) && row.mcq.choices.length >= 2){
+            const choices = row.mcq.choices.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4);
+            if (choices.length >= 2){
+              let correctIndex = Number(row.mcq.correctIndex || 0);
+              if (!Number.isFinite(correctIndex) || correctIndex < 0 || correctIndex >= choices.length){
+                correctIndex = Math.max(0, choices.findIndex((c) => c === meaning));
+              }
+              item.mcq = { choices, correctIndex };
+            }
+          }
+          words.push(item);
+        }
+        const nameBase = String(srcPreset.name || "プリント自動生成").trim() || "プリント自動生成";
+        const modesRaw = srcPreset.modes && typeof srcPreset.modes === "object" ? srcPreset.modes : {};
+        const preset = {
+          id: newId(),
+          name: nameBase,
+          builtin: false,
+          modes: {
+            SEQ: modesRaw.SEQ !== false,
+            RND: modesRaw.RND !== false,
+            HAND: modesRaw.HAND !== false,
+            CHOICE: modesRaw.CHOICE !== false
+          },
+          words,
+          subjectId: "sub:other",
+          tagIds: []
+        };
+        return _normalizePresetMeta(preset, { allowMissingCustomSubject: false, allowUnknownTagIds: false });
+      }
+
+      async function _scanAddPresetFromResult(){
+        if (!scanState.result){
+          _scanSetStatus("追加できる生成結果がありません。", "error");
+          return;
+        }
+        const preset = _scanPresetFromResult(scanState.result);
+        if (!Array.isArray(preset.words) || !preset.words.length){
+          _scanSetStatus("問題が0件のため追加できません。", "error");
+          return;
+        }
+        const list = loadPresets();
+        const existingNames = new Set(list.map((p) => String(p?.name || "")));
+        let name = String(preset.name || "プリント自動生成");
+        if (existingNames.has(name)){
+          let i = 2;
+          while (existingNames.has(`${name} (${i})`)) i += 1;
+          name = `${name} (${i})`;
+        }
+        preset.name = name;
+        list.unshift(preset);
+        savePresets(list);
+        refreshPresetList();
+        selectPresetForEdit(preset.id);
+        setActivePreset(preset.id);
+        _appRenderLibrary();
+        _scanSetStatus(`追加しました: ${preset.name}`, "ok");
+      }
+
+      function _scanApiBase(){
+        const b = (typeof _shareApiBase === "function") ? _shareApiBase() : "";
+        return String(b || "").replace(/\/+$/, "");
+      }
+
+      async function _scanBuildMultipartPayload(){
+        const prompt = String(scanPromptInput?.value || "").trim();
+        const formats = _scanCollectFormats();
+        const settings = _scanCollectSettings();
+        const params = {
+          prompt,
+          formats,
+          settings,
+          markerCount: settings.markerCount,
+          extractChars: settings.extractChars,
+          difficulty: settings.difficulty,
+          count: settings.count,
+          clientMeta: {
+            original: {
+              mime: String(scanState.mainSourceFile?.type || scanState.mainMeta?.mime || ""),
+              size: Number(scanState.mainSourceFile?.size || scanState.mainMeta?.inputBytes || 0),
+              dims: `${Number(scanState.mainMeta?.sourceWidth || 0)}x${Number(scanState.mainMeta?.sourceHeight || 0)}`
+            },
+            compressed: {
+              mime: String(scanState.mainMeta?.mime || scanState.mainFile?.type || ""),
+              size: Number(scanState.mainMeta?.outputBytes || scanState.mainFile?.size || 0),
+              dims: `${Number(scanState.mainMeta?.outputWidth || 0)}x${Number(scanState.mainMeta?.outputHeight || 0)}`,
+              quality: Number(scanState.mainMeta?.outputQuality || 0),
+              maxDimUsed: Number(scanState.mainMeta?.maxDimUsed || 0),
+              targetMaxBytes: Number(scanState.mainMeta?.targetMaxBytes || SCAN_UPLOAD_MAX_BYTES)
+            },
+            reference: scanState.refFile ? {
+              original: {
+                mime: String(scanState.refSourceFile?.type || scanState.refMeta?.mime || ""),
+                size: Number(scanState.refSourceFile?.size || scanState.refMeta?.inputBytes || 0),
+                dims: `${Number(scanState.refMeta?.sourceWidth || 0)}x${Number(scanState.refMeta?.sourceHeight || 0)}`
+              },
+              mime: String(scanState.refMeta?.mime || scanState.refFile?.type || ""),
+              size: Number(scanState.refMeta?.outputBytes || scanState.refFile?.size || 0),
+              dims: `${Number(scanState.refMeta?.outputWidth || 0)}x${Number(scanState.refMeta?.outputHeight || 0)}`,
+              quality: Number(scanState.refMeta?.outputQuality || 0),
+              maxDimUsed: Number(scanState.refMeta?.maxDimUsed || 0),
+              targetMaxBytes: Number(scanState.refMeta?.targetMaxBytes || SCAN_UPLOAD_MAX_BYTES)
+            } : null
+          }
+        };
+        const formData = new FormData();
+        if (scanState.mainFile) {
+          formData.append("image", scanState.mainFile, scanState.mainFile.name || "scan.jpg");
+        }
+        if (scanState.type === "double" && scanState.refFile) {
+          formData.append("refImage", scanState.refFile, scanState.refFile.name || "scan-ref.jpg");
+        }
+        formData.append("prompt", prompt);
+        formData.append("formats", formats.join(","));
+        formData.append("settings", JSON.stringify(settings));
+        formData.append("params", JSON.stringify(params));
+        formData.append("options", JSON.stringify(params));
+        const requestPayloadBytes = Number(scanState.mainFile?.size || 0)
+          + Number(scanState.refFile?.size || 0)
+          + new Blob([JSON.stringify(params)]).size;
+        return {
+          formData,
+          params,
+          settings,
+          formats,
+          prompt,
+          requestPayloadBytes
+        };
+      }
+
+      function _scanRetryProfile(attempt){
+        if (attempt <= 1) {
+          return {
+            dims: [1024, 896],
+            qualities: [0.52, 0.42, 0.35],
+            targetMaxBytes: 560 * 1024
+          };
+        }
+        return {
+          dims: [896],
+          qualities: [0.42, 0.35],
+          targetMaxBytes: 480 * 1024
+        };
+      }
+
+      async function _scanApplyRetryCompression(attempt){
+        const profile = _scanRetryProfile(attempt);
+        const mainBase = scanState.mainSourceFile || scanState.mainFile;
+        if (!mainBase) return false;
+        const nextMain = await _scanNormalizeImageFile(mainBase, profile);
+        if (!nextMain?.file || nextMain?.error) return false;
+        scanState.mainFile = nextMain.file;
+        scanState.mainMeta = nextMain;
+        _scanRenderThumb(scanMainThumbList, scanState.mainFile, "main");
+        if (scanState.type === "double" && (scanState.refSourceFile || scanState.refFile)) {
+          const refBase = scanState.refSourceFile || scanState.refFile;
+          const nextRef = await _scanNormalizeImageFile(refBase, profile);
+          if (nextRef?.file && !nextRef?.error) {
+            scanState.refFile = nextRef.file;
+            scanState.refMeta = nextRef;
+            _scanRenderThumb(scanRefThumbList, scanState.refFile, "ref");
+          }
+        }
+        _scanSetImageMeta(
+          `画像: ${Number(nextMain.sourceWidth || 0)}x${Number(nextMain.sourceHeight || 0)} -> ${Number(nextMain.outputWidth || 0)}x${Number(nextMain.outputHeight || 0)} / ${Math.round(Number(nextMain.inputBytes || 0) / 1024)}KB -> ${Math.round(Number(nextMain.outputBytes || 0) / 1024)}KB`
+        );
+        return true;
+      }
+
+      function _scanShouldRetryVisionError(data, attempt){
+        if (attempt >= SCAN_AUTO_RETRY_LIMIT) return false;
+        const stage = String(data?.stage || data?.debug?.failedStage || "").toLowerCase();
+        if (stage !== "vision_ocr" && stage !== "request_parse") return false;
+        const code = String(data?.code || "").toUpperCase();
+        return code === "SCAN_AI_INVALID_INPUT"
+          || code === "SCAN_AI_CONTEXT_LIMIT"
+          || code === "SCAN_VISION_INPUT_TOO_LARGE"
+          || code === "SCAN_VISION_TIMEOUT"
+          || code === "SCAN_VISION_TRY_TIMEOUT"
+          || code === "SCAN_AI_UPSTREAM_TIMEOUT"
+          || code === "SCAN_AI_RUN_FAILED"
+          || code === "IMAGE_TOO_LARGE"
+          || code === "PARTIAL_OCR_RETRY";
+      }
+
+      function _scanMessageForFailure(data, stage, detail){
+        const code = String(data?.code || "").toUpperCase();
+        if (code === "IMAGE_TOO_LARGE") return "画像が大きすぎます。自動で圧縮します。もう一度実行してください。";
+        if (code === "SCAN_TOO_LARGE_FOR_MODEL" || code === "SCAN_AI_CONTEXT_LIMIT" || code === "SCAN_VISION_INPUT_TOO_LARGE") {
+          return "本文量が多すぎます。ページを分割して再試行してください。";
+        }
+        if (code === "SCAN_AI_INVALID_INPUT") return "画像入力形式を処理できませんでした。JPEG/PNG/WebPで再試行してください。";
+        if (code === "SCAN_AI_RUN_FAILED" || code === "SCAN_AI_UPSTREAM_TIMEOUT" || code === "SCAN_VISION_TIMEOUT") {
+          return "サーバ混雑。数分後に再試行してください。";
+        }
+        const msg = String(data?.message || data?.detail || "生成に失敗しました。");
+        if (detail) return `${msg} / ${detail}`;
+        return stage ? `${stage}: ${msg}` : msg;
+      }
+
+      async function _scanGenerateRun(){
+        if (scanState.running) return;
+        const apiBase = _scanApiBase();
+        if (!apiBase){
+          _scanSetStatus("API接続先が未設定です。", "error");
+          return;
+        }
+        if (!scanState.mainFile){
+          _scanSetStatus("本文画像を選択してください。", "error");
+          return;
+        }
+        const prompt = String(scanPromptInput?.value || "").trim();
+        if (!prompt){
+          _scanSetStatus("生成指示（プロンプト）を入力してください。", "error");
+          return;
+        }
+        if (!_scanCollectFormats().length){
+          _scanSetStatus("問題形式を1つ以上選択してください。", "error");
+          return;
+        }
+        _scanResetResultView();
+        _scanSetRunning(true);
+        scanState.autoRetryCount = 0;
+        _scanSetStatus("生成を開始しました。", "");
+        _scanStartProgressTicker();
+        try{
+          let attempt = 0;
+          while (attempt <= SCAN_AUTO_RETRY_LIMIT) {
+            const payload = await _scanBuildMultipartPayload();
+            const ctl = new AbortController();
+            scanState.abortCtl = ctl;
+            let timeoutId = null;
+            let timedOut = false;
+            timeoutId = setTimeout(() => {
+              timedOut = true;
+              try { ctl.abort(); } catch {}
+            }, SCAN_FETCH_TIMEOUT_MS);
+            let res = null;
+            let data = null;
+            try {
+              res = await fetch(`${apiBase}/api/scan/generate`, {
+                method: "POST",
+                body: payload.formData,
+                signal: ctl.signal
+              });
+              const raw = await res.text().catch(() => "");
+              try { data = raw ? JSON.parse(raw) : null; } catch {}
+              if (!data) {
+                throw new Error(raw || `HTTP ${res.status}`);
+              }
+            } catch (err) {
+              if (timeoutId) clearTimeout(timeoutId);
+              scanState.abortCtl = null;
+              _scanStopProgressTicker();
+              _scanSetDebug({
+                failedStage: "client_fetch",
+                errorMessage: String(err?.message || err || ""),
+                timeout: timedOut,
+                client: {
+                  attempt: attempt + 1,
+                  payloadBytes: payload.requestPayloadBytes,
+                  original: payload?.params?.clientMeta?.original || null,
+                  compressed: payload?.params?.clientMeta?.compressed || null
+                },
+                status: "error"
+              });
+              if (err && err.name === "AbortError") {
+                _scanSetStatus(
+                  timedOut
+                    ? "生成がタイムアウトしました（30秒）。画像を小さくして再試行してください。"
+                    : "生成をキャンセルしました。",
+                  timedOut ? "error" : ""
+                );
+              } else {
+                _scanSetStatus(`生成に失敗しました: ${String(err?.message || err)}`, "error");
+              }
+              return;
+            } finally {
+              if (timeoutId) clearTimeout(timeoutId);
+            }
+            if (res.ok && data && data.ok === true) {
+              _scanStopProgressTicker();
+              if (data?.partial) {
+                _scanSetProgress(2);
+              } else {
+                _scanSetProgress(6);
+              }
+              _scanRenderResult(data);
+              if (data?.partial) {
+                _scanSetStatus(String(data?.message || "OCRまで完了しました。画像を調整して再試行してください。"), "ok");
+              } else {
+                _scanSetStatus(`完了: ${Array.isArray(data.questions) ? data.questions.length : 0}問生成`, "ok");
+              }
+              scanState.abortCtl = null;
+              return;
+            }
+            const stage = String(data?.stage || data?.debug?.failedStage || data?.error || data?.code || "unknown");
+            const detail = String(data?.detail || data?.debug?.errorMessage || "").trim();
+            try {
+              console.error("[scan.generate] failed", {
+                status: res.status,
+                stage,
+                code: data?.code,
+                detail,
+                debug: data?.debug || null
+              });
+            } catch {}
+            if (_scanShouldRetryVisionError(data, attempt)) {
+              const nextAttempt = attempt + 1;
+              const retryOk = await _scanApplyRetryCompression(nextAttempt);
+              if (retryOk) {
+                scanState.autoRetryCount = nextAttempt;
+                _scanSetStatus(`OCR失敗のため自動圧縮して再試行中 (${nextAttempt}/${SCAN_AUTO_RETRY_LIMIT})`, "");
+                _scanSetDebug({
+                  ...(data?.debug || {}),
+                  response: {
+                    status: res.status,
+                    code: data?.code || "",
+                    detail,
+                    failedStage: stage
+                  },
+                  client: {
+                    attempt: nextAttempt,
+                    payloadBytes: payload.requestPayloadBytes,
+                    original: payload?.params?.clientMeta?.original || null,
+                    compressed: payload?.params?.clientMeta?.compressed || null
+                  }
+                });
+                attempt = nextAttempt;
+                scanState.abortCtl = null;
+                continue;
+              }
+            }
+            if (data?.partial) {
+              _scanRenderResult(data);
+            } else {
+              _scanSetDebug({
+                ...(data?.debug || {}),
+                client: {
+                  attempt: attempt + 1,
+                  payloadBytes: payload.requestPayloadBytes,
+                  original: payload?.params?.clientMeta?.original || null,
+                  compressed: payload?.params?.clientMeta?.compressed || null
+                },
+                response: {
+                  status: res.status,
+                  code: data?.code || "",
+                  detail: detail || "",
+                  failedStage: stage
+                }
+              });
+            }
+            _scanStopProgressTicker();
+            _scanSetStatus(_scanMessageForFailure(data, stage, detail), "error");
+            scanState.abortCtl = null;
+            return;
+          }
+          _scanStopProgressTicker();
+          _scanSetStatus("自動再試行でも生成できませんでした。ページを分割して再試行してください。", "error");
+        }catch(err){
+          _scanStopProgressTicker();
+          _scanSetDebug({
+            failedStage: "client_fetch",
+            errorMessage: String(err?.message || err || ""),
+            client: {
+              payloadBytes: Number(scanState.mainFile?.size || 0) + Number(scanState.refFile?.size || 0),
+              sent: {
+                mime: String(scanState.mainMeta?.mime || scanState.mainFile?.type || ""),
+                size: Number(scanState.mainMeta?.outputBytes || scanState.mainFile?.size || 0),
+                dims: `${Number(scanState.mainMeta?.outputWidth || 0)}x${Number(scanState.mainMeta?.outputHeight || 0)}`
+              }
+            },
+            status: "error"
+          });
+          _scanSetStatus(`生成に失敗しました: ${String(err?.message || err)}`, "error");
+        }finally{
+          scanState.abortCtl = null;
+          _scanSetRunning(false);
+        }
+      }
+
+      async function _scanCopyJson(){
+        if (!scanState.result){
+          _scanSetStatus("コピー対象がありません。", "error");
+          return;
+        }
+        const text = JSON.stringify(scanState.result, null, 2);
+        const ok = await _copyText(text);
+        _scanSetStatus(ok ? "JSONをコピーしました。" : "コピーに失敗しました。", ok ? "ok" : "error");
+      }
+
+      function _scanClearImages(){
+        scanState.mainFile = null;
+        scanState.refFile = null;
+        scanState.mainSourceFile = null;
+        scanState.refSourceFile = null;
+        scanState.mainMeta = null;
+        scanState.refMeta = null;
+        scanState.autoRetryCount = 0;
+        if (scanMainImageInput) scanMainImageInput.value = "";
+        if (scanRefImageInput) scanRefImageInput.value = "";
+        _scanRevokeUrl("main");
+        _scanRevokeUrl("ref");
+        if (scanMainThumbList) scanMainThumbList.replaceChildren();
+        if (scanRefThumbList) scanRefThumbList.replaceChildren();
+        _scanSetImageMeta("");
+      }
+
+      function _scanOpenPanel(){
+        if (!scanGenOverlay) return;
+        scanGenOverlay.classList.remove("hidden");
+        requestAnimationFrame(() => scanGenOverlay.classList.add("is-open"));
+        const picked = scanGenOverlay.querySelector('input[name="scanGenType"]:checked');
+        scanState.type = String(picked?.value || "single");
+        _scanSetRunning(false);
+        _scanResetResultView();
+        _scanSetStatus("");
+        _scanSetProgress(-1);
+        scanState.autoRetryCount = 0;
+        _scanUpdateTypeUI();
+      }
+
+      function _scanClosePanel(){
+        if (!scanGenOverlay) return;
+        if (scanState.running && scanState.abortCtl){
+          try{ scanState.abortCtl.abort(); }catch{}
+        }
+        scanState.running = false;
+        _scanStopProgressTicker();
+        _scanClearImages();
+        scanGenOverlay.classList.remove("is-open");
+        setTimeout(() => {
+          if (scanGenOverlay.classList.contains("is-open")) return;
+          scanGenOverlay.classList.add("hidden");
+        }, 260);
+      }
+
+      presetScanBtn?.addEventListener("click", () => {
+        _scanOpenPanel();
+      });
+
+      let _scanMainPickSeq = 0;
+      let _scanRefPickSeq = 0;
+
+      scanMainImageInput?.addEventListener("change", async () => {
+        const picked = scanMainImageInput.files && scanMainImageInput.files[0];
+        const seq = ++_scanMainPickSeq;
+        if (!picked){
+          scanState.mainFile = null;
+          scanState.mainSourceFile = null;
+          scanState.mainMeta = null;
+          _scanRenderThumb(scanMainThumbList, null, "main");
+          _scanSetStatus("本文画像が未選択です。", "error");
+          return;
+        }
+        scanState.mainSourceFile = picked;
+        _scanSetStatus("本文画像を最適化中…", "");
+        const normalized = await _scanNormalizeImageFile(picked);
+        if (seq !== _scanMainPickSeq) return;
+        if (normalized?.error){
+          scanState.mainFile = null;
+          scanState.mainSourceFile = null;
+          scanState.mainMeta = null;
+          _scanRenderThumb(scanMainThumbList, null, "main");
+          _scanSetImageMeta("");
+          _scanSetDebug({
+            failedStage: "client_precheck",
+            code: normalized.error,
+            detail: normalized.errorMessage || ""
+          });
+          _scanSetStatus(normalized.errorMessage || "画像形式が未対応です。", "error");
+          return;
+        }
+        scanState.mainFile = normalized?.file || picked || null;
+        scanState.mainMeta = normalized && typeof normalized === "object" ? normalized : null;
+        _scanRenderThumb(scanMainThumbList, scanState.mainFile, "main");
+        if (!scanState.mainFile) {
+          _scanSetStatus("本文画像が未選択です。", "error");
+          return;
+        }
+        const w0 = Number(normalized?.sourceWidth || 0);
+        const h0 = Number(normalized?.sourceHeight || 0);
+        const w1 = Number(normalized?.outputWidth || w0);
+        const h1 = Number(normalized?.outputHeight || h0);
+        _scanSetImageMeta(
+          `画像: ${w0 > 0 ? `${w0}x${h0}` : "?"} -> ${w1 > 0 ? `${w1}x${h1}` : "?"} / ${Math.round((normalized?.inputBytes || picked.size || 0) / 1024)}KB -> ${Math.round((normalized?.outputBytes || scanState.mainFile.size || 0) / 1024)}KB`
+        );
+        if (normalized?.overLimit){
+          _scanSetStatus("画像が大きすぎます。自動圧縮でも上限を超えています。別画像か分割で再試行してください。", "error");
+        } else if (normalized?.converted){
+          _scanSetStatus(`本文画像を圧縮しました (${Math.round((normalized?.inputBytes || picked.size) / 1024)}KB → ${Math.round((normalized?.outputBytes || scanState.mainFile.size) / 1024)}KB)`, "");
+        } else {
+          _scanSetStatus("本文画像を読み込みました。", "");
+        }
+      });
+
+      scanRefImageInput?.addEventListener("change", async () => {
+        const picked = scanRefImageInput.files && scanRefImageInput.files[0];
+        const seq = ++_scanRefPickSeq;
+        if (!picked){
+          scanState.refFile = null;
+          scanState.refSourceFile = null;
+          scanState.refMeta = null;
+          _scanRenderThumb(scanRefThumbList, null, "ref");
+          return;
+        }
+        scanState.refSourceFile = picked;
+        _scanSetStatus("参考画像を最適化中…", "");
+        const normalized = await _scanNormalizeImageFile(picked);
+        if (seq !== _scanRefPickSeq) return;
+        if (normalized?.error){
+          scanState.refFile = null;
+          scanState.refSourceFile = null;
+          scanState.refMeta = null;
+          _scanRenderThumb(scanRefThumbList, null, "ref");
+          _scanSetDebug({
+            failedStage: "client_precheck_ref",
+            code: normalized.error,
+            detail: normalized.errorMessage || ""
+          });
+          _scanSetStatus(normalized.errorMessage || "参考画像の形式が未対応です。", "error");
+          return;
+        }
+        scanState.refFile = normalized?.file || picked || null;
+        scanState.refMeta = normalized && typeof normalized === "object" ? normalized : null;
+        _scanRenderThumb(scanRefThumbList, scanState.refFile, "ref");
+        if (normalized?.overLimit){
+          _scanSetStatus("参考画像が大きすぎます。自動圧縮でも上限を超えています。別画像で再試行してください。", "error");
+        } else if (normalized?.converted){
+          _scanSetStatus(`参考画像を圧縮しました (${Math.round((normalized?.inputBytes || picked.size) / 1024)}KB → ${Math.round((normalized?.outputBytes || scanState.refFile?.size || 0) / 1024)}KB)`, "");
+        } else {
+          _scanSetStatus("参考画像を読み込みました。", "");
+        }
+      });
+
+      scanGenOverlay?.addEventListener("change", (e) => {
+        const t = e.target;
+        if (!t) return;
+        if (t.name === "scanGenType"){
+          scanState.type = String(t.value || "single");
+          _scanUpdateTypeUI();
+          if (scanState.type !== "double"){
+            scanState.refFile = null;
+            scanState.refSourceFile = null;
+            scanState.refMeta = null;
+            if (scanRefImageInput) scanRefImageInput.value = "";
+            _scanRevokeUrl("ref");
+            if (scanRefThumbList) scanRefThumbList.replaceChildren();
+          }
+        }
+      });
+
+      scanGenOverlay?.addEventListener("click", async (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest("[data-scan-action]") : null;
+        if (!btn) return;
+        const action = String(btn.getAttribute("data-scan-action") || "");
+        if (!action) return;
+        if (action === "close"){
+          _scanClosePanel();
+          return;
+        }
+        if (action === "cancel"){
+          if (scanState.abortCtl){
+            try{ scanState.abortCtl.abort(); }catch{}
+          } else {
+            _scanClosePanel();
+          }
+          return;
+        }
+        if (action === "run"){
+          _scanGenerateRun();
+          return;
+        }
+        if (action === "retry"){
+          _scanGenerateRun();
+          return;
+        }
+        if (action === "copyJson"){
+          _scanCopyJson();
+          return;
+        }
+        if (action === "addPreset"){
+          _scanAddPresetFromResult();
+          return;
+        }
+        if (action === "removeMainImage"){
+          scanState.mainFile = null;
+          scanState.mainSourceFile = null;
+          scanState.mainMeta = null;
+          if (scanMainImageInput) scanMainImageInput.value = "";
+          _scanRevokeUrl("main");
+          if (scanMainThumbList) scanMainThumbList.replaceChildren();
+          _scanSetImageMeta("");
+          return;
+        }
+        if (action === "removeRefImage"){
+          scanState.refFile = null;
+          scanState.refSourceFile = null;
+          scanState.refMeta = null;
+          if (scanRefImageInput) scanRefImageInput.value = "";
+          _scanRevokeUrl("ref");
+          if (scanRefThumbList) scanRefThumbList.replaceChildren();
+          return;
+        }
+      });
 
 
       // =========================
@@ -24718,6 +26871,9 @@ function _openSearchResultByIndex(i){
         presetOverlay.classList.add("hidden");
         if (presetSubjectManager) presetSubjectManager.classList.add("hidden");
         if (presetTagManager) presetTagManager.classList.add("hidden");
+        if (scanGenOverlay && !scanGenOverlay.classList.contains("hidden")){
+          _scanClosePanel();
+        }
       }
 
       presetCloseBtn?.addEventListener("click", closePresetManager);
@@ -26593,7 +28749,7 @@ function _openSearchResultByIndex(i){
       // Events
       insightsEl.btn?.addEventListener("click", () => {
         if (state.view === "TITLE"){
-          _appSetTab("insights");
+          _appSetTab(APP_TAB_KEY.INSIGHT);
           return;
         }
         _insightsOpen();
