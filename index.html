@@ -11139,7 +11139,18 @@ body[data-app-tab="inbox"] #appInboxPage{
         const cards = _normalizeCardList(cardsRaw.length ? cardsRaw : _wordsToCardList(words, { allowLatex: isMath }), { allowLatex: isMath });
         return { ...p, words, cards, subjectId, tagIds };
       }
-      function loadPresets(){
+      function _presetEnsureMetaFields(preset, now){
+        const p = (preset && typeof preset === "object") ? preset : {};
+        const out = { ...p };
+        if (!out.id || typeof out.id !== "string"){
+          out.id = newId();
+        }
+        const updatedAt = Number(out.updatedAt || out.updated_at || 0);
+        out.updatedAt = updatedAt > 0 ? updatedAt : Number(now || Date.now());
+        out.deletedAt = Math.max(0, Number(out.deletedAt || out.deleted_at || 0)) || 0;
+        return out;
+      }
+      function loadPresetsAll(){
         try{
           const raw = window.localStorage.getItem(PRESETS_KEY);
           if (!raw) return [];
@@ -11147,13 +11158,18 @@ body[data-app-tab="inbox"] #appInboxPage{
           if (!Array.isArray(arr)) return [];
           let changed = false;
           const out = [];
+          const now = Date.now();
           for (const row of arr){
-            if (!row || typeof row.id !== "string") continue;
-            const n = _normalizePresetMeta(row, {
+            if (!row || typeof row !== "object") continue;
+            const base = _presetEnsureMetaFields(row, now);
+            const n = _normalizePresetMeta(base, {
               allowMissingCustomSubject: false,
               allowUnknownTagIds: true
             });
-            if (n.subjectId !== row.subjectId || JSON.stringify(n.tagIds || []) !== JSON.stringify(Array.isArray(row.tagIds) ? row.tagIds : [])){
+            if (!row.id || n.subjectId !== row.subjectId || JSON.stringify(n.tagIds || []) !== JSON.stringify(Array.isArray(row.tagIds) ? row.tagIds : [])){
+              changed = true;
+            }
+            if ((row.updatedAt || 0) !== n.updatedAt || (row.deletedAt || 0) !== n.deletedAt){
               changed = true;
             }
             out.push(n);
@@ -11164,17 +11180,26 @@ body[data-app-tab="inbox"] #appInboxPage{
           return out;
         }catch{ return []; }
       }
+      function loadPresets(){
+        return loadPresetsAll().filter((p) => !p?.deletedAt);
+      }
       function savePresets(arr){
         const src = Array.isArray(arr) ? arr : [];
+        const now = Date.now();
         const out = [];
         for (const row of src){
           if (!row || typeof row.id !== "string") continue;
-          out.push(_normalizePresetMeta(row, {
+          const base = _presetEnsureMetaFields(row, now);
+          base.updatedAt = now;
+          out.push(_normalizePresetMeta(base, {
             allowMissingCustomSubject: false,
             allowUnknownTagIds: true
           }));
         }
-        window.localStorage.setItem(PRESETS_KEY, JSON.stringify(out));
+        const existingAll = loadPresetsAll();
+        const tombstones = existingAll.filter((p) => p?.deletedAt && !out.some((x) => x.id === p.id));
+        const merged = out.concat(tombstones);
+        window.localStorage.setItem(PRESETS_KEY, JSON.stringify(merged));
         __presetsRev++;
         __searchIndexCache.rev = -1;
         _queueUserBackupSync("presets");
@@ -11445,6 +11470,7 @@ body[data-app-tab="inbox"] #appInboxPage{
       // =========================
       const SETTINGS_KEY = "wordPractice400.settings.v2";
       const APP_SETTINGS_KEY = "app.settings.v1";
+      const SETTINGS_UPDATED_AT_KEY = "app.settings.updatedAt.v1";
       const DECK_KEY = "wordPractice400.deck.v1";
       const EXAM_SET_KEY_PREFIX = "wordPractice400.examSet.v1"; // + ":" + deckKey
       const UPDATE_NOTES_DISMISS_KEY = "wordPractice400.updateNotes.dismissed.v1";
@@ -11512,12 +11538,27 @@ body[data-app-tab="inbox"] #appInboxPage{
           return normalizeSettings(defaultSettings);
         }
       }
+      function loadSettingsUpdatedAt(){
+        try{
+          const raw = String(window.localStorage.getItem(SETTINGS_UPDATED_AT_KEY) || "");
+          const n = Number(raw);
+          return Number.isFinite(n) ? n : 0;
+        }catch{ return 0; }
+      }
+      function saveSettingsUpdatedAt(ts){
+        const n = Number(ts) || 0;
+        try{
+          if (n > 0) window.localStorage.setItem(SETTINGS_UPDATED_AT_KEY, String(n));
+          else window.localStorage.removeItem(SETTINGS_UPDATED_AT_KEY);
+        }catch{}
+      }
       function saveSettings(s){
         const normalized = normalizeSettings(s);
         window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
         try{
           window.localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(normalized));
         }catch{}
+        saveSettingsUpdatedAt(Date.now());
         _queueUserBackupSync("settings");
       }
 
@@ -17088,6 +17129,7 @@ function reviewWrong(){
         const normalizedSettings = normalizeSettings(dataObj.settings || { ...defaultSettings });
         window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalizedSettings));
         window.localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(normalizedSettings));
+        saveSettingsUpdatedAt(Number(normalized.createdAt || Date.now()) || Date.now());
         window.localStorage.setItem(INSIGHTS_SESSIONS_KEY, JSON.stringify(Array.isArray(dataObj.sessions) ? dataObj.sessions.slice(-BACKUP_MAX_SESSIONS) : []));
         window.localStorage.setItem(SHARE_CACHE_KEY, JSON.stringify(dataObj.shareCache || {}));
         const seenAt = Number(dataObj.notificationReadState?.seenAt || 0);
@@ -17193,6 +17235,264 @@ function reviewWrong(){
           else window.localStorage.removeItem(USER_BACKUP_SYNC_KEY);
         }catch{}
       }
+      const SYNC_OUTBOX_KEY = "app.sync.outbox.v1";
+      const SYNC_LAST_RUN_KEY = "app.sync.lastRunAt.v1";
+      const SYNC_MIN_INTERVAL_MS = 60000;
+      const SYNC_DEBOUNCE_MS = 1200;
+      const SYNC_ERROR_THROTTLE_MS = 60000;
+      let _syncFlushTimer = 0;
+      let _syncBusy = false;
+      let _syncLastErrorAt = 0;
+      function _syncNotifyError(msg){
+        if (!msg) return;
+        const now = Date.now();
+        if (now - _syncLastErrorAt < SYNC_ERROR_THROTTLE_MS) return;
+        _syncLastErrorAt = now;
+        try{ uiToast(msg); }catch{}
+      }
+      function _syncOutboxRead(){
+        try{
+          const raw = window.localStorage.getItem(SYNC_OUTBOX_KEY);
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        }catch{ return []; }
+      }
+      function _syncOutboxWrite(list){
+        try{
+          if (Array.isArray(list) && list.length){
+            window.localStorage.setItem(SYNC_OUTBOX_KEY, JSON.stringify(list.slice(-40)));
+          } else {
+            window.localStorage.removeItem(SYNC_OUTBOX_KEY);
+          }
+        }catch{}
+      }
+      function _syncOutboxPush(reason){
+        const outbox = _syncOutboxRead();
+        outbox.push({
+          ts: Date.now(),
+          reason: String(reason || "update").slice(0, 32)
+        });
+        _syncOutboxWrite(outbox);
+      }
+      function _syncGetLastRunAt(){
+        try{
+          const raw = String(window.localStorage.getItem(SYNC_LAST_RUN_KEY) || "");
+          const n = Number(raw);
+          return Number.isFinite(n) ? n : 0;
+        }catch{ return 0; }
+      }
+      function _syncSetLastRunAt(ts){
+        const n = Number(ts) || 0;
+        try{
+          if (n > 0) window.localStorage.setItem(SYNC_LAST_RUN_KEY, String(n));
+          else window.localStorage.removeItem(SYNC_LAST_RUN_KEY);
+        }catch{}
+      }
+      function _syncNormalizeListById(list){
+        const src = Array.isArray(list) ? list : [];
+        const map = new Map();
+        for (const row of src){
+          const item = (row && typeof row === "object") ? row : null;
+          if (!item) continue;
+          const id = String(item.id || "").trim();
+          if (!id) continue;
+          const updatedAt = Math.max(0, Number(item.updatedAt || item.updated_at || item.ts || 0));
+          const deletedAt = Math.max(0, Number(item.deletedAt || item.deleted_at || 0)) || 0;
+          const ver = Math.max(updatedAt, deletedAt);
+          const prev = map.get(id);
+          if (!prev){
+            map.set(id, { ...item, id, updatedAt, deletedAt });
+            continue;
+          }
+          const prevUpdated = Math.max(0, Number(prev.updatedAt || prev.updated_at || prev.ts || 0));
+          const prevDeleted = Math.max(0, Number(prev.deletedAt || prev.deleted_at || 0)) || 0;
+          const prevVer = Math.max(prevUpdated, prevDeleted);
+          if (ver >= prevVer){
+            map.set(id, { ...prev, ...item, id, updatedAt, deletedAt });
+          }
+        }
+        return Array.from(map.values());
+      }
+      function _syncMergeLists(localList, remoteList){
+        const merged = _syncNormalizeListById([].concat(Array.isArray(localList) ? localList : [], Array.isArray(remoteList) ? remoteList : []));
+        return merged;
+      }
+      function _syncMergeSettings(localSettings, localUpdatedAt, remoteSettings, remoteUpdatedAt){
+        const local = (localSettings && typeof localSettings === "object") ? localSettings : {};
+        const remote = (remoteSettings && typeof remoteSettings === "object") ? remoteSettings : {};
+        const out = { ...local };
+        const preferRemote = Number(remoteUpdatedAt || 0) >= Number(localUpdatedAt || 0);
+        for (const [k, v] of Object.entries(remote)){
+          if (v === undefined) continue;
+          if (!(k in out) || preferRemote) out[k] = v;
+        }
+        const updatedAt = Math.max(Number(localUpdatedAt || 0), Number(remoteUpdatedAt || 0));
+        return { settings: normalizeSettings(out), updatedAt };
+      }
+      function _syncBuildLocalSnapshot(){
+        const presets = loadPresetsAll();
+        const insights = _insightsLoadSessionsAll();
+        const chatsSource = (_chatState.loaded ? (_chatState.historyAll || []) : _chatReadHistoryAll());
+        const chats = _chatBuildPersistableHistoryList(chatsSource);
+        const settings = normalizeSettings(state.settings || loadSettings());
+        const settingsUpdatedAt = loadSettingsUpdatedAt() || Date.now();
+        return { presets, insights, chats, settings, settingsUpdatedAt };
+      }
+      function savePresetsAll(list, opts = {}){
+        const src = Array.isArray(list) ? list : [];
+        const now = Date.now();
+        const out = [];
+        const touch = opts.touchUpdatedAt !== false;
+        for (const row of src){
+          if (!row || typeof row !== "object") continue;
+          const base = _presetEnsureMetaFields(row, now);
+          if (touch) base.updatedAt = now;
+          out.push(_normalizePresetMeta(base, {
+            allowMissingCustomSubject: false,
+            allowUnknownTagIds: true
+          }));
+        }
+        window.localStorage.setItem(PRESETS_KEY, JSON.stringify(out));
+        __presetsRev++;
+        __searchIndexCache.rev = -1;
+        if (!opts.skipSync) _queueUserBackupSync("presets");
+      }
+      function saveSettingsWithUpdatedAt(settings, updatedAt, opts = {}){
+        const normalized = normalizeSettings(settings);
+        window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
+        try{
+          window.localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(normalized));
+        }catch{}
+        saveSettingsUpdatedAt(updatedAt || Date.now());
+        if (!opts.skipSync) _queueUserBackupSync("settings");
+      }
+      function _syncApplySnapshot(snapshot, opts = {}){
+        const snap = snapshot || {};
+        if (Array.isArray(snap.presets)) savePresetsAll(snap.presets, { touchUpdatedAt: false, skipSync: true });
+        if (Array.isArray(snap.insights)) _insightsSaveSessions(snap.insights);
+        if (Array.isArray(snap.chats)){
+          _chatEnsureLoaded();
+          _chatState.historyAll = snap.chats.slice(-CHAT_HISTORY_MAX);
+          _chatState.history = _chatState.historyAll.filter((m)=>!m?.deletedAt);
+          _chatSaveHistory({ skipRemote: true, skipSync: true });
+          _chatScheduleKnowledgeBuild("sync-merge");
+          _appRenderChat({ forceScroll: true });
+        }
+        if (snap.settings && typeof snap.settings === "object"){
+          saveSettingsWithUpdatedAt(snap.settings, Number(snap.settingsUpdatedAt || Date.now()) || Date.now(), { skipSync: true });
+          try{ state.settings = loadSettings(); }catch{}
+          try{ _settingsSyncControls(); }catch{}
+          try{ _settingsRefreshSummary(); }catch{}
+        }
+        if (!opts.skipRender){
+          try{ syncPresetUI(); }catch{}
+          try{ renderAll(); }catch{}
+          try{ _appRenderLibrary(); }catch{}
+          if (_insightsIsOpen()) try{ _insightsRenderAll(); }catch{}
+        }
+      }
+      async function _syncFetchSnapshot(options){
+        const opt = options || {};
+        const token = _authGetToken();
+        if (!token) return null;
+        try{
+          const body = await _authFetch("/api/sync/snapshot", {
+            method: "GET",
+            headers: { Authorization: `Bearer ${token}` },
+            loadingText: "同期中…",
+            skipLoading: true
+          });
+          return body?.snapshot || null;
+        }catch(err){
+          const msg = String(err?.message || err || "");
+          console.warn("[sync] snapshot fetch failed:", msg);
+          if (!opt.silent){
+            _syncNotifyError("同期に失敗しました。ネットワークを確認してください。");
+          }
+          return null;
+        }
+      }
+      async function _syncUpsert(snapshot, options){
+        const opt = options || {};
+        const token = _authGetToken();
+        if (!token) return false;
+        const snap = snapshot || {};
+        const payload = {
+          presets: Array.isArray(snap.presets) ? snap.presets : [],
+          insights: Array.isArray(snap.insights) ? snap.insights : [],
+          chats: Array.isArray(snap.chats) ? snap.chats : [],
+          settingsPatch: (snap.settings && typeof snap.settings === "object")
+            ? { ...snap.settings, updatedAt: Number(snap.settingsUpdatedAt || Date.now()) || Date.now() }
+            : null
+        };
+        try{
+          await _authFetch("/api/sync/upsert", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload),
+            loadingText: "同期中…",
+            skipLoading: true
+          });
+          _syncSetLastRunAt(Date.now());
+          return true;
+        }catch(err){
+          const msg = String(err?.message || err || "");
+          console.warn("[sync] upsert failed:", msg);
+          if (!opt.silent){
+            _syncNotifyError("同期に失敗しました。ネットワークを確認してください。");
+          }
+          return false;
+        }
+      }
+      async function _syncRunMerge(options){
+        const opt = options || {};
+        if (_authGetMode() !== "user") return;
+        if (_syncBusy) return;
+        _syncBusy = true;
+        try{
+          const local = _syncBuildLocalSnapshot();
+          const remote = await _syncFetchSnapshot({ silent: !!opt.silent });
+          let merged = local;
+          if (remote){
+            const mergedPresets = _syncMergeLists(local.presets, remote.presets || [])
+              .sort((a,b)=> Math.max(0, Number(b?.updatedAt || 0)) - Math.max(0, Number(a?.updatedAt || 0)));
+            const mergedInsights = _syncMergeLists(local.insights, remote.insights || [])
+              .sort((a,b)=> Math.max(0, Number(a?.ts || 0)) - Math.max(0, Number(b?.ts || 0)));
+            const mergedChats = _chatMergeHistoryLists(local.chats, remote.chats || []);
+            const mergedSettings = _syncMergeSettings(local.settings, local.settingsUpdatedAt, remote.settings || {}, remote.settingsUpdatedAt || 0);
+            merged = {
+              presets: mergedPresets,
+              insights: mergedInsights,
+              chats: mergedChats,
+              settings: mergedSettings.settings,
+              settingsUpdatedAt: mergedSettings.updatedAt
+            };
+          }
+          _syncApplySnapshot(merged, { skipRender: !!opt.silent });
+          await _syncUpsert(merged, { silent: true });
+          _syncOutboxWrite([]);
+        }finally{
+          _syncBusy = false;
+        }
+      }
+      async function _syncFlushOutbox(options){
+        const opt = options || {};
+        if (_authGetMode() !== "user") return;
+        if (_syncBusy) return;
+        const outbox = _syncOutboxRead();
+        if (!outbox.length) return;
+        const last = _syncGetLastRunAt();
+        if (!opt.force && Date.now() - last < SYNC_MIN_INTERVAL_MS) return;
+        _syncBusy = true;
+        try{
+          const local = _syncBuildLocalSnapshot();
+          const ok = await _syncUpsert(local, { silent: true });
+          if (ok) _syncOutboxWrite([]);
+        }finally{
+          _syncBusy = false;
+        }
+      }
       async function _userBackupFetchRemote(options){
         const opt = options || {};
         const token = _authGetToken();
@@ -17240,60 +17540,30 @@ function reviewWrong(){
       async function _authSyncUserData(options){
         const opt = options || {};
         if (_authGetMode() !== "user") return;
-        if (_userBackupSyncBusy) return;
-        _userBackupSyncBusy = true;
+        await _syncRunMerge({ silent: !!opt.silent });
         try{
-          const local = _backupReadLatest();
-          const localAt = Number(local?.createdAt || 0);
-          const remote = await _userBackupFetchRemote({ silent: !!opt.silent });
-          const remoteAt = Number(remote?.createdAt || 0);
-          let applied = false;
-          if (remote && remoteAt > localAt){
-            _backupApplyPayload(remote);
-            applied = true;
-          }
-          const finalLocal = _backupReadLatest() || _backupBuildPayload();
-          if (finalLocal && (!remoteAt || Number(finalLocal.createdAt || 0) >= remoteAt)){
-            await _userBackupPushRemote(finalLocal, { silent: !!opt.silent });
-          }
-          try{
-            const userList = await _fetchUserNotificationsFromApi({ loadingText: "通知を同期中…" });
-            if (userList.length){
-              const merged = _mergeNotificationLists(loadNotifications(), userList);
-              saveNotifications(merged);
-              updateNotifyDot();
-              if (el.appInboxPage && document.body?.dataset?.appTab === "inbox"){
-                _appRenderInbox();
-              }
+          const userList = await _fetchUserNotificationsFromApi({ loadingText: "通知を同期中…" });
+          if (userList.length){
+            const merged = _mergeNotificationLists(loadNotifications(), userList);
+            saveNotifications(merged);
+            updateNotifyDot();
+            if (el.appInboxPage && document.body?.dataset?.appTab === "inbox"){
+              _appRenderInbox();
             }
-          }catch{}
-          if (applied){
-            try{ state.settings = loadSettings(); }catch{}
-            try{ state.deck = loadDeck(); }catch{}
-            try{ _settingsSyncControls(); }catch{}
-            try{ _settingsRefreshSummary(); }catch{}
-            try{ _appRenderLibrary(); }catch{}
-            try{ renderAll(); }catch{}
-            try{ updateNotifyDot(); }catch{}
           }
-          if (!opt.silent){
-            try{ _refreshNotificationsFromFirestore(); }catch{}
-          }
-        } finally {
-          _userBackupSyncBusy = false;
+        }catch{}
+        if (!opt.silent){
+          try{ _refreshNotificationsFromFirestore(); }catch{}
         }
       }
       function _queueUserBackupSync(reason){
         if (_authGetMode() !== "user") return;
-        const now = Date.now();
-        const last = _userBackupGetLastSyncAt();
-        if (now - last < USER_BACKUP_SYNC_MIN_MS) return;
-        if (_userBackupSyncTimer) clearTimeout(_userBackupSyncTimer);
-        _userBackupSyncTimer = setTimeout(() => {
-          _userBackupSyncTimer = 0;
-          const payload = _backupBuildPayload();
-          _userBackupPushRemote(payload, { silent: true });
-        }, 800);
+        _syncOutboxPush(reason);
+        if (_syncFlushTimer) clearTimeout(_syncFlushTimer);
+        _syncFlushTimer = setTimeout(() => {
+          _syncFlushTimer = 0;
+          _syncFlushOutbox({ silent: true });
+        }, SYNC_DEBOUNCE_MS);
       }
       function _removeStorageByPrefix(prefix){
         const p = String(prefix || "");
@@ -17315,12 +17585,15 @@ function reviewWrong(){
           danger: true
         });
         if (!ok) return;
-        window.localStorage.removeItem(INSIGHTS_SESSIONS_KEY);
-        _insightsSessionsCache = [];
-        _insightsSessionsRev++;
-        _insightsFilteredCacheKey = "";
-        _insightsFilteredCache = null;
-        _insightsFilterCacheMap.clear();
+        const all = _insightsLoadSessionsAll();
+        const now = Date.now();
+        for (const s of all){
+          if (!s) continue;
+          s.deletedAt = now;
+          s.updatedAt = now;
+        }
+        _insightsSaveSessions(all);
+        _queueUserBackupSync("insights");
         _backupSetStatus("学習ログを削除しました。", "ok");
         uiToast("学習ログを削除しました");
       }
@@ -18080,8 +18353,15 @@ function _openSearchResultByIndex(i){
           danger: true
         });
         if (!ok) return;
-        const list = loadPresets().filter((x) => x.id !== pid);
-        savePresets(list);
+        const listAll = loadPresetsAll();
+        const now = Date.now();
+        for (const it of listAll){
+          if (String(it.id) === String(pid)){
+            it.deletedAt = now;
+            it.updatedAt = now;
+          }
+        }
+        savePresetsAll(listAll, { touchUpdatedAt: false });
         if (getActivePresetId() === pid){
           setDeck("A");
         } else {
@@ -18515,6 +18795,7 @@ function _openSearchResultByIndex(i){
         loaded: false,
         bound: false,
         history: [],
+        historyAll: [],
         transient: [],
         queue: [],
         processing: false,
@@ -19408,9 +19689,14 @@ function _openSearchResultByIndex(i){
         const aiMeta = _chatSanitizeAiMeta(raw.aiMeta);
         const intent = String(raw.intent || "").slice(0, 42);
         const scope = String(raw.scope || "").slice(0, 24);
+        const ts = Number(raw.ts) || Date.now();
+        const updatedAt = Math.max(0, Number(raw.updatedAt || raw.updated_at || ts));
+        const deletedAt = Math.max(0, Number(raw.deletedAt || raw.deleted_at || 0)) || 0;
         return {
           id: String(raw.id || _chatMessageId(role)),
-          ts: Number(raw.ts) || Date.now(),
+          ts,
+          updatedAt,
+          deletedAt,
           role,
           intent,
           scope,
@@ -19421,7 +19707,7 @@ function _openSearchResultByIndex(i){
           aiMeta
         };
       }
-      function _chatReadHistory(){
+      function _chatReadHistoryAll(){
         try{
           const raw = window.localStorage.getItem(CHAT_HISTORY_KEY);
           if (!raw) return [];
@@ -19434,8 +19720,10 @@ function _openSearchResultByIndex(i){
             const text = String(row?.text || "").trim();
             if (!text) continue;
             list.push({
-              id: _chatMessageId(role),
+              id: String(row?.id || _chatMessageId(role)),
               ts: Number(row?.ts) || Date.now(),
+              updatedAt: Math.max(0, Number(row?.updatedAt || row?.updated_at || row?.ts || Date.now())),
+              deletedAt: Math.max(0, Number(row?.deletedAt || row?.deleted_at || 0)) || 0,
               role,
               intent: String(row?.intent || "").slice(0, 42),
               text: text.slice(0, 3200),
@@ -19447,6 +19735,10 @@ function _openSearchResultByIndex(i){
         }catch{
           return [];
         }
+      }
+      function _chatReadHistory(){
+        const all = _chatReadHistoryAll();
+        return all.filter((m) => !m?.deletedAt);
       }
       function _chatReadHistoryMeta(){
         try{
@@ -19466,7 +19758,10 @@ function _openSearchResultByIndex(i){
           .filter((m) => m && (m.role === "user" || m.role === "ai"))
           .slice(-CHAT_REMOTE_HISTORY_MAX)
           .map((m) => ({
+            id: String(m.id || _chatMessageId(m.role || "m")),
             ts: Number(m.ts) || Date.now(),
+            updatedAt: Math.max(0, Number(m.updatedAt || m.updated_at || m.ts || Date.now())),
+            deletedAt: Math.max(0, Number(m.deletedAt || m.deleted_at || 0)) || 0,
             role: m.role,
             text: String(m.text || "").slice(0, 3200),
             intent: String(m.intent || "").slice(0, 42),
@@ -19564,9 +19859,14 @@ function _openSearchResultByIndex(i){
           if (!role) continue;
           const text = String(row?.text || "").trim();
           if (!text) continue;
+          const ts = Number(row?.ts) || Date.now();
+          const updatedAt = Math.max(0, Number(row?.updatedAt || row?.updated_at || ts));
+          const deletedAt = Math.max(0, Number(row?.deletedAt || row?.deleted_at || 0)) || 0;
           const clean = _chatSanitizeHistoryItem({
-            id: _chatMessageId(role),
-            ts: Number(row?.ts) || Date.now(),
+            id: String(row?.id || _chatMessageId(role)),
+            ts,
+            updatedAt,
+            deletedAt,
             role,
             intent: String(row?.intent || "").slice(0, 42),
             text,
@@ -19632,6 +19932,34 @@ function _openSearchResultByIndex(i){
         }
         return max;
       }
+      function _chatMergeHistoryLists(localList, remoteList){
+        const map = new Map();
+        const push = (row) => {
+          const item = (row && typeof row === "object") ? row : null;
+          if (!item || !item.id) return;
+          const id = String(item.id || "");
+          if (!id) return;
+          const updatedAt = Math.max(0, Number(item.updatedAt || item.updated_at || item.ts || 0));
+          const deletedAt = Math.max(0, Number(item.deletedAt || item.deleted_at || 0)) || 0;
+          const ver = Math.max(updatedAt, deletedAt);
+          const prev = map.get(id);
+          if (!prev){
+            map.set(id, { ...item, updatedAt, deletedAt });
+            return;
+          }
+          const prevUpdated = Math.max(0, Number(prev.updatedAt || prev.updated_at || prev.ts || 0));
+          const prevDeleted = Math.max(0, Number(prev.deletedAt || prev.deleted_at || 0)) || 0;
+          const prevVer = Math.max(prevUpdated, prevDeleted);
+          if (ver >= prevVer){
+            map.set(id, { ...prev, ...item, updatedAt, deletedAt });
+          }
+        };
+        for (const row of (Array.isArray(localList) ? localList : [])) push(row);
+        for (const row of (Array.isArray(remoteList) ? remoteList : [])) push(row);
+        const merged = Array.from(map.values());
+        merged.sort((a,b)=> (Number(a?.ts)||0) - (Number(b?.ts)||0));
+        return merged.slice(-CHAT_HISTORY_MAX);
+      }
       function _chatRemoteQueueSave(reason = "history"){
         void reason;
         if (!_chatRemoteCanSync()) return;
@@ -19651,7 +19979,7 @@ function _openSearchResultByIndex(i){
         if (_chatState.remoteSaving) return;
         _chatState.remoteSaving = true;
         try{
-          const history = _chatBuildPersistableHistoryList(_chatState.history);
+          const history = _chatBuildPersistableHistoryList(_chatState.historyAll || _chatState.history);
           const userKey = _chatRemoteUserKey();
           const payload = {
             schemaVersion: 1,
@@ -19683,6 +20011,7 @@ function _openSearchResultByIndex(i){
           const meta = _chatReadHistoryMeta();
           const localOwner = String(meta.userKey || "");
           if (localOwner && localOwner !== userKey){
+            _chatState.historyAll = [];
             _chatState.history = [];
             _chatSaveHistory();
           }
@@ -19691,27 +20020,19 @@ function _openSearchResultByIndex(i){
           });
           if (!body || !Array.isArray(body.history) || !body.history.length){
             _chatState.remoteLoadedForUser = userKey;
-            if (_chatState.history.length){
+            if (_chatState.historyAll.length){
               _chatRemoteQueueSave("seed-empty-remote");
             }
             return;
           }
           const remoteList = _chatRemoteNormalizeList(body.history);
-          const localList = Array.isArray(_chatState.history) ? _chatState.history : [];
-          const remoteLatest = _chatRemoteLatestTs(remoteList);
-          const localLatest = _chatRemoteLatestTs(localList);
-          const shouldUseRemote = (
-            (remoteList.length && !localList.length) ||
-            (remoteLatest >= localLatest && remoteList.length)
-          );
-          if (shouldUseRemote){
-            _chatState.history = remoteList.slice(-CHAT_HISTORY_MAX);
-            _chatSaveHistory();
-            _chatScheduleKnowledgeBuild("remote-history-load");
-            _appRenderChat({ forceScroll: true });
-          } else if (localList.length){
-            _chatRemoteQueueSave("local-newer");
-          }
+          const localList = Array.isArray(_chatState.historyAll) ? _chatState.historyAll : [];
+          const merged = _chatMergeHistoryLists(localList, remoteList);
+          _chatState.historyAll = merged;
+          _chatState.history = merged.filter((m) => !m?.deletedAt);
+          _chatSaveHistory();
+          _chatScheduleKnowledgeBuild("remote-history-merge");
+          _appRenderChat({ forceScroll: true });
           _chatState.remoteLoadedForUser = userKey;
         }catch(err){
           console.warn("[ChatSync] load failed:", String(err?.message || err));
@@ -19764,20 +20085,25 @@ function _openSearchResultByIndex(i){
           }));
         }catch{}
       }
-      function _chatSaveHistory(){
+      function _chatSaveHistory(opts = {}){
         try{
-          const list = _chatBuildPersistableHistoryList(_chatState.history);
+          const source = Array.isArray(_chatState.historyAll) && _chatState.historyAll.length
+            ? _chatState.historyAll
+            : _chatState.history;
+          const list = _chatBuildPersistableHistoryList(source);
           window.localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(list));
           window.localStorage.setItem(CHAT_HISTORY_META_KEY, JSON.stringify({
             userKey: _chatRemoteUserKey() || "guest",
             updatedAtMs: Date.now()
           }));
         }catch{}
-        _chatRemoteQueueSave("history-save");
+        if (!opts.skipRemote) _chatRemoteQueueSave("history-save");
+        if (!opts.skipSync) _queueUserBackupSync("chat");
       }
       function _chatEnsureLoaded(){
         if (_chatState.loaded) return;
-        _chatState.history = _chatReadHistory();
+        _chatState.historyAll = _chatReadHistoryAll();
+        _chatState.history = _chatState.historyAll.filter((m) => !m?.deletedAt);
         _chatState.memory = _chatReadMemory();
         _chatState.lastIntentId = _chatReadLastIntent();
         _chatState.aiMode = _chatLoadAiMode();
@@ -19805,10 +20131,11 @@ function _openSearchResultByIndex(i){
           aiMeta: payload.aiMeta || null
         });
         if (!item) return;
-        _chatState.history.push(item);
-        if (_chatState.history.length > CHAT_HISTORY_MAX){
-          _chatState.history = _chatState.history.slice(-CHAT_HISTORY_MAX);
+        _chatState.historyAll.push(item);
+        if (_chatState.historyAll.length > CHAT_HISTORY_MAX){
+          _chatState.historyAll = _chatState.historyAll.slice(-CHAT_HISTORY_MAX);
         }
+        _chatState.history = _chatState.historyAll.filter((m) => !m?.deletedAt);
         _chatSaveHistory();
         _chatScheduleKnowledgeBuild("history-push");
       }
@@ -19851,6 +20178,13 @@ function _openSearchResultByIndex(i){
       function _chatClearHistory(){
         _chatEnsureLoaded();
         _chatCancelRuntime();
+        const now = Date.now();
+        _chatState.historyAll = Array.isArray(_chatState.historyAll) ? _chatState.historyAll : [];
+        for (const item of _chatState.historyAll){
+          if (!item) continue;
+          item.deletedAt = now;
+          item.updatedAt = now;
+        }
         _chatState.history = [];
         _chatSaveHistory();
         _chatStartPinLatest();
@@ -27772,8 +28106,15 @@ function _openSearchResultByIndex(i){
         if (!editingPresetId) return;
         const ok = await uiConfirm("このプリセットを削除しますか？", { title: "確認", okText: "削除", cancelText: "キャンセル", danger: true });
         if (!ok) return;
-        const list = loadPresets().filter(x => x.id !== editingPresetId);
-        savePresets(list);
+        const listAll = loadPresetsAll();
+        const now = Date.now();
+        for (const p of listAll){
+          if (String(p.id) === String(editingPresetId)){
+            p.deletedAt = now;
+            p.updatedAt = now;
+          }
+        }
+        savePresetsAll(listAll, { touchUpdatedAt: false });
         if (getActivePresetId() === editingPresetId){
           setDeck("A");
         }
@@ -28090,32 +28431,63 @@ function _openSearchResultByIndex(i){
       };
 
       let _insightsSessionsCache = null;
+      let _insightsSessionsAllCache = null;
       let _insightsSessionsRev = 0;
       let _insightsFilteredCacheKey = "";
       let _insightsFilteredCache = null;
       const _insightsFilterCacheMap = new Map();
 
-      function _insightsLoadSessions(){
-        if (_insightsSessionsCache) return _insightsSessionsCache;
+      function _insightsNormalizeSession(raw){
+        const s = (raw && typeof raw === "object") ? raw : null;
+        if (!s) return null;
+        const id = String(s.id || "").trim() || _insightsMakeId();
+        const ts = Number(s.ts || 0) || Date.now();
+        const updatedAt = Math.max(0, Number(s.updatedAt || s.updated_at || ts));
+        const deletedAt = Math.max(0, Number(s.deletedAt || s.deleted_at || 0)) || 0;
+        return { ...s, id, ts, updatedAt, deletedAt };
+      }
+      function _insightsLoadSessionsAll(){
+        if (_insightsSessionsAllCache) return _insightsSessionsAllCache;
         try{
           const raw = window.localStorage.getItem(INSIGHTS_SESSIONS_KEY);
           const arr = raw ? JSON.parse(raw) : [];
           const list = Array.isArray(arr) ? arr : [];
-          list.sort((a,b)=>(Number(a?.ts)||0)-(Number(b?.ts)||0));
-          _insightsSessionsCache = list.slice(-INSIGHTS_MAX);
+          const out = [];
+          let changed = false;
+          for (const row of list){
+            const n = _insightsNormalizeSession(row);
+            if (!n) continue;
+            if (!row?.id || n.updatedAt !== row.updatedAt || n.deletedAt !== row.deletedAt){
+              changed = true;
+            }
+            out.push(n);
+          }
+          out.sort((a,b)=>(Number(a?.ts)||0)-(Number(b?.ts)||0));
+          _insightsSessionsAllCache = out.slice(-INSIGHTS_MAX);
+          _insightsSessionsCache = _insightsSessionsAllCache.filter((x)=>!x?.deletedAt);
           _insightsSessionsRev++;
-          return _insightsSessionsCache;
+          if (changed){
+            try{ window.localStorage.setItem(INSIGHTS_SESSIONS_KEY, JSON.stringify(_insightsSessionsAllCache)); }catch{}
+          }
+          return _insightsSessionsAllCache;
         }catch{
+          _insightsSessionsAllCache = [];
           _insightsSessionsCache = [];
           _insightsSessionsRev++;
-          return _insightsSessionsCache;
+          return _insightsSessionsAllCache;
         }
       }
-      function _insightsSaveSessions(arr){
+      function _insightsLoadSessions(){
+        if (_insightsSessionsCache) return _insightsSessionsCache;
+        _insightsLoadSessionsAll();
+        return _insightsSessionsCache || [];
+      }
+      function _insightsSaveSessions(arrAll){
         try{
-          const list = Array.isArray(arr) ? arr.slice(-INSIGHTS_MAX) : [];
+          const list = Array.isArray(arrAll) ? arrAll.slice(-INSIGHTS_MAX) : [];
           list.sort((a,b)=>(Number(a?.ts)||0)-(Number(b?.ts)||0));
-          _insightsSessionsCache = list;
+          _insightsSessionsAllCache = list;
+          _insightsSessionsCache = list.filter((x)=>!x?.deletedAt);
           _insightsSessionsRev++;
           _insightsFilteredCacheKey = "";
           _insightsFilteredCache = null;
@@ -28166,8 +28538,13 @@ function _openSearchResultByIndex(i){
       }
 
       function _insightsAppendSession(session){
-        const sessions = _insightsLoadSessions();
-        sessions.push(session);
+        const sessions = _insightsLoadSessionsAll();
+        const normalized = _insightsNormalizeSession({
+          ...(session && typeof session === "object" ? session : {}),
+          updatedAt: Date.now(),
+          deletedAt: 0
+        });
+        if (normalized) sessions.push(normalized);
         while (sessions.length > INSIGHTS_MAX) sessions.shift();
         _insightsSaveSessions(sessions);
         _queueUserBackupSync("insights");
@@ -29104,12 +29481,15 @@ function _openSearchResultByIndex(i){
         });
         if (!ok) return;
         try{
-          window.localStorage.removeItem(INSIGHTS_SESSIONS_KEY);
-          _insightsSessionsCache = [];
-          _insightsSessionsRev++;
-          _insightsFilteredCacheKey = "";
-          _insightsFilteredCache = null;
-          _insightsFilterCacheMap.clear();
+          const all = _insightsLoadSessionsAll();
+          const now = Date.now();
+          for (const s of all){
+            if (!s) continue;
+            s.deletedAt = now;
+            s.updatedAt = now;
+          }
+          _insightsSaveSessions(all);
+          _queueUserBackupSync("insights");
           _insightsRenderAll();
           uiAlert("削除しました。", {title:"Insights"});
         }catch{
@@ -29127,6 +29507,9 @@ function _openSearchResultByIndex(i){
       _backupScheduleAuto();
       _authBindEvents();
       _authBootstrap();
+      window.addEventListener("online", () => {
+        _syncFlushOutbox({ force: true });
+      });
     
       // =========================
       // Hamburger Menu (stable navigation)
