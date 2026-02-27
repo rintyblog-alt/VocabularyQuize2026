@@ -11836,7 +11836,8 @@ body[data-app-tab="inbox"] #appInboxPage{
       function _authApiBaseCandidates(){
         const list = [
           String(AUTH_API_BASE || "").trim(),
-          String(AUTH_API_FALLBACK_BASE || "").trim()
+          String(AUTH_API_FALLBACK_BASE || "").trim(),
+          "https://vocabuquiz-api2.rintyblog.workers.dev"
         ].map((v) => String(v || "").trim().replace(/\/+$/, ""))
          .filter((v) => /^https?:\/\//i.test(v));
         const out = [];
@@ -26718,7 +26719,7 @@ function _openSearchResultByIndex(i){
       // =========================
       const API_BASE = "https://vocabuquiz-api.rintyblog.workers.dev";
       const AUTH_API_BASE = "https://vocabuquiz-api.rintyblog.workers.dev";
-      const AUTH_API_FALLBACK_BASE = "";
+      const AUTH_API_FALLBACK_BASE = "https://vocabuquiz-api2.rintyblog.workers.dev";
       const SHARE_API_BASE = "https://vocabuquiz-api.rintyblog.workers.dev";
       const CHAT_AI_BASE = String(API_BASE || "").trim().replace(/\/+$/, "");
       const CHAT_AI_API_URL = `${CHAT_AI_BASE}/api/ai/chat`;
