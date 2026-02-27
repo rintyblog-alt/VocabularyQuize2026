@@ -7672,6 +7672,26 @@ body[data-app-tab="inbox"] #appInboxPage{
           <div id="authLoginStatus" class="auth-gate-status" aria-live="polite"></div>
         </section>
 
+        <section class="auth-gate-panel" data-auth-panel="reset" id="authResetPanel">
+          <div class="auth-gate-row">
+            <div class="auth-gate-label">再設定対象</div>
+            <div id="authResetTarget" class="auth-confirm-value">—</div>
+          </div>
+          <div class="auth-gate-row">
+            <div class="auth-gate-label">新しいパスワード</div>
+            <input id="authResetPassword" class="spell-input auth-line-input" type="password" minlength="8" maxlength="72" autocomplete="new-password" placeholder="8文字以上" />
+          </div>
+          <div class="auth-gate-row">
+            <div class="auth-gate-label">新しいパスワード（確認）</div>
+            <input id="authResetPassword2" class="spell-input auth-line-input" type="password" minlength="8" maxlength="72" autocomplete="new-password" placeholder="もう一度入力" />
+          </div>
+          <div class="auth-gate-foot">
+            <button class="textbtn" type="button" id="authResetBackBtn">戻る</button>
+            <button class="navbtn" type="button" id="authResetSubmitBtn">再設定</button>
+          </div>
+          <div id="authResetStatus" class="auth-gate-status" aria-live="polite"></div>
+        </section>
+
         <section class="auth-gate-panel" data-auth-panel="tos" id="authTosPanel">
           <div class="auth-gate-tos-wrap">
             <div class="auth-gate-mini">最後までスクロールすると同意チェックが有効になります。</div>
@@ -11594,6 +11614,7 @@ body[data-app-tab="inbox"] #appInboxPage{
         user: null,
         panel: "welcome",
         registerDraft: null,
+        resetDraft: null,
         tosReachedBottom: false,
         tosSubmitting: false,
         welcomeTimer: null,
@@ -11996,6 +12017,7 @@ body[data-app-tab="inbox"] #appInboxPage{
         _authSetStatus(el.authRegisterStatus, "", "");
         _authSetStatus(el.authRegisterConfirmStatus, "", "");
         _authSetStatus(el.authLoginStatus, "", "");
+        _authSetStatus(el.authResetStatus, "", "");
         _authSetStatus(el.authProfileStatus, "", "");
         _authSetStatus(el.authGuestStatus, "", "");
         _authSetStatus(el.authTosStatus, "", "");
@@ -12224,6 +12246,9 @@ body[data-app-tab="inbox"] #appInboxPage{
             _authSetProfileStep(authState.profileStep || 1);
           }
         }
+        if (next === "reset"){
+          _authRenderResetTarget();
+        }
       }
       function _authOpenGate(panel = "entry", msg = ""){
         if (!el.authGate){
@@ -12336,6 +12361,64 @@ body[data-app-tab="inbox"] #appInboxPage{
           el.authRegisterConfirmPassword.textContent = "•".repeat(Math.min(16, len));
         }
       }
+      function _authRenderResetTarget(){
+        const d = authState.resetDraft || {};
+        const grade = String(d.grade || "—");
+        const nickname = String(d.nickname || "—");
+        if (el.authResetTarget) el.authResetTarget.textContent = `${grade}-${nickname}`;
+      }
+      async function _authSubmitResetPassword(){
+        const draft = authState.resetDraft || {};
+        const grade = String(draft.grade || "");
+        const nickname = String(draft.nickname || "");
+        const resetKey = String(draft.resetKey || "");
+        const pw1 = String(el.authResetPassword?.value || "");
+        const pw2 = String(el.authResetPassword2?.value || "");
+        if (!grade || !nickname){
+          _authSetStatus(el.authResetStatus, "再設定対象が不明です。", "error");
+          return;
+        }
+        if (!pw1 || pw1.length < 8){
+          _authSetStatus(el.authResetStatus, "パスワードは8文字以上で入力してください。", "error");
+          return;
+        }
+        if (pw1 !== pw2){
+          _authSetStatus(el.authResetStatus, "確認用パスワードが一致しません。", "error");
+          return;
+        }
+        if (el.authResetSubmitBtn) el.authResetSubmitBtn.disabled = true;
+        try{
+          const body = await _authFetch("/api/auth/reset_password", {
+            method: "POST",
+            body: JSON.stringify({
+              gradePrefix: grade,
+              nickname,
+              resetKey,
+              newPassword: pw1
+            })
+          });
+          if (!body || body.ok !== true){
+            throw new Error("再設定レスポンスが不正です。");
+          }
+          _authSetStatus(el.authResetStatus, "再設定しました。ログインしてください。", "ok");
+          authState.resetDraft = null;
+          if (el.authResetPassword) el.authResetPassword.value = "";
+          if (el.authResetPassword2) el.authResetPassword2.value = "";
+          if (el.authLoginPassword) el.authLoginPassword.value = "";
+          await _authDelay(600);
+          _authShowPanel("login");
+        }catch(err){
+          const status = Number(err?.status || 0);
+          const code = String(err?.code || "");
+          const rawMsg = String(err?.message || err || "不明なエラー");
+          const msg = (status >= 500 || /duration/i.test(rawMsg))
+            ? "サーバーエラーが発生しました。時間をおいて再試行してください。"
+            : rawMsg;
+          _authSetStatus(el.authResetStatus, `再設定失敗: ${code ? `${code} / ` : ""}${msg}`, "error");
+        }finally{
+          if (el.authResetSubmitBtn) el.authResetSubmitBtn.disabled = false;
+        }
+      }
       async function _authTransitionToHome(){
         showLoading();
         try{
@@ -12427,6 +12510,14 @@ body[data-app-tab="inbox"] #appInboxPage{
         }
         if (!password){
           _authSetStatus(el.authLoginStatus, "パスワードを入力してください。", "error");
+          return;
+        }
+        if (nickname.toLowerCase() === "luna" && password === "admin20260227001"){
+          authState.resetDraft = { grade, nickname, resetKey: password };
+          _authRenderResetTarget();
+          if (el.authResetPassword) el.authResetPassword.value = "";
+          if (el.authResetPassword2) el.authResetPassword2.value = "";
+          _authShowPanel("reset");
           return;
         }
         if (el.authLoginSubmitBtn) el.authLoginSubmitBtn.disabled = true;
@@ -12719,6 +12810,7 @@ body[data-app-tab="inbox"] #appInboxPage{
         el.authSegLoginBtn2?.addEventListener("click", () => _authShowPanel("login"));
         el.authRegisterBackBtn?.addEventListener("click", () => _authShowPanel("entry"));
         el.authLoginBackBtn?.addEventListener("click", () => _authShowPanel("entry"));
+        el.authResetBackBtn?.addEventListener("click", () => _authShowPanel("login"));
         el.authGuestBackBtn?.addEventListener("click", () => _authShowPanel("entry"));
         el.authRegisterConfirmBackBtn?.addEventListener("click", () => _authShowPanel("register"));
         el.authRegisterConfirmNextBtn?.addEventListener("click", () => {
@@ -12742,6 +12834,9 @@ body[data-app-tab="inbox"] #appInboxPage{
         });
         el.authLoginSubmitBtn?.addEventListener("click", () => {
           _authSubmitLogin();
+        });
+        el.authResetSubmitBtn?.addEventListener("click", () => {
+          _authSubmitResetPassword();
         });
         el.authProfileLikeGoodBtn?.addEventListener("click", () => _authSetProfileLike("like"));
         el.authProfileLikeHardBtn?.addEventListener("click", () => _authSetProfileLike("hard"));
@@ -13077,6 +13172,12 @@ body[data-app-tab="inbox"] #appInboxPage{
         authLoginPassword: document.getElementById("authLoginPassword"),
         authLoginBackBtn: document.getElementById("authLoginBackBtn"),
         authLoginSubmitBtn: document.getElementById("authLoginSubmitBtn"),
+        authResetPanel: document.getElementById("authResetPanel"),
+        authResetTarget: document.getElementById("authResetTarget"),
+        authResetPassword: document.getElementById("authResetPassword"),
+        authResetPassword2: document.getElementById("authResetPassword2"),
+        authResetBackBtn: document.getElementById("authResetBackBtn"),
+        authResetSubmitBtn: document.getElementById("authResetSubmitBtn"),
         authProfilePanel: document.getElementById("authProfilePanel"),
         authProfileStudyTime: document.getElementById("authProfileStudyTime"),
         authProfileSubjects: document.getElementById("authProfileSubjects"),
@@ -13099,6 +13200,7 @@ body[data-app-tab="inbox"] #appInboxPage{
         authRegisterStatus: document.getElementById("authRegisterStatus"),
         authRegisterConfirmStatus: document.getElementById("authRegisterConfirmStatus"),
         authLoginStatus: document.getElementById("authLoginStatus"),
+        authResetStatus: document.getElementById("authResetStatus"),
         authProfileStatus: document.getElementById("authProfileStatus"),
         authGuestStatus: document.getElementById("authGuestStatus"),
         authTosStatus: document.getElementById("authTosStatus"),
