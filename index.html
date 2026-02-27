@@ -12551,7 +12551,7 @@ body[data-app-tab="inbox"] #appInboxPage{
           _authSetTokenExpiresAt(expiresAt);
           _authSetUser(user);
           _authSetMode("user");
-          try{ await _authSyncUserData({ source: "login", silent: true }); }catch{}
+          try{ await _authSyncUserData({ source: "login", silent: false }); }catch{}
           await _authTransitionToHome();
           uiToast("ログインしました");
         }catch(err){
@@ -17168,8 +17168,17 @@ function reviewWrong(){
       }
       const USER_BACKUP_SYNC_KEY = "app.userBackup.lastSyncAt.v1";
       const USER_BACKUP_SYNC_MIN_MS = 60000;
+      const USER_BACKUP_ERROR_THROTTLE_MS = 60000;
       let _userBackupSyncTimer = 0;
       let _userBackupSyncBusy = false;
+      let _userBackupLastErrorAt = 0;
+      function _userBackupNotifyError(msg){
+        if (!msg) return;
+        const now = Date.now();
+        if (now - _userBackupLastErrorAt < USER_BACKUP_ERROR_THROTTLE_MS) return;
+        _userBackupLastErrorAt = now;
+        try{ uiToast(msg); }catch{}
+      }
       function _userBackupGetLastSyncAt(){
         try{
           const raw = String(window.localStorage.getItem(USER_BACKUP_SYNC_KEY) || "");
@@ -17184,7 +17193,8 @@ function reviewWrong(){
           else window.localStorage.removeItem(USER_BACKUP_SYNC_KEY);
         }catch{}
       }
-      async function _userBackupFetchRemote(){
+      async function _userBackupFetchRemote(options){
+        const opt = options || {};
         const token = _authGetToken();
         if (!token) return null;
         try{
@@ -17196,11 +17206,16 @@ function reviewWrong(){
           });
           return body?.backup || null;
         }catch(err){
-          console.warn("[sync] backup fetch failed:", String(err?.message || err));
+          const msg = String(err?.message || err || "");
+          console.warn("[sync] backup fetch failed:", msg);
+          if (!opt.silent){
+            _userBackupNotifyError("同期に失敗しました。ネットワークを確認してください。");
+          }
           return null;
         }
       }
-      async function _userBackupPushRemote(payload){
+      async function _userBackupPushRemote(payload, options){
+        const opt = options || {};
         const token = _authGetToken();
         if (!token) return false;
         try{
@@ -17214,7 +17229,11 @@ function reviewWrong(){
           _userBackupSetLastSyncAt(Date.now());
           return true;
         }catch(err){
-          console.warn("[sync] backup push failed:", String(err?.message || err));
+          const msg = String(err?.message || err || "");
+          console.warn("[sync] backup push failed:", msg);
+          if (!opt.silent){
+            _userBackupNotifyError("同期に失敗しました。ネットワークを確認してください。");
+          }
           return false;
         }
       }
@@ -17226,7 +17245,7 @@ function reviewWrong(){
         try{
           const local = _backupReadLatest();
           const localAt = Number(local?.createdAt || 0);
-          const remote = await _userBackupFetchRemote();
+          const remote = await _userBackupFetchRemote({ silent: !!opt.silent });
           const remoteAt = Number(remote?.createdAt || 0);
           let applied = false;
           if (remote && remoteAt > localAt){
@@ -17235,7 +17254,7 @@ function reviewWrong(){
           }
           const finalLocal = _backupReadLatest() || _backupBuildPayload();
           if (finalLocal && (!remoteAt || Number(finalLocal.createdAt || 0) >= remoteAt)){
-            await _userBackupPushRemote(finalLocal);
+            await _userBackupPushRemote(finalLocal, { silent: !!opt.silent });
           }
           try{
             const userList = await _fetchUserNotificationsFromApi({ loadingText: "通知を同期中…" });
@@ -17273,7 +17292,7 @@ function reviewWrong(){
         _userBackupSyncTimer = setTimeout(() => {
           _userBackupSyncTimer = 0;
           const payload = _backupBuildPayload();
-          _userBackupPushRemote(payload);
+          _userBackupPushRemote(payload, { silent: true });
         }, 800);
       }
       function _removeStorageByPrefix(prefix){
