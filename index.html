@@ -11866,10 +11866,18 @@ body[data-app-tab="inbox"] #appInboxPage{
         let lastErr = null;
         try{
           const headers = Object.assign({}, opts.headers || {});
+          const reqMethod = String(opts.method || "GET").toUpperCase();
           const hasBody = Object.prototype.hasOwnProperty.call(opts, "body") && opts.body != null;
           const hasContentType = Object.keys(headers).some((k) => String(k || "").toLowerCase() === "content-type");
+          const isAuthSimplePost = (
+            hasBody
+            && reqMethod === "POST"
+            && /^\/api\/auth\/(login|register|reset_password)$/i.test(String(path || ""))
+          );
           if (hasBody && !hasContentType){
-            headers["Content-Type"] = "application/json";
+            headers["Content-Type"] = isAuthSimplePost
+              ? "text/plain;charset=UTF-8"
+              : "application/json";
           }
           for (let i = 0; i < bases.length; i += 1){
             const base = bases[i];
