@@ -451,6 +451,11 @@
       line-height: 1.7;
       word-break: break-word;
     }
+    .notify-detail-text.is-small{
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
     .notify-detail-text a{
       color: var(--accent);
       text-decoration: underline;
@@ -10822,6 +10827,7 @@ body[data-app-tab="inbox"] #appInboxPage{
         }
         window.localStorage.setItem(SUBJECTS_CUSTOM_KEY, JSON.stringify(Array.from(map.values())));
         __searchIndexCache.rev = -1;
+        _queueUserBackupSync("subjects");
       }
       function loadCustomTags(){
         try{
@@ -10849,6 +10855,7 @@ body[data-app-tab="inbox"] #appInboxPage{
         }
         window.localStorage.setItem(TAGS_CUSTOM_KEY, JSON.stringify(Array.from(map.values())));
         __searchIndexCache.rev = -1;
+        _queueUserBackupSync("tags");
       }
       function getAllSubjects(){
         return [...BUILTIN_SUBJECTS, ...loadCustomSubjects()];
@@ -11170,6 +11177,7 @@ body[data-app-tab="inbox"] #appInboxPage{
         window.localStorage.setItem(PRESETS_KEY, JSON.stringify(out));
         __presetsRev++;
         __searchIndexCache.rev = -1;
+        _queueUserBackupSync("presets");
       }
       function loadActivePresetId(fallbackDeck){
         const fb = fallbackDeck || "A";
@@ -11510,6 +11518,7 @@ body[data-app-tab="inbox"] #appInboxPage{
         try{
           window.localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(normalized));
         }catch{}
+        _queueUserBackupSync("settings");
       }
 
       function loadDeck(){
@@ -11805,10 +11814,11 @@ body[data-app-tab="inbox"] #appInboxPage{
         return `${b}${pathPart}`;
       }
       async function _authFetch(path, opts = {}){
-        showLoading(opts.loadingText || "認証処理中…");
+        const skipLoading = !!opts.skipLoading;
+        if (!skipLoading) showLoading(opts.loadingText || "認証処理中…");
         const bases = _authApiBaseCandidates();
         if (!bases.length){
-          hideLoading();
+          if (!skipLoading) hideLoading();
           throw new Error("認証APIの接続先が未設定です。");
         }
         let lastErr = null;
@@ -11870,7 +11880,7 @@ body[data-app-tab="inbox"] #appInboxPage{
           if (lastErr) throw lastErr;
           throw new Error("認証APIへの接続に失敗しました。");
         } finally {
-          hideLoading();
+          if (!skipLoading) hideLoading();
         }
       }
       function _authGetToken(){
@@ -12470,6 +12480,7 @@ body[data-app-tab="inbox"] #appInboxPage{
           _authSetTokenExpiresAt(expiresAt);
           _authSetUser(user);
           _authSetMode("user");
+          try{ await _authSyncUserData({ source: "register", silent: true }); }catch{}
           try{
             window.localStorage.setItem(AUTH_TOS_ACCEPT_KEY, JSON.stringify({
               acceptedAt: Date.now(),
@@ -12540,6 +12551,7 @@ body[data-app-tab="inbox"] #appInboxPage{
           _authSetTokenExpiresAt(expiresAt);
           _authSetUser(user);
           _authSetMode("user");
+          try{ await _authSyncUserData({ source: "login", silent: true }); }catch{}
           await _authTransitionToHome();
           uiToast("ログインしました");
         }catch(err){
@@ -12710,6 +12722,7 @@ body[data-app-tab="inbox"] #appInboxPage{
               _authSetMode("user");
               _authSetUser(me.user);
               gateShouldOpen = false;
+              setTimeout(() => { try{ _authSyncUserData({ source: "boot", silent: true }); }catch{} }, 0);
             } else {
               _authClearSession();
               gateShouldOpen = true;
@@ -15473,7 +15486,7 @@ function reviewWrong(){
       }
       function _notifNormalizeCategory(v){
         const s = String(v || "Update");
-        if (s === "Study" || s === "Preset" || s === "System") return s;
+        if (s === "Study" || s === "Preset" || s === "System" || s === "Security") return s;
         return "Update";
       }
       function _notifNormalizePriority(v){
@@ -16443,19 +16456,57 @@ function reviewWrong(){
             .filter(n => n && n.id)
             .sort((a,b) => (b.ts || 0) - (a.ts || 0))
             .slice(0, NOTIF_MAX);
-          saveNotifications(list);
           return list;
         } finally {
           hideLoading();
         }
       }
+      async function _fetchUserNotificationsFromApi(options){
+        const opt = options || {};
+        const token = _authGetToken();
+        if (!token) return [];
+        try{
+          const body = await _authFetch("/api/user/notifications", {
+            method: "GET",
+            headers: { Authorization: `Bearer ${token}` },
+            loadingText: opt.loadingText || "通知を同期中…",
+            skipLoading: true
+          });
+          const list = Array.isArray(body?.notifications) ? body.notifications : [];
+          return list
+            .map(_notifNormalizeItem)
+            .filter(Boolean)
+            .slice(0, NOTIF_MAX);
+        }catch(err){
+          console.warn("[notify] user notifications fetch failed:", String(err?.message || err));
+          return [];
+        }
+      }
+      function _mergeNotificationLists(base, extra){
+        const map = new Map();
+        const push = (arr) => {
+          for (const item of (Array.isArray(arr) ? arr : [])){
+            const n = _notifNormalizeItem(item);
+            if (!n || !n.id) continue;
+            map.set(n.id, n);
+          }
+        };
+        push(base);
+        push(extra);
+        return Array.from(map.values())
+          .sort((a,b) => (b.ts || 0) - (a.ts || 0))
+          .slice(0, NOTIF_MAX);
+      }
       async function _refreshNotificationsFromFirestore(options){
         const opt = options || {};
         const list = await _fetchNotificationsFromFirestore();
+        const userList = (!opt.forAdmin) ? await _fetchUserNotificationsFromApi({ loadingText: "通知を同期中…" }) : [];
+        const merged = _mergeNotificationLists(list, userList);
+        saveNotifications(merged);
         updateNotifyDot();
         if (el.notifyOverlay && !el.notifyOverlay.classList.contains("hidden")){
           renderNotifyList();
-          _notifMarkSeenByList(list);
+          _notifMarkSeenByList(merged);
           renderNotifyList();
           updateNotifyDot();
         }
@@ -16463,7 +16514,7 @@ function reviewWrong(){
           _adminState.notifItems = list.slice();
           _adminRenderNotifList();
         }
-        return list;
+        return merged;
       }
       function updateNotifyDot(){
         if (!el.notifyDot) return;
@@ -16494,6 +16545,7 @@ function reviewWrong(){
       function _notifyPreviewText(body){
         let txt = String(body || "");
         txt = txt.replace(/\r\n?/g, "\n");
+        txt = txt.replace(/\[small\]\s*/gi, "");
         txt = txt.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, "$1");
         txt = txt.replace(/\[video\]\(([^)]+)\)/gi, "[video]");
         txt = txt.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1");
@@ -16739,15 +16791,24 @@ function reviewWrong(){
           paraLines = [];
         };
         for (const lineRaw of lines){
-          const line = String(lineRaw || "");
+          let line = String(lineRaw || "");
           const h = line.match(/^##\s+(.+)$/);
           const img = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
           const vid = line.match(/^\[video\]\(([^)]+)\)\s*$/i);
+          const small = line.match(/^\[small\]\s*(.*)$/i);
           if (h){
             flushParagraph();
             const heading = document.createElement("h3");
             _notifyAppendInlineMarkdown(heading, h[1]);
             root.appendChild(heading);
+            continue;
+          }
+          if (small){
+            flushParagraph();
+            const p = document.createElement("div");
+            p.className = "notify-detail-text is-small";
+            _notifyAppendInlineMarkdown(p, small[1] || "");
+            root.appendChild(p);
             continue;
           }
           if (img){
@@ -17104,6 +17165,116 @@ function reviewWrong(){
         }else{
           setTimeout(run, 1200);
         }
+      }
+      const USER_BACKUP_SYNC_KEY = "app.userBackup.lastSyncAt.v1";
+      const USER_BACKUP_SYNC_MIN_MS = 60000;
+      let _userBackupSyncTimer = 0;
+      let _userBackupSyncBusy = false;
+      function _userBackupGetLastSyncAt(){
+        try{
+          const raw = String(window.localStorage.getItem(USER_BACKUP_SYNC_KEY) || "");
+          const n = Number(raw);
+          return Number.isFinite(n) ? n : 0;
+        }catch{ return 0; }
+      }
+      function _userBackupSetLastSyncAt(ts){
+        const n = Number(ts) || 0;
+        try{
+          if (n > 0) window.localStorage.setItem(USER_BACKUP_SYNC_KEY, String(n));
+          else window.localStorage.removeItem(USER_BACKUP_SYNC_KEY);
+        }catch{}
+      }
+      async function _userBackupFetchRemote(){
+        const token = _authGetToken();
+        if (!token) return null;
+        try{
+          const body = await _authFetch("/api/user/backup", {
+            method: "GET",
+            headers: { Authorization: `Bearer ${token}` },
+            loadingText: "同期中…",
+            skipLoading: true
+          });
+          return body?.backup || null;
+        }catch(err){
+          console.warn("[sync] backup fetch failed:", String(err?.message || err));
+          return null;
+        }
+      }
+      async function _userBackupPushRemote(payload){
+        const token = _authGetToken();
+        if (!token) return false;
+        try{
+          await _authFetch("/api/user/backup", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ backup: payload }),
+            loadingText: "同期中…",
+            skipLoading: true
+          });
+          _userBackupSetLastSyncAt(Date.now());
+          return true;
+        }catch(err){
+          console.warn("[sync] backup push failed:", String(err?.message || err));
+          return false;
+        }
+      }
+      async function _authSyncUserData(options){
+        const opt = options || {};
+        if (_authGetMode() !== "user") return;
+        if (_userBackupSyncBusy) return;
+        _userBackupSyncBusy = true;
+        try{
+          const local = _backupReadLatest();
+          const localAt = Number(local?.createdAt || 0);
+          const remote = await _userBackupFetchRemote();
+          const remoteAt = Number(remote?.createdAt || 0);
+          let applied = false;
+          if (remote && remoteAt > localAt){
+            _backupApplyPayload(remote);
+            applied = true;
+          }
+          const finalLocal = _backupReadLatest() || _backupBuildPayload();
+          if (finalLocal && (!remoteAt || Number(finalLocal.createdAt || 0) >= remoteAt)){
+            await _userBackupPushRemote(finalLocal);
+          }
+          try{
+            const userList = await _fetchUserNotificationsFromApi({ loadingText: "通知を同期中…" });
+            if (userList.length){
+              const merged = _mergeNotificationLists(loadNotifications(), userList);
+              saveNotifications(merged);
+              updateNotifyDot();
+              if (el.appInboxPage && document.body?.dataset?.appTab === "inbox"){
+                _appRenderInbox();
+              }
+            }
+          }catch{}
+          if (applied){
+            try{ state.settings = loadSettings(); }catch{}
+            try{ state.deck = loadDeck(); }catch{}
+            try{ _settingsSyncControls(); }catch{}
+            try{ _settingsRefreshSummary(); }catch{}
+            try{ _appRenderLibrary(); }catch{}
+            try{ renderAll(); }catch{}
+            try{ updateNotifyDot(); }catch{}
+          }
+          if (!opt.silent){
+            try{ _refreshNotificationsFromFirestore(); }catch{}
+          }
+        } finally {
+          _userBackupSyncBusy = false;
+        }
+      }
+      function _queueUserBackupSync(reason){
+        if (_authGetMode() !== "user") return;
+        const now = Date.now();
+        const last = _userBackupGetLastSyncAt();
+        if (now - last < USER_BACKUP_SYNC_MIN_MS) return;
+        if (_userBackupSyncTimer) clearTimeout(_userBackupSyncTimer);
+        _userBackupSyncTimer = setTimeout(() => {
+          _userBackupSyncTimer = 0;
+          const payload = _backupBuildPayload();
+          _userBackupPushRemote(payload);
+        }, 800);
       }
       function _removeStorageByPrefix(prefix){
         const p = String(prefix || "");
@@ -27980,6 +28151,7 @@ function _openSearchResultByIndex(i){
         sessions.push(session);
         while (sessions.length > INSIGHTS_MAX) sessions.shift();
         _insightsSaveSessions(sessions);
+        _queueUserBackupSync("insights");
       }
 
       function _insightsStartSession(mode){
