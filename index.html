@@ -15516,6 +15516,7 @@ function reviewWrong(){
       const MAINTENANCE_POLL_VISIBLE_MS = 3000;
       const MAINTENANCE_POLL_HIDDEN_MS = 15000;
       const MAINTENANCE_COUNTDOWN_MS = 10000;
+      const MAINTENANCE_ADMIN_PATH = "/api/admin/maintenance";
       const MAINTENANCE_PUBLIC_PATH = "/api/public/maintenance";
       const MAINTENANCE_RESUME_SESSION_KEY = "app.maintenance.resumeSession.v1";
       const MAINTENANCE_LOCK_KEY = "app.maintenance.lock.v1";
@@ -16248,6 +16249,64 @@ function reviewWrong(){
         _maintenanceStartRealtimeWatch();
         _maintenanceState.bootstrapped = true;
       }
+      function _maintenanceAdminToken(){
+        const keyEl = document.getElementById("adminAiIngestKey");
+        return String(keyEl?.value || "").trim();
+      }
+      async function _maintenanceSaveConfigToServer(payload){
+        const bases = (typeof _authApiBaseCandidates === "function")
+          ? _authApiBaseCandidates()
+          : [String(AUTH_API_BASE || "").trim().replace(/\/+$/, "")].filter(Boolean);
+        const adminToken = _maintenanceAdminToken();
+        const authToken = (typeof _authGetToken === "function") ? String(_authGetToken() || "").trim() : "";
+        let lastErr = null;
+        if (!adminToken && !authToken){
+          throw new Error("Admin Key (adminAiIngestKey) を入力してください。");
+        }
+        if (!bases.length){
+          throw new Error("認証APIの接続先が未設定です。");
+        }
+        for (const base of bases){
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 10000);
+          try{
+            const headers = {
+              "Content-Type": "application/json",
+              ...(adminToken ? { "x-admin-token": adminToken } : {}),
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+            };
+            const reqBody = Object.assign({}, payload || {}, adminToken ? { adminToken } : {});
+            const res = await fetch(_authApiUrl(base, MAINTENANCE_ADMIN_PATH), {
+              method: "POST",
+              headers,
+              body: JSON.stringify(reqBody),
+              signal: ctrl.signal
+            });
+            const txt = await res.text();
+            let body = null;
+            try{ body = txt ? JSON.parse(txt) : {}; }catch{ body = {}; }
+            if (!res.ok){
+              const msg = String(body?.message || `${res.status} ${res.statusText}`);
+              const code = String(body?.code || `HTTP_${res.status}`);
+              const err = new Error(`${msg}`);
+              err.code = code;
+              throw err;
+            }
+            const maintenance = body?.maintenance && typeof body.maintenance === "object"
+              ? body.maintenance
+              : (typeof body === "object" ? body : null);
+            if (!maintenance){
+              throw new Error("保存レスポンスが不正です。");
+            }
+            return maintenance;
+          }catch(err){
+            lastErr = err;
+          }finally{
+            clearTimeout(timer);
+          }
+        }
+        throw lastErr || new Error("メンテナンス設定の保存に失敗しました。");
+      }
       function _maintenanceUpdatedBy(){
         const uid = String(_adminState.user?.uid || "").trim();
         const email = String(_adminState.user?.email || "").trim();
@@ -16273,18 +16332,22 @@ function reviewWrong(){
         _maintenanceSetAdminStatus("保存中…");
         showLoading("メンテナンス設定を保存中…");
         try{
-          const db = _adminGetDb();
           const payload = {
             enabled: !!form.enabled,
             startAt: Number(form.startAt || 0),
             endAt: Number(form.endAt || 0),
             title: String(form.title || "メンテナンス中"),
             message: String(form.message || ""),
-            updatedAt: Date.now(),
-            updatedBy: _maintenanceUpdatedBy()
           };
-          await db.collection(MAINTENANCE_COLLECTION).doc(MAINTENANCE_DOC_ID).set(payload, { merge: true });
-          _maintenanceState.config = _maintenanceNormalizeConfig(payload);
+          const maintenance = await _maintenanceSaveConfigToServer(payload);
+          _maintenanceState.config = _maintenanceNormalizeConfig({
+            ...maintenance,
+            enabled: payload.enabled,
+            startAt: Number(payload.startAt || 0),
+            endAt: Number(payload.endAt || 0),
+            title: String(payload.title || ""),
+            message: String(payload.message || "")
+          });
           _maintenanceState.loaded = true;
           _maintenanceState.bypass = false;
           _maintenanceSetAdminStatus("保存しました。", "ok");
@@ -16294,11 +16357,7 @@ function reviewWrong(){
         }catch(err){
           const code = String(err?.code || "ERROR");
           const msg = String(err?.message || err);
-          if (code === "permission-denied"){
-            _maintenanceSetAdminStatus("保存失敗: permission-denied / Firestore Rulesで appConfig/maintenance の write をadmin許可にしてください。", "error");
-          }else{
-            _maintenanceSetAdminStatus(`保存失敗: ${code} / ${msg}`, "error");
-          }
+          _maintenanceSetAdminStatus(`保存失敗: ${code} / ${msg}`, "error");
         }finally{
           _maintenanceState.saving = false;
           _maintenanceSetAdminBusy(false);
@@ -16324,14 +16383,14 @@ function reviewWrong(){
         _maintenanceSetAdminStatus("無効化中…");
         showLoading("メンテナンスを無効化中…");
         try{
-          const db = _adminGetDb();
-          const payload = {
-            enabled: false,
-            updatedAt: Date.now(),
-            updatedBy: _maintenanceUpdatedBy()
-          };
-          await db.collection(MAINTENANCE_COLLECTION).doc(MAINTENANCE_DOC_ID).set(payload, { merge: true });
-          _maintenanceState.config = _maintenanceNormalizeConfig({ ...cfg, ...payload });
+          const maintenance = await _maintenanceSaveConfigToServer({
+            enabled: false
+          });
+          _maintenanceState.config = _maintenanceNormalizeConfig({
+            ...cfg,
+            ...maintenance,
+            enabled: false
+          });
           _maintenanceState.bypass = false;
           _maintenanceSetAdminStatus("enabled を false に更新しました。", "ok");
           uiToast("メンテナンスを無効化しました");
@@ -16340,11 +16399,7 @@ function reviewWrong(){
         }catch(err){
           const code = String(err?.code || "ERROR");
           const msg = String(err?.message || err);
-          if (code === "permission-denied"){
-            _maintenanceSetAdminStatus("無効化失敗: permission-denied / Firestore Rulesで appConfig/maintenance の write をadmin許可にしてください。", "error");
-          }else{
-            _maintenanceSetAdminStatus(`無効化失敗: ${code} / ${msg}`, "error");
-          }
+          _maintenanceSetAdminStatus(`無効化失敗: ${code} / ${msg}`, "error");
         }finally{
           _maintenanceState.saving = false;
           _maintenanceSetAdminBusy(false);
