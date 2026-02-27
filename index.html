@@ -16273,6 +16273,7 @@ function reviewWrong(){
             const headers = {
               "Content-Type": "application/json",
               ...(adminToken ? { "x-admin-token": adminToken } : {}),
+              ...(adminToken ? { "x-maintenance-token": adminToken } : {}),
               ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
             };
             const reqBody = Object.assign({}, payload || {}, adminToken ? { adminToken } : {});
@@ -16357,7 +16358,11 @@ function reviewWrong(){
         }catch(err){
           const code = String(err?.code || "ERROR");
           const msg = String(err?.message || err);
-          _maintenanceSetAdminStatus(`保存失敗: ${code} / ${msg}`, "error");
+          if (code === "FORBIDDEN" && /管理者権限/.test(msg)) {
+            _maintenanceSetAdminStatus("保存失敗: 管理者キーが未設定/不一致です。adminAiIngestKey を確認してください。", "error");
+          } else {
+            _maintenanceSetAdminStatus(`保存失敗: ${code} / ${msg}`, "error");
+          }
         }finally{
           _maintenanceState.saving = false;
           _maintenanceSetAdminBusy(false);
@@ -16399,7 +16404,11 @@ function reviewWrong(){
         }catch(err){
           const code = String(err?.code || "ERROR");
           const msg = String(err?.message || err);
-          _maintenanceSetAdminStatus(`無効化失敗: ${code} / ${msg}`, "error");
+          if (code === "FORBIDDEN" && /管理者権限/.test(msg)) {
+            _maintenanceSetAdminStatus("無効化失敗: 管理者キーが未設定/不一致です。adminAiIngestKey を確認してください。", "error");
+          } else {
+            _maintenanceSetAdminStatus(`無効化失敗: ${code} / ${msg}`, "error");
+          }
         }finally{
           _maintenanceState.saving = false;
           _maintenanceSetAdminBusy(false);
