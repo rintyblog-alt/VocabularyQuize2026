@@ -5297,6 +5297,46 @@ body[data-app-tab="chat"] #appChatPage{
   background: var(--panel2);
   padding: 10px 12px;
 }
+.home-preset-termination-notice{
+  position: relative;
+  border: 1px solid #f5a7a7;
+  background: linear-gradient(135deg, #fff1b8 0%, #ffd6c9 72%);
+  color: #5a2f00;
+  border-radius: 14px;
+  padding: 10px 10px 10px 30px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.home-preset-termination-notice.is-post{
+  border-color: #ef8484;
+  background: linear-gradient(135deg, #ffe2c8 0%, #ffd2d2 72%);
+  color: #6f2800;
+}
+.home-preset-termination-notice.hidden{
+  display: none !important;
+}
+.home-preset-termination-notice .notice-title{
+  margin: 0 0 2px;
+  font-weight: 700;
+  font-size: 13px;
+}
+.home-preset-termination-close{
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 20px;
+  min-height: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid #d98d6a;
+  background: rgba(255, 255, 255, 0.75);
+  color: #7a3100;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
 .app-home-reco-title{
   color: var(--text);
   font-size: 13px;
@@ -7944,6 +7984,11 @@ body[data-app-tab="inbox"] #appInboxPage{
         <!-- Dashboard -->
         <section class="view active" id="viewTitle" aria-label="ダッシュボード">
           <div class="hero">
+            <div class="home-preset-termination-notice" id="homePresetTerminationNotice">
+              <button class="home-preset-termination-close" id="homePresetTerminationNoticeClose" type="button" aria-label="閉じる">×</button>
+              <div class="notice-title">英単語標準プリセット終了のお知らせ</div>
+              <div id="homePresetTerminationNoticeBody">2026/02/28 23:59 をもって、英単語（0〜1000）標準プリセットの提供を終了します。</div>
+            </div>
             <h1 class="h1">Word Practice 1–1000</h1>
             <p class="subtitle">
               学習用のシンプルな単語ビューア。範囲（Vocabu）を選んで練習します。
@@ -11212,6 +11257,109 @@ body[data-app-tab="inbox"] #appInboxPage{
         window.localStorage.setItem(ACTIVE_PRESET_KEY, id);
       }
 
+      let _builtinPresetTerminationNoticeDismissed = false;
+      let _builtinPresetTerminateTimer = null;
+      const BUILTIN_PRESET_TERMINATE_AT = "2026-03-01T00:00:00+09:00";
+      const BUILTIN_PRESET_TERMINATION_NOTICE_PRE = "2026/02/28 23:59 をもって、英単語（0〜1000）標準プリセットの提供を終了します。";
+      const BUILTIN_PRESET_TERMINATION_NOTICE_POST = "英単語標準プリセットは 2026/03/01 0:00 をもって配信終了しました。現在は My Preset のみ利用できます。";
+      function _builtinPresetTerminateAt(){
+        const t = Date.parse(BUILTIN_PRESET_TERMINATE_AT);
+        return Number.isFinite(t) ? t : Infinity;
+      }
+      function isBuiltinPresetTerminated(){
+        return Date.now() >= _builtinPresetTerminateAt();
+      }
+      function _isBuiltinPresetTerminatedUnavailable(){
+        return isBuiltinPresetTerminated();
+      }
+      function getBuiltinPresetCatalog(){
+        return [
+          { id: "builtin:A", deck: "A", name: "0〜200" },
+          { id: "builtin:B", deck: "B", name: "200〜400" },
+          { id: "builtin:C", deck: "C", name: "400〜600" },
+          { id: "builtin:D", deck: "D", name: "600〜800" },
+          { id: "builtin:E", deck: "E", name: "800〜1000（801〜1000）" },
+          { id: "builtin:ALL", deck: "ALL", name: "ALL" }
+        ];
+      }
+      function getVisibleBuiltinPresetCatalog(){
+        return isBuiltinPresetTerminated() ? [] : getBuiltinPresetCatalog();
+      }
+      function getFirstCustomPresetId(){
+        const list = loadPresets();
+        return list.length ? String(list[0].id) : "";
+      }
+      function hasAnyCustomPreset(){
+        return loadPresets().length > 0;
+      }
+      function applyBuiltinPresetTerminationPolicy(){
+        if (!isBuiltinPresetTerminated()) return false;
+        if (!isBuiltinPreset(state.presetId)) return false;
+        const fallback = getFirstCustomPresetId();
+        if (fallback){
+          if (state.presetId !== fallback){
+            state.presetId = fallback;
+            saveActivePresetId(fallback);
+            return true;
+          }
+          return false;
+        }
+
+        if (state.presetId !== ""){
+          state.presetId = "";
+          saveActivePresetId("");
+          return true;
+        }
+        return false;
+      }
+
+      function _updateBuiltinTerminationNotice(){
+        const notice = document.getElementById("homePresetTerminationNotice");
+        if (!notice) return;
+        const body = document.getElementById("homePresetTerminationNoticeBody");
+        if (!body) return;
+
+        if (_builtinPresetTerminationNoticeDismissed){
+          notice.classList.add("hidden");
+          return;
+        }
+
+        notice.classList.toggle("is-post", isBuiltinPresetTerminated());
+        body.textContent = isBuiltinPresetTerminated()
+          ? BUILTIN_PRESET_TERMINATION_NOTICE_POST
+          : BUILTIN_PRESET_TERMINATION_NOTICE_PRE;
+        notice.classList.remove("hidden");
+      }
+
+      function _handleBuiltinPresetTerminationRedirect(){
+        const terminated = isBuiltinPresetTerminated();
+        if (!terminated) return false;
+
+        const wasBuiltinActive = isBuiltinPreset(state.presetId);
+        const policyChanged = applyBuiltinPresetTerminationPolicy();
+        const hasBuiltinActive = wasBuiltinActive;
+        if (!hasBuiltinActive || state.view === "TITLE") return policyChanged;
+
+        if (!isBuiltinPreset(state.presetId) || policyChanged){
+          goTitle();
+          return true;
+        }
+        return false;
+      }
+
+      function _ensureBuiltinPresetTerminationPolicy(){
+        _handleBuiltinPresetTerminationRedirect();
+        _updateBuiltinTerminationNotice();
+      }
+
+      function _startBuiltinPresetTerminationWatcher(){
+        if (_builtinPresetTerminateTimer) return;
+        _builtinPresetTerminateTimer = setInterval(() => {
+          _handleBuiltinPresetTerminationRedirect();
+          _updateBuiltinTerminationNotice();
+        }, 5000);
+      }
+
       function isBuiltinPreset(id){
         return String(id||"").startsWith("builtin:");
       }
@@ -11294,6 +11442,7 @@ body[data-app-tab="inbox"] #appInboxPage{
 
       function getPresetWords(pid){
         if (isBuiltinPreset(pid)){
+          if (isBuiltinPresetTerminated()) return [];
           const dk = deckFromBuiltinId(pid);
           return data.words.filter(w => (
             dk === "A" ? (w.id >= 1 && w.id <= 200) :
@@ -11403,30 +11552,51 @@ body[data-app-tab="inbox"] #appInboxPage{
         const pid = getActivePresetId();
         const isMy = !isBuiltinPreset(pid);
         const dk = state.deck;
-
-        el.deckABtn.classList.toggle("active", !isMy && dk === "A");
-        el.deckBBtn.classList.toggle("active", !isMy && dk === "B");
-        if (el.deckCBtn) el.deckCBtn.classList.toggle("active", !isMy && dk === "C");
-        if (el.deckDBtn) el.deckDBtn.classList.toggle("active", !isMy && dk === "D");
-        if (el.deckEBtn) el.deckEBtn.classList.toggle("active", !isMy && dk === "E");
-        el.deckAllBtn.classList.toggle("active", !isMy && dk === "ALL");
-        if (el.deckMyBtn){
-          el.deckMyBtn.classList.toggle("active", isMy);
-          el.deckMyBtn.setAttribute("aria-selected", String(isMy));
-        }
-        el.deckABtn.setAttribute("aria-selected", String(!isMy && dk === "A"));
-        el.deckBBtn.setAttribute("aria-selected", String(!isMy && dk === "B"));
-        if (el.deckCBtn) el.deckCBtn.setAttribute("aria-selected", String(!isMy && dk === "C"));
-        if (el.deckDBtn) el.deckDBtn.setAttribute("aria-selected", String(!isMy && dk === "D"));
-        if (el.deckEBtn) el.deckEBtn.setAttribute("aria-selected", String(!isMy && dk === "E"));
-        el.deckAllBtn.setAttribute("aria-selected", String(!isMy && dk === "ALL"));
-
-        const words = getActiveWords();
+        const builtinVisible = getVisibleBuiltinPresetCatalog().length > 0;
         const preset = getPresetById(pid);
-        const name = isMy ? (preset?.name || "My") : builtinNameFromDeck(dk);
+        const words = getActiveWords();
         const sid = _resolveSubjectId(preset?.subjectId, { fallback: "sub:english", allowMissingCustom: true });
         const subject = subjectNameById(sid);
         const unit = _isEnglishSubjectId(sid) ? "語" : "問";
+        const baseName = isMy ? (preset?.name || "My") : builtinNameFromDeck(dk);
+        const name = isMy || !builtinVisible ? baseName : `${baseName}（終了）`;
+
+        if (el.deckABtn) el.deckABtn.classList.toggle("hidden", !builtinVisible);
+        if (el.deckBBtn) el.deckBBtn.classList.toggle("hidden", !builtinVisible);
+        if (el.deckCBtn) el.deckCBtn.classList.toggle("hidden", !builtinVisible);
+        if (el.deckDBtn) el.deckDBtn.classList.toggle("hidden", !builtinVisible);
+        if (el.deckEBtn) el.deckEBtn.classList.toggle("hidden", !builtinVisible);
+        if (el.deckAllBtn) el.deckAllBtn.classList.toggle("hidden", !builtinVisible);
+
+        if (el.deckABtn){
+          el.deckABtn.classList.toggle("active", !isMy && dk === "A");
+          el.deckABtn.setAttribute("aria-selected", String(!isMy && builtinVisible && dk === "A"));
+        }
+        if (el.deckBBtn){
+          el.deckBBtn.classList.toggle("active", !isMy && dk === "B");
+          el.deckBBtn.setAttribute("aria-selected", String(!isMy && builtinVisible && dk === "B"));
+        }
+        if (el.deckCBtn){
+          el.deckCBtn.classList.toggle("active", !isMy && dk === "C");
+          el.deckCBtn.setAttribute("aria-selected", String(!isMy && builtinVisible && dk === "C"));
+        }
+        if (el.deckDBtn){
+          el.deckDBtn.classList.toggle("active", !isMy && dk === "D");
+          el.deckDBtn.setAttribute("aria-selected", String(!isMy && builtinVisible && dk === "D"));
+        }
+        if (el.deckEBtn){
+          el.deckEBtn.classList.toggle("active", !isMy && dk === "E");
+          el.deckEBtn.setAttribute("aria-selected", String(!isMy && builtinVisible && dk === "E"));
+        }
+        if (el.deckAllBtn){
+          el.deckAllBtn.classList.toggle("active", !isMy && dk === "ALL");
+          el.deckAllBtn.setAttribute("aria-selected", String(!isMy && builtinVisible && dk === "ALL"));
+        }
+        if (el.deckMyBtn){
+          el.deckMyBtn.classList.toggle("active", isMy || !builtinVisible);
+          el.deckMyBtn.setAttribute("aria-selected", String(isMy || !builtinVisible));
+        }
+
         el.deckStatus.textContent = `${name}（${words.length}${unit} / ${subject}）`;
 
         if (el.customPresetRow){
@@ -13030,6 +13200,9 @@ body[data-app-tab="inbox"] #appInboxPage{
         state.deck = dk;
         saveDeck(dk);
       }
+      if (applyBuiltinPresetTerminationPolicy()){
+        if (el && el.deckMyBtn) el.deckMyBtn.classList.add("active");
+      }
 
       saveActivePresetId(state.presetId);
 
@@ -13183,6 +13356,8 @@ body[data-app-tab="inbox"] #appInboxPage{
 
         // app tabs
         appTabBar: document.getElementById("appTabBar"),
+        homePresetTerminationNotice: document.getElementById("homePresetTerminationNotice"),
+        homePresetTerminationNoticeClose: document.getElementById("homePresetTerminationNoticeClose"),
         homeResumeBtn: document.getElementById("homeResumeBtn"),
         homeActivePresetName: document.getElementById("homeActivePresetName"),
         homeActivePresetMeta: document.getElementById("homeActivePresetMeta"),
@@ -14782,6 +14957,7 @@ function renderQuestion(){
       function renderAll(){
         updateDataStatus();
         updateDebugBar();
+        _ensureBuiltinPresetTerminationPolicy();
 
         const isEnJa = state.settings.direction === "EN_JA";
         if (el.dirEnJaBtn){
@@ -14831,8 +15007,27 @@ function renderQuestion(){
       // =========================
       // Navigation
       // =========================
+
+      function _canStartCurrentPreset(){
+        const pid = getActivePresetId();
+        if (!pid){
+          uiToast("プリセットが選択されていません。");
+          return false;
+        }
+        if (isBuiltinPreset(pid) && isBuiltinPresetTerminated() && getVisibleBuiltinPresetCatalog().length === 0){
+          uiToast("英単語標準プリセットは 2026/03/01 をもって配信終了しました。");
+          return false;
+        }
+        const count = getActiveWords().length;
+        if (!count){
+          uiToast("選択中のプリセットに問題がありません。");
+          return false;
+        }
+        return true;
+      }
       
       function startMode(mode, jumpId){
+        if (!_canStartCurrentPreset()) return;
         state.mode = mode;
         state.index = 0;
         state.showAnswer = false;
@@ -14869,6 +15064,7 @@ function renderQuestion(){
       }
 
       function startChoiceMode(timeLimitSec){
+        if (!_canStartCurrentPreset()) return;
         closeTimeSelect();
         const resolvedLimit = (timeLimitSec === undefined || timeLimitSec === null)
           ? getChoiceDefaultTimeLimitSec()
@@ -15113,11 +15309,22 @@ function goTitle(){
       }
 function setDeck(deckKey){
         _clearRecommendScope();
+        if (_isBuiltinPresetTerminatedUnavailable()){
+          const fallback = getFirstCustomPresetId();
+          if (fallback){
+            setActivePreset(fallback);
+            uiToast("英単語標準プリセットは 2026/03/01 をもって配信終了しています。");
+            return true;
+          }
+          uiToast("英単語標準プリセットは 2026/03/01 をもって配信終了しています。My Preset を作成してください。");
+          return false;
+        }
         state.deck = deckKey;
         saveDeck(deckKey);
         state.presetId = `builtin:${deckKey}`;
         saveActivePresetId(state.presetId);
         renderAll();
+        return true;
       }
 
       // =========================
@@ -18113,7 +18320,7 @@ function reviewWrong(){
 
       function _buildSearchIndexAll(){
         const items = [];
-        const presetIds = ["builtin:A", "builtin:B", "builtin:C", "builtin:D", "builtin:E"];
+        const presetIds = getVisibleBuiltinPresetCatalog().map((item) => String(item.id || ""));
         const user = loadPresets();
         for (const p of user) presetIds.push(p.id);
 
@@ -18424,6 +18631,16 @@ function _openSearchResultByIndex(i){
           el.homeResumeBtn.textContent = "続きから";
           return;
         }
+        if (isBuiltinPreset(r.presetId || "") && _isBuiltinPresetTerminatedUnavailable()){
+          el.homeResumeBtn.disabled = true;
+          el.homeResumeBtn.textContent = "続きから";
+          return;
+        }
+        if (!r.presetId && r.deck && _isBuiltinPresetTerminatedUnavailable()){
+          el.homeResumeBtn.disabled = true;
+          el.homeResumeBtn.textContent = "続きから";
+          return;
+        }
         const modeLabel = r.mode === "CHOICE" ? "EXAM" : "WRITE";
         el.homeResumeBtn.disabled = false;
         el.homeResumeBtn.textContent = `続きから（${modeLabel}）`;
@@ -18455,14 +18672,7 @@ function _openSearchResultByIndex(i){
       }
 
       function _appBuiltinDefs(){
-        return [
-          { id: "builtin:A", name: "0〜200" },
-          { id: "builtin:B", name: "200〜400" },
-          { id: "builtin:C", name: "400〜600" },
-          { id: "builtin:D", name: "600〜800" },
-          { id: "builtin:E", name: "800〜1000（801〜1000）" },
-          { id: "builtin:ALL", name: "ALL" }
-        ];
+        return getVisibleBuiltinPresetCatalog().map((item) => ({ id: item.id, name: item.name }));
       }
 
       function _appCreateActionButton(label, action, id, klass = "textbtn"){
@@ -18577,7 +18787,8 @@ function _openSearchResultByIndex(i){
         el.appLibraryMyList.replaceChildren();
 
         const bFrag = document.createDocumentFragment();
-        for (const b of _appBuiltinDefs()){
+        const builtinDefs = _appBuiltinDefs();
+        for (const b of builtinDefs){
           const presetObj = getPresetById(b.id);
           if (!_appPresetMatchesLibraryFilter(presetObj)) continue;
           const count = (getPresetWords(b.id) || []).length;
@@ -18600,7 +18811,14 @@ function _openSearchResultByIndex(i){
           card.appendChild(actions);
           bFrag.appendChild(card);
         }
-        el.appLibraryBuiltinList.appendChild(bFrag);
+        if (!builtinDefs.length){
+          const empty = document.createElement("div");
+          empty.className = "app-empty";
+          empty.textContent = "英単語標準プリセットは 2026/03/01 をもって配信終了しました。";
+          el.appLibraryBuiltinList.appendChild(empty);
+        } else {
+          el.appLibraryBuiltinList.appendChild(bFrag);
+        }
 
         const mine = loadPresets();
         const filteredMine = mine.filter((p) => _appPresetMatchesLibraryFilter(p));
@@ -18645,9 +18863,12 @@ function _openSearchResultByIndex(i){
       function _appUsePresetForStart(pid){
         if (!pid) return false;
         if (isBuiltinPreset(pid)){
+          if (isBuiltinPresetTerminated() && getVisibleBuiltinPresetCatalog().length === 0){
+            uiToast("英単語標準プリセットは 2026/03/01 をもって配信終了しています。");
+            return false;
+          }
           const dk = deckFromBuiltinId(pid);
-          setDeck(dk);
-          return true;
+          return !!setDeck(dk);
         }
         const p = getPresetById(pid);
         if (!p || p.builtin) return false;
@@ -22332,9 +22553,14 @@ function _openSearchResultByIndex(i){
           return;
         }
         if (action === "useBuiltin"){
+          if (isBuiltinPresetTerminated() && getVisibleBuiltinPresetCatalog().length === 0){
+            uiToast("英単語標準プリセットは 2026/03/01 をもって配信終了しています。");
+            return;
+          }
           const pid = String(id || "");
           const builtinId = pid.startsWith("builtin:") ? pid : `builtin:${pid}`;
-          setDeck(deckFromBuiltinId(builtinId));
+          const ok = setDeck(deckFromBuiltinId(builtinId));
+          if (!ok) return;
           return;
         }
         if (action === "startBuiltinExam"){
@@ -22398,10 +22624,19 @@ function _openSearchResultByIndex(i){
             uiToast("続きデータがありません。");
             return;
           }
+          let started = false;
           if (r.presetId){
-            _appUsePresetForStart(r.presetId);
+            started = _appUsePresetForStart(r.presetId);
           } else if (r.deck){
-            setDeck(r.deck);
+            started = !!setDeck(r.deck);
+          }
+          if (!started){
+            if (!r.presetId && !r.deck){
+              uiToast("保存された再開情報がありません。");
+            }else{
+              uiToast("保存されたプリセットが利用不可です。");
+            }
+            return;
           }
           _appSetTab("home");
           if (r.mode === "HAND"){
@@ -22424,6 +22659,14 @@ function _openSearchResultByIndex(i){
       if (el.deckDBtn) el.deckDBtn.addEventListener("click", () => setDeck("D"));
       if (el.deckEBtn) el.deckEBtn.addEventListener("click", () => setDeck("E"));
       el.deckAllBtn.addEventListener("click", () => setDeck("ALL"));
+      if (el.homePresetTerminationNoticeClose){
+        el.homePresetTerminationNoticeClose.addEventListener("click", () => {
+          _builtinPresetTerminationNoticeDismissed = true;
+          if (el.homePresetTerminationNotice){
+            el.homePresetTerminationNotice.classList.add("hidden");
+          }
+        });
+      }
 
       // Preset: My / Manage
       if (el.deckMyBtn){
@@ -27974,14 +28217,7 @@ function _openSearchResultByIndex(i){
         const list = loadPresets();
         presetListEl.innerHTML = "";
 
-        const builtins = [
-          {id:"builtin:A", name:"0〜200"},
-          {id:"builtin:B", name:"200〜400"},
-          {id:"builtin:C", name:"400〜600"},
-          {id:"builtin:D", name:"600〜800"},
-          {id:"builtin:E", name:"800〜1000（801〜1000）"},
-          {id:"builtin:ALL", name:"ALL"}
-        ];
+        const builtins = getVisibleBuiltinPresetCatalog().map((item) => ({ id: item.id, name: item.name }));
         for (const b of builtins){
           const row = document.createElement("div");
           row.className = "preset-item";
@@ -28445,7 +28681,12 @@ function _openSearchResultByIndex(i){
         }
         savePresetsAll(listAll, { touchUpdatedAt: false });
         if (getActivePresetId() === editingPresetId){
-          setDeck("A");
+          const fallback = getFirstCustomPresetId();
+          if (fallback){
+            setActivePreset(fallback);
+          } else {
+            setDeck("A");
+          }
         }
         editingPresetId = null;
         selectPresetForEdit(null);
@@ -29024,7 +29265,7 @@ function _openSearchResultByIndex(i){
         const cur = insights.currentPresetId || _insightsGetPresetMeta().presetId;
         if (cur) ids.set(cur, _insightsGetPresetMeta().presetName || cur);
 
-        const builtins = ["builtin:A","builtin:B","builtin:C","builtin:D","builtin:E","builtin:ALL"];
+        const builtins = _isBuiltinPresetTerminatedUnavailable() ? [] : ["builtin:A","builtin:B","builtin:C","builtin:D","builtin:E","builtin:ALL"];
         for (const b of builtins){
           if (!ids.has(b)){
             try{
@@ -29832,6 +30073,8 @@ function _openSearchResultByIndex(i){
       setView("TITLE");
       _appSetTab("home");
       renderAll();
+      _startBuiltinPresetTerminationWatcher();
+      _updateBuiltinTerminationNotice();
       if (el.updateOverlay) el.updateOverlay.classList.add("hidden");
       _backupScheduleAuto();
       _authBindEvents();
