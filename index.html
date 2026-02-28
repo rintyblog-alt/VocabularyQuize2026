@@ -12584,7 +12584,12 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
       }
       function loadActivePresetId(fallbackDeck){
         const fb = fallbackDeck || "A";
-        return window.localStorage.getItem(ACTIVE_PRESET_KEY) || `builtin:${fb}`;
+        const stored = window.localStorage.getItem(ACTIVE_PRESET_KEY);
+        if (stored) return stored;
+        if (_isBuiltinPresetTerminatedUnavailable()){
+          return getFirstCustomPresetId() || BUILTIN_PRESET_DISABLED_ID;
+        }
+        return `builtin:${fb}`;
       }
       function saveActivePresetId(id){
         window.localStorage.setItem(ACTIVE_PRESET_KEY, id);
@@ -12592,6 +12597,7 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
 
       let _builtinPresetTerminationNoticeDismissed = false;
       let _builtinPresetTerminateTimer = null;
+      const BUILTIN_PRESET_DISABLED_ID = "custom:none";
       const BUILTIN_PRESET_CUTOFF_AT = "2026-02-28T23:59:00+09:00";
       const BUILTIN_PRESET_TERMINATE_AT = "2026-03-01T00:00:00+09:00";
       const BUILTIN_PRESET_TERMINATION_NOTICE_PRE = "2026/02/28 23:59 をもって、英単語（0〜1000）標準プリセットを新標準へ切替予定です。";
@@ -12760,7 +12766,7 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         return data.words;
       }
       function _isBuiltinPresetTerminatedUnavailable(){
-        return false;
+        return isBuiltinPresetTerminated();
       }
       function getBuiltinPresetCatalog(){
         return [
@@ -12773,6 +12779,7 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         ];
       }
       function getVisibleBuiltinPresetCatalog(){
+        if (_isBuiltinPresetTerminatedUnavailable()) return [];
         return getBuiltinPresetCatalog();
       }
       function getFirstCustomPresetId(){
@@ -12783,7 +12790,24 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         return loadPresets().length > 0;
       }
       function applyBuiltinPresetTerminationPolicy(){
-        return false;
+        const builtinHidden = _isBuiltinPresetTerminatedUnavailable();
+        let changed = false;
+        if (builtinHidden){
+          const activeId = String(state?.presetId || "");
+          const nextCustomId = getFirstCustomPresetId();
+          const fallbackId = nextCustomId || BUILTIN_PRESET_DISABLED_ID;
+          if (!activeId || isBuiltinPreset(activeId)){
+            state.presetId = fallbackId;
+            saveActivePresetId(fallbackId);
+            changed = true;
+          }
+        } else if (String(state?.presetId || "") === BUILTIN_PRESET_DISABLED_ID){
+          const next = getFirstCustomPresetId() || `builtin:${state.deck || "A"}`;
+          state.presetId = next;
+          saveActivePresetId(next);
+          changed = true;
+        }
+        return changed;
       }
 
       function _updateBuiltinTerminationNotice(){
@@ -12953,10 +12977,17 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
       }
 
       function getActivePresetId(){
-        return state.presetId || `builtin:${state.deck}`;
+        if (state.presetId) return state.presetId;
+        if (_isBuiltinPresetTerminatedUnavailable()){
+          return getFirstCustomPresetId() || BUILTIN_PRESET_DISABLED_ID;
+        }
+        return `builtin:${state.deck}`;
       }
 
       function setActivePreset(pid){
+        if (isBuiltinPreset(pid) && _isBuiltinPresetTerminatedUnavailable()){
+          return;
+        }
         _clearRecommendScope();
         state.presetId = pid;
         saveActivePresetId(pid);
@@ -13091,6 +13122,27 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         }
 
         applyModeVisibility();
+        const defaultEmptyTitle = "クイズがまだありません。";
+        const defaultEmptyDesc = "プリセットからクイズを作成し、モードを選択して下さい。";
+        if (el.emptyState){
+          const title = el.emptyState.querySelector(".empty-title");
+          const desc = el.emptyState.querySelector(".empty-desc");
+          if (title) title.textContent = defaultEmptyTitle;
+          if (desc) desc.textContent = defaultEmptyDesc;
+        }
+        if (!builtinVisible && isMy){
+          const list = loadPresets();
+          if (!list.length){
+            if (el.modeActions) el.modeActions.classList.add("hidden");
+            if (el.emptyState) el.emptyState.classList.remove("hidden");
+            if (el.emptyState){
+              const title = el.emptyState.querySelector(".empty-title");
+              const desc = el.emptyState.querySelector(".empty-desc");
+              if (title) title.textContent = "標準プリセットの配信は終了しました";
+              if (desc) desc.textContent = "学習を続けるには My Preset を作成してください。";
+            }
+          }
+        }
         _customSelectEnhance(el.viewTitle || document);
       }
 
@@ -14657,7 +14709,11 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
       if (!isBuiltinPreset(state.presetId)){
         const list = loadPresets();
         if (!list.some(p => p.id === state.presetId)){
-          state.presetId = list[0]?.id || `builtin:${state.deck}`;
+          if (_isBuiltinPresetTerminatedUnavailable()){
+            state.presetId = list[0]?.id || BUILTIN_PRESET_DISABLED_ID;
+          } else {
+            state.presetId = list[0]?.id || `builtin:${state.deck}`;
+          }
         }
       }
 
@@ -16874,6 +16930,9 @@ function goTitle(){
         restart();
       }
 function setDeck(deckKey){
+        if (_isBuiltinPresetTerminatedUnavailable()){
+          return false;
+        }
         _clearRecommendScope();
         state.deck = deckKey;
         saveDeck(deckKey);
@@ -21375,6 +21434,10 @@ function _openSearchResultByIndex(i){
       function _appUsePresetForStart(pid){
         if (!pid) return false;
         if (isBuiltinPreset(pid)){
+          if (_isBuiltinPresetTerminatedUnavailable()){
+            uiToast("標準プリセットの配信は終了しました。My Preset を利用してください。");
+            return false;
+          }
           const dk = deckFromBuiltinId(pid);
           return !!setDeck(dk);
         }
@@ -21422,7 +21485,7 @@ function _openSearchResultByIndex(i){
         }
         savePresetsAll(listAll, { touchUpdatedAt: false });
         if (getActivePresetId() === pid){
-          setDeck("A");
+          if (!setDeck("A")) renderAll();
         } else {
           renderAll();
         }
