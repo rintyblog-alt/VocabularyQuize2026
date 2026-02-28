@@ -18,7 +18,16 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon-180.png" />
-  <link rel="manifest" href="/manifest.webmanifest" />
+  <script>
+    (function(){
+      var p = String(location && location.protocol || "");
+      if (p !== "http:" && p !== "https:") return;
+      var link = document.createElement("link");
+      link.rel = "manifest";
+      link.href = "/manifest.webmanifest";
+      document.head.appendChild(link);
+    })();
+  </script>
   <meta name="theme-color" content="#18c77a" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,500,0,0" />
   <style>
@@ -2378,6 +2387,23 @@ a{ color: inherit; }
       margin:0;
       word-break: break-word;
     }
+    .preset-item-actions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:flex-end;
+      flex:0 0 auto;
+    }
+    @media (max-width: 640px){
+      #presetWordsPreview .preset-item{
+        flex-direction: column;
+        align-items: stretch;
+      }
+      #presetWordsPreview .preset-item-actions{
+        justify-content: flex-start;
+      }
+    }
     .preset-meta-row{
       margin-top: 6px;
       display:flex;
@@ -3523,6 +3549,38 @@ a{ color: inherit; }
 }
 @media (hover:none), (pointer:coarse){
   .icon-btn .icon-label{ display:none; }
+}
+
+#notifyBtn{
+  overflow: visible;
+}
+.notify-latest-hint{
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translate(-50%, -4px);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: .01em;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel2) 92%, #ffffff 8%);
+  color: var(--text);
+  box-shadow: 0 10px 22px rgba(0,0,0,.10);
+  z-index: 56;
+  transition: opacity .24s cubic-bezier(0.22, 1, 0.36, 1), transform .24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.notify-latest-hint.is-show{
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+@media (prefers-reduced-motion: reduce){
+  .notify-latest-hint{
+    transition: none;
+  }
 }
 
 /* Notifications dropdown: show as topbar popover */
@@ -4798,6 +4856,148 @@ body[data-app-tab="chat"] #appChatPage{
   flex-wrap: wrap;
   margin-top: 10px;
 }
+.app-profile-grid{
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.app-profile-stats{
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.app-profile-stat{
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel2);
+  padding: 10px;
+}
+.app-profile-stat .k{
+  color: var(--muted);
+  font-size: 11px;
+}
+.app-profile-stat .v{
+  margin-top: 3px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+}
+.app-feed-composer-grid{
+  display: grid;
+  gap: 8px;
+}
+.app-feed-scope{
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+.app-feed-list{
+  display: grid;
+  gap: 10px;
+}
+.app-feed-card{
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 14px;
+  padding: 11px;
+}
+.app-feed-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.app-feed-author{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.app-feed-avatar{
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel2);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+.app-feed-author-meta{
+  min-width: 0;
+}
+.app-feed-author-name{
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-feed-author-time{
+  color: var(--muted);
+  font-size: 11px;
+}
+.app-feed-title{
+  margin: 9px 0 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+}
+.app-feed-body{
+  margin: 7px 0 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.72;
+  white-space: pre-wrap;
+}
+.app-feed-links{
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+.app-feed-link{
+  color: color-mix(in srgb, var(--accent, #2563eb) 84%, var(--text));
+  font-size: 12px;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-feed-actions{
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.app-public-profile-view{
+  display: grid;
+  gap: 10px;
+}
+.app-home-progress-cards{
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.app-home-progress-card{
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel2);
+  padding: 10px;
+}
+.app-home-progress-card .k{
+  color: var(--muted);
+  font-size: 11px;
+}
+.app-home-progress-card .v{
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: 3px;
+}
 
 .app-inbox-list{
   display: grid;
@@ -5402,6 +5602,21 @@ body[data-app-tab="chat"] #appChatPage{
     grid-template-columns: 1fr;
   }
   .app-insight-filters{
+    grid-template-columns: 1fr;
+  }
+  .app-profile-grid{
+    grid-template-columns: 1fr;
+  }
+  .app-profile-stats{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .app-home-progress-cards{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px){
+  .app-profile-stats,
+  .app-home-progress-cards{
     grid-template-columns: 1fr;
   }
 }
@@ -6519,6 +6734,35 @@ body.auth-gate-open .auth-gate{
   color: var(--muted);
   line-height: 1.6;
 }
+.auth-gate-data-info{
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel2) 88%, #fff);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+.auth-gate-data-info-title{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+.auth-gate-data-info .ms{
+  font-size: 16px;
+  color: var(--accent);
+}
+.auth-gate-data-info p{
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+.auth-gate-data-info strong{
+  color: var(--text);
+}
 .auth-gate-tos-wrap{
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -6970,7 +7214,7 @@ body[data-app-tab="chat"] .app-chat-meta{
   display: none !important;
 }
 body[data-app-tab="chat"] #appChatPage{
-  --chat-fixed-composer-bottom: calc(env(safe-area-inset-bottom, 0px) + 66px);
+  --chat-fixed-composer-bottom: max(0px, env(safe-area-inset-bottom, 0px));
   --chat-fixed-composer-height: 74px;
   --chat-fixed-mode-gap: 10px;
   background: #ffffff;
@@ -7278,7 +7522,7 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
 }
 @media (max-width: 720px){
   body[data-app-tab="chat"] #appChatPage{
-    --chat-fixed-composer-bottom: calc(env(safe-area-inset-bottom, 0px) + 62px);
+    --chat-fixed-composer-bottom: max(0px, env(safe-area-inset-bottom, 0px));
     --chat-fixed-composer-height: 70px;
     --chat-fixed-mode-gap: 8px;
     border-radius: 14px;
@@ -7595,9 +7839,887 @@ body[data-app-tab="inbox"] #appInboxPage{
   padding: 14px 4px 8px;
 }
 
+/* =========================
+   UI v2 (feature flag: ui_v2)
+   ========================= */
+.app-v2-sidebar-head,
+.app-v2-sidebar-foot,
+.app-v2-home-head,
+.app-v2-stat-grid,
+.app-v2-board-grid{
+  display: none;
+}
+.app-v2-only{
+  display: none !important;
+}
+.app-v2-sidebar-backdrop,
+.app-v2-sidebar-toggle{
+  display: none;
+}
+.app-v2-sidebar-nav{
+  display: contents;
+}
+body[data-ui-v2="1"]{
+  --app-v2-sidebar-w: 300px;
+  --app-v2-sidebar-gap: 16px;
+  --app-v2-sidebar-offset: calc(var(--app-v2-sidebar-w) + (var(--app-v2-sidebar-gap) * 2));
+  --app-v2-topbar-h: 56px;
+  --app-v2-content-max: 1220px;
+  --app-v2-sidebar-radius: 30px;
+  background: #f7f8fb;
+}
+body[data-ui-v2="1"],
+body[data-ui-v2="1"] .app{
+  min-height: 100dvh;
+}
+body[data-ui-v2="1"] .app{
+  align-items: stretch;
+  justify-content: flex-start;
+}
+body[data-ui-v2="1"].app-v2-sidebar-lock{
+  overflow: hidden;
+}
+body[data-ui-v2="1"] .topbar{
+  position: fixed;
+  top: max(var(--app-v2-sidebar-gap), env(safe-area-inset-top, 0px));
+  left: calc(var(--app-v2-sidebar-offset) + 2px);
+  right: var(--app-v2-sidebar-gap);
+  z-index: 44;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: saturate(120%) blur(10px);
+  box-shadow: 0 10px 26px rgba(17,18,20,.08);
+}
+body[data-ui-v2="1"] .topbar-inner{
+  max-width: none;
+  min-height: 0;
+  padding: 6px 14px;
+}
+body[data-ui-v2="1"] #menuBtn,
+body[data-ui-v2="1"] #backBtn,
+body[data-ui-v2="1"] #insightsBtn,
+body[data-ui-v2="1"] #topPresetBtn{
+  display: none;
+}
+body[data-ui-v2="1"] .app-v2-sidebar-toggle{
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 4px 18px rgba(17,18,20,.08);
+}
+body[data-ui-v2="1"] main{
+  width: 100%;
+  max-width: none;
+  display: block;
+  padding-top: calc(var(--app-v2-topbar-h) + (var(--app-v2-sidebar-gap) * 2) + 18px);
+  padding-left: calc(var(--app-v2-sidebar-offset) + 28px);
+  padding-right: 20px;
+  padding-bottom: 24px;
+}
+body[data-ui-v2="1"].app-tabs-visible main{
+  padding-left: calc(var(--app-v2-sidebar-offset) + 28px) !important;
+  padding-right: 20px;
+  padding-bottom: 24px;
+}
+body[data-ui-v2="1"][data-app-tab="home"] main{
+  padding-bottom: 24px !important;
+}
+body[data-ui-v2="1"] .stage{
+  width: 100%;
+  max-width: var(--app-v2-content-max);
+  margin: 0 auto;
+}
+body[data-ui-v2="1"] .app-tab-page{
+  width: 100%;
+  max-width: min(1120px, 100%);
+  margin: 0 auto;
+}
+body[data-ui-v2="1"] .app-tabbar{
+  position: fixed;
+  top: var(--app-v2-sidebar-gap);
+  left: var(--app-v2-sidebar-gap);
+  right: auto;
+  bottom: var(--app-v2-sidebar-gap) !important;
+  width: var(--app-v2-sidebar-w);
+  max-width: none;
+  transform: none;
+  z-index: 36;
+  border: 1px solid var(--border);
+  border-radius: var(--app-v2-sidebar-radius);
+  padding: 16px 14px calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  box-shadow: 0 16px 36px rgba(17,18,20,.12);
+}
+body[data-ui-v2="1"] .app-v2-sidebar-head{
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+body[data-ui-v2="1"] .app-v2-only{
+  display: flex !important;
+}
+body[data-ui-v2="1"] .app-v2-sidebar-title{
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: .01em;
+  color: var(--text);
+}
+body[data-ui-v2="1"] .app-v2-sidebar-sub{
+  font-size: 12px;
+  color: var(--muted);
+}
+body[data-ui-v2="1"] .app-v2-sidebar-nav{
+  display: grid;
+  gap: 8px;
+}
+body[data-ui-v2="1"] .app-tab-btn{
+  width: 100%;
+  min-height: 46px;
+  border-radius: 14px;
+  padding: 10px 13px;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--muted) !important;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  font-size: 13px;
+}
+body[data-ui-v2="1"] .app-tab-btn.is-active{
+  background: var(--panel2) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+body[data-ui-v2="1"] .app-tab-btn .ms{
+  font-size: 18px;
+}
+body[data-ui-v2="1"] .app-v2-sidebar-foot{
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+body[data-ui-v2="1"] .app-v2-account{
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--panel2);
+  padding: 14px;
+}
+body[data-ui-v2="1"] .app-v2-account:hover{
+  background: color-mix(in srgb, var(--panel2) 84%, var(--panel));
+}
+body[data-ui-v2="1"] .app-v2-account:focus-visible{
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+body[data-ui-v2="1"] .app-v2-account-name{
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+body[data-ui-v2="1"] .app-v2-account-meta{
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+body[data-ui-v2="1"] #viewTitle .hero{
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 6px 0 0;
+}
+body[data-ui-v2="1"] #viewTitle > .hero > .h1{
+  margin: 0;
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  font-weight: 820;
+  color: #0f172a;
+}
+body[data-ui-v2="1"] #viewTitle > .hero > .subtitle{
+  margin: 10px 0 0;
+  max-width: 66ch;
+  font-size: 13px;
+  line-height: 1.72;
+  color: #5b6474;
+}
+body[data-ui-v2="1"] .app-v2-home-head{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+body[data-ui-v2="1"] .app-v2-home-title{
+  margin: 0;
+  font-size: clamp(24px, 3.2vw, 40px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+body[data-ui-v2="1"] .app-v2-home-date{
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+body[data-ui-v2="1"] #viewTitle .section-title{
+  margin-bottom: 8px;
+  font-size: 11px;
+  letter-spacing: .08em;
+  color: #667085;
+}
+body[data-ui-v2="1"] #viewTitle .section-title .right{
+  color: #7a8395;
+}
+body[data-ui-v2="1"] #viewTitle .section{
+  border-radius: 18px;
+  border-color: color-mix(in srgb, var(--border) 88%, #fff);
+  background: linear-gradient(180deg, rgba(255,255,255,.97), rgba(248,250,252,.94));
+  box-shadow: 0 8px 24px rgba(15,23,42,.06);
+  padding: 15px 16px;
+}
+body[data-ui-v2="1"] .app-v2-stat-grid{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+body[data-ui-v2="1"] .app-v2-stat-card{
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff, #f9fbff);
+  padding: 13px 15px;
+  box-shadow: 0 8px 20px rgba(31, 42, 68, 0.06);
+}
+body[data-ui-v2="1"] .app-v2-stat-k{
+  font-size: 12px;
+  color: #6b7383;
+}
+body[data-ui-v2="1"] .app-v2-stat-v{
+  margin-top: 6px;
+  font-size: 31px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #0f172a;
+}
+body[data-ui-v2="1"] .app-v2-stat-sub{
+  margin-top: 4px;
+  font-size: 12px;
+  color: #7b8494;
+}
+body[data-ui-v2="1"] .app-v2-board-grid{
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+body[data-ui-v2="1"] .app-v2-board-card{
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  padding: 14px;
+  box-shadow: 0 10px 24px rgba(31, 42, 68, 0.05);
+}
+body[data-ui-v2="1"] .app-v2-board-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+body[data-ui-v2="1"] .app-v2-board-title{
+  font-size: 17px;
+  font-weight: 760;
+  color: #0f172a;
+}
+body[data-ui-v2="1"] .app-v2-week-bars{
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+  min-height: 170px;
+}
+body[data-ui-v2="1"] .app-v2-week-col{
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  align-content: end;
+}
+body[data-ui-v2="1"] .app-v2-week-bar-wrap{
+  width: 100%;
+  height: 120px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel2) 90%, #fff);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+body[data-ui-v2="1"] .app-v2-week-bar{
+  width: 100%;
+  min-height: 8px;
+  border-radius: 10px 10px 0 0;
+  background: color-mix(in srgb, var(--accent, #1f6feb) 70%, #78a7ff);
+}
+body[data-ui-v2="1"] .app-v2-week-day{
+  font-size: 12px;
+  color: var(--muted);
+}
+body[data-ui-v2="1"] .app-v2-week-val{
+  font-size: 11px;
+  color: var(--muted);
+}
+body[data-ui-v2="1"] .app-v2-recent-list{
+  display: grid;
+  gap: 10px;
+}
+body[data-ui-v2="1"] .app-v2-recent-item{
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 11px;
+}
+body[data-ui-v2="1"] .app-v2-recent-name{
+  font-size: 14px;
+  font-weight: 740;
+  color: #111827;
+}
+body[data-ui-v2="1"] .app-v2-recent-meta{
+  margin-top: 2px;
+  font-size: 12px;
+  color: #6b7280;
+}
+body[data-ui-v2="1"] .app-v2-recent-bar{
+  margin-top: 8px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 70%, #fff);
+  overflow: hidden;
+}
+body[data-ui-v2="1"] .app-v2-recent-bar > span{
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #1f6feb) 68%, #6d9aff);
+}
+body[data-ui-v2="1"] .app-v2-recent-actions{
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+body[data-ui-v2="1"] #viewTitle .section + .section{
+  margin-top: 12px;
+}
+body[data-ui-v2="1"] .app-home-current{
+  border-radius: 18px;
+  border-color: color-mix(in srgb, var(--border) 86%, #fff);
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 8px 20px rgba(15,23,42,.05);
+  padding: 13px 14px;
+}
+body[data-ui-v2="1"] .app-home-current-k{
+  font-size: 11px;
+  letter-spacing: .05em;
+  color: #6f7787;
+}
+body[data-ui-v2="1"] .app-home-current-v{
+  font-size: 20px;
+  font-weight: 780;
+  color: #111827;
+}
+body[data-ui-v2="1"] .app-home-current-sub{
+  color: #7b8492;
+}
+body[data-ui-v2="1"] .app-home-reco{
+  border-radius: 16px;
+  border-color: color-mix(in srgb, var(--border) 86%, #fff);
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 8px 20px rgba(15,23,42,.05);
+  padding: 12px 14px;
+}
+body[data-ui-v2="1"] .app-home-reco-title{
+  font-size: 14px;
+  font-weight: 760;
+  color: #0f172a;
+}
+body[data-ui-v2="1"] .app-home-reco-body{
+  margin-top: 5px;
+  line-height: 1.65;
+  color: #667085;
+}
+body[data-ui-v2="1"] .app-v2-sidebar-backdrop{
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 121;
+  background: rgba(15,18,27,.42);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease;
+}
+@media (min-width: 1024px){
+  body[data-ui-v2="1"][data-app-tab="chat"] .app-chat-mode-row,
+  body[data-ui-v2="1"][data-app-tab="chat"] .app-chat-composer,
+  body[data-ui-v2="1"][data-app-tab="chat"] .app-chat-limit-banner{
+    left: calc(50% + (var(--app-v2-sidebar-offset) / 2)) !important;
+    width: min(1000px, calc(100vw - var(--app-v2-sidebar-offset) - 24px)) !important;
+  }
+}
+@media (max-width: 1280px){
+  body[data-ui-v2="1"]{
+    --app-v2-sidebar-w: 286px;
+    --app-v2-sidebar-gap: 14px;
+  }
+}
+@media (max-width: 1080px){
+  body[data-ui-v2="1"] .app-v2-stat-grid{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  body[data-ui-v2="1"] .app-v2-board-grid{
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 1023px){
+  body[data-ui-v2="1"]{
+    --app-v2-sidebar-w: min(86vw, 340px);
+    --app-v2-sidebar-gap: 12px;
+    --app-v2-sidebar-radius: 24px;
+  }
+  body[data-ui-v2="1"] .topbar{
+    top: 0;
+    left: 0;
+    right: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    box-shadow: none;
+  }
+  body[data-ui-v2="1"] .topbar-inner{
+    padding: 5px 10px;
+  }
+  body[data-ui-v2="1"] main{
+    padding-top: calc(var(--app-v2-topbar-h) + 10px);
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-bottom: 20px;
+  }
+  body[data-ui-v2="1"].app-tabs-visible main{
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    padding-bottom: 20px;
+  }
+  body[data-ui-v2="1"] .stage{
+    max-width: 760px;
+  }
+  body[data-ui-v2="1"] .app-v2-sidebar-toggle{
+    display: inline-flex;
+  }
+  body[data-ui-v2="1"] .app-tabbar{
+    z-index: 122;
+    top: 10px;
+    left: 10px;
+    bottom: 10px !important;
+    right: auto;
+    width: var(--app-v2-sidebar-w);
+    max-width: 340px;
+    border-radius: var(--app-v2-sidebar-radius);
+    transform: translateX(calc(-100% - 16px));
+    opacity: 0;
+    pointer-events: none;
+    transition: transform .22s ease, opacity .22s ease;
+    box-shadow: 0 24px 46px rgba(0,0,0,.22);
+  }
+  body[data-ui-v2="1"].app-v2-sidebar-open .app-tabbar{
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  body[data-ui-v2="1"].app-v2-sidebar-open .app-v2-sidebar-backdrop{
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+@media (min-width: 1024px){
+  body[data-ui-v2="1"] .app-v2-sidebar-toggle,
+  body[data-ui-v2="1"] .app-v2-sidebar-backdrop{
+    display: none !important;
+  }
+}
+@media (max-width: 640px){
+  body[data-ui-v2="1"] .app-v2-home-head{
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* =========================================================
+   Phase3 Visual Refresh (design system cleanup)
+   ========================================================= */
+html,
+body{
+  max-width: 100%;
+  overflow-x: hidden;
+}
+body[data-ui-v2="1"]{
+  --ds-bg: #f6f7fb;
+  --ds-surface: #ffffff;
+  --ds-surface-soft: #f2f4fa;
+  --ds-divider: rgba(15, 23, 42, 0.08);
+  --ds-text: #121826;
+  --ds-text-soft: #5f6b82;
+  --ds-primary: #2a66f6;
+  --ds-primary-text: #ffffff;
+  --ds-btn-secondary-bg: #edf2ff;
+  --ds-btn-secondary-text: #22314f;
+  --ds-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 14px rgba(15, 23, 42, 0.06);
+  --ds-shadow-sm: 0 10px 26px rgba(15, 23, 42, 0.08);
+  --ds-shadow-md: 0 16px 36px rgba(15, 23, 42, 0.10);
+  --ds-radius-md: 16px;
+  --ds-radius-lg: 20px;
+  background: linear-gradient(180deg, #f4f6fb 0%, #f8f9fd 100%);
+  color: var(--ds-text);
+}
+:root[data-theme-mode="dark"] body[data-ui-v2="1"]{
+  --ds-bg: #101622;
+  --ds-surface: #151d2c;
+  --ds-surface-soft: #1c263a;
+  --ds-divider: rgba(226, 232, 240, 0.10);
+  --ds-text: #e9eefb;
+  --ds-text-soft: #a8b4cd;
+  --ds-primary: #8db2ff;
+  --ds-primary-text: #0e1526;
+  --ds-btn-secondary-bg: #1b2740;
+  --ds-btn-secondary-text: #e6eeff;
+  --ds-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.26), 0 8px 18px rgba(0, 0, 0, 0.24);
+  --ds-shadow-sm: 0 14px 30px rgba(0, 0, 0, 0.28);
+  --ds-shadow-md: 0 20px 42px rgba(0, 0, 0, 0.34);
+}
+body[data-ui-v2="1"] .app,
+body[data-ui-v2="1"] main,
+body[data-ui-v2="1"] .stage,
+body[data-ui-v2="1"] #viewTitle,
+body[data-ui-v2="1"] .app-tab-page{
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+body[data-ui-v2="1"] #viewTitle .section{
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+body[data-ui-v2="1"] #viewTitle .section-title{
+  margin-bottom: 10px;
+  font-size: 11px;
+  letter-spacing: .10em;
+  color: var(--ds-text-soft) !important;
+}
+body[data-ui-v2="1"] .app-page-head h2,
+body[data-ui-v2="1"] .app-v2-home-title,
+body[data-ui-v2="1"] #viewTitle > .hero > .h1{
+  color: var(--ds-text) !important;
+  letter-spacing: -0.025em;
+}
+body[data-ui-v2="1"] .app-page-head p,
+body[data-ui-v2="1"] .app-v2-home-date,
+body[data-ui-v2="1"] #viewTitle > .hero > .subtitle{
+  color: var(--ds-text-soft) !important;
+}
+
+/* Surface system: remove heavy borders, rely on spacing + subtle elevation */
+body[data-ui-v2="1"] .app-page-block,
+body[data-ui-v2="1"] .app-home-current,
+body[data-ui-v2="1"] .app-home-reco,
+body[data-ui-v2="1"] .app-v2-stat-card,
+body[data-ui-v2="1"] .app-v2-board-card,
+body[data-ui-v2="1"] .app-v2-recent-item,
+body[data-ui-v2="1"] .app-preset-card,
+body[data-ui-v2="1"] .app-feed-card,
+body[data-ui-v2="1"] .app-inbox-item,
+body[data-ui-v2="1"] .app-ins-card,
+body[data-ui-v2="1"] .summary-card,
+body[data-ui-v2="1"] .insight-card,
+body[data-ui-v2="1"] .app-chat-shell,
+body[data-ui-v2="1"] .drawer-share-panel,
+body[data-ui-v2="1"] .settings-group{
+  border: 0 !important;
+  background: var(--ds-surface) !important;
+  border-radius: var(--ds-radius-md) !important;
+  box-shadow: var(--ds-shadow-xs) !important;
+}
+body[data-ui-v2="1"] .app-home-progress-card,
+body[data-ui-v2="1"] .app-profile-stat,
+body[data-ui-v2="1"] .app-settings-row,
+body[data-ui-v2="1"] .settings-row,
+body[data-ui-v2="1"] .app-v2-week-bar-wrap{
+  border: 0 !important;
+  background: var(--ds-surface-soft) !important;
+  box-shadow: none !important;
+  border-radius: 14px !important;
+}
+body[data-ui-v2="1"] .app-v2-week-bar{
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ds-primary) 74%, #ffffff), var(--ds-primary));
+}
+body[data-ui-v2="1"] .app-v2-stat-k,
+body[data-ui-v2="1"] .app-home-current-k,
+body[data-ui-v2="1"] .app-home-progress-card .k,
+body[data-ui-v2="1"] .app-v2-week-day,
+body[data-ui-v2="1"] .app-v2-week-val{
+  color: var(--ds-text-soft) !important;
+  font-size: 11px;
+}
+body[data-ui-v2="1"] .app-v2-stat-v,
+body[data-ui-v2="1"] .app-home-current-v,
+body[data-ui-v2="1"] .app-home-progress-card .v,
+body[data-ui-v2="1"] .app-ins-v{
+  color: var(--ds-text) !important;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+body[data-ui-v2="1"] .app-v2-board-title,
+body[data-ui-v2="1"] .app-v2-recent-name,
+body[data-ui-v2="1"] .app-home-reco-title,
+body[data-ui-v2="1"] .app-inbox-title{
+  color: var(--ds-text) !important;
+  font-weight: 700;
+}
+body[data-ui-v2="1"] .app-v2-recent-meta,
+body[data-ui-v2="1"] .app-home-current-sub,
+body[data-ui-v2="1"] .app-home-reco-body,
+body[data-ui-v2="1"] .app-inbox-preview,
+body[data-ui-v2="1"] .app-inbox-meta,
+body[data-ui-v2="1"] .app-detail-meta,
+body[data-ui-v2="1"] .mini,
+body[data-ui-v2="1"] .note{
+  color: var(--ds-text-soft) !important;
+}
+/* Home tab: remove white board feeling */
+body[data-ui-v2="1"][data-app-tab="home"] #viewTitle{
+  background: transparent !important;
+}
+body[data-ui-v2="1"][data-app-tab="home"] .app-v2-stat-card,
+body[data-ui-v2="1"][data-app-tab="home"] .app-v2-board-card,
+body[data-ui-v2="1"][data-app-tab="home"] .app-v2-recent-item,
+body[data-ui-v2="1"][data-app-tab="home"] .app-home-current,
+body[data-ui-v2="1"][data-app-tab="home"] .app-home-reco,
+body[data-ui-v2="1"][data-app-tab="home"] .app-home-progress-card{
+  background: color-mix(in srgb, var(--ds-surface-soft) 84%, transparent) !important;
+  box-shadow: none !important;
+}
+
+/* Button system: Primary / Secondary / Ghost */
+body[data-ui-v2="1"] .btn,
+body[data-ui-v2="1"] .navbtn,
+body[data-ui-v2="1"] .app-tab-btn,
+body[data-ui-v2="1"] .drawer-share-tab,
+body[data-ui-v2="1"] .choice-btn{
+  border: 0 !important;
+  border-radius: 14px !important;
+  background: var(--ds-btn-secondary-bg) !important;
+  color: var(--ds-btn-secondary-text) !important;
+  box-shadow: none !important;
+}
+body[data-ui-v2="1"] .app-tab-btn.is-active{
+  background: color-mix(in srgb, var(--ds-primary) 16%, var(--ds-surface)) !important;
+  color: var(--ds-text) !important;
+}
+body[data-ui-v2="1"] .btn.primary,
+body[data-ui-v2="1"] .navbtn.primary,
+body[data-ui-v2="1"] .app-chat-send,
+body[data-ui-v2="1"] .auth-gate-btn.primary{
+  background: var(--ds-primary) !important;
+  color: var(--ds-primary-text) !important;
+}
+body[data-ui-v2="1"] .btn.secondary,
+body[data-ui-v2="1"] .navbtn.secondary{
+  background: var(--ds-btn-secondary-bg) !important;
+  color: var(--ds-btn-secondary-text) !important;
+}
+body[data-ui-v2="1"] .btn.ghost,
+body[data-ui-v2="1"] .navbtn.ghost,
+body[data-ui-v2="1"] .textbtn,
+body[data-ui-v2="1"] .icon-btn{
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--ds-text-soft) !important;
+  box-shadow: none !important;
+}
+@media (hover: hover) and (pointer: fine){
+  body[data-ui-v2="1"] .btn:hover,
+  body[data-ui-v2="1"] .navbtn:hover,
+  body[data-ui-v2="1"] .app-tab-btn:hover,
+  body[data-ui-v2="1"] .drawer-share-tab:hover,
+  body[data-ui-v2="1"] .choice-btn:hover{
+    transform: translateY(-1px);
+    filter: brightness(1.02);
+  }
+  body[data-ui-v2="1"] .textbtn:hover,
+  body[data-ui-v2="1"] .icon-btn:hover{
+    background: color-mix(in srgb, var(--ds-text) 7%, transparent) !important;
+    color: var(--ds-text) !important;
+  }
+}
+body[data-ui-v2="1"] .btn:active,
+body[data-ui-v2="1"] .navbtn:active,
+body[data-ui-v2="1"] .app-tab-btn:active,
+body[data-ui-v2="1"] .drawer-share-tab:active,
+body[data-ui-v2="1"] .choice-btn:active{
+  transform: scale(.985);
+}
+body[data-ui-v2="1"] button:focus-visible,
+body[data-ui-v2="1"] input:focus-visible,
+body[data-ui-v2="1"] select:focus-visible,
+body[data-ui-v2="1"] textarea:focus-visible{
+  outline: 3px solid color-mix(in srgb, var(--ds-primary) 32%, transparent);
+  outline-offset: 2px;
+}
+
+/* Form controls */
+body[data-ui-v2="1"] .spell-input,
+body[data-ui-v2="1"] .select,
+body[data-ui-v2="1"] input[type="text"],
+body[data-ui-v2="1"] input[type="number"],
+body[data-ui-v2="1"] input[type="search"],
+body[data-ui-v2="1"] textarea,
+body[data-ui-v2="1"] select{
+  border: 0 !important;
+  border-radius: 14px !important;
+  background: var(--ds-surface-soft) !important;
+  color: var(--ds-text) !important;
+  box-shadow: inset 0 0 0 1px var(--ds-divider);
+}
+body[data-ui-v2="1"] .spell-input::placeholder,
+body[data-ui-v2="1"] textarea::placeholder{
+  color: color-mix(in srgb, var(--ds-text-soft) 86%, transparent);
+}
+
+/* Table cleanup: remove heavy grid lines */
+body[data-ui-v2="1"] .table-wrap{
+  border: 0 !important;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface) !important;
+  box-shadow: var(--ds-shadow-xs);
+  overflow: hidden;
+}
+body[data-ui-v2="1"] .table-wrap table{
+  border-collapse: separate;
+  border-spacing: 0;
+}
+body[data-ui-v2="1"] .table-wrap th{
+  background: var(--ds-surface-soft) !important;
+  color: var(--ds-text-soft) !important;
+  font-size: 11px;
+  letter-spacing: .04em;
+  border-bottom: 1px solid var(--ds-divider) !important;
+}
+body[data-ui-v2="1"] .table-wrap td{
+  border-bottom: 0 !important;
+  color: var(--ds-text) !important;
+}
+body[data-ui-v2="1"] .table-wrap tbody tr + tr td{
+  border-top: 1px solid var(--ds-divider);
+}
+body[data-ui-v2="1"] .table-wrap tbody tr:nth-child(even) td{
+  background: color-mix(in srgb, var(--ds-surface-soft) 54%, transparent);
+}
+@media (hover: hover) and (pointer: fine){
+  body[data-ui-v2="1"] .table-wrap tbody tr:hover td{
+    background: color-mix(in srgb, var(--ds-primary) 8%, var(--ds-surface));
+  }
+}
+
+/* Mobile safety: prevent page-level horizontal scrolling */
+@media (max-width: 760px){
+  body[data-ui-v2="1"]{
+    overflow-x: hidden;
+  }
+  body[data-ui-v2="1"] main{
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  body[data-ui-v2="1"] .app-v2-board-grid,
+  body[data-ui-v2="1"] .app-v2-stat-grid,
+  body[data-ui-v2="1"] .app-home-progress-cards,
+  body[data-ui-v2="1"] .app-insights-grid{
+    grid-template-columns: 1fr !important;
+  }
+  body[data-ui-v2="1"] .home-preset-row .seg{
+    max-width: 100%;
+  }
+}
+
+#viewTitle .hero{
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+#viewTitle .hero::after{
+  display: none !important;
+}
+
+/* =========================================================
+   Quiz Focus Layout + Exit Modal
+   ========================================================= */
+body.quiz-focus .app-tabbar{
+  display: none !important;
+}
+body.quiz-focus .app-v2-sidebar-toggle,
+body.quiz-focus .app-v2-sidebar-backdrop{
+  display: none !important;
+}
+body.quiz-focus main{
+  max-width: none;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+body.quiz-focus .stage{
+  max-width: 900px !important;
+  margin: 0 auto;
+}
+body.quiz-focus[data-ui-v2="1"] .topbar{
+  left: 12px;
+  right: 12px;
+}
+@media (max-width: 1023px){
+  body.quiz-focus[data-ui-v2="1"] .topbar{
+    left: 0;
+    right: 0;
+  }
+}
+#quizExitBtn{
+  display: none !important;
+}
+#quizExitTopBtn{
+  border-color: color-mix(in srgb, #d94a4a 28%, var(--btn-border)) !important;
+}
+#quizExitTopBtn .ms{
+  color: #c1272d;
+}
+.quiz-exit-overlay .quiz-exit-sheet{
+  width: min(440px, calc(100vw - 24px));
+}
+
 </style>
 </head>
-<body class="app-tabs-visible auth-booting" data-app-tab="home">
+<body class="app-tabs-visible auth-booting" data-app-tab="home" data-ui-v2="0">
   <div id="authBootSplash" role="status" aria-live="polite">
     <div class="boot-splash-inner">
       <span class="ms app-loading-icon" id="authBootIcon" aria-hidden="true">menu_book</span>
@@ -7738,6 +8860,17 @@ body[data-app-tab="inbox"] #appInboxPage{
         </section>
 
         <section class="auth-gate-panel" data-auth-panel="tos" id="authTosPanel">
+          <div class="auth-gate-data-info" aria-label="データ保存と同期">
+            <div class="auth-gate-data-info-title"><span class="ms" aria-hidden="true">info</span><span>データ保存と同期について</span></div>
+            <p>
+              アカウント作成後、<strong>チャット</strong>・<strong>プリセット</strong>・<strong>インサイト/学習履歴</strong>・<strong>設定</strong>は
+              サーバー側（アカウントに紐づくDB）へ保存され、同じアカウントで端末間同期されます。
+            </p>
+            <p>
+              未ログイン時は一部データが端末内（ローカル）に一時保存される場合があります。収集した情報は同期機能と学習体験向上のために使用します。
+            </p>
+            <p class="mini">詳細は利用規約・プライバシーポリシーをご確認ください。</p>
+          </div>
           <div class="auth-gate-tos-wrap">
             <div class="auth-gate-mini">最後までスクロールすると同意チェックが有効になります。</div>
             <div id="authTosScroll" class="auth-gate-tos-scroll" tabindex="0">
@@ -7861,9 +8994,13 @@ body[data-app-tab="inbox"] #appInboxPage{
   </div>
   <div class="app" id="app">
     
-    <header class="topbar" role="banner">
+    <header class="topbar" id="topbar" role="banner">
       <div class="topbar-inner">
         <div class="topbar-left">
+      <button class="icon-btn app-v2-sidebar-toggle" id="appV2SidebarToggle" aria-label="Sidebar">
+        <span class="ms">menu</span>
+        <span class="icon-label">サイドバー</span>
+      </button>
       <button class="icon-btn" id="menuBtn" aria-label="Menu">
         <span class="ms">menu</span>
         <span class="icon-label">メニュー</span>
@@ -7901,8 +9038,14 @@ body[data-app-tab="inbox"] #appInboxPage{
           <button class="icon-btn" id="notifyBtn" aria-label="通知" title="通知">
             <span class="ms" aria-hidden="true">notifications</span>
             <span class="notif-dot hidden" id="notifyDot" aria-hidden="true"></span>
+            <span class="notify-latest-hint hidden" id="notifyLatestHint" aria-live="polite">最新の通知があります。</span>
           
             <span class="icon-label" aria-hidden="true">通知</span>
+          </button>
+
+          <button class="icon-btn hidden" id="quizExitTopBtn" aria-label="クイズを終了" title="クイズを終了">
+            <span class="ms" aria-hidden="true">close</span>
+            <span class="icon-label" aria-hidden="true">終了</span>
           </button>
 
           <button class="icon-btn" id="settingsBtn" aria-label="設定" title="設定">
@@ -7989,10 +9132,74 @@ body[data-app-tab="inbox"] #appInboxPage{
               <div class="notice-title">英単語標準プリセット終了のお知らせ</div>
               <div id="homePresetTerminationNoticeBody">2026/02/28 23:59 をもって、英単語（0〜1000）標準プリセットの提供を終了します。</div>
             </div>
-            <h1 class="h1">Word Practice 1–1000</h1>
+            <h1 class="h1">VocabuQuiz</h1>
             <p class="subtitle">
               学習用のシンプルな単語ビューア。範囲（Vocabu）を選んで練習します。
             </p>
+
+            <section class="app-v2-home-head" id="appV2HomeHead" aria-label="Dashboard Header">
+              <div>
+                <h2 class="app-v2-home-title">おはようございます、<span id="appV2GreetingName">学習者</span></h2>
+                <div class="app-v2-home-date" id="appV2DateText">今日は — です。</div>
+              </div>
+              <button class="navbtn" type="button" data-home-action="newPreset">＋ 新しいタスク</button>
+            </section>
+
+            <section class="app-v2-stat-grid" id="appV2StatGrid" aria-label="Dashboard Stats">
+              <article class="app-v2-stat-card">
+                <div class="app-v2-stat-k">高優先の復習</div>
+                <div class="app-v2-stat-v" id="appV2StatHighPriority">0</div>
+                <div class="app-v2-stat-sub" id="appV2StatHighPrioritySub">直近7日</div>
+              </article>
+              <article class="app-v2-stat-card">
+                <div class="app-v2-stat-k">今日の学習</div>
+                <div class="app-v2-stat-v" id="appV2StatToday">0</div>
+                <div class="app-v2-stat-sub">sessions</div>
+              </article>
+              <article class="app-v2-stat-card">
+                <div class="app-v2-stat-k">今週の完了数</div>
+                <div class="app-v2-stat-v" id="appV2StatWeekDone">0</div>
+                <div class="app-v2-stat-sub" id="appV2StatWeekDelta">±0 vs 先週</div>
+              </article>
+              <article class="app-v2-stat-card">
+                <div class="app-v2-stat-k">連続学習日数</div>
+                <div class="app-v2-stat-v" id="appV2StatStreak">0</div>
+                <div class="app-v2-stat-sub">days</div>
+              </article>
+            </section>
+
+            <section class="app-v2-board-grid" id="appV2BoardGrid" aria-label="Dashboard Board">
+              <article class="app-v2-board-card">
+                <div class="app-v2-board-head">
+                  <div class="app-v2-board-title">週間サマリー</div>
+                  <div class="note">過去7日</div>
+                </div>
+                <div class="app-v2-week-bars" id="appV2WeekBars"></div>
+              </article>
+              <article class="app-v2-board-card">
+                <div class="app-v2-board-head">
+                  <div class="app-v2-board-title">最近のプリセット</div>
+                  <button class="textbtn" type="button" data-home-action="openLibrary">すべて表示</button>
+                </div>
+                <div class="app-v2-recent-list" id="appV2RecentList"></div>
+              </article>
+            </section>
+            <section class="app-page-block app-home-progress-block" id="appHomeProgressBlock">
+              <div class="app-page-block-head">
+                <span>進捗インサイト</span>
+              </div>
+              <div class="app-insight-filters">
+                <label class="settings-row is-static" for="appHomeProgressRange">
+                  <span class="label">期間</span>
+                  <select id="appHomeProgressRange" class="select settings-select">
+                    <option value="7D">過去7日</option>
+                    <option value="30D" selected>過去30日</option>
+                  </select>
+                </label>
+              </div>
+              <div class="app-home-progress-cards" id="appHomeProgressCards"></div>
+              <div class="table-wrap" id="appHomeWeakTable"></div>
+            </section>
 
             <div class="app-home-current">
               <div class="app-home-current-main">
@@ -8080,7 +9287,7 @@ body[data-app-tab="inbox"] #appInboxPage{
           <section class="app-tab-page" id="appLibraryPage" aria-label="Library">
             <div class="app-page-head">
               <h2>Library</h2>
-              <p>builtin / My Preset をここで管理</p>
+              <p>My Preset / 公開プリセット / プロフィール</p>
             </div>
             <div class="app-page-block">
               <div class="app-page-block-head">
@@ -8103,6 +9310,39 @@ body[data-app-tab="inbox"] #appInboxPage{
                 </div>
               </div>
             </div>
+            <div class="app-page-block app-profile-block" id="appProfileBlock">
+              <div class="app-page-block-head">
+                <span>プロフィール</span>
+                <button class="textbtn" type="button" id="appProfileReloadBtn">再読込</button>
+              </div>
+              <div class="app-profile-grid">
+                <label class="settings-row is-static" for="appProfileAvatarInput">
+                  <span class="label">画像URL</span>
+                  <input id="appProfileAvatarInput" class="spell-input" type="url" placeholder="https://..." />
+                </label>
+                <label class="settings-row is-static" for="appProfileBioInput">
+                  <span class="label">自己紹介</span>
+                  <textarea id="appProfileBioInput" class="spell-input" rows="2" maxlength="400" placeholder="自己紹介"></textarea>
+                </label>
+                <label class="settings-row is-static" for="appProfileMessageInput">
+                  <span class="label">ひとこと</span>
+                  <input id="appProfileMessageInput" class="spell-input" type="text" maxlength="400" placeholder="ひとこと" />
+                </label>
+                <label class="settings-row is-static" for="appProfileVisibilitySelect">
+                  <span class="label">公開範囲</span>
+                  <select id="appProfileVisibilitySelect" class="select settings-select">
+                    <option value="public">公開</option>
+                    <option value="private">非公開</option>
+                  </select>
+                </label>
+              </div>
+              <div class="app-profile-stats" id="appProfileStats"></div>
+              <div class="app-action-row">
+                <button class="textbtn" type="button" data-profile-action="save">プロフィール保存</button>
+                <button class="textbtn" type="button" data-profile-action="viewPublic">公開プロフィールを確認</button>
+              </div>
+              <div class="note" id="appProfileStatus">未読み込み</div>
+            </div>
             <div class="app-page-block">
               <div class="app-page-block-head">
                 <span>builtin</span>
@@ -8116,15 +9356,66 @@ body[data-app-tab="inbox"] #appInboxPage{
               </div>
               <div class="app-preset-list" id="appLibraryMyList"></div>
             </div>
+            <div class="app-page-block" id="appPublicPresetBlock">
+              <div class="app-page-block-head">
+                <span>公開プリセット</span>
+                <button class="textbtn" type="button" data-public-action="reload">更新</button>
+              </div>
+              <div class="app-library-filters">
+                <label class="settings-row is-static" for="appPublicPresetSearchInput">
+                  <span class="label">検索</span>
+                  <input id="appPublicPresetSearchInput" class="spell-input" type="text" placeholder="公開プリセットを検索" />
+                </label>
+              </div>
+              <div class="app-preset-list" id="appPublicPresetList"></div>
+              <div class="app-empty hidden" id="appPublicPresetEmpty">公開プリセットはまだありません。</div>
+            </div>
           </section>
 
           <section class="app-tab-page" id="appInboxPage" aria-label="Inbox">
             <div class="app-page-head">
-              <h2>Inbox</h2>
-              <p>通知一覧（新しい順）</p>
+              <h2 id="appFeedTitle">Feed</h2>
+              <p id="appFeedSubtitle">投稿フィード</p>
               <div class="app-page-head-actions">
                 <button class="textbtn hidden" type="button" id="appInboxAdminBtn" data-inbox-action="openAdminEditor">通知を編集</button>
               </div>
+            </div>
+            <div class="app-page-block hidden" id="appFeedComposer">
+              <div class="app-page-block-head">
+                <span>新規投稿</span>
+              </div>
+              <div class="app-feed-composer-grid">
+                <input id="appFeedPostTitle" class="spell-input" type="text" maxlength="120" placeholder="タイトル" />
+                <textarea id="appFeedPostBody" class="spell-input" rows="4" maxlength="4000" placeholder="本文"></textarea>
+                <input id="appFeedPostLink" class="spell-input" type="url" placeholder="外部リンク（任意）" />
+                <input id="appFeedPostImage" class="spell-input" type="url" placeholder="画像URL（任意）" />
+              </div>
+              <div class="app-action-row">
+                <button class="textbtn" type="button" data-feed-action="createPost">投稿する</button>
+              </div>
+              <div class="note" id="appFeedComposerStatus">投稿はログイン時のみ可能です。</div>
+            </div>
+            <div class="app-page-block hidden" id="appFeedScopeBlock">
+              <div class="app-insight-filters app-feed-scope">
+                <label class="settings-row is-static" for="appFeedScopeSelect">
+                  <span class="label">表示範囲</span>
+                  <select id="appFeedScopeSelect" class="select settings-select">
+                    <option value="all">すべて</option>
+                    <option value="following">フォロー中</option>
+                    <option value="me">自分</option>
+                  </select>
+                </label>
+                <button class="textbtn" type="button" data-feed-action="reload">更新</button>
+              </div>
+            </div>
+            <div class="app-feed-list hidden" id="appFeedList"></div>
+            <div class="app-empty hidden" id="appFeedEmpty">投稿はまだありません。</div>
+            <div class="app-page-block hidden" id="appPublicProfileBlock">
+              <div class="app-page-block-head">
+                <span>公開プロフィール</span>
+                <button class="textbtn" type="button" data-feed-action="closeProfile">閉じる</button>
+              </div>
+              <div id="appPublicProfileView"></div>
             </div>
             <div id="appInboxListPane">
               <div class="app-inbox-list" id="appInboxList"></div>
@@ -8306,6 +9597,7 @@ body[data-app-tab="inbox"] #appInboxPage{
 
         <!-- Quiz -->
         <section class="view" id="viewQuiz" aria-label="問題画面">
+          <button class="navbtn quiz-exit-btn hidden" id="quizExitBtn" type="button" aria-label="クイズを終了">終了</button>
           <div class="quiz-header">
             <div class="progress" id="progressWrap">
               <span id="progressText">—</span>
@@ -8392,7 +9684,7 @@ body[data-app-tab="inbox"] #appInboxPage{
           </div>
 
           <div class="hint">
-            Enter：判定（手書き） / ←→：移動 / Esc：タイトルへ
+            Enter：判定（手書き） / ←→：移動 / Esc：終了確認
           </div>
 
           <div class="debug-bar" id="debugBar"></div>
@@ -8439,28 +9731,65 @@ body[data-app-tab="inbox"] #appInboxPage{
       </div>
 	    </main>
 
+    <div class="overlay hidden quiz-exit-overlay" id="quizExitOverlay" role="dialog" aria-modal="true" aria-label="クイズ終了確認">
+      <div class="sheet quiz-exit-sheet">
+        <div class="sheet-header">
+          <div class="sheet-title">クイズを終了しますか？</div>
+          <button class="icon-btn" id="quizExitCloseBtn" type="button" aria-label="閉じる">✕</button>
+        </div>
+        <div class="sheet-body" style="gap:10px;">
+          <p class="note" id="quizExitMessage">進行中の結果は保存されません。ホームへ戻ります。</p>
+        </div>
+        <div class="sheet-footer">
+          <button class="textbtn" id="quizExitCancelBtn" type="button">キャンセル</button>
+          <button class="navbtn primary" id="quizExitConfirmBtn" type="button">終了してホームへ</button>
+        </div>
+      </div>
+    </div>
+
     <nav class="app-tabbar" id="appTabBar" aria-label="アプリタブ">
-      <button class="app-tab-btn is-active" type="button" data-app-tab="home" aria-selected="true">
-        <span class="ms" aria-hidden="true">home</span>
-        <span>Home</span>
-      </button>
-      <button class="app-tab-btn" type="button" data-app-tab="library" aria-selected="false">
-        <span class="ms" aria-hidden="true">collections_bookmark</span>
-        <span>Library</span>
-      </button>
-      <button class="app-tab-btn" type="button" data-app-tab="inbox" aria-selected="false">
-        <span class="ms" aria-hidden="true">inbox</span>
-        <span>Inbox</span>
-      </button>
-      <button class="app-tab-btn" type="button" data-app-tab="insight" aria-selected="false">
-        <span class="ms" aria-hidden="true">query_stats</span>
-        <span>Insights</span>
-      </button>
-      <button class="app-tab-btn" type="button" data-app-tab="chat" aria-selected="false">
-        <span class="ms" aria-hidden="true">smart_toy</span>
-        <span>Chat</span>
-      </button>
+      <div class="app-v2-sidebar-head">
+        <div class="app-v2-sidebar-title">VocabuQuiz</div>
+        <div class="app-v2-sidebar-sub">Learning Workspace</div>
+      </div>
+      <div class="app-v2-sidebar-nav" id="appV2SidebarNav">
+        <button class="app-tab-btn is-active" type="button" data-app-tab="home" aria-selected="true">
+          <span class="ms" aria-hidden="true">home</span>
+          <span>Dashboard</span>
+        </button>
+        <button class="app-tab-btn" type="button" data-app-tab="library" aria-selected="false">
+          <span class="ms" aria-hidden="true">collections_bookmark</span>
+          <span>My Presets</span>
+        </button>
+        <button class="app-tab-btn" type="button" data-app-tab="inbox" aria-selected="false">
+          <span class="ms" aria-hidden="true">inbox</span>
+          <span id="appTabInboxLabel">Feed</span>
+        </button>
+        <button class="app-tab-btn" type="button" data-app-tab="insight" aria-selected="false">
+          <span class="ms" aria-hidden="true">query_stats</span>
+          <span>Insights</span>
+        </button>
+        <button class="app-tab-btn" type="button" data-app-tab="chat" aria-selected="false">
+          <span class="ms" aria-hidden="true">smart_toy</span>
+          <span>Chat</span>
+        </button>
+        <button class="app-tab-btn" type="button" data-app-tab="settings" aria-selected="false">
+          <span class="ms" aria-hidden="true">settings</span>
+          <span>Settings</span>
+        </button>
+      </div>
+      <div class="app-v2-sidebar-foot">
+        <button class="app-tab-btn app-v2-logout-btn" type="button" data-v2-action="logout">
+          <span class="ms" aria-hidden="true">logout</span>
+          <span>ログアウト</span>
+        </button>
+        <button class="app-v2-account" id="appV2SidebarAccount" type="button" data-v2-action="open-profile" aria-label="自分のプロフィールを開く">
+          <div class="app-v2-account-name" id="appV2SidebarName">ゲスト</div>
+          <div class="app-v2-account-meta" id="appV2SidebarMeta">この端末のみ</div>
+        </button>
+      </div>
     </nav>
+    <button class="app-v2-sidebar-backdrop" id="appV2SidebarBackdrop" type="button" aria-label="サイドバーを閉じる"></button>
 
 
 	    <!-- Preset Manager -->
@@ -8815,9 +10144,13 @@ body[data-app-tab="inbox"] #appInboxPage{
               </div>
 
               <div>
-                <div class="note" style="margin-bottom:6px;" id="presetPreviewTitle">単語プレビュー（上位50件）</div>
+                <div class="note" style="margin-bottom:6px;" id="presetPreviewTitle">単語プレビュー（上位200件）</div>
                 <div class="result-box" style="padding:12px; max-height:240px; overflow:auto;">
                   <div id="presetWordsPreview" style="display:flex; flex-direction:column; gap:10px;"></div>
+                </div>
+                <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                  <div class="note" id="presetPreviewMeta">0件</div>
+                  <button class="textbtn hidden" id="presetPreviewMoreBtn" type="button">さらに50件表示</button>
                 </div>
               </div>
             </div>
@@ -11259,18 +12592,175 @@ body[data-app-tab="inbox"] #appInboxPage{
 
       let _builtinPresetTerminationNoticeDismissed = false;
       let _builtinPresetTerminateTimer = null;
+      const BUILTIN_PRESET_CUTOFF_AT = "2026-02-28T23:59:00+09:00";
       const BUILTIN_PRESET_TERMINATE_AT = "2026-03-01T00:00:00+09:00";
-      const BUILTIN_PRESET_TERMINATION_NOTICE_PRE = "2026/02/28 23:59 をもって、英単語（0〜1000）標準プリセットの提供を終了します。";
-      const BUILTIN_PRESET_TERMINATION_NOTICE_POST = "英単語標準プリセットは 2026/03/01 0:00 をもって配信終了しました。現在は My Preset のみ利用できます。";
+      const BUILTIN_PRESET_TERMINATION_NOTICE_PRE = "2026/02/28 23:59 をもって、英単語（0〜1000）標準プリセットを新標準へ切替予定です。";
+      const BUILTIN_PRESET_TERMINATION_NOTICE_POST = "2026/03/01 0:00 以降は新標準セットで学習します。旧0〜1000セットは新規出題対象外です。";
+      const PUBLIC_APP_CONFIG_PATH = "/api/public/config";
+      const PUBLIC_APP_CONFIG_POLL_VISIBLE_MS = 15000;
+      const PUBLIC_APP_CONFIG_POLL_HIDDEN_MS = 30000;
+      const APP_CONFIG_DEFAULT = Object.freeze({
+        appVersion: "2026.03.01",
+        features: {
+          ui_v2: true,
+          social: true,
+          preset_public: true,
+          posts: true,
+          groups: false,
+          profile: true,
+          sync_merge: true
+        },
+        vocab_standard: {
+          currentSetId: "standard_0_1000_v1",
+          nextSetId: "standard_v2_20260301",
+          cutoffAt: BUILTIN_PRESET_CUTOFF_AT,
+          activateAt: BUILTIN_PRESET_TERMINATE_AT,
+          oldSetReadOnlyAfterCutoff: true
+        },
+        updatedAt: 0
+      });
+      const _publicAppConfigState = {
+        config: APP_CONFIG_DEFAULT,
+        loaded: false,
+        loading: false,
+        pollTimer: 0,
+        polling: false,
+        visibilityBound: false,
+        lastCheckAt: 0,
+        lastFetchedAt: 0,
+        offsetMs: 0,
+        bootstrapped: false
+      };
+      const _vocabSetWordsCache = new Map();
+      function _publicAppConfigNowMs(){
+        return Date.now() + (Number(_publicAppConfigState.offsetMs || 0) || 0);
+      }
+      function _publicAppConfigNormalize(raw){
+        const src = (raw && typeof raw === "object") ? raw : {};
+        const base = APP_CONFIG_DEFAULT;
+        const srcFeatures = (src.features && typeof src.features === "object") ? src.features : {};
+        const srcVocab = (src.vocab_standard && typeof src.vocab_standard === "object") ? src.vocab_standard : {};
+        const features = { ...base.features };
+        for (const key of Object.keys(features)){
+          if (Object.prototype.hasOwnProperty.call(srcFeatures, key)){
+            features[key] = !!srcFeatures[key];
+          }
+        }
+        const vocabStandard = {
+          currentSetId: String(srcVocab.currentSetId || base.vocab_standard.currentSetId || "").trim() || base.vocab_standard.currentSetId,
+          nextSetId: String(srcVocab.nextSetId || base.vocab_standard.nextSetId || "").trim() || base.vocab_standard.nextSetId,
+          cutoffAt: String(srcVocab.cutoffAt || base.vocab_standard.cutoffAt || "").trim() || base.vocab_standard.cutoffAt,
+          activateAt: String(srcVocab.activateAt || base.vocab_standard.activateAt || "").trim() || base.vocab_standard.activateAt,
+          oldSetReadOnlyAfterCutoff: Object.prototype.hasOwnProperty.call(srcVocab, "oldSetReadOnlyAfterCutoff")
+            ? !!srcVocab.oldSetReadOnlyAfterCutoff
+            : !!base.vocab_standard.oldSetReadOnlyAfterCutoff
+        };
+        return {
+          appVersion: String(src.appVersion || base.appVersion || "").trim() || base.appVersion,
+          features,
+          vocab_standard: vocabStandard,
+          maintenance: (src.maintenance && typeof src.maintenance === "object") ? src.maintenance : null,
+          updatedAt: Math.max(0, Number(src.updatedAt || 0)) || 0
+        };
+      }
+      function _publicAppConfigGet(){
+        return _publicAppConfigState.config || APP_CONFIG_DEFAULT;
+      }
+      function _publicAppFeatureEnabled(key){
+        const k = String(key || "").trim();
+        if (!k) return false;
+        const cfg = _publicAppConfigGet();
+        const features = (cfg && cfg.features && typeof cfg.features === "object") ? cfg.features : {};
+        return !!features[k];
+      }
+      let _appUiV2Enabled = false;
+      function _appApplyUiV2FromConfig(opts = {}){
+        const enabled = _publicAppFeatureEnabled("ui_v2");
+        _appUiV2Enabled = enabled;
+        if (document.body){
+          document.body.dataset.uiV2 = enabled ? "1" : "0";
+          if (!enabled){
+            document.body.classList.remove("app-v2-sidebar-open");
+            document.body.classList.remove("app-v2-sidebar-lock");
+          }
+        }
+        try{
+          _appV2SyncLayoutMetrics();
+          if (!enabled || !_appV2IsDrawerMode()){
+            _appV2SetSidebarOpen(false);
+          }
+          _appSyncFeedLabels();
+        }catch{}
+        if (opts.force){
+          try{ _appRenderCurrentTab(); }catch{}
+        }
+      }
+      function _publicAppConfigVocab(){
+        const cfg = _publicAppConfigGet();
+        const vocab = (cfg && cfg.vocab_standard && typeof cfg.vocab_standard === "object")
+          ? cfg.vocab_standard
+          : APP_CONFIG_DEFAULT.vocab_standard;
+        return vocab;
+      }
       function _builtinPresetTerminateAt(){
-        const t = Date.parse(BUILTIN_PRESET_TERMINATE_AT);
+        const vocab = _publicAppConfigVocab();
+        const t = Date.parse(String(vocab.activateAt || BUILTIN_PRESET_TERMINATE_AT));
         return Number.isFinite(t) ? t : Infinity;
       }
+      function _builtinPresetCutoffAt(){
+        const vocab = _publicAppConfigVocab();
+        const t = Date.parse(String(vocab.cutoffAt || BUILTIN_PRESET_CUTOFF_AT));
+        return Number.isFinite(t) ? t : _builtinPresetTerminateAt();
+      }
       function isBuiltinPresetTerminated(){
-        return Date.now() >= _builtinPresetTerminateAt();
+        return _publicAppConfigNowMs() >= _builtinPresetTerminateAt();
+      }
+      function isBuiltinPresetCutoffPassed(){
+        return _publicAppConfigNowMs() >= _builtinPresetCutoffAt();
+      }
+      function _publicAppCurrentVocabSetId(){
+        const vocab = _publicAppConfigVocab();
+        const currentId = String(vocab.currentSetId || APP_CONFIG_DEFAULT.vocab_standard.currentSetId || "").trim() || APP_CONFIG_DEFAULT.vocab_standard.currentSetId;
+        const nextId = String(vocab.nextSetId || APP_CONFIG_DEFAULT.vocab_standard.nextSetId || "").trim() || APP_CONFIG_DEFAULT.vocab_standard.nextSetId;
+        return isBuiltinPresetTerminated() ? nextId : currentId;
+      }
+      function _vocabSetNormalizeWords(raw){
+        const src = Array.isArray(raw) ? raw : [];
+        const out = [];
+        for (const row of src){
+          const n = normalizeWordEntry(row);
+          if (!n) continue;
+          out.push(n);
+        }
+        return out;
+      }
+      function _vocabSetWordsFromPublicConfig(setId){
+        const sid = String(setId || "").trim();
+        if (!sid) return [];
+        if (_vocabSetWordsCache.has(sid)){
+          return _vocabSetWordsCache.get(sid) || [];
+        }
+        let words = [];
+        try{
+          const root = (window.__PUBLIC_CONFIG__ && typeof window.__PUBLIC_CONFIG__ === "object")
+            ? window.__PUBLIC_CONFIG__
+            : {};
+          const sets = (root.vocabSets && typeof root.vocabSets === "object") ? root.vocabSets : {};
+          words = _vocabSetNormalizeWords(sets[sid]);
+        }catch{
+          words = [];
+        }
+        _vocabSetWordsCache.set(sid, words);
+        return words;
+      }
+      function _builtinWordsForCurrentSet(){
+        const sid = _publicAppCurrentVocabSetId();
+        const override = _vocabSetWordsFromPublicConfig(sid);
+        if (override.length) return override;
+        return data.words;
       }
       function _isBuiltinPresetTerminatedUnavailable(){
-        return isBuiltinPresetTerminated();
+        return false;
       }
       function getBuiltinPresetCatalog(){
         return [
@@ -11283,7 +12773,7 @@ body[data-app-tab="inbox"] #appInboxPage{
         ];
       }
       function getVisibleBuiltinPresetCatalog(){
-        return isBuiltinPresetTerminated() ? [] : getBuiltinPresetCatalog();
+        return getBuiltinPresetCatalog();
       }
       function getFirstCustomPresetId(){
         const list = loadPresets();
@@ -11293,23 +12783,6 @@ body[data-app-tab="inbox"] #appInboxPage{
         return loadPresets().length > 0;
       }
       function applyBuiltinPresetTerminationPolicy(){
-        if (!isBuiltinPresetTerminated()) return false;
-        if (!isBuiltinPreset(state.presetId)) return false;
-        const fallback = getFirstCustomPresetId();
-        if (fallback){
-          if (state.presetId !== fallback){
-            state.presetId = fallback;
-            saveActivePresetId(fallback);
-            return true;
-          }
-          return false;
-        }
-
-        if (state.presetId !== ""){
-          state.presetId = "";
-          saveActivePresetId("");
-          return true;
-        }
         return false;
       }
 
@@ -11332,19 +12805,12 @@ body[data-app-tab="inbox"] #appInboxPage{
       }
 
       function _handleBuiltinPresetTerminationRedirect(){
-        const terminated = isBuiltinPresetTerminated();
-        if (!terminated) return false;
-
-        const wasBuiltinActive = isBuiltinPreset(state.presetId);
         const policyChanged = applyBuiltinPresetTerminationPolicy();
-        const hasBuiltinActive = wasBuiltinActive;
-        if (!hasBuiltinActive || state.view === "TITLE") return policyChanged;
-
-        if (!isBuiltinPreset(state.presetId) || policyChanged){
+        if (policyChanged && state.view !== "TITLE"){
           goTitle();
           return true;
         }
-        return false;
+        return policyChanged;
       }
 
       function _ensureBuiltinPresetTerminationPolicy(){
@@ -11442,9 +12908,9 @@ body[data-app-tab="inbox"] #appInboxPage{
 
       function getPresetWords(pid){
         if (isBuiltinPreset(pid)){
-          if (isBuiltinPresetTerminated()) return [];
           const dk = deckFromBuiltinId(pid);
-          return data.words.filter(w => (
+          const setWords = _builtinWordsForCurrentSet();
+          return setWords.filter(w => (
             dk === "A" ? (w.id >= 1 && w.id <= 200) :
             dk === "B" ? (w.id >= 201 && w.id <= 400) :
             dk === "C" ? (w.id >= 401 && w.id <= 600) :
@@ -12431,6 +13897,7 @@ body[data-app-tab="inbox"] #appInboxPage{
           if (btnLogout) btnLogout.classList.add("hidden");
           if (btnDelete) btnDelete.classList.add("hidden");
         }
+        try{ _appV2RenderSidebarIdentity(); }catch{}
       }
       function _authShowPanel(panel){
         const next = String(panel || "entry");
@@ -13217,6 +14684,7 @@ body[data-app-tab="inbox"] #appInboxPage{
         insightsBtn: document.getElementById("insightsBtn"),
         notifyBtn: document.getElementById("notifyBtn"),
         notifyDot: document.getElementById("notifyDot"),
+        notifyLatestHint: document.getElementById("notifyLatestHint"),
         notifyOverlay: document.getElementById("notifyOverlay"),
         notifyCloseBtn: document.getElementById("notifyCloseBtn"),
         notifyCloseBtn2: document.getElementById("notifyCloseBtn2"),
@@ -13306,6 +14774,13 @@ body[data-app-tab="inbox"] #appInboxPage{
         nextBtn: document.getElementById("nextBtn"),
         restartBtn: document.getElementById("restartBtn"),
         newSetBtn: document.getElementById("newSetBtn"),
+        quizExitTopBtn: document.getElementById("quizExitTopBtn"),
+        quizExitBtn: document.getElementById("quizExitBtn"),
+        quizExitOverlay: document.getElementById("quizExitOverlay"),
+        quizExitCloseBtn: document.getElementById("quizExitCloseBtn"),
+        quizExitCancelBtn: document.getElementById("quizExitCancelBtn"),
+        quizExitConfirmBtn: document.getElementById("quizExitConfirmBtn"),
+        quizExitMessage: document.getElementById("quizExitMessage"),
 
         debugBar: document.getElementById("debugBar"),
         card: document.getElementById("card"),
@@ -13356,6 +14831,23 @@ body[data-app-tab="inbox"] #appInboxPage{
 
         // app tabs
         appTabBar: document.getElementById("appTabBar"),
+        appV2SidebarToggle: document.getElementById("appV2SidebarToggle"),
+        appV2SidebarBackdrop: document.getElementById("appV2SidebarBackdrop"),
+        appV2GreetingName: document.getElementById("appV2GreetingName"),
+        appV2DateText: document.getElementById("appV2DateText"),
+        appV2StatHighPriority: document.getElementById("appV2StatHighPriority"),
+        appV2StatHighPrioritySub: document.getElementById("appV2StatHighPrioritySub"),
+        appV2StatToday: document.getElementById("appV2StatToday"),
+        appV2StatWeekDone: document.getElementById("appV2StatWeekDone"),
+        appV2StatWeekDelta: document.getElementById("appV2StatWeekDelta"),
+        appV2StatStreak: document.getElementById("appV2StatStreak"),
+        appV2WeekBars: document.getElementById("appV2WeekBars"),
+        appV2RecentList: document.getElementById("appV2RecentList"),
+        appV2SidebarName: document.getElementById("appV2SidebarName"),
+        appV2SidebarMeta: document.getElementById("appV2SidebarMeta"),
+        appHomeProgressRange: document.getElementById("appHomeProgressRange"),
+        appHomeProgressCards: document.getElementById("appHomeProgressCards"),
+        appHomeWeakTable: document.getElementById("appHomeWeakTable"),
         homePresetTerminationNotice: document.getElementById("homePresetTerminationNotice"),
         homePresetTerminationNoticeClose: document.getElementById("homePresetTerminationNoticeClose"),
         homeResumeBtn: document.getElementById("homeResumeBtn"),
@@ -13367,7 +14859,33 @@ body[data-app-tab="inbox"] #appInboxPage{
         appLibraryTagFilters: document.getElementById("appLibraryTagFilters"),
         appLibraryBuiltinList: document.getElementById("appLibraryBuiltinList"),
         appLibraryMyList: document.getElementById("appLibraryMyList"),
+        appProfileBlock: document.getElementById("appProfileBlock"),
+        appProfileAvatarInput: document.getElementById("appProfileAvatarInput"),
+        appProfileBioInput: document.getElementById("appProfileBioInput"),
+        appProfileMessageInput: document.getElementById("appProfileMessageInput"),
+        appProfileVisibilitySelect: document.getElementById("appProfileVisibilitySelect"),
+        appProfileStats: document.getElementById("appProfileStats"),
+        appProfileStatus: document.getElementById("appProfileStatus"),
+        appProfileReloadBtn: document.getElementById("appProfileReloadBtn"),
+        appPublicPresetBlock: document.getElementById("appPublicPresetBlock"),
+        appPublicPresetSearchInput: document.getElementById("appPublicPresetSearchInput"),
+        appPublicPresetList: document.getElementById("appPublicPresetList"),
+        appPublicPresetEmpty: document.getElementById("appPublicPresetEmpty"),
         appInboxPage: document.getElementById("appInboxPage"),
+        appFeedTitle: document.getElementById("appFeedTitle"),
+        appFeedSubtitle: document.getElementById("appFeedSubtitle"),
+        appFeedComposer: document.getElementById("appFeedComposer"),
+        appFeedComposerStatus: document.getElementById("appFeedComposerStatus"),
+        appFeedPostTitle: document.getElementById("appFeedPostTitle"),
+        appFeedPostBody: document.getElementById("appFeedPostBody"),
+        appFeedPostLink: document.getElementById("appFeedPostLink"),
+        appFeedPostImage: document.getElementById("appFeedPostImage"),
+        appFeedScopeBlock: document.getElementById("appFeedScopeBlock"),
+        appFeedScopeSelect: document.getElementById("appFeedScopeSelect"),
+        appFeedList: document.getElementById("appFeedList"),
+        appFeedEmpty: document.getElementById("appFeedEmpty"),
+        appPublicProfileBlock: document.getElementById("appPublicProfileBlock"),
+        appPublicProfileView: document.getElementById("appPublicProfileView"),
         appInboxAdminBtn: document.getElementById("appInboxAdminBtn"),
         appInboxList: document.getElementById("appInboxList"),
         appInboxEmpty: document.getElementById("appInboxEmpty"),
@@ -13484,7 +15002,6 @@ body[data-app-tab="inbox"] #appInboxPage{
         maintenanceBypassBtn: document.getElementById("maintenanceBypassBtn"),
         maintenanceAdminLoginBtn: document.getElementById("maintenanceAdminLoginBtn")
 	      };
-
       // =========================
       // Debug summary UI
       // =========================
@@ -13627,6 +15144,52 @@ body[data-app-tab="inbox"] #appInboxPage{
         if (state.mode === "CHOICE") return "選択：英 → 日（4択）";
         return state.settings.direction === "EN_JA" ? "英 → 日" : "日 → 英";
       }
+      function _quizHasProgress(){
+        if (state.view !== "QUIZ") return false;
+        if (state.mode === "CHOICE"){
+          const answered = Array.isArray(state.choice?.results)
+            ? state.choice.results.filter((x) => x === true || x === false).length
+            : 0;
+          return state.index > 0 || answered > 0 || !!state.choice?.locked;
+        }
+        if (state.mode === "HAND"){
+          const judged = Array.isArray(state.hand?.results)
+            ? state.hand.results.filter((x) => x === true || x === false).length
+            : 0;
+          const hasInput = String(state.hand?.input || "").trim().length > 0;
+          return state.index > 0 || judged > 0 || !!state.hand?.checked || hasInput;
+        }
+        return state.index > 0 || !!state.showAnswer || !!state.done;
+      }
+      const _quizExitState = {
+        pending: false,
+        open: false
+      };
+      async function _quizExitOpenConfirm(){
+        if (state.view !== "QUIZ") return;
+        if (_quizExitState.pending) return;
+        _quizExitState.pending = true;
+        _quizExitState.open = true;
+        try{
+          const ok = await uiConfirm("進行中の結果は保存されません。ホームへ戻ります。", {
+            title: "クイズを終了しますか？",
+            okText: "終了してホームへ",
+            cancelText: "キャンセル"
+          });
+          if (ok && state.view === "QUIZ"){
+            goTitle();
+          }
+        } finally {
+          _quizExitState.open = false;
+          _quizExitState.pending = false;
+        }
+      }
+      function _quizExitCloseConfirm(){
+        _quizExitState.open = false;
+      }
+      function _quizShouldWarnBeforeUnload(){
+        return state.view === "QUIZ" && _quizHasProgress();
+      }
 // =========================
       // View + render helpers
       // =========================
@@ -13640,12 +15203,19 @@ body[data-app-tab="inbox"] #appInboxPage{
 
         const tabsVisible = (next === "TITLE");
         document.body.classList.toggle("app-tabs-visible", tabsVisible);
+        const focusLayout = (next === "QUIZ");
+        document.body.classList.toggle("quiz-focus", focusLayout);
+        if (el.quizExitTopBtn) el.quizExitTopBtn.classList.toggle("hidden", !focusLayout);
+        if (el.quizExitBtn) el.quizExitBtn.classList.add("hidden");
+        if (!focusLayout) _quizExitCloseConfirm();
         if (!tabsVisible){
+          _appV2SetSidebarOpen(false);
           document.body.dataset.appTab = "home";
           _appSetTopTitleByTab("home");
         } else if (!document.body.dataset.appTab){
           document.body.dataset.appTab = "home";
         }
+        _appV2SyncLayoutMetrics();
 
         el.backBtn.disabled = (next === "START" || next === "TITLE");
 
@@ -15014,10 +16584,6 @@ function renderQuestion(){
           uiToast("プリセットが選択されていません。");
           return false;
         }
-        if (isBuiltinPreset(pid) && isBuiltinPresetTerminated() && getVisibleBuiltinPresetCatalog().length === 0){
-          uiToast("英単語標準プリセットは 2026/03/01 をもって配信終了しました。");
-          return false;
-        }
         const count = getActiveWords().length;
         if (!count){
           uiToast("選択中のプリセットに問題がありません。");
@@ -15309,16 +16875,6 @@ function goTitle(){
       }
 function setDeck(deckKey){
         _clearRecommendScope();
-        if (_isBuiltinPresetTerminatedUnavailable()){
-          const fallback = getFirstCustomPresetId();
-          if (fallback){
-            setActivePreset(fallback);
-            uiToast("英単語標準プリセットは 2026/03/01 をもって配信終了しています。");
-            return true;
-          }
-          uiToast("英単語標準プリセットは 2026/03/01 をもって配信終了しています。My Preset を作成してください。");
-          return false;
-        }
         state.deck = deckKey;
         saveDeck(deckKey);
         state.presetId = `builtin:${deckKey}`;
@@ -15707,6 +17263,8 @@ function reviewWrong(){
       const NOTIF_SEEN_KEY = "app.notifications.seenAt.v1";
       const ADMIN_EMAIL = "Matsushiri20pc@gmail.com";
       const NOTIF_MAX = 200;
+      let _notifyHintHideTimer = 0;
+      let _notifyHintLastUnreadTs = 0;
       const _adminState = {
         authWatchStarted: false,
         auth: null,
@@ -16456,6 +18014,140 @@ function reviewWrong(){
         _maintenanceStartRealtimeWatch();
         _maintenanceState.bootstrapped = true;
       }
+      function _publicAppConfigApply(payloadRaw, meta = {}){
+        const prevTerminated = isBuiltinPresetTerminated();
+        const prevUiV2 = _appUiV2Enabled;
+        const next = _publicAppConfigNormalize(payloadRaw || {});
+        _publicAppConfigState.config = next;
+        _publicAppConfigState.loaded = true;
+        _publicAppConfigState.lastFetchedAt = Date.now();
+        if (Number.isFinite(Number(meta.serverNow)) && Number(meta.serverNow) > 0){
+          _publicAppConfigState.offsetMs = Number(meta.serverNow) - Date.now();
+        }
+        _appApplyUiV2FromConfig({ force: prevUiV2 !== !!next?.features?.ui_v2 });
+        const nowTerminated = isBuiltinPresetTerminated();
+        if (prevTerminated !== nowTerminated){
+          try{ __searchIndexCache.rev = -1; }catch{}
+          try{ _ensureBuiltinPresetTerminationPolicy(); }catch{}
+          try{ syncPresetUI(); }catch{}
+          try{ _appRenderLibrary(); }catch{}
+          try{ renderAll(); }catch{}
+          return;
+        }
+        _updateBuiltinTerminationNotice();
+      }
+      async function _publicAppConfigFetch(){
+        const bases = (typeof _authApiBaseCandidates === "function")
+          ? _authApiBaseCandidates()
+          : [];
+        const candidates = [];
+        const seen = new Set();
+        const pushBase = (raw) => {
+          const b = String(raw || "").trim().replace(/\/+$/, "");
+          if (!b || !/^https?:\/\//i.test(b)) return;
+          if (seen.has(b)) return;
+          seen.add(b);
+          candidates.push(b);
+        };
+        for (const base of bases) pushBase(base);
+        pushBase("https://vocabuquiz-api.rintyblog.workers.dev");
+        let lastErr = null;
+        for (const base of candidates){
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 9000);
+          try{
+            const url = _authApiUrl(base, PUBLIC_APP_CONFIG_PATH);
+            const res = await fetch(url, {
+              method: "GET",
+              cache: "no-store",
+              signal: ctrl.signal
+            });
+            const txt = await res.text();
+            let body = null;
+            try{ body = txt ? JSON.parse(txt) : null; }catch{ body = null; }
+            if (!res.ok){
+              const msg = String(body?.message || `${res.status} ${res.statusText}`);
+              throw new Error(msg);
+            }
+            const appConfig = (body?.appConfig && typeof body.appConfig === "object")
+              ? body.appConfig
+              : (body && typeof body === "object" ? body : null);
+            if (appConfig && typeof appConfig === "object"){
+              return {
+                appConfig,
+                serverNow: Number(body?.serverNow || body?.now || 0) || 0
+              };
+            }
+          }catch(err){
+            lastErr = err;
+          }finally{
+            clearTimeout(timer);
+          }
+        }
+        throw lastErr || new Error("app config fetch failed");
+      }
+      async function _publicAppConfigCheckNow(reason, opts = {}){
+        const force = !!opts.force;
+        const silent = !!opts.silent;
+        const now = Date.now();
+        if (!force && (now - (_publicAppConfigState.lastCheckAt || 0)) < 1200) return;
+        if (_publicAppConfigState.loading) return;
+        _publicAppConfigState.lastCheckAt = now;
+        _publicAppConfigState.loading = true;
+        try{
+          const payload = await _publicAppConfigFetch();
+          _publicAppConfigApply(payload.appConfig, { serverNow: payload.serverNow, reason: String(reason || "poll") });
+        }catch(err){
+          if (!silent){
+            try{ console.warn("[app_config] fetch failed:", String(err?.message || err)); }catch{}
+          }
+        }finally{
+          _publicAppConfigState.loading = false;
+        }
+      }
+      function _publicAppConfigPollIntervalMs(){
+        return document.visibilityState === "hidden"
+          ? PUBLIC_APP_CONFIG_POLL_HIDDEN_MS
+          : PUBLIC_APP_CONFIG_POLL_VISIBLE_MS;
+      }
+      function _publicAppConfigScheduleNextPoll(){
+        if (!_publicAppConfigState.polling) return;
+        if (_publicAppConfigState.pollTimer){
+          clearTimeout(_publicAppConfigState.pollTimer);
+          _publicAppConfigState.pollTimer = 0;
+        }
+        _publicAppConfigState.pollTimer = setTimeout(async () => {
+          if (!_publicAppConfigState.polling) return;
+          try{
+            await _publicAppConfigCheckNow("poll", { silent: true, force: true });
+          }catch{}
+          _publicAppConfigScheduleNextPoll();
+        }, _publicAppConfigPollIntervalMs());
+      }
+      function _publicAppConfigStartPolling(){
+        if (_publicAppConfigState.polling) return;
+        _publicAppConfigState.polling = true;
+        _publicAppConfigScheduleNextPoll();
+      }
+      function _publicAppConfigRestartPolling(){
+        if (!_publicAppConfigState.polling) return;
+        _publicAppConfigScheduleNextPoll();
+      }
+      function _publicAppConfigBindVisibility(){
+        if (_publicAppConfigState.visibilityBound) return;
+        _publicAppConfigState.visibilityBound = true;
+        document.addEventListener("visibilitychange", () => {
+          _publicAppConfigCheckNow("visible", { silent: true, force: true });
+          _publicAppConfigRestartPolling();
+        });
+      }
+      async function _publicAppConfigBootstrap(opts = {}){
+        if (_publicAppConfigState.bootstrapped) return;
+        await _publicAppConfigCheckNow(String(opts.reason || "boot"), { silent: true, force: true });
+        _publicAppConfigBindVisibility();
+        _publicAppConfigStartPolling();
+        _publicAppConfigState.bootstrapped = true;
+      }
       function _maintenanceAdminToken(){
         const keyEl = document.getElementById("adminAiIngestKey");
         return String(keyEl?.value || "").trim();
@@ -17094,12 +18786,64 @@ function reviewWrong(){
         }
         return merged;
       }
+      function _notifyHideLatestHint(force){
+        const hint = el.notifyLatestHint;
+        if (!hint) return;
+        if (_notifyHintHideTimer){
+          clearTimeout(_notifyHintHideTimer);
+          _notifyHintHideTimer = 0;
+        }
+        hint.classList.remove("is-show");
+        if (force){
+          hint.classList.add("hidden");
+          return;
+        }
+        setTimeout(() => {
+          if (!hint.classList.contains("is-show")){
+            hint.classList.add("hidden");
+          }
+        }, 190);
+      }
+      function _notifyShowLatestHint(){
+        const hint = el.notifyLatestHint;
+        if (!hint) return;
+        if (_notifyHintHideTimer){
+          clearTimeout(_notifyHintHideTimer);
+          _notifyHintHideTimer = 0;
+        }
+        hint.classList.remove("hidden");
+        requestAnimationFrame(() => {
+          hint.classList.add("is-show");
+        });
+        _notifyHintHideTimer = setTimeout(() => {
+          _notifyHintHideTimer = 0;
+          _notifyHideLatestHint(false);
+        }, 3200);
+      }
       function updateNotifyDot(){
         if (!el.notifyDot) return;
         const seenAt = _notifSeenAt();
         const list = loadNotifications();
-        const unread = list.some(n => (Number(n?.ts) || 0) > seenAt);
+        let latestUnreadTs = 0;
+        for (const n of list){
+          const ts = Number(n?.ts) || 0;
+          if (ts > seenAt && ts > latestUnreadTs){
+            latestUnreadTs = ts;
+          }
+        }
+        const unread = latestUnreadTs > 0;
         el.notifyDot.classList.toggle("hidden", !unread);
+        if (!unread){
+          _notifyHintLastUnreadTs = 0;
+          _notifyHideLatestHint(true);
+          return;
+        }
+        if (latestUnreadTs > _notifyHintLastUnreadTs){
+          _notifyHintLastUnreadTs = latestUnreadTs;
+          if (!(el.notifyOverlay && !el.notifyOverlay.classList.contains("hidden"))){
+            _notifyShowLatestHint();
+          }
+        }
       }
       const _notifyDetailState = {
         activeId: "",
@@ -17493,6 +19237,7 @@ function reviewWrong(){
           uiToast("通知UIが見つかりませんでした");
           return;
         }
+        _notifyHideLatestHint(true);
         _notifyShowListPane();
         el.notifyOverlay.classList.remove("hidden");
         renderNotifyList();
@@ -18568,6 +20313,104 @@ function _openSearchResultByIndex(i){
         tagIds: [],
         query: ""
       };
+      const _appSocialState = {
+        profile: null,
+        profileLoadedAt: 0,
+        profileLoading: false,
+        publicPresets: [],
+        publicPresetsLoadedAt: 0,
+        publicPresetsLoading: false,
+        publicPresetQuery: "",
+        posts: [],
+        postsLoadedAt: 0,
+        postsLoading: false,
+        feedScope: "all",
+        publicProfile: null
+      };
+      function _appFeatureProfileOn(){
+        return _publicAppFeatureEnabled("profile");
+      }
+      function _appFeaturePresetPublicOn(){
+        return _publicAppFeatureEnabled("preset_public");
+      }
+      function _appFeaturePostsOn(){
+        return _publicAppFeatureEnabled("posts");
+      }
+      function _appFeatureSocialOn(){
+        return _publicAppFeatureEnabled("social");
+      }
+      function _appAuthUserId(){
+        const uid = Number(authState?.user?.id || authState?.user?.uid || 0);
+        return Number.isFinite(uid) && uid > 0 ? uid : 0;
+      }
+      function _appIsLoggedUser(){
+        return _authGetMode() === "user" && _appAuthUserId() > 0;
+      }
+      function _appAuthHeaderOptional(){
+        const token = _authGetToken();
+        if (!token) return {};
+        return { Authorization: `Bearer ${token}` };
+      }
+      async function _appApiJson(path, opts = {}){
+        const headers = Object.assign({}, opts.headers || {}, _appAuthHeaderOptional());
+        return await _authFetch(path, {
+          method: opts.method || "GET",
+          headers,
+          body: Object.prototype.hasOwnProperty.call(opts, "body") ? opts.body : undefined,
+          skipLoading: true
+        });
+      }
+      let _appV2LayoutBound = false;
+      function _appV2IsDrawerMode(){
+        if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+        return !!window.matchMedia("(max-width: 1023px)").matches;
+      }
+      function _appV2IsEnabled(){
+        return !!_appUiV2Enabled && document.body?.dataset?.uiV2 === "1";
+      }
+      function _appV2SyncLayoutMetrics(){
+        if (!_appV2IsEnabled() || !document.body) return;
+        const topbar = document.getElementById("topbar") || document.querySelector(".topbar");
+        if (!topbar) return;
+        const h = Math.max(56, Math.ceil(topbar.getBoundingClientRect().height || 0));
+        document.body.style.setProperty("--app-v2-topbar-h", `${h}px`);
+      }
+      function _appV2SetSidebarOpen(open){
+        if (!document.body){
+          return false;
+        }
+        if (!_appV2IsEnabled() || !_appV2IsDrawerMode()){
+          document.body.classList.remove("app-v2-sidebar-open");
+          document.body.classList.remove("app-v2-sidebar-lock");
+          return false;
+        }
+        const next = !!open;
+        document.body.classList.toggle("app-v2-sidebar-open", next);
+        document.body.classList.toggle("app-v2-sidebar-lock", next);
+        return next;
+      }
+      function _appV2ToggleSidebar(){
+        const current = document.body?.classList?.contains("app-v2-sidebar-open");
+        return _appV2SetSidebarOpen(!current);
+      }
+      function _appV2BindLayoutHandlers(){
+        if (_appV2LayoutBound) return;
+        _appV2LayoutBound = true;
+        window.addEventListener("resize", () => {
+          _appV2SyncLayoutMetrics();
+          if (!_appV2IsDrawerMode()){
+            _appV2SetSidebarOpen(false);
+          }
+        }, { passive: true });
+        window.addEventListener("orientationchange", () => {
+          setTimeout(() => {
+            _appV2SyncLayoutMetrics();
+            if (!_appV2IsDrawerMode()){
+              _appV2SetSidebarOpen(false);
+            }
+          }, 120);
+        }, { passive: true });
+      }
 
       function _appSetTopTitleByTab(tab){
         const titleEl = document.querySelector(".brand-title");
@@ -18583,7 +20426,7 @@ function _openSearchResultByIndex(i){
         } else if (tab === APP_TAB_KEY.LIBRARY){
           subEl.textContent = "Preset";
         } else if (tab === APP_TAB_KEY.INBOX){
-          subEl.textContent = "Notifications";
+          subEl.textContent = _appFeaturePostsOn() ? "Posts Feed" : "Notifications";
         } else if (tab === APP_TAB_KEY.INSIGHT){
           subEl.textContent = "Analytics";
         } else if (tab === APP_TAB_KEY.CHAT){
@@ -18594,13 +20437,26 @@ function _openSearchResultByIndex(i){
           subEl.textContent = "v.1 Public";
         }
       }
+      function _appSyncFeedLabels(){
+        const postsOn = _appFeaturePostsOn();
+        const tabLabel = document.getElementById("appTabInboxLabel");
+        if (tabLabel) tabLabel.textContent = postsOn ? "Feed" : "Inbox";
+        if (el.appFeedTitle) el.appFeedTitle.textContent = postsOn ? "Feed" : "Inbox";
+        if (el.appFeedSubtitle){
+          el.appFeedSubtitle.textContent = postsOn
+            ? "投稿フィード（画像/リンク対応）"
+            : "通知一覧（新しい順）";
+        }
+      }
 
       function _appSaveResume(mode){
         try{
+          const activePresetId = String(getActivePresetId() || "");
           const payload = {
             mode: String(mode || ""),
-            presetId: String(getActivePresetId() || ""),
+            presetId: activePresetId,
             deck: String(state.deck || "A"),
+            vocabSetId: isBuiltinPreset(activePresetId) ? _publicAppCurrentVocabSetId() : "",
             ts: Date.now()
           };
           window.localStorage.setItem(HOME_RESUME_KEY, JSON.stringify(payload));
@@ -18617,7 +20473,8 @@ function _openSearchResultByIndex(i){
           return {
             mode,
             presetId: String(obj.presetId || ""),
-            deck: String(obj.deck || "A")
+            deck: String(obj.deck || "A"),
+            vocabSetId: String(obj.vocabSetId || "")
           };
         }catch{
           return null;
@@ -18631,12 +20488,7 @@ function _openSearchResultByIndex(i){
           el.homeResumeBtn.textContent = "続きから";
           return;
         }
-        if (isBuiltinPreset(r.presetId || "") && _isBuiltinPresetTerminatedUnavailable()){
-          el.homeResumeBtn.disabled = true;
-          el.homeResumeBtn.textContent = "続きから";
-          return;
-        }
-        if (!r.presetId && r.deck && _isBuiltinPresetTerminatedUnavailable()){
+        if (isBuiltinPreset(r.presetId || "") && r.vocabSetId && r.vocabSetId !== _publicAppCurrentVocabSetId()){
           el.homeResumeBtn.disabled = true;
           el.homeResumeBtn.textContent = "続きから";
           return;
@@ -18656,6 +20508,161 @@ function _openSearchResultByIndex(i){
         return { id: pid, name, count, kind };
       }
 
+      function _appV2Identity(){
+        if (authState?.user){
+          const nickname = String(authState.user.nickname || "").trim();
+          const grade = String(authState.user.gradePrefix || "").trim();
+          const name = nickname || grade || "学習者";
+          const meta = grade && nickname ? `${grade} / ${nickname}` : (grade || "ログイン中");
+          return { name, meta };
+        }
+        if (authState?.mode === "guest"){
+          return { name: "ゲスト", meta: "この端末のみ" };
+        }
+        return { name: "学習者", meta: "未ログイン" };
+      }
+      function _appV2DateText(ts){
+        const d = new Date(Number(ts) || Date.now());
+        const w = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()] || "";
+        return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} (${w})`;
+      }
+      function _appV2SafeSessions(){
+        const src = (typeof _insightsLoadSessions === "function") ? (_insightsLoadSessions() || []) : [];
+        return (Array.isArray(src) ? src : []).filter((s) => s && !s.deletedAt);
+      }
+      function _appV2SessionAccuracy(session){
+        const total = Math.max(0, Number(session?.total || 0));
+        const correct = Math.max(0, Number(session?.correct || 0));
+        if (!total) return 0;
+        return correct / total;
+      }
+      function _appV2LearningStreakDays(sessions){
+        const daySet = new Set();
+        for (const s of sessions){
+          const ts = Number(s?.ts || 0);
+          if (!ts) continue;
+          const d = new Date(ts);
+          d.setHours(0, 0, 0, 0);
+          daySet.add(d.getTime());
+        }
+        let streak = 0;
+        const cur = new Date(_publicAppConfigNowMs());
+        cur.setHours(0, 0, 0, 0);
+        let cursor = cur.getTime();
+        while (daySet.has(cursor)){
+          streak += 1;
+          cursor -= 86400000;
+        }
+        return streak;
+      }
+      function _appV2RenderSidebarIdentity(){
+        const identity = _appV2Identity();
+        if (el.appV2SidebarName) el.appV2SidebarName.textContent = identity.name;
+        if (el.appV2SidebarMeta) el.appV2SidebarMeta.textContent = identity.meta;
+        if (el.appV2GreetingName) el.appV2GreetingName.textContent = identity.name;
+        if (el.appV2DateText) el.appV2DateText.textContent = `今日は ${_appV2DateText(_publicAppConfigNowMs())} です。`;
+      }
+      function _appV2RenderWeekBars(sessions){
+        if (!el.appV2WeekBars) return;
+        const now = _publicAppConfigNowMs();
+        const today = new Date(now);
+        today.setHours(0, 0, 0, 0);
+        const labels = ["日", "月", "火", "水", "木", "金", "土"];
+        const bars = [];
+        for (let i = 6; i >= 0; i--){
+          const dayTs = today.getTime() - (i * 86400000);
+          const nextTs = dayTs + 86400000;
+          const answers = sessions.reduce((sum, s) => {
+            const ts = Number(s?.ts || 0);
+            if (!ts || ts < dayTs || ts >= nextTs) return sum;
+            return sum + Math.max(0, Number(s?.total || 0));
+          }, 0);
+          const d = new Date(dayTs);
+          bars.push({ label: labels[d.getDay()] || "", answers });
+        }
+        const maxAnswers = Math.max(1, ...bars.map((b) => b.answers));
+        el.appV2WeekBars.innerHTML = bars.map((b) => {
+          const h = Math.max(8, Math.min(100, Math.round((b.answers / maxAnswers) * 100)));
+          return `<div class="app-v2-week-col"><div class="app-v2-week-bar-wrap"><span class="app-v2-week-bar" style="height:${h}%"></span></div><span class="app-v2-week-day">${escapeHtml(b.label)}</span><span class="app-v2-week-val">${escapeHtml(String(b.answers))}</span></div>`;
+        }).join("");
+      }
+      function _appV2RenderRecentPresets(sessions){
+        if (!el.appV2RecentList) return;
+        const list = loadPresets()
+          .slice()
+          .sort((a, b) => Number(b?.updatedAt || 0) - Number(a?.updatedAt || 0))
+          .slice(0, 3);
+        if (!list.length){
+          el.appV2RecentList.innerHTML = `<div class="app-empty">My Preset がありません。</div>`;
+          return;
+        }
+        const byPreset = new Map();
+        for (const s of sessions){
+          const pid = String(s?.presetId || "");
+          if (!pid) continue;
+          const total = Math.max(0, Number(s?.total || 0));
+          const correct = Math.max(0, Number(s?.correct || 0));
+          const prev = byPreset.get(pid) || { total: 0, correct: 0 };
+          prev.total += total;
+          prev.correct += correct;
+          byPreset.set(pid, prev);
+        }
+        el.appV2RecentList.innerHTML = list.map((p) => {
+          const pid = String(p.id || "");
+          const wc = _presetEntryCount(p);
+          const stats = byPreset.get(pid) || { total: 0, correct: 0 };
+          const pct = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+          const updatedText = Number(p?.updatedAt || 0) > 0 ? _appInboxRelativeTime(Number(p.updatedAt)) : "更新なし";
+          return `<article class="app-v2-recent-item">
+            <div class="app-v2-recent-name">${escapeHtml(String(p.name || "My Preset"))}</div>
+            <div class="app-v2-recent-meta">更新: ${escapeHtml(updatedText)} / ${wc}問</div>
+            <div class="app-v2-recent-bar"><span style="width:${Math.max(0, Math.min(100, pct))}%"></span></div>
+            <div class="app-v2-recent-actions">
+              <button class="textbtn" type="button" data-v2-action="use-preset" data-id="${escapeHtml(pid)}">使用</button>
+              <button class="textbtn" type="button" data-v2-action="edit-preset" data-id="${escapeHtml(pid)}">編集</button>
+            </div>
+          </article>`;
+        }).join("");
+      }
+      function _appV2RenderHomeDashboard(){
+        _appV2RenderSidebarIdentity();
+        if (!_appUiV2Enabled) return;
+        const sessions = _appV2SafeSessions();
+        const now = _publicAppConfigNowMs();
+        const dayStart = new Date(now);
+        dayStart.setHours(0, 0, 0, 0);
+        const todayStart = dayStart.getTime();
+        const weekStart = todayStart - (6 * 86400000);
+        const prevWeekStart = weekStart - (7 * 86400000);
+        const week = sessions.filter((s) => {
+          const ts = Number(s?.ts || 0);
+          return ts >= weekStart && ts < (todayStart + 86400000);
+        });
+        const prevWeek = sessions.filter((s) => {
+          const ts = Number(s?.ts || 0);
+          return ts >= prevWeekStart && ts < weekStart;
+        });
+        const highPriority = week.filter((s) => (Number(s?.total || 0) >= 5) && _appV2SessionAccuracy(s) < 0.65).length;
+        const todaySessions = sessions.filter((s) => {
+          const ts = Number(s?.ts || 0);
+          return ts >= todayStart && ts < (todayStart + 86400000);
+        }).length;
+        const weekDone = week.length;
+        const weekDelta = weekDone - prevWeek.length;
+        const streakDays = _appV2LearningStreakDays(sessions);
+        if (el.appV2StatHighPriority) el.appV2StatHighPriority.textContent = String(highPriority);
+        if (el.appV2StatHighPrioritySub) el.appV2StatHighPrioritySub.textContent = "正答率65%未満セッション";
+        if (el.appV2StatToday) el.appV2StatToday.textContent = String(todaySessions);
+        if (el.appV2StatWeekDone) el.appV2StatWeekDone.textContent = String(weekDone);
+        if (el.appV2StatWeekDelta){
+          const sign = weekDelta > 0 ? "+" : "";
+          el.appV2StatWeekDelta.textContent = `${sign}${weekDelta} vs 先週`;
+        }
+        if (el.appV2StatStreak) el.appV2StatStreak.textContent = String(streakDays);
+        _appV2RenderWeekBars(sessions);
+        _appV2RenderRecentPresets(sessions);
+      }
+
       function _appRenderHomeOverview(){
         const info = _appCurrentPresetInfo();
         if (el.homeActivePresetName) el.homeActivePresetName.textContent = info.name;
@@ -18669,6 +20676,66 @@ function _openSearchResultByIndex(i){
           el.homeActivePresetMeta.textContent = `${info.count}語 / ${subject}${tagText}`;
         }
         _appSyncResumeButton();
+        _appV2RenderHomeDashboard();
+        _appRenderHomeProgressInsights();
+      }
+
+      function _appHomeProgressRangeDays(){
+        const v = String(el.appHomeProgressRange?.value || "30D");
+        return v === "7D" ? 7 : 30;
+      }
+
+      function _appRenderHomeProgressInsights(){
+        if (!el.appHomeProgressCards || !el.appHomeWeakTable) return;
+        const days = _appHomeProgressRangeDays();
+        const now = Date.now();
+        const from = now - (days * 86400000);
+        const sessions = _appV2SafeSessions().filter((s) => Number(s?.ts || 0) >= from);
+        const totalSessions = sessions.length;
+        const totalAnswers = sessions.reduce((sum, s) => sum + Math.max(0, Number(s?.total || 0)), 0);
+        const totalCorrect = sessions.reduce((sum, s) => sum + Math.max(0, Number(s?.correct || 0)), 0);
+        const totalMs = sessions.reduce((sum, s) => sum + Math.max(0, Number(s?.durationMs || 0)), 0);
+        const acc = totalAnswers > 0 ? Math.round((totalCorrect / totalAnswers) * 1000) / 10 : 0;
+        const avgAnswers = totalSessions > 0 ? Math.round((totalAnswers / totalSessions) * 10) / 10 : 0;
+        const cards = [
+          { k: "学習回数", v: String(totalSessions) },
+          { k: "正答率", v: `${acc}%` },
+          { k: "回答数", v: String(totalAnswers) },
+          { k: "平均/回", v: String(avgAnswers) },
+          { k: "学習時間", v: `${Math.round((totalMs / 60000) * 10) / 10}分` },
+          { k: "正解数", v: String(totalCorrect) }
+        ];
+        el.appHomeProgressCards.innerHTML = cards.map((c) =>
+          `<article class="app-home-progress-card"><div class="k">${escapeHtml(c.k)}</div><div class="v">${escapeHtml(c.v)}</div></article>`
+        ).join("");
+
+        const wrongMap = new Map();
+        for (const s of sessions){
+          const wrong = Array.isArray(s?.wrongIds) ? s.wrongIds : [];
+          for (const idRaw of wrong){
+            const id = Number(idRaw || 0);
+            if (!Number.isFinite(id) || id <= 0) continue;
+            wrongMap.set(id, (wrongMap.get(id) || 0) + 1);
+          }
+        }
+        const topWrong = Array.from(wrongMap.entries())
+          .sort((a,b) => b[1] - a[1])
+          .slice(0, 8);
+        if (!topWrong.length){
+          el.appHomeWeakTable.innerHTML = `<div class="app-empty">期間内のミスデータはありません。</div>`;
+          return;
+        }
+        const rows = topWrong.map(([id, count]) => {
+          const entry = (getActiveWords() || []).find((w) => Number(w?.id || 0) === Number(id));
+          const word = entry?.word || `No.${id}`;
+          return `<tr><td>${escapeHtml(String(id))}</td><td>${escapeHtml(String(word))}</td><td>${escapeHtml(String(count))}</td></tr>`;
+        }).join("");
+        el.appHomeWeakTable.innerHTML = `
+          <table>
+            <thead><tr><th>No</th><th>苦手語</th><th>ミス回数</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
       }
 
       function _appBuiltinDefs(){
@@ -18814,7 +20881,7 @@ function _openSearchResultByIndex(i){
         if (!builtinDefs.length){
           const empty = document.createElement("div");
           empty.className = "app-empty";
-          empty.textContent = "英単語標準プリセットは 2026/03/01 をもって配信終了しました。";
+          empty.textContent = "標準プリセットの表示対象がありません。";
           el.appLibraryBuiltinList.appendChild(empty);
         } else {
           el.appLibraryBuiltinList.appendChild(bFrag);
@@ -18822,11 +20889,14 @@ function _openSearchResultByIndex(i){
 
         const mine = loadPresets();
         const filteredMine = mine.filter((p) => _appPresetMatchesLibraryFilter(p));
+        const publishedIds = _appOwnPublishedPresetIds();
         if (!filteredMine.length){
           const empty = document.createElement("div");
           empty.className = "app-empty";
           empty.textContent = mine.length ? "条件に一致する My Preset がありません。" : "My Preset がありません。";
           el.appLibraryMyList.appendChild(empty);
+          _appRenderProfilePanel();
+          _appRenderPublicPresetList();
           _customSelectEnhance(el.appLibraryPage || document);
           return;
         }
@@ -18850,6 +20920,10 @@ function _openSearchResultByIndex(i){
           actions.appendChild(_appCreateActionButton("削除", "deleteCustom", p.id));
           actions.appendChild(_appCreateActionButton("EXAM", "startCustomExam", p.id));
           actions.appendChild(_appCreateActionButton("WRITE", "startCustomWrite", p.id));
+          if (_appFeaturePresetPublicOn()){
+            const isPublished = publishedIds.has(String(p.id || ""));
+            actions.appendChild(_appCreateActionButton(isPublished ? "非公開" : "公開", isPublished ? "unpublishCustom" : "publishCustom", p.id));
+          }
           card.appendChild(title);
           card.appendChild(meta);
           card.appendChild(_presetMetaRowEl(p));
@@ -18857,16 +20931,450 @@ function _openSearchResultByIndex(i){
           mFrag.appendChild(card);
         }
         el.appLibraryMyList.appendChild(mFrag);
+        _appRenderProfilePanel();
+        _appRenderPublicPresetList();
         _customSelectEnhance(el.appLibraryPage || document);
+      }
+
+      function _appProfileSetStatus(msg, kind = ""){
+        if (!el.appProfileStatus) return;
+        el.appProfileStatus.textContent = String(msg || "");
+        el.appProfileStatus.classList.remove("ok", "error");
+        if (kind === "ok") el.appProfileStatus.classList.add("ok");
+        if (kind === "error") el.appProfileStatus.classList.add("error");
+      }
+
+      function _appRenderProfilePanel(){
+        if (!el.appProfileBlock) return;
+        const enabled = _appFeatureProfileOn();
+        el.appProfileBlock.classList.toggle("hidden", !enabled);
+        if (!enabled) return;
+        const profile = (_appSocialState.profile && typeof _appSocialState.profile === "object")
+          ? _appSocialState.profile
+          : null;
+        const defaultName = authState?.user?.nickname ? `${authState.user.gradePrefix || ""} ${authState.user.nickname || ""}`.trim() : "ゲスト";
+        const followers = Math.max(0, Number(profile?.followers || 0));
+        const following = Math.max(0, Number(profile?.following || 0));
+        const publicPresetCount = Math.max(0, Number(profile?.publicPresetCount || 0));
+        if (el.appProfileStats){
+          el.appProfileStats.innerHTML = `
+            <article class="app-profile-stat"><div class="k">表示名</div><div class="v">${escapeHtml(String(profile?.displayName || defaultName || "—"))}</div></article>
+            <article class="app-profile-stat"><div class="k">フォロワー</div><div class="v">${escapeHtml(String(followers))}</div></article>
+            <article class="app-profile-stat"><div class="k">フォロー</div><div class="v">${escapeHtml(String(following))}</div></article>
+            <article class="app-profile-stat"><div class="k">公開プリセット</div><div class="v">${escapeHtml(String(publicPresetCount))}</div></article>
+          `;
+        }
+        if (el.appProfileAvatarInput && !document.activeElement?.isSameNode?.(el.appProfileAvatarInput)){
+          el.appProfileAvatarInput.value = String(profile?.avatarUrl || "");
+        }
+        if (el.appProfileBioInput && !document.activeElement?.isSameNode?.(el.appProfileBioInput)){
+          el.appProfileBioInput.value = String(profile?.bio || "");
+        }
+        if (el.appProfileMessageInput && !document.activeElement?.isSameNode?.(el.appProfileMessageInput)){
+          el.appProfileMessageInput.value = String(profile?.message || "");
+        }
+        if (el.appProfileVisibilitySelect){
+          el.appProfileVisibilitySelect.value = String(profile?.visibility || "public") === "private" ? "private" : "public";
+        }
+        if (!_appIsLoggedUser()){
+          _appProfileSetStatus("プロフィール編集はログイン後に利用できます。");
+        } else if (!_appSocialState.profileLoading && !_appSocialState.profileLoadedAt){
+          _appProfileSetStatus("プロフィールを読み込みます…");
+        } else if (!_appSocialState.profileLoading){
+          _appProfileSetStatus("プロフィール更新は即時反映されます。");
+        }
+      }
+
+      async function _appLoadProfile(force = false){
+        if (!_appFeatureProfileOn()) return null;
+        if (!_appIsLoggedUser()){
+          _appSocialState.profile = null;
+          _appSocialState.profileLoadedAt = 0;
+          _appRenderProfilePanel();
+          return null;
+        }
+        const age = Date.now() - Number(_appSocialState.profileLoadedAt || 0);
+        if (!force && _appSocialState.profile && age < 12000){
+          _appRenderProfilePanel();
+          return _appSocialState.profile;
+        }
+        if (_appSocialState.profileLoading) return _appSocialState.profile;
+        _appSocialState.profileLoading = true;
+        try{
+          const body = await _appApiJson("/api/profile/me", { method: "GET" });
+          _appSocialState.profile = body?.profile || null;
+          _appSocialState.profileLoadedAt = Date.now();
+          _appProfileSetStatus("プロフィールを読み込みました。", "ok");
+        }catch(err){
+          console.warn("[profile] load failed", err);
+          _appProfileSetStatus("プロフィールの取得に失敗しました。", "error");
+        }finally{
+          _appSocialState.profileLoading = false;
+          _appRenderProfilePanel();
+        }
+        return _appSocialState.profile;
+      }
+
+      async function _appSaveProfile(){
+        if (!_appFeatureProfileOn()) return;
+        if (!_appIsLoggedUser()){
+          _appProfileSetStatus("ログイン後に保存できます。", "error");
+          return;
+        }
+        const payload = {
+          avatarUrl: String(el.appProfileAvatarInput?.value || "").trim(),
+          bio: String(el.appProfileBioInput?.value || "").trim(),
+          message: String(el.appProfileMessageInput?.value || "").trim(),
+          visibility: String(el.appProfileVisibilitySelect?.value || "public")
+        };
+        _appProfileSetStatus("保存中…");
+        try{
+          const body = await _appApiJson("/api/profile/me", {
+            method: "PUT",
+            body: JSON.stringify(payload)
+          });
+          _appSocialState.profile = body?.profile || _appSocialState.profile;
+          _appSocialState.profileLoadedAt = Date.now();
+          _appProfileSetStatus("プロフィールを保存しました。", "ok");
+        }catch(err){
+          console.warn("[profile] save failed", err);
+          _appProfileSetStatus(`保存に失敗しました: ${String(err?.message || err)}`, "error");
+        }finally{
+          _appRenderProfilePanel();
+        }
+      }
+
+      function _appOwnPublishedPresetIds(){
+        const myUid = _appAuthUserId();
+        const ids = new Set();
+        if (!myUid) return ids;
+        for (const row of (_appSocialState.publicPresets || [])){
+          if (Number(row?.ownerUserId || 0) !== myUid) continue;
+          const pid = String(row?.presetId || "").trim();
+          if (!pid) continue;
+          ids.add(pid);
+        }
+        return ids;
+      }
+
+      function _appRenderPublicPresetList(){
+        if (!el.appPublicPresetBlock || !el.appPublicPresetList || !el.appPublicPresetEmpty) return;
+        const enabled = _appFeaturePresetPublicOn();
+        el.appPublicPresetBlock.classList.toggle("hidden", !enabled);
+        if (!enabled) return;
+        const list = Array.isArray(_appSocialState.publicPresets) ? _appSocialState.publicPresets : [];
+        el.appPublicPresetList.replaceChildren();
+        if (!list.length){
+          el.appPublicPresetEmpty.classList.remove("hidden");
+          return;
+        }
+        el.appPublicPresetEmpty.classList.add("hidden");
+        const frag = document.createDocumentFragment();
+        for (const p of list){
+          const card = document.createElement("article");
+          card.className = "app-preset-card";
+          const title = document.createElement("div");
+          title.className = "title";
+          title.textContent = String(p?.name || "Public Preset");
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          const authorName = String(p?.author?.displayName || p?.author?.nickname || "Unknown");
+          const wc = Math.max(0, Number(p?.wordCount || 0));
+          meta.textContent = `${authorName} / ${wc}語`;
+          const actions = document.createElement("div");
+          actions.className = "app-preset-actions";
+          const forkBtn = _appCreateActionButton("複製", "forkPublic", `${Number(p?.ownerUserId || 0)}:${String(p?.presetId || "")}`);
+          actions.appendChild(forkBtn);
+          const profileBtn = _appCreateActionButton("プロフィール", "openPublicProfile", String(Number(p?.ownerUserId || 0)));
+          actions.appendChild(profileBtn);
+          card.appendChild(title);
+          card.appendChild(meta);
+          if (Array.isArray(p?.tagIds) && p.tagIds.length){
+            card.appendChild(_presetMetaRowEl({ subjectId: p.subjectId, tagIds: p.tagIds }));
+          }
+          card.appendChild(actions);
+          frag.appendChild(card);
+        }
+        el.appPublicPresetList.appendChild(frag);
+      }
+
+      async function _appLoadPublicPresets(force = false){
+        if (!_appFeaturePresetPublicOn()) return [];
+        const age = Date.now() - Number(_appSocialState.publicPresetsLoadedAt || 0);
+        if (!force && age < 12000 && Array.isArray(_appSocialState.publicPresets) && _appSocialState.publicPresets.length){
+          _appRenderPublicPresetList();
+          return _appSocialState.publicPresets;
+        }
+        if (_appSocialState.publicPresetsLoading) return _appSocialState.publicPresets;
+        _appSocialState.publicPresetsLoading = true;
+        try{
+          const q = encodeURIComponent(String(_appSocialState.publicPresetQuery || "").trim());
+          const body = await _appApiJson(`/api/public/presets?limit=80${q ? `&q=${q}` : ""}`, { method: "GET" });
+          _appSocialState.publicPresets = Array.isArray(body?.presets) ? body.presets : [];
+          _appSocialState.publicPresetsLoadedAt = Date.now();
+        }catch(err){
+          console.warn("[public preset] load failed", err);
+          _syncNotifyError("公開プリセットの取得に失敗しました。");
+        }finally{
+          _appSocialState.publicPresetsLoading = false;
+          _appRenderLibrary();
+        }
+        return _appSocialState.publicPresets;
+      }
+
+      async function _appTogglePresetPublish(pid, publish){
+        if (!_appFeaturePresetPublicOn()) return;
+        if (!_appIsLoggedUser()){
+          uiToast("ログイン後に公開できます。");
+          return;
+        }
+        const preset = getPresetById(pid);
+        if (!preset || preset.builtin){
+          uiToast("公開できるプリセットが見つかりません。");
+          return;
+        }
+        try{
+          await _appApiJson("/api/preset/publish", {
+            method: "POST",
+            body: JSON.stringify({
+              isPublic: !!publish,
+              preset
+            })
+          });
+          await _appLoadPublicPresets(true);
+          if (publish) uiToast("公開しました。");
+          else uiToast("非公開にしました。");
+          _appRenderLibrary();
+        }catch(err){
+          uiToast(`公開設定に失敗: ${String(err?.message || err)}`);
+        }
+      }
+
+      async function _appForkPublicPreset(ownerUserId, presetId){
+        if (!_appIsLoggedUser()){
+          uiToast("ログイン後に複製できます。");
+          return;
+        }
+        try{
+          const body = await _appApiJson("/api/preset/fork", {
+            method: "POST",
+            body: JSON.stringify({ ownerUserId, presetId })
+          });
+          const preset = (body?.preset && typeof body.preset === "object") ? body.preset : null;
+          if (!preset?.id){
+            throw new Error("preset が不正です。");
+          }
+          const list = loadPresetsAll();
+          list.push(_normalizePresetMeta(preset, {
+            allowMissingCustomSubject: false,
+            allowUnknownTagIds: true
+          }));
+          savePresetsAll(list, { touchUpdatedAt: false });
+          setActivePreset(String(preset.id || ""));
+          _appRenderLibrary();
+          uiToast("公開プリセットを複製しました。");
+        }catch(err){
+          uiToast(`複製に失敗: ${String(err?.message || err)}`);
+        }
+      }
+
+      async function _appOpenPublicProfile(userId){
+        const uid = Number(userId || 0);
+        if (!Number.isFinite(uid) || uid <= 0) return;
+        try{
+          const body = await _appApiJson(`/api/profile?userId=${uid}`, { method: "GET" });
+          const profile = body?.profile || null;
+          _appSocialState.publicProfile = profile;
+          if (el.appPublicProfileBlock) el.appPublicProfileBlock.classList.remove("hidden");
+          if (el.appPublicProfileView){
+            const followers = Math.max(0, Number(profile?.followers || 0));
+            const following = Math.max(0, Number(profile?.following || 0));
+            const isFollowing = !!profile?.isFollowing;
+            const followBtn = profile?.isSelf ? "" : `<button class="textbtn" type="button" data-feed-action="toggleFollow" data-id="${escapeHtml(String(profile?.userId || ""))}" data-follow="${isFollowing ? "0" : "1"}">${isFollowing ? "フォロー解除" : "フォローする"}</button>`;
+            el.appPublicProfileView.innerHTML = `
+              <div class="app-public-profile-view">
+                <div class="app-feed-author">
+                  <div class="app-feed-avatar">${escapeHtml(String(profile?.nickname || "U").slice(0, 2).toUpperCase())}</div>
+                  <div class="app-feed-author-meta">
+                    <div class="app-feed-author-name">${escapeHtml(String(profile?.displayName || profile?.nickname || "Unknown"))}</div>
+                    <div class="app-feed-author-time">公開プリセット: ${escapeHtml(String(profile?.publicPresetCount || 0))}</div>
+                  </div>
+                </div>
+                <div class="app-detail-content">${escapeHtml(String(profile?.bio || "自己紹介なし"))}</div>
+                <div class="app-detail-content">${escapeHtml(String(profile?.message || "ひとことなし"))}</div>
+                <div class="app-feed-actions">
+                  <span class="tag-chip is-muted">Followers: ${escapeHtml(String(followers))}</span>
+                  <span class="tag-chip is-muted">Following: ${escapeHtml(String(following))}</span>
+                  ${followBtn}
+                </div>
+              </div>
+            `;
+          }
+        }catch(err){
+          uiToast(`プロフィール取得に失敗: ${String(err?.message || err)}`);
+        }
+      }
+
+      function _appClosePublicProfile(){
+        if (el.appPublicProfileBlock) el.appPublicProfileBlock.classList.add("hidden");
+        if (el.appPublicProfileView) el.appPublicProfileView.innerHTML = "";
+        _appSocialState.publicProfile = null;
+      }
+
+      function _appFeedRelativeTime(ts){
+        return _appInboxRelativeTime(ts);
+      }
+
+      function _appRenderFeed(){
+        const postsOn = _appFeaturePostsOn();
+        if (el.appFeedComposer) el.appFeedComposer.classList.toggle("hidden", !postsOn);
+        if (el.appFeedScopeBlock) el.appFeedScopeBlock.classList.toggle("hidden", !postsOn);
+        if (el.appFeedList) el.appFeedList.classList.toggle("hidden", !postsOn);
+        if (el.appFeedEmpty) el.appFeedEmpty.classList.toggle("hidden", !postsOn);
+        if (el.appPublicProfileBlock && !postsOn) el.appPublicProfileBlock.classList.add("hidden");
+        if (el.appInboxListPane) el.appInboxListPane.classList.toggle("hidden", !!postsOn);
+        if (el.appInboxDetailPane) el.appInboxDetailPane.classList.add("hidden");
+        if (!postsOn) return;
+        if (el.appFeedScopeSelect){
+          const scope = String(_appSocialState.feedScope || "all");
+          if (el.appFeedScopeSelect.value !== scope) el.appFeedScopeSelect.value = scope;
+        }
+        if (el.appFeedComposerStatus){
+          el.appFeedComposerStatus.textContent = _appIsLoggedUser()
+            ? "投稿内容は公開フィードに表示されます。"
+            : "投稿はログイン時のみ可能です。";
+        }
+        const list = Array.isArray(_appSocialState.posts) ? _appSocialState.posts : [];
+        if (!el.appFeedList || !el.appFeedEmpty) return;
+        el.appFeedList.replaceChildren();
+        if (!list.length){
+          el.appFeedEmpty.classList.remove("hidden");
+          return;
+        }
+        el.appFeedEmpty.classList.add("hidden");
+        const frag = document.createDocumentFragment();
+        for (const post of list){
+          const card = document.createElement("article");
+          card.className = "app-feed-card";
+          const authorName = String(post?.author?.displayName || post?.author?.nickname || "Unknown");
+          const avatarText = String(post?.author?.nickname || "U").slice(0, 2).toUpperCase();
+          const createdAt = Math.max(0, Number(post?.createdAt || 0));
+          const links = (Array.isArray(post?.links) ? post.links : []).filter((link) => /^https?:\/\//i.test(String(link || "").trim()));
+          const followBtn = (post?.author?.userId && !_appSocialState.postsLoading && _appIsLoggedUser() && Number(post.author.userId) !== _appAuthUserId())
+            ? `<button class="textbtn" type="button" data-feed-action="toggleFollow" data-id="${escapeHtml(String(post.author.userId))}" data-follow="${post.author.isFollowing ? "0" : "1"}">${post.author.isFollowing ? "フォロー解除" : "フォロー"}</button>`
+            : "";
+          card.innerHTML = `
+            <div class="app-feed-head">
+              <div class="app-feed-author">
+                <div class="app-feed-avatar">${escapeHtml(avatarText)}</div>
+                <div class="app-feed-author-meta">
+                  <div class="app-feed-author-name">${escapeHtml(authorName)}</div>
+                  <div class="app-feed-author-time">${escapeHtml(_appFeedRelativeTime(createdAt))}</div>
+                </div>
+              </div>
+              <button class="textbtn" type="button" data-feed-action="openProfile" data-id="${escapeHtml(String(post?.author?.userId || ""))}">プロフィール</button>
+            </div>
+            <h3 class="app-feed-title">${escapeHtml(String(post?.title || ""))}</h3>
+            <p class="app-feed-body">${escapeHtml(String(post?.body || ""))}</p>
+            ${links.length ? `<div class="app-feed-links">${links.map((link)=>`<a class="app-feed-link" href="${escapeHtml(String(link || ""))}" target="_blank" rel="noopener noreferrer">${escapeHtml(String(link || ""))}</a>`).join("")}</div>` : ""}
+            <div class="app-feed-actions">${followBtn}</div>
+          `;
+          frag.appendChild(card);
+        }
+        el.appFeedList.appendChild(frag);
+      }
+
+      async function _appLoadFeed(force = false){
+        if (!_appFeaturePostsOn()){
+          _appRenderInbox();
+          return [];
+        }
+        const age = Date.now() - Number(_appSocialState.postsLoadedAt || 0);
+        if (!force && age < 8000 && Array.isArray(_appSocialState.posts) && _appSocialState.posts.length){
+          _appRenderFeed();
+          return _appSocialState.posts;
+        }
+        if (_appSocialState.postsLoading) return _appSocialState.posts;
+        _appSocialState.postsLoading = true;
+        try{
+          const scope = String(_appSocialState.feedScope || "all");
+          const body = await _appApiJson(`/api/posts/feed?scope=${encodeURIComponent(scope)}&limit=60`, { method: "GET" });
+          _appSocialState.posts = Array.isArray(body?.posts) ? body.posts : [];
+          _appSocialState.postsLoadedAt = Date.now();
+        }catch(err){
+          console.warn("[feed] load failed", err);
+          _syncNotifyError("フィードの取得に失敗しました。");
+          _appSocialState.posts = [];
+        }finally{
+          _appSocialState.postsLoading = false;
+          _appRenderFeed();
+        }
+        return _appSocialState.posts;
+      }
+
+      async function _appCreatePost(){
+        if (!_appFeaturePostsOn()) return;
+        if (!_appIsLoggedUser()){
+          uiToast("投稿にはログインが必要です。");
+          return;
+        }
+        const title = String(el.appFeedPostTitle?.value || "").trim();
+        const bodyText = String(el.appFeedPostBody?.value || "").trim();
+        const link = String(el.appFeedPostLink?.value || "").trim();
+        const image = String(el.appFeedPostImage?.value || "").trim();
+        if (!title && !bodyText){
+          uiToast("タイトルか本文を入力してください。");
+          return;
+        }
+        try{
+          await _appApiJson("/api/posts/create", {
+            method: "POST",
+            body: JSON.stringify({
+              title,
+              body: bodyText,
+              links: link ? [link] : [],
+              images: image ? [image] : []
+            })
+          });
+          if (el.appFeedPostTitle) el.appFeedPostTitle.value = "";
+          if (el.appFeedPostBody) el.appFeedPostBody.value = "";
+          if (el.appFeedPostLink) el.appFeedPostLink.value = "";
+          if (el.appFeedPostImage) el.appFeedPostImage.value = "";
+          await _appLoadFeed(true);
+          uiToast("投稿しました。");
+        }catch(err){
+          uiToast(`投稿に失敗: ${String(err?.message || err)}`);
+        }
+      }
+
+      async function _appToggleFollow(targetUserId, follow){
+        if (!_appFeatureSocialOn()) return;
+        if (!_appIsLoggedUser()){
+          uiToast("ログイン後にフォローできます。");
+          return;
+        }
+        const uid = Number(targetUserId || 0);
+        if (!Number.isFinite(uid) || uid <= 0) return;
+        try{
+          await _appApiJson("/api/follow/toggle", {
+            method: "POST",
+            body: JSON.stringify({
+              targetUserId: uid,
+              follow: !!follow
+            })
+          });
+          await _appLoadFeed(true);
+          if (_appCurrentTab === APP_TAB_KEY.LIBRARY){
+            await _appLoadProfile(true);
+          }
+        }catch(err){
+          uiToast(`フォロー更新に失敗: ${String(err?.message || err)}`);
+        }
       }
 
       function _appUsePresetForStart(pid){
         if (!pid) return false;
         if (isBuiltinPreset(pid)){
-          if (isBuiltinPresetTerminated() && getVisibleBuiltinPresetCatalog().length === 0){
-            uiToast("英単語標準プリセットは 2026/03/01 をもって配信終了しています。");
-            return false;
-          }
           const dk = deckFromBuiltinId(pid);
           return !!setDeck(dk);
         }
@@ -19089,6 +21597,11 @@ function _openSearchResultByIndex(i){
       }
 
       function _appRenderInbox(){
+        _appSyncFeedLabels();
+        if (_appFeaturePostsOn()){
+          _appRenderFeed();
+          return;
+        }
         if (!el.appInboxList || !el.appInboxEmpty) return;
         _appSyncInboxAdminButton();
         const seenAt = _notifSeenAt();
@@ -22485,6 +24998,7 @@ function _openSearchResultByIndex(i){
         if (state.view !== "TITLE") return;
         const tab = APP_TAB_LIST.includes(_appCurrentTab) ? _appCurrentTab : APP_TAB_KEY.HOME;
         document.body.dataset.appTab = tab;
+        _appSyncFeedLabels();
         const btns = document.querySelectorAll(".app-tab-btn[data-app-tab]");
         btns.forEach((b) => {
           const on = b.getAttribute("data-app-tab") === tab;
@@ -22493,8 +25007,17 @@ function _openSearchResultByIndex(i){
         });
         _appSetTopTitleByTab(tab);
         if (tab === APP_TAB_KEY.HOME) _appRenderHomeOverview();
-        if (tab === APP_TAB_KEY.LIBRARY) _appRenderLibrary();
-        if (tab === APP_TAB_KEY.INBOX) _appRenderInbox();
+        if (tab === APP_TAB_KEY.LIBRARY){
+          _appRenderLibrary();
+          _appLoadProfile(false).catch(() => {});
+          _appLoadPublicPresets(false).catch(() => {});
+        }
+        if (tab === APP_TAB_KEY.INBOX){
+          _appRenderInbox();
+          if (_appFeaturePostsOn()){
+            _appLoadFeed(false).catch(() => {});
+          }
+        }
         if (tab === APP_TAB_KEY.INSIGHT) _appRenderInsightsCards();
         if (tab === APP_TAB_KEY.CHAT){
           _chatState.followBottom = true;
@@ -22506,23 +25029,25 @@ function _openSearchResultByIndex(i){
         } else {
           _chatStopPinLatest();
         }
+        _appV2RenderSidebarIdentity();
       }
 
       function _appSetTab(tab){
         const raw = String(tab || "");
         if (raw === "settings"){
+          _appV2SetSidebarOpen(false);
           if (state.view !== "TITLE"){
             goTitle();
           }
           _runIdle(() => {
             _appRenderCurrentTab();
-            openMenu();
-            _setMenuView("root");
+            openSettings();
           });
           return;
         }
         const t = _appNormalizeTabKey(raw);
         _appCurrentTab = t;
+        _appV2SetSidebarOpen(false);
         if (state.view !== "TITLE"){
           goTitle();
         }
@@ -22536,13 +25061,17 @@ function _openSearchResultByIndex(i){
           }
           if (t === APP_TAB_KEY.INBOX){
             _appInboxBackToList();
-            const list = loadNotifications();
-            _notifMarkSeenByList(list);
-            updateNotifyDot();
-            _appRenderInbox();
-            _refreshNotificationsFromFirestore().then(() => {
-              if (_appCurrentTab === APP_TAB_KEY.INBOX) _appRenderInbox();
-            }).catch(() => {});
+            if (_appFeaturePostsOn()){
+              _appLoadFeed(true).catch(() => {});
+            } else {
+              const list = loadNotifications();
+              _notifMarkSeenByList(list);
+              updateNotifyDot();
+              _appRenderInbox();
+              _refreshNotificationsFromFirestore().then(() => {
+                if (_appCurrentTab === APP_TAB_KEY.INBOX) _appRenderInbox();
+              }).catch(() => {});
+            }
           }
         });
       }
@@ -22553,10 +25082,6 @@ function _openSearchResultByIndex(i){
           return;
         }
         if (action === "useBuiltin"){
-          if (isBuiltinPresetTerminated() && getVisibleBuiltinPresetCatalog().length === 0){
-            uiToast("英単語標準プリセットは 2026/03/01 をもって配信終了しています。");
-            return;
-          }
           const pid = String(id || "");
           const builtinId = pid.startsWith("builtin:") ? pid : `builtin:${pid}`;
           const ok = setDeck(deckFromBuiltinId(builtinId));
@@ -22597,12 +25122,36 @@ function _openSearchResultByIndex(i){
         }
         if (action === "startCustomWrite"){
           _appStartPresetMode(id, "HAND");
+          return;
+        }
+        if (action === "publishCustom"){
+          await _appTogglePresetPublish(id, true);
+          return;
+        }
+        if (action === "unpublishCustom"){
+          await _appTogglePresetPublish(id, false);
+          return;
+        }
+        if (action === "forkPublic"){
+          const parts = String(id || "").split(":");
+          const ownerUserId = Number(parts[0] || 0);
+          const presetId = String(parts.slice(1).join(":") || "");
+          await _appForkPublicPreset(ownerUserId, presetId);
+          return;
+        }
+        if (action === "openPublicProfile"){
+          await _appOpenPublicProfile(Number(id || 0));
+          _appSetTab("inbox");
         }
       }
 
       async function _appHandleHomeAction(action){
         if (action === "openLibrary"){
           _appSetTab("library");
+          return;
+        }
+        if (action === "newPreset"){
+          openPresetManager(true);
           return;
         }
         if (action === "openReport"){
@@ -22622,6 +25171,10 @@ function _openSearchResultByIndex(i){
           const r = _appLoadResume();
           if (!r){
             uiToast("続きデータがありません。");
+            return;
+          }
+          if (isBuiltinPreset(r.presetId || "") && r.vocabSetId && r.vocabSetId !== _publicAppCurrentVocabSetId()){
+            uiToast("保存された続きは旧標準セットのため再開できません。");
             return;
           }
           let started = false;
@@ -22694,6 +25247,11 @@ function _openSearchResultByIndex(i){
       if (el.presetManageBtn){
         el.presetManageBtn.addEventListener("click", () => openPresetManager(false));
       }
+      if (el.appProfileReloadBtn){
+        el.appProfileReloadBtn.addEventListener("click", () => {
+          _appLoadProfile(true).catch(() => {});
+        });
+      }
 
 
       el.startSeqBtn.addEventListener("click", () => startMode("SEQ"));
@@ -22715,6 +25273,18 @@ function _openSearchResultByIndex(i){
             return;
           }
           openPresetManager(false);
+        });
+      }
+      if (el.appV2SidebarToggle){
+        el.appV2SidebarToggle.addEventListener("click", (e) => {
+          e.preventDefault();
+          _appV2ToggleSidebar();
+        });
+      }
+      if (el.appV2SidebarBackdrop){
+        el.appV2SidebarBackdrop.addEventListener("click", (e) => {
+          e.preventDefault();
+          _appV2SetSidebarOpen(false);
         });
       }
 
@@ -22882,6 +25452,15 @@ function _openSearchResultByIndex(i){
           _appRenderInsightsCards();
           return;
         }
+        if (t.id === "appHomeProgressRange"){
+          _appRenderHomeProgressInsights();
+          return;
+        }
+        if (t.id === "appFeedScopeSelect"){
+          _appSocialState.feedScope = String(t.value || "all");
+          _appLoadFeed(true).catch(() => {});
+          return;
+        }
         if (t.id === "adminMaintenanceEnabled" || t.id === "adminMaintenanceStartAt" || t.id === "adminMaintenanceEndAt"){
           _maintenanceSetAdminStatus("");
           _maintenanceRenderAdminPreview();
@@ -22894,6 +25473,7 @@ function _openSearchResultByIndex(i){
         if (t.id === "appLibrarySubjectFilter"){
           _appLibraryFilter.subjectId = String(t.value || "ALL");
           _appRenderLibrary();
+          return;
         }
       });
       document.addEventListener("input", (e) => {
@@ -22911,8 +25491,24 @@ function _openSearchResultByIndex(i){
         if (t.id === "appLibrarySearchInput"){
           _appLibraryFilter.query = String(t.value || "");
           _appRenderLibrary();
+          return;
+        }
+        if (t.id === "appPublicPresetSearchInput"){
+          _appSocialState.publicPresetQuery = String(t.value || "");
+          _appLoadPublicPresets(true).catch(() => {});
+          return;
         }
       });
+      document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        if (!_appV2IsDrawerMode()) return;
+        if (!document.body.classList.contains("app-v2-sidebar-open")) return;
+        const ae = document.activeElement;
+        const typing = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
+        if (typing) return;
+        e.preventDefault();
+        _appV2SetSidebarOpen(false);
+      }, true);
 
       document.addEventListener("click", async (e) => {
         if (el.appChatModeMenu && !el.appChatModeMenu.classList.contains("hidden")){
@@ -22932,6 +25528,41 @@ function _openSearchResultByIndex(i){
           e.preventDefault();
           _appSetTab(appTabBtn.getAttribute("data-app-tab") || "home");
           return;
+        }
+        const appV2ActionBtn = e.target.closest("[data-v2-action]");
+        if (appV2ActionBtn && (appV2ActionBtn.closest("#appTabBar") || appV2ActionBtn.closest("#viewTitle"))){
+          e.preventDefault();
+          const action = String(appV2ActionBtn.getAttribute("data-v2-action") || "");
+          if (action === "logout"){
+            await _authLogout();
+            _appSetTab("home");
+            return;
+          }
+          if (action === "open-profile"){
+            _appSetTab("library");
+            _runIdle(() => {
+              _appLoadProfile(true).catch(() => {});
+              if (el.appProfileBlock){
+                try{ el.appProfileBlock.scrollIntoView({ behavior: "smooth", block: "start" }); }catch{}
+              }
+            });
+            return;
+          }
+          const id = String(appV2ActionBtn.getAttribute("data-id") || "").trim();
+          if (action === "use-preset"){
+            if (!id) return;
+            setActivePreset(id);
+            _appSetTab("home");
+            return;
+          }
+          if (action === "edit-preset"){
+            if (!id) return;
+            openPresetManager(false);
+            _runIdle(() => {
+              try{ selectPresetForEdit(id); }catch{}
+            });
+            return;
+          }
         }
 
         const homeActionBtn = e.target.closest("[data-home-action]");
@@ -22961,6 +25592,34 @@ function _openSearchResultByIndex(i){
             _appRenderLibrary();
           }
           return;
+        }
+        const profileActionBtn = e.target.closest("[data-profile-action]");
+        if (profileActionBtn && profileActionBtn.closest("#appLibraryPage")){
+          e.preventDefault();
+          const action = String(profileActionBtn.getAttribute("data-profile-action") || "");
+          if (action === "save"){
+            await _appSaveProfile();
+            return;
+          }
+          if (action === "viewPublic"){
+            const uid = _appAuthUserId();
+            if (!uid){
+              uiToast("ログイン後に利用できます。");
+              return;
+            }
+            await _appOpenPublicProfile(uid);
+            _appSetTab("inbox");
+            return;
+          }
+        }
+        const publicActionBtn = e.target.closest("[data-public-action]");
+        if (publicActionBtn && publicActionBtn.closest("#appLibraryPage")){
+          e.preventDefault();
+          const action = String(publicActionBtn.getAttribute("data-public-action") || "");
+          if (action === "reload"){
+            await _appLoadPublicPresets(true);
+            return;
+          }
         }
 
         const inboxActionBtn = e.target.closest("[data-inbox-action]");
@@ -22999,6 +25658,33 @@ function _openSearchResultByIndex(i){
               return;
             }
             _appInboxOpenDetail(id);
+            return;
+          }
+        }
+        const feedActionBtn = e.target.closest("[data-feed-action]");
+        if (feedActionBtn && feedActionBtn.closest("#appInboxPage")){
+          e.preventDefault();
+          const action = String(feedActionBtn.getAttribute("data-feed-action") || "");
+          if (action === "createPost"){
+            await _appCreatePost();
+            return;
+          }
+          if (action === "reload"){
+            await _appLoadFeed(true);
+            return;
+          }
+          if (action === "openProfile"){
+            await _appOpenPublicProfile(Number(feedActionBtn.getAttribute("data-id") || 0));
+            return;
+          }
+          if (action === "closeProfile"){
+            _appClosePublicProfile();
+            return;
+          }
+          if (action === "toggleFollow"){
+            const uid = Number(feedActionBtn.getAttribute("data-id") || 0);
+            const follow = String(feedActionBtn.getAttribute("data-follow") || "1") !== "0";
+            await _appToggleFollow(uid, follow);
             return;
           }
         }
@@ -23401,6 +26087,8 @@ function _openSearchResultByIndex(i){
       });
       el.resultTitleBtn.addEventListener("click", goTitle);
       el.resultReviewBtn.addEventListener("click", reviewWrong);
+      el.quizExitTopBtn?.addEventListener("click", _quizExitOpenConfirm);
+      el.quizExitBtn?.addEventListener("click", _quizExitOpenConfirm);
 
       // keyboard
       
@@ -23488,6 +26176,11 @@ function _openSearchResultByIndex(i){
         // global escape to title
         if (e.key === "Escape"){
           if (isTyping) return;
+          if (state.view === "QUIZ"){
+            e.preventDefault();
+            _quizExitOpenConfirm();
+            return;
+          }
           if (state.view !== "TITLE"){
             e.preventDefault();
             goTitle();
@@ -23553,6 +26246,12 @@ function _openSearchResultByIndex(i){
           prev();
           return;
         }
+      });
+
+      window.addEventListener("beforeunload", (e) => {
+        if (!_quizShouldWarnBeforeUnload()) return;
+        e.preventDefault();
+        e.returnValue = "";
       });
 
 
@@ -23626,6 +26325,8 @@ function _openSearchResultByIndex(i){
       const wordFieldLabelB = document.getElementById("wordFieldLabelB");
       const presetSingleEditorTitle = document.getElementById("presetSingleEditorTitle");
       const presetPreviewTitle = document.getElementById("presetPreviewTitle");
+      const presetPreviewMeta = document.getElementById("presetPreviewMeta");
+      const presetPreviewMoreBtn = document.getElementById("presetPreviewMoreBtn");
       const bulkHintEnglish = document.getElementById("bulkHintEnglish");
       const bulkHintGeneric = document.getElementById("bulkHintGeneric");
       const mathFormatWrap = document.getElementById("mathFormatWrap");
@@ -23876,7 +26577,7 @@ function _openSearchResultByIndex(i){
         if (wordWordInput) wordWordInput.placeholder = isEnglish ? "英単語 / 熟語" : "問題文";
         if (wordMeaningInput) wordMeaningInput.placeholder = isEnglish ? "日本語訳（原文どおり）" : "答え";
         if (presetSingleEditorTitle) presetSingleEditorTitle.textContent = isEnglish ? "単語の追加/編集（1件）" : "問題/答えの追加・編集（1件）";
-        if (presetPreviewTitle) presetPreviewTitle.textContent = isEnglish ? "単語プレビュー（上位50件）" : "問題プレビュー（上位50件）";
+        _updatePresetPreviewSummary(isEnglish, 0, 0);
         if (bulkHintEnglish) bulkHintEnglish.classList.toggle("hidden", !isEnglish);
         if (bulkHintGeneric) bulkHintGeneric.classList.toggle("hidden", isEnglish);
         if (presetMcqSection) presetMcqSection.classList.toggle("hidden", !isEnglish);
@@ -26164,6 +28865,13 @@ function _openSearchResultByIndex(i){
         }
         _mathDiagramOpenForCard(id);
       });
+      presetPreviewMoreBtn?.addEventListener("click", () => {
+        if (!editingPresetId) return;
+        const next = Math.min(PRESET_PREVIEW_MAX, Number(_presetPreviewVisibleCount || PRESET_PREVIEW_STEP) + PRESET_PREVIEW_STEP);
+        if (next <= Number(_presetPreviewVisibleCount || 0)) return;
+        _presetPreviewVisibleCount = next;
+        renderWordsPreview(_presetEditingEntries(_presetPreviewSourcePreset()));
+      });
 
       let editingPresetId = null;
       let editingPresetTagIds = [];
@@ -26193,6 +28901,49 @@ function _openSearchResultByIndex(i){
       const SCAN_COMPRESS_QUALITIES = Object.freeze([0.72, 0.62, 0.52, 0.42, 0.35]);
       const SCAN_FETCH_TIMEOUT_MS = 30000;
       const SCAN_AUTO_RETRY_LIMIT = 2;
+      const PRESET_PREVIEW_MAX = 200;
+      const PRESET_PREVIEW_STEP = 50;
+      let _presetPreviewVisibleCount = PRESET_PREVIEW_STEP;
+
+      function _resetPresetPreviewVisibleCount(){
+        _presetPreviewVisibleCount = PRESET_PREVIEW_STEP;
+      }
+      function _presetPreviewTitleText(isEnglish){
+        return isEnglish ? "単語プレビュー（上位200件）" : "問題プレビュー（上位200件）";
+      }
+      function _presetPreviewSourcePreset(){
+        if (!editingPresetId) return null;
+        const p = getPresetById(editingPresetId);
+        if (!p) return null;
+        const actualSid = _resolveSubjectId(p.subjectId, { fallback: "sub:english", allowMissingCustom: true });
+        const uiSid = _resolveSubjectId(presetSubjectSelect?.value || actualSid, { fallback: "sub:english", allowMissingCustom: true });
+        if (actualSid === uiSid) return p;
+        return { ...p, subjectId: uiSid };
+      }
+      function _updatePresetPreviewSummary(isEnglish, totalCount, visibleCount){
+        if (presetPreviewTitle) presetPreviewTitle.textContent = _presetPreviewTitleText(!!isEnglish);
+        const total = Math.max(0, Number(totalCount || 0));
+        const cappedTotal = Math.min(total, PRESET_PREVIEW_MAX);
+        const visible = Math.max(0, Math.min(Number(visibleCount || 0), cappedTotal));
+        if (presetPreviewMeta){
+          if (!total){
+            presetPreviewMeta.textContent = "0件";
+          } else if (total > PRESET_PREVIEW_MAX){
+            presetPreviewMeta.textContent = `全${total}件中 ${visible}/${PRESET_PREVIEW_MAX}件を表示`;
+          } else {
+            presetPreviewMeta.textContent = `${visible}/${total}件を表示`;
+          }
+        }
+        if (presetPreviewMoreBtn){
+          const rest = Math.max(0, cappedTotal - visible);
+          const canMore = rest > 0;
+          presetPreviewMoreBtn.classList.toggle("hidden", !canMore);
+          presetPreviewMoreBtn.disabled = !canMore;
+          if (canMore){
+            presetPreviewMoreBtn.textContent = `さらに${Math.min(PRESET_PREVIEW_STEP, rest)}件表示`;
+          }
+        }
+      }
 
       function _scanRevokeUrl(kind){
         if (kind === "main"){
@@ -28308,6 +31059,7 @@ function _openSearchResultByIndex(i){
         const list = loadPresets();
         const p = list.find(x=>x.id===pid) || null;
         editingPresetId = p ? p.id : null;
+        _resetPresetPreviewVisibleCount();
 
         presetNameInput.value = p ? (p.name || "") : "";
         const m = p?.modes || {SEQ:true,RND:true,HAND:true,CHOICE:true};
@@ -28336,8 +31088,8 @@ function _openSearchResultByIndex(i){
         if (presetManageSubjectsBtn) presetManageSubjectsBtn.disabled = disabled;
         if (presetManageTagsBtn) presetManageTagsBtn.disabled = disabled;
 
-        renderWordsPreview(_presetEditingEntries(p));
         _refreshPresetMetaEditor(p);
+        renderWordsPreview(_presetEditingEntries(_presetPreviewSourcePreset() || p));
         _setPresetMetaStatus("");
 
         if (presetShareBtn) presetShareBtn.disabled = !p || !!p.builtin;
@@ -28345,13 +31097,10 @@ function _openSearchResultByIndex(i){
 
       presetSubjectSelect?.addEventListener("change", () => {
         if (!editingPresetId) return;
+        _resetPresetPreviewVisibleCount();
         const sid = presetSubjectSelect.value || "sub:english";
         _applyPresetEditorSubjectUI(sid);
-        const p = getPresetById(editingPresetId);
-        if (p){
-          const mock = { ...p, subjectId: sid };
-          renderWordsPreview(_presetEditingEntries(mock));
-        }
+        renderWordsPreview(_presetEditingEntries(_presetPreviewSourcePreset()));
         _setPresetMetaStatus("科目を変更しました。保存で確定します。");
       });
       presetTagPicker?.addEventListener("click", (e) => {
@@ -28549,12 +31298,17 @@ function _openSearchResultByIndex(i){
         const arr = isEnglish
           ? _normalizeWordList(list)
           : _normalizeCardList(list, { allowLatex: isMath });
+        const total = arr.length;
+        const cappedTotal = Math.min(total, PRESET_PREVIEW_MAX);
+        const wanted = Math.max(PRESET_PREVIEW_STEP, Number(_presetPreviewVisibleCount || PRESET_PREVIEW_STEP));
+        const visibleCount = Math.min(cappedTotal, wanted);
         presetWordsPreview.innerHTML = "";
         if (!arr.length){
           presetWordsPreview.innerHTML = `<div class="note">（データがありません）</div>`;
+          _updatePresetPreviewSummary(isEnglish, 0, 0);
           return;
         }
-        for (const w of arr.slice(0,50)){
+        for (const w of arr.slice(0, visibleCount)){
           const row = document.createElement("div");
           row.className = "preset-item";
           if (isEnglish){
@@ -28563,7 +31317,7 @@ function _openSearchResultByIndex(i){
                 <div class="title">No.${w.id}  ${escapeHtml(w.word)}</div>
                 <p class="meta">${escapeHtml(w.meaning)}</p>
               </div>
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <div class="preset-item-actions">
                 <button class="textbtn" data-editword="${w.id}">編集</button>
                 <button class="textbtn" data-delword="${w.id}">削除</button>
               </div>`;
@@ -28577,7 +31331,7 @@ function _openSearchResultByIndex(i){
                 <div class="title">No.${w.id}  ${escapeHtml(w.front)}</div>
                 <p class="meta">答え: ${escapeHtml(w.back)}${escapeHtml(fmtMeta)}${hasDiagram ? ` <span class="badge">図あり</span>` : ""}</p>
               </div>
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <div class="preset-item-actions">
                 ${isMath ? `<button class="textbtn" data-editdiagram="${w.id}">図を編集</button>` : ""}
                 <button class="textbtn" data-editword="${w.id}">編集</button>
                 <button class="textbtn" data-delword="${w.id}">削除</button>
@@ -28585,6 +31339,7 @@ function _openSearchResultByIndex(i){
           }
           presetWordsPreview.appendChild(row);
         }
+        _updatePresetPreviewSummary(isEnglish, total, visibleCount);
 
         presetWordsPreview.querySelectorAll("button[data-delword]").forEach(btn=>{
           btn.addEventListener("click", ()=>{
@@ -29104,7 +31859,10 @@ function _openSearchResultByIndex(i){
         if (!presetName){
           try{ presetName = deckLabel(state.deck); }catch{}
         }
-        return { presetId, presetName };
+        const vocabSetId = isBuiltinPreset(presetId)
+          ? _publicAppCurrentVocabSetId()
+          : "";
+        return { presetId, presetName, vocabSetId };
       }
 
       function _insightsAppendSession(session){
@@ -29127,6 +31885,7 @@ function _openSearchResultByIndex(i){
         const meta = _insightsGetPresetMeta();
         state._insightsStartPresetId = meta.presetId;
         state._insightsStartPresetName = meta.presetName;
+        state._insightsStartVocabSetId = meta.vocabSetId;
       }
 
       function _insightsTryLogResult(kind){
@@ -29155,6 +31914,7 @@ function _openSearchResultByIndex(i){
 
         const presetId = state._insightsStartPresetId || _insightsGetPresetMeta().presetId;
         const presetName = state._insightsStartPresetName || _insightsGetPresetMeta().presetName;
+        const vocabSetId = state._insightsStartVocabSetId || _insightsGetPresetMeta().vocabSetId || "";
 
         const accuracy = total > 0 ? (correct / total) : null;
 
@@ -29164,6 +31924,7 @@ function _openSearchResultByIndex(i){
           date: _insightsYmd(Date.now()),
           presetId: String(presetId || ""),
           presetName: String(presetName || ""),
+          vocabSetId: String(vocabSetId || ""),
           mode: String(mode),
           total: Number(total) || 0,
           correct: Number(correct) || 0,
@@ -29265,7 +32026,7 @@ function _openSearchResultByIndex(i){
         const cur = insights.currentPresetId || _insightsGetPresetMeta().presetId;
         if (cur) ids.set(cur, _insightsGetPresetMeta().presetName || cur);
 
-        const builtins = _isBuiltinPresetTerminatedUnavailable() ? [] : ["builtin:A","builtin:B","builtin:C","builtin:D","builtin:E","builtin:ALL"];
+        const builtins = ["builtin:A","builtin:B","builtin:C","builtin:D","builtin:E","builtin:ALL"];
         for (const b of builtins){
           if (!ids.has(b)){
             try{
@@ -30072,6 +32833,10 @@ function _openSearchResultByIndex(i){
       updateNotifyDot();
       setView("TITLE");
       _appSetTab("home");
+      _appApplyUiV2FromConfig({ force: true });
+      _appV2BindLayoutHandlers();
+      _appV2SyncLayoutMetrics();
+      _publicAppConfigBootstrap({ reason: "boot" }).catch(() => {});
       renderAll();
       _startBuiltinPresetTerminationWatcher();
       _updateBuiltinTerminationNotice();
