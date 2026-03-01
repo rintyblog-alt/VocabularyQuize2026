@@ -4780,6 +4780,7 @@ body[data-app-tab="home"] #viewTitle .hero{
 }
 body[data-app-tab="library"] #viewTitle .hero,
 body[data-app-tab="inbox"] #viewTitle .hero,
+body[data-app-tab="notifications"] #viewTitle .hero,
 body[data-app-tab="insight"] #viewTitle .hero,
 body[data-app-tab="chat"] #viewTitle .hero{
   display: none;
@@ -4791,6 +4792,7 @@ body[data-app-tab="chat"] #viewTitle .hero{
 }
 body[data-app-tab="library"] #appLibraryPage,
 body[data-app-tab="inbox"] #appInboxPage,
+body[data-app-tab="notifications"] #appNotificationsPage,
 body[data-app-tab="insight"] #appInsightsPage,
 body[data-app-tab="chat"] #appChatPage{
   display: block;
@@ -4893,65 +4895,106 @@ body[data-app-tab="chat"] #appChatPage{
 }
 .app-feed-list{
   display: grid;
+  gap: 8px;
+  max-width: 920px;
+  margin: 0 auto;
+}
+.app-feed-item{
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
   gap: 10px;
+  padding: 12px 10px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  transition: background-color .18s ease;
+}
+.app-feed-item:hover{
+  background: color-mix(in srgb, var(--panel2) 64%, var(--panel));
 }
 .app-feed-card{
-  border: 1px solid var(--border);
-  background: var(--panel);
-  border-radius: 14px;
-  padding: 11px;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
 }
 .app-feed-head{
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
 }
 .app-feed-author{
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-width: 0;
 }
 .app-feed-avatar{
-  width: 28px;
-  height: 28px;
+  width: 42px;
+  height: 42px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--panel2);
+  border: 0;
+  background: color-mix(in srgb, var(--panel2) 82%, #dbe5ff);
   color: var(--muted);
   display: grid;
   place-items: center;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  flex-shrink: 0;
 }
 .app-feed-author-meta{
   min-width: 0;
 }
 .app-feed-author-name{
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.app-feed-author-name .app-feed-handle,
+.app-feed-author-name .app-feed-time-dot,
+.app-feed-author-name .app-feed-time{
+  color: var(--muted);
+  font-weight: 500;
 }
 .app-feed-author-time{
   color: var(--muted);
   font-size: 11px;
 }
 .app-feed-title{
-  margin: 9px 0 0;
+  margin: 5px 0 0;
   color: var(--text);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
+  line-height: 1.55;
 }
 .app-feed-body{
-  margin: 7px 0 0;
+  margin: 5px 0 0;
   color: var(--text);
-  font-size: 13px;
-  line-height: 1.72;
+  font-size: 14px;
+  line-height: 1.7;
   white-space: pre-wrap;
+  word-break: break-word;
+}
+.app-feed-body.is-clamped{
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.app-feed-more{
+  margin-top: 6px;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--accent, #2563eb) 84%, var(--text));
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
 }
 .app-feed-links{
   display: grid;
@@ -4967,10 +5010,438 @@ body[data-app-tab="chat"] #appChatPage{
   white-space: nowrap;
 }
 .app-feed-actions{
-  margin-top: 10px;
+  margin-top: 9px;
   display: flex;
-  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
+  gap: 8px;
+}
+.app-feed-action-btn{
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  min-height: 30px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color .16s ease, color .16s ease;
+}
+.app-feed-action-btn:hover{
+  background: color-mix(in srgb, var(--panel2) 82%, transparent);
+  color: var(--text);
+}
+.app-feed-action-btn.is-on.is-like{
+  color: #cc2f45;
+}
+.app-feed-action-btn.is-on.is-repost{
+  color: #1f8b4c;
+}
+.app-feed-action-btn.is-on.is-bookmark{
+  color: #b28704;
+}
+.app-feed-action-btn.is-on.is-like,
+.app-feed-action-btn.is-on.is-repost,
+.app-feed-action-btn.is-on.is-bookmark{
+  animation: appFeedActionPop .2s ease-out;
+}
+.app-feed-action-btn.is-pop{
+  animation: appFeedActionPop .2s ease-out;
+}
+.app-feed-action-btn .ms{
+  font-size: 19px;
+}
+.app-feed-action-count{
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+@keyframes appFeedActionPop{
+  0%{ transform: scale(1); }
+  50%{ transform: scale(1.14); }
+  100%{ transform: scale(1); }
+}
+.app-feed-media-grid{
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.app-feed-media-grid[data-count="1"]{
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(190px, 1fr);
+}
+.app-feed-media-grid[data-count="2"]{
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: 160px;
+}
+.app-feed-media-grid[data-count="3"]{
+  grid-template-columns: 1.2fr 1fr;
+  grid-template-rows: repeat(2, 112px);
+}
+.app-feed-media-grid[data-count="4"]{
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, 112px);
+}
+.app-feed-media-grid .app-feed-media-item{
+  overflow: hidden;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel2) 88%, #dbe3f3);
+}
+.app-feed-media-grid[data-count="3"] .app-feed-media-item:first-child{
+  grid-row: 1 / span 2;
+}
+.app-feed-media{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.app-feed-detail-view{
+  display: grid;
+  gap: 12px;
+}
+.app-feed-detail-view .app-feed-item{
+  background: transparent;
+  padding: 0;
+}
+.app-feed-detail-view .app-feed-body{
+  white-space: pre-wrap;
+}
+.app-feed-profile-screen{
+  max-width: 920px;
+  margin: 0 auto 8px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+.app-feed-profile-top{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.app-feed-profile-back{
+  width: 34px;
+  height: 34px;
+}
+.app-feed-profile-title{
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 760;
+}
+.app-feed-profile-head{
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+.app-feed-profile-avatar{
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel2) 82%, #dbe5ff);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 780;
+}
+.app-feed-profile-name{
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 760;
+}
+.app-feed-profile-handle{
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.app-feed-profile-stats{
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.app-feed-profile-stat{
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--text);
+}
+.app-feed-profile-stat .k{
+  font-size: 13px;
+  color: var(--muted);
+}
+.app-feed-profile-stat .v{
+  font-size: 15px;
+  font-weight: 700;
+}
+.app-feed-profile-tabs{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+.app-feed-profile-tab{
+  appearance: none;
+  border: 0;
+  background: color-mix(in srgb, var(--panel2) 82%, transparent);
+  color: var(--muted);
+  border-radius: 999px;
+  min-height: 34px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.app-feed-profile-tab .n{
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.app-feed-profile-tab.is-active{
+  background: color-mix(in srgb, var(--accent, #2563eb) 14%, var(--panel));
+  color: var(--text);
+}
+.app-feed-profile-list{
+  display: grid;
+  gap: 8px;
+}
+.app-profile-follow-list{
+  display: grid;
+  gap: 8px;
+}
+.app-profile-follow-item{
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  padding: 8px 10px;
+}
+.app-profile-follow-avatar{
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--panel2) 82%, transparent);
+  color: var(--text);
+  font-weight: 700;
+}
+.app-profile-follow-meta{
+  min-width: 0;
+}
+.app-profile-follow-name{
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-profile-follow-handle{
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-feed-fab{
+  position: fixed;
+  left: auto;
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 123;
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  border: 0;
+  background: color-mix(in srgb, var(--accent, #2563eb) 88%, #3b82f6);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, .28);
+  cursor: pointer;
+}
+.app-feed-fab .ms{
+  font-size: 26px;
+}
+.app-feed-editor-sheet{
+  width: min(760px, calc(100vw - 24px));
+  max-height: min(92dvh, 900px);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.app-feed-editor-body{
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.app-feed-editor-counter{
+  margin-top: -2px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+.app-feed-editor-grid{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+.app-feed-chip-list{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.app-feed-chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel2) 86%, transparent);
+  padding: 4px 10px;
+  color: var(--text);
+  font-size: 12px;
+}
+.app-feed-chip span{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
+}
+.app-feed-chip button{
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.app-feed-chip button:hover{
+  background: color-mix(in srgb, var(--panel2) 70%, transparent);
+  color: var(--text);
+}
+.app-feed-editor-row{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.app-feed-editor-preview{
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel2) 74%, var(--panel));
+  padding: 10px;
+}
+.app-feed-reply-sheet{
+  width: min(760px, calc(100vw - 24px));
+  max-height: min(92dvh, 900px);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.app-feed-reply-body{
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.app-feed-reply-target{
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel2) 72%, var(--panel));
+  padding: 10px;
+}
+.app-feed-reply-list{
+  display: grid;
+  gap: 8px;
+}
+.app-feed-reply-item{
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 98%, transparent);
+  padding: 8px 10px;
+}
+.app-feed-reply-item .meta{
+  color: var(--muted);
+  font-size: 12px;
+}
+.app-feed-reply-item .body{
+  margin-top: 4px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 14px;
+  line-height: 1.6;
+}
+@media (max-width: 640px){
+  .app-feed-item{
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px 8px;
+  }
+  .app-feed-avatar{
+    width: 40px;
+    height: 40px;
+  }
+  .app-feed-media-grid[data-count="2"]{
+    grid-template-rows: 132px;
+  }
+  .app-feed-media-grid[data-count="3"]{
+    grid-template-rows: repeat(2, 96px);
+  }
+  .app-feed-media-grid[data-count="4"]{
+    grid-template-rows: repeat(2, 96px);
+  }
+  .app-feed-profile-screen{
+    padding: 10px;
+    border-radius: 14px;
+  }
+  .app-feed-fab{
+    left: auto;
+    right: calc(12px + env(safe-area-inset-right, 0px));
+    width: 50px;
+    height: 50px;
+  }
+  .app-feed-editor-grid{
+    grid-template-columns: 1fr;
+  }
+  .app-feed-reply-sheet{
+    width: calc(100vw - 12px);
+  }
+  .app-feed-profile-head{
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .app-feed-profile-avatar{
+    width: 52px;
+    height: 52px;
+    font-size: 16px;
+  }
+  .app-feed-profile-name{
+    font-size: 17px;
+  }
 }
 .app-public-profile-view{
   display: grid;
@@ -7592,7 +8063,7 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
   font-size: calc(1em * var(--ui-font-scale));
 }
 
-/* Inbox: chat-thread refresh */
+/* Notifications: chat-thread refresh */
 :root{
   --inbox-thread-bg:#ffffff;
   --inbox-bubble-bg:var(--chat-bubble-ai, var(--panel));
@@ -7612,36 +8083,36 @@ body[data-app-tab="chat"] .app-chat-send.btn.primary{
   --inbox-high-chip-border:rgba(143,182,255,.26);
 }
 
-#appInboxPage{
+#appNotificationsPage{
   gap: 12px;
 }
-body[data-app-tab="inbox"] #appInboxPage{
+body[data-app-tab="notifications"] #appNotificationsPage{
   display: grid !important;
 }
-#appInboxPage #appInboxListPane,
-#appInboxPage #appInboxDetailPane{
+#appNotificationsPage #appInboxListPane,
+#appNotificationsPage #appInboxDetailPane{
   border: 1px solid var(--inbox-bubble-border);
   border-radius: 20px;
   background: var(--inbox-thread-bg);
   box-shadow: 0 10px 26px rgba(15,23,42,.07);
 }
-#appInboxPage #appInboxListPane{
+#appNotificationsPage #appInboxListPane{
   max-height: min(74dvh, 780px);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   padding: 12px;
 }
-#appInboxPage #appInboxDetailPane{
+#appNotificationsPage #appInboxDetailPane{
   max-height: min(74dvh, 780px);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
-#appInboxPage .app-inbox-list{
+#appNotificationsPage .app-inbox-list{
   display: grid;
   gap: 12px;
   align-content: start;
 }
-#appInboxPage .app-inbox-item{
+#appNotificationsPage .app-inbox-item{
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
   gap: 10px;
@@ -7654,7 +8125,7 @@ body[data-app-tab="inbox"] #appInboxPage{
   margin: 0;
   max-width: 100%;
 }
-#appInboxPage .app-inbox-avatar{
+#appNotificationsPage .app-inbox-avatar{
   width: 34px;
   height: 34px;
   border-radius: 999px;
@@ -7669,12 +8140,16 @@ body[data-app-tab="inbox"] #appInboxPage{
   letter-spacing: .04em;
   flex-shrink: 0;
 }
-#appInboxPage .app-inbox-body{
+#appNotificationsPage .app-inbox-avatar .ms{
+  font-size: 16px;
+  line-height: 1;
+}
+#appNotificationsPage .app-inbox-body{
   min-width: 0;
   display: grid;
   gap: 6px;
 }
-#appInboxPage .app-inbox-bubble{
+#appNotificationsPage .app-inbox-bubble{
   position: relative;
   border: 1px solid var(--inbox-bubble-border) !important;
   border-radius: 16px !important;
@@ -7682,10 +8157,10 @@ body[data-app-tab="inbox"] #appInboxPage{
   box-shadow: 0 6px 18px rgba(15,23,42,.05);
   padding: 10px 12px;
 }
-#appInboxPage .app-inbox-item.unread .app-inbox-bubble{
+#appNotificationsPage .app-inbox-item.unread .app-inbox-bubble{
   border-color: color-mix(in srgb, var(--accent, #2563eb) 36%, var(--inbox-bubble-border)) !important;
 }
-#appInboxPage .app-inbox-unread-dot{
+#appNotificationsPage .app-inbox-unread-dot{
   position: absolute;
   left: -4px;
   top: -4px;
@@ -7695,23 +8170,23 @@ body[data-app-tab="inbox"] #appInboxPage{
   background: color-mix(in srgb, var(--accent, #2563eb) 78%, #ffffff);
   box-shadow: 0 0 0 2px var(--inbox-thread-bg);
 }
-#appInboxPage .app-inbox-item:not(.unread) .app-inbox-unread-dot{
+#appNotificationsPage .app-inbox-item:not(.unread) .app-inbox-unread-dot{
   display: none;
 }
-#appInboxPage .app-inbox-bubble-head{
+#appNotificationsPage .app-inbox-bubble-head{
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
 }
-#appInboxPage .app-inbox-title{
+#appNotificationsPage .app-inbox-title{
   margin: 0;
   color: var(--text);
   font-size: 14px;
   line-height: 1.45;
   font-weight: 700;
 }
-#appInboxPage .app-inbox-category{
+#appNotificationsPage .app-inbox-category{
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -7724,11 +8199,11 @@ body[data-app-tab="inbox"] #appInboxPage{
   font-weight: 600;
   white-space: nowrap;
 }
-#appInboxPage .app-inbox-item.priority-high .app-inbox-category{
+#appNotificationsPage .app-inbox-item.priority-high .app-inbox-category{
   background: var(--inbox-high-chip-bg);
   border-color: var(--inbox-high-chip-border);
 }
-#appInboxPage .app-inbox-preview{
+#appNotificationsPage .app-inbox-preview{
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 13px;
@@ -7739,36 +8214,36 @@ body[data-app-tab="inbox"] #appInboxPage{
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-#appInboxPage .app-inbox-bubble-meta{
+#appNotificationsPage .app-inbox-bubble-meta{
   margin-top: 7px;
   display: flex;
   justify-content: flex-end;
 }
-#appInboxPage .app-inbox-time{
+#appNotificationsPage .app-inbox-time{
   font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-#appInboxPage .app-inbox-action-row{
+#appNotificationsPage .app-inbox-action-row{
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
 }
-#appInboxPage .app-inbox-read-state{
+#appNotificationsPage .app-inbox-read-state{
   font-size: 11px;
   color: var(--muted);
 }
-#appInboxPage .app-inbox-action-btn{
+#appNotificationsPage .app-inbox-action-btn{
   min-height: 30px;
   border-radius: 999px;
   padding: 0 12px;
 }
 
-#appInboxPage .app-inbox-detail-shell{
+#appNotificationsPage .app-inbox-detail-shell{
   min-height: 100%;
 }
-#appInboxPage .app-inbox-detail-head{
+#appNotificationsPage .app-inbox-detail-head{
   position: sticky;
   top: 0;
   z-index: 4;
@@ -7776,13 +8251,13 @@ body[data-app-tab="inbox"] #appInboxPage{
   background: var(--inbox-thread-bg);
   padding: 12px 12px 10px;
 }
-#appInboxPage .app-inbox-detail-head-actions{
+#appNotificationsPage .app-inbox-detail-head-actions{
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
-#appInboxPage .app-inbox-close-btn{
+#appNotificationsPage .app-inbox-close-btn{
   appearance: none;
   border: 1px solid var(--inbox-bubble-border);
   background: var(--inbox-thread-bg);
@@ -7795,21 +8270,21 @@ body[data-app-tab="inbox"] #appInboxPage{
   justify-content: center;
   cursor: pointer;
 }
-#appInboxPage .app-inbox-close-btn .ms{
+#appNotificationsPage .app-inbox-close-btn .ms{
   font-size: 18px;
 }
-#appInboxPage .app-detail-title{
+#appNotificationsPage .app-detail-title{
   margin: 10px 0 6px;
   font-size: 20px;
   line-height: 1.4;
 }
-#appInboxPage .app-detail-meta{
+#appNotificationsPage .app-detail-meta{
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 0;
 }
-#appInboxPage .app-inbox-detail-chip{
+#appNotificationsPage .app-inbox-detail-chip{
   display: inline-flex;
   align-items: center;
   min-height: 24px;
@@ -7820,22 +8295,22 @@ body[data-app-tab="inbox"] #appInboxPage{
   color: var(--muted);
   font-size: 11px;
 }
-#appInboxPage .app-inbox-detail-chip.is-high{
+#appNotificationsPage .app-inbox-detail-chip.is-high{
   background: var(--inbox-high-chip-bg);
   border-color: var(--inbox-high-chip-border);
 }
-#appInboxPage .app-detail-content{
+#appNotificationsPage .app-detail-content{
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
   padding: 14px 14px 18px;
 }
-#appInboxPage .app-detail-content .notify-detail-text{
+#appNotificationsPage .app-detail-content .notify-detail-text{
   font-size: 14px;
   line-height: 1.72;
 }
-#appInboxPage .app-empty{
+#appNotificationsPage .app-empty{
   padding: 14px 4px 8px;
 }
 
@@ -8273,6 +8748,178 @@ body[data-ui-v2="1"] .app-v2-sidebar-backdrop{
   pointer-events: none;
   transition: opacity .2s ease;
 }
+body[data-ui-v2="1"] .app-right-drawer{
+  position: fixed;
+  top: max(var(--app-v2-sidebar-gap), env(safe-area-inset-top, 0px));
+  right: var(--app-v2-sidebar-gap);
+  bottom: var(--app-v2-sidebar-gap);
+  width: min(360px, calc(100vw - 24px));
+  border-radius: 24px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  background: color-mix(in srgb, var(--panel) 95%, #f9fbff);
+  box-shadow: 0 16px 34px rgba(15,23,42,.12);
+  z-index: 125;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  transform: translateX(calc(100% + 22px));
+  opacity: 0;
+  pointer-events: none;
+  transition: transform .22s ease, opacity .22s ease;
+}
+body[data-ui-v2="1"] .app-right-drawer-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 14px 10px;
+}
+body[data-ui-v2="1"] .app-right-drawer-title{
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 760;
+}
+body[data-ui-v2="1"] .app-right-drawer-body{
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 12px 14px;
+  display: grid;
+  gap: 10px;
+}
+body[data-ui-v2="1"] .app-right-drawer-body > *{
+  min-width: 0;
+}
+body[data-ui-v2="1"] #appRightUtilityRoot,
+body[data-ui-v2="1"] #appRightUtilityContent{
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+body[data-ui-v2="1"] #appRightUtilityContent{
+  overflow-x: hidden;
+}
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article,
+body[data-ui-v2="1"] #appRightUtilityContent .drawer-share,
+body[data-ui-v2="1"] #appRightUtilityContent .drawer-share-panel,
+body[data-ui-v2="1"] #appRightUtilityContent .drawer-share-row,
+body[data-ui-v2="1"] #appRightUtilityContent .drawer-share-actions{
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article{
+  margin: 0 auto;
+}
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share{
+  max-width: 340px;
+  margin: 0 auto;
+  justify-items: center;
+  text-align: center;
+}
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-panel{
+  text-align: center;
+}
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .note,
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-status,
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-link,
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-sub{
+  text-align: center !important;
+}
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-row,
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-actions{
+  justify-content: center;
+}
+body[data-ui-v2="1"] #appRightUtilityContent .select,
+body[data-ui-v2="1"] #appRightUtilityContent .xselect{
+  min-width: 0 !important;
+  width: 100%;
+  max-width: 100%;
+}
+body[data-ui-v2="1"] #appRightUtilityContent .drawer-share-code{
+  width: 100%;
+  max-width: 100%;
+  font-size: clamp(28px, 8vw, 36px);
+  letter-spacing: .08em;
+  overflow-wrap: anywhere;
+}
+body[data-ui-v2="1"] .app-right-search-row{
+  margin: 0;
+}
+body[data-ui-v2="1"] .app-right-search-row .spell-input{
+  background: color-mix(in srgb, var(--panel2) 86%, #eef4ff);
+}
+body[data-ui-v2="1"] .app-right-section{
+  background: color-mix(in srgb, var(--panel2) 62%, #ffffff);
+  border-radius: 16px;
+  padding: 10px;
+}
+body[data-ui-v2="1"] .app-right-section-head{
+  color: #4f5d77;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+body[data-ui-v2="1"] .app-right-list{
+  display: grid;
+  gap: 8px;
+}
+body[data-ui-v2="1"] .app-right-item{
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 88%, #f2f5ff);
+  padding: 8px 9px;
+  font-size: 13px;
+  color: #24334f;
+}
+body[data-ui-v2="1"] .app-right-item.is-button{
+  width: 100%;
+  border: 0;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+}
+body[data-ui-v2="1"] .app-right-item.is-button .ms{
+  font-size: 18px;
+  line-height: 1;
+  color: #486188;
+  margin-top: 1px;
+}
+body[data-ui-v2="1"] .app-right-item.is-button:hover{
+  background: color-mix(in srgb, var(--panel) 74%, #dfe8ff);
+}
+body[data-ui-v2="1"] .app-right-item .sub{
+  margin-top: 2px;
+  color: #69758d;
+  font-size: 11px;
+}
+body[data-ui-v2="1"] .app-right-drawer-backdrop{
+  position: fixed;
+  inset: 0;
+  z-index: 124;
+  border: 0;
+  background: rgba(15,18,27,.30);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease;
+}
+body[data-ui-v2="1"].app-right-panel-open .app-right-drawer{
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+body[data-ui-v2="1"].app-right-panel-open .app-right-drawer-backdrop{
+  opacity: 1;
+  pointer-events: auto;
+}
+body[data-ui-v2="1"].app-right-panel-lock{
+  overflow: hidden;
+}
 @media (min-width: 1024px){
   body[data-ui-v2="1"][data-app-tab="chat"] .app-chat-mode-row,
   body[data-ui-v2="1"][data-app-tab="chat"] .app-chat-composer,
@@ -8331,6 +8978,14 @@ body[data-ui-v2="1"] .app-v2-sidebar-backdrop{
   body[data-ui-v2="1"] .app-v2-sidebar-toggle{
     display: inline-flex;
   }
+  body[data-ui-v2="1"] .app-right-drawer{
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(90vw, 360px);
+    border-radius: 20px 0 0 20px;
+    border-right: 0;
+  }
   body[data-ui-v2="1"] .app-tabbar{
     z-index: 122;
     top: 10px;
@@ -8360,6 +9015,12 @@ body[data-ui-v2="1"] .app-v2-sidebar-backdrop{
   body[data-ui-v2="1"] .app-v2-sidebar-toggle,
   body[data-ui-v2="1"] .app-v2-sidebar-backdrop{
     display: none !important;
+  }
+  body[data-ui-v2="1"].app-right-panel-open .topbar{
+    right: 390px;
+  }
+  body[data-ui-v2="1"].app-right-panel-open main{
+    padding-right: 396px;
   }
 }
 @media (max-width: 640px){
@@ -8474,6 +9135,19 @@ body[data-ui-v2="1"] .app-v2-week-bar-wrap{
   background: var(--ds-surface-soft) !important;
   box-shadow: none !important;
   border-radius: 14px !important;
+}
+body[data-ui-v2="1"] #appInboxPage .app-feed-card.app-feed-item{
+  background: color-mix(in srgb, var(--ds-surface) 96%, transparent) !important;
+  box-shadow: none !important;
+  border-radius: 16px !important;
+  border: 0 !important;
+}
+body[data-ui-v2="1"] #appInboxPage .app-feed-avatar{
+  box-shadow: none !important;
+}
+body[data-ui-v2="1"] #appInboxPage .app-feed-action-btn{
+  background: transparent !important;
+  box-shadow: none !important;
 }
 body[data-ui-v2="1"] .app-v2-week-bar{
   background: linear-gradient(180deg, color-mix(in srgb, var(--ds-primary) 74%, #ffffff), var(--ds-primary));
@@ -9042,6 +9716,10 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
           
             <span class="icon-label" aria-hidden="true">通知</span>
           </button>
+          <button class="icon-btn app-v2-only" id="appV2RightPanelBtn" type="button" data-v2-action="toggle-right-panel" aria-label="Right Panel" title="Right Panel">
+            <span class="ms" aria-hidden="true">right_panel_open</span>
+            <span class="icon-label" aria-hidden="true">Right</span>
+          </button>
 
           <button class="icon-btn hidden" id="quizExitTopBtn" aria-label="クイズを終了" title="クイズを終了">
             <span class="ms" aria-hidden="true">close</span>
@@ -9320,6 +9998,10 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
                   <span class="label">画像URL</span>
                   <input id="appProfileAvatarInput" class="spell-input" type="url" placeholder="https://..." />
                 </label>
+                <label class="settings-row is-static" for="appProfileAvatarFile">
+                  <span class="label">画像ファイル</span>
+                  <input id="appProfileAvatarFile" class="spell-input" type="file" accept="image/*" />
+                </label>
                 <label class="settings-row is-static" for="appProfileBioInput">
                   <span class="label">自己紹介</span>
                   <textarea id="appProfileBioInput" class="spell-input" rows="2" maxlength="400" placeholder="自己紹介"></textarea>
@@ -9331,6 +10013,13 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
                 <label class="settings-row is-static" for="appProfileVisibilitySelect">
                   <span class="label">公開範囲</span>
                   <select id="appProfileVisibilitySelect" class="select settings-select">
+                    <option value="public">公開</option>
+                    <option value="private">非公開</option>
+                  </select>
+                </label>
+                <label class="settings-row is-static" for="appProfileFollowVisibilitySelect">
+                  <span class="label">フォロー一覧公開</span>
+                  <select id="appProfileFollowVisibilitySelect" class="select settings-select">
                     <option value="public">公開</option>
                     <option value="private">非公開</option>
                   </select>
@@ -9372,50 +10061,80 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
             </div>
           </section>
 
-          <section class="app-tab-page" id="appInboxPage" aria-label="Inbox">
+          <section class="app-tab-page" id="appInboxPage" aria-label="Feed">
             <div class="app-page-head">
               <h2 id="appFeedTitle">Feed</h2>
               <p id="appFeedSubtitle">投稿フィード</p>
-              <div class="app-page-head-actions">
-                <button class="textbtn hidden" type="button" id="appInboxAdminBtn" data-inbox-action="openAdminEditor">通知を編集</button>
-              </div>
             </div>
-            <div class="app-page-block hidden" id="appFeedComposer">
-              <div class="app-page-block-head">
-                <span>新規投稿</span>
+            <section class="app-feed-profile-screen hidden" id="appFeedProfileScreen" aria-label="Profile">
+              <div class="app-feed-profile-top">
+                <button class="icon-btn app-feed-profile-back" type="button" data-feed-action="backToFeed" aria-label="Feedへ戻る">
+                  <span class="ms" aria-hidden="true">arrow_back</span>
+                </button>
+                <div class="app-feed-profile-title">Profile</div>
               </div>
-              <div class="app-feed-composer-grid">
-                <input id="appFeedPostTitle" class="spell-input" type="text" maxlength="120" placeholder="タイトル" />
-                <textarea id="appFeedPostBody" class="spell-input" rows="4" maxlength="4000" placeholder="本文"></textarea>
-                <input id="appFeedPostLink" class="spell-input" type="url" placeholder="外部リンク（任意）" />
-                <input id="appFeedPostImage" class="spell-input" type="url" placeholder="画像URL（任意）" />
+              <div class="app-feed-profile-head">
+                <div class="app-feed-profile-avatar" id="appFeedProfileAvatar">U</div>
+                <div class="app-feed-profile-meta">
+                  <div class="app-feed-profile-name" id="appFeedProfileName">—</div>
+                  <div class="app-feed-profile-handle" id="appFeedProfileHandle">@user</div>
+                </div>
+              </div>
+              <div class="app-feed-profile-stats">
+                <div class="app-feed-profile-stat">
+                  <span class="k">Following</span>
+                  <span class="v" id="appFeedProfileFollowing">0</span>
+                </div>
+                <div class="app-feed-profile-stat">
+                  <span class="k">Followers</span>
+                  <span class="v" id="appFeedProfileFollowers">0</span>
+                </div>
               </div>
               <div class="app-action-row">
-                <button class="textbtn" type="button" data-feed-action="createPost">投稿する</button>
+                <button class="textbtn" type="button" data-feed-action="openFollowList" data-id="following">フォロー中を表示</button>
+                <button class="textbtn" type="button" data-feed-action="openFollowList" data-id="followers">フォロワーを表示</button>
+                <button class="textbtn hidden" type="button" id="appFeedProfileEditBtn" data-feed-action="editMyProfile">プロフィール編集</button>
               </div>
-              <div class="note" id="appFeedComposerStatus">投稿はログイン時のみ可能です。</div>
-            </div>
-            <div class="app-page-block hidden" id="appFeedScopeBlock">
-              <div class="app-insight-filters app-feed-scope">
-                <label class="settings-row is-static" for="appFeedScopeSelect">
-                  <span class="label">表示範囲</span>
-                  <select id="appFeedScopeSelect" class="select settings-select">
-                    <option value="all">すべて</option>
-                    <option value="following">フォロー中</option>
-                    <option value="me">自分</option>
-                  </select>
-                </label>
-                <button class="textbtn" type="button" data-feed-action="reload">更新</button>
-              </div>
-            </div>
+              <section class="app-page-block hidden" id="appFeedProfileFollowBlock">
+                <div class="app-page-block-head">
+                  <span id="appFeedProfileFollowTitle">フォロー一覧</span>
+                  <button class="textbtn" type="button" data-feed-action="closeFollowList">閉じる</button>
+                </div>
+                <div class="app-profile-follow-list" id="appFeedProfileFollowList"></div>
+                <div class="app-empty hidden" id="appFeedProfileFollowEmpty">表示できる項目はありません。</div>
+              </section>
+              <div class="app-feed-profile-tabs" id="appFeedProfileTabs" role="tablist" aria-label="Profile tabs"></div>
+              <div class="app-feed-profile-list" id="appFeedProfileList"></div>
+              <div class="app-empty hidden" id="appFeedProfileEmpty">投稿はありません。</div>
+            </section>
             <div class="app-feed-list hidden" id="appFeedList"></div>
             <div class="app-empty hidden" id="appFeedEmpty">投稿はまだありません。</div>
+            <button class="app-feed-fab hidden" id="appFeedFab" type="button" data-feed-action="openEditor" aria-label="ポストを作成">
+              <span class="ms" aria-hidden="true">add</span>
+            </button>
+            <div class="app-page-block hidden" id="appFeedDetailBlock">
+              <div class="app-page-block-head">
+                <span>Post Detail</span>
+                <button class="textbtn" type="button" data-feed-action="closePost">閉じる</button>
+              </div>
+              <div id="appFeedDetailView"></div>
+            </div>
             <div class="app-page-block hidden" id="appPublicProfileBlock">
               <div class="app-page-block-head">
                 <span>公開プロフィール</span>
                 <button class="textbtn" type="button" data-feed-action="closeProfile">閉じる</button>
               </div>
               <div id="appPublicProfileView"></div>
+            </div>
+          </section>
+
+          <section class="app-tab-page" id="appNotificationsPage" aria-label="Notifications">
+            <div class="app-page-head">
+              <h2>Notifications</h2>
+              <p>通知一覧</p>
+              <div class="app-page-head-actions">
+                <button class="textbtn hidden" type="button" id="appInboxAdminBtn" data-inbox-action="openAdminEditor">通知を編集</button>
+              </div>
             </div>
             <div id="appInboxListPane">
               <div class="app-inbox-list" id="appInboxList"></div>
@@ -9765,6 +10484,10 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
           <span class="ms" aria-hidden="true">inbox</span>
           <span id="appTabInboxLabel">Feed</span>
         </button>
+        <button class="app-tab-btn" type="button" data-app-tab="notifications" aria-selected="false">
+          <span class="ms" aria-hidden="true">notifications</span>
+          <span>Notifications</span>
+        </button>
         <button class="app-tab-btn" type="button" data-app-tab="insight" aria-selected="false">
           <span class="ms" aria-hidden="true">query_stats</span>
           <span>Insights</span>
@@ -9776,6 +10499,10 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         <button class="app-tab-btn" type="button" data-app-tab="settings" aria-selected="false">
           <span class="ms" aria-hidden="true">settings</span>
           <span>Settings</span>
+        </button>
+        <button class="app-tab-btn" type="button" data-v2-action="toggle-right-panel" aria-selected="false">
+          <span class="ms" aria-hidden="true">right_panel_open</span>
+          <span>Right Panel</span>
         </button>
       </div>
       <div class="app-v2-sidebar-foot">
@@ -9790,6 +10517,169 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
       </div>
     </nav>
     <button class="app-v2-sidebar-backdrop" id="appV2SidebarBackdrop" type="button" aria-label="サイドバーを閉じる"></button>
+    <aside class="app-right-drawer" id="appRightDrawer" aria-label="Right Drawer" aria-hidden="true">
+      <div class="app-right-drawer-head">
+        <button class="icon-btn hidden" id="appRightDrawerBackBtn" type="button" data-v2-action="right-back" aria-label="戻る">
+          <span class="ms" aria-hidden="true">arrow_back</span>
+        </button>
+        <div class="app-right-drawer-title" id="appRightDrawerTitle">Utility</div>
+        <button class="icon-btn app-right-drawer-close" type="button" data-v2-action="close-right-panel" aria-label="閉じる">
+          <span class="ms" aria-hidden="true">close</span>
+        </button>
+      </div>
+      <div class="app-right-drawer-body">
+        <section class="app-right-section" id="appRightUtilityRoot">
+          <div class="app-right-section-head">Menu</div>
+          <div class="app-right-list" id="appRightUtilityList">
+            <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="settings">
+              <span class="ms" aria-hidden="true">settings</span>
+              <div>
+                <div>設定</div>
+                <div class="sub">Settings</div>
+              </div>
+            </button>
+            <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="memoCheck">
+              <span class="ms" aria-hidden="true">checklist</span>
+              <div>
+                <div>メモ確認</div>
+                <div class="sub">Memo Check</div>
+              </div>
+            </button>
+            <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="presetShare">
+              <span class="ms" aria-hidden="true">share</span>
+              <div>
+                <div>共有</div>
+                <div class="sub">Preset Share</div>
+              </div>
+            </button>
+            <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="onlineBattleRealtime">
+              <span class="ms" aria-hidden="true">sports_esports</span>
+              <div>
+                <div>オンライン対戦</div>
+                <div class="sub">Realtime Battle</div>
+              </div>
+            </button>
+            <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="report">
+              <span class="ms" aria-hidden="true">report</span>
+              <div>
+                <div>報告 / お問い合わせ</div>
+                <div class="sub">Report</div>
+              </div>
+            </button>
+            <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="terms">
+              <span class="ms" aria-hidden="true">policy</span>
+              <div>
+                <div>利用規約</div>
+                <div class="sub">Terms of Service</div>
+              </div>
+            </button>
+            <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="privacy">
+              <span class="ms" aria-hidden="true">privacy_tip</span>
+              <div>
+                <div>プライバシーポリシー</div>
+                <div class="sub">Privacy Policy</div>
+              </div>
+            </button>
+            <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="help">
+              <span class="ms" aria-hidden="true">help</span>
+              <div>
+                <div>ヘルプ</div>
+                <div class="sub">使い方とFAQ</div>
+              </div>
+            </button>
+            <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="version">
+              <span class="ms" aria-hidden="true">info</span>
+              <div>
+                <div>バージョン情報</div>
+                <div class="sub" id="appRightVersion">VocabuQuiz</div>
+              </div>
+            </button>
+          </div>
+        </section>
+        <section class="app-right-section hidden" id="appRightUtilityContent" tabindex="-1"></section>
+      </div>
+    </aside>
+    <button class="app-right-drawer-backdrop" id="appRightDrawerBackdrop" type="button" aria-label="Right Drawerを閉じる"></button>
+
+    <div class="overlay hidden" id="appFeedEditorOverlay" role="dialog" aria-modal="true" aria-label="投稿エディタ">
+      <div class="sheet app-feed-editor-sheet">
+        <div class="sheet-header">
+          <div>
+            <div class="sheet-title" id="appFeedEditorTitle">新規投稿</div>
+            <div class="sheet-sub" id="appFeedEditorSub">テキスト・画像・リンクを追加できます</div>
+          </div>
+          <button class="icon-btn" type="button" data-feed-action="closeEditor" aria-label="閉じる">
+            <span class="ms" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <div class="sheet-body app-feed-editor-body">
+          <label class="settings-row is-static" for="appFeedEditorPostTitle">
+            <span class="label">タイトル</span>
+            <input id="appFeedEditorPostTitle" class="spell-input" type="text" maxlength="120" placeholder="タイトル（最大120字）" />
+          </label>
+          <label class="settings-row is-static" for="appFeedEditorPostBody">
+            <span class="label">本文</span>
+            <textarea id="appFeedEditorPostBody" class="spell-input" rows="8" maxlength="4000" placeholder="本文（最大4000字）"></textarea>
+          </label>
+          <div class="app-feed-editor-counter" id="appFeedEditorCounter">0 / 4000</div>
+          <div class="app-feed-editor-grid">
+            <label class="settings-row is-static" for="appFeedEditorLinkInput">
+              <span class="label">リンク追加</span>
+              <input id="appFeedEditorLinkInput" class="spell-input" type="url" placeholder="https://..." />
+            </label>
+            <button class="textbtn" type="button" data-feed-action="addEditorLink">リンク追加</button>
+          </div>
+          <div class="app-feed-chip-list" id="appFeedEditorLinks"></div>
+          <div class="app-feed-editor-grid">
+            <label class="settings-row is-static" for="appFeedEditorImageInput">
+              <span class="label">画像URL追加</span>
+              <input id="appFeedEditorImageInput" class="spell-input" type="url" placeholder="https://.../image.jpg" />
+            </label>
+            <button class="textbtn" type="button" data-feed-action="addEditorImage">画像追加</button>
+          </div>
+          <div class="app-feed-chip-list" id="appFeedEditorImages"></div>
+          <div class="app-feed-editor-row">
+            <button class="textbtn" type="button" data-feed-action="toggleEditorPreview">プレビュー</button>
+            <button class="textbtn" type="button" data-feed-action="saveEditorDraft">下書き保存</button>
+            <button class="textbtn" type="button" data-feed-action="clearEditor">クリア</button>
+          </div>
+          <div class="app-feed-editor-preview hidden" id="appFeedEditorPreview"></div>
+          <div class="note" id="appFeedEditorStatus">投稿はログイン時のみ可能です。</div>
+        </div>
+        <div class="sheet-footer">
+          <button class="textbtn" type="button" data-feed-action="closeEditor">キャンセル</button>
+          <button class="navbtn primary" type="button" id="appFeedEditorSubmitBtn" data-feed-action="submitPostEditor">投稿する</button>
+        </div>
+      </div>
+    </div>
+    <div class="overlay hidden" id="appFeedReplyOverlay" role="dialog" aria-modal="true" aria-label="返信">
+      <div class="sheet app-feed-reply-sheet">
+        <div class="sheet-header">
+          <div>
+            <div class="sheet-title">返信</div>
+            <div class="sheet-sub" id="appFeedReplyMeta">投稿に返信します</div>
+          </div>
+          <button class="icon-btn" type="button" data-feed-action="closeReply" aria-label="閉じる">
+            <span class="ms" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <div class="sheet-body app-feed-reply-body">
+          <article class="app-feed-reply-target" id="appFeedReplyTarget"></article>
+          <div class="app-feed-reply-list" id="appFeedReplyList"></div>
+          <div class="app-empty hidden" id="appFeedReplyEmpty">返信はまだありません。</div>
+          <label class="settings-row is-static" for="appFeedReplyInput">
+            <span class="label">返信本文</span>
+            <textarea id="appFeedReplyInput" class="spell-input" rows="4" maxlength="2000" placeholder="返信を入力（最大2000字）"></textarea>
+          </label>
+          <div class="app-feed-editor-counter" id="appFeedReplyCounter">0 / 2000</div>
+          <div class="note" id="appFeedReplyStatus">ログイン後に返信できます。</div>
+        </div>
+        <div class="sheet-footer">
+          <button class="textbtn" type="button" data-feed-action="closeReply">閉じる</button>
+          <button class="navbtn primary" type="button" data-feed-action="submitReply">返信する</button>
+        </div>
+      </div>
+    </div>
 
 
 	    <!-- Preset Manager -->
@@ -10377,6 +11267,14 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
                 <label class="settings-row is-static" for="settingsAutoNextToggle">
                   <span class="label">正誤表示後の自動次へ</span>
                   <span class="toggle"><input type="checkbox" id="settingsAutoNextToggle" /></span>
+                </label>
+                <label class="settings-row is-static" for="settingsReverseExamToggle">
+                  <span class="label">EXAM 問題/答えを反転</span>
+                  <span class="toggle"><input type="checkbox" id="settingsReverseExamToggle" /></span>
+                </label>
+                <label class="settings-row is-static" for="settingsReverseWriteToggle">
+                  <span class="label">WRITE 問題/答えを反転</span>
+                  <span class="toggle"><input type="checkbox" id="settingsReverseWriteToggle" /></span>
                 </label>
                 <div class="settings-note">手書き本番は入力後に正誤表示され、設定に応じて次へ進みます。</div>
               </div>
@@ -11642,6 +12540,10 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
       // Presets (user editable)
       // =========================
       const PRESETS_KEY = "wordPractice400.presets.v1";
+      const BUNDLED_PRESET_BOOT_KEY = "wordPractice.bootstrap.jpHistoryPrint30.v1";
+      const BUNDLED_PRESET_ID = "preset:jp_history_print30_20260301";
+      const BUNDLED_PRESET_NAME = "日本史 標準プリセット（授業プリント30ページ）";
+      const BUNDLED_PRESET_URL = "./assets/presets/standard_jp_history_print30_20260301_import.json";
       let __presetsRev = 0;
       let __searchIndexCache = { rev: -1, items: [] };
       const ACTIVE_PRESET_KEY = "wordPractice400.activePresetId.v1";
@@ -12582,6 +13484,62 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         __searchIndexCache.rev = -1;
         _queueUserBackupSync("presets");
       }
+      function _findBundledPresetIndex(list){
+        const arr = Array.isArray(list) ? list : [];
+        return arr.findIndex((p) => {
+          const pid = String(p?.id || "");
+          const nm = String(p?.name || "");
+          return pid === BUNDLED_PRESET_ID || nm === BUNDLED_PRESET_NAME;
+        });
+      }
+      async function _ensureBundledPresetLoaded(){
+        try{
+          const already = String(window.localStorage.getItem(BUNDLED_PRESET_BOOT_KEY) || "") === "1";
+          let list = loadPresets();
+          const hit = _findBundledPresetIndex(list);
+          if (already && hit >= 0) return;
+
+          const resp = await fetch(BUNDLED_PRESET_URL, { cache: "no-store" });
+          if (!resp.ok) return;
+          const raw = await resp.json();
+          if (!raw || typeof raw !== "object") return;
+
+          const wordsRaw = Array.isArray(raw.words) ? raw.words : (Array.isArray(raw.cards) ? raw.cards : []);
+          const map = new Map();
+          for (const it of wordsRaw){
+            const n = normalizeWordEntry(it);
+            if (!n) continue;
+            map.set(n.id, n);
+          }
+          const words = Array.from(map.values()).sort((a,b)=>a.id-b.id);
+          if (!words.length) return;
+
+          const modesRaw = (raw.modes && typeof raw.modes === "object") ? raw.modes : null;
+          const preset = _normalizePresetMeta({
+            id: BUNDLED_PRESET_ID,
+            name: String(raw.name || BUNDLED_PRESET_NAME || "Imported Preset"),
+            builtin: false,
+            modes: modesRaw ? {
+              SEQ: !!modesRaw.SEQ,
+              RND: !!modesRaw.RND,
+              HAND: !!modesRaw.HAND,
+              CHOICE: !!modesRaw.CHOICE
+            } : {SEQ:true,RND:true,HAND:true,CHOICE:true},
+            words,
+            subjectId: _resolveSubjectId(raw.subjectId, { fallback: "sub:other", allowMissingCustom: false }),
+            tagIds: _normalizeTagIds(raw.tagIds, { allowUnknown: false })
+          }, { allowMissingCustomSubject: false, allowUnknownTagIds: false });
+
+          list = loadPresets();
+          const idx = _findBundledPresetIndex(list);
+          if (idx >= 0) list[idx] = preset;
+          else list.unshift(preset);
+          savePresets(list);
+          window.localStorage.setItem(BUNDLED_PRESET_BOOT_KEY, "1");
+        }catch(err){
+          console.warn("[preset.bundle] load failed:", err);
+        }
+      }
       function loadActivePresetId(fallbackDeck){
         const fb = fallbackDeck || "A";
         const stored = window.localStorage.getItem(ACTIVE_PRESET_KEY);
@@ -13174,6 +14132,8 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         questionCount: 100,     // 10 | 20 | 50 | 100
         choiceTimeLimitSec: 0,  // 0 | 5 | 10 | 30 | 60
         autoNext: true,         // auto next after judge
+        reverseExamQA: false,
+        reverseWriteQA: false,
         theme: "AUTO",          // AUTO | LIGHT | DARK
         fontSize: "DEFAULT"     // SMALL | DEFAULT | LARGE
       };
@@ -13197,6 +14157,8 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
           questionCount: SETTINGS_QUESTION_COUNTS.has(Number(parsed.questionCount)) ? Number(parsed.questionCount) : defaultSettings.questionCount,
           choiceTimeLimitSec: SETTINGS_EXAM_TIMES.has(Number(parsed.choiceTimeLimitSec)) ? Number(parsed.choiceTimeLimitSec) : defaultSettings.choiceTimeLimitSec,
           autoNext: ("autoNext" in parsed) ? !!parsed.autoNext : defaultSettings.autoNext,
+          reverseExamQA: ("reverseExamQA" in parsed) ? !!parsed.reverseExamQA : defaultSettings.reverseExamQA,
+          reverseWriteQA: ("reverseWriteQA" in parsed) ? !!parsed.reverseWriteQA : defaultSettings.reverseWriteQA,
           theme: SETTINGS_THEMES.has(String(parsed.theme || "")) ? String(parsed.theme) : defaultSettings.theme,
           fontSize: SETTINGS_LEVELS.has(String(parsed.fontSize || "")) ? String(parsed.fontSize) : defaultSettings.fontSize
         };
@@ -13282,7 +14244,7 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
           correct: null,
           input: "",
           busy: false,
-          results: [], // {id, expected, given, correct, promptMeaning}
+          results: [], // {id, expected, given, correct, promptMeaning, promptText}
           scoreCorrect: 0
         },
         choice: {
@@ -14723,9 +15685,7 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         state.deck = dk;
         saveDeck(dk);
       }
-      if (applyBuiltinPresetTerminationPolicy()){
-        if (el && el.deckMyBtn) el.deckMyBtn.classList.add("active");
-      }
+      applyBuiltinPresetTerminationPolicy();
 
       saveActivePresetId(state.presetId);
 
@@ -14917,9 +15877,11 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         appLibraryMyList: document.getElementById("appLibraryMyList"),
         appProfileBlock: document.getElementById("appProfileBlock"),
         appProfileAvatarInput: document.getElementById("appProfileAvatarInput"),
+        appProfileAvatarFile: document.getElementById("appProfileAvatarFile"),
         appProfileBioInput: document.getElementById("appProfileBioInput"),
         appProfileMessageInput: document.getElementById("appProfileMessageInput"),
         appProfileVisibilitySelect: document.getElementById("appProfileVisibilitySelect"),
+        appProfileFollowVisibilitySelect: document.getElementById("appProfileFollowVisibilitySelect"),
         appProfileStats: document.getElementById("appProfileStats"),
         appProfileStatus: document.getElementById("appProfileStatus"),
         appProfileReloadBtn: document.getElementById("appProfileReloadBtn"),
@@ -14928,20 +15890,58 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         appPublicPresetList: document.getElementById("appPublicPresetList"),
         appPublicPresetEmpty: document.getElementById("appPublicPresetEmpty"),
         appInboxPage: document.getElementById("appInboxPage"),
+        appNotificationsPage: document.getElementById("appNotificationsPage"),
         appFeedTitle: document.getElementById("appFeedTitle"),
         appFeedSubtitle: document.getElementById("appFeedSubtitle"),
-        appFeedComposer: document.getElementById("appFeedComposer"),
-        appFeedComposerStatus: document.getElementById("appFeedComposerStatus"),
-        appFeedPostTitle: document.getElementById("appFeedPostTitle"),
-        appFeedPostBody: document.getElementById("appFeedPostBody"),
-        appFeedPostLink: document.getElementById("appFeedPostLink"),
-        appFeedPostImage: document.getElementById("appFeedPostImage"),
-        appFeedScopeBlock: document.getElementById("appFeedScopeBlock"),
-        appFeedScopeSelect: document.getElementById("appFeedScopeSelect"),
+        appFeedFab: document.getElementById("appFeedFab"),
+        appFeedEditorOverlay: document.getElementById("appFeedEditorOverlay"),
+        appFeedEditorTitle: document.getElementById("appFeedEditorTitle"),
+        appFeedEditorSub: document.getElementById("appFeedEditorSub"),
+        appFeedEditorPostTitle: document.getElementById("appFeedEditorPostTitle"),
+        appFeedEditorPostBody: document.getElementById("appFeedEditorPostBody"),
+        appFeedEditorCounter: document.getElementById("appFeedEditorCounter"),
+        appFeedEditorLinkInput: document.getElementById("appFeedEditorLinkInput"),
+        appFeedEditorImageInput: document.getElementById("appFeedEditorImageInput"),
+        appFeedEditorLinks: document.getElementById("appFeedEditorLinks"),
+        appFeedEditorImages: document.getElementById("appFeedEditorImages"),
+        appFeedEditorStatus: document.getElementById("appFeedEditorStatus"),
+        appFeedEditorPreview: document.getElementById("appFeedEditorPreview"),
+        appFeedEditorSubmitBtn: document.getElementById("appFeedEditorSubmitBtn"),
+        appFeedReplyOverlay: document.getElementById("appFeedReplyOverlay"),
+        appFeedReplyMeta: document.getElementById("appFeedReplyMeta"),
+        appFeedReplyTarget: document.getElementById("appFeedReplyTarget"),
+        appFeedReplyList: document.getElementById("appFeedReplyList"),
+        appFeedReplyEmpty: document.getElementById("appFeedReplyEmpty"),
+        appFeedReplyInput: document.getElementById("appFeedReplyInput"),
+        appFeedReplyCounter: document.getElementById("appFeedReplyCounter"),
+        appFeedReplyStatus: document.getElementById("appFeedReplyStatus"),
+        appFeedProfileScreen: document.getElementById("appFeedProfileScreen"),
+        appFeedProfileAvatar: document.getElementById("appFeedProfileAvatar"),
+        appFeedProfileName: document.getElementById("appFeedProfileName"),
+        appFeedProfileHandle: document.getElementById("appFeedProfileHandle"),
+        appFeedProfileFollowing: document.getElementById("appFeedProfileFollowing"),
+        appFeedProfileFollowers: document.getElementById("appFeedProfileFollowers"),
+        appFeedProfileEditBtn: document.getElementById("appFeedProfileEditBtn"),
+        appFeedProfileFollowBlock: document.getElementById("appFeedProfileFollowBlock"),
+        appFeedProfileFollowTitle: document.getElementById("appFeedProfileFollowTitle"),
+        appFeedProfileFollowList: document.getElementById("appFeedProfileFollowList"),
+        appFeedProfileFollowEmpty: document.getElementById("appFeedProfileFollowEmpty"),
+        appFeedProfileTabs: document.getElementById("appFeedProfileTabs"),
+        appFeedProfileList: document.getElementById("appFeedProfileList"),
+        appFeedProfileEmpty: document.getElementById("appFeedProfileEmpty"),
         appFeedList: document.getElementById("appFeedList"),
         appFeedEmpty: document.getElementById("appFeedEmpty"),
+        appFeedDetailBlock: document.getElementById("appFeedDetailBlock"),
+        appFeedDetailView: document.getElementById("appFeedDetailView"),
         appPublicProfileBlock: document.getElementById("appPublicProfileBlock"),
         appPublicProfileView: document.getElementById("appPublicProfileView"),
+        appRightDrawer: document.getElementById("appRightDrawer"),
+        appRightDrawerBackdrop: document.getElementById("appRightDrawerBackdrop"),
+        appRightDrawerTitle: document.getElementById("appRightDrawerTitle"),
+        appRightDrawerBackBtn: document.getElementById("appRightDrawerBackBtn"),
+        appRightUtilityRoot: document.getElementById("appRightUtilityRoot"),
+        appRightUtilityContent: document.getElementById("appRightUtilityContent"),
+        appRightVersion: document.getElementById("appRightVersion"),
         appInboxAdminBtn: document.getElementById("appInboxAdminBtn"),
         appInboxList: document.getElementById("appInboxList"),
         appInboxEmpty: document.getElementById("appInboxEmpty"),
@@ -15189,15 +16189,87 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         node.textContent = value;
       }
 
+      function isExamReverseEnabled(){
+        return !!state.settings.reverseExamQA;
+      }
+      function isWriteReverseEnabled(){
+        return !!state.settings.reverseWriteQA;
+      }
+      function _resolvePromptAnswerByMode(wordObj, modeOverride){
+        const fm = _entryFormats(wordObj);
+        const isEnglish = _isEnglishSubjectId(fm.subjectId);
+        const frontText = String(wordObj?.word ?? "");
+        const backText = String(wordObj?.meaning ?? "");
+        const frontFormat = isEnglish ? "text" : fm.front;
+        const backFormat = isEnglish ? "text" : fm.back;
+        const mode = String(modeOverride || state.mode || "");
+
+        if (mode === "HAND"){
+          if (isEnglish){
+            if (isWriteReverseEnabled()){
+              return { prompt: frontText, answer: backText, promptFormat: "text", answerFormat: "text" };
+            }
+            return { prompt: backText, answer: frontText, promptFormat: "text", answerFormat: "text" };
+          }
+          if (isWriteReverseEnabled()){
+            return { prompt: backText, answer: frontText, promptFormat: backFormat, answerFormat: frontFormat };
+          }
+          return { prompt: frontText, answer: backText, promptFormat: frontFormat, answerFormat: backFormat };
+        }
+
+        if (mode === "CHOICE"){
+          if (isExamReverseEnabled()){
+            return { prompt: backText, answer: frontText, promptFormat: backFormat, answerFormat: frontFormat };
+          }
+          if (isEnglish){
+            return { prompt: frontText, answer: backText, promptFormat: "text", answerFormat: "text" };
+          }
+          return { prompt: frontText, answer: backText, promptFormat: frontFormat, answerFormat: backFormat };
+        }
+
+        if (!isEnglish){
+          return { prompt: frontText, answer: backText, promptFormat: frontFormat, answerFormat: backFormat };
+        }
+
+        const isEnJa = state.settings.direction === "EN_JA";
+        return {
+          prompt: isEnJa ? frontText : backText,
+          answer: isEnJa ? backText : frontText,
+          promptFormat: "text",
+          answerFormat: "text"
+        };
+      }
+      function _resultDirectionText(mode, isEnglish){
+        if (mode === "CHOICE"){
+          if (!isEnglish){
+            return isExamReverseEnabled() ? "答え→問題（4択）" : "問題→答え（4択）";
+          }
+          return isExamReverseEnabled() ? "日→英（4択）" : "英→日（4択）";
+        }
+        if (mode === "HAND"){
+          if (!isEnglish){
+            return isWriteReverseEnabled() ? "答え→問題" : "問題→答え";
+          }
+          return isWriteReverseEnabled() ? "英→日" : "日→英";
+        }
+        return "問題→答え";
+      }
       function dirLabel(){
         const sid = _activeSubjectId();
-        if (!_isEnglishSubjectId(sid)){
-          if (state.mode === "HAND") return "手書き：問題 → 答え";
-          if (state.mode === "CHOICE") return "選択：問題 → 答え（4択）";
-          return "問題 → 答え";
+        const isEnglish = _isEnglishSubjectId(sid);
+        if (state.mode === "HAND"){
+          if (!isEnglish){
+            return isWriteReverseEnabled() ? "手書き：答え → 問題" : "手書き：問題 → 答え";
+          }
+          return isWriteReverseEnabled() ? "手書き：英 → 日（反転）" : "手書き：日 → 英（固定）";
         }
-        if (state.mode === "HAND") return "手書き：日 → 英（固定）";
-        if (state.mode === "CHOICE") return "選択：英 → 日（4択）";
+        if (state.mode === "CHOICE"){
+          if (!isEnglish){
+            return isExamReverseEnabled() ? "選択：答え → 問題（4択）" : "選択：問題 → 答え（4択）";
+          }
+          return isExamReverseEnabled() ? "選択：日 → 英（4択）" : "選択：英 → 日（4択）";
+        }
+        if (!isEnglish) return "問題 → 答え";
         return state.settings.direction === "EN_JA" ? "英 → 日" : "日 → 英";
       }
       function _quizHasProgress(){
@@ -15456,30 +16528,11 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
 
         return base.slice();
       }
-// =========================
+      // =========================
       // Prompt/Answer
       // =========================
       function displayPromptAnswer(wordObj){
-        const fm = _entryFormats(wordObj);
-        const isEnglish = _isEnglishSubjectId(fm.subjectId);
-        if (!isEnglish){
-          return {
-            prompt: String(wordObj?.word ?? ""),
-            answer: String(wordObj?.meaning ?? ""),
-            promptFormat: fm.front,
-            answerFormat: fm.back
-          };
-        }
-        if (state.mode === "HAND"){
-          return { prompt: wordObj.meaning, answer: wordObj.word, promptFormat: "text", answerFormat: "text" };
-        }
-        const isEnJa = state.settings.direction === "EN_JA";
-        return {
-          prompt: isEnJa ? wordObj.word : wordObj.meaning,
-          answer: isEnJa ? wordObj.meaning : wordObj.word,
-          promptFormat: "text",
-          answerFormat: "text"
-        };
+        return _resolvePromptAnswerByMode(wordObj, state.mode);
       }
       function _renderPromptDiagram(entry){
         if (!el.promptDiagramWrap || !el.promptDiagramImg){
@@ -15560,25 +16613,33 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         }, 80);
       }
 
-      function pickDummyMeanings(curId, correctMeaning, count){
+      function _choiceAnswerValue(wordObj, useWordSide){
+        if (!wordObj) return "";
+        const raw = useWordSide ? wordObj.word : wordObj.meaning;
+        return String(raw ?? "").trim();
+      }
+      function pickDummyChoiceAnswers(curId, correctAnswer, count, useWordSide){
         const deckPool = getDeckWords(state.deck)
-          .filter(w => w.id !== curId && w.meaning && w.meaning !== correctMeaning)
-          .map(w => w.meaning);
+          .filter(w => w.id !== curId)
+          .map(w => _choiceAnswerValue(w, useWordSide))
+          .filter(v => !!v && v !== correctAnswer);
 
         // Fallback pool: always allow enough choices even for small custom presets.
         const sid = _activeSubjectId();
         const globalPool = _isEnglishSubjectId(sid)
           ? data.words
-              .filter(w => w.id !== curId && w.meaning && w.meaning !== correctMeaning)
-              .map(w => w.meaning)
+              .filter(w => w.id !== curId)
+              .map(w => _choiceAnswerValue(w, useWordSide))
+              .filter(v => !!v && v !== correctAnswer)
           : getActiveWords()
-              .filter(w => w.id !== curId && w.meaning && w.meaning !== correctMeaning)
-              .map(w => w.meaning);
+              .filter(w => w.id !== curId)
+              .map(w => _choiceAnswerValue(w, useWordSide))
+              .filter(v => !!v && v !== correctAnswer);
 
         const pool = deckPool.concat(globalPool);
 
         const dummies = [];
-        const seen = new Set([correctMeaning]);
+        const seen = new Set([correctAnswer]);
 
         for (const m of shuffle(pool)){
           if (seen.has(m)) continue;
@@ -15611,14 +16672,22 @@ function shuffleWithNoConsecutiveSameCorrect(options, correctMeaning){
       function buildChoiceOptionsForCurrent(){
         const cur = getCurrent();
         if (!cur) return;
-        const correctMeaning = cur.meaning; // MUST be exact string
+        const qa = displayPromptAnswer(cur);
+        const useWordSide = isExamReverseEnabled();
+        const correctAnswer = String(qa.answer ?? "");
+        if (!correctAnswer){
+          state.choice.options = [];
+          state.choice.correctIndex = -1;
+          state.choice.locked = false;
+          return;
+        }
 
         // Base choices:
-        // - If cur has custom MCQ config (user preset), use it (up to 4).
-        // - Otherwise, generate from deck meanings (3 dummies).
+        // - If normal exam direction and cur has custom MCQ config, use it (up to 4).
+        // - Otherwise, generate from active answer side (3 dummies).
         let base = null;
 
-        if (cur.mcq && Array.isArray(cur.mcq.choices) && cur.mcq.choices.length){
+        if (!useWordSide && cur.mcq && Array.isArray(cur.mcq.choices) && cur.mcq.choices.length){
           const raw = cur.mcq.choices.slice(0,4).map(v => String(v ?? "").trim()).filter(Boolean);
           const seen = new Set();
           const cleaned = [];
@@ -15628,15 +16697,15 @@ function shuffleWithNoConsecutiveSameCorrect(options, correctMeaning){
             cleaned.push(s);
           }
           if (cleaned.length){
-            // Ensure exact correct meaning is included (strict)
-            if (!cleaned.includes(correctMeaning)){
+            // Ensure exact correct answer is included (strict)
+            if (!cleaned.includes(correctAnswer)){
               const idx = Number(cur.mcq.correctIndex);
               if (Number.isInteger(idx) && idx >= 0 && idx < cleaned.length){
-                cleaned[idx] = correctMeaning;
+                cleaned[idx] = correctAnswer;
               } else if (cleaned.length < 4){
-                cleaned.unshift(correctMeaning);
+                cleaned.unshift(correctAnswer);
               } else {
-                cleaned[0] = correctMeaning;
+                cleaned[0] = correctAnswer;
               }
             }
             base = cleaned;
@@ -15644,22 +16713,25 @@ function shuffleWithNoConsecutiveSameCorrect(options, correctMeaning){
         }
 
         if (!base){
-          base = [correctMeaning, ...pickDummyMeanings(cur.id, correctMeaning, 3)];
+          base = [correctAnswer, ...pickDummyChoiceAnswers(cur.id, correctAnswer, 3, useWordSide)];
         }
 
         // Fill to 4 (avoid duplicates)
         const deckPool = getDeckWords(state.deck)
-          .filter(w => w.id !== cur.id && w.meaning && w.meaning !== correctMeaning)
-          .map(w => w.meaning);
+          .filter(w => w.id !== cur.id)
+          .map(w => _choiceAnswerValue(w, useWordSide))
+          .filter(v => !!v && v !== correctAnswer);
 
         const sid = _activeSubjectId();
         const globalPool = _isEnglishSubjectId(sid)
           ? data.words
-              .filter(w => w.id !== cur.id && w.meaning && w.meaning !== correctMeaning)
-              .map(w => w.meaning)
+              .filter(w => w.id !== cur.id)
+              .map(w => _choiceAnswerValue(w, useWordSide))
+              .filter(v => !!v && v !== correctAnswer)
           : getActiveWords()
-              .filter(w => w.id !== cur.id && w.meaning && w.meaning !== correctMeaning)
-              .map(w => w.meaning);
+              .filter(w => w.id !== cur.id)
+              .map(w => _choiceAnswerValue(w, useWordSide))
+              .filter(v => !!v && v !== correctAnswer);
 
         const pool = deckPool.concat(globalPool);
 
@@ -15681,26 +16753,26 @@ function shuffleWithNoConsecutiveSameCorrect(options, correctMeaning){
           base.push(m);
         }
 
-        // Safety: ensure correct meaning present
-        if (!base.includes(correctMeaning)){
-          if (base.length) base[0] = correctMeaning;
-          else base = [correctMeaning];
+        // Safety: ensure correct answer present
+        if (!base.includes(correctAnswer)){
+          if (base.length) base[0] = correctAnswer;
+          else base = [correctAnswer];
         }
 
         if (base.length > 4){
           base = base.slice(0,4);
-          if (!base.includes(correctMeaning)){
-            base[base.length - 1] = correctMeaning;
+          if (!base.includes(correctAnswer)){
+            base[base.length - 1] = correctAnswer;
           }
         }
 
         if (base.length < 4){
           // Fallback to default generation
-          const dummies = pickDummyMeanings(cur.id, correctMeaning, 3);
-          base = [correctMeaning, ...dummies];
+          const dummies = pickDummyChoiceAnswers(cur.id, correctAnswer, 3, useWordSide);
+          base = [correctAnswer, ...dummies];
         }
 
-        const { out, correctIndex } = shuffleWithNoConsecutiveSameCorrect(base, correctMeaning);
+        const { out, correctIndex } = shuffleWithNoConsecutiveSameCorrect(base, correctAnswer);
         state.choice.options = out;
         state.choice.correctIndex = correctIndex;
         state.choice.locked = false;
@@ -15711,8 +16783,8 @@ function renderChoiceOptions(){
         const options = state.choice.options || [];
         const labels = ["A", "B", "C", "D"];
         const cur = getCurrent();
-        const fm = _entryFormats(cur);
-        const optionFormat = _isEnglishSubjectId(fm.subjectId) ? "text" : fm.back;
+        const qa = cur ? displayPromptAnswer(cur) : null;
+        const optionFormat = qa?.answerFormat || "text";
 
         el.choices.innerHTML = "";
         for (let i = 0; i < options.length; i++){
@@ -15749,15 +16821,21 @@ function renderChoiceOptions(){
       }
 
       function pushChoiceResult(cur, selectedIndex, timedOut){
-        const correctMeaning = cur.meaning;
+        const qa = displayPromptAnswer(cur);
+        const promptText = String(qa.prompt ?? "");
+        const correctAnswer = String(qa.answer ?? "");
         const chosen = (selectedIndex === null) ? "" : (state.choice.options[selectedIndex] || "");
         const correct = (!timedOut) ? (selectedIndex === state.choice.correctIndex) : false;
+        const chosenText = timedOut ? "(TIMEOUT)" : (chosen || "(NO SELECT)");
 
         state.choice.results.push({
           id: cur.id,
-          word: cur.word,
-          correctMeaning: correctMeaning,
-          chosenMeaning: timedOut ? "(TIMEOUT)" : (chosen || "(NO SELECT)"),
+          word: promptText,
+          promptText,
+          correctMeaning: correctAnswer,
+          correctAnswer,
+          chosenMeaning: chosenText,
+          chosenAnswer: chosenText,
           correct: correct,
           timedOut: !!timedOut
         });
@@ -15823,10 +16901,10 @@ function renderChoiceOptions(){
         showMark(isCorrect);
         playSfx(isCorrect ? "ok" : "ng");
 
-        // show correct meaning briefly
+        // show correct answer briefly
         el.answerWrap.classList.remove("hidden");
-        const fm = _entryFormats(cur);
-        _renderFieldWithFormat(el.answerText, cur.meaning, _isEnglishSubjectId(fm.subjectId) ? "text" : fm.back, { displayMode: true });
+        const qa = displayPromptAnswer(cur);
+        _renderFieldWithFormat(el.answerText, qa.answer, qa.answerFormat, { displayMode: true });
 
         if (isAutoNextEnabled()){
           scheduleChoiceNext();
@@ -15852,10 +16930,10 @@ function renderChoiceOptions(){
         showMark(false);
         playSfx("ng");
 
-        // show correct meaning briefly
+        // show correct answer briefly
         el.answerWrap.classList.remove("hidden");
-        const fm = _entryFormats(cur);
-        _renderFieldWithFormat(el.answerText, cur.meaning, _isEnglishSubjectId(fm.subjectId) ? "text" : fm.back, { displayMode: true });
+        const qa = displayPromptAnswer(cur);
+        _renderFieldWithFormat(el.answerText, qa.answer, qa.answerFormat, { displayMode: true });
 
         if (isAutoNextEnabled()){
           scheduleChoiceNext();
@@ -16233,9 +17311,9 @@ function renderChoiceOptions(){
 
         state.hand.busy = true;
         el.primaryBtn.disabled = true;
-        const fm = _entryFormats(cur);
-        const isEnglish = _isEnglishSubjectId(fm.subjectId);
-        const expected = isEnglish ? String(cur.word || "") : String(cur.meaning || "");
+        const qa = displayPromptAnswer(cur);
+        const expected = String(qa.answer || "");
+        const promptText = String(qa.prompt || "");
 
         // If input empty and detector exists, try OCR automatically
         let given = (el.spellInput.value || "").trim();
@@ -16258,7 +17336,8 @@ function renderChoiceOptions(){
           expected,
           given: given,
           correct: correct,
-          promptMeaning: isEnglish ? cur.meaning : cur.word
+          promptMeaning: promptText,
+          promptText
         });
 
         if (correct) state.hand.scoreCorrect += 1;
@@ -16274,7 +17353,7 @@ function renderChoiceOptions(){
         showMark(correct);
 
         el.answerWrap.classList.remove("hidden");
-        _renderFieldWithFormat(el.answerText, expected, isEnglish ? "text" : fm.back, { displayMode: true });
+        _renderFieldWithFormat(el.answerText, expected, qa.answerFormat, { displayMode: true });
         el.yourText.textContent = given ? `あなた：${given}` : "あなた：（未入力）";
 
         el.primaryBtn.textContent = "判定済み";
@@ -16388,8 +17467,8 @@ function renderQuestion(){
 
         // prompt
         if (isChoice){
-          const fm = _entryFormats(cur);
-          _renderFieldWithFormat(el.promptText, cur.word, _isEnglishSubjectId(fm.subjectId) ? "text" : fm.front, { displayMode: true });
+          const qa = displayPromptAnswer(cur);
+          _renderFieldWithFormat(el.promptText, qa.prompt, qa.promptFormat, { displayMode: true });
         } else {
           const { prompt, answer, promptFormat, answerFormat } = displayPromptAnswer(cur);
           _renderFieldWithFormat(el.promptText, prompt, promptFormat, { displayMode: true });
@@ -16522,14 +17601,17 @@ function renderQuestion(){
             el.wrongDetails.open = false;
           } else {
             for (const r of wrongItems){
+              const promptText = String(r.promptText ?? r.word ?? "");
+              const chosenText = String(r.chosenAnswer ?? r.chosenMeaning ?? "");
+              const correctText = String(r.correctAnswer ?? r.correctMeaning ?? "");
               const li = document.createElement("li");
               li.className = "wrong-item";
               li.innerHTML = `
-                <div class="top"><span>No.${r.id}</span><span>${isEnglish ? "英→日（4択）" : "問題→答え（4択）"}</span></div>
+                <div class="top"><span>No.${r.id}</span><span>${_resultDirectionText("CHOICE", isEnglish)}</span></div>
                 <div class="mid">
-                  <div style="margin-bottom:6px;"><strong>${escapeHtml(r.word)}</strong></div>
-                  <div>あなた：<code>${escapeHtml((r.chosenMeaning || "").trim() || "（未選択）")}</code></div>
-                  <div>正解：<code>${escapeHtml(r.correctMeaning)}</code></div>
+                  <div style="margin-bottom:6px;"><strong>${escapeHtml(promptText)}</strong></div>
+                  <div>あなた：<code>${escapeHtml(chosenText.trim() || "（未選択）")}</code></div>
+                  <div>正解：<code>${escapeHtml(correctText)}</code></div>
                 </div>
               `;
               el.wrongList.appendChild(li);
@@ -16555,14 +17637,16 @@ function renderQuestion(){
             el.wrongDetails.open = false;
           } else {
             for (const r of wrongItems){
+              const promptText = String(r.promptText ?? r.promptMeaning ?? "");
+              const expectedText = String(r.expected ?? "");
               const li = document.createElement("li");
               li.className = "wrong-item";
               li.innerHTML = `
-                <div class="top"><span>No.${r.id}</span><span>${isEnglish ? "日→英" : "問題→答え"}</span></div>
+                <div class="top"><span>No.${r.id}</span><span>${_resultDirectionText("HAND", isEnglish)}</span></div>
                 <div class="mid">
-                  <div style="margin-bottom:6px; color: var(--muted);">${escapeHtml(r.promptMeaning)}</div>
+                  <div style="margin-bottom:6px; color: var(--muted);">${escapeHtml(promptText)}</div>
                   <div>あなた：<code>${escapeHtml((r.given || "").trim() || "（未入力）")}</code></div>
-                  <div>正解：<code>${escapeHtml(r.expected)}</code></div>
+                  <div>正解：<code>${escapeHtml(expectedText)}</code></div>
                 </div>
               `;
               el.wrongList.appendChild(li);
@@ -17023,7 +18107,9 @@ function setDeck(deckKey){
         const ac = document.getElementById("settingsSummaryAccount");
         const a = document.getElementById("settingsSummaryAdmin");
         if (p){
-          p.textContent = `${state.settings.direction === "JA_EN" ? "日→英" : "英→日"} / ${getSavedPracticeQuestionCount()}問`;
+          const examRev = state.settings.reverseExamQA ? "EXAM反転ON" : "EXAM反転OFF";
+          const writeRev = state.settings.reverseWriteQA ? "WRITE反転ON" : "WRITE反転OFF";
+          p.textContent = `${state.settings.direction === "JA_EN" ? "日→英" : "英→日"} / ${getSavedPracticeQuestionCount()}問 / ${examRev} / ${writeRev}`;
         }
         if (s){
           s.textContent = `${state.settings.bgm ? "BGM ON" : "BGM OFF"} / SE ${state.settings.sfx ? "ON" : "OFF"}`;
@@ -17072,6 +18158,8 @@ function setDeck(deckKey){
         const qCount = document.getElementById("settingsQuestionCountSelect");
         const examTime = document.getElementById("settingsExamTimeSelect");
         const autoNext = document.getElementById("settingsAutoNextToggle");
+        const reverseExam = document.getElementById("settingsReverseExamToggle");
+        const reverseWrite = document.getElementById("settingsReverseWriteToggle");
         const sfxVol = document.getElementById("settingsSfxVolumeSelect");
         const theme = document.getElementById("settingsThemeSelect");
         const font = document.getElementById("settingsFontSizeSelect");
@@ -17079,6 +18167,8 @@ function setDeck(deckKey){
         if (qCount) qCount.value = String(getSavedPracticeQuestionCount());
         if (examTime) examTime.value = String(getChoiceDefaultTimeLimitSec());
         if (autoNext) autoNext.checked = isAutoNextEnabled();
+        if (reverseExam) reverseExam.checked = isExamReverseEnabled();
+        if (reverseWrite) reverseWrite.checked = isWriteReverseEnabled();
         if (sfxVol) sfxVol.value = String(state.settings.sfxVolume || "DEFAULT");
         if (theme) theme.value = String(state.settings.theme || "AUTO");
         if (font) font.value = String(state.settings.fontSize || "DEFAULT");
@@ -17254,6 +18344,18 @@ function setDeck(deckKey){
         state.settings.autoNext = !!on;
         saveSettings(state.settings);
         _settingsSyncControls();
+      }
+      function setReverseExamQA(on){
+        state.settings.reverseExamQA = !!on;
+        saveSettings(state.settings);
+        _settingsSyncControls();
+        renderAll();
+      }
+      function setReverseWriteQA(on){
+        state.settings.reverseWriteQA = !!on;
+        saveSettings(state.settings);
+        _settingsSyncControls();
+        renderAll();
       }
       function setTheme(theme){
         const v = SETTINGS_THEMES.has(String(theme || "")) ? String(theme) : "AUTO";
@@ -19888,7 +20990,7 @@ function reviewWrong(){
             const merged = _mergeNotificationLists(loadNotifications(), userList);
             saveNotifications(merged);
             updateNotifyDot();
-            if (el.appInboxPage && document.body?.dataset?.appTab === "inbox"){
+            if (el.appNotificationsPage && document.body?.dataset?.appTab === "notifications"){
               _appRenderInbox();
             }
           }
@@ -20342,6 +21444,7 @@ function _openSearchResultByIndex(i){
         HOME: "home",
         LIBRARY: "library",
         INBOX: "inbox",
+        NOTIFICATIONS: "notifications",
         INSIGHT: "insight",
         CHAT: "chat"
       });
@@ -20349,6 +21452,7 @@ function _openSearchResultByIndex(i){
         APP_TAB_KEY.HOME,
         APP_TAB_KEY.LIBRARY,
         APP_TAB_KEY.INBOX,
+        APP_TAB_KEY.NOTIFICATIONS,
         APP_TAB_KEY.INSIGHT,
         APP_TAB_KEY.CHAT
       ]);
@@ -20356,6 +21460,9 @@ function _openSearchResultByIndex(i){
         home: APP_TAB_KEY.HOME,
         library: APP_TAB_KEY.LIBRARY,
         inbox: APP_TAB_KEY.INBOX,
+        feed: APP_TAB_KEY.INBOX,
+        notifications: APP_TAB_KEY.NOTIFICATIONS,
+        notification: APP_TAB_KEY.NOTIFICATIONS,
         insight: APP_TAB_KEY.INSIGHT,
         insights: APP_TAB_KEY.INSIGHT,
         chat: APP_TAB_KEY.CHAT
@@ -20366,6 +21473,7 @@ function _openSearchResultByIndex(i){
       }
       let _appCurrentTab = APP_TAB_KEY.HOME;
       let _appInboxDetailId = "";
+      let _appFeedDetailId = "";
       const _appInboxRowById = new Map();
       const _appLibraryFilter = {
         subjectId: "ALL",
@@ -20384,7 +21492,28 @@ function _openSearchResultByIndex(i){
         postsLoadedAt: 0,
         postsLoading: false,
         feedScope: "all",
-        publicProfile: null
+        publicProfile: null,
+        rightPanelOpen: false,
+        postEditId: "",
+        postEditorOpen: false,
+        postEditorLinks: [],
+        postEditorImages: [],
+        postEditorPreviewOpen: false,
+        replyOverlayOpen: false,
+        replyPostId: "",
+        repliesByPost: Object.create(null),
+        repliesLoading: false,
+        replySubmitting: false,
+        postActionBusy: new Set(),
+        profileScreenOpen: false,
+        profileScreenUserId: 0,
+        profileScreenTab: "posts",
+        profileScreenData: null,
+        profileTimelineCache: Object.create(null),
+        profileFollowListKind: "",
+        profileFollowListLoading: false,
+        profileFollowListHidden: false,
+        profileFollowListItems: []
       };
       function _appFeatureProfileOn(){
         return _publicAppFeatureEnabled("profile");
@@ -20444,6 +21573,9 @@ function _openSearchResultByIndex(i){
           return false;
         }
         const next = !!open;
+        if (next && _appSocialState.rightPanelOpen){
+          _appV2SetRightPanelOpen(false);
+        }
         document.body.classList.toggle("app-v2-sidebar-open", next);
         document.body.classList.toggle("app-v2-sidebar-lock", next);
         return next;
@@ -20452,6 +21584,51 @@ function _openSearchResultByIndex(i){
         const current = document.body?.classList?.contains("app-v2-sidebar-open");
         return _appV2SetSidebarOpen(!current);
       }
+      function _appRenderRightPanel(){
+        if (!el.appRightVersion) return;
+        const ver = String(window?.__APP_VERSION__ || "v.1 Public").trim() || "v.1 Public";
+        el.appRightVersion.textContent = `VocabuQuiz ${ver}`;
+        if (el.appRightDrawerTitle) el.appRightDrawerTitle.textContent = "Utility";
+        if (el.appRightDrawerBackBtn) el.appRightDrawerBackBtn.classList.add("hidden");
+        if (el.appRightUtilityRoot) el.appRightUtilityRoot.classList.remove("hidden");
+        if (el.appRightUtilityContent){
+          el.appRightUtilityContent.classList.add("hidden");
+          el.appRightUtilityContent.innerHTML = "";
+        }
+      }
+      function _appFilterRightPanel(query){
+        void query;
+      }
+      function _appV2SetRightPanelOpen(open){
+        if (!document.body){
+          return false;
+        }
+        if (!_appV2IsEnabled()){
+          document.body.classList.remove("app-right-panel-open", "app-right-panel-lock");
+          if (el.appRightDrawer) el.appRightDrawer.setAttribute("aria-hidden", "true");
+          _appSocialState.rightPanelOpen = false;
+          return false;
+        }
+        const next = !!open;
+        if (next && _appV2IsDrawerMode() && document.body.classList.contains("app-v2-sidebar-open")){
+          _appV2SetSidebarOpen(false);
+        }
+        try{
+          const menuPanel = document.getElementById("menuPanel");
+          if (menuPanel && !menuPanel.hidden && typeof closeMenu === "function"){
+            closeMenu();
+          }
+        }catch{}
+        _appSocialState.rightPanelOpen = next;
+        document.body.classList.toggle("app-right-panel-open", next);
+        document.body.classList.toggle("app-right-panel-lock", next && _appV2IsDrawerMode());
+        if (el.appRightDrawer) el.appRightDrawer.setAttribute("aria-hidden", next ? "false" : "true");
+        if (next) _appRenderRightPanel();
+        return next;
+      }
+      function _appV2ToggleRightPanel(){
+        return _appV2SetRightPanelOpen(!_appSocialState.rightPanelOpen);
+      }
       function _appV2BindLayoutHandlers(){
         if (_appV2LayoutBound) return;
         _appV2LayoutBound = true;
@@ -20459,6 +21636,7 @@ function _openSearchResultByIndex(i){
           _appV2SyncLayoutMetrics();
           if (!_appV2IsDrawerMode()){
             _appV2SetSidebarOpen(false);
+            document.body.classList.remove("app-right-panel-lock");
           }
         }, { passive: true });
         window.addEventListener("orientationchange", () => {
@@ -20466,6 +21644,7 @@ function _openSearchResultByIndex(i){
             _appV2SyncLayoutMetrics();
             if (!_appV2IsDrawerMode()){
               _appV2SetSidebarOpen(false);
+              document.body.classList.remove("app-right-panel-lock");
             }
           }, 120);
         }, { passive: true });
@@ -20485,7 +21664,9 @@ function _openSearchResultByIndex(i){
         } else if (tab === APP_TAB_KEY.LIBRARY){
           subEl.textContent = "Preset";
         } else if (tab === APP_TAB_KEY.INBOX){
-          subEl.textContent = _appFeaturePostsOn() ? "Posts Feed" : "Notifications";
+          subEl.textContent = "Posts Feed";
+        } else if (tab === APP_TAB_KEY.NOTIFICATIONS){
+          subEl.textContent = "Notifications";
         } else if (tab === APP_TAB_KEY.INSIGHT){
           subEl.textContent = "Analytics";
         } else if (tab === APP_TAB_KEY.CHAT){
@@ -20499,12 +21680,12 @@ function _openSearchResultByIndex(i){
       function _appSyncFeedLabels(){
         const postsOn = _appFeaturePostsOn();
         const tabLabel = document.getElementById("appTabInboxLabel");
-        if (tabLabel) tabLabel.textContent = postsOn ? "Feed" : "Inbox";
-        if (el.appFeedTitle) el.appFeedTitle.textContent = postsOn ? "Feed" : "Inbox";
+        if (tabLabel) tabLabel.textContent = "Feed";
+        if (el.appFeedTitle) el.appFeedTitle.textContent = "Feed";
         if (el.appFeedSubtitle){
           el.appFeedSubtitle.textContent = postsOn
             ? "投稿フィード（画像/リンク対応）"
-            : "通知一覧（新しい順）";
+            : "投稿フィードは準備中です。";
         }
       }
 
@@ -20620,6 +21801,7 @@ function _openSearchResultByIndex(i){
         if (el.appV2SidebarMeta) el.appV2SidebarMeta.textContent = identity.meta;
         if (el.appV2GreetingName) el.appV2GreetingName.textContent = identity.name;
         if (el.appV2DateText) el.appV2DateText.textContent = `今日は ${_appV2DateText(_publicAppConfigNowMs())} です。`;
+        if (_appSocialState.rightPanelOpen) _appRenderRightPanel();
       }
       function _appV2RenderWeekBars(sessions){
         if (!el.appV2WeekBars) return;
@@ -21035,6 +22217,9 @@ function _openSearchResultByIndex(i){
         if (el.appProfileVisibilitySelect){
           el.appProfileVisibilitySelect.value = String(profile?.visibility || "public") === "private" ? "private" : "public";
         }
+        if (el.appProfileFollowVisibilitySelect){
+          el.appProfileFollowVisibilitySelect.value = String(profile?.followVisibility || "public") === "private" ? "private" : "public";
+        }
         if (!_appIsLoggedUser()){
           _appProfileSetStatus("プロフィール編集はログイン後に利用できます。");
         } else if (!_appSocialState.profileLoading && !_appSocialState.profileLoadedAt){
@@ -21084,7 +22269,8 @@ function _openSearchResultByIndex(i){
           avatarUrl: String(el.appProfileAvatarInput?.value || "").trim(),
           bio: String(el.appProfileBioInput?.value || "").trim(),
           message: String(el.appProfileMessageInput?.value || "").trim(),
-          visibility: String(el.appProfileVisibilitySelect?.value || "public")
+          visibility: String(el.appProfileVisibilitySelect?.value || "public"),
+          followVisibility: String(el.appProfileFollowVisibilitySelect?.value || "public")
         };
         _appProfileSetStatus("保存中…");
         try{
@@ -21100,6 +22286,34 @@ function _openSearchResultByIndex(i){
           _appProfileSetStatus(`保存に失敗しました: ${String(err?.message || err)}`, "error");
         }finally{
           _appRenderProfilePanel();
+        }
+      }
+      async function _appProfileHandleAvatarFileSelect(file){
+        const f = file instanceof File ? file : null;
+        if (!f) return;
+        if (!/^image\//i.test(String(f.type || ""))){
+          _appProfileSetStatus("画像ファイルを選択してください。", "error");
+          return;
+        }
+        if (f.size > 4 * 1024 * 1024){
+          _appProfileSetStatus("画像サイズは4MB以下にしてください。", "error");
+          return;
+        }
+        _appProfileSetStatus("画像を読み込み中…");
+        try{
+          const dataUrl = await new Promise((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve(String(fr.result || ""));
+            fr.onerror = () => reject(fr.error || new Error("read failed"));
+            fr.readAsDataURL(f);
+          });
+          if (!/^data:image\//i.test(String(dataUrl || ""))){
+            throw new Error("画像データに変換できませんでした。");
+          }
+          if (el.appProfileAvatarInput) el.appProfileAvatarInput.value = String(dataUrl);
+          _appProfileSetStatus("画像を読み込みました。保存で反映されます。", "ok");
+        }catch(err){
+          _appProfileSetStatus(`画像の読み込みに失敗: ${String(err?.message || err)}`, "error");
         }
       }
 
@@ -21237,115 +22451,450 @@ function _openSearchResultByIndex(i){
         }
       }
 
-      async function _appOpenPublicProfile(userId){
+      const APP_PROFILE_TABS = Object.freeze([
+        { key: "posts", label: "ポスト" },
+        { key: "images", label: "画像" },
+        { key: "videos", label: "動画" },
+        { key: "links", label: "リンク" },
+        { key: "likes", label: "いいね" },
+        { key: "bookmarks", label: "保存" }
+      ]);
+
+      function _appNormalizeProfileTab(tab){
+        const key = String(tab || "").trim().toLowerCase();
+        return APP_PROFILE_TABS.some((t) => t.key === key) ? key : "posts";
+      }
+
+      function _appProfileTimelineCacheKey(userId, tab){
+        return `${Math.max(0, Number(userId || 0))}:${_appNormalizeProfileTab(tab)}`;
+      }
+
+      function _appFeedProfileRenderTabs(tabCounts = {}, active = "posts"){
+        if (!el.appFeedProfileTabs) return;
+        const activeKey = _appNormalizeProfileTab(active);
+        const html = APP_PROFILE_TABS.map((tab) => {
+          const count = Math.max(0, Number(tabCounts?.[tab.key] || 0));
+          const cls = tab.key === activeKey ? " is-active" : "";
+          return `<button class="app-feed-profile-tab${cls}" type="button" role="tab" data-feed-action="profileTab" data-id="${escapeHtml(tab.key)}">${escapeHtml(tab.label)}<span class="n">${escapeHtml(String(count))}</span></button>`;
+        }).join("");
+        el.appFeedProfileTabs.innerHTML = html;
+      }
+      function _appFeedProfileFollowListReset(){
+        _appSocialState.profileFollowListKind = "";
+        _appSocialState.profileFollowListLoading = false;
+        _appSocialState.profileFollowListHidden = false;
+        _appSocialState.profileFollowListItems = [];
+      }
+      function _appFeedProfileRenderFollowList(){
+        if (!el.appFeedProfileFollowBlock || !el.appFeedProfileFollowTitle || !el.appFeedProfileFollowList || !el.appFeedProfileFollowEmpty) return;
+        const kind = String(_appSocialState.profileFollowListKind || "");
+        const loading = !!_appSocialState.profileFollowListLoading;
+        const hidden = !!_appSocialState.profileFollowListHidden;
+        const items = Array.isArray(_appSocialState.profileFollowListItems) ? _appSocialState.profileFollowListItems : [];
+        const open = !!kind;
+        el.appFeedProfileFollowBlock.classList.toggle("hidden", !open);
+        if (!open) return;
+        const title = kind === "followers" ? "フォロワー" : "フォロー中";
+        el.appFeedProfileFollowTitle.textContent = title;
+        el.appFeedProfileFollowList.replaceChildren();
+        if (loading){
+          el.appFeedProfileFollowEmpty.classList.remove("hidden");
+          el.appFeedProfileFollowEmpty.textContent = "読み込み中です…";
+          return;
+        }
+        if (hidden){
+          el.appFeedProfileFollowEmpty.classList.remove("hidden");
+          el.appFeedProfileFollowEmpty.textContent = "このユーザーはフォロー一覧を非公開にしています。";
+          return;
+        }
+        if (!items.length){
+          el.appFeedProfileFollowEmpty.classList.remove("hidden");
+          el.appFeedProfileFollowEmpty.textContent = "表示できるユーザーがいません。";
+          return;
+        }
+        el.appFeedProfileFollowEmpty.classList.add("hidden");
+        const frag = document.createDocumentFragment();
+        for (const row of items){
+          const item = document.createElement("article");
+          item.className = "app-profile-follow-item";
+          const avatar = document.createElement("div");
+          avatar.className = "app-profile-follow-avatar";
+          avatar.textContent = String(row?.displayName || row?.nickname || "U").slice(0, 2).toUpperCase() || "U";
+          const meta = document.createElement("div");
+          meta.className = "app-profile-follow-meta";
+          const name = document.createElement("div");
+          name.className = "app-profile-follow-name";
+          name.textContent = String(row?.displayName || row?.nickname || "Unknown");
+          const handle = document.createElement("div");
+          handle.className = "app-profile-follow-handle";
+          handle.textContent = `@${String(row?.nickname || "user").replace(/^@+/, "")}`;
+          meta.appendChild(name);
+          meta.appendChild(handle);
+          const openBtn = document.createElement("button");
+          openBtn.type = "button";
+          openBtn.className = "textbtn";
+          openBtn.dataset.feedAction = "openProfile";
+          openBtn.dataset.id = String(Math.max(0, Number(row?.userId || 0)));
+          openBtn.textContent = "表示";
+          item.appendChild(avatar);
+          item.appendChild(meta);
+          item.appendChild(openBtn);
+          frag.appendChild(item);
+        }
+        el.appFeedProfileFollowList.appendChild(frag);
+      }
+      async function _appFeedProfileOpenFollowList(kindRaw){
+        const kind = String(kindRaw || "").toLowerCase() === "followers" ? "followers" : "following";
+        const userId = Math.max(0, Number(_appSocialState.profileScreenUserId || 0));
+        if (!userId) return;
+        _appSocialState.profileFollowListKind = kind;
+        _appSocialState.profileFollowListLoading = true;
+        _appSocialState.profileFollowListHidden = false;
+        _appSocialState.profileFollowListItems = [];
+        _appFeedProfileRenderFollowList();
+        try{
+          const body = await _appApiJson(`/api/profile/follows?userId=${encodeURIComponent(String(userId))}&kind=${encodeURIComponent(kind)}&limit=120`, { method: "GET" });
+          _appSocialState.profileFollowListHidden = !!body?.hidden;
+          _appSocialState.profileFollowListItems = Array.isArray(body?.list) ? body.list : [];
+        }catch(err){
+          _appSocialState.profileFollowListHidden = false;
+          _appSocialState.profileFollowListItems = [];
+          uiToast(`フォロー一覧の取得に失敗: ${String(err?.message || err)}`);
+        }finally{
+          _appSocialState.profileFollowListLoading = false;
+          _appFeedProfileRenderFollowList();
+        }
+      }
+      function _appFeedProfileCloseFollowList(){
+        _appFeedProfileFollowListReset();
+        _appFeedProfileRenderFollowList();
+      }
+
+      function _appRenderFeedProfileScreen(){
+        const open = !!_appSocialState.profileScreenOpen;
+        if (el.appFeedProfileScreen) el.appFeedProfileScreen.classList.toggle("hidden", !open);
+        if (el.appFeedFab) el.appFeedFab.classList.toggle("hidden", open || !_appFeaturePostsOn() || !_appIsLoggedUser());
+        if (el.appFeedList) el.appFeedList.classList.toggle("hidden", open || !_appFeaturePostsOn());
+        if (el.appFeedEmpty) el.appFeedEmpty.classList.toggle("hidden", open || !_appFeaturePostsOn());
+        if (el.appFeedDetailBlock) el.appFeedDetailBlock.classList.add("hidden");
+        if (el.appPublicProfileBlock) el.appPublicProfileBlock.classList.add("hidden");
+        if (!open) return;
+        const data = (_appSocialState.profileScreenData && typeof _appSocialState.profileScreenData === "object")
+          ? _appSocialState.profileScreenData
+          : null;
+        const profile = data?.profile || null;
+        const posts = Array.isArray(data?.posts) ? data.posts : [];
+        const tab = _appNormalizeProfileTab(_appSocialState.profileScreenTab);
+        const tabCounts = (data?.tabCounts && typeof data.tabCounts === "object") ? data.tabCounts : {};
+        const displayName = String(profile?.displayName || profile?.nickname || "Unknown");
+        const nickname = String(profile?.nickname || "user").trim();
+        if (el.appFeedProfileAvatar){
+          el.appFeedProfileAvatar.textContent = displayName.slice(0, 2).toUpperCase() || "U";
+        }
+        if (el.appFeedProfileName) el.appFeedProfileName.textContent = displayName;
+        if (el.appFeedProfileHandle) el.appFeedProfileHandle.textContent = `@${(nickname || "user").replace(/^@+/, "")}`;
+        if (el.appFeedProfileFollowing) el.appFeedProfileFollowing.textContent = String(Math.max(0, Number(profile?.following || 0)));
+        if (el.appFeedProfileFollowers) el.appFeedProfileFollowers.textContent = String(Math.max(0, Number(profile?.followers || 0)));
+        if (el.appFeedProfileEditBtn){
+          const isSelf = !!profile?.isSelf;
+          el.appFeedProfileEditBtn.classList.toggle("hidden", !isSelf);
+        }
+        _appFeedProfileRenderTabs(tabCounts, tab);
+        _appFeedProfileRenderFollowList();
+        if (!el.appFeedProfileList || !el.appFeedProfileEmpty) return;
+        el.appFeedProfileList.replaceChildren();
+        if (tab === "videos"){
+          el.appFeedProfileEmpty.classList.remove("hidden");
+          el.appFeedProfileEmpty.textContent = "動画タブはv1未対応です。";
+          return;
+        }
+        if (!posts.length){
+          el.appFeedProfileEmpty.classList.remove("hidden");
+          el.appFeedProfileEmpty.textContent = "該当する投稿はありません。";
+          return;
+        }
+        el.appFeedProfileEmpty.classList.add("hidden");
+        const frag = document.createDocumentFragment();
+        for (const post of posts){
+          frag.appendChild(_appFeedBuildPostCard(post, { showProfileButton: false }));
+        }
+        el.appFeedProfileList.appendChild(frag);
+      }
+
+      async function _appLoadProfileTimeline(userId, tab = "posts", force = false){
+        const uid = Math.max(0, Number(userId || 0));
+        if (!uid) throw new Error("userId が不正です。");
+        const key = _appProfileTimelineCacheKey(uid, tab);
+        const cached = _appSocialState.profileTimelineCache[key];
+        const age = Date.now() - Number(cached?.ts || 0);
+        if (!force && cached?.data && age < 12000){
+          return cached.data;
+        }
+        const body = await _appApiJson(`/api/profile/timeline?userId=${uid}&tab=${encodeURIComponent(_appNormalizeProfileTab(tab))}&limit=60`, { method: "GET" });
+        _appSocialState.profileTimelineCache[key] = { ts: Date.now(), data: body };
+        return body;
+      }
+
+      async function _appOpenPublicProfile(userId, tab = "posts"){
         const uid = Number(userId || 0);
         if (!Number.isFinite(uid) || uid <= 0) return;
+        _appSocialState.profileScreenOpen = true;
+        _appSocialState.profileScreenUserId = uid;
+        _appSocialState.profileScreenTab = _appNormalizeProfileTab(tab);
+        _appFeedProfileFollowListReset();
+        _appSocialState.profileScreenData = { profile: null, posts: [], tabCounts: {} };
+        _appFeedCloseDetail();
+        _appRenderFeedProfileScreen();
+        if (el.appFeedProfileEmpty){
+          el.appFeedProfileEmpty.classList.remove("hidden");
+          el.appFeedProfileEmpty.textContent = "プロフィールを読み込み中です…";
+        }
         try{
-          const body = await _appApiJson(`/api/profile?userId=${uid}`, { method: "GET" });
-          const profile = body?.profile || null;
-          _appSocialState.publicProfile = profile;
-          if (el.appPublicProfileBlock) el.appPublicProfileBlock.classList.remove("hidden");
-          if (el.appPublicProfileView){
-            const followers = Math.max(0, Number(profile?.followers || 0));
-            const following = Math.max(0, Number(profile?.following || 0));
-            const isFollowing = !!profile?.isFollowing;
-            const followBtn = profile?.isSelf ? "" : `<button class="textbtn" type="button" data-feed-action="toggleFollow" data-id="${escapeHtml(String(profile?.userId || ""))}" data-follow="${isFollowing ? "0" : "1"}">${isFollowing ? "フォロー解除" : "フォローする"}</button>`;
-            el.appPublicProfileView.innerHTML = `
-              <div class="app-public-profile-view">
-                <div class="app-feed-author">
-                  <div class="app-feed-avatar">${escapeHtml(String(profile?.nickname || "U").slice(0, 2).toUpperCase())}</div>
-                  <div class="app-feed-author-meta">
-                    <div class="app-feed-author-name">${escapeHtml(String(profile?.displayName || profile?.nickname || "Unknown"))}</div>
-                    <div class="app-feed-author-time">公開プリセット: ${escapeHtml(String(profile?.publicPresetCount || 0))}</div>
-                  </div>
-                </div>
-                <div class="app-detail-content">${escapeHtml(String(profile?.bio || "自己紹介なし"))}</div>
-                <div class="app-detail-content">${escapeHtml(String(profile?.message || "ひとことなし"))}</div>
-                <div class="app-feed-actions">
-                  <span class="tag-chip is-muted">Followers: ${escapeHtml(String(followers))}</span>
-                  <span class="tag-chip is-muted">Following: ${escapeHtml(String(following))}</span>
-                  ${followBtn}
-                </div>
-              </div>
-            `;
-          }
+          const body = await _appLoadProfileTimeline(uid, _appSocialState.profileScreenTab, true);
+          _appSocialState.profileScreenData = body && typeof body === "object" ? body : { profile: null, posts: [], tabCounts: {} };
+          _appRenderFeedProfileScreen();
         }catch(err){
-          uiToast(`プロフィール取得に失敗: ${String(err?.message || err)}`);
+          _appSocialState.profileScreenData = { profile: null, posts: [], tabCounts: {} };
+          _appRenderFeedProfileScreen();
+          if (el.appFeedProfileEmpty){
+            el.appFeedProfileEmpty.classList.remove("hidden");
+            el.appFeedProfileEmpty.textContent = `プロフィール取得に失敗: ${String(err?.message || err)}`;
+          }
         }
       }
 
       function _appClosePublicProfile(){
-        if (el.appPublicProfileBlock) el.appPublicProfileBlock.classList.add("hidden");
-        if (el.appPublicProfileView) el.appPublicProfileView.innerHTML = "";
-        _appSocialState.publicProfile = null;
+        _appSocialState.profileScreenOpen = false;
+        _appSocialState.profileScreenUserId = 0;
+        _appSocialState.profileScreenData = null;
+        _appSocialState.profileScreenTab = "posts";
+        _appFeedProfileFollowListReset();
+        _appRenderFeedProfileScreen();
       }
 
       function _appFeedRelativeTime(ts){
         return _appInboxRelativeTime(ts);
       }
 
+      function _appFeedHandleText(post){
+        const handleSrc = String(
+          post?.author?.handle ||
+          post?.author?.nickname ||
+          post?.author?.name ||
+          "user"
+        ).trim().replace(/\s+/g, "");
+        const normalized = handleSrc.replace(/^@+/, "");
+        return normalized ? `@${normalized}` : "@user";
+      }
+
+      function _appFeedMediaList(post){
+        const images = (Array.isArray(post?.images) ? post.images : [])
+          .map((v) => String(v || "").trim())
+          .filter((v) => /^https?:\/\//i.test(v));
+        if (images.length) return images.slice(0, 4);
+        const image = String(post?.image || "").trim();
+        return /^https?:\/\//i.test(image) ? [image] : [];
+      }
+
+      function _appFeedBuildActionBar(post){
+        const root = document.createElement("div");
+        root.className = "app-feed-actions";
+        const isOwn = Number(post?.author?.userId || 0) === _appAuthUserId();
+        const viewer = (post?.viewer && typeof post.viewer === "object") ? post.viewer : {};
+        const actions = [
+          { key: "reply", icon: "reply", fallback: 0, action: "replyPost", active: false },
+          ...(isOwn ? [{ key: "edit", icon: "edit", fallback: 0, action: "editPost", active: false }] : []),
+          { key: "repost", icon: "repeat", fallback: 0, action: "togglePostAction", active: !!viewer.reposted },
+          { key: "like", icon: "favorite", fallback: 0, action: "togglePostAction", active: !!viewer.liked },
+          { key: "bookmark", icon: "bookmark", fallback: 0, action: "togglePostAction", active: !!viewer.bookmarked },
+          { key: "share", icon: "ios_share", fallback: 0, action: "sharePost", active: false }
+        ];
+        for (const action of actions){
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "app-feed-action-btn";
+          btn.dataset.feedAction = action.action;
+          btn.dataset.kind = action.key;
+          btn.dataset.id = String(post?.id || "");
+          const countRaw = Number(post?.[`${action.key}Count`] ?? post?.counts?.[action.key] ?? action.fallback);
+          const count = Number.isFinite(countRaw) && countRaw > 0 ? countRaw : 0;
+          if (action.active) btn.classList.add("is-on", `is-${action.key}`);
+          btn.innerHTML =
+            `<span class="ms" aria-hidden="true">${escapeHtml(action.icon)}</span>` +
+            `<span class="app-feed-action-count">${escapeHtml(String(count))}</span>`;
+          root.appendChild(btn);
+        }
+        return root;
+      }
+
+      function _appFeedBuildMediaGrid(media){
+        if (!Array.isArray(media) || !media.length) return null;
+        const root = document.createElement("div");
+        root.className = "app-feed-media-grid";
+        root.dataset.count = String(Math.min(4, media.length));
+        const list = media.slice(0, 4);
+        for (const src of list){
+          const item = document.createElement("div");
+          item.className = "app-feed-media-item";
+          const img = document.createElement("img");
+          img.className = "app-feed-media";
+          img.loading = "lazy";
+          img.decoding = "async";
+          img.src = src;
+          img.alt = "post media";
+          item.appendChild(img);
+          root.appendChild(item);
+        }
+        return root;
+      }
+
+      function _appFeedBuildPostCard(post, opts = {}){
+        const showProfileButton = opts.showProfileButton !== false;
+        const enableOpenPost = opts.enableOpenPost !== false;
+        const card = document.createElement("article");
+        card.className = "app-feed-card app-feed-item";
+        if (enableOpenPost){
+          card.dataset.feedAction = "openPost";
+          card.dataset.id = String(post?.id || "");
+        }
+
+        const avatar = document.createElement("div");
+        avatar.className = "app-feed-avatar";
+        avatar.textContent = String(post?.author?.nickname || post?.author?.displayName || "U").slice(0, 2).toUpperCase();
+
+        const content = document.createElement("div");
+        const head = document.createElement("div");
+        head.className = "app-feed-head";
+
+        const author = document.createElement("div");
+        author.className = "app-feed-author";
+        const authorMeta = document.createElement("div");
+        authorMeta.className = "app-feed-author-meta";
+        const authorName = String(post?.author?.displayName || post?.author?.nickname || "Unknown");
+        const line = document.createElement("div");
+        line.className = "app-feed-author-name";
+        line.innerHTML =
+          `${escapeHtml(authorName)} ` +
+          `<span class="app-feed-handle">${escapeHtml(_appFeedHandleText(post))}</span> ` +
+          `<span class="app-feed-time-dot">・</span> ` +
+          `<span class="app-feed-time">${escapeHtml(_appFeedRelativeTime(Number(post?.createdAt || 0)))}</span>`;
+        authorMeta.appendChild(line);
+        author.appendChild(authorMeta);
+        head.appendChild(author);
+
+        if (showProfileButton){
+          const profileBtn = document.createElement("button");
+          profileBtn.type = "button";
+          profileBtn.className = "textbtn";
+          profileBtn.dataset.feedAction = "openProfile";
+          profileBtn.dataset.id = String(post?.author?.userId || "");
+          profileBtn.textContent = "プロフィール";
+          head.appendChild(profileBtn);
+        }
+
+        const title = String(post?.title || "").trim();
+        const bodyText = String(post?.body || "").trim();
+        const links = (Array.isArray(post?.links) ? post.links : [])
+          .map((v) => String(v || "").trim())
+          .filter((v) => /^https?:\/\//i.test(v))
+          .slice(0, 3);
+        const bodyEl = document.createElement(title ? "div" : "p");
+        bodyEl.className = "app-feed-body";
+        bodyEl.textContent = title ? `${title}\n${bodyText}`.trim() : bodyText;
+        if (bodyEl.textContent.length > 160) bodyEl.classList.add("is-clamped");
+
+        const media = _appFeedBuildMediaGrid(_appFeedMediaList(post));
+        const linkWrap = document.createElement("div");
+        linkWrap.className = "app-feed-links";
+        if (!links.length) linkWrap.classList.add("hidden");
+        for (const link of links){
+          const a = document.createElement("a");
+          a.className = "app-feed-link";
+          a.href = link;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = link;
+          linkWrap.appendChild(a);
+        }
+        const actionBar = _appFeedBuildActionBar(post);
+
+        content.appendChild(head);
+        if (bodyEl.textContent) content.appendChild(bodyEl);
+        if (links.length) content.appendChild(linkWrap);
+        if (media) content.appendChild(media);
+        content.appendChild(actionBar);
+
+        card.appendChild(avatar);
+        card.appendChild(content);
+        return card;
+      }
+
+      function _appFeedOpenDetail(postId){
+        const id = String(postId || "").trim();
+        if (!id || !el.appFeedDetailBlock || !el.appFeedDetailView) return;
+        const post = _appFeedFindPost(id);
+        if (!post){
+          uiToast("投稿が見つかりません。");
+          return;
+        }
+        _appFeedDetailId = id;
+        const card = _appFeedBuildPostCard(post);
+        card.classList.add("is-detail");
+        card.removeAttribute("data-feed-action");
+        el.appFeedDetailView.replaceChildren(card);
+        el.appFeedDetailBlock.classList.remove("hidden");
+        try{ el.appFeedDetailBlock.scrollIntoView({ behavior: "smooth", block: "start" }); }catch{}
+      }
+
+      function _appFeedCloseDetail(){
+        _appFeedDetailId = "";
+        if (el.appFeedDetailBlock) el.appFeedDetailBlock.classList.add("hidden");
+        if (el.appFeedDetailView) el.appFeedDetailView.replaceChildren();
+      }
+
       function _appRenderFeed(){
         const postsOn = _appFeaturePostsOn();
-        if (el.appFeedComposer) el.appFeedComposer.classList.toggle("hidden", !postsOn);
-        if (el.appFeedScopeBlock) el.appFeedScopeBlock.classList.toggle("hidden", !postsOn);
-        if (el.appFeedList) el.appFeedList.classList.toggle("hidden", !postsOn);
-        if (el.appFeedEmpty) el.appFeedEmpty.classList.toggle("hidden", !postsOn);
-        if (el.appPublicProfileBlock && !postsOn) el.appPublicProfileBlock.classList.add("hidden");
-        if (el.appInboxListPane) el.appInboxListPane.classList.toggle("hidden", !!postsOn);
-        if (el.appInboxDetailPane) el.appInboxDetailPane.classList.add("hidden");
-        if (!postsOn) return;
-        if (el.appFeedScopeSelect){
-          const scope = String(_appSocialState.feedScope || "all");
-          if (el.appFeedScopeSelect.value !== scope) el.appFeedScopeSelect.value = scope;
+        if (!postsOn){
+          _appFeedCloseDetail();
         }
-        if (el.appFeedComposerStatus){
-          el.appFeedComposerStatus.textContent = _appIsLoggedUser()
-            ? "投稿内容は公開フィードに表示されます。"
-            : "投稿はログイン時のみ可能です。";
+        if (el.appPublicProfileBlock && !postsOn) el.appPublicProfileBlock.classList.add("hidden");
+        if (el.appFeedProfileScreen && !postsOn) el.appFeedProfileScreen.classList.add("hidden");
+        if (el.appFeedFab) el.appFeedFab.classList.toggle("hidden", !postsOn || !_appIsLoggedUser());
+        if (!postsOn){
+          if (el.appFeedEmpty){
+            el.appFeedEmpty.classList.remove("hidden");
+            el.appFeedEmpty.textContent = "Feedは現在利用できません。";
+          }
+          _appFeedEditorClose(false);
+          _appFeedReplyClose();
+          return;
         }
         const list = Array.isArray(_appSocialState.posts) ? _appSocialState.posts : [];
         if (!el.appFeedList || !el.appFeedEmpty) return;
+        const selectedId = String(_appFeedDetailId || "");
+        if (!selectedId) _appFeedCloseDetail();
         el.appFeedList.replaceChildren();
         if (!list.length){
           el.appFeedEmpty.classList.remove("hidden");
+          _appRenderFeedProfileScreen();
           return;
         }
         el.appFeedEmpty.classList.add("hidden");
         const frag = document.createDocumentFragment();
         for (const post of list){
-          const card = document.createElement("article");
-          card.className = "app-feed-card";
-          const authorName = String(post?.author?.displayName || post?.author?.nickname || "Unknown");
-          const avatarText = String(post?.author?.nickname || "U").slice(0, 2).toUpperCase();
-          const createdAt = Math.max(0, Number(post?.createdAt || 0));
-          const links = (Array.isArray(post?.links) ? post.links : []).filter((link) => /^https?:\/\//i.test(String(link || "").trim()));
-          const followBtn = (post?.author?.userId && !_appSocialState.postsLoading && _appIsLoggedUser() && Number(post.author.userId) !== _appAuthUserId())
-            ? `<button class="textbtn" type="button" data-feed-action="toggleFollow" data-id="${escapeHtml(String(post.author.userId))}" data-follow="${post.author.isFollowing ? "0" : "1"}">${post.author.isFollowing ? "フォロー解除" : "フォロー"}</button>`
-            : "";
-          card.innerHTML = `
-            <div class="app-feed-head">
-              <div class="app-feed-author">
-                <div class="app-feed-avatar">${escapeHtml(avatarText)}</div>
-                <div class="app-feed-author-meta">
-                  <div class="app-feed-author-name">${escapeHtml(authorName)}</div>
-                  <div class="app-feed-author-time">${escapeHtml(_appFeedRelativeTime(createdAt))}</div>
-                </div>
-              </div>
-              <button class="textbtn" type="button" data-feed-action="openProfile" data-id="${escapeHtml(String(post?.author?.userId || ""))}">プロフィール</button>
-            </div>
-            <h3 class="app-feed-title">${escapeHtml(String(post?.title || ""))}</h3>
-            <p class="app-feed-body">${escapeHtml(String(post?.body || ""))}</p>
-            ${links.length ? `<div class="app-feed-links">${links.map((link)=>`<a class="app-feed-link" href="${escapeHtml(String(link || ""))}" target="_blank" rel="noopener noreferrer">${escapeHtml(String(link || ""))}</a>`).join("")}</div>` : ""}
-            <div class="app-feed-actions">${followBtn}</div>
-          `;
+          const card = _appFeedBuildPostCard(post);
           frag.appendChild(card);
         }
         el.appFeedList.appendChild(frag);
+        if (_appFeedDetailId){
+          _appFeedOpenDetail(_appFeedDetailId);
+        }
+        _appRenderFeedProfileScreen();
       }
 
       async function _appLoadFeed(force = false){
         if (!_appFeaturePostsOn()){
-          _appRenderInbox();
+          _appRenderFeed();
           return [];
         }
         const age = Date.now() - Number(_appSocialState.postsLoadedAt || 0);
@@ -21356,8 +22905,7 @@ function _openSearchResultByIndex(i){
         if (_appSocialState.postsLoading) return _appSocialState.posts;
         _appSocialState.postsLoading = true;
         try{
-          const scope = String(_appSocialState.feedScope || "all");
-          const body = await _appApiJson(`/api/posts/feed?scope=${encodeURIComponent(scope)}&limit=60`, { method: "GET" });
+          const body = await _appApiJson("/api/posts/feed?scope=all&limit=60", { method: "GET" });
           _appSocialState.posts = Array.isArray(body?.posts) ? body.posts : [];
           _appSocialState.postsLoadedAt = Date.now();
         }catch(err){
@@ -21371,36 +22919,652 @@ function _openSearchResultByIndex(i){
         return _appSocialState.posts;
       }
 
+      function _appFeedFindPost(postId){
+        const id = String(postId || "").trim();
+        if (!id) return null;
+        const fromFeed = (Array.isArray(_appSocialState.posts) ? _appSocialState.posts : []).find((p) => String(p?.id || "") === id);
+        if (fromFeed) return fromFeed;
+        const fromProfile = Array.isArray(_appSocialState.profileScreenData?.posts)
+          ? _appSocialState.profileScreenData.posts.find((p) => String(p?.id || "") === id)
+          : null;
+        return fromProfile || null;
+      }
+
+      const FEED_EDITOR_DRAFT_KEY = "app.feed.editor.draft.v1";
+      function _appFeedEditorNormalizeUrl(raw){
+        const v = String(raw || "").trim();
+        return /^https?:\/\//i.test(v) ? v : "";
+      }
+      function _appFeedEditorSetMode(isEdit){
+        const editing = !!isEdit;
+        if (el.appFeedEditorTitle) el.appFeedEditorTitle.textContent = editing ? "投稿を編集" : "新規投稿";
+        if (el.appFeedEditorSub) el.appFeedEditorSub.textContent = editing ? "内容を更新して保存します" : "テキスト・画像・リンクを追加できます";
+        if (el.appFeedEditorSubmitBtn) el.appFeedEditorSubmitBtn.textContent = editing ? "更新する" : "投稿する";
+      }
+      function _appFeedEditorSyncCounter(){
+        if (!el.appFeedEditorCounter) return;
+        const len = String(el.appFeedEditorPostBody?.value || "").length;
+        el.appFeedEditorCounter.textContent = `${len} / 4000`;
+      }
+      function _appFeedEditorRenderChipList(kind){
+        const isImage = kind === "image";
+        const list = isImage ? _appSocialState.postEditorImages : _appSocialState.postEditorLinks;
+        const target = isImage ? el.appFeedEditorImages : el.appFeedEditorLinks;
+        if (!target) return;
+        if (!Array.isArray(list) || !list.length){
+          target.innerHTML = "";
+          return;
+        }
+        target.innerHTML = list.map((url, idx) => (
+          `<div class="app-feed-chip">` +
+            `<span>${escapeHtml(url)}</span>` +
+            `<button type="button" data-feed-action="${isImage ? "removeEditorImage" : "removeEditorLink"}" data-id="${idx}" aria-label="削除">` +
+              `<span class="ms" aria-hidden="true">close</span>` +
+            `</button>` +
+          `</div>`
+        )).join("");
+      }
+      function _appFeedEditorGetForm(){
+        const title = String(el.appFeedEditorPostTitle?.value || "").trim();
+        const body = String(el.appFeedEditorPostBody?.value || "").trim();
+        const links = Array.isArray(_appSocialState.postEditorLinks) ? _appSocialState.postEditorLinks.slice(0, 3) : [];
+        const images = Array.isArray(_appSocialState.postEditorImages) ? _appSocialState.postEditorImages.slice(0, 4) : [];
+        return { title, body, links, images };
+      }
+      function _appFeedEditorRenderPreview(){
+        if (!el.appFeedEditorPreview) return;
+        if (!_appSocialState.postEditorPreviewOpen){
+          el.appFeedEditorPreview.classList.add("hidden");
+          el.appFeedEditorPreview.replaceChildren();
+          return;
+        }
+        const form = _appFeedEditorGetForm();
+        const post = {
+          id: "__preview__",
+          title: form.title,
+          body: form.body,
+          links: form.links,
+          images: form.images,
+          createdAt: Date.now(),
+          author: {
+            userId: _appAuthUserId(),
+            nickname: String(authState?.user?.nickname || "you"),
+            displayName: String(authState?.user?.nickname || "You")
+          },
+          viewer: { liked: false, reposted: false, bookmarked: false },
+          likeCount: 0,
+          repostCount: 0,
+          bookmarkCount: 0
+        };
+        const card = _appFeedBuildPostCard(post, { showProfileButton: false, enableOpenPost: false });
+        el.appFeedEditorPreview.replaceChildren(card);
+        el.appFeedEditorPreview.classList.remove("hidden");
+      }
+      function _appFeedEditorPersistDraft(){
+        const payload = {
+          title: String(el.appFeedEditorPostTitle?.value || ""),
+          body: String(el.appFeedEditorPostBody?.value || ""),
+          links: Array.isArray(_appSocialState.postEditorLinks) ? _appSocialState.postEditorLinks.slice(0, 3) : [],
+          images: Array.isArray(_appSocialState.postEditorImages) ? _appSocialState.postEditorImages.slice(0, 4) : [],
+          ts: Date.now()
+        };
+        try{
+          window.localStorage.setItem(FEED_EDITOR_DRAFT_KEY, JSON.stringify(payload));
+        }catch{}
+      }
+      function _appFeedEditorLoadDraft(){
+        try{
+          const raw = window.localStorage.getItem(FEED_EDITOR_DRAFT_KEY);
+          if (!raw) return null;
+          const obj = JSON.parse(raw);
+          if (!obj || typeof obj !== "object") return null;
+          return {
+            title: String(obj.title || ""),
+            body: String(obj.body || ""),
+            links: (Array.isArray(obj.links) ? obj.links : []).map(_appFeedEditorNormalizeUrl).filter(Boolean).slice(0, 3),
+            images: (Array.isArray(obj.images) ? obj.images : []).map(_appFeedEditorNormalizeUrl).filter(Boolean).slice(0, 4)
+          };
+        }catch{
+          return null;
+        }
+      }
+      function _appFeedEditorReset(clearDraft = false){
+        _appSocialState.postEditId = "";
+        _appSocialState.postEditorLinks = [];
+        _appSocialState.postEditorImages = [];
+        _appSocialState.postEditorPreviewOpen = false;
+        if (el.appFeedEditorPostTitle) el.appFeedEditorPostTitle.value = "";
+        if (el.appFeedEditorPostBody) el.appFeedEditorPostBody.value = "";
+        if (el.appFeedEditorLinkInput) el.appFeedEditorLinkInput.value = "";
+        if (el.appFeedEditorImageInput) el.appFeedEditorImageInput.value = "";
+        if (el.appFeedEditorStatus){
+          el.appFeedEditorStatus.textContent = _appIsLoggedUser()
+            ? "投稿内容は公開フィードに表示されます。"
+            : "投稿はログイン時のみ可能です。";
+        }
+        if (clearDraft){
+          try{ window.localStorage.removeItem(FEED_EDITOR_DRAFT_KEY); }catch{}
+        }
+        _appFeedEditorSetMode(false);
+        _appFeedEditorRenderChipList("link");
+        _appFeedEditorRenderChipList("image");
+        _appFeedEditorSyncCounter();
+        _appFeedEditorRenderPreview();
+      }
+      function _appFeedEditorOpen(post = null){
+        if (!el.appFeedEditorOverlay) return;
+        _appFeedReplyClose();
+        _appSocialState.postEditorOpen = true;
+        _appFeedEditorReset(false);
+        if (post && typeof post === "object"){
+          _appSocialState.postEditId = String(post.id || "");
+          if (el.appFeedEditorPostTitle) el.appFeedEditorPostTitle.value = String(post.title || "");
+          if (el.appFeedEditorPostBody) el.appFeedEditorPostBody.value = String(post.body || "");
+          _appSocialState.postEditorLinks = (Array.isArray(post.links) ? post.links : []).map(_appFeedEditorNormalizeUrl).filter(Boolean).slice(0, 3);
+          _appSocialState.postEditorImages = (Array.isArray(post.images) ? post.images : []).map(_appFeedEditorNormalizeUrl).filter(Boolean).slice(0, 4);
+          _appFeedEditorSetMode(true);
+        } else {
+          const draft = _appFeedEditorLoadDraft();
+          if (draft){
+            if (el.appFeedEditorPostTitle) el.appFeedEditorPostTitle.value = draft.title;
+            if (el.appFeedEditorPostBody) el.appFeedEditorPostBody.value = draft.body;
+            _appSocialState.postEditorLinks = draft.links.slice(0, 3);
+            _appSocialState.postEditorImages = draft.images.slice(0, 4);
+          }
+        }
+        _appFeedEditorRenderChipList("link");
+        _appFeedEditorRenderChipList("image");
+        _appFeedEditorSyncCounter();
+        _appFeedEditorRenderPreview();
+        el.appFeedEditorOverlay.classList.remove("hidden");
+        document.body.classList.add("app-right-panel-lock");
+        _runIdle(() => {
+          try{ el.appFeedEditorPostTitle?.focus(); }catch{}
+        });
+      }
+      function _appFeedEditorClose(keepDraft = true){
+        if (!el.appFeedEditorOverlay) return;
+        _appSocialState.postEditorOpen = false;
+        if (keepDraft && !_appSocialState.postEditId){
+          _appFeedEditorPersistDraft();
+        }
+        el.appFeedEditorOverlay.classList.add("hidden");
+        if (!_appSocialState.rightPanelOpen){
+          document.body.classList.remove("app-right-panel-lock");
+        }
+      }
+      function _appFeedEditorPushLink(raw){
+        const url = _appFeedEditorNormalizeUrl(raw);
+        if (!url){
+          uiToast("有効なリンクURLを入力してください。");
+          return false;
+        }
+        const next = Array.isArray(_appSocialState.postEditorLinks) ? _appSocialState.postEditorLinks.slice() : [];
+        if (next.includes(url)){
+          uiToast("同じリンクは追加できません。");
+          return false;
+        }
+        if (next.length >= 3){
+          uiToast("リンクは最大3件までです。");
+          return false;
+        }
+        next.push(url);
+        _appSocialState.postEditorLinks = next;
+        _appFeedEditorRenderChipList("link");
+        _appFeedEditorRenderPreview();
+        _appFeedEditorPersistDraft();
+        if (el.appFeedEditorLinkInput) el.appFeedEditorLinkInput.value = "";
+        return true;
+      }
+      function _appFeedEditorPushImage(raw){
+        const url = _appFeedEditorNormalizeUrl(raw);
+        if (!url){
+          uiToast("有効な画像URLを入力してください。");
+          return false;
+        }
+        const next = Array.isArray(_appSocialState.postEditorImages) ? _appSocialState.postEditorImages.slice() : [];
+        if (next.includes(url)){
+          uiToast("同じ画像は追加できません。");
+          return false;
+        }
+        if (next.length >= 4){
+          uiToast("画像は最大4件までです。");
+          return false;
+        }
+        next.push(url);
+        _appSocialState.postEditorImages = next;
+        _appFeedEditorRenderChipList("image");
+        _appFeedEditorRenderPreview();
+        _appFeedEditorPersistDraft();
+        if (el.appFeedEditorImageInput) el.appFeedEditorImageInput.value = "";
+        return true;
+      }
+
+      function _appFeedReplySubmitBtn(){
+        return el.appFeedReplyOverlay?.querySelector?.("[data-feed-action='submitReply']") || null;
+      }
+      function _appFeedReplySyncAccess(){
+        const canReply = _appIsLoggedUser();
+        if (el.appFeedReplyInput) el.appFeedReplyInput.disabled = !canReply;
+        const submitBtn = _appFeedReplySubmitBtn();
+        if (submitBtn) submitBtn.disabled = !canReply || _appSocialState.replySubmitting;
+        if (el.appFeedReplyStatus){
+          if (_appSocialState.repliesLoading){
+            el.appFeedReplyStatus.textContent = "返信を読み込み中です…";
+          } else if (_appSocialState.replySubmitting){
+            el.appFeedReplyStatus.textContent = "返信を送信中です…";
+          } else {
+            el.appFeedReplyStatus.textContent = canReply
+              ? "返信を入力して送信できます。"
+              : "ログイン後に返信できます。";
+          }
+        }
+      }
+      function _appFeedReplySyncCounter(){
+        if (!el.appFeedReplyCounter) return;
+        const len = String(el.appFeedReplyInput?.value || "").length;
+        el.appFeedReplyCounter.textContent = `${len} / 2000`;
+      }
+      function _appFeedReplyCache(postId){
+        const id = String(postId || "").trim();
+        if (!id) return [];
+        if (!Array.isArray(_appSocialState.repliesByPost[id])){
+          _appSocialState.repliesByPost[id] = [];
+        }
+        return _appSocialState.repliesByPost[id];
+      }
+      function _appFeedReplyRenderTarget(post){
+        if (!el.appFeedReplyTarget) return;
+        el.appFeedReplyTarget.replaceChildren();
+        if (!post || typeof post !== "object"){
+          el.appFeedReplyTarget.textContent = "投稿が見つかりません。";
+          return;
+        }
+        const card = _appFeedBuildPostCard(post, { showProfileButton: false, enableOpenPost: false });
+        const actions = card.querySelector(".app-feed-actions");
+        if (actions) actions.remove();
+        card.classList.add("is-detail");
+        el.appFeedReplyTarget.appendChild(card);
+      }
+      function _appFeedReplyRenderList(postId){
+        if (!el.appFeedReplyList || !el.appFeedReplyEmpty) return;
+        const id = String(postId || "").trim();
+        const replies = _appFeedReplyCache(id);
+        el.appFeedReplyList.replaceChildren();
+        if (!replies.length){
+          el.appFeedReplyEmpty.classList.remove("hidden");
+          return;
+        }
+        el.appFeedReplyEmpty.classList.add("hidden");
+        const frag = document.createDocumentFragment();
+        for (const reply of replies){
+          const item = document.createElement("article");
+          item.className = "app-feed-reply-item";
+          const name = String(reply?.author?.displayName || reply?.author?.nickname || "user");
+          const handleSrc = String(reply?.author?.nickname || reply?.author?.displayName || "user").trim().replace(/\s+/g, "");
+          const handle = handleSrc ? `@${handleSrc.replace(/^@+/, "")}` : "@user";
+          const createdAt = Number(reply?.createdAt || 0);
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          meta.textContent = `${name} ${handle} ・ ${_appFeedRelativeTime(createdAt)}`;
+          const body = document.createElement("div");
+          body.className = "body";
+          body.textContent = String(reply?.body || "");
+          item.appendChild(meta);
+          item.appendChild(body);
+          frag.appendChild(item);
+        }
+        el.appFeedReplyList.appendChild(frag);
+      }
+      async function _appFeedReplyLoad(postId, force = false){
+        const id = String(postId || "").trim();
+        if (!id) return [];
+        if (!force){
+          const cached = _appFeedReplyCache(id);
+          if (cached.length){
+            _appFeedReplyRenderList(id);
+            return cached;
+          }
+        }
+        _appSocialState.repliesLoading = true;
+        _appFeedReplySyncAccess();
+        try{
+          const body = await _appApiJson(`/api/posts/replies?postId=${encodeURIComponent(id)}&limit=120`, { method: "GET" });
+          const replies = Array.isArray(body?.replies) ? body.replies : [];
+          _appSocialState.repliesByPost[id] = replies;
+          _appFeedReplyRenderList(id);
+          _appFeedMutatePostEverywhere(id, (post) => {
+            post.replyCount = replies.length;
+          });
+          _appRenderFeed();
+          if (_appSocialState.profileScreenOpen){
+            _appRenderFeedProfileScreen();
+          }
+          return replies;
+        }finally{
+          _appSocialState.repliesLoading = false;
+          _appFeedReplySyncAccess();
+        }
+      }
+      function _appFeedReplyOpen(postId){
+        const id = String(postId || "").trim();
+        if (!id || !el.appFeedReplyOverlay) return;
+        _appFeedEditorClose(false);
+        const post = _appFeedFindPost(id);
+        if (!post){
+          uiToast("投稿が見つかりません。");
+          return;
+        }
+        _appSocialState.replyOverlayOpen = true;
+        _appSocialState.replyPostId = id;
+        if (el.appFeedReplyInput) el.appFeedReplyInput.value = "";
+        _appFeedReplySyncCounter();
+        _appFeedReplyRenderTarget(post);
+        _appFeedReplyRenderList(id);
+        const author = String(post?.author?.displayName || post?.author?.nickname || "投稿");
+        if (el.appFeedReplyMeta){
+          el.appFeedReplyMeta.textContent = `${author}の投稿への返信`;
+        }
+        el.appFeedReplyOverlay.classList.remove("hidden");
+        document.body.classList.add("app-right-panel-lock");
+        _appFeedReplySyncAccess();
+        _appFeedReplyLoad(id, true).catch((err) => {
+          if (el.appFeedReplyStatus){
+            el.appFeedReplyStatus.textContent = `返信取得に失敗: ${String(err?.message || err)}`;
+          }
+        });
+        _runIdle(() => {
+          try{ el.appFeedReplyInput?.focus(); }catch{}
+        });
+      }
+      function _appFeedReplyClose(){
+        if (!el.appFeedReplyOverlay) return;
+        _appSocialState.replyOverlayOpen = false;
+        _appSocialState.replyPostId = "";
+        _appSocialState.repliesLoading = false;
+        _appSocialState.replySubmitting = false;
+        if (el.appFeedReplyInput) el.appFeedReplyInput.value = "";
+        _appFeedReplySyncCounter();
+        _appFeedReplySyncAccess();
+        el.appFeedReplyOverlay.classList.add("hidden");
+        if (!_appSocialState.rightPanelOpen && !_appSocialState.postEditorOpen){
+          document.body.classList.remove("app-right-panel-lock");
+        }
+      }
+      async function _appFeedReplySubmit(){
+        if (!_appFeaturePostsOn()) return;
+        const postId = String(_appSocialState.replyPostId || "").trim();
+        if (!postId) return;
+        if (!_appIsLoggedUser()){
+          uiToast("ログイン後に返信できます。");
+          return;
+        }
+        const bodyText = String(el.appFeedReplyInput?.value || "").trim();
+        if (!bodyText){
+          uiToast("返信本文を入力してください。");
+          return;
+        }
+        if (_appSocialState.replySubmitting) return;
+        const uid = _appAuthUserId();
+        const now = Date.now();
+        const tempId = `tmp_${now}_${Math.random().toString(36).slice(2, 8)}`;
+        const meName = String(authState?.user?.nickname || authState?.user?.displayName || "you");
+        const tempReply = {
+          id: tempId,
+          postId,
+          body: bodyText,
+          createdAt: now,
+          updatedAt: now,
+          author: {
+            userId: uid,
+            nickname: String(authState?.user?.nickname || ""),
+            displayName: meName
+          }
+        };
+        _appSocialState.replySubmitting = true;
+        _appFeedReplySyncAccess();
+        const cache = _appFeedReplyCache(postId);
+        cache.push(tempReply);
+        _appFeedReplyRenderList(postId);
+        _appFeedMutatePostEverywhere(postId, (post) => {
+          post.replyCount = Math.max(0, Number(post.replyCount || 0) + 1);
+        });
+        _appRenderFeed();
+        if (_appSocialState.profileScreenOpen) _appRenderFeedProfileScreen();
+        if (el.appFeedReplyInput) el.appFeedReplyInput.value = "";
+        _appFeedReplySyncCounter();
+        try{
+          const body = await _appApiJson("/api/posts/replies", {
+            method: "POST",
+            body: JSON.stringify({ postId, body: bodyText })
+          });
+          const reply = body?.reply && typeof body.reply === "object" ? body.reply : null;
+          const next = _appFeedReplyCache(postId).filter((r) => String(r?.id || "") !== tempId);
+          if (reply) next.push(reply);
+          _appSocialState.repliesByPost[postId] = next;
+          const replyCount = Math.max(0, Number(body?.replyCount || next.length));
+          _appFeedMutatePostEverywhere(postId, (post) => {
+            post.replyCount = replyCount;
+          });
+          _appFeedReplyRenderList(postId);
+          _appRenderFeed();
+          if (_appSocialState.profileScreenOpen) _appRenderFeedProfileScreen();
+        }catch(err){
+          _appSocialState.repliesByPost[postId] = _appFeedReplyCache(postId).filter((r) => String(r?.id || "") !== tempId);
+          _appFeedReplyRenderList(postId);
+          _appFeedMutatePostEverywhere(postId, (post) => {
+            post.replyCount = Math.max(0, Number(post.replyCount || 0) - 1);
+          });
+          _appRenderFeed();
+          if (_appSocialState.profileScreenOpen) _appRenderFeedProfileScreen();
+          uiToast(`返信に失敗: ${String(err?.message || err)}`);
+        }finally{
+          _appSocialState.replySubmitting = false;
+          _appFeedReplySyncAccess();
+        }
+      }
+
+      function _appFeedMutatePostEverywhere(postId, mutator){
+        const id = String(postId || "").trim();
+        if (!id || typeof mutator !== "function") return;
+        const apply = (arr) => {
+          if (!Array.isArray(arr)) return;
+          for (const post of arr){
+            if (String(post?.id || "") !== id) continue;
+            mutator(post);
+          }
+        };
+        apply(_appSocialState.posts);
+        const currentProfilePosts = _appSocialState.profileScreenData?.posts;
+        apply(currentProfilePosts);
+        const cache = _appSocialState.profileTimelineCache || {};
+        for (const key of Object.keys(cache)){
+          apply(cache[key]?.data?.posts);
+        }
+      }
+
+      function _appFeedApplyAction(post, action, enabled){
+        if (!post || !action) return;
+        const key = String(action || "");
+        const viewer = (post.viewer && typeof post.viewer === "object") ? post.viewer : {};
+        if (key === "like"){
+          const before = !!viewer.liked;
+          if (before === !!enabled) return;
+          post.likeCount = Math.max(0, Number(post.likeCount || 0) + (enabled ? 1 : -1));
+          viewer.liked = !!enabled;
+          post.liked = !!enabled;
+        } else if (key === "repost"){
+          const before = !!viewer.reposted;
+          if (before === !!enabled) return;
+          post.repostCount = Math.max(0, Number(post.repostCount || 0) + (enabled ? 1 : -1));
+          viewer.reposted = !!enabled;
+          post.reposted = !!enabled;
+        } else if (key === "bookmark"){
+          const before = !!viewer.bookmarked;
+          if (before === !!enabled) return;
+          post.bookmarkCount = Math.max(0, Number(post.bookmarkCount || 0) + (enabled ? 1 : -1));
+          viewer.bookmarked = !!enabled;
+          post.bookmarked = !!enabled;
+        }
+        post.viewer = viewer;
+      }
+
+      async function _appTogglePostAction(postId, action, triggerBtn){
+        const id = String(postId || "").trim();
+        const kind = String(action || "").trim().toLowerCase();
+        if (!id || !/^(like|repost|bookmark)$/.test(kind)) return;
+        if (!_appIsLoggedUser()){
+          uiToast("ログイン後に操作できます。");
+          return;
+        }
+        const busyKey = `${kind}:${id}`;
+        if (_appSocialState.postActionBusy.has(busyKey)) return;
+        let current = false;
+        const currentPost = (Array.isArray(_appSocialState.posts) ? _appSocialState.posts : []).find((p) => String(p?.id || "") === id);
+        if (currentPost?.viewer && typeof currentPost.viewer === "object"){
+          if (kind === "like") current = !!currentPost.viewer.liked;
+          if (kind === "repost") current = !!currentPost.viewer.reposted;
+          if (kind === "bookmark") current = !!currentPost.viewer.bookmarked;
+        } else {
+          current = !!currentPost?.[`${kind}d`];
+        }
+        const next = !current;
+        _appSocialState.postActionBusy.add(busyKey);
+        if (triggerBtn){
+          triggerBtn.classList.remove("is-pop");
+          try{ void triggerBtn.offsetWidth; }catch{}
+          triggerBtn.classList.add("is-pop");
+        }
+        _appFeedMutatePostEverywhere(id, (post) => _appFeedApplyAction(post, kind, next));
+        if (_appSocialState.profileScreenOpen){
+          const currentTab = _appNormalizeProfileTab(_appSocialState.profileScreenTab);
+          if ((currentTab === "likes" && kind === "like" && !next) || (currentTab === "bookmarks" && kind === "bookmark" && !next)){
+            if (Array.isArray(_appSocialState.profileScreenData?.posts)){
+              _appSocialState.profileScreenData.posts = _appSocialState.profileScreenData.posts.filter((p) => String(p?.id || "") !== id);
+            }
+          }
+        }
+        _appRenderFeed();
+        _appRenderFeedProfileScreen();
+        try{
+          const body = await _appApiJson("/api/posts/action", {
+            method: "POST",
+            body: JSON.stringify({
+              postId: id,
+              action: kind,
+              on: next
+            })
+          });
+          const count = Math.max(0, Number(body?.count || 0));
+          _appFeedMutatePostEverywhere(id, (post) => {
+            if (kind === "like") post.likeCount = count;
+            if (kind === "repost") post.repostCount = count;
+            if (kind === "bookmark") post.bookmarkCount = count;
+          });
+          _appRenderFeed();
+          _appRenderFeedProfileScreen();
+        }catch(err){
+          _appFeedMutatePostEverywhere(id, (post) => _appFeedApplyAction(post, kind, current));
+          _appRenderFeed();
+          _appRenderFeedProfileScreen();
+          uiToast(`操作に失敗: ${String(err?.message || err)}`);
+        }finally{
+          _appSocialState.postActionBusy.delete(busyKey);
+        }
+      }
+
+      async function _appEditPost(postId){
+        const id = String(postId || "").trim();
+        if (!id) return;
+        if (!_appIsLoggedUser()){
+          uiToast("ログイン後に編集できます。");
+          return;
+        }
+        const post = _appFeedFindPost(id);
+        if (!post){
+          uiToast("投稿が見つかりません。");
+          return;
+        }
+        if (Number(post?.author?.userId || 0) !== _appAuthUserId()){
+          uiToast("自分の投稿のみ編集できます。");
+          return;
+        }
+        if (_appSocialState.profileScreenOpen) _appClosePublicProfile();
+        _appFeedEditorOpen(post);
+      }
+
+      function _appReplyPost(postId){
+        const id = String(postId || "").trim();
+        if (!id) return;
+        _appFeedReplyOpen(id);
+      }
+
+      async function _appSharePost(postId){
+        const id = String(postId || "").trim();
+        if (!id) return;
+        const post = (Array.isArray(_appSocialState.posts) ? _appSocialState.posts : []).find((p) => String(p?.id || "") === id)
+          || (Array.isArray(_appSocialState.profileScreenData?.posts) ? _appSocialState.profileScreenData.posts.find((p) => String(p?.id || "") === id) : null);
+        const text = String(post?.title || post?.body || "VocabuQuiz Post");
+        try{
+          if (navigator.share){
+            await navigator.share({ text });
+            return;
+          }
+        }catch{}
+        try{
+          await navigator.clipboard.writeText(text);
+          uiToast("投稿内容をコピーしました。");
+        }catch{
+          uiToast("共有に失敗しました。");
+        }
+      }
+
       async function _appCreatePost(){
         if (!_appFeaturePostsOn()) return;
         if (!_appIsLoggedUser()){
           uiToast("投稿にはログインが必要です。");
           return;
         }
-        const title = String(el.appFeedPostTitle?.value || "").trim();
-        const bodyText = String(el.appFeedPostBody?.value || "").trim();
-        const link = String(el.appFeedPostLink?.value || "").trim();
-        const image = String(el.appFeedPostImage?.value || "").trim();
+        const form = _appFeedEditorGetForm();
+        const title = String(form.title || "");
+        const bodyText = String(form.body || "");
+        const links = Array.isArray(form.links) ? form.links : [];
+        const images = Array.isArray(form.images) ? form.images : [];
         if (!title && !bodyText){
           uiToast("タイトルか本文を入力してください。");
           return;
         }
         try{
-          await _appApiJson("/api/posts/create", {
-            method: "POST",
-            body: JSON.stringify({
-              title,
-              body: bodyText,
-              links: link ? [link] : [],
-              images: image ? [image] : []
-            })
-          });
-          if (el.appFeedPostTitle) el.appFeedPostTitle.value = "";
-          if (el.appFeedPostBody) el.appFeedPostBody.value = "";
-          if (el.appFeedPostLink) el.appFeedPostLink.value = "";
-          if (el.appFeedPostImage) el.appFeedPostImage.value = "";
+          const editing = String(_appSocialState.postEditId || "").trim();
+          if (editing){
+            await _appApiJson("/api/posts/update", {
+              method: "POST",
+              body: JSON.stringify({
+                postId: editing,
+                title,
+                body: bodyText,
+                links,
+                images
+              })
+            });
+          } else {
+            await _appApiJson("/api/posts/create", {
+              method: "POST",
+              body: JSON.stringify({
+                title,
+                body: bodyText,
+                links,
+                images
+              })
+            });
+          }
+          _appFeedEditorReset(true);
+          _appFeedEditorClose(false);
           await _appLoadFeed(true);
-          uiToast("投稿しました。");
+          if (_appSocialState.profileScreenOpen && _appSocialState.profileScreenUserId > 0){
+            await _appOpenPublicProfile(_appSocialState.profileScreenUserId, _appSocialState.profileScreenTab);
+          }
+          uiToast(editing ? "投稿を更新しました。" : "投稿しました。");
         }catch(err){
           uiToast(`投稿に失敗: ${String(err?.message || err)}`);
         }
@@ -21423,6 +23587,9 @@ function _openSearchResultByIndex(i){
             })
           });
           await _appLoadFeed(true);
+          if (_appSocialState.profileScreenOpen && _appSocialState.profileScreenUserId > 0){
+            await _appOpenPublicProfile(_appSocialState.profileScreenUserId, _appSocialState.profileScreenTab);
+          }
           if (_appCurrentTab === APP_TAB_KEY.LIBRARY){
             await _appLoadProfile(true);
           }
@@ -21434,10 +23601,7 @@ function _openSearchResultByIndex(i){
       function _appUsePresetForStart(pid){
         if (!pid) return false;
         if (isBuiltinPreset(pid)){
-          if (_isBuiltinPresetTerminatedUnavailable()){
-            uiToast("標準プリセットの配信は終了しました。My Preset を利用してください。");
-            return false;
-          }
+          if (_isBuiltinPresetTerminatedUnavailable()) return false;
           const dk = deckFromBuiltinId(pid);
           return !!setDeck(dk);
         }
@@ -21448,6 +23612,10 @@ function _openSearchResultByIndex(i){
       }
 
       function _appStartPresetMode(pid, mode){
+        if (isBuiltinPreset(pid) && _isBuiltinPresetTerminatedUnavailable()){
+          uiToast("標準プリセットの配信は終了しました。My Preset を利用してください。");
+          return;
+        }
         if (!_appUsePresetForStart(pid)){
           uiToast("プリセットが見つかりません。");
           return;
@@ -21521,6 +23689,16 @@ function _openSearchResultByIndex(i){
         return `${year}年${suffix}`;
       }
 
+      function _appInboxIconForItem(item){
+        const text = `${String(item?.category || "")} ${String(item?.title || "")} ${String(item?.body || "")}`.toLowerCase();
+        if (/(like|いいね|favorite|heart)/.test(text)) return "favorite";
+        if (/(follow|フォロー|user|profile|account)/.test(text)) return "person_add";
+        if (/(repost|share|共有|再投稿|repeat)/.test(text)) return "repeat";
+        if (/(comment|reply|返信|message|chat)/.test(text)) return "chat";
+        if (/(bookmark|保存)/.test(text)) return "bookmark";
+        return "notifications";
+      }
+
       function _appInboxCreateRow(id){
         const row = document.createElement("article");
         row.className = "app-inbox-item app-chat-msg is-ai";
@@ -21529,7 +23707,7 @@ function _openSearchResultByIndex(i){
         const avatar = document.createElement("div");
         avatar.className = "app-inbox-avatar";
         avatar.setAttribute("aria-hidden", "true");
-        avatar.textContent = "VQ";
+        avatar.innerHTML = `<span class="ms" aria-hidden="true">notifications</span>`;
 
         const body = document.createElement("div");
         body.className = "app-inbox-body";
@@ -21582,7 +23760,7 @@ function _openSearchResultByIndex(i){
         row.appendChild(avatar);
         row.appendChild(body);
 
-        row._appInboxRefs = { title, category, preview, time, readState, detail };
+        row._appInboxRefs = { avatar, title, category, preview, time, readState, detail };
         return row;
       }
 
@@ -21602,6 +23780,10 @@ function _openSearchResultByIndex(i){
         row.classList.toggle("priority-high", priority === "high");
         row.dataset.id = id;
 
+        if (refs.avatar){
+          const icon = _appInboxIconForItem(item);
+          refs.avatar.innerHTML = `<span class="ms" aria-hidden="true">${escapeHtml(icon)}</span>`;
+        }
         if (refs.title && refs.title.textContent !== title) refs.title.textContent = title;
         if (refs.preview && refs.preview.textContent !== preview) refs.preview.textContent = preview;
         if (refs.category && refs.category.textContent !== category) refs.category.textContent = category;
@@ -21660,11 +23842,6 @@ function _openSearchResultByIndex(i){
       }
 
       function _appRenderInbox(){
-        _appSyncFeedLabels();
-        if (_appFeaturePostsOn()){
-          _appRenderFeed();
-          return;
-        }
         if (!el.appInboxList || !el.appInboxEmpty) return;
         _appSyncInboxAdminButton();
         const seenAt = _notifSeenAt();
@@ -23915,7 +26092,7 @@ function _openSearchResultByIndex(i){
           return { type: "openShare", label: label || "共有の使い方を開く" };
         }
         if (key === "open_inbox"){
-          return { type: "openInbox", label: label || "通知を開く" };
+          return { type: "openInbox", label: label || "Notificationsを開く" };
         }
         if (key === "open_settings"){
           return { type: "openSettings", label: label || "設定を開く" };
@@ -24386,7 +26563,7 @@ function _openSearchResultByIndex(i){
           if (/共有/.test(`${intentTitle} ${userText}`)){
             actions.push({ type: "openShare", label: "共有画面を開く" });
           } else if (/通知/.test(`${intentTitle} ${userText}`)){
-            actions.push({ type: "openInbox", label: "Inboxを開く" });
+            actions.push({ type: "openInbox", label: "Notificationsを開く" });
           } else if (/admin|permission|denied|domain|設定|config|権限/i.test(`${intentTitle} ${userText}`)){
             actions.push({ type: "openSettings", label: "Settingsを開く" });
           }
@@ -24984,7 +27161,7 @@ function _openSearchResultByIndex(i){
           return;
         }
         if (type === "openInbox"){
-          _appSetTab("inbox");
+          _appSetTab("notifications");
           return;
         }
         if (type === "openHome"){
@@ -25076,10 +27253,11 @@ function _openSearchResultByIndex(i){
           _appLoadPublicPresets(false).catch(() => {});
         }
         if (tab === APP_TAB_KEY.INBOX){
+          _appRenderFeed();
+          _appLoadFeed(false).catch(() => {});
+        }
+        if (tab === APP_TAB_KEY.NOTIFICATIONS){
           _appRenderInbox();
-          if (_appFeaturePostsOn()){
-            _appLoadFeed(false).catch(() => {});
-          }
         }
         if (tab === APP_TAB_KEY.INSIGHT) _appRenderInsightsCards();
         if (tab === APP_TAB_KEY.CHAT){
@@ -25098,7 +27276,10 @@ function _openSearchResultByIndex(i){
       function _appSetTab(tab){
         const raw = String(tab || "");
         if (raw === "settings"){
+          _appFeedEditorClose(false);
+          _appFeedReplyClose();
           _appV2SetSidebarOpen(false);
+          _appV2SetRightPanelOpen(false);
           if (state.view !== "TITLE"){
             goTitle();
           }
@@ -25110,7 +27291,10 @@ function _openSearchResultByIndex(i){
         }
         const t = _appNormalizeTabKey(raw);
         _appCurrentTab = t;
+        _appFeedEditorClose(false);
+        _appFeedReplyClose();
         _appV2SetSidebarOpen(false);
+        _appV2SetRightPanelOpen(false);
         if (state.view !== "TITLE"){
           goTitle();
         }
@@ -25123,18 +27307,19 @@ function _openSearchResultByIndex(i){
             setTimeout(_chatForceLatestPosition, 760);
           }
           if (t === APP_TAB_KEY.INBOX){
+            _appFeedCloseDetail();
+            _appClosePublicProfile();
+            _appLoadFeed(true).catch(() => {});
+          }
+          if (t === APP_TAB_KEY.NOTIFICATIONS){
             _appInboxBackToList();
-            if (_appFeaturePostsOn()){
-              _appLoadFeed(true).catch(() => {});
-            } else {
-              const list = loadNotifications();
-              _notifMarkSeenByList(list);
-              updateNotifyDot();
-              _appRenderInbox();
-              _refreshNotificationsFromFirestore().then(() => {
-                if (_appCurrentTab === APP_TAB_KEY.INBOX) _appRenderInbox();
-              }).catch(() => {});
-            }
+            const list = loadNotifications();
+            _notifMarkSeenByList(list);
+            updateNotifyDot();
+            _appRenderInbox();
+            _refreshNotificationsFromFirestore().then(() => {
+              if (_appCurrentTab === APP_TAB_KEY.NOTIFICATIONS) _appRenderInbox();
+            }).catch(() => {});
           }
         });
       }
@@ -25203,8 +27388,11 @@ function _openSearchResultByIndex(i){
           return;
         }
         if (action === "openPublicProfile"){
-          await _appOpenPublicProfile(Number(id || 0));
           _appSetTab("inbox");
+          _runIdle(() => {
+            _appOpenPublicProfile(Number(id || 0)).catch(() => {});
+          });
+          return;
         }
       }
 
@@ -25315,6 +27503,12 @@ function _openSearchResultByIndex(i){
           _appLoadProfile(true).catch(() => {});
         });
       }
+      if (el.appProfileAvatarFile){
+        el.appProfileAvatarFile.addEventListener("change", () => {
+          const file = el.appProfileAvatarFile?.files?.[0] || null;
+          _appProfileHandleAvatarFileSelect(file).catch(() => {});
+        });
+      }
 
 
       el.startSeqBtn.addEventListener("click", () => startMode("SEQ"));
@@ -25350,7 +27544,12 @@ function _openSearchResultByIndex(i){
           _appV2SetSidebarOpen(false);
         });
       }
-
+      if (el.appRightDrawerBackdrop){
+        el.appRightDrawerBackdrop.addEventListener("click", (e) => {
+          e.preventDefault();
+          _appV2SetRightPanelOpen(false);
+        });
+      }
       el.backBtn.addEventListener("click", goTitle);
       el.primaryBtn.addEventListener("click", primaryAction);
       el.nextBtn.addEventListener("click", next);
@@ -25432,7 +27631,7 @@ function _openSearchResultByIndex(i){
 
       if (el.notifyBtn) el.notifyBtn.addEventListener("click", () => {
         if (state.view === "TITLE"){
-          _appSetTab("inbox");
+          _appSetTab("notifications");
           return;
         }
         if (el.searchOverlay && !el.searchOverlay.classList.contains("hidden")) closeSearch();
@@ -25485,6 +27684,44 @@ function _openSearchResultByIndex(i){
       el.updateOverlay?.addEventListener("click", (e) => {
         if (e.target === el.updateOverlay) closeUpdateNotes();
       });
+      if (el.appFeedEditorOverlay){
+        el.appFeedEditorOverlay.addEventListener("click", (e) => {
+          if (e.target === el.appFeedEditorOverlay){
+            _appFeedEditorClose(true);
+          }
+        });
+      }
+      if (el.appFeedEditorLinkInput){
+        el.appFeedEditorLinkInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter"){
+            e.preventDefault();
+            _appFeedEditorPushLink(el.appFeedEditorLinkInput?.value || "");
+          }
+        });
+      }
+      if (el.appFeedEditorImageInput){
+        el.appFeedEditorImageInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter"){
+            e.preventDefault();
+            _appFeedEditorPushImage(el.appFeedEditorImageInput?.value || "");
+          }
+        });
+      }
+      if (el.appFeedReplyOverlay){
+        el.appFeedReplyOverlay.addEventListener("click", (e) => {
+          if (e.target === el.appFeedReplyOverlay){
+            _appFeedReplyClose();
+          }
+        });
+      }
+      if (el.appFeedReplyInput){
+        el.appFeedReplyInput.addEventListener("keydown", (e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "Enter"){
+            e.preventDefault();
+            _appFeedReplySubmit().catch(() => {});
+          }
+        });
+      }
 
       if (el.dirEnJaBtn) el.dirEnJaBtn.addEventListener("click", () => setDirection("EN_JA"));
       if (el.dirJaEnBtn) el.dirJaEnBtn.addEventListener("click", () => setDirection("JA_EN"));
@@ -25499,12 +27736,16 @@ function _openSearchResultByIndex(i){
       const settingsQuestionCountSelect = document.getElementById("settingsQuestionCountSelect");
       const settingsExamTimeSelect = document.getElementById("settingsExamTimeSelect");
       const settingsAutoNextToggle = document.getElementById("settingsAutoNextToggle");
+      const settingsReverseExamToggle = document.getElementById("settingsReverseExamToggle");
+      const settingsReverseWriteToggle = document.getElementById("settingsReverseWriteToggle");
       const settingsSfxVolumeSelect = document.getElementById("settingsSfxVolumeSelect");
       const settingsThemeSelect = document.getElementById("settingsThemeSelect");
       const settingsFontSizeSelect = document.getElementById("settingsFontSizeSelect");
       if (settingsQuestionCountSelect) settingsQuestionCountSelect.addEventListener("change", (e) => setQuestionCount(e.target.value));
       if (settingsExamTimeSelect) settingsExamTimeSelect.addEventListener("change", (e) => setChoiceTimeLimitSec(e.target.value));
       if (settingsAutoNextToggle) settingsAutoNextToggle.addEventListener("change", (e) => setAutoNext(e.target.checked));
+      if (settingsReverseExamToggle) settingsReverseExamToggle.addEventListener("change", (e) => setReverseExamQA(e.target.checked));
+      if (settingsReverseWriteToggle) settingsReverseWriteToggle.addEventListener("change", (e) => setReverseWriteQA(e.target.checked));
       if (settingsSfxVolumeSelect) settingsSfxVolumeSelect.addEventListener("change", (e) => setSfxVolume(e.target.value));
       if (settingsThemeSelect) settingsThemeSelect.addEventListener("change", (e) => setTheme(e.target.value));
       if (settingsFontSizeSelect) settingsFontSizeSelect.addEventListener("change", (e) => setFontSize(e.target.value));
@@ -25517,11 +27758,6 @@ function _openSearchResultByIndex(i){
         }
         if (t.id === "appHomeProgressRange"){
           _appRenderHomeProgressInsights();
-          return;
-        }
-        if (t.id === "appFeedScopeSelect"){
-          _appSocialState.feedScope = String(t.value || "all");
-          _appLoadFeed(true).catch(() => {});
           return;
         }
         if (t.id === "adminMaintenanceEnabled" || t.id === "adminMaintenanceStartAt" || t.id === "adminMaintenanceEndAt"){
@@ -25561,14 +27797,39 @@ function _openSearchResultByIndex(i){
           _appLoadPublicPresets(true).catch(() => {});
           return;
         }
+        if (t.id === "appFeedEditorPostTitle" || t.id === "appFeedEditorPostBody"){
+          _appFeedEditorSyncCounter();
+          _appFeedEditorRenderPreview();
+          _appFeedEditorPersistDraft();
+          return;
+        }
+        if (t.id === "appFeedReplyInput"){
+          _appFeedReplySyncCounter();
+          return;
+        }
       });
       document.addEventListener("keydown", (e) => {
         if (e.key !== "Escape") return;
-        if (!_appV2IsDrawerMode()) return;
-        if (!document.body.classList.contains("app-v2-sidebar-open")) return;
+        if (_appSocialState.replyOverlayOpen){
+          e.preventDefault();
+          _appFeedReplyClose();
+          return;
+        }
+        if (_appSocialState.postEditorOpen){
+          e.preventDefault();
+          _appFeedEditorClose(true);
+          return;
+        }
+        if (_appSocialState.rightPanelOpen){
+          e.preventDefault();
+          _appV2SetRightPanelOpen(false);
+          return;
+        }
         const ae = document.activeElement;
         const typing = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable);
         if (typing) return;
+        if (!_appV2IsDrawerMode()) return;
+        if (!document.body.classList.contains("app-v2-sidebar-open")) return;
         e.preventDefault();
         _appV2SetSidebarOpen(false);
       }, true);
@@ -25593,21 +27854,92 @@ function _openSearchResultByIndex(i){
           return;
         }
         const appV2ActionBtn = e.target.closest("[data-v2-action]");
-        if (appV2ActionBtn && (appV2ActionBtn.closest("#appTabBar") || appV2ActionBtn.closest("#viewTitle"))){
+        if (appV2ActionBtn && (appV2ActionBtn.closest("#appTabBar") || appV2ActionBtn.closest("#viewTitle") || appV2ActionBtn.closest("#appRightDrawer") || appV2ActionBtn.closest(".topbar"))){
           e.preventDefault();
           const action = String(appV2ActionBtn.getAttribute("data-v2-action") || "");
+          if (action === "toggle-right-panel"){
+            if (_appSocialState.rightPanelOpen){
+              _appV2SetRightPanelOpen(false);
+            } else {
+              _appV2SetRightPanelOpen(true);
+              if (typeof _openRightUtilityView === "function"){
+                _openRightUtilityView("root");
+              }
+            }
+            return;
+          }
+          if (action === "close-right-panel"){
+            _appV2SetRightPanelOpen(false);
+            return;
+          }
+          if (action === "right-back"){
+            if (typeof _menuBack === "function"){
+              _menuBack();
+            } else {
+              _appV2SetRightPanelOpen(false);
+            }
+            return;
+          }
+          if (action === "open-utility"){
+            const utilId = String(appV2ActionBtn.getAttribute("data-id") || "").trim().toLowerCase();
+            if (utilId === "settings"){
+              _appSetTab("settings");
+              return;
+            }
+            if (utilId === "memocheck"){
+              _openRightUtilityView("memoCheck");
+              return;
+            }
+            if (utilId === "presetshare"){
+              _openRightUtilityView("presetShare");
+              return;
+            }
+            if (utilId === "onlinebattlerealtime"){
+              _appV2SetRightPanelOpen(false);
+              try{
+                if (typeof _rtBattleOverlayOpen === "function") _rtBattleOverlayOpen("top");
+                else _openRightUtilityView("onlineBattleRealtime");
+              }catch(err){
+                uiToast(`オンライン対戦を開けませんでした: ${String(err?.message || err)}`);
+              }
+              return;
+            }
+            if (utilId === "report"){
+              _openRightUtilityView("report");
+              return;
+            }
+            if (utilId === "help"){
+              _openRightUtilityView("help");
+              return;
+            }
+            if (utilId === "contact"){
+              _openRightUtilityView("report");
+              return;
+            }
+            if (utilId === "terms" || utilId === "privacy"){
+              _openRightUtilityView("terms");
+              return;
+            }
+            if (utilId === "version"){
+              uiToast("VocabuQuiz バージョン情報を表示中です。");
+              return;
+            }
+            return;
+          }
           if (action === "logout"){
             await _authLogout();
             _appSetTab("home");
             return;
           }
           if (action === "open-profile"){
-            _appSetTab("library");
+            const uid = _appAuthUserId();
+            if (!uid){
+              uiToast("ログイン後に利用できます。");
+              return;
+            }
+            _appSetTab("inbox");
             _runIdle(() => {
-              _appLoadProfile(true).catch(() => {});
-              if (el.appProfileBlock){
-                try{ el.appProfileBlock.scrollIntoView({ behavior: "smooth", block: "start" }); }catch{}
-              }
+              _appOpenPublicProfile(uid).catch(() => {});
             });
             return;
           }
@@ -25670,8 +28002,10 @@ function _openSearchResultByIndex(i){
               uiToast("ログイン後に利用できます。");
               return;
             }
-            await _appOpenPublicProfile(uid);
             _appSetTab("inbox");
+            _runIdle(() => {
+              _appOpenPublicProfile(uid).catch(() => {});
+            });
             return;
           }
         }
@@ -25686,7 +28020,7 @@ function _openSearchResultByIndex(i){
         }
 
         const inboxActionBtn = e.target.closest("[data-inbox-action]");
-        if (inboxActionBtn && inboxActionBtn.closest("#appInboxPage")){
+        if (inboxActionBtn && inboxActionBtn.closest("#appNotificationsPage")){
           e.preventDefault();
           const action = inboxActionBtn.getAttribute("data-inbox-action") || "";
           if (action === "openAdminEditor"){
@@ -25725,29 +28059,154 @@ function _openSearchResultByIndex(i){
           }
         }
         const feedActionBtn = e.target.closest("[data-feed-action]");
-        if (feedActionBtn && feedActionBtn.closest("#appInboxPage")){
-          e.preventDefault();
+        if (feedActionBtn && (feedActionBtn.closest("#appInboxPage") || feedActionBtn.closest("#appFeedEditorOverlay") || feedActionBtn.closest("#appFeedReplyOverlay"))){
           const action = String(feedActionBtn.getAttribute("data-feed-action") || "");
-          if (action === "createPost"){
+          if (action === "openPost" && e.target && e.target.closest && e.target.closest("a[href]")){
+            return;
+          }
+          e.preventDefault();
+          if (action === "openEditor"){
+            if (!_appIsLoggedUser()){
+              uiToast("ログイン後に投稿できます。");
+              return;
+            }
+            _appFeedEditorOpen();
+            return;
+          }
+          if (action === "submitPostEditor"){
             await _appCreatePost();
             return;
           }
-          if (action === "reload"){
-            await _appLoadFeed(true);
+          if (action === "closeEditor"){
+            _appFeedEditorClose(true);
+            return;
+          }
+          if (action === "closeReply"){
+            _appFeedReplyClose();
+            return;
+          }
+          if (action === "submitReply"){
+            await _appFeedReplySubmit();
+            return;
+          }
+          if (action === "addEditorLink"){
+            _appFeedEditorPushLink(el.appFeedEditorLinkInput?.value || "");
+            return;
+          }
+          if (action === "addEditorImage"){
+            _appFeedEditorPushImage(el.appFeedEditorImageInput?.value || "");
+            return;
+          }
+          if (action === "removeEditorLink"){
+            const idx = Math.max(-1, Number(feedActionBtn.getAttribute("data-id") || -1));
+            if (idx >= 0){
+              _appSocialState.postEditorLinks = _appSocialState.postEditorLinks.filter((_, i) => i !== idx);
+              _appFeedEditorRenderChipList("link");
+              _appFeedEditorRenderPreview();
+              _appFeedEditorPersistDraft();
+            }
+            return;
+          }
+          if (action === "removeEditorImage"){
+            const idx = Math.max(-1, Number(feedActionBtn.getAttribute("data-id") || -1));
+            if (idx >= 0){
+              _appSocialState.postEditorImages = _appSocialState.postEditorImages.filter((_, i) => i !== idx);
+              _appFeedEditorRenderChipList("image");
+              _appFeedEditorRenderPreview();
+              _appFeedEditorPersistDraft();
+            }
+            return;
+          }
+          if (action === "toggleEditorPreview"){
+            _appSocialState.postEditorPreviewOpen = !_appSocialState.postEditorPreviewOpen;
+            _appFeedEditorRenderPreview();
+            return;
+          }
+          if (action === "saveEditorDraft"){
+            _appFeedEditorPersistDraft();
+            uiToast("下書きを保存しました。");
+            return;
+          }
+          if (action === "clearEditor"){
+            _appFeedEditorReset(true);
+            uiToast("入力をクリアしました。");
             return;
           }
           if (action === "openProfile"){
             await _appOpenPublicProfile(Number(feedActionBtn.getAttribute("data-id") || 0));
             return;
           }
+          if (action === "editMyProfile"){
+            _appSetTab("library");
+            _runIdle(() => {
+              try{
+                document.getElementById("appProfileBlock")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                el.appProfileAvatarInput?.focus();
+              }catch{}
+            });
+            return;
+          }
+          if (action === "openFollowList"){
+            const kind = String(feedActionBtn.getAttribute("data-id") || "following");
+            await _appFeedProfileOpenFollowList(kind);
+            return;
+          }
+          if (action === "closeFollowList"){
+            _appFeedProfileCloseFollowList();
+            return;
+          }
           if (action === "closeProfile"){
             _appClosePublicProfile();
+            return;
+          }
+          if (action === "backToFeed"){
+            _appClosePublicProfile();
+            return;
+          }
+          if (action === "profileTab"){
+            const tab = String(feedActionBtn.getAttribute("data-id") || "posts");
+            if (!_appSocialState.profileScreenUserId){
+              return;
+            }
+            _appSocialState.profileScreenTab = _appNormalizeProfileTab(tab);
+            _appRenderFeedProfileScreen();
+            await _appOpenPublicProfile(_appSocialState.profileScreenUserId, _appSocialState.profileScreenTab);
             return;
           }
           if (action === "toggleFollow"){
             const uid = Number(feedActionBtn.getAttribute("data-id") || 0);
             const follow = String(feedActionBtn.getAttribute("data-follow") || "1") !== "0";
             await _appToggleFollow(uid, follow);
+            return;
+          }
+          if (action === "openPost"){
+            const postId = String(feedActionBtn.getAttribute("data-id") || "").trim();
+            _appFeedOpenDetail(postId);
+            return;
+          }
+          if (action === "closePost"){
+            _appFeedCloseDetail();
+            return;
+          }
+          if (action === "togglePostAction"){
+            const postId = String(feedActionBtn.getAttribute("data-id") || "").trim();
+            const kind = String(feedActionBtn.getAttribute("data-kind") || "").trim().toLowerCase();
+            await _appTogglePostAction(postId, kind, feedActionBtn);
+            return;
+          }
+          if (action === "editPost"){
+            const postId = String(feedActionBtn.getAttribute("data-id") || "").trim();
+            await _appEditPost(postId);
+            return;
+          }
+          if (action === "replyPost"){
+            const postId = String(feedActionBtn.getAttribute("data-id") || "").trim();
+            _appReplyPost(postId);
+            return;
+          }
+          if (action === "sharePost"){
+            const postId = String(feedActionBtn.getAttribute("data-id") || "").trim();
+            await _appSharePost(postId);
             return;
           }
         }
@@ -32901,6 +35360,12 @@ function _openSearchResultByIndex(i){
       _appV2SyncLayoutMetrics();
       _publicAppConfigBootstrap({ reason: "boot" }).catch(() => {});
       renderAll();
+      _ensureBundledPresetLoaded().then(() => {
+        try{
+          if (state.view === "TITLE") renderAll();
+          if (typeof _appLibraryRender === "function") _appLibraryRender();
+        }catch{}
+      });
       _startBuiltinPresetTerminationWatcher();
       _updateBuiltinTerminationNotice();
       if (el.updateOverlay) el.updateOverlay.classList.add("hidden");
@@ -32945,8 +35410,10 @@ function _openSearchResultByIndex(i){
 
       const _menuState = {
         inited: false,
+        host: "legacy",
         view: "root",
         rootHtml: "",
+        rightRootHtml: "",
         reportDraft: { email: "", subject: "", message: "" },
         sending: false,
         emailjsReady: false,
@@ -32967,6 +35434,41 @@ function _openSearchResultByIndex(i){
           timerId: null
         }
       };
+      function _menuHostElements(){
+        if (_menuState.host === "right"){
+          return {
+            host: "right",
+            overlay: null,
+            panel: document.getElementById("appRightDrawer"),
+            title: document.getElementById("appRightDrawerTitle"),
+            content: document.getElementById("appRightUtilityContent"),
+            root: document.getElementById("appRightUtilityRoot"),
+            backBtn: document.getElementById("appRightDrawerBackBtn")
+          };
+        }
+        const legacy = _menuEls();
+        return {
+          host: "legacy",
+          overlay: legacy.overlay || null,
+          panel: legacy.panel || null,
+          title: legacy.title || null,
+          content: legacy.content || null,
+          root: null,
+          backBtn: null
+        };
+      }
+      function _menuActiveContentEl(){
+        const host = _menuHostElements();
+        return host.content || document.getElementById("menuContent") || document;
+      }
+      function _menuInScope(target){
+        return !!(target && target.closest && target.closest("#menuPanel, #appRightDrawer"));
+      }
+      function _openRightUtilityView(view){
+        _menuState.host = "right";
+        _appV2SetRightPanelOpen(true);
+        _setMenuView(String(view || "root"));
+      }
       const MEMO_CHECK_KEY = "app.memoCheck.v1";
       const MEMO_DEFAULT_BLOCKS = [
         "EXAMミス理由：意味取り違え",
@@ -35164,7 +37666,7 @@ function _openSearchResultByIndex(i){
       }
       function _battleRerender(){
         if (_menuState.view !== "onlineBattle") return;
-        const content = document.getElementById("menuContent");
+        const content = _menuActiveContentEl();
         if (!content) return;
         content.innerHTML = _renderOnlineBattleHTML();
         _customSelectEnhance(content);
@@ -35573,7 +38075,7 @@ function _openSearchResultByIndex(i){
       function _battleInitView(){
         if (_menuState.view !== "onlineBattle") return;
         const st = _battleState();
-        _customSelectEnhance(document.getElementById("menuContent") || document);
+        _customSelectEnhance(_menuActiveContentEl());
         const modeEl = document.getElementById("battleModeSelect");
         const presetEl = document.getElementById("battlePresetSelect");
         const countEl = document.getElementById("battleCountSelect");
@@ -35749,7 +38251,7 @@ function _openSearchResultByIndex(i){
       }
       function _rtBattleRerender(){
         if (_menuState.view !== "onlineBattleRealtime") return;
-        const content = document.getElementById("menuContent");
+        const content = _menuActiveContentEl();
         if (!content) return;
         content.innerHTML = _renderOnlineBattleRealtimeHTML();
         _customSelectEnhance(content);
@@ -36028,7 +38530,7 @@ function _openSearchResultByIndex(i){
       function _rtBattleInitView(){
         if (_menuState.view !== "onlineBattleRealtime") return;
         const st = _rtBattleState();
-        const content = document.getElementById("menuContent") || document;
+        const content = _menuActiveContentEl();
         _customSelectEnhance(content);
         const modeEl = document.getElementById("rtBattleModeSelect");
         const presetEl = document.getElementById("rtBattlePresetSelect");
@@ -36411,7 +38913,7 @@ function _openSearchResultByIndex(i){
           sel.disabled = true;
           if (createBtn) createBtn.disabled = true;
           _menuState.presetShare.selectedPresetId = "";
-          _customSelectEnhance(document.getElementById("menuContent") || document);
+          _customSelectEnhance(_menuActiveContentEl());
           return;
         }
         sel.disabled = false;
@@ -36427,7 +38929,7 @@ function _openSearchResultByIndex(i){
         if (prev && list.some(p => p.id === prev)) sel.value = prev;
         else sel.value = list[0].id;
         _menuState.presetShare.selectedPresetId = sel.value;
-        _customSelectEnhance(document.getElementById("menuContent") || document);
+        _customSelectEnhance(_menuActiveContentEl());
       }
       function _drawerShareRenderQROnce(shareLink){
         const img = document.getElementById("drawerShareQrImg");
@@ -36653,7 +39155,7 @@ function _openSearchResultByIndex(i){
           const r = document.getElementById("memoInsightsRangeSelect");
           if (m) m.value = insights.mode || "ALL";
           if (r) r.value = insights.range || "30D";
-          _customSelectEnhance(document.getElementById("menuContent") || document);
+          _customSelectEnhance(_menuActiveContentEl());
           _memoRenderInsightsTop();
           _memoRenderCalendar();
         } else if (_menuState.view === "memoDay"){
@@ -36662,39 +39164,43 @@ function _openSearchResultByIndex(i){
           const recMode = all[_menuState.memoCheck.currentDate]?.recommended?.mode || "CHOICE";
           const modeEl = document.getElementById("memoRecommendedMode");
           if (modeEl) modeEl.value = recMode;
-          _customSelectEnhance(document.getElementById("menuContent") || document);
+          _customSelectEnhance(_menuActiveContentEl());
         } else if (_menuState.view === "presetShare"){
           _drawerShareInitView();
-          _customSelectEnhance(document.getElementById("menuContent") || document);
+          _customSelectEnhance(_menuActiveContentEl());
         } else if (_menuState.view === "onlineBattle"){
           _battleInitView();
-          _customSelectEnhance(document.getElementById("menuContent") || document);
+          _customSelectEnhance(_menuActiveContentEl());
         } else if (_menuState.view === "onlineBattleRealtime"){
           _rtBattleInitView();
-          _customSelectEnhance(document.getElementById("menuContent") || document);
+          _customSelectEnhance(_menuActiveContentEl());
         }
       }
 
       function _setMenuView(view){
-        const { overlay, panel, title, content } = _menuEls();
+        const { host, overlay, panel, title, content, root, backBtn } = _menuHostElements();
         if(!panel || !title || !content) return;
         _customSelectClose();
 
-        if(!_menuState.rootHtml){
+        if (host === "right"){
+          if (!_menuState.rightRootHtml){
+            _menuState.rightRootHtml = (root?.innerHTML || "").trim();
+          }
+        } else if(!_menuState.rootHtml){
           _menuState.rootHtml = content.innerHTML || "";
         }
 
         _menuState.view = view;
 
         let ttl = "MENU";
-        let html = _menuState.rootHtml;
+        let html = (host === "right") ? (_menuState.rightRootHtml || "") : _menuState.rootHtml;
 
         if(view === "root"){
-          panel.classList.remove("has-back");
+          if (host === "legacy") panel.classList.remove("has-back");
           ttl = "MENU";
-          html = _menuState.rootHtml;
+          html = (host === "right") ? (_menuState.rightRootHtml || "") : _menuState.rootHtml;
         } else {
-          panel.classList.add("has-back");
+          if (host === "legacy") panel.classList.add("has-back");
           if(view === "help"){ ttl = "Help"; html = _renderHelpHTML(); }
           else if(view === "terms"){ ttl = "Terms"; html = _renderTermsHTML(); }
           else if(view === "report"){ ttl = "Report"; html = _renderReportFormHTML(); }
@@ -36705,7 +39211,12 @@ function _openSearchResultByIndex(i){
           else if(view === "presetShare"){ ttl = "プリセットを共有"; html = _renderPresetShareHTML(); }
           else if(view === "onlineBattle"){ ttl = "オンライン対戦"; html = _renderOnlineBattleHTML(); }
           else if(view === "onlineBattleRealtime"){ ttl = "オンライン対戦（リアルタイム）"; html = _renderOnlineBattleRealtimeHTML(); }
-          else { ttl = "MENU"; html = _menuState.rootHtml; panel.classList.remove("has-back"); _menuState.view = "root"; }
+          else {
+            ttl = "MENU";
+            html = (host === "right") ? (_menuState.rightRootHtml || "") : _menuState.rootHtml;
+            if (host === "legacy") panel.classList.remove("has-back");
+            _menuState.view = "root";
+          }
         }
 
         if (view !== "presetShare") _drawerShareStopTimer();
@@ -36718,11 +39229,22 @@ function _openSearchResultByIndex(i){
         }
 
         const isMemoFull = (view === "memoCheck" || view === "memoDay");
-        panel.classList.toggle("memo-full", isMemoFull);
-        if (overlay) overlay.classList.toggle("memo-full", isMemoFull);
+        if (host === "legacy"){
+          panel.classList.toggle("memo-full", isMemoFull);
+          if (overlay) overlay.classList.toggle("memo-full", isMemoFull);
+        }
 
         title.textContent = ttl;
-        content.innerHTML = html;
+        if (host === "right" && root){
+          root.classList.toggle("hidden", _menuState.view !== "root");
+          content.classList.toggle("hidden", _menuState.view === "root");
+        }
+        if (_menuState.view !== "root" || host === "legacy"){
+          content.innerHTML = html;
+        }
+        if (backBtn){
+          backBtn.classList.toggle("hidden", _menuState.view === "root");
+        }
         _customSelectEnhance(content);
 
         // Always show the top of the content
@@ -36961,6 +39483,7 @@ function _openSearchResultByIndex(i){
           _menuNotifyNotFound();
           return;
         }
+        _menuState.host = "legacy";
 
         _menuCancelCloseWait();
 
@@ -36983,6 +39506,11 @@ function _openSearchResultByIndex(i){
       }
 
       function closeMenu(){
+        if (_menuState.host === "right"){
+          _setMenuView("root");
+          _appV2SetRightPanelOpen(false);
+          return;
+        }
         const { overlay, panel } = _menuEls();
         if(!overlay || !panel){
           _menuNotifyNotFound();
@@ -37049,6 +39577,26 @@ function _openSearchResultByIndex(i){
       }
 
       function _menuBack(){
+        if (_menuState.host === "right"){
+          if(_menuState.view === "reportConfirm"){
+            _setMenuView("report");
+            return;
+          }
+          if(_menuState.view === "reportDone"){
+            _setMenuView("root");
+            return;
+          }
+          if(_menuState.view === "memoDay"){
+            _setMenuView("memoCheck");
+            return;
+          }
+          if(_menuState.view !== "root"){
+            _setMenuView("root");
+            return;
+          }
+          _appV2SetRightPanelOpen(false);
+          return;
+        }
         if(_menuState.view === "reportConfirm"){
           _setMenuView("report");
           return;
@@ -37167,9 +39715,9 @@ function _openSearchResultByIndex(i){
           }
 
           const faqChip = e.target.closest(".faq-chip[data-faq-cat]");
-          if (faqChip && faqChip.closest("#menuPanel")){
+          if (faqChip && _menuInScope(faqChip)){
             e.preventDefault();
-            const panel = faqChip.closest("#menuPanel");
+            const panel = faqChip.closest("#menuPanel, #appRightDrawer");
             const cat = String(faqChip.getAttribute("data-faq-cat") || "ALL");
             _faqFilterState.category = cat;
             panel.querySelectorAll(".faq-chip[data-faq-cat]").forEach((chip) => {
@@ -37183,7 +39731,7 @@ function _openSearchResultByIndex(i){
 
           // FAQ open/close animation
           const summaryEl = e.target.closest("summary");
-          if (summaryEl && summaryEl.closest("#menuPanel")){
+          if (summaryEl && _menuInScope(summaryEl)){
             const detailsEl = summaryEl.parentElement;
             if (detailsEl && detailsEl.tagName === "DETAILS" && detailsEl.classList.contains("faq")){
               e.preventDefault();
@@ -37194,13 +39742,13 @@ function _openSearchResultByIndex(i){
 
           // Close / Back
           const closeBtn = e.target.closest('[data-menu-action="close"]');
-          if(closeBtn && closeBtn.closest("#menuPanel")){
+          if(closeBtn && _menuInScope(closeBtn)){
             e.preventDefault();
             closeMenu();
             return;
           }
           const backBtn = e.target.closest('[data-menu-action="back"]');
-          if(backBtn && backBtn.closest("#menuPanel")){
+          if(backBtn && _menuInScope(backBtn)){
             e.preventDefault();
             _menuBack();
             return;
@@ -37208,7 +39756,7 @@ function _openSearchResultByIndex(i){
 
           // Menu items
           const item = e.target.closest('.menu-item[data-menu-action]');
-          if(item && item.closest("#menuPanel")){
+          if(item && _menuInScope(item)){
             e.preventDefault();
             _handleMenuAction(item.getAttribute("data-menu-action"));
             return;
@@ -37216,7 +39764,7 @@ function _openSearchResultByIndex(i){
 
           // Memo check actions
           const memoBtn = e.target.closest("[data-memo-action]");
-          if (memoBtn && memoBtn.closest("#menuPanel")){
+          if (memoBtn && _menuInScope(memoBtn)){
             e.preventDefault();
             const act = memoBtn.getAttribute("data-memo-action");
             if (act === "monthPrev"){
@@ -37283,7 +39831,7 @@ function _openSearchResultByIndex(i){
           }
 
           const shareTabBtn = e.target.closest("[data-share-tab]");
-          if (shareTabBtn && shareTabBtn.closest("#menuPanel")){
+          if (shareTabBtn && _menuInScope(shareTabBtn)){
             e.preventDefault();
             const tab = shareTabBtn.getAttribute("data-share-tab");
             _drawerShareApplyTab(tab === "import" ? "import" : "share");
@@ -37291,7 +39839,7 @@ function _openSearchResultByIndex(i){
           }
 
           const shareBtn = e.target.closest("[data-share-action]");
-          if (shareBtn && shareBtn.closest("#menuPanel")){
+          if (shareBtn && _menuInScope(shareBtn)){
             e.preventDefault();
             const act = shareBtn.getAttribute("data-share-action");
             if (act === "create"){
@@ -37320,7 +39868,7 @@ function _openSearchResultByIndex(i){
           }
 
           const battleBtn = e.target.closest("[data-battle-action]");
-          if (battleBtn && battleBtn.closest("#menuPanel")){
+          if (battleBtn && _menuInScope(battleBtn)){
             e.preventDefault();
             const act = String(battleBtn.getAttribute("data-battle-action") || "");
             if (act === "startQueue"){
@@ -37356,7 +39904,7 @@ function _openSearchResultByIndex(i){
           }
 
           const rtBattleBtn = e.target.closest("[data-rt-battle-action]");
-          if (rtBattleBtn && rtBattleBtn.closest("#menuPanel, #onlineOverlay")){
+          if (rtBattleBtn && (rtBattleBtn.closest("#onlineOverlay") || _menuInScope(rtBattleBtn))){
             e.preventDefault();
             const act = String(rtBattleBtn.getAttribute("data-rt-battle-action") || "");
           if (typeof _rtBattleOverlayHandleAction === "function" && _rtBattleOverlayHandleAction(act, rtBattleBtn)) return;
@@ -37383,7 +39931,7 @@ function _openSearchResultByIndex(i){
           }
 
           const calDay = e.target.closest("[data-memo-date]");
-          if (calDay && calDay.closest("#menuPanel")){
+          if (calDay && _menuInScope(calDay)){
             e.preventDefault();
             const ymd = calDay.getAttribute("data-memo-date");
             _menuState.memoCheck.currentDate = ymd || _memoToYmd(Date.now());
@@ -37392,17 +39940,17 @@ function _openSearchResultByIndex(i){
           }
 
           const memoBlock = e.target.closest("[data-memo-block]");
-          if (memoBlock && memoBlock.closest("#menuPanel")){
+          if (memoBlock && _menuInScope(memoBlock)){
             e.preventDefault();
             const txt = memoBlock.getAttribute("data-memo-block") || "";
             _menuState.memoCheck.selectedBlock = txt;
-            document.querySelectorAll("#menuPanel [data-memo-block]").forEach(x => x.classList.toggle("is-selected", x === memoBlock));
+            document.querySelectorAll("#menuPanel [data-memo-block], #appRightDrawer [data-memo-block]").forEach(x => x.classList.toggle("is-selected", x === memoBlock));
             _memoAddPickedBlock(txt);
             return;
           }
 
           const memoSlot = e.target.closest(".memo-slot[data-memo-slot]");
-          if (memoSlot && memoSlot.closest("#menuPanel")){
+          if (memoSlot && _menuInScope(memoSlot)){
             const selected = _menuState.memoCheck.selectedBlock;
             if (selected){
               _memoInsertToSlot(memoSlot.getAttribute("data-memo-slot"), selected);
@@ -37412,7 +39960,7 @@ function _openSearchResultByIndex(i){
 
           // Report actions
           const rbtn = e.target.closest('[data-report-action]');
-          if(rbtn && rbtn.closest("#menuPanel")){
+          if(rbtn && _menuInScope(rbtn)){
             e.preventDefault();
 
             const act = rbtn.getAttribute("data-report-action");
@@ -37500,7 +40048,7 @@ function _openSearchResultByIndex(i){
         document.addEventListener("change", (e)=>{
           const t = e.target;
           if (!(t instanceof Element)) return;
-          if (!t.closest("#menuPanel") && !t.closest("#onlineOverlay")) return;
+          if (!_menuInScope(t) && !t.closest("#onlineOverlay")) return;
           if (t.id === "battleModeSelect" || t.id === "battlePresetSelect" || t.id === "battleCountSelect"){
             _battleApplyFormFromDom();
             return;
@@ -37530,7 +40078,7 @@ function _openSearchResultByIndex(i){
         document.addEventListener("input", (e)=>{
           const t = e.target;
           if (!(t instanceof HTMLElement)) return;
-          if (!t.closest("#menuPanel") && !t.closest("#onlineOverlay")) return;
+          if (!_menuInScope(t) && !t.closest("#onlineOverlay")) return;
           if (t instanceof HTMLInputElement && t.id === "drawerShareImportCode"){
             const code = _drawerShareSanitizeCode(t.value);
             if (code !== t.value) t.value = code;
@@ -37575,7 +40123,7 @@ function _openSearchResultByIndex(i){
 
         document.addEventListener("dragstart", (e)=>{
           const block = e.target && e.target.closest ? e.target.closest("[data-memo-block]") : null;
-          if (!block || !block.closest("#menuPanel")) return;
+          if (!block || !_menuInScope(block)) return;
           const text = block.getAttribute("data-memo-block") || "";
           if (!e.dataTransfer) return;
           e.dataTransfer.setData("text/plain", text);
@@ -37583,13 +40131,13 @@ function _openSearchResultByIndex(i){
         }, true);
         document.addEventListener("dragover", (e)=>{
           const slot = e.target && e.target.closest ? e.target.closest(".memo-slot[data-memo-slot]") : null;
-          if (!slot || !slot.closest("#menuPanel")) return;
+          if (!slot || !_menuInScope(slot)) return;
           e.preventDefault();
           if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
         }, true);
         document.addEventListener("drop", (e)=>{
           const slot = e.target && e.target.closest ? e.target.closest(".memo-slot[data-memo-slot]") : null;
-          if (!slot || !slot.closest("#menuPanel")) return;
+          if (!slot || !_menuInScope(slot)) return;
           e.preventDefault();
           const text = e.dataTransfer ? e.dataTransfer.getData("text/plain") : "";
           if (!text) return;
@@ -37600,7 +40148,7 @@ function _openSearchResultByIndex(i){
         document.addEventListener("keydown", (e)=>{
           const t = e.target;
           if (!(t instanceof HTMLElement)) return;
-          if (!t.closest("#menuPanel") && !t.closest("#onlineOverlay")) return;
+          if (!_menuInScope(t) && !t.closest("#onlineOverlay")) return;
           if (t.id === "battleWriteInput" && e.key === "Enter" && !e.shiftKey){
             e.preventDefault();
             _battleSubmitAnswer((t instanceof HTMLInputElement) ? (t.value || "") : "");
@@ -37839,7 +40387,7 @@ function _openSearchResultByIndex(i){
       }
       function _rtBattleRerender(){
         if (_menuState.view !== "onlineBattleRealtime") return;
-        const content = document.getElementById("menuContent");
+        const content = _menuActiveContentEl();
         if (!content) return;
         content.innerHTML = _renderOnlineBattleRealtimeHTML();
         _rtBattleInitView();
@@ -38425,7 +40973,7 @@ function _openSearchResultByIndex(i){
       function _rtBattleInitView(){
         if (_menuState.view !== "onlineBattleRealtime") return;
         const st = _rtBattleState();
-        const content = document.getElementById("menuContent") || document;
+        const content = _menuActiveContentEl();
         _customSelectEnhance(content);
         const createPwEl = document.getElementById("rtRoomCreatePasswordInput");
         const joinIdEl = document.getElementById("rtRoomJoinIdInput");
@@ -39777,7 +42325,7 @@ function _openSearchResultByIndex(i){
           return;
         }
         if (_menuState.view !== "onlineBattleRealtime") return;
-        const content = document.getElementById("menuContent");
+        const content = _menuActiveContentEl();
         if (!content) return;
         content.innerHTML = _renderOnlineBattleRealtimeHTML();
         _rtBattleInitView();
