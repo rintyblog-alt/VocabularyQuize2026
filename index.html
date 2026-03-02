@@ -4929,7 +4929,11 @@ body[data-app-tab="chat"] #appChatPage{
   gap: 8px;
   min-width: 0;
 }
+.app-feed-author.is-clickable{
+  cursor: pointer;
+}
 .app-feed-avatar{
+  position: relative;
   width: 42px;
   height: 42px;
   border-radius: 999px;
@@ -4942,6 +4946,18 @@ body[data-app-tab="chat"] #appChatPage{
   font-weight: 800;
   letter-spacing: .02em;
   flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  overflow: hidden;
+}
+.app-feed-avatar.has-image{
+  color: transparent;
+}
+.app-feed-avatar.has-image::after{
+  content: "";
+  position: absolute;
+  inset: 0;
 }
 .app-feed-author-meta{
   min-width: 0;
@@ -4964,6 +4980,31 @@ body[data-app-tab="chat"] #appChatPage{
 .app-feed-author-time{
   color: var(--muted);
   font-size: 11px;
+}
+.app-feed-head-tools{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.app-feed-follow-btn{
+  min-height: 30px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  background: color-mix(in srgb, var(--panel2) 76%, transparent);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.app-feed-follow-btn.is-on{
+  background: color-mix(in srgb, var(--panel2) 46%, transparent);
+  color: var(--muted);
+}
+.app-feed-follow-btn:disabled{
+  opacity: .65;
+  cursor: not-allowed;
 }
 .app-feed-title{
   margin: 5px 0 0;
@@ -5174,6 +5215,15 @@ body[data-app-tab="chat"] #appChatPage{
   gap: 5px;
   color: var(--text);
 }
+.app-feed-profile-stat.is-link{
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.app-feed-profile-stat.is-link:hover{
+  color: color-mix(in srgb, var(--accent, #2563eb) 72%, var(--text));
+}
 .app-feed-profile-stat .k{
   font-size: 13px;
   color: var(--muted);
@@ -5218,17 +5268,18 @@ body[data-app-tab="chat"] #appChatPage{
 }
 .app-profile-follow-list{
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 .app-profile-follow-item{
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--panel) 96%, transparent);
-  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 46%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  backdrop-filter: blur(8px) saturate(115%);
+  padding: 9px 10px;
 }
 .app-profile-follow-avatar{
   width: 36px;
@@ -5257,6 +5308,92 @@ body[data-app-tab="chat"] #appChatPage{
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.app-follow-list-sheet{
+  width: min(780px, calc(100vw - 28px));
+  margin: 0 auto;
+  border: 1px solid color-mix(in srgb, var(--border) 48%, transparent);
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  backdrop-filter: blur(14px) saturate(120%);
+  box-shadow: 0 22px 54px rgba(11, 15, 29, .22);
+}
+.app-follow-list-body{
+  max-height: min(72vh, 700px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-top: 10px;
+}
+#appFollowListOverlay{
+  align-items: center;
+}
+.app-profile-follow-open{
+  min-height: 30px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.app-profile-follow-open:hover{
+  color: var(--text);
+}
+.app-profile-edit-overlay .note.ok,
+.app-profile-edit-overlay #appProfileEditHandleStatus.ok{
+  color: #15803d !important;
+}
+.app-profile-edit-overlay .note.error,
+.app-profile-edit-overlay #appProfileEditHandleStatus.error{
+  color: #b91c1c !important;
+}
+body.app-follow-list-lock,
+body.app-profile-edit-lock{
+  overflow: hidden;
+}
+.app-profile-edit-overlay{
+  align-items: stretch;
+  justify-content: center;
+  padding: 0;
+  background: rgba(10, 14, 24, .44);
+}
+.app-profile-edit-sheet{
+  width: min(980px, 100vw);
+  max-width: 100vw;
+  max-height: 100dvh;
+  height: 100dvh;
+  border-radius: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.app-profile-edit-body{
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  display: grid;
+  gap: 10px;
+  padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+}
+.app-profile-edit-avatar-row{
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+.app-profile-edit-avatar{
+  width: 76px;
+  height: 76px;
+  font-size: 24px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.app-profile-edit-avatar.has-image{
+  color: transparent;
+}
+.app-profile-edit-avatar-tools{
+  display: grid;
+  gap: 8px;
+}
+.app-profile-edit-danger{
+  background: color-mix(in srgb, #ef4444 7%, var(--panel)) !important;
 }
 .app-feed-fab{
   position: fixed;
@@ -7403,21 +7540,24 @@ body.auth-gate-open .auth-gate{
 }
 .app-loading-card{
   position: relative;
-  width: 72px;
-  height: 72px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  width: min(280px, calc(100vw - 36px));
+  min-height: 122px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 8px;
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
-  border-radius: 50%;
-  box-shadow: var(--shadow);
+  border-radius: 18px;
+  box-shadow: 0 20px 42px rgba(17,18,20,.16);
+  padding: 14px 16px;
 }
 .app-loading-spinner{
   position: absolute;
-  width: 60px;
-  height: 60px;
+  top: 8px;
+  width: 56px;
+  height: 56px;
   border: 2px solid color-mix(in oklab, var(--border) 70%, transparent);
   border-top-color: color-mix(in oklab, var(--text) 42%, transparent);
   border-radius: 50%;
@@ -7426,6 +7566,13 @@ body.auth-gate-open .auth-gate{
 .app-loading-icon{
   font-size: 30px;
   color: color-mix(in oklab, var(--text) 72%, transparent);
+}
+.app-loading-text{
+  margin-top: 60px;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.45;
 }
 @keyframes spin{
   to{ transform: rotate(360deg); }
@@ -8354,6 +8501,10 @@ body[data-ui-v2="1"] .app{
 body[data-ui-v2="1"].app-v2-sidebar-lock{
   overflow: hidden;
 }
+body[data-ui-v2="1"].app-follow-list-lock,
+body[data-ui-v2="1"].app-profile-edit-lock{
+  overflow: hidden;
+}
 body[data-ui-v2="1"] .topbar{
   position: fixed;
   top: max(var(--app-v2-sidebar-gap), env(safe-area-inset-top, 0px));
@@ -8483,6 +8634,8 @@ body[data-ui-v2="1"] .app-tab-btn .ms{
 }
 body[data-ui-v2="1"] .app-v2-sidebar-foot{
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 8px;
   margin-top: auto;
   padding-top: 10px;
@@ -8495,7 +8648,48 @@ body[data-ui-v2="1"] .app-v2-account{
   border: 1px solid var(--border);
   border-radius: 18px;
   background: var(--panel2);
-  padding: 14px;
+  padding: 10px 12px;
+  display: block;
+}
+body[data-ui-v2="1"] .app-v2-account-main{
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+body[data-ui-v2="1"] .app-v2-account-avatar{
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 82%, #dbe5ff);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+body[data-ui-v2="1"] .app-v2-account-avatar.has-image{
+  color: transparent;
+}
+body[data-ui-v2="1"] .app-v2-account-texts{
+  min-width: 0;
+}
+body[data-ui-v2="1"] .app-v2-account-go{
+  color: var(--muted);
+  font-size: 18px;
+  margin-left: auto;
+}
+body[data-ui-v2="1"] .app-v2-account-edit{
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel2);
+  color: var(--muted);
 }
 body[data-ui-v2="1"] .app-v2-account:hover{
   background: color-mix(in srgb, var(--panel2) 84%, var(--panel));
@@ -8822,12 +9016,26 @@ body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share{
 }
 body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-panel{
   text-align: center;
+  display: grid;
+  gap: 10px;
+  place-items: center;
+  padding-inline: 10px;
+}
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-panel > *{
+  max-width: 100%;
 }
 body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .note,
 body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-status,
 body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-link,
 body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-sub{
   text-align: center !important;
+}
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-panel .select,
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-panel .xselect,
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-panel .spell-input,
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-panel .drawer-share-row,
+body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-panel .drawer-share-actions{
+  width: 100%;
 }
 body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-row,
 body[data-ui-v2="1"] #appRightUtilityContent .menu-article.drawer-share .drawer-share-actions{
@@ -8845,6 +9053,14 @@ body[data-ui-v2="1"] #appRightUtilityContent .drawer-share-code{
   font-size: clamp(28px, 8vw, 36px);
   letter-spacing: .08em;
   overflow-wrap: anywhere;
+  text-align: center;
+}
+body[data-ui-v2="1"] #appRightUtilityContent .drawer-share-qr{
+  width: min(220px, 100%);
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  margin-inline: auto;
 }
 body[data-ui-v2="1"] .app-right-search-row{
   margin: 0;
@@ -9644,6 +9860,7 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
     <div class="app-loading-card">
       <span class="ms app-loading-icon" id="globalLoadingIcon" aria-hidden="true">menu_book</span>
       <span class="app-loading-spinner" aria-hidden="true"></span>
+      <div class="app-loading-text" id="globalLoadingText">処理しています…</div>
     </div>
   </div>
   <div id="maintenanceOverlay" class="maintenance-overlay hidden" role="dialog" aria-modal="true" aria-label="メンテナンス情報">
@@ -9988,7 +10205,7 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
                 </div>
               </div>
             </div>
-            <div class="app-page-block app-profile-block" id="appProfileBlock">
+            <div class="app-page-block app-profile-block hidden" id="appProfileBlock">
               <div class="app-page-block-head">
                 <span>プロフィール</span>
                 <button class="textbtn" type="button" id="appProfileReloadBtn">再読込</button>
@@ -10081,28 +10298,18 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
                 </div>
               </div>
               <div class="app-feed-profile-stats">
-                <div class="app-feed-profile-stat">
+                <button class="app-feed-profile-stat is-link" type="button" data-feed-action="openFollowList" data-id="following">
                   <span class="k">Following</span>
                   <span class="v" id="appFeedProfileFollowing">0</span>
-                </div>
-                <div class="app-feed-profile-stat">
+                </button>
+                <button class="app-feed-profile-stat is-link" type="button" data-feed-action="openFollowList" data-id="followers">
                   <span class="k">Followers</span>
                   <span class="v" id="appFeedProfileFollowers">0</span>
-                </div>
+                </button>
               </div>
               <div class="app-action-row">
-                <button class="textbtn" type="button" data-feed-action="openFollowList" data-id="following">フォロー中を表示</button>
-                <button class="textbtn" type="button" data-feed-action="openFollowList" data-id="followers">フォロワーを表示</button>
                 <button class="textbtn hidden" type="button" id="appFeedProfileEditBtn" data-feed-action="editMyProfile">プロフィール編集</button>
               </div>
-              <section class="app-page-block hidden" id="appFeedProfileFollowBlock">
-                <div class="app-page-block-head">
-                  <span id="appFeedProfileFollowTitle">フォロー一覧</span>
-                  <button class="textbtn" type="button" data-feed-action="closeFollowList">閉じる</button>
-                </div>
-                <div class="app-profile-follow-list" id="appFeedProfileFollowList"></div>
-                <div class="app-empty hidden" id="appFeedProfileFollowEmpty">表示できる項目はありません。</div>
-              </section>
               <div class="app-feed-profile-tabs" id="appFeedProfileTabs" role="tablist" aria-label="Profile tabs"></div>
               <div class="app-feed-profile-list" id="appFeedProfileList"></div>
               <div class="app-empty hidden" id="appFeedProfileEmpty">投稿はありません。</div>
@@ -10511,8 +10718,17 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
           <span>ログアウト</span>
         </button>
         <button class="app-v2-account" id="appV2SidebarAccount" type="button" data-v2-action="open-profile" aria-label="自分のプロフィールを開く">
-          <div class="app-v2-account-name" id="appV2SidebarName">ゲスト</div>
-          <div class="app-v2-account-meta" id="appV2SidebarMeta">この端末のみ</div>
+          <div class="app-v2-account-main">
+            <div class="app-v2-account-avatar" id="appV2SidebarAvatar">U</div>
+            <div class="app-v2-account-texts">
+              <div class="app-v2-account-name" id="appV2SidebarName">ゲスト</div>
+              <div class="app-v2-account-meta" id="appV2SidebarMeta">この端末のみ</div>
+            </div>
+          </div>
+          <span class="ms app-v2-account-go" aria-hidden="true">chevron_right</span>
+        </button>
+        <button class="icon-btn app-v2-account-edit" type="button" data-v2-action="open-profile-edit" aria-label="プロフィール編集">
+          <span class="ms" aria-hidden="true">edit</span>
         </button>
       </div>
     </nav>
@@ -10677,6 +10893,89 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         <div class="sheet-footer">
           <button class="textbtn" type="button" data-feed-action="closeReply">閉じる</button>
           <button class="navbtn primary" type="button" data-feed-action="submitReply">返信する</button>
+        </div>
+      </div>
+    </div>
+    <div class="overlay hidden" id="appFollowListOverlay" role="dialog" aria-modal="true" aria-label="フォロー一覧">
+      <div class="sheet app-follow-list-sheet">
+        <div class="sheet-header">
+          <div class="sheet-title" id="appFollowListTitle">フォロー一覧</div>
+          <button class="icon-btn" type="button" data-feed-action="closeFollowModal" aria-label="閉じる">
+            <span class="ms" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <div class="sheet-body app-follow-list-body">
+          <div class="app-profile-follow-list" id="appFollowListList"></div>
+          <div class="app-empty hidden" id="appFollowListEmpty">表示できる項目はありません。</div>
+        </div>
+      </div>
+    </div>
+    <div class="overlay hidden app-profile-edit-overlay" id="appProfileEditOverlay" role="dialog" aria-modal="true" aria-label="プロフィール編集">
+      <div class="sheet app-profile-edit-sheet">
+        <div class="sheet-header">
+          <button class="icon-btn" type="button" data-profile-edit-action="back" aria-label="戻る">
+            <span class="ms" aria-hidden="true">arrow_back</span>
+          </button>
+          <div class="sheet-title">プロフィール編集</div>
+          <button class="navbtn primary" id="appProfileEditSaveBtn" type="button" data-profile-edit-action="save" disabled>保存</button>
+        </div>
+        <div class="sheet-body app-profile-edit-body">
+          <section class="app-page-block">
+            <div class="app-page-block-head"><span>プロフィール</span></div>
+            <div class="app-profile-edit-avatar-row">
+              <div class="app-feed-profile-avatar app-profile-edit-avatar" id="appProfileEditAvatarPreview">U</div>
+              <div class="app-profile-edit-avatar-tools">
+                <input id="appProfileEditAvatarFile" class="spell-input" type="file" accept="image/*" />
+                <div class="mini">画像は正方形（256x256）で保存されます。</div>
+              </div>
+            </div>
+            <label class="settings-row is-static" for="appProfileEditDisplayName">
+              <span class="label">ニックネーム（表示名）</span>
+              <input id="appProfileEditDisplayName" class="spell-input" type="text" maxlength="40" placeholder="表示名" />
+            </label>
+            <div class="mini" id="appProfileEditDisplayNameHint">表示名は7日に1回のみ変更できます。</div>
+            <label class="settings-row is-static" for="appProfileEditBio">
+              <span class="label">自己紹介</span>
+              <textarea id="appProfileEditBio" class="spell-input" rows="4" maxlength="400" placeholder="自己紹介"></textarea>
+            </label>
+          </section>
+
+          <section class="app-page-block">
+            <div class="app-page-block-head"><span>アカウントID</span></div>
+            <label class="settings-row is-static" for="appProfileEditHandle">
+              <span class="label">@handle</span>
+              <input id="appProfileEditHandle" class="spell-input" type="text" maxlength="15" placeholder="example_id" spellcheck="false" autocapitalize="none" />
+            </label>
+            <div class="mini">英数字と _ のみ、3〜15文字。30日に1回のみ変更できます。</div>
+            <div class="note" id="appProfileEditHandleStatus">入力中…</div>
+          </section>
+
+          <section class="app-page-block">
+            <div class="app-page-block-head"><span>公開設定</span></div>
+            <label class="settings-row is-static" for="appProfileEditVisibility">
+              <span class="label">プロフィール公開</span>
+              <select id="appProfileEditVisibility" class="select settings-select">
+                <option value="public">公開</option>
+                <option value="private">非公開</option>
+              </select>
+            </label>
+            <label class="settings-row is-static" for="appProfileEditFollowVisibility">
+              <span class="label">フォロー一覧公開</span>
+              <select id="appProfileEditFollowVisibility" class="select settings-select">
+                <option value="public">公開</option>
+                <option value="private">非公開</option>
+              </select>
+            </label>
+          </section>
+
+          <section class="app-page-block app-profile-edit-danger">
+            <div class="app-page-block-head"><span>危険操作</span></div>
+            <div class="app-action-row">
+              <button class="textbtn" type="button" data-profile-edit-action="logout">ログアウト</button>
+              <button class="textbtn danger" type="button" data-profile-edit-action="delete">アカウント削除</button>
+            </div>
+          </section>
+          <div class="note" id="appProfileEditStatus">未保存の変更があります。</div>
         </div>
       </div>
     </div>
@@ -14332,7 +14631,8 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
       };
       let _authGateHideTimer = null;
       const _loadingState = {
-        count: 0
+        count: 0,
+        message: "処理しています…"
       };
 
       function _isMotionReduced(){
@@ -14350,6 +14650,10 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         if (!overlay) return;
         const visible = _loadingState.count > 0;
         overlay.classList.toggle("hidden", !visible);
+        const textEl = document.getElementById("globalLoadingText");
+        if (textEl){
+          textEl.textContent = String(_loadingState.message || "処理しています…");
+        }
       }
       function _authRandomLoadingIcon(){
         const list = AUTH_LOADING_ICONS;
@@ -14465,7 +14769,8 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         if (wait > 0) await _authDelay(wait);
       }
       function showLoading(message){
-        void message;
+        const msg = String(message || "").trim();
+        if (msg) _loadingState.message = msg;
         if (_loadingState.count <= 0){
           _authApplyLoadingIcon();
         }
@@ -14474,6 +14779,9 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
       }
       function hideLoading(){
         _loadingState.count = Math.max(0, _loadingState.count - 1);
+        if (_loadingState.count <= 0){
+          _loadingState.message = "処理しています…";
+        }
         _loadingRender();
       }
       window.__showGlobalLoading = function(labelText){
@@ -15242,9 +15550,14 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
           return;
         }
         if (el.authLoginSubmitBtn) el.authLoginSubmitBtn.disabled = true;
+        if (el.authLoginGrade) el.authLoginGrade.disabled = true;
+        if (el.authLoginNickname) el.authLoginNickname.disabled = true;
+        if (el.authLoginPassword) el.authLoginPassword.disabled = true;
+        _authSetStatus(el.authLoginStatus, "ログインしています。しばらくお待ちください…");
         try{
           const body = await _authFetch("/api/auth/login", {
             method: "POST",
+            loadingText: "ログインしています。しばらくお待ちください…",
             body: JSON.stringify({
               gradePrefix: grade,
               nickname,
@@ -15274,6 +15587,9 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
           _authSetStatus(el.authLoginStatus, `ログイン失敗: ${code ? `${code} / ` : ""}${msg}`, "error");
         }finally{
           if (el.authLoginSubmitBtn) el.authLoginSubmitBtn.disabled = false;
+          if (el.authLoginGrade) el.authLoginGrade.disabled = false;
+          if (el.authLoginNickname) el.authLoginNickname.disabled = false;
+          if (el.authLoginPassword) el.authLoginPassword.disabled = false;
         }
       }
       async function _authContinueAsGuest(){
@@ -15861,6 +16177,7 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         appV2RecentList: document.getElementById("appV2RecentList"),
         appV2SidebarName: document.getElementById("appV2SidebarName"),
         appV2SidebarMeta: document.getElementById("appV2SidebarMeta"),
+        appV2SidebarAvatar: document.getElementById("appV2SidebarAvatar"),
         appHomeProgressRange: document.getElementById("appHomeProgressRange"),
         appHomeProgressCards: document.getElementById("appHomeProgressCards"),
         appHomeWeakTable: document.getElementById("appHomeWeakTable"),
@@ -15915,6 +16232,22 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         appFeedReplyInput: document.getElementById("appFeedReplyInput"),
         appFeedReplyCounter: document.getElementById("appFeedReplyCounter"),
         appFeedReplyStatus: document.getElementById("appFeedReplyStatus"),
+        appFollowListOverlay: document.getElementById("appFollowListOverlay"),
+        appFollowListTitle: document.getElementById("appFollowListTitle"),
+        appFollowListList: document.getElementById("appFollowListList"),
+        appFollowListEmpty: document.getElementById("appFollowListEmpty"),
+        appProfileEditOverlay: document.getElementById("appProfileEditOverlay"),
+        appProfileEditSaveBtn: document.getElementById("appProfileEditSaveBtn"),
+        appProfileEditAvatarFile: document.getElementById("appProfileEditAvatarFile"),
+        appProfileEditAvatarPreview: document.getElementById("appProfileEditAvatarPreview"),
+        appProfileEditDisplayName: document.getElementById("appProfileEditDisplayName"),
+        appProfileEditDisplayNameHint: document.getElementById("appProfileEditDisplayNameHint"),
+        appProfileEditBio: document.getElementById("appProfileEditBio"),
+        appProfileEditHandle: document.getElementById("appProfileEditHandle"),
+        appProfileEditHandleStatus: document.getElementById("appProfileEditHandleStatus"),
+        appProfileEditVisibility: document.getElementById("appProfileEditVisibility"),
+        appProfileEditFollowVisibility: document.getElementById("appProfileEditFollowVisibility"),
+        appProfileEditStatus: document.getElementById("appProfileEditStatus"),
         appFeedProfileScreen: document.getElementById("appFeedProfileScreen"),
         appFeedProfileAvatar: document.getElementById("appFeedProfileAvatar"),
         appFeedProfileName: document.getElementById("appFeedProfileName"),
@@ -15922,10 +16255,6 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         appFeedProfileFollowing: document.getElementById("appFeedProfileFollowing"),
         appFeedProfileFollowers: document.getElementById("appFeedProfileFollowers"),
         appFeedProfileEditBtn: document.getElementById("appFeedProfileEditBtn"),
-        appFeedProfileFollowBlock: document.getElementById("appFeedProfileFollowBlock"),
-        appFeedProfileFollowTitle: document.getElementById("appFeedProfileFollowTitle"),
-        appFeedProfileFollowList: document.getElementById("appFeedProfileFollowList"),
-        appFeedProfileFollowEmpty: document.getElementById("appFeedProfileFollowEmpty"),
         appFeedProfileTabs: document.getElementById("appFeedProfileTabs"),
         appFeedProfileList: document.getElementById("appFeedProfileList"),
         appFeedProfileEmpty: document.getElementById("appFeedProfileEmpty"),
@@ -18503,7 +18832,7 @@ function reviewWrong(){
       }
       function _notifNormalizeCategory(v){
         const s = String(v || "Update");
-        if (s === "Study" || s === "Preset" || s === "System" || s === "Security") return s;
+        if (s === "Study" || s === "Preset" || s === "System" || s === "Security" || s === "Social") return s;
         return "Update";
       }
       function _notifNormalizePriority(v){
@@ -18522,6 +18851,8 @@ function reviewWrong(){
         const ts = _notifTsToMs(raw?.ts) || publishedAtMs || createdAtMs || updatedAtMs || 0;
         return {
           id,
+          type: String(raw?.type || ""),
+          actorUserId: Math.max(0, Number(raw?.actorUserId || 0)),
           title,
           body,
           category: _notifNormalizeCategory(raw?.category),
@@ -21505,11 +21836,20 @@ function _openSearchResultByIndex(i){
         repliesLoading: false,
         replySubmitting: false,
         postActionBusy: new Set(),
+        followBusyUsers: new Set(),
         profileScreenOpen: false,
         profileScreenUserId: 0,
         profileScreenTab: "posts",
         profileScreenData: null,
         profileTimelineCache: Object.create(null),
+        profileEditOpen: false,
+        profileEditSaving: false,
+        profileEditOriginal: null,
+        profileEditDraft: null,
+        profileEditHandleTimer: 0,
+        profileEditHandleChecking: false,
+        profileEditHandleAvailable: null,
+        profileEditHandleMessage: "",
         profileFollowListKind: "",
         profileFollowListLoading: false,
         profileFollowListHidden: false,
@@ -21797,9 +22137,20 @@ function _openSearchResultByIndex(i){
       }
       function _appV2RenderSidebarIdentity(){
         const identity = _appV2Identity();
-        if (el.appV2SidebarName) el.appV2SidebarName.textContent = identity.name;
-        if (el.appV2SidebarMeta) el.appV2SidebarMeta.textContent = identity.meta;
-        if (el.appV2GreetingName) el.appV2GreetingName.textContent = identity.name;
+        const profile = (_appSocialState.profile && typeof _appSocialState.profile === "object")
+          ? _appSocialState.profile
+          : null;
+        const name = String(profile?.displayName || identity.name || "学習者");
+        const handle = _appNormalizeHandleInput(profile?.handle || authState?.user?.nickname || "");
+        const meta = handle ? `@${handle}` : identity.meta;
+        if (el.appV2SidebarName) el.appV2SidebarName.textContent = name;
+        if (el.appV2SidebarMeta) el.appV2SidebarMeta.textContent = meta;
+        _appApplyAvatarVisual(
+          el.appV2SidebarAvatar,
+          String(profile?.avatarUrl || ""),
+          _appAvatarFallbackText(name, profile?.nickname || authState?.user?.nickname || "")
+        );
+        if (el.appV2GreetingName) el.appV2GreetingName.textContent = name;
         if (el.appV2DateText) el.appV2DateText.textContent = `今日は ${_appV2DateText(_publicAppConfigNowMs())} です。`;
         if (_appSocialState.rightPanelOpen) _appRenderRightPanel();
       }
@@ -22187,8 +22538,8 @@ function _openSearchResultByIndex(i){
 
       function _appRenderProfilePanel(){
         if (!el.appProfileBlock) return;
+        el.appProfileBlock.classList.add("hidden");
         const enabled = _appFeatureProfileOn();
-        el.appProfileBlock.classList.toggle("hidden", !enabled);
         if (!enabled) return;
         const profile = (_appSocialState.profile && typeof _appSocialState.profile === "object")
           ? _appSocialState.profile
@@ -22235,6 +22586,7 @@ function _openSearchResultByIndex(i){
           _appSocialState.profile = null;
           _appSocialState.profileLoadedAt = 0;
           _appRenderProfilePanel();
+          _appV2RenderSidebarIdentity();
           return null;
         }
         const age = Date.now() - Number(_appSocialState.profileLoadedAt || 0);
@@ -22248,6 +22600,7 @@ function _openSearchResultByIndex(i){
           const body = await _appApiJson("/api/profile/me", { method: "GET" });
           _appSocialState.profile = body?.profile || null;
           _appSocialState.profileLoadedAt = Date.now();
+          _appFeedApplyProfileIdentityEverywhere(_appAuthUserId(), _appSocialState.profile);
           _appProfileSetStatus("プロフィールを読み込みました。", "ok");
         }catch(err){
           console.warn("[profile] load failed", err);
@@ -22255,6 +22608,7 @@ function _openSearchResultByIndex(i){
         }finally{
           _appSocialState.profileLoading = false;
           _appRenderProfilePanel();
+          _appV2RenderSidebarIdentity();
         }
         return _appSocialState.profile;
       }
@@ -22315,6 +22669,308 @@ function _openSearchResultByIndex(i){
         }catch(err){
           _appProfileSetStatus(`画像の読み込みに失敗: ${String(err?.message || err)}`, "error");
         }
+      }
+
+      function _appProfileEditSetStatus(msg, kind = ""){
+        if (!el.appProfileEditStatus) return;
+        el.appProfileEditStatus.textContent = String(msg || "");
+        el.appProfileEditStatus.classList.remove("ok", "error");
+        if (kind === "ok") el.appProfileEditStatus.classList.add("ok");
+        if (kind === "error") el.appProfileEditStatus.classList.add("error");
+      }
+      function _appProfileEditSetHandleStatus(msg, kind = ""){
+        if (!el.appProfileEditHandleStatus) return;
+        el.appProfileEditHandleStatus.textContent = String(msg || "");
+        el.appProfileEditHandleStatus.classList.remove("ok", "error");
+        if (kind === "ok") el.appProfileEditHandleStatus.classList.add("ok");
+        if (kind === "error") el.appProfileEditHandleStatus.classList.add("error");
+      }
+      function _appProfileEditFormatTime(ts){
+        const n = Number(ts || 0);
+        if (!n) return "";
+        const d = new Date(n);
+        return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      }
+      function _appProfileEditSnapshotFromProfile(profile){
+        return {
+          displayName: String(profile?.displayName || "").trim(),
+          bio: String(profile?.bio || "").trim(),
+          handle: _appNormalizeHandleInput(profile?.handle || profile?.nickname || authState?.user?.nickname || "user"),
+          avatarUrl: String(profile?.avatarUrl || "").trim(),
+          visibility: String(profile?.visibility || "public") === "private" ? "private" : "public",
+          followVisibility: String(profile?.followVisibility || "public") === "private" ? "private" : "public"
+        };
+      }
+      function _appProfileEditReadDraftFromUi(){
+        return {
+          displayName: String(el.appProfileEditDisplayName?.value || "").trim(),
+          bio: String(el.appProfileEditBio?.value || "").trim(),
+          handle: _appNormalizeHandleInput(el.appProfileEditHandle?.value || ""),
+          avatarUrl: String(_appSocialState.profileEditDraft?.avatarUrl || "").trim(),
+          visibility: String(el.appProfileEditVisibility?.value || "public") === "private" ? "private" : "public",
+          followVisibility: String(el.appProfileEditFollowVisibility?.value || "public") === "private" ? "private" : "public"
+        };
+      }
+      function _appProfileEditIsDirty(){
+        const base = _appSocialState.profileEditOriginal;
+        if (!base) return false;
+        const cur = _appProfileEditReadDraftFromUi();
+        return (
+          cur.displayName !== base.displayName
+          || cur.bio !== base.bio
+          || cur.handle !== base.handle
+          || cur.avatarUrl !== base.avatarUrl
+          || cur.visibility !== base.visibility
+          || cur.followVisibility !== base.followVisibility
+        );
+      }
+      function _appProfileEditRenderAvatar(){
+        const draft = _appSocialState.profileEditDraft || {};
+        const name = String(el.appProfileEditDisplayName?.value || draft.displayName || authState?.user?.nickname || "U");
+        _appApplyAvatarVisual(
+          el.appProfileEditAvatarPreview,
+          String(draft.avatarUrl || ""),
+          _appAvatarFallbackText(name, authState?.user?.nickname || "")
+        );
+      }
+      function _appProfileEditRefreshSaveState(){
+        const dirty = _appProfileEditIsDirty();
+        const curHandle = _appNormalizeHandleInput(el.appProfileEditHandle?.value || "");
+        const baseHandle = String(_appSocialState.profileEditOriginal?.handle || "");
+        const handleChanged = curHandle !== baseHandle;
+        const handleBlocked = handleChanged && (
+          _appSocialState.profileEditHandleChecking
+          || _appSocialState.profileEditHandleAvailable === false
+        );
+        if (el.appProfileEditSaveBtn){
+          el.appProfileEditSaveBtn.disabled = !dirty || !!_appSocialState.profileEditSaving || handleBlocked;
+        }
+        if (!dirty && !_appSocialState.profileEditSaving){
+          _appProfileEditSetStatus("変更はありません。");
+        } else if (dirty && !_appSocialState.profileEditSaving){
+          _appProfileEditSetStatus("未保存の変更があります。");
+        }
+      }
+      function _appProfileEditApplyDraftToUi(draft){
+        if (!draft || typeof draft !== "object") return;
+        if (el.appProfileEditDisplayName) el.appProfileEditDisplayName.value = String(draft.displayName || "");
+        if (el.appProfileEditBio) el.appProfileEditBio.value = String(draft.bio || "");
+        if (el.appProfileEditHandle) el.appProfileEditHandle.value = String(draft.handle || "");
+        if (el.appProfileEditVisibility) el.appProfileEditVisibility.value = String(draft.visibility || "public");
+        if (el.appProfileEditFollowVisibility) el.appProfileEditFollowVisibility.value = String(draft.followVisibility || "public");
+        _appProfileEditRenderAvatar();
+        _appProfileEditRefreshSaveState();
+      }
+      function _appProfileEditSetOpen(open){
+        const on = !!open;
+        _appSocialState.profileEditOpen = on;
+        if (!on && _appSocialState.profileEditHandleTimer){
+          clearTimeout(_appSocialState.profileEditHandleTimer);
+          _appSocialState.profileEditHandleTimer = 0;
+        }
+        if (el.appProfileEditOverlay){
+          el.appProfileEditOverlay.classList.toggle("hidden", !on);
+        }
+        document.body.classList.toggle("app-profile-edit-lock", on);
+      }
+      async function _appProfileEditCheckHandleAvailability(){
+        if (!_appSocialState.profileEditOpen) return;
+        const raw = String(el.appProfileEditHandle?.value || "");
+        const handle = _appNormalizeHandleInput(raw);
+        if (el.appProfileEditHandle) {
+          const nextVal = handle;
+          if (String(el.appProfileEditHandle.value || "") !== nextVal) el.appProfileEditHandle.value = nextVal;
+        }
+        const baseHandle = String(_appSocialState.profileEditOriginal?.handle || "");
+        if (!handle){
+          _appProfileEditSetHandleStatus("handle を入力してください。", "error");
+          _appSocialState.profileEditHandleAvailable = false;
+          _appProfileEditRefreshSaveState();
+          return;
+        }
+        if (handle === baseHandle){
+          _appProfileEditSetHandleStatus("現在の handle を使用します。", "ok");
+          _appSocialState.profileEditHandleAvailable = true;
+          _appProfileEditRefreshSaveState();
+          return;
+        }
+        _appSocialState.profileEditHandleChecking = true;
+        _appProfileEditSetHandleStatus("確認中…");
+        try{
+          const body = await _appApiJson(`/api/handle/availability?handle=${encodeURIComponent(handle)}`, { method: "GET" });
+          const available = !!body?.available;
+          _appSocialState.profileEditHandleAvailable = available;
+          if (available){
+            _appProfileEditSetHandleStatus("使用可能", "ok");
+          } else {
+            const reason = String(body?.reason || "");
+            if (reason === "invalid_format") _appProfileEditSetHandleStatus("使用不可（形式が無効です）", "error");
+            else _appProfileEditSetHandleStatus("使用不可（既に使われています）", "error");
+          }
+        }catch(err){
+          _appSocialState.profileEditHandleAvailable = null;
+          _appProfileEditSetHandleStatus(`確認に失敗: ${String(err?.message || err)}`, "error");
+        }finally{
+          _appSocialState.profileEditHandleChecking = false;
+          _appProfileEditRefreshSaveState();
+        }
+      }
+      function _appProfileEditScheduleHandleAvailability(){
+        if (_appSocialState.profileEditHandleTimer){
+          clearTimeout(_appSocialState.profileEditHandleTimer);
+        }
+        _appSocialState.profileEditHandleTimer = setTimeout(() => {
+          _appSocialState.profileEditHandleTimer = 0;
+          _appProfileEditCheckHandleAvailability().catch(() => {});
+        }, 420);
+      }
+      async function _appProfileEditCropAvatarFile(file){
+        const f = file instanceof File ? file : null;
+        if (!f) throw new Error("画像が選択されていません。");
+        if (!/^image\//i.test(String(f.type || ""))){
+          throw new Error("画像ファイルを選択してください。");
+        }
+        if (f.size > (2 * 1024 * 1024)){
+          throw new Error("画像サイズは2MB以下にしてください。");
+        }
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(reader.error || new Error("画像の読み込みに失敗しました。"));
+          reader.readAsDataURL(f);
+        });
+        const img = await new Promise((resolve, reject) => {
+          const node = new Image();
+          node.onload = () => resolve(node);
+          node.onerror = () => reject(new Error("画像を展開できませんでした。"));
+          node.src = String(dataUrl || "");
+        });
+        const w = Math.max(1, Number(img.width || 1));
+        const h = Math.max(1, Number(img.height || 1));
+        const side = Math.max(1, Math.min(w, h));
+        const sx = Math.max(0, Math.floor((w - side) / 2));
+        const sy = Math.max(0, Math.floor((h - side) / 2));
+        const out = document.createElement("canvas");
+        out.width = 256;
+        out.height = 256;
+        const ctx = out.getContext("2d");
+        if (!ctx) throw new Error("画像処理に失敗しました。");
+        ctx.clearRect(0, 0, 256, 256);
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, 256, 256);
+        return out.toDataURL("image/jpeg", 0.9);
+      }
+      async function _appProfileEditHandleAvatarFile(file){
+        try{
+          _appProfileEditSetStatus("画像を処理中…");
+          const dataUrl = await _appProfileEditCropAvatarFile(file);
+          _appSocialState.profileEditDraft = Object.assign({}, _appSocialState.profileEditDraft || {}, { avatarUrl: dataUrl });
+          _appProfileEditRenderAvatar();
+          _appProfileEditRefreshSaveState();
+          _appProfileEditSetStatus("画像を更新しました。保存すると反映されます。", "ok");
+        }catch(err){
+          _appProfileEditSetStatus(`画像更新に失敗: ${String(err?.message || err)}`, "error");
+        }finally{
+          if (el.appProfileEditAvatarFile) el.appProfileEditAvatarFile.value = "";
+        }
+      }
+      async function _appProfileEditOpen(){
+        if (!_appIsLoggedUser()){
+          uiToast("ログイン後に利用できます。");
+          return;
+        }
+        await _appLoadProfile(false).catch(() => {});
+        const profile = (_appSocialState.profile && typeof _appSocialState.profile === "object")
+          ? _appSocialState.profile
+          : {
+              displayName: authState?.user?.nickname || "",
+              handle: authState?.user?.nickname || "",
+              bio: "",
+              avatarUrl: "",
+              visibility: "public",
+              followVisibility: "public"
+            };
+        const snap = _appProfileEditSnapshotFromProfile(profile);
+        _appSocialState.profileEditOriginal = Object.assign({}, snap);
+        _appSocialState.profileEditDraft = Object.assign({}, snap);
+        _appSocialState.profileEditHandleAvailable = true;
+        _appSocialState.profileEditHandleMessage = "";
+        _appProfileEditApplyDraftToUi(snap);
+        const nextDisplay = Number(profile?.nextDisplayNameChangeAt || 0);
+        if (el.appProfileEditDisplayNameHint){
+          el.appProfileEditDisplayNameHint.textContent = nextDisplay > 0
+            ? `次に表示名を変更できるのは ${_appProfileEditFormatTime(nextDisplay)} です。`
+            : "表示名は7日に1回のみ変更できます。";
+        }
+        const nextHandle = Number(profile?.nextHandleChangeAt || 0);
+        if (nextHandle > 0){
+          _appProfileEditSetHandleStatus(`次に handle を変更できるのは ${_appProfileEditFormatTime(nextHandle)} です。`);
+        } else {
+          _appProfileEditSetHandleStatus("入力すると使用可否を確認します。");
+        }
+        _appProfileEditSetStatus("プロフィールを編集できます。");
+        _appProfileEditSetOpen(true);
+      }
+      async function _appProfileEditSave(){
+        if (!_appIsLoggedUser()){
+          _appProfileEditSetStatus("ログイン後に保存できます。", "error");
+          return;
+        }
+        if (_appSocialState.profileEditSaving) return;
+        const payload = _appProfileEditReadDraftFromUi();
+        if (!payload.handle){
+          _appProfileEditSetHandleStatus("handle は必須です。", "error");
+          return;
+        }
+        _appSocialState.profileEditSaving = true;
+        _appProfileEditRefreshSaveState();
+        _appProfileEditSetStatus("保存中…");
+        try{
+          const body = await _appApiJson("/api/profile/me", {
+            method: "PUT",
+            body: JSON.stringify(payload)
+          });
+          _appSocialState.profile = body?.profile || _appSocialState.profile;
+          _appSocialState.profileLoadedAt = Date.now();
+          _appFeedApplyProfileIdentityEverywhere(_appAuthUserId(), _appSocialState.profile);
+          _appSocialState.profileEditOriginal = _appProfileEditSnapshotFromProfile(_appSocialState.profile || payload);
+          _appSocialState.profileEditDraft = Object.assign({}, _appSocialState.profileEditOriginal);
+          _appProfileEditApplyDraftToUi(_appSocialState.profileEditOriginal);
+          _appProfileEditSetStatus("保存しました。", "ok");
+          _appRenderProfilePanel();
+          _appV2RenderSidebarIdentity();
+          if (_appSocialState.profileScreenOpen && _appSocialState.profileScreenUserId === _appAuthUserId()){
+            await _appOpenPublicProfile(_appAuthUserId(), _appSocialState.profileScreenTab || "posts").catch(() => {});
+          } else {
+            _appRenderFeed();
+          }
+          uiToast("保存しました。");
+          _appProfileEditSetOpen(false);
+        }catch(err){
+          const next = Number(err?.data?.nextChangeAt || 0);
+          if (next > 0){
+            _appProfileEditSetStatus(`次に変更できるのは ${_appProfileEditFormatTime(next)} です。`, "error");
+          } else {
+            _appProfileEditSetStatus(`保存に失敗: ${String(err?.message || err)}`, "error");
+          }
+        }finally{
+          _appSocialState.profileEditSaving = false;
+          _appProfileEditRefreshSaveState();
+        }
+      }
+      function _appProfileEditClose(force = false){
+        if (!_appSocialState.profileEditOpen) return;
+        if (!force && _appProfileEditIsDirty()){
+          uiConfirm("未保存の変更があります。閉じますか？", {
+            title: "プロフィール編集",
+            okText: "閉じる",
+            cancelText: "キャンセル"
+          }).then((ok) => {
+            if (!ok) return;
+            _appProfileEditSetOpen(false);
+          }).catch(() => {});
+          return;
+        }
+        _appProfileEditSetOpen(false);
       }
 
       function _appOwnPublishedPresetIds(){
@@ -22485,41 +23141,57 @@ function _openSearchResultByIndex(i){
         _appSocialState.profileFollowListHidden = false;
         _appSocialState.profileFollowListItems = [];
       }
+      function _appFollowListModalSetOpen(open){
+        const on = !!open;
+        if (el.appFollowListOverlay){
+          el.appFollowListOverlay.classList.toggle("hidden", !on);
+        }
+        document.body.classList.toggle("app-follow-list-lock", on);
+      }
       function _appFeedProfileRenderFollowList(){
-        if (!el.appFeedProfileFollowBlock || !el.appFeedProfileFollowTitle || !el.appFeedProfileFollowList || !el.appFeedProfileFollowEmpty) return;
+        if (!el.appFollowListTitle || !el.appFollowListList || !el.appFollowListEmpty) return;
         const kind = String(_appSocialState.profileFollowListKind || "");
         const loading = !!_appSocialState.profileFollowListLoading;
         const hidden = !!_appSocialState.profileFollowListHidden;
         const items = Array.isArray(_appSocialState.profileFollowListItems) ? _appSocialState.profileFollowListItems : [];
         const open = !!kind;
-        el.appFeedProfileFollowBlock.classList.toggle("hidden", !open);
-        if (!open) return;
+        _appFollowListModalSetOpen(open);
+        if (!open){
+          el.appFollowListList.replaceChildren();
+          el.appFollowListEmpty.classList.add("hidden");
+          return;
+        }
         const title = kind === "followers" ? "フォロワー" : "フォロー中";
-        el.appFeedProfileFollowTitle.textContent = title;
-        el.appFeedProfileFollowList.replaceChildren();
+        el.appFollowListTitle.textContent = title;
+        el.appFollowListList.replaceChildren();
         if (loading){
-          el.appFeedProfileFollowEmpty.classList.remove("hidden");
-          el.appFeedProfileFollowEmpty.textContent = "読み込み中です…";
+          el.appFollowListEmpty.classList.remove("hidden");
+          el.appFollowListEmpty.textContent = "読み込み中です…";
           return;
         }
         if (hidden){
-          el.appFeedProfileFollowEmpty.classList.remove("hidden");
-          el.appFeedProfileFollowEmpty.textContent = "このユーザーはフォロー一覧を非公開にしています。";
+          el.appFollowListEmpty.classList.remove("hidden");
+          el.appFollowListEmpty.textContent = "このユーザーはフォロー一覧を非公開にしています。";
           return;
         }
         if (!items.length){
-          el.appFeedProfileFollowEmpty.classList.remove("hidden");
-          el.appFeedProfileFollowEmpty.textContent = "表示できるユーザーがいません。";
+          el.appFollowListEmpty.classList.remove("hidden");
+          el.appFollowListEmpty.textContent = "表示できるユーザーがいません。";
           return;
         }
-        el.appFeedProfileFollowEmpty.classList.add("hidden");
+        el.appFollowListEmpty.classList.add("hidden");
         const frag = document.createDocumentFragment();
+        const myUid = _appAuthUserId();
         for (const row of items){
           const item = document.createElement("article");
           item.className = "app-profile-follow-item";
           const avatar = document.createElement("div");
           avatar.className = "app-profile-follow-avatar";
-          avatar.textContent = String(row?.displayName || row?.nickname || "U").slice(0, 2).toUpperCase() || "U";
+          _appApplyAvatarVisual(
+            avatar,
+            String(row?.avatarUrl || ""),
+            _appAvatarFallbackText(row?.displayName || row?.nickname || "U", row?.nickname || "")
+          );
           const meta = document.createElement("div");
           meta.className = "app-profile-follow-meta";
           const name = document.createElement("div");
@@ -22527,21 +23199,38 @@ function _openSearchResultByIndex(i){
           name.textContent = String(row?.displayName || row?.nickname || "Unknown");
           const handle = document.createElement("div");
           handle.className = "app-profile-follow-handle";
-          handle.textContent = `@${String(row?.nickname || "user").replace(/^@+/, "")}`;
+          handle.textContent = `@${_appNormalizeHandleInput(row?.handle || row?.nickname || "user") || "user"}`;
           meta.appendChild(name);
           meta.appendChild(handle);
+          const actions = document.createElement("div");
+          actions.className = "app-feed-head-tools";
           const openBtn = document.createElement("button");
           openBtn.type = "button";
-          openBtn.className = "textbtn";
+          openBtn.className = "textbtn app-profile-follow-open";
           openBtn.dataset.feedAction = "openProfile";
           openBtn.dataset.id = String(Math.max(0, Number(row?.userId || 0)));
           openBtn.textContent = "表示";
+          actions.appendChild(openBtn);
+          const uid = Math.max(0, Number(row?.userId || 0));
+          if (_appIsLoggedUser() && uid > 0 && uid !== myUid){
+            const following = !!row?.isFollowing;
+            const busy = _appSocialState.followBusyUsers.has(String(uid));
+            const followBtn = document.createElement("button");
+            followBtn.type = "button";
+            followBtn.className = `app-feed-follow-btn${following ? " is-on" : ""}`;
+            followBtn.dataset.feedAction = "toggleFollow";
+            followBtn.dataset.id = String(uid);
+            followBtn.dataset.follow = following ? "0" : "1";
+            followBtn.disabled = busy;
+            followBtn.textContent = following ? "フォロー中" : "フォロー";
+            actions.appendChild(followBtn);
+          }
           item.appendChild(avatar);
           item.appendChild(meta);
-          item.appendChild(openBtn);
+          item.appendChild(actions);
           frag.appendChild(item);
         }
-        el.appFeedProfileFollowList.appendChild(frag);
+        el.appFollowListList.appendChild(frag);
       }
       async function _appFeedProfileOpenFollowList(kindRaw){
         const kind = String(kindRaw || "").toLowerCase() === "followers" ? "followers" : "following";
@@ -22587,12 +23276,14 @@ function _openSearchResultByIndex(i){
         const tab = _appNormalizeProfileTab(_appSocialState.profileScreenTab);
         const tabCounts = (data?.tabCounts && typeof data.tabCounts === "object") ? data.tabCounts : {};
         const displayName = String(profile?.displayName || profile?.nickname || "Unknown");
-        const nickname = String(profile?.nickname || "user").trim();
-        if (el.appFeedProfileAvatar){
-          el.appFeedProfileAvatar.textContent = displayName.slice(0, 2).toUpperCase() || "U";
-        }
+        const handle = _appNormalizeHandleInput(profile?.handle || profile?.nickname || "user");
+        _appApplyAvatarVisual(
+          el.appFeedProfileAvatar,
+          String(profile?.avatarUrl || ""),
+          _appAvatarFallbackText(displayName, profile?.nickname || "")
+        );
         if (el.appFeedProfileName) el.appFeedProfileName.textContent = displayName;
-        if (el.appFeedProfileHandle) el.appFeedProfileHandle.textContent = `@${(nickname || "user").replace(/^@+/, "")}`;
+        if (el.appFeedProfileHandle) el.appFeedProfileHandle.textContent = `@${handle || "user"}`;
         if (el.appFeedProfileFollowing) el.appFeedProfileFollowing.textContent = String(Math.max(0, Number(profile?.following || 0)));
         if (el.appFeedProfileFollowers) el.appFeedProfileFollowers.textContent = String(Math.max(0, Number(profile?.followers || 0)));
         if (el.appFeedProfileEditBtn){
@@ -22687,6 +23378,34 @@ function _openSearchResultByIndex(i){
         return normalized ? `@${normalized}` : "@user";
       }
 
+      function _appNormalizeHandleInput(raw){
+        return String(raw || "")
+          .trim()
+          .replace(/^@+/, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9_]/g, "");
+      }
+
+      function _appAvatarFallbackText(displayName, nickname = ""){
+        const name = String(displayName || nickname || "U").trim();
+        if (!name) return "U";
+        return name.slice(0, 2).toUpperCase();
+      }
+
+      function _appApplyAvatarVisual(node, avatarUrl, fallbackText = "U"){
+        if (!node) return;
+        const src = String(avatarUrl || "").trim();
+        if (src && /^data:image\/|^https?:\/\//i.test(src)){
+          node.classList.add("has-image");
+          node.style.backgroundImage = `url("${src.replace(/"/g, "\\\"")}")`;
+          node.textContent = fallbackText || "U";
+          return;
+        }
+        node.classList.remove("has-image");
+        node.style.backgroundImage = "none";
+        node.textContent = fallbackText || "U";
+      }
+
       function _appFeedMediaList(post){
         const images = (Array.isArray(post?.images) ? post.images : [])
           .map((v) => String(v || "").trim())
@@ -22751,6 +23470,11 @@ function _openSearchResultByIndex(i){
       function _appFeedBuildPostCard(post, opts = {}){
         const showProfileButton = opts.showProfileButton !== false;
         const enableOpenPost = opts.enableOpenPost !== false;
+        const authorUserId = Math.max(0, Number(post?.author?.userId || 0));
+        const isOwn = authorUserId > 0 && authorUserId === _appAuthUserId();
+        const canFollow = _appIsLoggedUser() && authorUserId > 0 && !isOwn;
+        const following = !!post?.author?.isFollowing;
+        const followBusy = _appSocialState.followBusyUsers.has(String(authorUserId));
         const card = document.createElement("article");
         card.className = "app-feed-card app-feed-item";
         if (enableOpenPost){
@@ -22760,14 +23484,20 @@ function _openSearchResultByIndex(i){
 
         const avatar = document.createElement("div");
         avatar.className = "app-feed-avatar";
-        avatar.textContent = String(post?.author?.nickname || post?.author?.displayName || "U").slice(0, 2).toUpperCase();
+        _appApplyAvatarVisual(
+          avatar,
+          String(post?.author?.avatarUrl || ""),
+          _appAvatarFallbackText(post?.author?.displayName || post?.author?.nickname || "U", post?.author?.nickname || "")
+        );
 
         const content = document.createElement("div");
         const head = document.createElement("div");
         head.className = "app-feed-head";
 
         const author = document.createElement("div");
-        author.className = "app-feed-author";
+        author.className = "app-feed-author is-clickable";
+        author.dataset.feedAction = "openProfile";
+        author.dataset.id = String(authorUserId || "");
         const authorMeta = document.createElement("div");
         authorMeta.className = "app-feed-author-meta";
         const authorName = String(post?.author?.displayName || post?.author?.nickname || "Unknown");
@@ -22782,14 +23512,30 @@ function _openSearchResultByIndex(i){
         author.appendChild(authorMeta);
         head.appendChild(author);
 
-        if (showProfileButton){
+        if (canFollow){
+          const tools = document.createElement("div");
+          tools.className = "app-feed-head-tools";
+          const followBtn = document.createElement("button");
+          followBtn.type = "button";
+          followBtn.className = `app-feed-follow-btn${following ? " is-on" : ""}`;
+          followBtn.dataset.feedAction = "toggleFollow";
+          followBtn.dataset.id = String(authorUserId);
+          followBtn.dataset.follow = following ? "0" : "1";
+          followBtn.disabled = followBusy;
+          followBtn.textContent = following ? "フォロー中" : "フォロー";
+          tools.appendChild(followBtn);
+          head.appendChild(tools);
+        } else if (showProfileButton){
+          const tools = document.createElement("div");
+          tools.className = "app-feed-head-tools";
           const profileBtn = document.createElement("button");
           profileBtn.type = "button";
           profileBtn.className = "textbtn";
           profileBtn.dataset.feedAction = "openProfile";
-          profileBtn.dataset.id = String(post?.author?.userId || "");
+          profileBtn.dataset.id = String(authorUserId || "");
           profileBtn.textContent = "プロフィール";
-          head.appendChild(profileBtn);
+          tools.appendChild(profileBtn);
+          head.appendChild(tools);
         }
 
         const title = String(post?.title || "").trim();
@@ -23570,7 +24316,69 @@ function _openSearchResultByIndex(i){
         }
       }
 
-      async function _appToggleFollow(targetUserId, follow){
+      function _appFeedCurrentFollowState(targetUserId){
+        const uid = Math.max(0, Number(targetUserId || 0));
+        if (!uid) return false;
+        const feedHit = (Array.isArray(_appSocialState.posts) ? _appSocialState.posts : []).find((p) => Number(p?.author?.userId || 0) === uid);
+        if (feedHit && feedHit.author) return !!feedHit.author.isFollowing;
+        const profile = _appSocialState.profileScreenData?.profile;
+        if (Number(profile?.userId || 0) === uid) return !!profile?.isFollowing;
+        const followHit = (Array.isArray(_appSocialState.profileFollowListItems) ? _appSocialState.profileFollowListItems : [])
+          .find((row) => Number(row?.userId || 0) === uid);
+        if (followHit) return !!followHit.isFollowing;
+        return false;
+      }
+
+      function _appFeedMutateFollowEverywhere(targetUserId, following){
+        const uid = Math.max(0, Number(targetUserId || 0));
+        if (!uid) return;
+        const nextFollowing = !!following;
+        const apply = (arr) => {
+          if (!Array.isArray(arr)) return;
+          for (const post of arr){
+            if (Number(post?.author?.userId || 0) !== uid) continue;
+            post.author = Object.assign({}, post.author || {}, { isFollowing: nextFollowing });
+          }
+        };
+        apply(_appSocialState.posts);
+        apply(_appSocialState.profileScreenData?.posts);
+        const cache = _appSocialState.profileTimelineCache || {};
+        for (const key of Object.keys(cache)){
+          apply(cache[key]?.data?.posts);
+        }
+        if (_appSocialState.profileScreenData?.profile && Number(_appSocialState.profileScreenData.profile.userId || 0) === uid){
+          _appSocialState.profileScreenData.profile.isFollowing = nextFollowing;
+        }
+        const list = Array.isArray(_appSocialState.profileFollowListItems) ? _appSocialState.profileFollowListItems : [];
+        for (const row of list){
+          if (Number(row?.userId || 0) !== uid) continue;
+          row.isFollowing = nextFollowing;
+        }
+      }
+      function _appFeedApplyProfileIdentityEverywhere(userId, profile){
+        const uid = Math.max(0, Number(userId || 0));
+        if (!uid || !profile || typeof profile !== "object") return;
+        const patch = {
+          displayName: String(profile.displayName || "").trim() || String(profile.nickname || "").trim() || "User",
+          handle: _appNormalizeHandleInput(profile.handle || profile.nickname || "user"),
+          avatarUrl: String(profile.avatarUrl || "")
+        };
+        const apply = (arr) => {
+          if (!Array.isArray(arr)) return;
+          for (const post of arr){
+            if (Number(post?.author?.userId || 0) !== uid) continue;
+            post.author = Object.assign({}, post.author || {}, patch);
+          }
+        };
+        apply(_appSocialState.posts);
+        apply(_appSocialState.profileScreenData?.posts);
+        const cache = _appSocialState.profileTimelineCache || {};
+        for (const key of Object.keys(cache)){
+          apply(cache[key]?.data?.posts);
+        }
+      }
+
+      async function _appToggleFollow(targetUserId, follow, opts = {}){
         if (!_appFeatureSocialOn()) return;
         if (!_appIsLoggedUser()){
           uiToast("ログイン後にフォローできます。");
@@ -23578,23 +24386,55 @@ function _openSearchResultByIndex(i){
         }
         const uid = Number(targetUserId || 0);
         if (!Number.isFinite(uid) || uid <= 0) return;
+        if (uid === _appAuthUserId()) return;
+        const busyKey = String(uid);
+        if (_appSocialState.followBusyUsers.has(busyKey)) return;
+        const nextFollow = !!follow;
+        const prevFollow = _appFeedCurrentFollowState(uid);
+        const optimistic = opts?.optimistic !== false;
+        _appSocialState.followBusyUsers.add(busyKey);
+        if (optimistic){
+          _appFeedMutateFollowEverywhere(uid, nextFollow);
+          _appRenderFeed();
+          _appRenderFeedProfileScreen();
+          _appFeedProfileRenderFollowList();
+        }
         try{
-          await _appApiJson("/api/follow/toggle", {
+          const body = await _appApiJson("/api/follow/toggle", {
             method: "POST",
             body: JSON.stringify({
               targetUserId: uid,
-              follow: !!follow
+              follow: nextFollow
             })
           });
-          await _appLoadFeed(true);
-          if (_appSocialState.profileScreenOpen && _appSocialState.profileScreenUserId > 0){
-            await _appOpenPublicProfile(_appSocialState.profileScreenUserId, _appSocialState.profileScreenTab);
+          const serverFollowing = !!body?.following;
+          _appFeedMutateFollowEverywhere(uid, serverFollowing);
+          if (_appSocialState.profileScreenData?.profile && Number(_appSocialState.profileScreenData.profile.userId || 0) === uid){
+            const oldFollowers = Math.max(0, Number(_appSocialState.profileScreenData.profile.followers || 0));
+            if (serverFollowing !== prevFollow){
+              _appSocialState.profileScreenData.profile.followers = Math.max(0, oldFollowers + (serverFollowing ? 1 : -1));
+            }
           }
-          if (_appCurrentTab === APP_TAB_KEY.LIBRARY){
-            await _appLoadProfile(true);
+          if (_appSocialState.profile && serverFollowing !== prevFollow){
+            const oldFollowing = Math.max(0, Number(_appSocialState.profile.following || 0));
+            _appSocialState.profile.following = Math.max(0, oldFollowing + (serverFollowing ? 1 : -1));
           }
+          _appRenderFeed();
+          _appRenderFeedProfileScreen();
+          _appFeedProfileRenderFollowList();
+          _appV2RenderSidebarIdentity();
+          if (_appCurrentTab === APP_TAB_KEY.LIBRARY) _appRenderProfilePanel();
         }catch(err){
+          _appFeedMutateFollowEverywhere(uid, prevFollow);
+          _appRenderFeed();
+          _appRenderFeedProfileScreen();
+          _appFeedProfileRenderFollowList();
           uiToast(`フォロー更新に失敗: ${String(err?.message || err)}`);
+        }finally{
+          _appSocialState.followBusyUsers.delete(busyKey);
+          _appRenderFeed();
+          _appRenderFeedProfileScreen();
+          _appFeedProfileRenderFollowList();
         }
       }
 
@@ -23690,6 +24530,9 @@ function _openSearchResultByIndex(i){
       }
 
       function _appInboxIconForItem(item){
+        const type = String(item?.type || "").toLowerCase();
+        if (type === "follow_received") return "person_add";
+        if (type === "login_failed") return "shield";
         const text = `${String(item?.category || "")} ${String(item?.title || "")} ${String(item?.body || "")}`.toLowerCase();
         if (/(like|いいね|favorite|heart)/.test(text)) return "favorite";
         if (/(follow|フォロー|user|profile|account)/.test(text)) return "person_add";
@@ -27278,6 +28121,8 @@ function _openSearchResultByIndex(i){
         if (raw === "settings"){
           _appFeedEditorClose(false);
           _appFeedReplyClose();
+          _appFeedProfileCloseFollowList();
+          _appProfileEditSetOpen(false);
           _appV2SetSidebarOpen(false);
           _appV2SetRightPanelOpen(false);
           if (state.view !== "TITLE"){
@@ -27293,6 +28138,8 @@ function _openSearchResultByIndex(i){
         _appCurrentTab = t;
         _appFeedEditorClose(false);
         _appFeedReplyClose();
+        _appFeedProfileCloseFollowList();
+        _appProfileEditSetOpen(false);
         _appV2SetSidebarOpen(false);
         _appV2SetRightPanelOpen(false);
         if (state.view !== "TITLE"){
@@ -27774,6 +28621,15 @@ function _openSearchResultByIndex(i){
           _appRenderLibrary();
           return;
         }
+        if (t.id === "appProfileEditVisibility" || t.id === "appProfileEditFollowVisibility"){
+          _appProfileEditRefreshSaveState();
+          return;
+        }
+        if (t.id === "appProfileEditAvatarFile"){
+          const file = el.appProfileEditAvatarFile?.files?.[0] || null;
+          _appProfileEditHandleAvatarFile(file).catch(() => {});
+          return;
+        }
       });
       document.addEventListener("input", (e) => {
         const t = e.target;
@@ -27807,9 +28663,33 @@ function _openSearchResultByIndex(i){
           _appFeedReplySyncCounter();
           return;
         }
+        if (t.id === "appProfileEditDisplayName"){
+          _appProfileEditRenderAvatar();
+          _appProfileEditRefreshSaveState();
+          return;
+        }
+        if (t.id === "appProfileEditBio"){
+          _appProfileEditRefreshSaveState();
+          return;
+        }
+        if (t.id === "appProfileEditHandle"){
+          _appProfileEditRefreshSaveState();
+          _appProfileEditScheduleHandleAvailability();
+          return;
+        }
       });
       document.addEventListener("keydown", (e) => {
         if (e.key !== "Escape") return;
+        if (_appSocialState.profileEditOpen){
+          e.preventDefault();
+          _appProfileEditClose(false);
+          return;
+        }
+        if (_appSocialState.profileFollowListKind){
+          e.preventDefault();
+          _appFeedProfileCloseFollowList();
+          return;
+        }
         if (_appSocialState.replyOverlayOpen){
           e.preventDefault();
           _appFeedReplyClose();
@@ -27840,6 +28720,16 @@ function _openSearchResultByIndex(i){
           if (!picker){
             _chatSetModeMenuOpen(false);
           }
+        }
+        if (e.target === el.appFollowListOverlay){
+          e.preventDefault();
+          _appFeedProfileCloseFollowList();
+          return;
+        }
+        if (e.target === el.appProfileEditOverlay){
+          e.preventDefault();
+          _appProfileEditClose(false);
+          return;
         }
         const brandTitle = e.target.closest(".brand-title");
         if (brandTitle && brandTitle.closest(".topbar")){
@@ -27943,6 +28833,10 @@ function _openSearchResultByIndex(i){
             });
             return;
           }
+          if (action === "open-profile-edit"){
+            _appProfileEditOpen().catch(() => {});
+            return;
+          }
           const id = String(appV2ActionBtn.getAttribute("data-id") || "").trim();
           if (action === "use-preset"){
             if (!id) return;
@@ -27956,6 +28850,30 @@ function _openSearchResultByIndex(i){
             _runIdle(() => {
               try{ selectPresetForEdit(id); }catch{}
             });
+            return;
+          }
+        }
+
+        const profileEditActionBtn = e.target.closest("[data-profile-edit-action]");
+        if (profileEditActionBtn && profileEditActionBtn.closest("#appProfileEditOverlay")){
+          e.preventDefault();
+          const action = String(profileEditActionBtn.getAttribute("data-profile-edit-action") || "");
+          if (action === "save"){
+            await _appProfileEditSave();
+            return;
+          }
+          if (action === "back"){
+            _appProfileEditClose(false);
+            return;
+          }
+          if (action === "logout"){
+            await _authLogout();
+            _appProfileEditSetOpen(false);
+            _appSetTab("home");
+            return;
+          }
+          if (action === "delete"){
+            await _authDeleteAccount();
             return;
           }
         }
@@ -28059,7 +28977,13 @@ function _openSearchResultByIndex(i){
           }
         }
         const feedActionBtn = e.target.closest("[data-feed-action]");
-        if (feedActionBtn && (feedActionBtn.closest("#appInboxPage") || feedActionBtn.closest("#appFeedEditorOverlay") || feedActionBtn.closest("#appFeedReplyOverlay"))){
+        if (feedActionBtn && (
+          feedActionBtn.closest("#appInboxPage")
+          || feedActionBtn.closest("#appFeedEditorOverlay")
+          || feedActionBtn.closest("#appFeedReplyOverlay")
+          || feedActionBtn.closest("#appFollowListOverlay")
+          || feedActionBtn.closest("#appProfileEditOverlay")
+        )){
           const action = String(feedActionBtn.getAttribute("data-feed-action") || "");
           if (action === "openPost" && e.target && e.target.closest && e.target.closest("a[href]")){
             return;
@@ -28133,17 +29057,14 @@ function _openSearchResultByIndex(i){
             return;
           }
           if (action === "openProfile"){
+            if (_appSocialState.profileFollowListKind){
+              _appFeedProfileCloseFollowList();
+            }
             await _appOpenPublicProfile(Number(feedActionBtn.getAttribute("data-id") || 0));
             return;
           }
           if (action === "editMyProfile"){
-            _appSetTab("library");
-            _runIdle(() => {
-              try{
-                document.getElementById("appProfileBlock")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                el.appProfileAvatarInput?.focus();
-              }catch{}
-            });
+            _appProfileEditOpen().catch(() => {});
             return;
           }
           if (action === "openFollowList"){
@@ -28151,7 +29072,7 @@ function _openSearchResultByIndex(i){
             await _appFeedProfileOpenFollowList(kind);
             return;
           }
-          if (action === "closeFollowList"){
+          if (action === "closeFollowList" || action === "closeFollowModal"){
             _appFeedProfileCloseFollowList();
             return;
           }
