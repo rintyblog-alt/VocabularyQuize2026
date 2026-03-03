@@ -41268,14 +41268,91 @@ function _openSearchResultByIndex(i){
         const raw = authState?.user?.id ?? authState?.user?.userId ?? 0;
         return Math.max(0, Number(raw || 0));
       }
-      function _rtBattleMePlayer(){
+      function _rtBattleMyPlayerId(){
+        const st = _rtBattleState();
+        const byYou = Math.max(0, Number(st.you?.id || 0));
+        if (byYou) return byYou;
         const uid = _rtBattleMyUserId();
-        return (_rtBattleState().players || []).find((p) => Math.max(0, Number(p?.userId || 0)) === uid) || null;
+        const players = asArray(st.players);
+        if (uid > 0){
+          const meByUid = players.find((p) => Math.max(0, Number(p?.userId || 0)) === uid) || null;
+          const pidByUid = Math.max(0, Number(meByUid?.id || 0));
+          if (pidByUid) return pidByUid;
+        }
+        return 0;
+      }
+      function _rtBattlePlayerMatchesMe(player){
+        const p = (player && typeof player === "object") ? player : null;
+        if (!p) return false;
+        const uid = _rtBattleMyUserId();
+        const pid = _rtBattleMyPlayerId();
+        const pUid = Math.max(0, Number(p.userId || 0));
+        const pId = Math.max(0, Number(p.id || 0));
+        if (uid > 0) return pUid === uid;
+        if (pid > 0) return pId === pid;
+        return false;
+      }
+      function _rtBattlePlayerIsHost(player){
+        const p = (player && typeof player === "object") ? player : null;
+        if (!p) return false;
+        const st = _rtBattleState();
+        const hostUid = Math.max(0, Number(st.room?.hostUserId || 0));
+        const hostPid = Math.max(0, Number(st.room?.hostPlayerId || 0));
+        const pUid = Math.max(0, Number(p.userId || 0));
+        const pId = Math.max(0, Number(p.id || 0));
+        if (hostUid > 0) return pUid === hostUid;
+        if (hostPid > 0) return pId === hostPid;
+        return false;
+      }
+      function _rtBattleMyStateKey(){
+        const uid = _rtBattleMyUserId();
+        if (uid > 0) return String(uid);
+        const pid = _rtBattleMyPlayerId();
+        return pid > 0 ? String(pid) : "";
+      }
+      function _rtBattleFindMyRow(rows){
+        const arr = asArray(rows);
+        const uid = _rtBattleMyUserId();
+        const pid = _rtBattleMyPlayerId();
+        if (uid > 0){
+          const byUid = arr.find((x) => Math.max(0, Number(x?.userId || 0)) === uid) || null;
+          if (byUid) return byUid;
+        }
+        if (pid > 0){
+          const byPid = arr.find((x) => {
+            const idLike = Math.max(0, Number(x?.id ?? x?.playerId ?? 0));
+            return idLike === pid;
+          }) || null;
+          if (byPid) return byPid;
+        }
+        return null;
+      }
+      function _rtBattleMePlayer(){
+        const st = _rtBattleState();
+        const players = asArray(st.players);
+        const uid = _rtBattleMyUserId();
+        if (uid > 0){
+          const byUid = players.find((p) => Math.max(0, Number(p?.userId || 0)) === uid) || null;
+          if (byUid) return byUid;
+        }
+        const pid = _rtBattleMyPlayerId();
+        if (pid > 0){
+          const byPid = players.find((p) => Math.max(0, Number(p?.id || 0)) === pid) || null;
+          if (byPid) return byPid;
+        }
+        return null;
       }
       function _rtBattleIsHost(){
         const st = _rtBattleState();
         const hostUid = Math.max(0, Number(st.room?.hostUserId || 0));
-        return !!hostUid && hostUid === _rtBattleMyUserId();
+        const hostPid = Math.max(0, Number(st.room?.hostPlayerId || 0));
+        if (hostUid > 0){
+          return hostUid === _rtBattleMyUserId();
+        }
+        if (hostPid > 0){
+          return hostPid === _rtBattleMyPlayerId();
+        }
+        return false;
       }
       function _rtBattleAllReady(){
         const players = asArray(_rtBattleState().players).filter((p) => !!p?.connected);
@@ -41699,7 +41776,7 @@ function _openSearchResultByIndex(i){
         const players = asArray(st.players);
         if (!asArray(players).length) return `<div class="mini">参加者はまだいません。</div>`;
         return players.map((p) => {
-          const isYou = Math.max(0, Number(p?.userId || 0)) === _rtBattleMyUserId();
+          const isYou = _rtBattlePlayerMatchesMe(p);
           return `<div class="insight-card" style="padding:10px; margin-top:8px;">
             <div style="display:flex; justify-content:space-between; gap:8px;">
               <div><strong>${_escapeHtml(String(p?.nick || "Guest"))}</strong>${isYou ? ' <span class="mini">(あなた)</span>' : ''}</div>
@@ -42493,35 +42570,38 @@ function _openSearchResultByIndex(i){
       function _rtBattleRenderScoreboardBars(){
         const rows = _rtBattleScoreRows();
         if (!rows.length) return "";
+        const mePid = _rtBattleMyPlayerId();
         const meUid = _rtBattleMyUserId();
         return `<div class="ov-scoreboard" id="rtBattleScoreboard">
           <div class="ov-score-title">進捗 / スコア</div>
           <div class="ov-score-list">
-            ${rows.map((r) => `<div class="ov-score-row${r.userId===meUid ? " is-me" : ""}">
+            ${rows.map((r) => {
+              const isMe = (meUid > 0) ? (r.userId === meUid) : (Math.max(0, Number(r.id || 0)) === mePid);
+              return `<div class="ov-score-row${isMe ? " is-me" : ""}">
               <div class="ov-score-head">
-                <span class="ov-score-name">${_escapeHtml(r.nick)}${r.userId===meUid ? " (あなた)" : ""}</span>
+                <span class="ov-score-name">${_escapeHtml(r.nick)}${isMe ? " (あなた)" : ""}</span>
                 <span class="ov-score-val">${r.correct}/${r.total}</span>
               </div>
               <div class="ov-score-bar"><i style="width:${Math.max(6, Math.min(100, r.ratio))}%"></i></div>
-            </div>`).join("")}
+            </div>`;
+            }).join("")}
           </div>
         </div>`;
       }
       function _rtBattleResultSummary(){
         const st = _rtBattleState();
         const leaderboard = asArray(st.finalResult?.leaderboard || st.game?.finalLeaderboard);
-        const meUid = _rtBattleMyUserId();
         const totalRounds = _rtBattleResolvedTotalRounds(st.game?.totalRounds || 1);
-        const rankIndex = leaderboard.findIndex((r) => Math.max(0, Number(r?.userId || 0)) === meUid);
-        const me = rankIndex >= 0 ? leaderboard[rankIndex] : null;
-        const correct = Math.max(0, Number(me?.score || 0));
+        const meRow = _rtBattleFindMyRow(leaderboard);
+        const rankIndex = meRow ? leaderboard.findIndex((r) => r === meRow) : -1;
+        const correct = Math.max(0, Number(meRow?.score || 0));
         const accuracy = Math.round((correct / totalRounds) * 100);
         return {
           rank: rankIndex >= 0 ? (rankIndex + 1) : null,
           correct,
           totalRounds,
           accuracy,
-          totalTimeSec: Math.round(Math.max(0, Number(me?.answeredAtMsTotal || 0)) / 100) / 10
+          totalTimeSec: Math.round(Math.max(0, Number(meRow?.answeredAtMsTotal || 0)) / 100) / 10
         };
       }
       function _rtBattleRenderResultSummaryCard(){
@@ -43167,7 +43247,7 @@ function _openSearchResultByIndex(i){
         const hh = String(ts.getHours()).padStart(2, "0");
         const mm = String(ts.getMinutes()).padStart(2, "0");
         if (String(r.kind || "") === "chat"){
-          const mine = Math.max(0, Number(r.fromId || 0)) === _rtBattleMyUserId();
+          const mine = Math.max(0, Number(r.fromId || 0)) === _rtBattleMyPlayerId();
           return `<div class="ov-chat-row is-chat${mine ? " is-me" : ""}" data-chat-key="${_escapeHtml(key)}">
             <div class="ov-chat-meta">${_escapeHtml(String(r.fromNick || "user"))} <span>${hh}:${mm}</span></div>
             <div class="ov-chat-bubble"><div class="ov-chat-text">${_escapeHtml(String(r.text || ""))}</div></div>
@@ -43598,11 +43678,11 @@ function _openSearchResultByIndex(i){
         if (type === "game:result"){
           const me = _rtBattleMePlayer();
           const arr = Array.isArray(msg?.answersSummary) ? msg.answersSummary : [];
-          const my = arr.find(x => Math.max(0, Number(x?.userId || 0)) === _rtBattleMyUserId());
+          const my = _rtBattleFindMyRow(arr);
           try{
             const roundNo = Math.max(1, Number(msg?.round || 1));
             const q = _rtBattleState().currentQuestion || {};
-            const myRow = arr.find(x => Math.max(0, Number(x?.userId || 0)) === _rtBattleMyUserId()) || null;
+            const myRow = _rtBattleFindMyRow(arr);
             const entry = {
               round: roundNo,
               no: Math.max(0, Number(q?.no || 0)),
@@ -44038,10 +44118,14 @@ function _openSearchResultByIndex(i){
           return;
         }
         const maxScore = Math.max(1, ...players.map((p)=>Math.max(0, Number(p?.score || 0))));
+        const meUid = _rtBattleMyUserId();
+        const mePid = _rtBattleMyPlayerId();
         const html = players.map((p)=>{
           const score = Math.max(0, Number(p?.score || 0));
           const width = Math.max(4, Math.round((score / maxScore) * 100));
-          const you = Math.max(0, Number(p?.userId || 0)) === _rtBattleMyUserId();
+          const you = (meUid > 0)
+            ? (Math.max(0, Number(p?.userId || 0)) === meUid)
+            : (Math.max(0, Number(p?.id || 0)) === mePid);
           return `<div class="b3d-score-row${you ? " is-you" : ""}">
             <div class="b3d-score-name">${_escapeHtml(String(p?.nick || "Guest"))}${you ? " *" : ""}</div>
             <div class="b3d-score-track"><div class="b3d-score-fill" style="width:${width}%"></div></div>
@@ -44067,8 +44151,7 @@ function _openSearchResultByIndex(i){
         layer.classList.add("is-open");
         layer.setAttribute("aria-hidden", "false");
         const rows = asArray(b.finishOrder);
-        const myUid = _rtBattleMyUserId();
-        const myRow = rows.find((r)=>Math.max(0, Number(r?.userId||0))===myUid) || null;
+        const myRow = _rtBattleFindMyRow(rows);
         const winnerNick = String(b.winnerNick || rows[0]?.nick || "");
         sub.textContent = winnerNick ? `勝者: ${winnerNick}${myRow ? ` / あなたの順位: ${myRow.rank}位` : ""}` : "結果待機中";
         const html = rows.length ? rows.map((r)=>`<div class="b3d-result-row"><div>#${Math.max(1,Number(r?.rank||0))}</div><div>${_escapeHtml(String(r?.nick || "Guest"))}</div><div class="mini">${new Date(Math.max(0,Number(r?.ts||0))).toLocaleTimeString()}</div></div>`).join("") : `<div class="mini">まだゴールしたプレイヤーはいません。</div>`;
@@ -44115,9 +44198,9 @@ function _openSearchResultByIndex(i){
           };
         }
         b.remoteStates = rs;
-        const myUid = String(_rtBattleMyUserId());
+        const myStateKey = _rtBattleMyStateKey();
         const myPid = Math.max(0, Number(_rtBattleMePlayer()?.id || 0));
-        let myStateRaw = srcPlayers[myUid];
+        let myStateRaw = myStateKey ? srcPlayers[myStateKey] : null;
         if (!myStateRaw && myPid > 0){
           for (const [k, v] of Object.entries(srcPlayers)){
             const candidate = (v?.state && typeof v.state === "object") ? v.state : v;
@@ -44129,7 +44212,7 @@ function _openSearchResultByIndex(i){
         }
         const myState = (myStateRaw?.state && typeof myStateRaw.state === "object") ? myStateRaw.state : myStateRaw;
         const myProg = (b8.p3.playerProgress && typeof b8.p3.playerProgress === "object")
-          ? (b8.p3.playerProgress[myUid] || (myPid > 0 ? b8.p3.playerProgress[String(myPid)] : null))
+          ? ((myStateKey ? b8.p3.playerProgress[myStateKey] : null) || (myPid > 0 ? b8.p3.playerProgress[String(myPid)] : null))
           : null;
         if (myProg && typeof myProg === "object") {
           b8.p3.checkpointIndex = Math.max(0, Number(myProg.checkpointIndex || b8.p3.checkpointIndex || 0));
@@ -44237,7 +44320,8 @@ function _openSearchResultByIndex(i){
         const goalPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,3.2,10), new THREE.MeshStandardMaterial({ color: 0xb8c2d6, roughness: 0.8 }));
         goalPole.position.set(0, 1.6, -14.6);
         scene.add(goalPole);
-        const localColor = _rtBattle3dColorForUser(_rtBattleMyUserId());
+        const localColorKey = Math.max(1, Number(_rtBattleMyStateKey() || _rtBattleMyPlayerId() || _rtBattleMyUserId() || 1));
+        const localColor = _rtBattle3dColorForUser(localColorKey);
         const localMesh = _rtBattle3dBuildPlayerMesh(localColor);
         scene.add(localMesh);
         rt.renderer = renderer;
@@ -44373,12 +44457,12 @@ function _openSearchResultByIndex(i){
         const rt = b.runtime || {};
         const scene = rt.scene;
         if (!scene || !window.THREE) return;
-        const myUid = _rtBattleMyUserId();
+        const myStateKey = _rtBattleMyStateKey();
         const states = b.remoteStates && typeof b.remoteStates === "object" ? b.remoteStates : {};
         const keep = new Set();
         for (const [uidKey, rs] of Object.entries(states)){
           const uid = Math.max(0, Number(uidKey || 0));
-          if (!uid || uid === myUid) continue;
+          if (!uid || (myStateKey && String(uidKey) === myStateKey)) continue;
           keep.add(String(uid));
           let mesh = b.remoteMeshes[String(uid)];
           if (!mesh){
@@ -44736,10 +44820,12 @@ function _openSearchResultByIndex(i){
           return;
         }
         if (type === "game3d:player"){
-          const uid = Math.max(0, Number(msg?.userId || msg?.id || 0));
-          if (uid && uid !== _rtBattleMyUserId()){
+          const senderKey = String(Math.max(0, Number(msg?.userId || msg?.id || 0)));
+          const myKey = _rtBattleMyStateKey();
+          const uid = Math.max(0, Number(senderKey || 0));
+          if (uid && (!myKey || senderKey !== myKey)){
             const rs = (msg?.state && typeof msg.state === "object") ? msg.state : {};
-            b.remoteStates[String(uid)] = {
+            b.remoteStates[senderKey] = {
               x:Number(rs.x||0), y:Number(rs.y||0.9), z:Number(rs.z||0),
               vx:Number(rs.vx||0), vy:Number(rs.vy||0), vz:Number(rs.vz||0),
               rotY:Number(rs.rotY||0), action:String(rs.action||"idle"),
@@ -44972,10 +45058,10 @@ function _openSearchResultByIndex(i){
           return `<option value="${_escapeHtml(String(o.value||""))}"${selected ? " selected" : ""}>${_escapeHtml(String(o.label||""))}</option>`;
         }).join("");
         const rowsHtml = players.length ? players.map((p) => {
-          const isMe = Math.max(0, Number(p?.userId || 0)) === _rtBattleMyUserId();
+          const isMe = _rtBattlePlayerMatchesMe(p);
           const ready = !!p?.ready;
           const connected = !!p?.connected;
-          const isHostRow = Math.max(0, Number(p?.userId || 0)) === Math.max(0, Number(st.room?.hostUserId || 0));
+          const isHostRow = _rtBattlePlayerIsHost(p);
           return `<div class="b3d-player-row${isMe ? " is-me" : ""}">
             <div class="name">${_escapeHtml(String(p?.nick || "Guest"))}${isMe ? " *" : ""}</div>
             <span class="pill${ready ? " is-ready" : ""}">${ready ? "READY" : "WAIT"}</span>
@@ -45159,7 +45245,7 @@ function _openSearchResultByIndex(i){
         const html = players.map((p)=>{
           const score = Math.max(0, Number(p?.score || 0));
           const width = Math.max(4, Math.round((score / maxScore) * 100));
-          const you = Math.max(0, Number(p?.userId || 0)) === _rtBattleMyUserId();
+          const you = _rtBattlePlayerMatchesMe(p);
           return `<div class="b3d-score-row${you ? " is-you" : ""}">
             <div class="b3d-score-name">${_escapeHtml(String(p?.nick || "Guest"))}${you ? " *" : ""}</div>
             <div class="b3d-score-track"><div class="b3d-score-fill" style="width:${width}%"></div></div>
@@ -45191,10 +45277,10 @@ function _openSearchResultByIndex(i){
         }
         layer.classList.add("is-open");
         layer.setAttribute("aria-hidden", "false");
-        const myUid = _rtBattleMyUserId();
-        const myRow = finalRows.find((r)=>Math.max(0, Number(r?.userId||0))===myUid) || null;
+        const myRow = _rtBattleFindMyRow(finalRows);
         const winner = finalRows[0] || null;
         const totalRounds = Math.max(1, Number(st.game?.questionIds?.length || st.game?.totalRounds || st.room?.settings?.questionCount || 20));
+        const myRank = myRow ? Math.max(1, finalRows.findIndex((r) => r === myRow) + 1) : 0;
         let finals = layer.querySelector(".b3d-final-grid");
         if (!finals){
           finals = document.createElement("div");
@@ -45204,7 +45290,7 @@ function _openSearchResultByIndex(i){
         }
         finals.innerHTML = `
           <div class="b3d-stat"><div class="k">勝者</div><div class="v">${_escapeHtml(String(winner?.nick || "-"))}</div></div>
-          <div class="b3d-stat"><div class="k">あなたの順位</div><div class="v">${myRow ? `${Math.max(1, Number(finalRows.findIndex((r)=>Math.max(0, Number(r?.userId||0))===myUid)+1))}位` : "-"}</div></div>
+          <div class="b3d-stat"><div class="k">あなたの順位</div><div class="v">${myRow ? `${myRank}位` : "-"}</div></div>
           <div class="b3d-stat"><div class="k">ラウンド数</div><div class="v">${totalRounds}</div></div>`;
         sub.textContent = winner ? `${winner.nick} さんが勝利しました` : "結果";
         const rowsHtml = finalRows.map((r, idx)=>`<div class="b3d-result-row">
@@ -45229,12 +45315,16 @@ function _openSearchResultByIndex(i){
         if (resultByRound && typeof resultByRound === "object"){
           for (const [rk, rv] of Object.entries(resultByRound)){
             const roundNo = Math.max(1, Number(rk) + 1);
-            const myAns = asArray(rv?.answersSummary).find((a)=>Math.max(0, Number(a?.userId||0))===myUid) || null;
+            const myAns = _rtBattleFindMyRow(asArray(rv?.answersSummary));
             logs.push({ roundNo, correctIndex: rv?.correctIndex, myAns });
           }
         } else if (st.game?.lastResult) {
           const rv = st.game.lastResult;
-          logs.push({ roundNo: Math.max(1, Number(rv.round || 1)), correctIndex: rv.correctIndex, myAns: asArray(rv.answersSummary).find((a)=>Math.max(0, Number(a?.userId||0))===myUid)||null });
+          logs.push({
+            roundNo: Math.max(1, Number(rv.round || 1)),
+            correctIndex: rv.correctIndex,
+            myAns: _rtBattleFindMyRow(asArray(rv.answersSummary))
+          });
         }
         const logHtml = logs.sort((a,b)=>a.roundNo-b.roundNo).map((x)=>{
           const ok = !!x.myAns?.correct;
@@ -45545,7 +45635,8 @@ function _openSearchResultByIndex(i){
           if (hash === b.lastRoundResultHash) return;
           b.lastRoundResultHash = hash;
           const myUid = _rtBattleMyUserId();
-          const myAns = asArray(msg?.answersSummary).find((a)=>Math.max(0, Number(a?.userId||0))===myUid) || null;
+          const myPid = _rtBattleMyPlayerId();
+          const myAns = _rtBattleFindMyRow(asArray(msg?.answersSummary));
           if (myAns && typeof myAns.correct === "boolean"){
             if (myAns.correct){
               b.effectKind = "boost";
@@ -45562,7 +45653,7 @@ function _openSearchResultByIndex(i){
             }
           }
           const fastestKey = String(msg?.fastestCorrectUserKey || "");
-          const fastestMine = fastestKey && String(myUid) === fastestKey;
+          const fastestMine = !!fastestKey && (fastestKey === String(myUid) || (myUid <= 0 && fastestKey === String(myPid)));
           const toastTxt = myAns?.correct
             ? (fastestMine ? "正解！最速ボーナス +3" : "正解！スピードアップ")
             : "不正解。少しスローダウン";
@@ -46195,8 +46286,10 @@ function _openSearchResultByIndex(i){
         }
         if (type === "game:result"){
           const myUid = _rtBattleMyUserId();
-          const myAns = asArray(msg?.answersSummary).find((a)=>Math.max(0, Number(a?.userId||0))===myUid) || null;
-          const fastestMine = asStr(msg?.fastestCorrectUserKey) && asStr(msg.fastestCorrectUserKey) === String(myUid);
+          const myPid = _rtBattleMyPlayerId();
+          const myAns = _rtBattleFindMyRow(asArray(msg?.answersSummary));
+          const fastestKey = asStr(msg?.fastestCorrectUserKey);
+          const fastestMine = !!fastestKey && (fastestKey === String(myUid) || (myUid <= 0 && fastestKey === String(myPid)));
           if (myAns && typeof myAns.correct === "boolean"){
             const txt = myAns.correct ? (fastestMine ? "FAST! +3 ボーナス" : "正解！ +10") : "不正解";
             _rtBattle3dPushToast(myAns.correct ? "ok" : "ng", txt);
@@ -47665,9 +47758,9 @@ function _openSearchResultByIndex(i){
             b.p3.playerProgress = (g3.playerProgress && typeof g3.playerProgress === "object")
               ? g3.playerProgress
               : (b.p3.playerProgress || {});
-            const myUid = String(_rtBattleMyUserId());
+            const myStateKey = _rtBattleMyStateKey();
             const myPid = Math.max(0, Number(_rtBattleMePlayer()?.id || 0));
-            let mine = (g3.players && typeof g3.players === "object") ? g3.players[myUid] : null;
+            let mine = (g3.players && typeof g3.players === "object" && myStateKey) ? g3.players[myStateKey] : null;
             if (!mine && g3.players && typeof g3.players === "object" && myPid > 0){
               for (const [k, v] of Object.entries(g3.players)){
                 if (String(k) === String(myPid) || Math.max(0, Number(v?.id || v?.state?.id || 0)) === myPid){
@@ -47678,7 +47771,7 @@ function _openSearchResultByIndex(i){
             }
             const mineState = (mine?.state && typeof mine.state === "object") ? mine.state : mine;
             const prog = (b.p3.playerProgress && typeof b.p3.playerProgress === "object")
-              ? (b.p3.playerProgress[myUid] || (myPid > 0 ? b.p3.playerProgress[String(myPid)] : null))
+              ? ((myStateKey ? b.p3.playerProgress[myStateKey] : null) || (myPid > 0 ? b.p3.playerProgress[String(myPid)] : null))
               : null;
             if (prog && typeof prog === "object"){
               b.p3.checkpointIndex = Math.max(0, Number(prog.checkpointIndex || b.p3.checkpointIndex || 0));
