@@ -9980,7 +9980,7 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
           <span class="ms">share</span><span>プリセットを共有</span>
         </button>
         <button class="menu-item" type="button" data-menu-action="onlineBattleRealtime">
-          <span class="ms">wifi_tethering</span><span>オンライン対戦（リアルタイム）</span>
+          <span class="ms">wifi_tethering</span><span>VocabuSurvival</span>
         </button>
         <button class="menu-item" type="button" data-menu-action="terms">
           <span class="ms">policy</span><span>利用規約</span>
@@ -10703,6 +10703,10 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
           <span class="ms" aria-hidden="true">smart_toy</span>
           <span>Chat</span>
         </button>
+        <button class="app-tab-btn" type="button" data-v2-action="open-survival" aria-selected="false">
+          <span class="ms" aria-hidden="true">sports_esports</span>
+          <span>VocabuSurvival</span>
+        </button>
         <button class="app-tab-btn" type="button" data-app-tab="settings" aria-selected="false">
           <span class="ms" aria-hidden="true">settings</span>
           <span>Settings</span>
@@ -10768,11 +10772,11 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
                 <div class="sub">Preset Share</div>
               </div>
             </button>
-            <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="onlineBattleRealtime">
+            <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="vocabuSurvival">
               <span class="ms" aria-hidden="true">sports_esports</span>
               <div>
-                <div>オンライン対戦</div>
-                <div class="sub">Realtime Battle</div>
+                <div>VocabuSurvival</div>
+                <div class="sub">3D Online Survival</div>
               </div>
             </button>
             <button class="app-right-item is-button" type="button" data-v2-action="open-utility" data-id="report">
@@ -28758,6 +28762,15 @@ function _openSearchResultByIndex(i){
             }
             return;
           }
+          if (action === "open-survival"){
+            _appV2SetRightPanelOpen(false);
+            try{
+              _vSurvivalOpen("top", { push: true });
+            }catch(err){
+              uiToast(`VocabuSurvivalを開けませんでした: ${String(err?.message || err)}`);
+            }
+            return;
+          }
           if (action === "close-right-panel"){
             _appV2SetRightPanelOpen(false);
             return;
@@ -28784,13 +28797,12 @@ function _openSearchResultByIndex(i){
               _openRightUtilityView("presetShare");
               return;
             }
-            if (utilId === "onlinebattlerealtime"){
+            if (utilId === "vocabusurvival" || utilId === "onlinebattlerealtime"){
               _appV2SetRightPanelOpen(false);
               try{
-                if (typeof _rtBattleOverlayOpen === "function") _rtBattleOverlayOpen("top");
-                else _openRightUtilityView("onlineBattleRealtime");
+                _vSurvivalOpen("top", { push: true });
               }catch(err){
-                uiToast(`オンライン対戦を開けませんでした: ${String(err?.message || err)}`);
+                uiToast(`VocabuSurvivalを開けませんでした: ${String(err?.message || err)}`);
               }
               return;
             }
@@ -39420,7 +39432,7 @@ function _openSearchResultByIndex(i){
           </section>` : ``;
         return `
           <div class="menu-article">
-            <h3>オンライン対戦（リアルタイム）</h3>
+            <h3>VocabuSurvival</h3>
             <p class="mini">Durable Object + WebSocketで進捗を同期します。採点はサーバ側で行います。</p>
             ${!token ? `<div class="insight-empty">ログインが必要です。先にアカウントでログインしてください。</div>` : `
               <section class="insight-card" style="padding:12px;">
@@ -40131,7 +40143,7 @@ function _openSearchResultByIndex(i){
           else if(view === "memoDay"){ ttl = "メモチェック"; html = _renderMemoDayHTML(_menuState.memoCheck.currentDate || _memoToYmd(Date.now())); }
           else if(view === "presetShare"){ ttl = "プリセットを共有"; html = _renderPresetShareHTML(); }
           else if(view === "onlineBattle"){ ttl = "オンライン対戦"; html = _renderOnlineBattleHTML(); }
-          else if(view === "onlineBattleRealtime"){ ttl = "オンライン対戦（リアルタイム）"; html = _renderOnlineBattleRealtimeHTML(); }
+          else if(view === "onlineBattleRealtime"){ ttl = "VocabuSurvival"; html = _renderOnlineBattleRealtimeHTML(); }
           else {
             ttl = "MENU";
             html = (host === "right") ? (_menuState.rightRootHtml || "") : _menuState.rootHtml;
@@ -41834,8 +41846,8 @@ function _openSearchResultByIndex(i){
         const roomPw = String(st.roomPassword || st.joinPassword || "");
         return `
           <div class="menu-article">
-            <h3>オンライン対戦（リアルタイム）</h3>
-            <p class="mini">最大4人。Ready → ホストStart → 同期された問題数で対戦。チャットは同じ接続で使えます。</p>
+            <h3>VocabuSurvival</h3>
+            <p class="mini">最大8人。Ready → ホストStart → 同期された問題数で対戦。チャットは同じ接続で使えます。</p>
             ${!token ? `<div class="insight-empty">ログインが必要です。先にログインしてください。</div>` : `
               <section class="insight-card" style="padding:12px;">
                 <div class="mini">ニックネーム（任意）</div>
@@ -41870,7 +41882,7 @@ function _openSearchResultByIndex(i){
 
               <section class="insight-card" style="padding:12px; margin-top:10px;">
                 <div class="insight-head"><div class="insight-title">参加者 / スコア</div><div class="insight-note">${_escapeHtml(String(st.phase || "lobby"))}</div></div>
-                <div class="mini">人数: ${Number(st.room?.count || asArray(st.players).length || 0)}/${Number(st.room?.max || 4)}${_rtBattleIsHost() ? " / Host" : ""}</div>
+                <div class="mini">人数: ${Number(st.room?.count || asArray(st.players).length || 0)}/${Number(st.room?.max || 8)}${_rtBattleIsHost() ? " / Host" : ""}</div>
                 <div style="margin-top:8px;">${_rtBattleRenderPlayerList()}</div>
               </section>
 
@@ -42353,6 +42365,9 @@ function _openSearchResultByIndex(i){
           root.setAttribute("aria-hidden", "true");
         }
         _rtBattleOverlaySetBodyLock(false);
+        if (_vSurvivalIsRoute(location.pathname || "")) {
+          _vSurvivalSetUrl("/", true);
+        }
       }
       function _rtBattleSceneFromPhase(){
         const st = _rtBattleState();
@@ -42720,7 +42735,7 @@ function _openSearchResultByIndex(i){
       function _rtBattleRoomCountText(){
         const st = _rtBattleState();
         const count = Math.max(0, Number(st.room?.count || asArray(st.players).length || 0));
-        const max = Math.max(1, Number(st.room?.max || 4));
+        const max = Math.max(1, Number(st.room?.max || 8));
         return `${count}/${max}`;
       }
       function _rtBattleRoomCodeCompact(){
@@ -43035,13 +43050,83 @@ function _openSearchResultByIndex(i){
         </section>`;
       }
       function _rtBattleOverlaySceneTitle(scene){
-        if (scene === "create") return "オンライン対戦 / ルーム作成";
-        if (scene === "join") return "オンライン対戦 / ルーム参加";
-        if (scene === "countdown") return "オンライン対戦 / カウントダウン";
-        if (scene === "game") return "オンライン対戦 / 対戦中";
-        if (scene === "result") return "オンライン対戦 / 結果";
-        if (scene === "lobby") return "オンライン対戦 / ロビー";
-        return "オンライン対戦";
+        if (scene === "create") return "VocabuSurvival / ルーム作成";
+        if (scene === "join") return "VocabuSurvival / ルーム参加";
+        if (scene === "countdown") return "VocabuSurvival / カウントダウン";
+        if (scene === "game") return "VocabuSurvival / 対戦中";
+        if (scene === "result") return "VocabuSurvival / 結果";
+        if (scene === "lobby") return "VocabuSurvival / ロビー";
+        return "VocabuSurvival";
+      }
+      function _vSurvivalNormRoomCode(raw){
+        return String(raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+      }
+      function _vSurvivalIsRoute(pathname){
+        return /^\/survival(?:\/|$)/i.test(String(pathname || ""));
+      }
+      function _vSurvivalRouteForScene(scene, roomIdRaw){
+        const roomId = _vSurvivalNormRoomCode(roomIdRaw);
+        const s = String(scene || "top");
+        if ((s === "game" || s === "result") && roomId) return `/survival/game/${roomId}`;
+        if ((s === "join" || s === "lobby" || s === "countdown" || s === "create") && roomId) return `/survival/lobby/${roomId}`;
+        return "/survival";
+      }
+      function _vSurvivalSetUrl(pathname, replace = false){
+        try{
+          const next = String(pathname || "/survival");
+          if (String(location.pathname || "") === next) return;
+          const method = replace ? "replaceState" : "pushState";
+          if (history && typeof history[method] === "function"){
+            history[method]({ source: "vocabu-survival", path: next }, "", next);
+          }
+        }catch(_){}
+      }
+      function _vSurvivalSyncRouteFromState(){
+        if (!_rtBattleOverlayIsOpen()) return;
+        const st = _rtBattleState();
+        const scene = String(st.phase || "") === "playing"
+          ? "game"
+          : (String(st.phase || "") === "result" ? "result" : String(st.overlayScene || "top"));
+        const route = _vSurvivalRouteForScene(scene, st.room?.roomId || st.roomId || st.joinRoomId || "");
+        _vSurvivalSetUrl(route, true);
+      }
+      function _vSurvivalOpen(scene = "top", options = {}){
+        const st = _rtBattleState();
+        const nextScene = String(scene || "top");
+        const roomId = _vSurvivalNormRoomCode(options.roomId || st.joinRoomId || "");
+        const password = _vSurvivalNormRoomCode(options.password || st.joinPassword || "");
+        if (roomId) st.joinRoomId = roomId;
+        if (password) st.joinPassword = password;
+        _rtBattleOverlayOpen(nextScene);
+        if (options.push) {
+          _vSurvivalSetUrl(_vSurvivalRouteForScene(nextScene, st.room?.roomId || st.roomId || roomId), false);
+        }
+        if (options.autoJoin && roomId && password.length === 6) {
+          setTimeout(() => { try{ _rtBattleReconnect(); }catch(_){} }, 80);
+        }
+      }
+      function _vSurvivalBootstrapRoute(){
+        const path = String(location.pathname || "/");
+        if (!_vSurvivalIsRoute(path)) {
+          if (_rtBattleOverlayIsOpen()) _rtBattleOverlayClose();
+          return;
+        }
+        const lobbyMatch = path.match(/^\/survival\/lobby\/([A-Za-z0-9]{1,16})$/i);
+        const gameMatch = path.match(/^\/survival\/game\/([A-Za-z0-9]{1,16})$/i);
+        const search = new URLSearchParams(String(location.search || ""));
+        const roomId = _vSurvivalNormRoomCode((lobbyMatch && lobbyMatch[1]) || (gameMatch && gameMatch[1]) || "");
+        const pw = _vSurvivalNormRoomCode(search.get("pw") || "");
+        if (roomId) _rtBattleState().joinRoomId = roomId;
+        if (pw) _rtBattleState().joinPassword = pw;
+        const openScene = roomId ? "join" : "top";
+        _vSurvivalOpen(openScene, { push: false, roomId, password: pw, autoJoin: !!roomId && pw.length === 6 });
+        if (gameMatch) {
+          setTimeout(() => {
+            try{
+              if (_rtBattleState().connected && typeof _rtBattle3dOpen === "function") _rtBattle3dOpen();
+            }catch(_){}
+          }, 600);
+        }
       }
       function _rtBattleOverlayRenderScanner(){
         const st = _rtBattleState();
@@ -43239,6 +43324,7 @@ function _openSearchResultByIndex(i){
           countEl.value = _rtBattleQuestionCountLabel(_rtBattleQuestionCountValue());
           countEl.disabled = !_rtBattleIsHost();
         }
+        _vSurvivalSyncRouteFromState();
       }
       function _rtBattleRerender(){
         if (_rtBattleOverlayIsOpen()){
@@ -43934,8 +44020,8 @@ function _openSearchResultByIndex(i){
         if (pingPill) pingPill.textContent = `PING ${Math.max(0, Math.round(Number(b.pingMs || 0)))}ms`;
         const staleMs = b.lastNetTs ? (Date.now() - b.lastNetTs) : 999999;
         if (syncPill) syncPill.textContent = staleMs < 2500 ? "SYNC OK" : "SYNC WEAK";
-        if (sub) sub.textContent = `${players.filter((p)=>!!p?.connected).length}/${Math.max(1, Number(st.room?.max || 4))}人 ・ ${_rtBattleIsHost() ? "HOST" : "GUEST"}`;
-        if (hudPlayers) hudPlayers.textContent = `${players.filter((p)=>!!p?.connected).length} / ${Math.max(1, Number(st.room?.max || 4))}`;
+        if (sub) sub.textContent = `${players.filter((p)=>!!p?.connected).length}/${Math.max(1, Number(st.room?.max || 8))}人 ・ ${_rtBattleIsHost() ? "HOST" : "GUEST"}`;
+        if (hudPlayers) hudPlayers.textContent = `${players.filter((p)=>!!p?.connected).length} / ${Math.max(1, Number(st.room?.max || 8))}`;
         if (hudMe) hudMe.textContent = String(me?.nick || st.nickname || "You");
         const statusTxt = b.resultOpen ? "結果表示" : (b.quizOpen ? "ゲート問題に回答中" : (b.gateOpen ? "ゲートOPEN" : "ゲート未解除"));
         if (hudStatus) hudStatus.textContent = statusTxt;
@@ -44838,11 +44924,11 @@ function _openSearchResultByIndex(i){
             ${isHostRow ? `<span class="pill is-host">HOST</span>` : `<span class="pill">${connected ? "ON" : "OFF"}</span>`}
           </div>`;
         }).join("") : `<div class="b3d-mini">参加者がいません。</div>`;
-        layer.innerHTML = `
+        const nextHtml = `
           <div class="b3d-grid">
             <div class="b3d-panel">
               <h4>ルームロビー</h4>
-              <div class="b3d-mini">Room <code>${_escapeHtml(roomId)}</code> ・ ${players.filter((p)=>!!p.connected).length}/${Math.max(1, Number(st.room?.max || 4))}人</div>
+              <div class="b3d-mini">Room <code>${_escapeHtml(roomId)}</code> ・ ${players.filter((p)=>!!p.connected).length}/${Math.max(1, Number(st.room?.max || 8))}人</div>
               <div class="b3d-mini" style="margin-top:4px;">${_escapeHtml(dbgLine)}</div>
               <div class="b3d-round-track"><i style="width:${_rtBattle3dRoundProgressPct()}%"></i></div>
               <div class="b3d-mini" style="margin-top:8px;">開始前に全員Readyが必要です。</div>
@@ -44875,6 +44961,18 @@ function _openSearchResultByIndex(i){
               </div>
             </div>
           </div>`;
+        const activeEl = document.activeElement;
+        const lockSelectOpen = activeEl instanceof HTMLElement && (
+          activeEl.id === "rt3dLobbyPresetSelect" ||
+          activeEl.id === "rt3dLobbyQuestionCountSelect" ||
+          activeEl.id === "rt3dLobbyMapSelect"
+        );
+        const prevHash = String(layer.dataset.renderHash || "");
+        if (lockSelectOpen && prevHash) return;
+        if (prevHash !== nextHtml){
+          layer.dataset.renderHash = nextHtml;
+          layer.innerHTML = nextHtml;
+        }
       }
       function _rtBattle3dCountdownText(){
         const st = _rtBattleState();
@@ -44960,8 +45058,8 @@ function _openSearchResultByIndex(i){
         const roundNo = phase === "result" ? totalRounds : Math.max(1, Number(st.game?.round || 0) + 1);
         const qEndsAt = Math.max(0, Number(st.game?.questionEndsAtMs || 0));
         const remainSec = (phase === "playing" && qEndsAt) ? Math.max(0, Math.ceil((qEndsAt - Date.now()) / 1000)) : 0;
-        if (sub) sub.textContent = `${players.filter((p)=>!!p?.connected).length}/${Math.max(1, Number(st.room?.max || 4))}人 ・ ${_rtBattleIsHost() ? "HOST" : "GUEST"} ・ ${phase.toUpperCase()}`;
-        if (hudPlayers) hudPlayers.textContent = `${players.filter((p)=>!!p?.connected).length} / ${Math.max(1, Number(st.room?.max || 4))}`;
+        if (sub) sub.textContent = `${players.filter((p)=>!!p?.connected).length}/${Math.max(1, Number(st.room?.max || 8))}人 ・ ${_rtBattleIsHost() ? "HOST" : "GUEST"} ・ ${phase.toUpperCase()}`;
+        if (hudPlayers) hudPlayers.textContent = `${players.filter((p)=>!!p?.connected).length} / ${Math.max(1, Number(st.room?.max || 8))}`;
         if (hudMe) hudMe.textContent = `${String(me?.nick || st.nickname || "You")} / ${Math.max(0, Number(me?.score || 0))}pt`;
         let statusTxt = "待機中";
         if (phase === "lobby") statusTxt = `Ready ${players.filter((p)=>!!p?.ready && !!p?.connected).length}/${players.filter((p)=>!!p?.connected).length}`;
@@ -46161,10 +46259,14 @@ function _openSearchResultByIndex(i){
         if (!Array.isArray(p3.toastsQueue)) p3.toastsQueue = [];
         return b;
       }
-      const RT3D_MAP_IDS = ["bridge","city","snow","factory","jungle","lab","sky","volcano","aqua","ice","desert","rail"];
+      const RT3D_MAP_IDS = [
+        "bridge","city","snow","factory","jungle","lab","sky","volcano",
+        "aqua","ice","desert","rail","canyon","ruins","neon","gauntlet"
+      ];
       const RT3D_MAP_LABELS = {
         bridge:"Bridge", city:"City", snow:"Snow", factory:"Factory", jungle:"Jungle", lab:"Lab",
-        sky:"Sky", volcano:"Volcano", aqua:"Aqua", ice:"Ice", desert:"Desert", rail:"Rail"
+        sky:"Sky", volcano:"Volcano", aqua:"Aqua", ice:"Ice", desert:"Desert", rail:"Rail",
+        canyon:"Canyon", ruins:"Ruins", neon:"Neon", gauntlet:"Final Gauntlet"
       };
       function _rtBattle3dV8Mulberry(seed){
         let t = (Math.max(1, Number(seed || 1)) >>> 0);
@@ -46263,7 +46365,34 @@ function _openSearchResultByIndex(i){
                      {type:"WindZone", pos:[0,1.0,-14.2], size:[8.0,2.0,4.4], params:{force:[0.6,0,0], pulse:1.4}}]}),
           rail: mk("rail", { theme:{ bg:0xf4f5f7, floor:0xe2e5eb, edge:0xb4bbca, accent:0x7aa1ff },
             hazards:[{type:"TrainCar", pos:[0,0.2,-10.5], size:[2.2,0.35,2.8], params:{axis:"x", amp:2.3, speed:0.85}},
-                     {type:"Conveyor", pos:[0,0.45,-14.2], size:[5.8,1.0,3.2], params:{dir:[1,0], speed:1.7}}]})
+                     {type:"Conveyor", pos:[0,0.45,-14.2], size:[5.8,1.0,3.2], params:{dir:[1,0], speed:1.7}}]}),
+          canyon: mk("canyon", { theme:{ bg:0xf7efe7, floor:0xe8dac7, edge:0xbf9f79, accent:0xd2915b },
+            hazards:[
+              {type:"BreakBridge", pos:[0,0.2,-8.8], size:[2.4,0.2,2.0], params:{delay:640, down:3.2, recover:2200}},
+              {type:"BreakBridge", pos:[0,0.2,-11.8], size:[2.2,0.2,2.0], params:{delay:600, down:3.2, recover:2500}},
+              {type:"JumpPad", pos:[0,0.15,-13.8], size:[1.4,0.2,1.4], params:{power:7.6, boost:2.8}}
+            ]}),
+          ruins: mk("ruins", { theme:{ bg:0xf2f3f0, floor:0xe3e4dc, edge:0xb9b8ac, accent:0x7e8d77 },
+            hazards:[
+              {type:"DisappearingPlatform", pos:[-1.8,0.2,-9.6], size:[1.8,0.22,1.8], params:{period:2.4, on:1.2}},
+              {type:"DisappearingPlatform", pos:[1.8,0.2,-11.8], size:[1.8,0.22,1.8], params:{period:2.4, on:1.2, phase:0.8}},
+              {type:"Rotator", pos:[0,0.9,-14.0], size:[3.1,0.16,0.22], params:{speed:1.9, push:3.0}}
+            ]}),
+          neon: mk("neon", { theme:{ bg:0x121827, floor:0x1f2a44, edge:0x334b79, accent:0x5be7ff },
+            hazards:[
+              {type:"MovingBar", pos:[0,0.95,-10.2], size:[7.4,1.7,0.55], params:{axis:"x", amp:2.5, speed:1.2, push:3.3}},
+              {type:"Conveyor", pos:[0,0.45,-13.6], size:[6.0,1.0,3.4], params:{dir:[-1,0], speed:2.0}},
+              {type:"JumpPad", pos:[0,0.16,-15.5], size:[1.6,0.2,1.6], params:{power:8.2, boost:2.0}}
+            ]}),
+          gauntlet: mk("gauntlet", { theme:{ bg:0x1b1d24, floor:0x2a2e3b, edge:0x59627a, accent:0xffa756 },
+            hazards:[
+              {type:"BreakBridge", pos:[0,0.2,-8.4], size:[2.2,0.2,2.0], params:{delay:580, down:3.5, recover:2300}},
+              {type:"FallingRocks", pos:[0,0.2,-10.9], size:[7.2,0.2,4.8], params:{period:2.8, warning:0.9, fall:1.0, rockY:4.6}},
+              {type:"Rotator", pos:[0,0.95,-13.2], size:[3.4,0.16,0.22], params:{speed:2.25, push:3.4}},
+              {type:"DisappearingPlatform", pos:[-2.2,0.2,-14.8], size:[1.8,0.22,1.8], params:{period:2.0, on:0.9}},
+              {type:"Conveyor", pos:[2.2,0.45,-14.8], size:[1.8,1.0,1.8], params:{dir:[0,1], speed:2.1}},
+              {type:"JumpPad", pos:[0,0.16,-16.2], size:[1.6,0.2,1.6], params:{power:8.6, boost:2.5}}
+            ]})
         };
       }
       const RT3D_MAPS = _rtBattle3dV8BuildMapPresets();
@@ -46362,19 +46491,44 @@ function _openSearchResultByIndex(i){
         const g = new THREE.Group();
         g.position.set(Number(pos[0]||0), Number(pos[1]||0), Number(pos[2]||0));
         let mesh = null;
-        if (t === "Rotator" || t === "Pusher"){
+        if (t === "Rotator" || t === "Pusher" || t === "MovingBar"){
           mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||2), Number(size[1]||0.14), Number(size[2]||0.2)), _rtBattle3dV8Mat(THREE, theme.accent || 0x88a0ff, .82));
           g.add(mesh);
         } else if (t === "Laser"){
           mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||3), 0.06, 0.06), _rtBattle3dV8Mat(THREE, 0xff6d6d, .4));
           mesh.position.y = Math.max(0.2, Number(size[1]||1.1) * 0.5);
           g.add(mesh);
-        } else if (t === "MovingPlatform" || t === "TrainCar" || t === "FallingFloor"){
+        } else if (t === "MovingPlatform" || t === "TrainCar" || t === "FallingFloor" || t === "BreakBridge" || t === "DisappearingPlatform"){
           mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||2), Number(size[1]||0.24), Number(size[2]||2)), _rtBattle3dV8Mat(THREE, 0xd9dee8, .92));
           g.add(mesh);
+          if (t === "BreakBridge"){
+            const crack = new THREE.LineSegments(
+              new THREE.EdgesGeometry(new THREE.BoxGeometry(Number(size[0]||2), Number(size[1]||0.24), Number(size[2]||2))),
+              new THREE.LineBasicMaterial({ color: 0x9a4d45, transparent: true, opacity: 0.45 })
+            );
+            crack.position.y = 0.01;
+            g.add(crack);
+            g.userData.crack = crack;
+          }
         } else if (t === "RisingLava"){
           mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||5), Number(size[1]||0.2), Number(size[2]||5)), _rtBattle3dV8Mat(THREE, 0xff7448, .55));
           g.add(mesh);
+        } else if (t === "JumpPad"){
+          mesh = new THREE.Mesh(new THREE.CylinderGeometry(Number(size[0]||0.8), Number(size[0]||0.8), Math.max(0.08, Number(size[1]||0.2)), 18), _rtBattle3dV8Mat(THREE, 0x6dc9ff, .55));
+          mesh.rotation.x = Math.PI * 0.5;
+          g.add(mesh);
+        } else if (t === "FallingRocks"){
+          const warnRadius = Math.max(0.6, Number(size[0] || 2.2) * 0.42);
+          const warn = new THREE.Mesh(new THREE.RingGeometry(warnRadius * 0.7, warnRadius, 24), new THREE.MeshBasicMaterial({ color: 0xff8a5b, transparent: true, opacity: 0.42, side: THREE.DoubleSide }));
+          warn.rotation.x = -Math.PI * 0.5;
+          warn.position.y = 0.02;
+          g.add(warn);
+          const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(Math.max(0.35, Number(size[0] || 1.1) * 0.22), 0), _rtBattle3dV8Mat(THREE, 0x8c7566, .92));
+          rock.position.y = Number(hz?.params?.rockY || 4.2);
+          rock.visible = false;
+          g.add(rock);
+          g.userData.warn = warn;
+          g.userData.rock = rock;
         } else {
           mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||2), Number(size[1]||0.15), Number(size[2]||2)), _rtBattle3dV8Mat(THREE, 0xc8d0df, .9));
           g.add(mesh);
@@ -46457,7 +46611,11 @@ function _openSearchResultByIndex(i){
             state:{ active:true, startedAt:0, fallen:false, hitCooldownUntil:0, phase:Number(params.phase||rng()*2) }
           };
           hazards.push(item);
-          if (["MovingPlatform","Rotator","Pusher","Conveyor","Laser","FallingFloor","WindZone","IceFriction","Quicksand","WaterSlide","TrainCar","RisingLava"].includes(item.type)){
+          if ([
+            "MovingPlatform","Rotator","Pusher","MovingBar","Conveyor","Laser","FallingFloor","BreakBridge",
+            "DisappearingPlatform","WindZone","IceFriction","Quicksand","WaterSlide","TrainCar","RisingLava",
+            "JumpPad","FallingRocks"
+          ].includes(item.type)){
             moving.push(item);
           }
         });
@@ -46509,7 +46667,7 @@ function _openSearchResultByIndex(i){
             hz.root.position[axis] = hz.basePos[axis] + Math.sin(t * speed) * amp;
           } else if (type === "Rotator"){
             hz.root.rotation.y = t * Number(p.speed || 1.5) + Number(hz.state.phase || 0);
-          } else if (type === "Pusher"){
+          } else if (type === "Pusher" || type === "MovingBar"){
             const axis = String(p.axis||"x");
             const amp = Number(p.amp || 1.6), speed = Number(p.speed || 1.1);
             hz.root.position[axis] = hz.basePos[axis] + Math.sin(t * speed) * amp;
@@ -46531,6 +46689,63 @@ function _openSearchResultByIndex(i){
                 hz.root.position.y = hz.basePos.y;
               }
             }
+          } else if (type === "BreakBridge"){
+            const down = Number(p.down || 3.0);
+            const recover = Math.max(500, Number(p.recover || 2300));
+            if (hz.state.fallen){
+              const elapsed = Date.now() - Number(hz.state.startedAt || 0);
+              hz.root.position.y = hz.basePos.y - down;
+              if (hz.mesh) hz.mesh.visible = false;
+              if (elapsed > recover){
+                hz.state.fallen = false;
+                hz.state.startedAt = 0;
+                hz.root.position.y = hz.basePos.y;
+                if (hz.mesh) hz.mesh.visible = true;
+              }
+            } else if (hz.mesh) {
+              hz.mesh.visible = true;
+              const elapsed = hz.state.startedAt ? (Date.now() - Number(hz.state.startedAt || 0)) : 0;
+              const blink = hz.state.startedAt && (elapsed > Math.max(200, Number(p.delay || 620) - 300)) && (Math.floor(elapsed / 120) % 2 === 0);
+              hz.mesh.material.opacity = blink ? 0.45 : 1;
+              hz.mesh.material.transparent = true;
+            }
+          } else if (type === "DisappearingPlatform"){
+            const period = Math.max(0.8, Number(p.period || 2.2));
+            const on = Math.max(0.1, Math.min(period, Number(p.on || period * 0.5)));
+            const phase = (t + Number(hz.state.phase || 0)) % period;
+            hz.state.active = phase < on;
+            if (hz.mesh) hz.mesh.visible = hz.state.active;
+          } else if (type === "JumpPad"){
+            if (hz.mesh){
+              const pulse = (Math.sin(t * 4 + Number(hz.state.phase || 0)) * 0.5 + 0.5);
+              hz.mesh.scale.setScalar(1 + pulse * 0.06);
+            }
+          } else if (type === "FallingRocks"){
+            const period = Math.max(1.6, Number(p.period || 2.8));
+            const warning = Math.max(0.3, Number(p.warning || 0.9));
+            const fall = Math.max(0.35, Number(p.fall || 0.9));
+            const phase = (t + Number(hz.state.phase || 0)) % period;
+            hz.state.warning = phase < warning;
+            hz.state.active = phase >= warning && phase < (warning + fall);
+            const warn = hz.root.userData?.warn || null;
+            const rock = hz.root.userData?.rock || null;
+            if (warn) {
+              warn.visible = phase < (warning + fall);
+              warn.material.opacity = phase < warning ? 0.42 : 0.2;
+            }
+            if (rock) {
+              if (phase < warning) {
+                rock.visible = false;
+              } else if (phase < warning + fall) {
+                rock.visible = true;
+                const progress = Math.min(1, Math.max(0, (phase - warning) / fall));
+                const yTop = Number(p.rockY || 4.2);
+                rock.position.y = yTop - (yTop - 0.55) * progress;
+              } else {
+                rock.visible = false;
+                rock.position.y = Number(p.rockY || 4.2);
+              }
+            }
           } else if (type === "RisingLava"){
             const amp = Number(p.amp || 0.5), speed = Number(p.speed || 0.5);
             hz.root.position.y = hz.basePos.y + (Math.sin(t * speed) * 0.5 + 0.5) * amp;
@@ -46550,14 +46765,38 @@ function _openSearchResultByIndex(i){
         const b = _rtBattle3dV8State();
         const p = b.local;
         const tnow = Date.now();
+        const mapTime = _rtBattle3dV8WorldTimeSec();
         let gotHit = false;
         const hazards = asArray(b.p3.map?.hazards);
         for (const hz of hazards){
           if (!hz || !hz.root) continue;
           const type = String(hz.type || "");
-          if (Number(hz.state?.hitCooldownUntil || 0) > tnow) continue;
+          const isContinuous = (
+            type === "Conveyor"
+            || type === "WaterSlide"
+            || type === "WindZone"
+            || type === "IceFriction"
+            || type === "Quicksand"
+            || type === "JumpPad"
+          );
+          if (!isContinuous && Number(hz.state?.hitCooldownUntil || 0) > tnow) continue;
+          if (type === "DisappearingPlatform" && !hz.state?.active){
+            const ghostHit = _rtBattle3dV8RectHit(p, hz, 0.18);
+            if (ghostHit && p.y <= 1.3){
+              const cp = b.p3.lastCheckpoint || { x: 0, y: 0.9, z: 4 };
+              p.x = Number(cp.x || 0);
+              p.y = Math.max(0.9, Number(cp.y || 0.9));
+              p.z = Number(cp.z || 4);
+              p.vx *= 0.3;
+              p.vz *= 0.3;
+              b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 1000, b.effectEndsAtMs);
+              gotHit = true;
+              hz.state.hitCooldownUntil = tnow + 260;
+            }
+            continue;
+          }
           const hit = _rtBattle3dV8RectHit(p, hz, 0.22);
-          if (!hit && type !== "FallingFloor") continue;
+          if (!hit && type !== "FallingFloor" && type !== "BreakBridge" && type !== "FallingRocks") continue;
           if (type === "WindZone"){
             const f = asArray(hz.params?.force);
             p.vx += Number(f[0] || 0) * dt * 5;
@@ -46581,7 +46820,7 @@ function _openSearchResultByIndex(i){
             p.vx *= 0.4; p.vz *= 0.4;
             b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 900, b.effectEndsAtMs);
             gotHit = true;
-          } else if (type === "Rotator" || type === "Pusher"){
+          } else if (type === "Rotator" || type === "Pusher" || type === "MovingBar"){
             const cx = Number(hz.root.position.x || 0), cz = Number(hz.root.position.z || 0);
             const dx = p.x - cx, dz = p.z - cz;
             const d = Math.hypot(dx, dz) || 1;
@@ -46594,7 +46833,7 @@ function _openSearchResultByIndex(i){
             if (p.y <= 1.2){
               const axis = String(hz.params?.axis || "x");
               const amp = Number(hz.params?.amp || 1.2), speed = Number(hz.params?.speed || 1);
-              const v = Math.cos(_rtBattle3dV8WorldTimeSec() * speed) * amp * speed;
+              const v = Math.cos(mapTime * speed) * amp * speed;
               if (axis === "x") p.x += v * dt;
               else if (axis === "z") p.z += v * dt;
               else p.y += Math.abs(v) * dt * 0.4;
@@ -46610,6 +46849,62 @@ function _openSearchResultByIndex(i){
             } else if (!hit && !hz.state.fallen){
               hz.state.startedAt = 0;
             }
+          } else if (type === "BreakBridge"){
+            if (hz.state.fallen && hit && p.y <= 1.3){
+              const cp = b.p3.lastCheckpoint || { x: 0, y: 0.9, z: 4 };
+              p.x = Number(cp.x || 0);
+              p.y = Math.max(0.9, Number(cp.y || 0.9));
+              p.z = Number(cp.z || 4);
+              p.vx *= 0.32;
+              p.vz *= 0.32;
+              b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 1200, b.effectEndsAtMs);
+              gotHit = true;
+            } else if (hit && !hz.state.fallen && p.y <= 1.2){
+              const delay = Math.max(120, Number(hz.params?.delay || 680));
+              if (!hz.state.startedAt) hz.state.startedAt = tnow;
+              if ((tnow - hz.state.startedAt) > delay){
+                hz.state.fallen = true;
+                hz.state.hitCooldownUntil = tnow + 300;
+                const cp = b.p3.lastCheckpoint || { x: 0, y: 0.9, z: 4 };
+                p.x = Number(cp.x || 0);
+                p.y = Math.max(0.9, Number(cp.y || 0.9));
+                p.z = Number(cp.z || 4);
+                p.vx *= 0.35;
+                p.vz *= 0.35;
+                b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 1200, b.effectEndsAtMs);
+                gotHit = true;
+              }
+            } else if (!hit && !hz.state.fallen){
+              hz.state.startedAt = 0;
+            }
+          } else if (type === "JumpPad"){
+            if (hit && p.y <= 1.3){
+              const jump = Math.max(4.8, Number(hz.params?.power || 7.2));
+              const boost = Math.max(0, Number(hz.params?.boost || 2.3));
+              p.vy = Math.max(p.vy, jump);
+              p.vz -= boost;
+              b.effectKind = "boost"; b.effectEndsAtMs = Math.max(tnow + 450, b.effectEndsAtMs);
+            }
+          } else if (type === "FallingRocks"){
+            const period = Math.max(1.6, Number(hz.params?.period || 2.8));
+            const warning = Math.max(0.3, Number(hz.params?.warning || 0.9));
+            const fall = Math.max(0.35, Number(hz.params?.fall || 0.9));
+            const phase = (mapTime + Number(hz.state?.phase || 0)) % period;
+            const activeFall = phase >= warning && phase < (warning + fall);
+            if (!activeFall) continue;
+            const cx = Number(hz.root?.position?.x || hz.basePos?.x || 0);
+            const cz = Number(hz.root?.position?.z || hz.basePos?.z || 0);
+            const radius = Math.max(0.6, Number(hz.size?.x || 2.4) * 0.45);
+            const dx = p.x - cx;
+            const dz = p.z - cz;
+            if ((dx * dx + dz * dz) <= (radius * radius) && p.y <= 1.6){
+              const knock = 3.3;
+              const dist = Math.hypot(dx, dz) || 1;
+              p.vx += (dx / dist) * knock;
+              p.vz += (dz / dist) * knock;
+              b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 1100, b.effectEndsAtMs);
+              gotHit = true;
+            }
           } else if (type === "RisingLava"){
             const topY = Number(hz.root.position.y || 0) + (Number(hz.size?.y || 0.3) * 0.5) + 0.9;
             if (p.y <= topY){
@@ -46619,7 +46914,9 @@ function _openSearchResultByIndex(i){
               gotHit = true;
             }
           }
-          hz.state.hitCooldownUntil = tnow + 110;
+          if (!isContinuous){
+            hz.state.hitCooldownUntil = tnow + 110;
+          }
         }
         if (gotHit){
           try{ _rtBattle3dPhase2HitEffect(); }catch(_){}
@@ -46868,8 +47165,6 @@ function _openSearchResultByIndex(i){
           };
           const stopForUi = (e) => {
             if (!markUi(e)) return;
-            try{ e.stopImmediatePropagation(); }catch(_){}
-            try{ e.stopPropagation(); }catch(_){}
             _rtBattle3dV8ShowHitTarget(e);
           };
           ["pointerdown","pointermove","pointerup","touchstart","touchmove","touchend","wheel","click"].forEach((ev)=>{
@@ -47039,11 +47334,19 @@ function _openSearchResultByIndex(i){
 window.addEventListener("DOMContentLoaded", () => {
   _lockViewportZoom();
   initMenu();
+  try{ _vSurvivalBootstrapRoute(); }catch(_){}
+  if (!window.__vSurvivalPopBound){
+    window.__vSurvivalPopBound = true;
+    window.addEventListener("popstate", () => {
+      try{ _vSurvivalBootstrapRoute(); }catch(_){}
+    });
+  }
 });
       if (document.readyState === "complete" || document.readyState === "interactive"){
         setTimeout(() => {
           _lockViewportZoom();
           initMenu();
+          try{ _vSurvivalBootstrapRoute(); }catch(_){}
         }, 0);
       }
 
