@@ -44080,6 +44080,7 @@ function _openSearchResultByIndex(i){
       function _rtBattle3dSyncFromSnapshot(snapshotLike){
         const st = _rtBattleState();
         const b = _rtBattle3dState();
+        const b8 = _rtBattle3dV8State();
         const src = (snapshotLike && typeof snapshotLike === "object") ? snapshotLike : null;
         const g3 = (src?.game3d && typeof src.game3d === "object")
           ? src.game3d
@@ -44091,6 +44092,13 @@ function _openSearchResultByIndex(i){
         if (!g3) return;
         b.lastNetTs = Date.now();
         b.gateOpen = !!g3.gateOpen;
+        b8.p3.currentGateIndex = Math.max(0, Number(g3.currentGateIndex || b8.p3.currentGateIndex || 0));
+        b8.p3.gateOpenStates = (g3.gateOpenStates && typeof g3.gateOpenStates === "object")
+          ? { ...g3.gateOpenStates }
+          : (b8.p3.gateOpenStates || {});
+        b8.p3.playerProgress = (g3.playerProgress && typeof g3.playerProgress === "object")
+          ? g3.playerProgress
+          : (b8.p3.playerProgress || {});
         b.winnerUserId = Math.max(0, Number(g3.winnerUserId || 0));
         b.winnerNick = String(g3.winnerNick || "");
         b.finishOrder = asArray(g3.finishOrder).map((x)=>({ userId:Math.max(0,Number(x?.userId||0)), nick:String(x?.nick||""), rank:Math.max(1,Number(x?.rank||1)), ts:Math.max(0,Number(x?.ts||0)) }));
@@ -44098,14 +44106,60 @@ function _openSearchResultByIndex(i){
         const srcPlayers = (g3.players && typeof g3.players === "object") ? g3.players : {};
         for (const [k,v] of Object.entries(srcPlayers)){
           const uid = String(Math.max(0, Number(k)));
+          const stateLike = (v?.state && typeof v.state === "object") ? v.state : v;
           rs[uid] = {
-            x:Number(v?.x||0), y:Number(v?.y||0.9), z:Number(v?.z||0),
-            vx:Number(v?.vx||0), vy:Number(v?.vy||0), vz:Number(v?.vz||0),
-            rotY:Number(v?.rotY||0), action:String(v?.action||"idle"), ts:Number(v?.ts||0),
+            x:Number(stateLike?.x||0), y:Number(stateLike?.y||0.9), z:Number(stateLike?.z||0),
+            vx:Number(stateLike?.vx||0), vy:Number(stateLike?.vy||0), vz:Number(stateLike?.vz||0),
+            rotY:Number(stateLike?.rotY||0), action:String(stateLike?.action||"idle"), ts:Number(stateLike?.ts||0),
             lastSeen: Date.now()
           };
         }
         b.remoteStates = rs;
+        const myUid = String(_rtBattleMyUserId());
+        const myPid = Math.max(0, Number(_rtBattleMePlayer()?.id || 0));
+        let myStateRaw = srcPlayers[myUid];
+        if (!myStateRaw && myPid > 0){
+          for (const [k, v] of Object.entries(srcPlayers)){
+            const candidate = (v?.state && typeof v.state === "object") ? v.state : v;
+            if (Math.max(0, Number(v?.id || candidate?.id || 0)) === myPid || String(k) === String(myPid)){
+              myStateRaw = v;
+              break;
+            }
+          }
+        }
+        const myState = (myStateRaw?.state && typeof myStateRaw.state === "object") ? myStateRaw.state : myStateRaw;
+        const myProg = (b8.p3.playerProgress && typeof b8.p3.playerProgress === "object")
+          ? (b8.p3.playerProgress[myUid] || (myPid > 0 ? b8.p3.playerProgress[String(myPid)] : null))
+          : null;
+        if (myProg && typeof myProg === "object") {
+          b8.p3.checkpointIndex = Math.max(0, Number(myProg.checkpointIndex || b8.p3.checkpointIndex || 0));
+          if (myProg.lastCheckpointPos && typeof myProg.lastCheckpointPos === "object") {
+            b8.p3.lastCheckpoint = {
+              x: Number(myProg.lastCheckpointPos.x || 0),
+              y: Math.max(0.9, Number(myProg.lastCheckpointPos.y || 0.9)),
+              z: Number(myProg.lastCheckpointPos.z || 4)
+            };
+          }
+        }
+        if (myState && typeof myState === "object") {
+          const px = Number(myState.x || 0);
+          const py = Math.max(0.9, Number(myState.y || 0.9));
+          const pz = Number(myState.z || 0);
+          const d = Math.hypot(px - Number(b.local?.x || 0), pz - Number(b.local?.z || 0));
+          const token = Math.max(0, Number(myProg?.respawnToken || 0));
+          const shouldSnap = token > Number(b8.p3.lastServerRespawnToken || 0) || d > 6.5;
+          if (shouldSnap) {
+            b.local.x = px;
+            b.local.y = py;
+            b.local.z = pz;
+            b.local.vx = 0;
+            b.local.vy = 0;
+            b.local.vz = 0;
+            b.local.grounded = true;
+            b.local.rotY = Number(myState.rotY || b.local.rotY || 0);
+            b8.p3.lastServerRespawnToken = token;
+          }
+        }
         if (b.gateOpen && b.quizOpen){
           b.quizOpen = false;
           b.quizAnswered = true;
@@ -44606,6 +44660,7 @@ function _openSearchResultByIndex(i){
         const root = document.getElementById("rt3dOverlay");
         if (root){
           root.classList.remove("is-open");
+          root.classList.remove("is-quiz-open");
           root.setAttribute("aria-hidden", "true");
           root.hidden = true;
         }
@@ -44623,6 +44678,14 @@ function _openSearchResultByIndex(i){
         }
         if (act === "b3dReset"){
           if (_rtBattleIsHost()) _rtBattleSafeSend({ type: "game3d:reset" });
+          try{
+            const b8 = _rtBattle3dV8State();
+            b8.p3.checkpointIndex = 0;
+            b8.p3.lastCheckpointSentIndex = -1;
+            b8.p3.currentGateIndex = 0;
+            b8.p3.gateOpenStates = {};
+            b8.p3.lastServerRespawnToken = 0;
+          }catch(_){}
           b.resultOpen = false;
           b.localFinished = false;
           b.winnerUserId = 0;
@@ -44689,19 +44752,14 @@ function _openSearchResultByIndex(i){
         if (type === "game3d:world"){
           if (msg?.game3d && typeof msg.game3d === "object"){
             if (typeof msg.game3d.gateOpen !== "undefined") b.gateOpen = !!msg.game3d.gateOpen;
+            if (typeof msg.game3d.currentGateIndex !== "undefined") _rtBattle3dV8State().p3.currentGateIndex = Math.max(0, Number(msg.game3d.currentGateIndex || 0));
+            if (msg.game3d.gateOpenStates && typeof msg.game3d.gateOpenStates === "object") _rtBattle3dV8State().p3.gateOpenStates = { ...msg.game3d.gateOpenStates };
+            if (msg.game3d.playerProgress && typeof msg.game3d.playerProgress === "object") _rtBattle3dV8State().p3.playerProgress = msg.game3d.playerProgress;
             if (typeof msg.game3d.winnerUserId !== "undefined") b.winnerUserId = Math.max(0, Number(msg.game3d.winnerUserId || 0));
             if (typeof msg.game3d.winnerNick !== "undefined") b.winnerNick = String(msg.game3d.winnerNick || "");
             if (Array.isArray(msg.game3d.finishOrder)) b.finishOrder = msg.game3d.finishOrder.map((x)=>({ userId:Math.max(0,Number(x?.userId||0)), nick:String(x?.nick||""), rank:Math.max(1,Number(x?.rank||1)), ts:Math.max(0,Number(x?.ts||0)) }));
           }
           if (b.gateOpen && b.quizOpen){ b.quizOpen = false; b.quizAnswered = true; b.quizError = ""; _rtBattle3dRenderQuizUi(); }
-          if (!b.gateOpen && !b.winnerUserId && asArray(b.finishOrder).length === 0){
-            b.resultOpen = false;
-            b.localFinished = false;
-            b.quizOpen = false;
-            b.quizAnswered = false;
-            b.quizError = "";
-            b.local = { x:0, y:0.9, z:4, vx:0, vy:0, vz:0, rotY:0, grounded:true, action:"idle", ts:Date.now() };
-          }
           _rtBattle3dRenderResult();
           _rtBattle3dUpdateStatusUi();
           b.lastNetTs = Date.now();
@@ -44998,6 +45056,7 @@ function _openSearchResultByIndex(i){
       function _rtBattle3dRenderQuizUi(){
         const b = _rtBattle3dPhase1State();
         const st = _rtBattleState();
+        const root = document.getElementById("rt3dOverlay");
         const card = document.getElementById("rt3dQuizCard");
         const promptEl = document.getElementById("rt3dQuizPrompt");
         const choicesEl = document.getElementById("rt3dQuizChoices");
@@ -45030,9 +45089,11 @@ function _openSearchResultByIndex(i){
         if (shouldShow){
           card.classList.add("is-open");
           card.setAttribute("aria-hidden", "false");
+          root && root.classList.add("is-quiz-open");
         } else {
           card.classList.remove("is-open");
           card.setAttribute("aria-hidden", "true");
+          root && root.classList.remove("is-quiz-open");
         }
       }
       function _rtBattle3dUpdateStatusUi(){
@@ -45495,7 +45556,7 @@ function _openSearchResultByIndex(i){
             } else {
               b.effectKind = "debuff";
               b.effectEndsAtMs = Date.now() + 2000;
-              b.gateOpen = true;
+              b.gateOpen = false;
               try{ if (typeof playSfx === "function") playSfx("ng"); }catch(_){}
               try{ if (navigator?.vibrate) navigator.vibrate([20,30,20]); }catch(_){}
             }
@@ -46255,8 +46316,15 @@ function _openSearchResultByIndex(i){
         if (typeof p3.mapSeed !== "number") p3.mapSeed = 1;
         if (typeof p3.lastMapHash !== "string") p3.lastMapHash = "";
         if (typeof p3.viewMode !== "string") p3.viewMode = "third";
+        if (typeof p3.currentGateIndex !== "number") p3.currentGateIndex = 0;
+        if (typeof p3.checkpointIndex !== "number") p3.checkpointIndex = 0;
+        if (typeof p3.lastCheckpointSentIndex !== "number") p3.lastCheckpointSentIndex = -1;
+        if (typeof p3.lastServerRespawnToken !== "number") p3.lastServerRespawnToken = 0;
+        if (!p3.gateOpenStates || typeof p3.gateOpenStates !== "object") p3.gateOpenStates = {};
+        if (!p3.playerProgress || typeof p3.playerProgress !== "object") p3.playerProgress = {};
         if (!p3.map || typeof p3.map !== "object") p3.map = {};
         if (!Array.isArray(p3.toastsQueue)) p3.toastsQueue = [];
+        if (!p3.textureCache || typeof p3.textureCache !== "object") p3.textureCache = {};
         return b;
       }
       const RT3D_MAP_IDS = [
@@ -46277,12 +46345,73 @@ function _openSearchResultByIndex(i){
           return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
         };
       }
+      function _rtBattle3dV8MapHash(mapId){
+        const s = String(mapId || "bridge");
+        let h = 2166136261 >>> 0;
+        for (let i = 0; i < s.length; i += 1){
+          h ^= s.charCodeAt(i);
+          h = Math.imul(h, 16777619) >>> 0;
+        }
+        return h >>> 0;
+      }
+      function _rtBattle3dV8GenerateTrack(mapId, mapSeed, checkpointCountRaw){
+        const hash = _rtBattle3dV8MapHash(mapId) ^ (Math.max(1, Number(mapSeed || 1)) >>> 0);
+        const checkpointCount = Math.max(8, Math.min(24, Number(checkpointCountRaw || 12)));
+        const laneAmp = 1.6 + (hash % 7) * 0.22;
+        const step = 6.2 + (hash % 5) * 0.35;
+        const phase = ((hash >>> 3) % 360) * Math.PI / 180;
+        const checkpoints = [];
+        for (let i = 0; i < checkpointCount; i += 1){
+          const z = 4 - (i * step);
+          const x = Math.sin(i * 0.92 + phase) * laneAmp;
+          checkpoints.push({
+            index: i,
+            x: Math.round(x * 100) / 100,
+            z: Math.round(z * 100) / 100,
+            y: 0.9,
+            r: (i === 0 ? 1.8 : 1.5)
+          });
+        }
+        const gates = [];
+        for (let i = 0; i < (checkpoints.length - 1); i += 1){
+          const a = checkpoints[i];
+          const c = checkpoints[i + 1];
+          gates.push({
+            id: `G${i + 1}`,
+            index: i,
+            requiredCheckpointIndex: i,
+            x: Math.round(((a.x + c.x) * 0.5) * 100) / 100,
+            z: Math.round(((a.z + c.z) * 0.5) * 100) / 100,
+            halfW: 2.6,
+            halfD: 0.34,
+            trigger: { halfW: 3.1, halfD: 1.5 }
+          });
+        }
+        const xs = checkpoints.map((cp)=>Math.abs(Number(cp.x || 0)));
+        const maxX = Math.max(6.8, ...xs) + 2.4;
+        const minZ = Math.min(...checkpoints.map((cp)=>Number(cp.z || 0))) - 6.6;
+        const maxZ = 12.0;
+        const goal = {
+          x: Number(checkpoints[checkpoints.length - 1]?.x || 0),
+          z: Number(checkpoints[checkpoints.length - 1]?.z || -58) - 4.5,
+          halfW: 2.5,
+          halfD: 1.2
+        };
+        return {
+          startPos: { x: Number(checkpoints[0]?.x || 0), y: 0.9, z: Number(checkpoints[0]?.z || 4), rotY: 0 },
+          checkpoints,
+          gates,
+          goal,
+          bounds: { minX: -maxX, maxX, minZ, maxZ }
+        };
+      }
       function _rtBattle3dV8BuildMapPresets(){
         const base = {
-          bounds:{ minX:-5.15, maxX:5.15, minZ:-18.05, maxZ:6.05 },
+          bounds:{ minX:-7.8, maxX:7.8, minZ:-82.0, maxZ:12.0 },
           gate:{ x:0, z:-4.0, halfW:1.65, halfD:0.26, trigger:{x:0,z:-3.05,halfW:2.1,halfD:0.75} },
-          goal:{ x:0, z:-14.6, halfW:2.0, halfD:0.9 },
-          checkpoints:[{x:0,z:4.0,r:1.4},{x:0,z:-8.4,r:1.7}],
+          goal:{ x:0, z:-74.0, halfW:2.2, halfD:1.1 },
+          checkpoints:[{x:0,z:4.0,r:1.8},{x:0,z:-8.4,r:1.7}],
+          checkpointCount: 12,
           floors:[],
           hazards:[],
           decorations:[]
@@ -46472,8 +46601,97 @@ function _openSearchResultByIndex(i){
           });
         }catch(_){}
       }
-      function _rtBattle3dV8Mat(THREE, color, rough=0.9){
-        return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.02 });
+      function _rtBattle3dV8TintColor(hex, delta = 0){
+        const v = Math.max(0, Math.min(0xffffff, Number(hex || 0x888888)));
+        const r = Math.max(0, Math.min(255, ((v >> 16) & 255) + delta));
+        const g = Math.max(0, Math.min(255, ((v >> 8) & 255) + delta));
+        const b = Math.max(0, Math.min(255, (v & 255) + delta));
+        return ((r << 16) | (g << 8) | b) >>> 0;
+      }
+      function _rtBattle3dV8GetPatternTexture(THREE, style, baseColor){
+        const b = _rtBattle3dV8State();
+        const key = `${String(style || "solid")}:${Math.max(0, Number(baseColor || 0)).toString(16)}`;
+        if (b.p3.textureCache[key]) return b.p3.textureCache[key];
+        const size = 256;
+        const cv = document.createElement("canvas");
+        cv.width = size;
+        cv.height = size;
+        const ctx = cv.getContext("2d");
+        if (!ctx) return null;
+        const c0 = `#${Math.max(0, Number(baseColor || 0)).toString(16).padStart(6, "0")}`;
+        const c1 = `#${_rtBattle3dV8TintColor(baseColor, 16).toString(16).padStart(6, "0")}`;
+        const c2 = `#${_rtBattle3dV8TintColor(baseColor, -20).toString(16).padStart(6, "0")}`;
+        ctx.fillStyle = c0;
+        ctx.fillRect(0, 0, size, size);
+        const pat = String(style || "solid");
+        if (pat === "grass"){
+          for (let i = 0; i < 140; i += 1){
+            const x = (i * 17) % size;
+            const y = (i * 29) % size;
+            ctx.fillStyle = (i % 3 === 0) ? c1 : c2;
+            ctx.fillRect(x, y, 3, 8);
+          }
+        } else if (pat === "sand"){
+          for (let i = 0; i < 180; i += 1){
+            const x = (i * 13) % size;
+            const y = (i * 37) % size;
+            ctx.fillStyle = (i % 2 === 0) ? c1 : c2;
+            ctx.fillRect(x, y, 2, 2);
+          }
+        } else if (pat === "metal" || pat === "panel"){
+          ctx.strokeStyle = c2;
+          ctx.lineWidth = 2;
+          for (let y = 0; y < size; y += 32){
+            ctx.beginPath();
+            ctx.moveTo(0, y + 0.5);
+            ctx.lineTo(size, y + 0.5);
+            ctx.stroke();
+          }
+          for (let x = 0; x < size; x += 64){
+            ctx.beginPath();
+            ctx.moveTo(x + 0.5, 0);
+            ctx.lineTo(x + 0.5, size);
+            ctx.stroke();
+          }
+        } else if (pat === "rubber"){
+          ctx.strokeStyle = c2;
+          ctx.lineWidth = 4;
+          for (let x = -size; x < size * 2; x += 18){
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x + size, size);
+            ctx.stroke();
+          }
+        } else if (pat === "concrete"){
+          for (let i = 0; i < 220; i += 1){
+            const x = (i * 19) % size;
+            const y = (i * 47) % size;
+            const w = (i % 3) + 1;
+            ctx.fillStyle = (i % 2 === 0) ? c1 : c2;
+            ctx.fillRect(x, y, w, w);
+          }
+        }
+        const tex = new THREE.CanvasTexture(cv);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.anisotropy = 1;
+        tex.needsUpdate = true;
+        b.p3.textureCache[key] = tex;
+        return tex;
+      }
+      function _rtBattle3dV8Mat(THREE, color, rough=0.9, pattern="solid"){
+        const mat = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.02 });
+        const tex = (pattern && pattern !== "solid") ? _rtBattle3dV8GetPatternTexture(THREE, pattern, color) : null;
+        if (tex) {
+          mat.map = tex;
+          if (pattern === "grass") tex.repeat.set(16, 24);
+          else if (pattern === "sand") tex.repeat.set(18, 26);
+          else if (pattern === "rubber") tex.repeat.set(14, 20);
+          else if (pattern === "metal" || pattern === "panel") tex.repeat.set(10, 18);
+          else tex.repeat.set(12, 18);
+          mat.needsUpdate = true;
+        }
+        return mat;
       }
       function _rtBattle3dV8MakeBox(THREE, spec, mat){
         const rot = asArray(spec.rot);
@@ -46537,6 +46755,7 @@ function _openSearchResultByIndex(i){
       }
       function _rtBattle3dV8BuildMap(mapId, mapSeed){
         const b = _rtBattle3dV8State();
+        const st = _rtBattleState();
         const rt = b.runtime || {};
         const scene = rt.scene;
         const THREE = window.THREE;
@@ -46551,30 +46770,69 @@ function _openSearchResultByIndex(i){
         const group = new THREE.Group();
         group.name = `rt3d-map-${cfg.id}`;
         const theme = cfg.theme || {};
+        const track = _rtBattle3dV8GenerateTrack(
+          cfg.id,
+          mapSeed,
+          Math.max(8, Number(st.game3d?.checkpointCount || cfg.checkpointCount || 12))
+        );
         scene.background = new THREE.Color(Number(theme.bg || 0xf3f5f8));
+        scene.fog = new THREE.Fog(Number(theme.bg || 0xf3f5f8), 28, 120);
         const colliders = [];
         const hazards = [];
         const moving = [];
         const rng = _rtBattle3dV8Mulberry(mapSeed);
-        const floorMat = _rtBattle3dV8Mat(THREE, Number(theme.floor || 0xe7ebf2), .95);
-        const edgeMat = _rtBattle3dV8Mat(THREE, Number(theme.edge || 0xbcc8da), .9);
-        // thematic main runway replacement (keeps legacy bounds/gate/goal positions)
-        const runway = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.12, 25.0), floorMat);
-        runway.position.set(0, -0.05, -6.0);
+        const floorPattern = String(theme.floorPattern || ((cfg.id === "desert") ? "sand" : (cfg.id === "jungle" ? "grass" : (cfg.id === "factory" || cfg.id === "lab" || cfg.id === "rail" ? "metal" : "concrete"))));
+        const edgePattern = String(theme.edgePattern || ((cfg.id === "neon" || cfg.id === "gauntlet") ? "panel" : "concrete"));
+        const floorMat = _rtBattle3dV8Mat(THREE, Number(theme.floor || 0xe7ebf2), .95, floorPattern);
+        const edgeMat = _rtBattle3dV8Mat(THREE, Number(theme.edge || 0xbcc8da), .9, edgePattern);
+        const runwayWidth = Math.max(12.8, (Math.abs(Number(track.bounds.minX || -8)) + Math.abs(Number(track.bounds.maxX || 8))) - 1.0);
+        const runwayLen = Math.max(52, Number(track.bounds.maxZ || 12) - Number(track.bounds.minZ || -70));
+        const runwayCenterZ = (Number(track.bounds.maxZ || 12) + Number(track.bounds.minZ || -70)) * 0.5;
+        const runway = new THREE.Mesh(new THREE.BoxGeometry(runwayWidth, 0.12, runwayLen), floorMat);
+        runway.position.set(0, -0.05, runwayCenterZ);
         group.add(runway);
-        colliders.push({ kind:"floor", x:0, y:-0.05, z:-6, sx:10.8, sy:0.12, sz:25.0 });
+        colliders.push({ kind:"floor", x:0, y:-0.05, z:runwayCenterZ, sx:runwayWidth, sy:0.12, sz:runwayLen });
+        for (let i = 0; i < 18; i += 1){
+          const z = Number(track.bounds.maxZ || 12) - 4 - (i * (runwayLen / 18));
+          const stripe = new THREE.Mesh(new THREE.BoxGeometry(runwayWidth * 0.12, 0.02, 1.4), _rtBattle3dV8Mat(THREE, Number(theme.accent || 0x89c0ff), 0.82, "rubber"));
+          stripe.position.set(0, 0.03, z);
+          group.add(stripe);
+        }
+        for (let i = 1; i < (track.checkpoints.length - 1); i += 1){
+          if (i % 2 !== 0) continue;
+          const cp = track.checkpoints[i];
+          const humpW = Math.max(2.4, runwayWidth * 0.28);
+          const hump = new THREE.Mesh(
+            new THREE.BoxGeometry(humpW, 0.18, 1.6),
+            _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(Number(theme.floor || 0xe7ebf2), 10), 0.84, floorPattern)
+          );
+          hump.position.set(Number(cp.x || 0), 0.02, Number(cp.z || 0) - 1.1);
+          group.add(hump);
+          colliders.push({ kind:"hump", x:hump.position.x, y:hump.position.y, z:hump.position.z, sx:humpW, sy:0.18, sz:1.6 });
+        }
         asArray(cfg.floors).forEach((f)=>{
           const type = String(f.type || "box");
-          const mesh = _rtBattle3dV8MakeBox(THREE, f, _rtBattle3dV8Mat(THREE, type === "ramp" ? Number(theme.accent || 0x89c0ff) : Number(theme.floor || 0xe7ebf2), type === "ramp" ? .75 : .95));
+          const mesh = _rtBattle3dV8MakeBox(
+            THREE,
+            f,
+            _rtBattle3dV8Mat(
+              THREE,
+              type === "ramp" ? Number(theme.accent || 0x89c0ff) : Number(theme.floor || 0xe7ebf2),
+              type === "ramp" ? .75 : .95,
+              (type === "ramp") ? "rubber" : floorPattern
+            )
+          );
           group.add(mesh);
           const size = asArray(f.size);
           colliders.push({ kind:type, mesh, x:mesh.position.x, y:mesh.position.y, z:mesh.position.z, sx:Number(size[0]||1), sy:Number(size[1]||1), sz:Number(size[2]||1) });
         });
         // side rails/decor edges for visibility
-        const railL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.85, 24.0), edgeMat);
-        railL.position.set(-5.25, 0.33, -6.0);
+        const railLen = Math.max(54, runwayLen - 2.6);
+        const railHalfX = (runwayWidth * 0.5) + 0.18;
+        const railL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.85, railLen), edgeMat);
+        railL.position.set(-railHalfX, 0.33, runwayCenterZ);
         const railR = railL.clone();
-        railR.position.x = 5.25;
+        railR.position.x = railHalfX;
         group.add(railL, railR);
         asArray(cfg.decorations).forEach((d)=>{
           const type = String(d.type || "box");
@@ -46582,17 +46840,76 @@ function _openSearchResultByIndex(i){
           let mesh;
           if (type === "ring"){
             const size = asArray(d.size);
-            mesh = new THREE.Mesh(new THREE.TorusGeometry(Number(size[0]||1), Number(size[1]||0.12), 8, 18), _rtBattle3dV8Mat(THREE, matColor, .55));
+            mesh = new THREE.Mesh(new THREE.TorusGeometry(Number(size[0]||1), Number(size[1]||0.12), 8, 18), _rtBattle3dV8Mat(THREE, matColor, .55, "metal"));
             mesh.rotation.x = Math.PI/2;
             const pos = asArray(d.pos); mesh.position.set(Number(pos[0]||0), Number(pos[1]||1.5), Number(pos[2]||0));
           } else if (type === "column" || type === "tower"){
             const size = asArray(d.size), pos = asArray(d.pos);
-            mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||1), Number(size[1]||2), Number(size[2]||1)), _rtBattle3dV8Mat(THREE, matColor, .88));
+            mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||1), Number(size[1]||2), Number(size[2]||1)), _rtBattle3dV8Mat(THREE, matColor, .88, "concrete"));
             mesh.position.set(Number(pos[0]||0), Number(pos[1]||1), Number(pos[2]||0));
           } else {
-            mesh = _rtBattle3dV8MakeBox(THREE, d, _rtBattle3dV8Mat(THREE, matColor, .88));
+            mesh = _rtBattle3dV8MakeBox(THREE, d, _rtBattle3dV8Mat(THREE, matColor, .88, "concrete"));
           }
           group.add(mesh);
+        });
+        const checkpoints = asArray(track.checkpoints);
+        checkpoints.forEach((cp, idx) => {
+          const ringColor = (idx === 0) ? 0x6fd38b : ((idx === checkpoints.length - 1) ? 0xffc268 : 0x7dc8ff);
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(Math.max(0.6, Number(cp.r || 1.2) * 0.42), 0.06, 8, 24),
+            _rtBattle3dV8Mat(THREE, ringColor, 0.52, "metal")
+          );
+          ring.rotation.x = Math.PI / 2;
+          ring.position.set(Number(cp.x || 0), 0.08, Number(cp.z || 0));
+          group.add(ring);
+          const pole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.05, 0.05, 1.2, 8),
+            _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(ringColor, -18), 0.84, "panel")
+          );
+          pole.position.set(Number(cp.x || 0), 0.6, Number(cp.z || 0));
+          group.add(pole);
+        });
+        const gates = asArray(track.gates).map((gdef, gidx) => {
+          const gx = Number(gdef.x || 0);
+          const gz = Number(gdef.z || 0);
+          const halfW = Math.max(1.8, Number(gdef.halfW || 2.4));
+          const halfD = Math.max(0.2, Number(gdef.halfD || 0.34));
+          const frameH = 2.4;
+          const post = new THREE.Mesh(
+            new THREE.BoxGeometry(0.22, frameH, 0.3),
+            _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(Number(theme.edge || 0xbcc8da), -8), 0.82, "panel")
+          );
+          const left = post.clone();
+          const right = post.clone();
+          left.position.set(gx - halfW, frameH * 0.5, gz);
+          right.position.set(gx + halfW, frameH * 0.5, gz);
+          const door = new THREE.Mesh(
+            new THREE.BoxGeometry((halfW * 2) - 0.18, 1.6, halfD * 2),
+            _rtBattle3dV8Mat(THREE, Number(theme.accent || 0x7cb6ff), 0.66, "rubber")
+          );
+          door.material.emissive = new THREE.Color(_rtBattle3dV8TintColor(Number(theme.accent || 0x7cb6ff), -40));
+          door.material.emissiveIntensity = 0.35;
+          door.position.set(gx, 0.85, gz);
+          group.add(left, right, door);
+          colliders.push({ kind:"gate", x:gx, y:0.85, z:gz, sx:halfW * 2, sy:1.8, sz:halfD * 2 });
+          return {
+            id: String(gdef.id || `G${gidx + 1}`),
+            index: Math.max(0, Number(gdef.index ?? gidx)),
+            requiredCheckpointIndex: Math.max(0, Number(gdef.requiredCheckpointIndex ?? gidx)),
+            x: gx,
+            z: gz,
+            halfW,
+            halfD,
+            trigger: {
+              x: gx,
+              z: gz + 1.2,
+              halfW: Math.max(2.0, Number(gdef.trigger?.halfW || (halfW + 0.6))),
+              halfD: Math.max(0.9, Number(gdef.trigger?.halfD || 1.2))
+            },
+            door,
+            frame: [left, right],
+            openT: 0
+          };
         });
         // hazards (componentized)
         asArray(cfg.hazards).forEach((hz, idx)=>{
@@ -46626,10 +46943,18 @@ function _openSearchResultByIndex(i){
           colliders,
           hazards,
           moving,
-          bounds: cfg.bounds || null,
-          gate: cfg.gate || null,
-          goal: cfg.goal || null,
-          checkpoints: asArray(cfg.checkpoints)
+          bounds: track.bounds || cfg.bounds || null,
+          gate: (gates[0] || cfg.gate || null),
+          gates,
+          goal: track.goal || cfg.goal || null,
+          checkpoints
+        };
+        b.p3.checkpointIndex = 0;
+        b.p3.lastCheckpointSentIndex = -1;
+        b.p3.lastCheckpoint = {
+          x: Number(track.startPos?.x || 0),
+          y: Number(track.startPos?.y || 0.9),
+          z: Number(track.startPos?.z || 4)
         };
         b.p3.mapId = cfg.id;
         b.p3.mapSeed = Math.max(1, Number(mapSeed||1));
@@ -46643,6 +46968,19 @@ function _openSearchResultByIndex(i){
         const mapSeed = Math.max(1, Number(st.game3d?.mapSeed || b.p3.mapSeed || 1));
         _rtBattle3dV8BuildMap(mapId, mapSeed);
       }
+      function _rtBattle3dV8CurrentGateIndex(){
+        const st = _rtBattleState();
+        const b = _rtBattle3dV8State();
+        return Math.max(0, Number(st.game3d?.currentGateIndex ?? b.p3.currentGateIndex ?? 0));
+      }
+      function _rtBattle3dV8GateOpenStates(){
+        const st = _rtBattleState();
+        const b = _rtBattle3dV8State();
+        const states = (st.game3d?.gateOpenStates && typeof st.game3d.gateOpenStates === "object")
+          ? st.game3d.gateOpenStates
+          : ((b.p3.gateOpenStates && typeof b.p3.gateOpenStates === "object") ? b.p3.gateOpenStates : {});
+        return states;
+      }
       function _rtBattle3dV8WorldTimeSec(){
         const st = _rtBattleState();
         const seed = Math.max(1, Number(st.game3d?.mapSeed || st.game?.quizSeed || 1));
@@ -46651,6 +46989,7 @@ function _openSearchResultByIndex(i){
       }
       function _rtBattle3dV8AnimateMapGimmicks(dt){
         const b = _rtBattle3dV8State();
+        const st = _rtBattleState();
         const t = _rtBattle3dV8WorldTimeSec();
         const hazards = asArray(b.p3.map?.moving);
         for (const hz of hazards){
@@ -46751,6 +47090,22 @@ function _openSearchResultByIndex(i){
             hz.root.position.y = hz.basePos.y + (Math.sin(t * speed) * 0.5 + 0.5) * amp;
           }
         }
+        const gateStates = _rtBattle3dV8GateOpenStates();
+        const gateIdx = _rtBattle3dV8CurrentGateIndex();
+        asArray(b.p3.map?.gates).forEach((gate, idx) => {
+          if (!gate || !gate.door) return;
+          const gateId = String(gate.id || `G${idx + 1}`);
+          const openByState = !!gateStates[gateId] || (idx < gateIdx);
+          const openByLegacy = (idx === gateIdx) && !!(st.game3d?.gateOpen ?? b.gateOpen);
+          const shouldOpen = openByState || openByLegacy;
+          gate.openT = Math.max(0, Math.min(1, Number(gate.openT || 0) + (shouldOpen ? dt * 4.6 : -dt * 5.2)));
+          gate.door.position.y = 0.85 + (gate.openT * 2.0);
+          if (gate.door.material) {
+            gate.door.material.emissiveIntensity = shouldOpen ? 0.52 : 0.35;
+            gate.door.material.opacity = shouldOpen ? 0.45 : 1;
+            gate.door.material.transparent = shouldOpen;
+          }
+        });
       }
       function _rtBattle3dV8RectHit(p, hz, extra=0){
         const sx = Number(hz.size?.x || 1), sz = Number(hz.size?.z || 1), sy = Number(hz.size?.y || 1);
@@ -46925,31 +47280,45 @@ function _openSearchResultByIndex(i){
       }
       function _rtBattle3dV8ClampWorld(){
         const b = _rtBattle3dV8State();
+        const st = _rtBattleState();
         const p = b.local;
         const r = 0.32;
         const bounds = b.p3.map?.bounds || { minX:-5.15, maxX:5.15, minZ:-18.05, maxZ:6.05 };
         p.x = Math.max(Number(bounds.minX || -5.15) + r, Math.min(Number(bounds.maxX || 5.15) - r, p.x));
         p.z = Math.max(Number(bounds.minZ || -18.05) + r, Math.min(Number(bounds.maxZ || 6.05) - r, p.z));
-        const gate = b.p3.map?.gate;
-        if (gate && !b.gateOpen){
-          const gateZ = Number(gate.z || -4.0), halfDepth = Number(gate.halfD || 0.26), halfWidth = Number(gate.halfW || 1.65);
-          if (Math.abs(p.x - Number(gate.x || 0)) < halfWidth && Math.abs(p.z - gateZ) < (halfDepth + r)){
-            if (p.z < gateZ) p.z = gateZ - halfDepth - r;
-            else p.z = gateZ + halfDepth + r;
+        const gateIdx = _rtBattle3dV8CurrentGateIndex();
+        const gates = asArray(b.p3.map?.gates);
+        const gate = gates[gateIdx] || b.p3.map?.gate || null;
+        if (gate){
+          const gateId = String(gate.id || `G${gateIdx + 1}`);
+          const isOpen = !!_rtBattle3dV8GateOpenStates()[gateId] || ((gateIdx === _rtBattle3dV8CurrentGateIndex()) && !!(st.game3d?.gateOpen ?? b.gateOpen));
+          if (!isOpen){
+            const gateZ = Number(gate.z || -4.0), halfDepth = Number(gate.halfD || 0.26), halfWidth = Number(gate.halfW || 1.65);
+            if (Math.abs(p.x - Number(gate.x || 0)) < halfWidth && Math.abs(p.z - gateZ) < (halfDepth + r)){
+              if (p.z < gateZ) p.z = gateZ - halfDepth - r;
+              else p.z = gateZ + halfDepth + r;
+            }
           }
         }
       }
       function _rtBattle3dV8MaybeTriggerWorldEvents(){
         const b = _rtBattle3dV8State();
         const p = b.local;
-        const gateTrigger = b.p3.map?.gate?.trigger || { x:0, z:-3.05, halfW:2.1, halfD:0.75 };
-        if (!b.gateOpen && !b.quizOpen && !b.localFinished){
-          const inGateTrigger = Math.abs(p.x - Number(gateTrigger.x || 0)) < Number(gateTrigger.halfW || 2.1)
-            && Math.abs(p.z - Number(gateTrigger.z || -3.05)) < Number(gateTrigger.halfD || 0.75);
+        const st = _rtBattleState();
+        const gateIdx = _rtBattle3dV8CurrentGateIndex();
+        const gates = asArray(b.p3.map?.gates);
+        const curGate = gates[gateIdx] || b.p3.map?.gate || null;
+        const gateId = curGate ? String(curGate.id || `G${gateIdx + 1}`) : "";
+        const gateOpen = !!(gateId && _rtBattle3dV8GateOpenStates()[gateId]) || ((gateIdx === _rtBattle3dV8CurrentGateIndex()) && !!(st.game3d?.gateOpen ?? b.gateOpen));
+        const gateTrigger = curGate?.trigger || b.p3.map?.gate?.trigger || { x:0, z:-3.05, halfW:2.1, halfD:0.75 };
+        if (!gateOpen && !b.quizOpen && !b.localFinished){
+          const inGateTrigger = Math.abs(p.x - Number(gateTrigger.x ?? curGate?.x ?? 0)) < Number(gateTrigger.halfW || 2.1)
+            && Math.abs(p.z - Number(gateTrigger.z ?? curGate?.z ?? -3.05)) < Number(gateTrigger.halfD || 0.75);
           if (inGateTrigger) _rtBattle3dOpenQuiz();
         }
+        const allGatesDone = gates.length ? (gateIdx >= gates.length) : gateOpen;
         const goal = b.p3.map?.goal || { x:0, z:-14.6, halfW:2.0, halfD:0.9 };
-        if (b.gateOpen && !b.localFinished){
+        if (allGatesDone && !b.localFinished){
           const inGoal = Math.abs(p.x - Number(goal.x || 0)) < Number(goal.halfW || 2.0)
             && Math.abs(p.z - Number(goal.z || -14.6)) < Number(goal.halfD || 0.9);
           if (inGoal){
@@ -46963,16 +47332,36 @@ function _openSearchResultByIndex(i){
         for (const cp of asArray(b.p3.map?.checkpoints)){
           const dx = p.x - Number(cp?.x || 0), dz = p.z - Number(cp?.z || 0), rr = Number(cp?.r || cp?.radius || 1.2);
           if ((dx*dx + dz*dz) <= rr*rr){
+            const cpIndex = Math.max(0, Number(cp?.index || 0));
             b.p3.lastCheckpoint = { x:Number(cp?.x||0), y:0.9, z:Number(cp?.z||0) };
+            if (cpIndex > Number(b.p3.checkpointIndex || 0)) {
+              b.p3.checkpointIndex = cpIndex;
+              _rtBattle3dPushToast("info", `チェックポイント ${cpIndex}`);
+              b.effectKind = "boost";
+              b.effectEndsAtMs = Math.max(Date.now() + 450, Number(b.effectEndsAtMs || 0));
+            }
+            if (cpIndex > Number(b.p3.lastCheckpointSentIndex || -1)) {
+              b.p3.lastCheckpointSentIndex = cpIndex;
+              _rtBattleSafeSend({
+                type: "game3d:checkpoint",
+                checkpointIndex: cpIndex,
+                pos: { x: Number(cp?.x || 0), y: 0.9, z: Number(cp?.z || 0), rotY: Number(b.local?.rotY || 0) }
+              });
+            }
           }
         }
       }
       function _rtBattle3dV8EnsureUiAddons(){
         const root = _rtBattle3dEnsureRoot();
         const headRight = root.querySelector(".b3d-head-right");
-        if (headRight instanceof HTMLElement && !root.querySelector("[data-rt-battle-action='b3dViewToggle']")){
-          headRight.insertAdjacentHTML("afterbegin", `<button class="btn ov-iconbtn" type="button" data-rt-battle-action="b3dViewToggle" aria-label="視点切替"><span class="ms">videocam</span></button>
-            <button class="btn ov-iconbtn" type="button" data-rt-battle-action="b3dLocatePlayers" aria-label="プレイヤー位置確認"><span class="ms">my_location</span></button>`);
+        if (headRight instanceof HTMLElement){
+          if (!root.querySelector("[data-rt-battle-action='b3dHeadExit']")){
+            headRight.insertAdjacentHTML("beforeend", `<button class="btn ov-iconbtn" type="button" data-rt-battle-action="b3dHeadExit" aria-label="退出"><span class="ms">logout</span></button>`);
+          }
+          if (!root.querySelector("[data-rt-battle-action='b3dViewToggle']")){
+            headRight.insertAdjacentHTML("afterbegin", `<button class="btn ov-iconbtn" type="button" data-rt-battle-action="b3dViewToggle" aria-label="視点切替"><span class="ms">videocam</span></button>
+              <button class="btn ov-iconbtn" type="button" data-rt-battle-action="b3dLocatePlayers" aria-label="プレイヤー位置確認"><span class="ms">my_location</span></button>`);
+          }
         }
         const hud = root.querySelector(".b3d-hud");
         if (hud instanceof HTMLElement && !document.getElementById("rt3dHudDebug")){
@@ -47028,7 +47417,9 @@ function _openSearchResultByIndex(i){
         const qLen = Math.max(0, Number(asArray(st.game?.questionIds).length || 0));
         const qCount = st.room?.settings?.questionCount ?? st.questionCount ?? 20;
         const pool = Math.max(0, Number(st.game?.presetWordsLength || 0));
-        const txt = `${mapId.toUpperCase()} • Q=${String(qCount)} • IDs=${qLen} • Pool=${pool}`;
+        const gateIdx = Math.max(0, Number(st.game3d?.currentGateIndex ?? b.p3.currentGateIndex ?? 0));
+        const cpIdx = Math.max(0, Number(b.p3.checkpointIndex || 0));
+        const txt = `${mapId.toUpperCase()} • G=${gateIdx + 1} • CP=${cpIdx} • Q=${String(qCount)} • IDs=${qLen} • Pool=${pool}`;
         if (el.textContent !== txt) el.textContent = txt;
       }
       function _rtBattle3dV8ShowHitTarget(e){
@@ -47214,6 +47605,10 @@ function _openSearchResultByIndex(i){
       const __rtBattle3dHandleActionV8Base = _rtBattle3dHandleAction;
       _rtBattle3dHandleAction = function(act, el){
         const b = _rtBattle3dV8State();
+        if (act === "b3dHeadExit"){
+          _rtBattle3dClose();
+          return true;
+        }
         if (act === "b3dViewToggle"){
           b.p3.viewMode = (String(b.p3.viewMode||"third")==="third") ? "first" : "third";
           try{ uiToast(b.p3.viewMode === "first" ? "一人称視点" : "三人称視点"); }catch(_){}
@@ -47241,6 +47636,11 @@ function _openSearchResultByIndex(i){
         const b = _rtBattle3dV8State();
         b.p3.inputMode = "";
         b.p3.uiModeUntil = 0;
+        b.p3.checkpointIndex = 0;
+        b.p3.lastCheckpointSentIndex = -1;
+        b.p3.currentGateIndex = 0;
+        b.p3.gateOpenStates = {};
+        b.p3.lastServerRespawnToken = 0;
         _rtBattle3dV8EnsureUiAddons();
         _rtBattle3dV8PatchLobbyMapUi();
         _rtBattle3dV8ApplyMapNow();
@@ -47258,6 +47658,56 @@ function _openSearchResultByIndex(i){
             const changed = (nextMapId !== b.p3.mapId) || (nextMapSeed !== b.p3.mapSeed);
             b.p3.mapId = nextMapId;
             b.p3.mapSeed = nextMapSeed;
+            b.p3.currentGateIndex = Math.max(0, Number(g3.currentGateIndex || b.p3.currentGateIndex || 0));
+            b.p3.gateOpenStates = (g3.gateOpenStates && typeof g3.gateOpenStates === "object")
+              ? { ...g3.gateOpenStates }
+              : (b.p3.gateOpenStates || {});
+            b.p3.playerProgress = (g3.playerProgress && typeof g3.playerProgress === "object")
+              ? g3.playerProgress
+              : (b.p3.playerProgress || {});
+            const myUid = String(_rtBattleMyUserId());
+            const myPid = Math.max(0, Number(_rtBattleMePlayer()?.id || 0));
+            let mine = (g3.players && typeof g3.players === "object") ? g3.players[myUid] : null;
+            if (!mine && g3.players && typeof g3.players === "object" && myPid > 0){
+              for (const [k, v] of Object.entries(g3.players)){
+                if (String(k) === String(myPid) || Math.max(0, Number(v?.id || v?.state?.id || 0)) === myPid){
+                  mine = v;
+                  break;
+                }
+              }
+            }
+            const mineState = (mine?.state && typeof mine.state === "object") ? mine.state : mine;
+            const prog = (b.p3.playerProgress && typeof b.p3.playerProgress === "object")
+              ? (b.p3.playerProgress[myUid] || (myPid > 0 ? b.p3.playerProgress[String(myPid)] : null))
+              : null;
+            if (prog && typeof prog === "object"){
+              b.p3.checkpointIndex = Math.max(0, Number(prog.checkpointIndex || b.p3.checkpointIndex || 0));
+              if (prog.lastCheckpointPos && typeof prog.lastCheckpointPos === "object"){
+                b.p3.lastCheckpoint = {
+                  x: Number(prog.lastCheckpointPos.x || 0),
+                  y: Math.max(0.9, Number(prog.lastCheckpointPos.y || 0.9)),
+                  z: Number(prog.lastCheckpointPos.z || 4)
+                };
+              }
+            }
+            if (mineState && typeof mineState === "object"){
+              const token = Math.max(0, Number(prog?.respawnToken || 0));
+              const sx = Number(mineState.x || 0);
+              const sy = Math.max(0.9, Number(mineState.y || 0.9));
+              const sz = Number(mineState.z || 0);
+              const dist = Math.hypot(sx - Number(b.local?.x || 0), sz - Number(b.local?.z || 0));
+              if (token > Number(b.p3.lastServerRespawnToken || 0) || dist > 7.2){
+                b.local.x = sx;
+                b.local.y = sy;
+                b.local.z = sz;
+                b.local.vx = 0;
+                b.local.vy = 0;
+                b.local.vz = 0;
+                b.local.grounded = true;
+                b.local.rotY = Number(mineState.rotY || b.local.rotY || 0);
+                b.p3.lastServerRespawnToken = token;
+              }
+            }
             if (changed && _rtBattle3dIsOpen()){
               _rtBattle3dV8ApplyMapNow();
               _rtBattle3dPushToast("info", `マップ: ${RT3D_MAP_LABELS[nextMapId] || nextMapId}`);
@@ -47300,12 +47750,36 @@ function _openSearchResultByIndex(i){
           #rt3dOverlay #uiRoot .b3d-score-panel,
           #rt3dOverlay #uiRoot .b3d-result-list{max-height:220px; overflow:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y;}
           #rt3dOverlay .b3d-select{appearance:none; background-image:linear-gradient(45deg,transparent 50%, currentColor 50%),linear-gradient(135deg,currentColor 50%, transparent 50%); background-position:calc(100% - 18px) 48%, calc(100% - 12px) 48%; background-size:6px 6px, 6px 6px; background-repeat:no-repeat; padding-right:30px;}
+          #rt3dOverlay .ov-iconbtn{min-width:34px; min-height:34px; padding:0 8px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center;}
+          #rt3dOverlay .ov-iconbtn .ms{font-size:18px; line-height:1;}
+          #rt3dOverlay .b3d-head{padding-top:calc(env(safe-area-inset-top,0px) + 2px);}
           @media (hover:hover){
             #rt3dOverlay .btn:hover,
             #rt3dOverlay .b3d-seg-btn:hover,
             #rt3dOverlay .b3d-mbtn:hover,
             #rt3dOverlay .b3d-chat-toggle:hover,
             #rt3dOverlay .b3d-camreset:hover{transform:none !important; filter:brightness(1.02); box-shadow:0 8px 16px rgba(0,0,0,.08);}
+          }
+          @media (max-width: 768px){
+            #rt3dOverlay .b3d-head{min-height:44px; padding:calc(env(safe-area-inset-top,0px) + 4px) 8px 6px;}
+            #rt3dOverlay .b3d-head-right .btn{min-height:34px; padding:0 9px; border-radius:10px;}
+            #rt3dOverlay .b3d-hud{top:calc(env(safe-area-inset-top,0px) + 52px); left:8px; right:8px; gap:6px; grid-template-columns:repeat(3,minmax(0,1fr));}
+            #rt3dOverlay .b3d-hud .b3d-hud-card{padding:6px 8px;}
+            #rt3dOverlay .b3d-hud .b3d-hud-card .t{font-size:10px;}
+            #rt3dOverlay .b3d-hud .b3d-hud-card .v{font-size:12px;}
+            #rt3dOverlay .b3d-score-panel{top:calc(env(safe-area-inset-top,0px) + 108px); left:8px; max-width:56vw;}
+            #rt3dOverlay .b3d-quiz{left:8px; right:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 108px);}
+            #rt3dOverlay .b3d-quiz .q{font-size:17px; line-height:1.38;}
+            #rt3dOverlay .b3d-chatdock{right:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 66px);}
+            #rt3dOverlay .b3d-joystick{left:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 62px);}
+            #rt3dOverlay .b3d-jump2{right:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 62px);}
+            #rt3dOverlay .b3d-chat-toggle{right:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 18px);}
+            #rt3dOverlay .b3d-gfx-badge{display:none;}
+            #rt3dOverlay.is-quiz-open .b3d-chatdock,
+            #rt3dOverlay.is-quiz-open .b3d-chat-toggle,
+            #rt3dOverlay.is-quiz-open .b3d-joystick,
+            #rt3dOverlay.is-quiz-open .b3d-jump2,
+            #rt3dOverlay.is-quiz-open .b3d-score-panel{display:none !important;}
           }
         `;
         document.head.appendChild(s);
