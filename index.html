@@ -11785,6 +11785,13 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
                   <span class="label">メンテ有効化</span>
                   <span class="toggle"><input type="checkbox" id="adminMaintenanceEnabled" /></span>
                 </label>
+                <label class="settings-row is-static" for="adminMaintenanceMode">
+                  <span class="label">時間設定モード</span>
+                  <select class="spell-input" id="adminMaintenanceMode">
+                    <option value="manual">手動（開始/終了日時）</option>
+                    <option value="daily">日次（JST時刻）</option>
+                  </select>
+                </label>
                 <label class="settings-row is-static" for="adminMaintenanceStartAt">
                   <span class="label">開始日時</span>
                   <input class="spell-input" id="adminMaintenanceStartAt" type="datetime-local" />
@@ -11792,6 +11799,22 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
                 <label class="settings-row is-static" for="adminMaintenanceEndAt">
                   <span class="label">終了日時</span>
                   <input class="spell-input" id="adminMaintenanceEndAt" type="datetime-local" />
+                </label>
+                <label class="settings-row is-static" for="adminMaintenanceDailyDate">
+                  <span class="label">対象日（JST）</span>
+                  <input class="spell-input" id="adminMaintenanceDailyDate" type="date" />
+                </label>
+                <label class="settings-row is-static" for="adminMaintenanceDailyStart">
+                  <span class="label">日次開始（JST）</span>
+                  <input class="spell-input" id="adminMaintenanceDailyStart" type="time" />
+                </label>
+                <label class="settings-row is-static" for="adminMaintenanceDailyEnd">
+                  <span class="label">日次終了（JST）</span>
+                  <input class="spell-input" id="adminMaintenanceDailyEnd" type="time" />
+                </label>
+                <label class="settings-row is-static" for="adminMaintenanceForceNow">
+                  <span class="label">今すぐ強制表示（デバッグ）</span>
+                  <span class="toggle"><input type="checkbox" id="adminMaintenanceForceNow" /></span>
                 </label>
                 <label class="settings-row is-static" for="adminMaintenanceTitle">
                   <span class="label">タイトル</span>
@@ -14848,7 +14871,7 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
       }
       async function _authFetch(path, opts = {}){
         const pathStr = String(path || "");
-        if (/^\/api\/auth\/(login|register|reset_password)$/i.test(pathStr) && !_maintenanceAuthGuard()){
+        if (/^\/api\/auth\/(reset_password)$/i.test(pathStr) && !_maintenanceAuthGuard()){
           const blockErr = new Error(_maintenanceLockMessage());
           blockErr.code = "MAINTENANCE_ACTIVE";
           blockErr.status = 503;
@@ -15494,7 +15517,6 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         _maintenanceCheckNow("auth-transition", { silent: true, force: true });
       }
       async function _authSubmitRegister(skipProfile){
-        if (!_maintenanceAuthGuard(el.authRegisterStatus)) return;
         if (authState.tosSubmitting) return;
         const draft = authState.registerDraft;
         if (!draft){
@@ -15559,7 +15581,6 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         }
       }
       async function _authSubmitLogin(){
-        if (!_maintenanceAuthGuard(el.authLoginStatus)) return;
         const grade = String(el.authLoginGrade?.value || "J1");
         const nickname = _authNormalizeNickname(el.authLoginNickname?.value || "");
         const password = String(el.authLoginPassword?.value || "");
@@ -19026,12 +19047,107 @@ function reviewWrong(){
       function _maintenanceDefaultConfig(){
         return {
           enabled: false,
+          mode: "manual",
           startAt: 0,
           endAt: 0,
+          dailyStartHm: "01:00",
+          dailyEndHm: "07:30",
+          dailyDateJst: "",
+          forceNow: false,
+          active: false,
           title: "メンテナンス中",
           message: "現在メンテナンスを実施しています。しばらくお待ちください。",
           updatedAt: 0,
           updatedBy: ""
+        };
+      }
+      function _maintenanceNormalizeHm(v, fallback = "01:00"){
+        const s = String(v || "").trim();
+        const m = s.match(/^(\d{1,2}):(\d{2})$/);
+        if (!m) return fallback;
+        const hh = Math.max(0, Math.min(23, Number(m[1] || 0)));
+        const mm = Math.max(0, Math.min(59, Number(m[2] || 0)));
+        return `${_fmt2(hh)}:${_fmt2(mm)}`;
+      }
+      function _maintenanceHmToMinutes(v){
+        const s = _maintenanceNormalizeHm(v, "");
+        if (!s) return -1;
+        const m = s.match(/^(\d{2}):(\d{2})$/);
+        if (!m) return -1;
+        return (Number(m[1]) * 60) + Number(m[2]);
+      }
+      function _maintenanceJstParts(now = Date.now()){
+        try{
+          const d = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Tokyo",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hourCycle: "h23"
+          }).formatToParts(new Date(now));
+          const pick = (type) => Number((d.find((x) => x.type === type)?.value) || 0);
+          return {
+            year: pick("year"),
+            month: pick("month"),
+            day: pick("day"),
+            hour: pick("hour"),
+            minute: pick("minute")
+          };
+        }catch{
+          const d = new Date(now);
+          return {
+            year: d.getFullYear(),
+            month: d.getMonth() + 1,
+            day: d.getDate(),
+            hour: d.getHours(),
+            minute: d.getMinutes()
+          };
+        }
+      }
+      function _maintenanceJstYmd(now = Date.now()){
+        const p = _maintenanceJstParts(now);
+        return `${Math.max(0, Number(p.year || 0))}-${_fmt2(Math.max(1, Number(p.month || 1)))}-${_fmt2(Math.max(1, Number(p.day || 1)))}`;
+      }
+      function _maintenanceTokyoLocalToUtcMs(year, month, day, hour, minute){
+        return Date.UTC(year, Math.max(0, month - 1), day, hour - 9, minute, 0, 0);
+      }
+      function _maintenanceResolveWindow(config, nowMs){
+        const cfg = _maintenanceNormalizeConfig(config);
+        const now = Number(nowMs || Date.now());
+        if (cfg.mode !== "daily"){
+          return {
+            startAt: Number(cfg.startAt || 0),
+            endAt: Number(cfg.endAt || 0),
+            active: !!(cfg.enabled && cfg.startAt > 0 && cfg.endAt > cfg.startAt && now >= cfg.startAt && now < cfg.endAt)
+          };
+        }
+        const p = _maintenanceJstParts(now);
+        const startMin = _maintenanceHmToMinutes(cfg.dailyStartHm);
+        const endMin = _maintenanceHmToMinutes(cfg.dailyEndHm);
+        const minuteOfDay = (Math.max(0, Number(p.hour || 0)) * 60) + Math.max(0, Number(p.minute || 0));
+        const startAt = _maintenanceTokyoLocalToUtcMs(p.year, p.month, p.day, Math.floor(startMin / 60), startMin % 60);
+        const endAtRaw = _maintenanceTokyoLocalToUtcMs(p.year, p.month, p.day, Math.floor(endMin / 60), endMin % 60);
+        const dayMatch = !cfg.dailyDateJst || _maintenanceJstYmd(now) === String(cfg.dailyDateJst || "");
+        if (!dayMatch && !cfg.forceNow){
+          return { startAt, endAt: endAtRaw, active: false };
+        }
+        if (startMin < 0 || endMin < 0 || startMin === endMin){
+          return { startAt, endAt: endAtRaw, active: !!cfg.forceNow };
+        }
+        if (endMin > startMin){
+          return {
+            startAt,
+            endAt: endAtRaw,
+            active: !!(cfg.enabled && (cfg.forceNow || (minuteOfDay >= startMin && minuteOfDay < endMin)))
+          };
+        }
+        const active = minuteOfDay >= startMin || minuteOfDay < endMin;
+        return {
+          startAt: minuteOfDay < endMin ? (startAt - 86400000) : startAt,
+          endAt: minuteOfDay < endMin ? endAtRaw : (endAtRaw + 86400000),
+          active: !!(cfg.enabled && (cfg.forceNow || active))
         };
       }
       function _maintenanceNormalizeConfig(input){
@@ -19039,10 +19155,19 @@ function reviewWrong(){
         const src = (input && typeof input === "object") ? input : {};
         const startAt = Number(src.startAt || 0);
         const endAt = Number(src.endAt || 0);
+        const modeRaw = String(src.mode || src.timeMode || d.mode || "manual").trim().toLowerCase();
+        const mode = modeRaw === "daily" ? "daily" : "manual";
+        const dailyDateRaw = String(src.dailyDateJst || src.dateJst || "").trim();
         return {
           enabled: !!src.enabled,
+          mode,
           startAt: Number.isFinite(startAt) ? startAt : 0,
           endAt: Number.isFinite(endAt) ? endAt : 0,
+          dailyStartHm: _maintenanceNormalizeHm(src.dailyStartHm || src.dailyStart || d.dailyStartHm, d.dailyStartHm),
+          dailyEndHm: _maintenanceNormalizeHm(src.dailyEndHm || src.dailyEnd || d.dailyEndHm, d.dailyEndHm),
+          dailyDateJst: /^\d{4}-\d{2}-\d{2}$/.test(dailyDateRaw) ? dailyDateRaw : "",
+          forceNow: !!src.forceNow,
+          active: (typeof src.active === "boolean") ? src.active : false,
           title: String(src.title || d.title || "").trim() || d.title,
           message: String(src.message || d.message || "").trim() || d.message,
           updatedAt: Number(src.updatedAt || 0) || 0,
@@ -19052,7 +19177,9 @@ function reviewWrong(){
       function _maintenanceIsActive(config, nowMs){
         const cfg = _maintenanceNormalizeConfig(config);
         const now = Number(nowMs || Date.now());
-        return !!(cfg.enabled && cfg.startAt > 0 && cfg.endAt > cfg.startAt && now >= cfg.startAt && now < cfg.endAt);
+        if (!cfg.enabled) return false;
+        const win = _maintenanceResolveWindow(cfg, now);
+        return !!win.active;
       }
       function _maintenanceFmtDate(ms){
         const n = Number(ms) || 0;
@@ -19100,8 +19227,13 @@ function reviewWrong(){
         const disabled = !!busy;
         const ids = [
           "adminMaintenanceEnabled",
+          "adminMaintenanceMode",
           "adminMaintenanceStartAt",
           "adminMaintenanceEndAt",
+          "adminMaintenanceDailyDate",
+          "adminMaintenanceDailyStart",
+          "adminMaintenanceDailyEnd",
+          "adminMaintenanceForceNow",
           "adminMaintenanceTitle",
           "adminMaintenanceMessage",
           "adminMaintenanceSaveBtn",
@@ -19251,14 +19383,21 @@ function reviewWrong(){
       }
       function _maintenanceReadAdminForm(){
         const enabledEl = document.getElementById("adminMaintenanceEnabled");
+        const modeEl = document.getElementById("adminMaintenanceMode");
         const startEl = document.getElementById("adminMaintenanceStartAt");
         const endEl = document.getElementById("adminMaintenanceEndAt");
+        const dailyDateEl = document.getElementById("adminMaintenanceDailyDate");
+        const dailyStartEl = document.getElementById("adminMaintenanceDailyStart");
+        const dailyEndEl = document.getElementById("adminMaintenanceDailyEnd");
+        const forceNowEl = document.getElementById("adminMaintenanceForceNow");
+        const clearExpiredBtn = document.getElementById("adminMaintenanceClearExpiredBtn");
         const titleEl = document.getElementById("adminMaintenanceTitle");
         const messageEl = document.getElementById("adminMaintenanceMessage");
-        if (!enabledEl || !startEl || !endEl || !titleEl || !messageEl){
+        if (!enabledEl || !modeEl || !startEl || !endEl || !dailyDateEl || !dailyStartEl || !dailyEndEl || !forceNowEl || !titleEl || !messageEl){
           throw new Error("メンテナンスUI要素が見つかりません。");
         }
         const enabled = !!enabledEl.checked;
+        const mode = String(modeEl.value || "manual").toLowerCase() === "daily" ? "daily" : "manual";
         const current = _maintenanceNormalizeConfig(_maintenanceState.config || _maintenanceDefaultConfig());
         let startAt = _parseLocalDateTimeInput(startEl.value);
         let endAt = _parseLocalDateTimeInput(endEl.value);
@@ -19270,32 +19409,71 @@ function reviewWrong(){
         }
         const title = String(titleEl.value || "").trim() || "メンテナンス中";
         const message = String(messageEl.value || "").trim() || "現在メンテナンスを実施しています。しばらくお待ちください。";
-        if (enabled && (!startAt || !endAt)){
-          throw new Error("開始日時と終了日時を入力してください。");
+        const dailyStartHm = _maintenanceNormalizeHm(String(dailyStartEl.value || current.dailyStartHm || "01:00"), "01:00");
+        const dailyEndHm = _maintenanceNormalizeHm(String(dailyEndEl.value || current.dailyEndHm || "07:30"), "07:30");
+        const dailyDateJstRaw = String(dailyDateEl.value || current.dailyDateJst || "").trim();
+        const dailyDateJst = /^\d{4}-\d{2}-\d{2}$/.test(dailyDateJstRaw) ? dailyDateJstRaw : "";
+        const forceNow = !!forceNowEl.checked;
+        if (enabled && mode === "manual"){
+          if (!startAt || !endAt){
+            throw new Error("manualモードでは開始日時と終了日時を入力してください。");
+          }
+          if (endAt <= startAt){
+            throw new Error("終了日時は開始日時より後にしてください。");
+          }
         }
-        if (enabled && endAt <= startAt){
-          throw new Error("終了日時は開始日時より後にしてください。");
+        if (enabled && mode === "daily"){
+          const s = _maintenanceHmToMinutes(dailyStartHm);
+          const e = _maintenanceHmToMinutes(dailyEndHm);
+          if (s < 0 || e < 0){
+            throw new Error("dailyモードの時刻形式が不正です。");
+          }
+          if (s === e){
+            throw new Error("dailyモードの開始時刻と終了時刻は異なる値にしてください。");
+          }
         }
-        return { enabled, startAt, endAt, title, message };
+        return {
+          enabled,
+          mode,
+          startAt,
+          endAt,
+          dailyStartHm,
+          dailyEndHm,
+          dailyDateJst,
+          forceNow,
+          title,
+          message
+        };
       }
       function _maintenanceRenderAdminPreview(){
         const pv = document.getElementById("adminMaintenancePreview");
         if (!pv) return;
         const cfgBase = _maintenanceNormalizeConfig(_maintenanceState.config || _maintenanceDefaultConfig());
         const enabledEl = document.getElementById("adminMaintenanceEnabled");
+        const modeEl = document.getElementById("adminMaintenanceMode");
         const startEl = document.getElementById("adminMaintenanceStartAt");
         const endEl = document.getElementById("adminMaintenanceEndAt");
+        const dailyDateEl = document.getElementById("adminMaintenanceDailyDate");
+        const dailyStartEl = document.getElementById("adminMaintenanceDailyStart");
+        const dailyEndEl = document.getElementById("adminMaintenanceDailyEnd");
+        const forceNowEl = document.getElementById("adminMaintenanceForceNow");
         const titleEl = document.getElementById("adminMaintenanceTitle");
         const messageEl = document.getElementById("adminMaintenanceMessage");
         const cfg = _maintenanceNormalizeConfig({
           ...cfgBase,
           enabled: enabledEl ? !!enabledEl.checked : cfgBase.enabled,
+          mode: modeEl ? String(modeEl.value || cfgBase.mode || "manual") : cfgBase.mode,
           startAt: startEl ? (_parseLocalDateTimeInput(startEl.value) || cfgBase.startAt) : cfgBase.startAt,
           endAt: endEl ? (_parseLocalDateTimeInput(endEl.value) || cfgBase.endAt) : cfgBase.endAt,
+          dailyDateJst: dailyDateEl ? String(dailyDateEl.value || cfgBase.dailyDateJst || "") : cfgBase.dailyDateJst,
+          dailyStartHm: dailyStartEl ? String(dailyStartEl.value || cfgBase.dailyStartHm || "01:00") : cfgBase.dailyStartHm,
+          dailyEndHm: dailyEndEl ? String(dailyEndEl.value || cfgBase.dailyEndHm || "07:30") : cfgBase.dailyEndHm,
+          forceNow: forceNowEl ? !!forceNowEl.checked : cfgBase.forceNow,
           title: titleEl ? String(titleEl.value || cfgBase.title || "") : cfgBase.title,
           message: messageEl ? String(messageEl.value || cfgBase.message || "") : cfgBase.message
         });
         const now = Date.now();
+        const win = _maintenanceResolveWindow(cfg, now);
         const active = _maintenanceIsActive(cfg, now);
         let nowLine = "現在: 通常稼働";
         if (cfg.enabled && now < cfg.startAt){
@@ -19307,11 +19485,20 @@ function reviewWrong(){
         } else if (cfg.enabled){
           nowLine = "現在: 期間設定不正";
         }
-        const remainText = active ? _maintenanceFmtRemain(cfg.endAt - now) : "—";
+        if (cfg.mode === "daily"){
+          if (!cfg.enabled) nowLine = "現在: 通常稼働";
+          else if (active) nowLine = "現在: メンテナンス中（日次）";
+          else nowLine = "現在: 日次設定の待機中";
+        }
+        const remainText = active ? _maintenanceFmtRemain(Math.max(0, Number(win.endAt || 0) - now)) : "—";
+        const periodText = (cfg.mode === "daily")
+          ? `${cfg.dailyDateJst ? `${cfg.dailyDateJst}のみ` : "毎日"} ${cfg.dailyStartHm} 〜 ${cfg.dailyEndHm} (JST)`
+          : `${_maintenanceFmtDate(cfg.startAt)} 〜 ${_maintenanceFmtDate(cfg.endAt)}`;
         pv.innerHTML = `
           <div class="now">${escapeHtml(nowLine)}</div>
-          <div>期間: ${escapeHtml(_maintenanceFmtDate(cfg.startAt))} 〜 ${escapeHtml(_maintenanceFmtDate(cfg.endAt))}</div>
+          <div>期間: ${escapeHtml(periodText)}</div>
           <div>残り: ${escapeHtml(remainText)}</div>
+          <div>モード: ${escapeHtml(cfg.mode === "daily" ? "daily" : "manual")} ${cfg.forceNow ? "(forceNow=ON)" : ""}</div>
           <div>更新者: ${escapeHtml(cfg.updatedBy || "—")} / 更新時刻: ${escapeHtml(_maintenanceFmtDate(cfg.updatedAt))}</div>
         `;
       }
@@ -19321,8 +19508,13 @@ function reviewWrong(){
         const lockedNoteEl = document.getElementById("adminMaintenanceLockedNote");
         const previewEl = document.getElementById("adminMaintenancePreview");
         const enabledEl = document.getElementById("adminMaintenanceEnabled");
+        const modeEl = document.getElementById("adminMaintenanceMode");
         const startEl = document.getElementById("adminMaintenanceStartAt");
         const endEl = document.getElementById("adminMaintenanceEndAt");
+        const dailyDateEl = document.getElementById("adminMaintenanceDailyDate");
+        const dailyStartEl = document.getElementById("adminMaintenanceDailyStart");
+        const dailyEndEl = document.getElementById("adminMaintenanceDailyEnd");
+        const forceNowEl = document.getElementById("adminMaintenanceForceNow");
         const titleEl = document.getElementById("adminMaintenanceTitle");
         const messageEl = document.getElementById("adminMaintenanceMessage");
         if (groupEl) groupEl.classList.toggle("hidden", !_adminState.isAdmin);
@@ -19335,19 +19527,38 @@ function reviewWrong(){
         const ae = document.activeElement;
         const editingActive = !!(ae && (
           ae === enabledEl ||
+          ae === modeEl ||
           ae === startEl ||
           ae === endEl ||
+          ae === dailyDateEl ||
+          ae === dailyStartEl ||
+          ae === dailyEndEl ||
+          ae === forceNowEl ||
           ae === titleEl ||
           ae === messageEl
         ));
         if (!_maintenanceState.saving && !editingActive){
           if (enabledEl) enabledEl.checked = !!cfg.enabled;
+          if (modeEl) modeEl.value = String(cfg.mode || "manual");
           if (startEl) startEl.value = _toLocalDateTimeInput(cfg.startAt || 0);
           if (endEl) endEl.value = _toLocalDateTimeInput(cfg.endAt || 0);
+          if (dailyDateEl) dailyDateEl.value = String(cfg.dailyDateJst || "");
+          if (dailyStartEl) dailyStartEl.value = String(cfg.dailyStartHm || "01:00");
+          if (dailyEndEl) dailyEndEl.value = String(cfg.dailyEndHm || "07:30");
+          if (forceNowEl) forceNowEl.checked = !!cfg.forceNow;
           if (titleEl) titleEl.value = cfg.title || "";
           if (messageEl) messageEl.value = cfg.message || "";
         }
         _maintenanceSetAdminBusy(_maintenanceState.saving);
+        const modeNow = String(modeEl?.value || cfg.mode || "manual").toLowerCase() === "daily" ? "daily" : "manual";
+        const lockManual = modeNow === "daily";
+        const lockDaily = modeNow !== "daily";
+        if (startEl) startEl.disabled = lockManual || _maintenanceState.saving || !_adminState.isAdmin;
+        if (endEl) endEl.disabled = lockManual || _maintenanceState.saving || !_adminState.isAdmin;
+        if (dailyDateEl) dailyDateEl.disabled = lockDaily || _maintenanceState.saving || !_adminState.isAdmin;
+        if (dailyStartEl) dailyStartEl.disabled = lockDaily || _maintenanceState.saving || !_adminState.isAdmin;
+        if (dailyEndEl) dailyEndEl.disabled = lockDaily || _maintenanceState.saving || !_adminState.isAdmin;
+        if (clearExpiredBtn) clearExpiredBtn.disabled = (modeNow === "daily") || _maintenanceState.saving || !_adminState.isAdmin;
         _maintenanceRenderAdminPreview();
       }
       function _maintenanceStopCountdown(){
@@ -19361,6 +19572,7 @@ function reviewWrong(){
         if (!overlay) return;
         const cfg = _maintenanceNormalizeConfig(_maintenanceState.config || _maintenanceDefaultConfig());
         const now = Date.now();
+        const win = _maintenanceResolveWindow(cfg, now);
         const active = _maintenanceIsActive(cfg, now);
         _maintenanceState.active = active;
         if (!active){
@@ -19374,10 +19586,14 @@ function reviewWrong(){
         if (el.maintenanceTitle) el.maintenanceTitle.textContent = cfg.title || "メンテナンス中";
         if (el.maintenanceMessage) el.maintenanceMessage.textContent = cfg.message || "";
         if (el.maintenancePeriod){
-          el.maintenancePeriod.textContent = `${_maintenanceFmtDate(cfg.startAt)} 〜 ${_maintenanceFmtDate(cfg.endAt)}`;
+          if (cfg.mode === "daily"){
+            el.maintenancePeriod.textContent = `${cfg.dailyDateJst ? `${cfg.dailyDateJst}のみ` : "毎日"} ${cfg.dailyStartHm} 〜 ${cfg.dailyEndHm} (JST)`;
+          } else {
+            el.maintenancePeriod.textContent = `${_maintenanceFmtDate(cfg.startAt)} 〜 ${_maintenanceFmtDate(cfg.endAt)}`;
+          }
         }
         if (el.maintenanceRemaining){
-          el.maintenanceRemaining.textContent = active ? _maintenanceFmtRemain(cfg.endAt - now) : "—";
+          el.maintenanceRemaining.textContent = active ? _maintenanceFmtRemain(Math.max(0, Number(win.endAt || 0) - now)) : "—";
         }
         if (el.maintenanceBypassBtn){
           el.maintenanceBypassBtn.classList.toggle("hidden", !(active && canBypass));
@@ -19768,8 +19984,13 @@ function reviewWrong(){
         try{
           const payload = {
             enabled: !!form.enabled,
+            mode: String(form.mode || "manual"),
             startAt: Number(form.startAt || 0),
             endAt: Number(form.endAt || 0),
+            dailyStartHm: String(form.dailyStartHm || "01:00"),
+            dailyEndHm: String(form.dailyEndHm || "07:30"),
+            dailyDateJst: String(form.dailyDateJst || ""),
+            forceNow: !!form.forceNow,
             title: String(form.title || "メンテナンス中"),
             message: String(form.message || ""),
           };
@@ -19777,8 +19998,13 @@ function reviewWrong(){
           _maintenanceState.config = _maintenanceNormalizeConfig({
             ...maintenance,
             enabled: payload.enabled,
+            mode: payload.mode,
             startAt: Number(payload.startAt || 0),
             endAt: Number(payload.endAt || 0),
+            dailyStartHm: payload.dailyStartHm,
+            dailyEndHm: payload.dailyEndHm,
+            dailyDateJst: payload.dailyDateJst,
+            forceNow: !!payload.forceNow,
             title: String(payload.title || ""),
             message: String(payload.message || "")
           });
@@ -19808,6 +20034,10 @@ function reviewWrong(){
           return;
         }
         const cfg = _maintenanceNormalizeConfig(_maintenanceState.config || _maintenanceDefaultConfig());
+        if (cfg.mode === "daily"){
+          _maintenanceSetAdminStatus("dailyモードでは「終了済みを無効化」は不要です。enabledをOFFにして保存してください。", "error");
+          return;
+        }
         if (!cfg.enabled){
           _maintenanceSetAdminStatus("enabled は既に false です。");
           return;
@@ -28654,7 +28884,16 @@ function _openSearchResultByIndex(i){
           _appRenderHomeProgressInsights();
           return;
         }
-        if (t.id === "adminMaintenanceEnabled" || t.id === "adminMaintenanceStartAt" || t.id === "adminMaintenanceEndAt"){
+        if (
+          t.id === "adminMaintenanceEnabled"
+          || t.id === "adminMaintenanceMode"
+          || t.id === "adminMaintenanceStartAt"
+          || t.id === "adminMaintenanceEndAt"
+          || t.id === "adminMaintenanceDailyDate"
+          || t.id === "adminMaintenanceDailyStart"
+          || t.id === "adminMaintenanceDailyEnd"
+          || t.id === "adminMaintenanceForceNow"
+        ){
           _maintenanceSetAdminStatus("");
           _maintenanceRenderAdminPreview();
           return;
@@ -28681,7 +28920,13 @@ function _openSearchResultByIndex(i){
       document.addEventListener("input", (e) => {
         const t = e.target;
         if (!(t instanceof HTMLElement)) return;
-        if (t.id === "adminMaintenanceTitle" || t.id === "adminMaintenanceMessage"){
+        if (
+          t.id === "adminMaintenanceTitle"
+          || t.id === "adminMaintenanceMessage"
+          || t.id === "adminMaintenanceDailyDate"
+          || t.id === "adminMaintenanceDailyStart"
+          || t.id === "adminMaintenanceDailyEnd"
+        ){
           _maintenanceSetAdminStatus("");
           _maintenanceRenderAdminPreview();
           return;
