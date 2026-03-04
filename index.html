@@ -10022,15 +10022,45 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
         <!-- Dashboard -->
         <section class="view active" id="viewTitle" aria-label="ダッシュボード">
           <div class="hero">
-            <div class="home-preset-termination-notice" id="homePresetTerminationNotice">
-              <button class="home-preset-termination-close" id="homePresetTerminationNoticeClose" type="button" aria-label="閉じる">×</button>
-              <div class="notice-title">英単語標準プリセット終了のお知らせ</div>
-              <div id="homePresetTerminationNoticeBody">2026/02/28 23:59 をもって、英単語（0〜1000）標準プリセットの提供を終了します。</div>
-            </div>
             <h1 class="h1">VocabuQuiz</h1>
             <p class="subtitle">
               学習用のシンプルな単語ビューア。範囲（Vocabu）を選んで練習します。
             </p>
+            <section class="app-page-block" id="homeWelfareMockBlock" aria-label="公共福祉 模擬試験"
+                     style="border:2px solid #f0c24b; background:linear-gradient(180deg, rgba(240,194,75,.16), rgba(240,194,75,.05));">
+              <div class="app-page-block-head" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span style="display:inline-flex; align-items:center; gap:6px; font-weight:800; color:#8a5b00;">
+                  <span class="ms" aria-hidden="true" style="font-size:18px;">auto_awesome</span>
+                  おすすめ
+                </span>
+                <span style="font-weight:700;">公共福祉　模擬試験</span>
+              </div>
+              <div class="note" style="margin-top:2px;">問題用紙・解答用紙をこの場で閲覧できます。</div>
+              <details style="margin-top:6px;">
+                <summary class="navbtn" style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+                  <span class="ms" aria-hidden="true" style="font-size:18px;">visibility</span>
+                  閲覧
+                </summary>
+                <div style="margin-top:10px; display:grid; gap:14px;">
+                  <div>
+                    <div class="note" style="margin-bottom:6px; font-weight:700;">問題用紙</div>
+                    <iframe
+                      title="公共福祉 模擬試験 問題用紙"
+                      src="assets/fixed/term3_integrated_questions_v3.pdf"
+                      style="display:block; width:100%; height:min(72vh,980px); border:1px solid var(--border); border-radius:10px; background:#fff;"
+                    ></iframe>
+                  </div>
+                  <div>
+                    <div class="note" style="margin-bottom:6px; font-weight:700;">解答用紙</div>
+                    <iframe
+                      title="公共福祉 模擬試験 解答用紙"
+                      src="assets/fixed/term3_integrated_answersheet_v4.pdf"
+                      style="display:block; width:100%; height:min(72vh,980px); border:1px solid var(--border); border-radius:10px; background:#fff;"
+                    ></iframe>
+                  </div>
+                </div>
+              </details>
+            </section>
 
             <section class="app-v2-home-head" id="appV2HomeHead" aria-label="Dashboard Header">
               <div>
