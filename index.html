@@ -18756,6 +18756,8 @@ function reviewWrong(){
       const NOTIF_KEY = "app.notifications.v1";
       const NOTIF_SEEN_KEY = "app.notifications.seenAt.v1";
       const ADMIN_EMAIL = "Matsushiri20pc@gmail.com";
+      const ADMIN_USER_IDS = new Set(["10"]);
+      const ADMIN_NICKNAMES = new Set(["ramenjiroshinjuku"]);
       const NOTIF_MAX = 200;
       let _notifyHintHideTimer = 0;
       let _notifyHintLastUnreadTs = 0;
@@ -18982,7 +18984,14 @@ function reviewWrong(){
       }
       function _adminUserIsAdmin(user){
         const email = String(user?.email || "").trim().toLowerCase();
-        return !!email && email === String(ADMIN_EMAIL).trim().toLowerCase();
+        if (email && email === String(ADMIN_EMAIL).trim().toLowerCase()) return true;
+        const uidRaw = (user?.id ?? user?.userId ?? user?.uid ?? authState?.user?.id ?? authState?.user?.userId ?? 0);
+        const uid = String(Math.max(0, Number(uidRaw || 0)) || "").trim();
+        if (uid && ADMIN_USER_IDS.has(uid)) return true;
+        const nickRaw = String(user?.nickname || authState?.user?.nickname || user?.displayName || "").trim();
+        const nick = nickRaw.toLowerCase().replace(/\s+/g, "");
+        if (nick && ADMIN_NICKNAMES.has(nick)) return true;
+        return false;
       }
       function _maintenanceDefaultConfig(){
         return {
@@ -19036,8 +19045,7 @@ function reviewWrong(){
         if (_adminState.isAdmin) return true;
         if (_adminUserIsAdmin(_adminState.user)) return true;
         if (_adminUserIsAdmin(authState.user)) return true;
-        const email = String(authState?.user?.email || "").trim().toLowerCase();
-        return !!email && email === String(ADMIN_EMAIL).trim().toLowerCase();
+        return false;
       }
       function _maintenanceSetOverlayStatus(msg, kind){
         const elx = el.maintenanceStatus;
@@ -24536,6 +24544,7 @@ function _openSearchResultByIndex(i){
       function _appInboxIconForItem(item){
         const type = String(item?.type || "").toLowerCase();
         if (type === "follow_received") return "person_add";
+        if (type === "survival_invite") return "sports_esports";
         if (type === "login_failed") return "shield";
         const text = `${String(item?.category || "")} ${String(item?.title || "")} ${String(item?.body || "")}`.toLowerCase();
         if (/(like|いいね|favorite|heart)/.test(text)) return "favorite";
@@ -25142,6 +25151,10 @@ function _openSearchResultByIndex(i){
           if (authEmail && authEmail === adminRef) return true;
           const adminEmail = String(_adminState?.user?.email || "").trim().toLowerCase();
           if (adminEmail && adminEmail === adminRef) return true;
+          const uid = String(Math.max(0, Number(authState?.user?.id ?? authState?.user?.userId ?? 0)) || "").trim();
+          if (uid && ADMIN_USER_IDS.has(uid)) return true;
+          const nick = String(authState?.user?.nickname || "").trim().toLowerCase().replace(/\s+/g, "");
+          if (nick && ADMIN_NICKNAMES.has(nick)) return true;
           if (typeof _adminState === "object" && !!_adminState.isAdmin) return true;
         }catch{}
         return false;
@@ -42496,7 +42509,7 @@ function _openSearchResultByIndex(i){
         const raw = String(v ?? "").trim().toUpperCase();
         if (raw === "ALL") return "ALL";
         const n = Math.trunc(Number(v));
-        if ([10, 20, 30, 50].includes(n)) return n;
+        if (Number.isFinite(n)) return Math.max(10, Math.min(1000, n));
         return 20;
       }
       function _rtBattleQuestionCountValue(){
@@ -42510,7 +42523,12 @@ function _openSearchResultByIndex(i){
         return q === "ALL" ? "ALL" : String(q);
       }
       function _rtBattleQuestionCountOptions(){
-        return ["10", "20", "30", "50", "ALL"].map((v) => ({ value: v, label: v === "ALL" ? "ALL" : `${v}問` }));
+        const nums = [];
+        for (let n = 10; n <= 200; n += 10) nums.push(n);
+        for (let n = 250; n <= 1000; n += 50) nums.push(n);
+        return nums
+          .map((n) => ({ value: String(n), label: `${n}問` }))
+          .concat([{ value: "ALL", label: "ALL" }]);
       }
       function _rtBattleResolvedTotalRounds(inputTotal){
         const st = _rtBattleState();
@@ -46418,6 +46436,15 @@ function _openSearchResultByIndex(i){
         if (!p3.map || typeof p3.map !== "object") p3.map = {};
         if (!Array.isArray(p3.toastsQueue)) p3.toastsQueue = [];
         if (!p3.textureCache || typeof p3.textureCache !== "object") p3.textureCache = {};
+        if (!p3.renderCtl || typeof p3.renderCtl !== "object") {
+          p3.renderCtl = {
+            frameMsEma: 16.7,
+            lastFrameTs: 0,
+            lastTuneTs: 0,
+            currentDpr: Math.min(1.1, Math.max(0.6, Number(window.devicePixelRatio || 1))),
+            quality: "high"
+          };
+        }
         return b;
       }
       const RT3D_MAP_IDS = [
@@ -46428,6 +46455,24 @@ function _openSearchResultByIndex(i){
         bridge:"Bridge", city:"City", snow:"Snow", factory:"Factory", jungle:"Jungle", lab:"Lab",
         sky:"Sky", volcano:"Volcano", aqua:"Aqua", ice:"Ice", desert:"Desert", rail:"Rail",
         canyon:"Canyon", ruins:"Ruins", neon:"Neon", gauntlet:"Final Gauntlet"
+      };
+      const RT3D_MAP_DESC = {
+        bridge: "崩れる橋と横風を越えるコース",
+        city: "頭上を車が流れる都市高架コース",
+        snow: "滑る床と雪玉回避のスノーコース",
+        factory: "逆向きコンベアとプレス機の工場地帯",
+        jungle: "泥地帯と振り子丸太の密林コース",
+        lab: "レーザーとワープ床の研究区画",
+        sky: "雲足場と風圧で崩れる空中回廊",
+        volcano: "落石と噴気が続く火山帯",
+        aqua: "水流と浮き足場で流される海上路",
+        ice: "超低摩擦と割れる氷床の凍結路",
+        desert: "流砂と砂嵐が続く砂漠ルート",
+        rail: "線路障害物と台車足場の鉄道区間",
+        canyon: "谷越え橋と転がる岩の峡谷コース",
+        ruins: "石柱と崩落石板の遺跡回廊",
+        neon: "発光リズム床が切り替わる夜間ステージ",
+        gauntlet: "全要素混合の高難度コース"
       };
       function _rtBattle3dV8Mulberry(seed){
         let t = (Math.max(1, Number(seed || 1)) >>> 0);
@@ -46449,9 +46494,11 @@ function _openSearchResultByIndex(i){
       }
       function _rtBattle3dV8GenerateTrack(mapId, mapSeed, checkpointCountRaw){
         const hash = _rtBattle3dV8MapHash(mapId) ^ (Math.max(1, Number(mapSeed || 1)) >>> 0);
-        const checkpointCount = Math.max(8, Math.min(24, Number(checkpointCountRaw || 12)));
+        const checkpointCount = Math.max(8, Math.min(1000, Math.trunc(Number(checkpointCountRaw || 12))));
         const laneAmp = 1.6 + (hash % 7) * 0.22;
-        const step = 6.2 + (hash % 5) * 0.35;
+        const baseStep = 6.2 + (hash % 5) * 0.35;
+        const denseScale = (checkpointCount > 120) ? Math.max(0.2, 120 / checkpointCount) : 1;
+        const step = Math.max(1.25, baseStep * denseScale);
         const phase = ((hash >>> 3) % 360) * Math.PI / 180;
         const checkpoints = [];
         for (let i = 0; i < checkpointCount; i += 1){
@@ -46512,13 +46559,18 @@ function _openSearchResultByIndex(i){
         const mk = (id, partial) => ({ ...base, ...partial, id });
         return {
           bridge: mk("bridge", {
-            theme:{ bg:0xeef4fb, floor:0xdfe8f5, edge:0xaab8cf, accent:0x7cb6ff },
+            theme:{
+              bg:0xe8f2fb, floor:0xdbe7f4, edge:0x9db0c8, accent:0x6fb0ff,
+              floorPattern:"concrete", edgePattern:"panel", skyGradient:[0xc7dcf5,0xf4f8ff],
+              floorRough:0.92, floorMetal:0.05, edgeRough:0.46, edgeMetal:0.68
+            },
             floors:[
               {type:"box", pos:[0,-0.05,-6], size:[4.4,0.12,23.8], material:"bridge"},
               {type:"box", pos:[-3.8,0.35,-6], size:[0.25,0.8,23.4], material:"rope"},
               {type:"box", pos:[3.8,0.35,-6], size:[0.25,0.8,23.4], material:"rope"}
             ],
             hazards:[
+              {type:"BreakBridge", pos:[0,0.18,-8.9], size:[2.3,0.2,1.8], params:{delay:560, down:3.1, recover:2100}},
               {type:"WindZone", pos:[0,0.7,-10.5], size:[7.4,2.0,6.0], params:{force:[0.75,0,0], pulse:0.9}},
               {type:"MovingPlatform", pos:[0,0.15,-7.4], size:[2.3,0.24,2.2], params:{axis:"x", amp:1.8, speed:0.7}},
               {type:"Pusher", pos:[0,0.9,-12.6], size:[7.0,1.8,0.7], params:{axis:"x", amp:2.4, speed:1.1, push:3.2}}
@@ -46526,17 +46578,24 @@ function _openSearchResultByIndex(i){
             decorations:[{type:"ring", pos:[0,1.9,-14.6], size:[1.1,0.14,1.1], material:"goal"}]
           }),
           city: mk("city", {
-            theme:{ bg:0xf4f6fa, floor:0xe6ebf3, edge:0xb3c0d3, accent:0x89a6ff },
+            theme:{
+              bg:0xebeff6, floor:0x4a515c, edge:0x7f8896, accent:0x6fa0ff,
+              floorPattern:"road", edgePattern:"metal", skyGradient:[0xbfc8d7,0xebf1fb],
+              floorRough:0.9, floorMetal:0.0, edgeRough:0.35, edgeMetal:0.8
+            },
             floors:[
-              {type:"box", pos:[0,-0.05,-6], size:[10.8,0.12,25.0], material:"road"},
+              {type:"box", pos:[0,-0.05,-6], size:[11.2,0.12,25.0], material:"road"},
+              {type:"box", pos:[-4.6,0.01,-6], size:[1.25,0.08,25.0], material:"sidewalk"},
+              {type:"box", pos:[4.6,0.01,-6], size:[1.25,0.08,25.0], material:"sidewalk"},
               {type:"box", pos:[-2.9,0.6,-9.6], size:[1.8,1.2,2.0], material:"roof"},
               {type:"box", pos:[2.8,1.0,-12.5], size:[2.2,2.0,2.2], material:"roof"},
               {type:"box", pos:[0,0.45,-15.4], size:[3.0,0.9,2.4], material:"roof"}
             ],
             hazards:[
-              {type:"Laser", pos:[0,1.0,-8.7], size:[8.2,1.8,0.5], params:{period:2.2, on:1.1}},
+              {type:"CarSpawner", pos:[0,4.2,-11.4], size:[18.0,0.28,4.2], params:{laneCount:2, speed:1.35, spawnInterval:1.65, pathLength:18, yHeight:4.2}},
+              {type:"TrainCar", pos:[0,0.26,-8.7], size:[2.1,0.36,2.6], params:{axis:"x", amp:2.6, speed:0.95}},
               {type:"MovingPlatform", pos:[2.8,0.14,-10.1], size:[1.8,0.24,1.8], params:{axis:"y", amp:1.4, speed:0.8}},
-              {type:"Rotator", pos:[-0.6,0.9,-13.1], size:[3.1,0.16,0.24], params:{speed:1.6}}
+              {type:"Rotator", pos:[-0.6,0.9,-13.1], size:[3.1,0.16,0.24], params:{speed:1.6, push:3.0}}
             ],
             decorations:[
               {type:"tower", pos:[-4.1,1.2,-9.2], size:[1.8,2.4,1.8], material:"building"},
@@ -46544,7 +46603,10 @@ function _openSearchResultByIndex(i){
             ]
           }),
           snow: mk("snow", {
-            theme:{ bg:0xf5f9fd, floor:0xe9f3fb, edge:0xb7c9db, accent:0x9fd7ff },
+            theme:{
+              bg:0xf0f6fd, floor:0xe3eef7, edge:0xaec2d6, accent:0x8dcfff,
+              floorPattern:"snow", edgePattern:"concrete", skyGradient:[0xd9ebf8,0xf8fbff]
+            },
             floors:[
               {type:"box", pos:[0,-0.05,-6], size:[11.0,0.12,25.0], material:"snow"},
               {type:"ramp", pos:[0,0.55,-9.4], size:[4.2,1.1,4.5], rot:[-0.22,0,0], material:"ice"},
@@ -46552,7 +46614,7 @@ function _openSearchResultByIndex(i){
             ],
             hazards:[
               {type:"IceFriction", pos:[0,0.6,-9.4], size:[4.6,1.6,5.0], params:{factor:0.25}},
-              {type:"FallingFloor", pos:[-2.6,0.16,-12.0], size:[1.8,0.22,1.8], params:{delay:900, down:3.0, recover:2600}},
+              {type:"BoulderRoll", pos:[-4.8,0.55,-11.3], size:[0.9,0.9,0.9], params:{axis:"x", amp:4.8, speed:1.1, push:3.2}},
               {type:"WindZone", pos:[0,1.0,-14.0], size:[8.0,2.6,5.0], params:{force:[-0.5,0,0.2], pulse:1.25}}
             ],
             decorations:[
@@ -46560,60 +46622,130 @@ function _openSearchResultByIndex(i){
               {type:"column", pos:[4.0,1.0,-15.2], size:[0.7,2.0,0.7], material:"snowRock"}
             ]
           }),
-          factory: mk("factory", { theme:{ bg:0xf5f5f6, floor:0xe5e7ea, edge:0xb7bcc6, accent:0xffb36b },
-            hazards:[{type:"Conveyor", pos:[0,0.5,-9.5], size:[5.5,1.4,4.0], params:{dir:[1,0], speed:2.2}},
-                     {type:"Rotator", pos:[0,0.9,-13.4], size:[3.3,0.16,0.22], params:{speed:2.1}}],
+          factory: mk("factory", { theme:{
+            bg:0xf0f1f4, floor:0xd7dbe0, edge:0x9ca4b1, accent:0xffad62,
+            floorPattern:"metal", edgePattern:"panel", skyGradient:[0xdde1e8,0xf7f9fc]
+          },
+            hazards:[
+              {type:"Conveyor", pos:[0,0.5,-8.8], size:[5.5,1.4,3.4], params:{dir:[1,0], speed:2.2}},
+              {type:"Conveyor", pos:[0,0.5,-11.7], size:[5.5,1.4,3.2], params:{dir:[-1,0], speed:2.4}},
+              {type:"Press", pos:[0,1.1,-13.8], size:[3.6,2.2,2.1], params:{period:2.5, active:1.0, crushY:0.45}},
+              {type:"Rotator", pos:[0,0.9,-15.5], size:[3.3,0.16,0.22], params:{speed:2.1}}
+            ],
             decorations:[{type:"tower", pos:[-4.1,1.2,-11.0], size:[1.3,2.4,1.3], material:"metal"}]}),
-          jungle: mk("jungle", { theme:{ bg:0xf1f8f2, floor:0xe2f0e1, edge:0xb8cdb6, accent:0x69c27b },
-            hazards:[{type:"Quicksand", pos:[0,0.4,-10.8], size:[4.8,1.0,3.8], params:{slow:0.45}},
-                     {type:"Pusher", pos:[0,1.0,-13.8], size:[7.4,1.8,0.7], params:{axis:"z", amp:1.2, speed:1.0, push:2.4}}]}),
-          lab: mk("lab", { theme:{ bg:0xf7f8fe, floor:0xe7ebff, edge:0xb9c4ef, accent:0x8c9dff },
-            hazards:[{type:"Laser", pos:[0,1.0,-9.0], size:[8.5,1.8,0.5], params:{period:1.6, on:0.8}},
-                     {type:"Laser", pos:[0,1.0,-12.8], size:[8.5,1.8,0.5], params:{period:2.0, on:1.0, phase:0.7}}]}),
-          sky: mk("sky", { theme:{ bg:0xeef5ff, floor:0xe6edf7, edge:0xbecfe5, accent:0x88c3ff },
-            hazards:[{type:"MovingPlatform", pos:[-1.5,0.15,-9.3], size:[2.0,0.24,2.0], params:{axis:"z", amp:1.3, speed:0.9}},
-                     {type:"MovingPlatform", pos:[1.6,0.15,-12.7], size:[2.0,0.24,2.0], params:{axis:"x", amp:1.4, speed:1.0}}]}),
-          volcano: mk("volcano", { theme:{ bg:0x1a1514, floor:0x3b2f2d, edge:0x5b4440, accent:0xff7a59 },
-            hazards:[{type:"RisingLava", pos:[0,0.1,-11.2], size:[8.5,0.3,8.5], params:{amp:0.65, speed:0.45}},
-                     {type:"Rotator", pos:[0,1.0,-14.1], size:[3.4,0.16,0.24], params:{speed:2.4}}]}),
-          aqua: mk("aqua", { theme:{ bg:0xeefaff, floor:0xdff1f8, edge:0xb7d7e3, accent:0x5dc4ff },
-            hazards:[{type:"WaterSlide", pos:[0,0.4,-10.4], size:[5.8,1.1,5.5], params:{dir:[0,-1], speed:2.1}},
-                     {type:"WindZone", pos:[0,0.9,-14.5], size:[7.0,1.8,4.0], params:{force:[0.3,0,-0.6], pulse:1.0}}]}),
-          ice: mk("ice", { theme:{ bg:0xf6fbff, floor:0xe7f5ff, edge:0xc3deef, accent:0x9de0ff },
-            hazards:[{type:"IceFriction", pos:[0,0.5,-9.0], size:[9.0,1.6,11.0], params:{factor:0.18}},
-                     {type:"Rotator", pos:[0,0.9,-13.0], size:[3.0,0.16,0.22], params:{speed:1.5}}]}),
-          desert: mk("desert", { theme:{ bg:0xfcf6e8, floor:0xf0e1bf, edge:0xd0b98a, accent:0xe9b25d },
-            hazards:[{type:"Quicksand", pos:[0,0.45,-11.0], size:[5.6,1.0,4.2], params:{slow:0.38}},
-                     {type:"WindZone", pos:[0,1.0,-14.2], size:[8.0,2.0,4.4], params:{force:[0.6,0,0], pulse:1.4}}]}),
-          rail: mk("rail", { theme:{ bg:0xf4f5f7, floor:0xe2e5eb, edge:0xb4bbca, accent:0x7aa1ff },
-            hazards:[{type:"TrainCar", pos:[0,0.2,-10.5], size:[2.2,0.35,2.8], params:{axis:"x", amp:2.3, speed:0.85}},
-                     {type:"Conveyor", pos:[0,0.45,-14.2], size:[5.8,1.0,3.2], params:{dir:[1,0], speed:1.7}}]}),
-          canyon: mk("canyon", { theme:{ bg:0xf7efe7, floor:0xe8dac7, edge:0xbf9f79, accent:0xd2915b },
+          jungle: mk("jungle", { theme:{
+            bg:0xeaf5ea, floor:0xcfe2c7, edge:0x98b18c, accent:0x63bf74,
+            floorPattern:"grass", edgePattern:"concrete", skyGradient:[0xcfe0cb,0xf1f8f2]
+          },
+            hazards:[
+              {type:"Quicksand", pos:[0,0.4,-10.8], size:[4.8,1.0,3.8], params:{slow:0.45}},
+              {type:"Pendulum", pos:[0,2.8,-12.9], size:[1.8,2.8,1.8], params:{amp:0.78, speed:1.18, push:3.0}},
+              {type:"Pusher", pos:[0,1.0,-14.6], size:[7.4,1.8,0.7], params:{axis:"z", amp:1.2, speed:1.0, push:2.4}}
+            ]}),
+          lab: mk("lab", { theme:{
+            bg:0xf2f4ff, floor:0xdde3ff, edge:0xa3b3ea, accent:0x7f96ff,
+            floorPattern:"tile", edgePattern:"panel", skyGradient:[0xdbe3ff,0xf7f8fe]
+          },
+            hazards:[
+              {type:"Laser", pos:[0,1.0,-9.0], size:[8.5,1.8,0.5], params:{period:1.6, on:0.8}},
+              {type:"TeleportPad", pos:[0,0.2,-11.6], size:[1.6,0.2,1.6], params:{to:[0,-14.7], cooldown:1400}},
+              {type:"Laser", pos:[0,1.0,-13.8], size:[8.5,1.8,0.5], params:{period:2.0, on:1.0, phase:0.7}}
+            ]}),
+          sky: mk("sky", { theme:{
+            bg:0xe2efff, floor:0xe8f1ff, edge:0xb8cde7, accent:0x79c2ff,
+            floorPattern:"tile", edgePattern:"concrete", skyGradient:[0xa9cdf8,0xeef7ff]
+          },
+            hazards:[
+              {type:"WindZone", pos:[0,1.2,-9.4], size:[8.2,2.2,4.6], params:{force:[0.45,0,0], pulse:1.15}},
+              {type:"DisappearingPlatform", pos:[-1.5,0.15,-11.4], size:[2.0,0.24,2.0], params:{period:2.1, on:1.0, style:"cloud"}},
+              {type:"MovingPlatform", pos:[1.6,0.15,-13.8], size:[2.0,0.24,2.0], params:{axis:"x", amp:1.4, speed:1.0}}
+            ]}),
+          volcano: mk("volcano", { theme:{
+            bg:0x201714, floor:0x4f3a33, edge:0x6d4a42, accent:0xff7a59,
+            floorPattern:"lava", edgePattern:"brick", skyGradient:[0x3f241e,0x140f0d]
+          },
+            hazards:[
+              {type:"RisingLava", pos:[0,0.1,-10.8], size:[8.5,0.3,6.0], params:{amp:0.72, speed:0.5}},
+              {type:"FallingRocks", pos:[0,0.2,-13.0], size:[7.2,0.2,4.8], params:{period:2.6, warning:0.8, fall:0.95, rockY:4.9}},
+              {type:"SteamVent", pos:[0,0.15,-15.1], size:[2.2,0.25,2.2], params:{power:8.3, period:2.2, active:0.95}}
+            ]}),
+          aqua: mk("aqua", { theme:{
+            bg:0xdff3ff, floor:0xcde8f5, edge:0x98c4d8, accent:0x4db9ff,
+            floorPattern:"water", edgePattern:"tile", skyGradient:[0xa5d6ef,0xeeffff]
+          },
+            hazards:[
+              {type:"WaterSlide", pos:[0,0.4,-10.2], size:[5.8,1.1,5.2], params:{dir:[0,-1], speed:2.2}},
+              {type:"FloatPlatform", pos:[0,0.4,-13.4], size:[2.4,0.24,2.4], params:{amp:0.85, speed:0.72}},
+              {type:"WindZone", pos:[0,0.9,-15.0], size:[7.0,1.8,4.0], params:{force:[0.3,0,-0.6], pulse:1.0}}
+            ]}),
+          ice: mk("ice", { theme:{
+            bg:0xe9f8ff, floor:0xdaf0ff, edge:0xa7cfe5, accent:0x9de0ff,
+            floorPattern:"ice", edgePattern:"concrete", skyGradient:[0xcde6f7,0xf7fcff]
+          },
+            hazards:[
+              {type:"IceFriction", pos:[0,0.5,-9.0], size:[9.0,1.6,11.0], params:{factor:0.14}},
+              {type:"CrackIce", pos:[0,0.18,-12.5], size:[2.2,0.22,2.2], params:{steps:2, down:3.0, recover:2800}},
+              {type:"Rotator", pos:[0,0.9,-14.5], size:[3.0,0.16,0.22], params:{speed:1.5}}
+            ]}),
+          desert: mk("desert", { theme:{
+            bg:0xf6e7c5, floor:0xe7cf97, edge:0xbf9e63, accent:0xe6ac56,
+            floorPattern:"sand", edgePattern:"concrete", skyGradient:[0xf0d29f,0xfcf1de]
+          },
+            hazards:[
+              {type:"Quicksand", pos:[0,0.45,-10.6], size:[5.6,1.0,4.2], params:{slow:0.38}},
+              {type:"Sandstorm", pos:[0,1.0,-12.9], size:[8.0,2.0,4.6], params:{force:[0.9,0,0.12], pulse:1.35}},
+              {type:"WindZone", pos:[0,1.0,-15.0], size:[8.0,2.0,4.4], params:{force:[0.6,0,0], pulse:1.4}}
+            ]}),
+          rail: mk("rail", { theme:{
+            bg:0xeaedf1, floor:0xcfd4dd, edge:0x8f98a6, accent:0x6c94f4,
+            floorPattern:"metal", edgePattern:"panel", skyGradient:[0xc6ceda,0xf0f4f9]
+          },
+            hazards:[
+              {type:"TrainCar", pos:[0,0.26,-10.2], size:[2.4,0.36,3.2], params:{axis:"x", amp:2.8, speed:0.82}},
+              {type:"Conveyor", pos:[0,0.45,-13.7], size:[5.8,1.0,3.2], params:{dir:[1,0], speed:1.7}},
+              {type:"MovingPlatform", pos:[0,0.2,-16.0], size:[2.0,0.25,2.0], params:{axis:"x", amp:2.2, speed:0.65}}
+            ]}),
+          canyon: mk("canyon", { theme:{
+            bg:0xf0d8c1, floor:0xd7b790, edge:0x9a754f, accent:0xd58d5e,
+            floorPattern:"sand", edgePattern:"brick", skyGradient:[0xdfbd96,0xf8ebdb]
+          },
             hazards:[
               {type:"BreakBridge", pos:[0,0.2,-8.8], size:[2.4,0.2,2.0], params:{delay:640, down:3.2, recover:2200}},
-              {type:"BreakBridge", pos:[0,0.2,-11.8], size:[2.2,0.2,2.0], params:{delay:600, down:3.2, recover:2500}},
+              {type:"BoulderRoll", pos:[4.8,0.62,-11.8], size:[1.0,1.0,1.0], params:{axis:"x", amp:4.8, speed:1.2, push:3.5}},
               {type:"JumpPad", pos:[0,0.15,-13.8], size:[1.4,0.2,1.4], params:{power:7.6, boost:2.8}}
             ]}),
-          ruins: mk("ruins", { theme:{ bg:0xf2f3f0, floor:0xe3e4dc, edge:0xb9b8ac, accent:0x7e8d77 },
+          ruins: mk("ruins", { theme:{
+            bg:0xecebe5, floor:0xd9d4c8, edge:0x9d9786, accent:0x70806a,
+            floorPattern:"brick", edgePattern:"concrete", skyGradient:[0xc9c4b8,0xf0efe8]
+          },
             hazards:[
               {type:"DisappearingPlatform", pos:[-1.8,0.2,-9.6], size:[1.8,0.22,1.8], params:{period:2.4, on:1.2}},
-              {type:"DisappearingPlatform", pos:[1.8,0.2,-11.8], size:[1.8,0.22,1.8], params:{period:2.4, on:1.2, phase:0.8}},
-              {type:"Rotator", pos:[0,0.9,-14.0], size:[3.1,0.16,0.22], params:{speed:1.9, push:3.0}}
+              {type:"StonePillar", pos:[0,0.95,-12.7], size:[3.1,0.16,0.24], params:{speed:1.8, push:3.2}},
+              {type:"BreakBridge", pos:[0,0.2,-15.0], size:[2.0,0.2,1.8], params:{delay:700, down:3.0, recover:2500}}
             ]}),
-          neon: mk("neon", { theme:{ bg:0x121827, floor:0x1f2a44, edge:0x334b79, accent:0x5be7ff },
+          neon: mk("neon", { theme:{
+            bg:0x131a2d, floor:0x202d4a, edge:0x365182, accent:0x58e5ff,
+            floorPattern:"panel", edgePattern:"metal", skyGradient:[0x1f3152,0x0c1322],
+            floorRough:0.48, floorMetal:0.22, edgeRough:0.32, edgeMetal:0.78
+          },
             hazards:[
               {type:"MovingBar", pos:[0,0.95,-10.2], size:[7.4,1.7,0.55], params:{axis:"x", amp:2.5, speed:1.2, push:3.3}},
-              {type:"Conveyor", pos:[0,0.45,-13.6], size:[6.0,1.0,3.4], params:{dir:[-1,0], speed:2.0}},
+              {type:"RhythmPlatform", pos:[0,0.2,-13.6], size:[6.0,0.22,3.4], params:{period:1.6, on:0.75}},
               {type:"JumpPad", pos:[0,0.16,-15.5], size:[1.6,0.2,1.6], params:{power:8.2, boost:2.0}}
             ]}),
-          gauntlet: mk("gauntlet", { theme:{ bg:0x1b1d24, floor:0x2a2e3b, edge:0x59627a, accent:0xffa756 },
+          gauntlet: mk("gauntlet", { theme:{
+            bg:0x1b1d24, floor:0x2a2e3b, edge:0x59627a, accent:0xffa756,
+            floorPattern:"panel", edgePattern:"metal", skyGradient:[0x3a4258,0x161a23]
+          },
             hazards:[
               {type:"BreakBridge", pos:[0,0.2,-8.4], size:[2.2,0.2,2.0], params:{delay:580, down:3.5, recover:2300}},
               {type:"FallingRocks", pos:[0,0.2,-10.9], size:[7.2,0.2,4.8], params:{period:2.8, warning:0.9, fall:1.0, rockY:4.6}},
-              {type:"Rotator", pos:[0,0.95,-13.2], size:[3.4,0.16,0.22], params:{speed:2.25, push:3.4}},
-              {type:"DisappearingPlatform", pos:[-2.2,0.2,-14.8], size:[1.8,0.22,1.8], params:{period:2.0, on:0.9}},
+              {type:"Press", pos:[0,1.1,-13.2], size:[3.8,2.2,2.0], params:{period:2.2, active:1.0, crushY:0.46}},
+              {type:"StonePillar", pos:[0,0.95,-14.8], size:[3.2,0.16,0.24], params:{speed:2.25, push:3.4}},
+              {type:"RhythmPlatform", pos:[-2.2,0.2,-16.0], size:[1.8,0.22,1.8], params:{period:2.0, on:0.9}},
               {type:"Conveyor", pos:[2.2,0.45,-14.8], size:[1.8,1.0,1.8], params:{dir:[0,1], speed:2.1}},
-              {type:"JumpPad", pos:[0,0.16,-16.2], size:[1.6,0.2,1.6], params:{power:8.6, boost:2.5}}
+              {type:"SteamVent", pos:[0,0.15,-17.6], size:[2.2,0.25,2.2], params:{power:8.8, period:1.8, active:0.8}},
+              {type:"JumpPad", pos:[0,0.16,-18.5], size:[1.6,0.2,1.6], params:{power:8.6, boost:2.5}}
             ]})
         };
       }
@@ -46724,12 +46856,94 @@ function _openSearchResultByIndex(i){
             ctx.fillStyle = (i % 3 === 0) ? c1 : c2;
             ctx.fillRect(x, y, 3, 8);
           }
+        } else if (pat === "road" || pat === "asphalt"){
+          for (let i = 0; i < 320; i += 1){
+            const x = (i * 11) % size;
+            const y = (i * 41) % size;
+            const w = (i % 4 === 0) ? 2 : 1;
+            ctx.fillStyle = (i % 3 === 0) ? c1 : c2;
+            ctx.fillRect(x, y, w, w);
+          }
+          ctx.fillStyle = `#${_rtBattle3dV8TintColor(baseColor, 48).toString(16).padStart(6, "0")}`;
+          for (let y = 18; y < size; y += 64){
+            ctx.fillRect(0, y, size, 2);
+          }
+        } else if (pat === "sidewalk" || pat === "tile"){
+          ctx.strokeStyle = c2;
+          ctx.lineWidth = 2;
+          for (let y = 0; y <= size; y += 28){
+            ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(size, y + 0.5); ctx.stroke();
+          }
+          for (let x = 0; x <= size; x += 28){
+            ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, size); ctx.stroke();
+          }
         } else if (pat === "sand"){
           for (let i = 0; i < 180; i += 1){
             const x = (i * 13) % size;
             const y = (i * 37) % size;
             ctx.fillStyle = (i % 2 === 0) ? c1 : c2;
             ctx.fillRect(x, y, 2, 2);
+          }
+        } else if (pat === "snow"){
+          for (let i = 0; i < 190; i += 1){
+            const x = (i * 23) % size;
+            const y = (i * 31) % size;
+            const w = (i % 3 === 0) ? 2 : 1;
+            ctx.fillStyle = (i % 2 === 0) ? c1 : "#ffffff";
+            ctx.fillRect(x, y, w, w);
+          }
+        } else if (pat === "ice"){
+          ctx.strokeStyle = c1;
+          ctx.lineWidth = 1.5;
+          for (let i = -size; i < size * 2; i += 26){
+            ctx.beginPath();
+            ctx.moveTo(i, 0);
+            ctx.lineTo(i + size, size);
+            ctx.stroke();
+          }
+          for (let i = -size; i < size * 2; i += 36){
+            ctx.beginPath();
+            ctx.moveTo(i, size);
+            ctx.lineTo(i + size, 0);
+            ctx.stroke();
+          }
+        } else if (pat === "water"){
+          ctx.strokeStyle = c1;
+          ctx.lineWidth = 2;
+          for (let y = 8; y < size; y += 18){
+            ctx.beginPath();
+            for (let x = 0; x <= size; x += 12){
+              const yy = y + Math.sin((x + y) * 0.07) * 3;
+              if (x === 0) ctx.moveTo(x, yy);
+              else ctx.lineTo(x, yy);
+            }
+            ctx.stroke();
+          }
+        } else if (pat === "lava"){
+          for (let i = 0; i < 190; i += 1){
+            const x = (i * 17) % size;
+            const y = (i * 43) % size;
+            ctx.fillStyle = (i % 2 === 0) ? "#ff964f" : "#ff5d3e";
+            ctx.fillRect(x, y, 4, 3);
+          }
+          ctx.strokeStyle = "#ffd16a";
+          ctx.lineWidth = 2;
+          for (let x = -size; x < size * 2; x += 24){
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x + size, size);
+            ctx.stroke();
+          }
+        } else if (pat === "brick"){
+          ctx.strokeStyle = c2;
+          ctx.lineWidth = 2;
+          const rowH = 22;
+          for (let y = 0; y <= size; y += rowH){
+            ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(size, y + 0.5); ctx.stroke();
+            const offset = ((Math.floor(y / rowH) % 2) === 0) ? 0 : 14;
+            for (let x = offset; x <= size; x += 28){
+              ctx.beginPath(); ctx.moveTo(x + 0.5, y); ctx.lineTo(x + 0.5, Math.min(size, y + rowH)); ctx.stroke();
+            }
           }
         } else if (pat === "metal" || pat === "panel"){
           ctx.strokeStyle = c2;
@@ -46772,19 +46986,282 @@ function _openSearchResultByIndex(i){
         b.p3.textureCache[key] = tex;
         return tex;
       }
-      function _rtBattle3dV8Mat(THREE, color, rough=0.9, pattern="solid"){
-        const mat = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.02 });
+      function _rtBattle3dV8Mat(THREE, color, rough=0.9, pattern="solid", metal=0.02){
+        const mat = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
         const tex = (pattern && pattern !== "solid") ? _rtBattle3dV8GetPatternTexture(THREE, pattern, color) : null;
         if (tex) {
           mat.map = tex;
           if (pattern === "grass") tex.repeat.set(16, 24);
           else if (pattern === "sand") tex.repeat.set(18, 26);
+          else if (pattern === "road" || pattern === "asphalt") tex.repeat.set(18, 30);
+          else if (pattern === "sidewalk" || pattern === "tile") tex.repeat.set(14, 22);
+          else if (pattern === "snow") tex.repeat.set(22, 34);
+          else if (pattern === "ice") tex.repeat.set(20, 30);
+          else if (pattern === "water") tex.repeat.set(12, 22);
+          else if (pattern === "lava") tex.repeat.set(14, 22);
+          else if (pattern === "brick") tex.repeat.set(12, 18);
           else if (pattern === "rubber") tex.repeat.set(14, 20);
           else if (pattern === "metal" || pattern === "panel") tex.repeat.set(10, 18);
           else tex.repeat.set(12, 18);
           mat.needsUpdate = true;
         }
         return mat;
+      }
+      function _rtBattle3dV8CheckpointVisualStride(total){
+        const t = Math.max(1, Number(total || 1));
+        if (t <= 120) return 1;
+        return Math.max(2, Math.ceil(t / 120));
+      }
+      function _rtBattle3dV8ShouldRenderCheckpointVisual(index, total, focusIndex){
+        const i = Math.max(0, Number(index || 0));
+        const max = Math.max(1, Number(total || 1));
+        if (i === 0 || i === (max - 1)) return true;
+        if (Math.abs(i - Math.max(0, Number(focusIndex || 0))) <= 6) return true;
+        const stride = _rtBattle3dV8CheckpointVisualStride(max);
+        return (i % stride) === 0;
+      }
+      function _rtBattle3dV8BackdropPatternForMap(mapId){
+        const id = String(mapId || "").toLowerCase();
+        if (id === "desert") return "sand";
+        if (id === "snow") return "snow";
+        if (id === "ice") return "ice";
+        if (id === "jungle") return "grass";
+        if (id === "city") return "road";
+        if (id === "factory" || id === "lab" || id === "rail" || id === "neon") return "panel";
+        if (id === "volcano") return "lava";
+        if (id === "aqua") return "water";
+        if (id === "ruins") return "brick";
+        return "concrete";
+      }
+      function _rtBattle3dV8GetSkyGradientTexture(THREE, topColor, bottomColor){
+        const b = _rtBattle3dV8State();
+        const key = `sky:${Math.max(0, Number(topColor || 0)).toString(16)}:${Math.max(0, Number(bottomColor || 0)).toString(16)}`;
+        if (b.p3.textureCache[key]) return b.p3.textureCache[key];
+        const cv = document.createElement("canvas");
+        cv.width = 16;
+        cv.height = 256;
+        const ctx = cv.getContext("2d");
+        if (!ctx) return null;
+        const grd = ctx.createLinearGradient(0, 0, 0, cv.height);
+        grd.addColorStop(0, `#${Math.max(0, Number(topColor || 0)).toString(16).padStart(6, "0")}`);
+        grd.addColorStop(1, `#${Math.max(0, Number(bottomColor || 0)).toString(16).padStart(6, "0")}`);
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        const tex = new THREE.CanvasTexture(cv);
+        tex.needsUpdate = true;
+        b.p3.textureCache[key] = tex;
+        return tex;
+      }
+      function _rtBattle3dV8AddBackdrop(THREE, group, cfg, track, theme, runwayWidth, runwayLen, runwayCenterZ, mapSeed){
+        const rng = _rtBattle3dV8Mulberry((Math.max(1, Number(mapSeed || 1)) ^ 0x9e3779b9) >>> 0);
+        const farW = runwayWidth + 36;
+        const farL = Math.max(90, runwayLen + 28);
+        const farCenterZ = runwayCenterZ - 4;
+        const baseColor = _rtBattle3dV8TintColor(Number(theme.floor || 0xe7ebf2), -18);
+        const backdropFloor = new THREE.Mesh(
+          new THREE.BoxGeometry(farW, 0.08, farL),
+          _rtBattle3dV8Mat(THREE, baseColor, 0.97, _rtBattle3dV8BackdropPatternForMap(cfg?.id))
+        );
+        backdropFloor.position.set(0, -0.14, farCenterZ);
+        group.add(backdropFloor);
+
+        const fenceColor = _rtBattle3dV8TintColor(Number(theme.edge || 0xbcc8da), -12);
+        const fenceMat = _rtBattle3dV8Mat(THREE, fenceColor, 0.9, "panel");
+        const fenceHalfX = (runwayWidth * 0.5) + 0.62;
+        const fenceLen = Math.max(60, runwayLen - 1.4);
+        const fenceL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.34, fenceLen), fenceMat);
+        fenceL.position.set(-fenceHalfX, 0.14, runwayCenterZ);
+        const fenceR = fenceL.clone();
+        fenceR.position.x = fenceHalfX;
+        fenceL.userData.noCamBlock = true;
+        fenceR.userData.noCamBlock = true;
+        group.add(fenceL, fenceR);
+
+        const postCount = Math.min(180, Math.max(24, Math.floor(fenceLen / 4.8)));
+        if (postCount > 0){
+          const postGeom = new THREE.BoxGeometry(0.12, 0.44, 0.12);
+          const posts = new THREE.InstancedMesh(postGeom, _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(fenceColor, 16), 0.84, "metal"), postCount * 2);
+          posts.userData.noCamBlock = true;
+          const mtx = new THREE.Matrix4();
+          for (let i = 0; i < postCount; i += 1){
+            const t = postCount <= 1 ? 0 : (i / (postCount - 1));
+            const z = (Number(track?.bounds?.maxZ || 12) - 2) - (fenceLen * t);
+            mtx.makeTranslation(-fenceHalfX, 0.22, z);
+            posts.setMatrixAt(i, mtx);
+            mtx.makeTranslation(fenceHalfX, 0.22, z);
+            posts.setMatrixAt(i + postCount, mtx);
+          }
+          posts.instanceMatrix.needsUpdate = true;
+          group.add(posts);
+        }
+
+        const mountainColor = _rtBattle3dV8TintColor(Number(theme.bg || 0xf3f5f8), -34);
+        const mountainCount = Math.min(120, Math.max(20, Math.floor(fenceLen / 9.5)));
+        if (mountainCount > 0){
+          const mountainGeom = new THREE.ConeGeometry(2.6, 4.8, 8);
+          const mountainMesh = new THREE.InstancedMesh(
+            mountainGeom,
+            _rtBattle3dV8Mat(THREE, mountainColor, 0.98, "concrete"),
+            mountainCount * 2
+          );
+          const mtx = new THREE.Matrix4();
+          for (let i = 0; i < mountainCount; i += 1){
+            const t = mountainCount <= 1 ? 0 : (i / (mountainCount - 1));
+            const z = (Number(track?.bounds?.maxZ || 12) - 8) - (fenceLen * t);
+            const wobble = (rng() - 0.5) * 2.4;
+            const sx = 0.8 + rng() * 0.9;
+            const sy = 0.9 + rng() * 1.4;
+            const sz = 0.8 + rng() * 0.9;
+            mtx.compose(
+              new THREE.Vector3(-(fenceHalfX + 6.2 + wobble), 1.6, z + (rng() - 0.5) * 4.0),
+              new THREE.Quaternion(),
+              new THREE.Vector3(sx, sy, sz)
+            );
+            mountainMesh.setMatrixAt(i, mtx);
+            mtx.compose(
+              new THREE.Vector3((fenceHalfX + 6.2 + wobble), 1.6, z + (rng() - 0.5) * 4.0),
+              new THREE.Quaternion(),
+              new THREE.Vector3(sx, sy, sz)
+            );
+            mountainMesh.setMatrixAt(i + mountainCount, mtx);
+          }
+          mountainMesh.instanceMatrix.needsUpdate = true;
+          group.add(mountainMesh);
+        }
+
+        const liftBaseX = -fenceHalfX - 3.2;
+        const liftPoles = Math.min(20, Math.max(6, Math.floor(fenceLen / 46)));
+        const liftPoleMat = _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(Number(theme.edge || 0xbcc8da), -28), 0.86, "metal");
+        const liftCabinMat = _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(Number(theme.accent || 0x7cb6ff), 8), 0.72, "panel");
+        const zHead = Number(track?.bounds?.maxZ || 12) - 6;
+        const zTail = Number(track?.bounds?.minZ || -70) + 6;
+        for (let i = 0; i < liftPoles; i += 1){
+          const t = liftPoles <= 1 ? 0 : (i / (liftPoles - 1));
+          const z = zHead + (zTail - zHead) * t;
+          const pole = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.8, 0.22), liftPoleMat);
+          pole.position.set(liftBaseX, 1.9, z);
+          group.add(pole);
+          const arm = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.12, 0.14), liftPoleMat);
+          arm.position.set(liftBaseX + 0.75, 3.55, z);
+          group.add(arm);
+          if (i < (liftPoles - 1)){
+            const t2 = (i + 1) / (liftPoles - 1);
+            const z2 = zHead + (zTail - zHead) * t2;
+            const segLen = Math.max(0.4, Math.abs(z2 - z));
+            const cable = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, segLen), _rtBattle3dV8Mat(THREE, 0x6f7f96, 0.64, "metal"));
+            cable.position.set(liftBaseX + 1.08, 3.46, (z + z2) * 0.5);
+            group.add(cable);
+            if ((i % 2) === 0){
+              const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.34, 0.42), liftCabinMat);
+              cabin.position.set(liftBaseX + 1.08, 2.96, (z + z2) * 0.5);
+              group.add(cabin);
+              const hanger = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.42, 0.06), _rtBattle3dV8Mat(THREE, 0x5c6a7d, 0.82, "metal"));
+              hanger.position.set(cabin.position.x, cabin.position.y + 0.28, cabin.position.z);
+              group.add(hanger);
+            }
+          }
+        }
+      }
+      function _rtBattle3dV8BuildGateVisualItem(THREE, theme, gate){
+        const gx = Number(gate?.x || 0);
+        const gz = Number(gate?.z || 0);
+        const halfW = Math.max(1.8, Number(gate?.halfW || 2.4));
+        const halfD = Math.max(0.2, Number(gate?.halfD || 0.34));
+        const frameH = 2.4;
+        const post = new THREE.Mesh(
+          new THREE.BoxGeometry(0.22, frameH, 0.3),
+          _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(Number(theme?.edge || 0xbcc8da), -8), 0.82, "panel")
+        );
+        const left = post.clone();
+        const right = post.clone();
+        left.position.set(gx - halfW, frameH * 0.5, gz);
+        right.position.set(gx + halfW, frameH * 0.5, gz);
+        const door = new THREE.Mesh(
+          new THREE.BoxGeometry((halfW * 2) - 0.18, 1.6, halfD * 2),
+          _rtBattle3dV8Mat(THREE, Number(theme?.accent || 0x7cb6ff), 0.66, "rubber")
+        );
+        door.material.emissive = new THREE.Color(_rtBattle3dV8TintColor(Number(theme?.accent || 0x7cb6ff), -40));
+        door.material.emissiveIntensity = 0.35;
+        door.position.set(gx, 0.85, gz);
+        return { left, right, door };
+      }
+      function _rtBattle3dV8RefreshGateWindow(force = false){
+        const b = _rtBattle3dV8State();
+        const map = b.p3?.map;
+        const THREE = window.THREE;
+        if (!map || !THREE || !map.gateVisualGroup) return;
+        const gates = asArray(map.gates);
+        if (!gates.length) return;
+        const gateIdx = _rtBattle3dV8CurrentGateIndex();
+        const ahead = gates.length > 300 ? 18 : 24;
+        const behind = gates.length > 300 ? 4 : 7;
+        const start = Math.max(0, gateIdx - behind);
+        const end = Math.min(gates.length - 1, gateIdx + ahead);
+        const key = `${start}:${end}`;
+        if (!force && map.gateVisualRangeKey === key) return;
+        for (const gate of gates){
+          if (!gate) continue;
+          gate.door = null;
+          gate.frame = null;
+          gate.openT = Number(gate.openT || 0);
+        }
+        while (map.gateVisualGroup.children.length){
+          const node = map.gateVisualGroup.children[map.gateVisualGroup.children.length - 1];
+          if (node) {
+            try{ map.gateVisualGroup.remove(node); }catch(_){}
+            _rtBattle3dV8DisposeNode3d(node);
+          } else {
+            break;
+          }
+        }
+        for (let i = start; i <= end; i += 1){
+          const gate = gates[i];
+          if (!gate) continue;
+          const built = _rtBattle3dV8BuildGateVisualItem(THREE, map.theme || {}, gate);
+          map.gateVisualGroup.add(built.left, built.right, built.door);
+          gate.door = built.door;
+          gate.frame = [built.left, built.right];
+        }
+        map.gateVisualRangeKey = key;
+        map.visibleGateRange = { start, end };
+      }
+      function _rtBattle3dV8TuneRendererQuality(tsNow){
+        const b = _rtBattle3dV8State();
+        const rt = b.runtime || {};
+        const renderer = rt.renderer;
+        if (!renderer || !rt.wrap) return;
+        const ctl = b.p3.renderCtl || (b.p3.renderCtl = {});
+        const now = Number(tsNow || performance.now());
+        const last = Math.max(0, Number(ctl.lastFrameTs || 0));
+        const frameMs = (last > 0) ? Math.max(1, now - last) : 16.7;
+        ctl.lastFrameTs = now;
+        const prevEma = Number(ctl.frameMsEma || 16.7);
+        ctl.frameMsEma = (prevEma * 0.92) + (frameMs * 0.08);
+        if ((now - Math.max(0, Number(ctl.lastTuneTs || 0))) < 900) return;
+        ctl.lastTuneTs = now;
+        const gateCount = Math.max(0, Number(asArray(b.p3?.map?.gates).length || 0));
+        const dprNative = Math.min(1.2, Math.max(0.6, Number(window.devicePixelRatio || 1)));
+        let target = dprNative;
+        let quality = "high";
+        if (ctl.frameMsEma > 34 || gateCount > 700){
+          target = Math.min(target, 0.68);
+          quality = "low";
+        } else if (ctl.frameMsEma > 27 || gateCount > 380){
+          target = Math.min(target, 0.82);
+          quality = "mid";
+        } else if (ctl.frameMsEma > 22 || gateCount > 220){
+          target = Math.min(target, 0.95);
+          quality = "mid-high";
+        }
+        const current = Math.max(0.6, Math.min(1.2, Number(ctl.currentDpr || dprNative)));
+        if (Math.abs(current - target) > 0.03){
+          ctl.currentDpr = target;
+          const w = Math.max(1, Number(rt.wrap?.clientWidth || 1));
+          const h = Math.max(1, Number(rt.wrap?.clientHeight || 1));
+          renderer.setPixelRatio(target);
+          renderer.setSize(w, h, false);
+        }
+        ctl.quality = quality;
       }
       function _rtBattle3dV8MakeBox(THREE, spec, mat){
         const rot = asArray(spec.rot);
@@ -46802,27 +47279,112 @@ function _openSearchResultByIndex(i){
         const g = new THREE.Group();
         g.position.set(Number(pos[0]||0), Number(pos[1]||0), Number(pos[2]||0));
         let mesh = null;
-        if (t === "Rotator" || t === "Pusher" || t === "MovingBar"){
+        if (t === "Rotator" || t === "Pusher" || t === "MovingBar" || t === "StonePillar"){
           mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||2), Number(size[1]||0.14), Number(size[2]||0.2)), _rtBattle3dV8Mat(THREE, theme.accent || 0x88a0ff, .82));
+          if (t === "StonePillar"){
+            mesh.material = _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(Number(theme.edge || 0xbcc8da), -18), 0.86, "brick", 0.08);
+          }
           g.add(mesh);
         } else if (t === "Laser"){
           mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||3), 0.06, 0.06), _rtBattle3dV8Mat(THREE, 0xff6d6d, .4));
           mesh.position.y = Math.max(0.2, Number(size[1]||1.1) * 0.5);
           g.add(mesh);
-        } else if (t === "MovingPlatform" || t === "TrainCar" || t === "FallingFloor" || t === "BreakBridge" || t === "DisappearingPlatform"){
+        } else if (
+          t === "MovingPlatform" || t === "TrainCar" || t === "FallingFloor" || t === "BreakBridge" || t === "DisappearingPlatform"
+          || t === "FloatPlatform" || t === "CrackIce" || t === "RhythmPlatform"
+        ){
           mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||2), Number(size[1]||0.24), Number(size[2]||2)), _rtBattle3dV8Mat(THREE, 0xd9dee8, .92));
+          if (t === "DisappearingPlatform" && String(hz?.params?.style || "").toLowerCase() === "cloud"){
+            mesh.material = _rtBattle3dV8Mat(THREE, 0xf4f9ff, 0.86, "snow", 0.02);
+          }
+          if (t === "CrackIce") mesh.material = _rtBattle3dV8Mat(THREE, 0xc5e6ff, 0.16, "ice", 0.18);
+          if (t === "RhythmPlatform") mesh.material = _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(Number(theme.accent || 0x5be7ff), -24), 0.44, "panel", 0.18);
+          if (t === "FloatPlatform") mesh.material = _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(Number(theme.floor || 0xdff1f8), 12), 0.52, "water", 0.1);
           g.add(mesh);
-          if (t === "BreakBridge"){
+          if (t === "BreakBridge" || t === "CrackIce"){
             const crack = new THREE.LineSegments(
               new THREE.EdgesGeometry(new THREE.BoxGeometry(Number(size[0]||2), Number(size[1]||0.24), Number(size[2]||2))),
-              new THREE.LineBasicMaterial({ color: 0x9a4d45, transparent: true, opacity: 0.45 })
+              new THREE.LineBasicMaterial({ color: (t === "CrackIce" ? 0x84b6d8 : 0x9a4d45), transparent: true, opacity: 0.45 })
             );
             crack.position.y = 0.01;
             g.add(crack);
             g.userData.crack = crack;
           }
+        } else if (t === "Press"){
+          const base = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||3), 0.34, Number(size[2]||2)), _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(Number(theme.edge || 0xbcc8da), -20), 0.72, "metal", 0.6));
+          base.position.y = 0.12;
+          const head = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||3), 0.46, Number(size[2]||2)), _rtBattle3dV8Mat(THREE, Number(theme.accent || 0xffa756), 0.48, "panel", 0.42));
+          head.position.y = Math.max(0.8, Number(size[1] || 2.2) * 0.58);
+          g.add(base, head);
+          g.userData.pressHead = head;
+          mesh = head;
+        } else if (t === "Pendulum"){
+          const armLen = Math.max(1.6, Number(size[1] || 2.8));
+          const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, armLen, 0.08), _rtBattle3dV8Mat(THREE, 0x667487, 0.62, "metal", 0.52));
+          arm.position.y = -armLen * 0.5;
+          const bob = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.26, Number(size[0] || 1.6) * 0.28), 12, 10), _rtBattle3dV8Mat(THREE, Number(theme.accent || 0x69c27b), 0.45, "metal", 0.35));
+          bob.position.y = -armLen;
+          g.add(arm, bob);
+          g.userData.bob = bob;
+          mesh = bob;
+        } else if (t === "TeleportPad"){
+          mesh = new THREE.Mesh(new THREE.CylinderGeometry(Number(size[0]||0.8), Number(size[0]||0.8), Math.max(0.08, Number(size[1]||0.2)), 20), _rtBattle3dV8Mat(THREE, 0x8d8dff, .35, "tile", 0.24));
+          mesh.rotation.x = Math.PI * 0.5;
+          g.add(mesh);
+        } else if (t === "SteamVent"){
+          const vent = new THREE.Mesh(new THREE.CylinderGeometry(Math.max(0.2, Number(size[0] || 1.8) * 0.22), Math.max(0.2, Number(size[0] || 1.8) * 0.22), 0.24, 14), _rtBattle3dV8Mat(THREE, 0x5f6775, 0.68, "metal", 0.58));
+          vent.rotation.x = Math.PI * 0.5;
+          g.add(vent);
+          const plume = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.54, 1.6, 10), _rtBattle3dV8Mat(THREE, 0xffb37a, 0.3, "solid", 0.0));
+          plume.position.y = 0.9;
+          plume.material.transparent = true;
+          plume.material.opacity = 0.28;
+          g.add(plume);
+          g.userData.plume = plume;
+          mesh = vent;
+        } else if (t === "Sandstorm"){
+          mesh = new THREE.Mesh(new THREE.CylinderGeometry(Number(size[0]||3.2), Number(size[0]||3.2), Math.max(0.2, Number(size[1]||1.8)), 22), _rtBattle3dV8Mat(THREE, 0xd9b77f, 0.88, "sand", 0.0));
+          mesh.material.transparent = true;
+          mesh.material.opacity = 0.36;
+          g.add(mesh);
+        } else if (t === "BoulderRoll"){
+          mesh = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.3, Number(size[0] || 1) * 0.5), 12, 10), _rtBattle3dV8Mat(THREE, 0x8b7667, 0.9, "concrete", 0.02));
+          g.add(mesh);
+        } else if (t === "CarSpawner"){
+          const laneCount = Math.max(1, Math.min(3, Math.trunc(Number(hz?.params?.laneCount || 2))));
+          const pathLength = Math.max(8, Number(hz?.params?.pathLength || size[0] || 12));
+          const yHeight = Number(hz?.params?.yHeight || pos[1] || 4.0);
+          const laneGap = 1.55;
+          const deckDepth = Math.max(3.6, laneCount * laneGap + 0.9);
+          const deck = new THREE.Mesh(
+            new THREE.BoxGeometry(pathLength, 0.22, deckDepth),
+            _rtBattle3dV8Mat(THREE, 0x4f5561, 0.9, "road", 0.0)
+          );
+          deck.position.y = yHeight;
+          g.add(deck);
+          const railMat = _rtBattle3dV8Mat(THREE, 0x7f8794, 0.34, "metal", 0.8);
+          const railL = new THREE.Mesh(new THREE.BoxGeometry(pathLength, 0.1, 0.12), railMat);
+          const railR = railL.clone();
+          railL.position.set(0, yHeight + 0.28, -deckDepth * 0.5 + 0.06);
+          railR.position.set(0, yHeight + 0.28, deckDepth * 0.5 - 0.06);
+          g.add(railL, railR);
+          const carSlots = Math.max(4, Math.min(24, Math.trunc(pathLength / Math.max(2.4, Number(hz?.params?.spawnInterval || 1.6) * Number(hz?.params?.speed || 1.2) * 2.2))));
+          const total = carSlots * laneCount;
+          const carBody = new THREE.InstancedMesh(
+            new THREE.BoxGeometry(0.86, 0.34, 0.52),
+            _rtBattle3dV8Mat(THREE, 0x6e86b9, 0.25, "panel", 0.6),
+            total
+          );
+          const carTop = new THREE.InstancedMesh(
+            new THREE.BoxGeometry(0.48, 0.2, 0.42),
+            _rtBattle3dV8Mat(THREE, 0x253243, 0.1, "solid", 0.35),
+            total
+          );
+          g.add(carBody, carTop);
+          g.userData.cars = { laneCount, laneGap, pathLength, carSlots, body:carBody, top:carTop, yHeight };
+          mesh = deck;
         } else if (t === "RisingLava"){
-          mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||5), Number(size[1]||0.2), Number(size[2]||5)), _rtBattle3dV8Mat(THREE, 0xff7448, .55));
+          mesh = new THREE.Mesh(new THREE.BoxGeometry(Number(size[0]||5), Number(size[1]||0.2), Number(size[2]||5)), _rtBattle3dV8Mat(THREE, 0xff7448, .55, "lava", 0.02));
           g.add(mesh);
         } else if (t === "JumpPad"){
           mesh = new THREE.Mesh(new THREE.CylinderGeometry(Number(size[0]||0.8), Number(size[0]||0.8), Math.max(0.08, Number(size[1]||0.2)), 18), _rtBattle3dV8Mat(THREE, 0x6dc9ff, .55));
@@ -46854,7 +47416,8 @@ function _openSearchResultByIndex(i){
         const THREE = window.THREE;
         if (!scene || !THREE) return;
         const cfg = _rtBattle3dV8MapConfigById(mapId);
-        const hash = `${cfg.id}|${Math.max(1, Number(mapSeed||1))}`;
+        const checkpointTarget = Math.max(8, Math.min(1000, Number(st.game3d?.checkpointCount || cfg.checkpointCount || 12)));
+        const hash = `${cfg.id}|${Math.max(1, Number(mapSeed||1))}|${checkpointTarget}`;
         if (b.p3.lastMapHash === hash && b.p3.map?.group) return;
         if (b.p3.map?.group){
           try{ scene.remove(b.p3.map.group); }catch(_){}
@@ -46866,18 +47429,37 @@ function _openSearchResultByIndex(i){
         const track = _rtBattle3dV8GenerateTrack(
           cfg.id,
           mapSeed,
-          Math.max(8, Number(st.game3d?.checkpointCount || cfg.checkpointCount || 12))
+          checkpointTarget
         );
-        scene.background = new THREE.Color(Number(theme.bg || 0xf3f5f8));
-        scene.fog = new THREE.Fog(Number(theme.bg || 0xf3f5f8), 28, 120);
+        const skyTop = Number(asArray(theme.skyGradient)[0] || theme.bg || 0xf3f5f8);
+        const skyBottom = Number(asArray(theme.skyGradient)[1] || _rtBattle3dV8TintColor(skyTop, 24));
+        const skyTex = _rtBattle3dV8GetSkyGradientTexture(THREE, skyTop, skyBottom);
+        scene.background = skyTex || new THREE.Color(skyTop);
+        const cpCountForFog = Math.max(1, Number(track?.checkpoints?.length || 1));
+        const fogNear = cpCountForFog > 260 ? 18 : 26;
+        const fogFar = cpCountForFog > 600 ? 76 : (cpCountForFog > 260 ? 96 : 132);
+        const fogColor = Number(theme.fogColor || _rtBattle3dV8TintColor(skyBottom, -10));
+        scene.fog = new THREE.Fog(fogColor, fogNear, fogFar);
         const colliders = [];
         const hazards = [];
         const moving = [];
         const rng = _rtBattle3dV8Mulberry(mapSeed);
         const floorPattern = String(theme.floorPattern || ((cfg.id === "desert") ? "sand" : (cfg.id === "jungle" ? "grass" : (cfg.id === "factory" || cfg.id === "lab" || cfg.id === "rail" ? "metal" : "concrete"))));
         const edgePattern = String(theme.edgePattern || ((cfg.id === "neon" || cfg.id === "gauntlet") ? "panel" : "concrete"));
-        const floorMat = _rtBattle3dV8Mat(THREE, Number(theme.floor || 0xe7ebf2), .95, floorPattern);
-        const edgeMat = _rtBattle3dV8Mat(THREE, Number(theme.edge || 0xbcc8da), .9, edgePattern);
+        const floorMat = _rtBattle3dV8Mat(
+          THREE,
+          Number(theme.floor || 0xe7ebf2),
+          Number.isFinite(Number(theme.floorRough)) ? Number(theme.floorRough) : 0.95,
+          floorPattern,
+          Number.isFinite(Number(theme.floorMetal)) ? Number(theme.floorMetal) : 0.02
+        );
+        const edgeMat = _rtBattle3dV8Mat(
+          THREE,
+          Number(theme.edge || 0xbcc8da),
+          Number.isFinite(Number(theme.edgeRough)) ? Number(theme.edgeRough) : 0.9,
+          edgePattern,
+          Number.isFinite(Number(theme.edgeMetal)) ? Number(theme.edgeMetal) : 0.02
+        );
         const runwayWidth = Math.max(12.8, (Math.abs(Number(track.bounds.minX || -8)) + Math.abs(Number(track.bounds.maxX || 8))) - 1.0);
         const runwayLen = Math.max(52, Number(track.bounds.maxZ || 12) - Number(track.bounds.minZ || -70));
         const runwayCenterZ = (Number(track.bounds.maxZ || 12) + Number(track.bounds.minZ || -70)) * 0.5;
@@ -46885,14 +47467,16 @@ function _openSearchResultByIndex(i){
         runway.position.set(0, -0.05, runwayCenterZ);
         group.add(runway);
         colliders.push({ kind:"floor", x:0, y:-0.05, z:runwayCenterZ, sx:runwayWidth, sy:0.12, sz:runwayLen });
+        _rtBattle3dV8AddBackdrop(THREE, group, cfg, track, theme, runwayWidth, runwayLen, runwayCenterZ, mapSeed);
         for (let i = 0; i < 18; i += 1){
           const z = Number(track.bounds.maxZ || 12) - 4 - (i * (runwayLen / 18));
           const stripe = new THREE.Mesh(new THREE.BoxGeometry(runwayWidth * 0.12, 0.02, 1.4), _rtBattle3dV8Mat(THREE, Number(theme.accent || 0x89c0ff), 0.82, "rubber"));
           stripe.position.set(0, 0.03, z);
           group.add(stripe);
         }
+        const humpStride = Math.max(2, Math.ceil(Math.max(1, Number(track.checkpoints.length || 1)) / 110));
         for (let i = 1; i < (track.checkpoints.length - 1); i += 1){
-          if (i % 2 !== 0) continue;
+          if (i % humpStride !== 0) continue;
           const cp = track.checkpoints[i];
           const humpW = Math.max(2.4, runwayWidth * 0.28);
           const hump = new THREE.Mesh(
@@ -46905,14 +47489,28 @@ function _openSearchResultByIndex(i){
         }
         asArray(cfg.floors).forEach((f)=>{
           const type = String(f.type || "box");
+          const materialTag = String(f.material || "").toLowerCase();
+          const matPreset = (
+            materialTag === "road" ? { pattern:"road", rough:0.9, metal:0.0 } :
+            materialTag === "sidewalk" ? { pattern:"sidewalk", rough:0.82, metal:0.08 } :
+            materialTag === "ice" ? { pattern:"ice", rough:0.16, metal:0.2 } :
+            materialTag === "snow" ? { pattern:"snow", rough:0.95, metal:0.0 } :
+            materialTag === "roof" ? { pattern:"panel", rough:0.62, metal:0.1 } :
+            materialTag === "metal" ? { pattern:"metal", rough:0.45, metal:0.78 } :
+            materialTag === "bridge" ? { pattern:"panel", rough:0.52, metal:0.54 } :
+            materialTag === "sand" ? { pattern:"sand", rough:0.94, metal:0.0 } :
+            materialTag === "water" ? { pattern:"water", rough:0.34, metal:0.1 } :
+            { pattern: (type === "ramp") ? "rubber" : floorPattern, rough: (type === "ramp") ? 0.75 : 0.95, metal:0.02 }
+          );
           const mesh = _rtBattle3dV8MakeBox(
             THREE,
             f,
             _rtBattle3dV8Mat(
               THREE,
               type === "ramp" ? Number(theme.accent || 0x89c0ff) : Number(theme.floor || 0xe7ebf2),
-              type === "ramp" ? .75 : .95,
-              (type === "ramp") ? "rubber" : floorPattern
+              Number(matPreset.rough),
+              String(matPreset.pattern || floorPattern),
+              Number(matPreset.metal || 0.02)
             )
           );
           group.add(mesh);
@@ -46922,10 +47520,12 @@ function _openSearchResultByIndex(i){
         // side rails/decor edges for visibility
         const railLen = Math.max(54, runwayLen - 2.6);
         const railHalfX = (runwayWidth * 0.5) + 0.18;
-        const railL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.85, railLen), edgeMat);
-        railL.position.set(-railHalfX, 0.33, runwayCenterZ);
+        const railL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.28, railLen), edgeMat);
+        railL.position.set(-railHalfX, 0.09, runwayCenterZ);
         const railR = railL.clone();
         railR.position.x = railHalfX;
+        railL.userData.noCamBlock = true;
+        railR.userData.noCamBlock = true;
         group.add(railL, railR);
         asArray(cfg.decorations).forEach((d)=>{
           const type = String(d.type || "box");
@@ -46946,7 +47546,9 @@ function _openSearchResultByIndex(i){
           group.add(mesh);
         });
         const checkpoints = asArray(track.checkpoints);
+        const initialFocusCheckpoint = Math.max(0, Number(st.game3d?.currentGateIndex || 0));
         checkpoints.forEach((cp, idx) => {
+          if (!_rtBattle3dV8ShouldRenderCheckpointVisual(idx, checkpoints.length, initialFocusCheckpoint)) return;
           const ringColor = (idx === 0) ? 0x6fd38b : ((idx === checkpoints.length - 1) ? 0xffc268 : 0x7dc8ff);
           const ring = new THREE.Mesh(
             new THREE.TorusGeometry(Math.max(0.6, Number(cp.r || 1.2) * 0.42), 0.06, 8, 24),
@@ -46967,24 +47569,6 @@ function _openSearchResultByIndex(i){
           const gz = Number(gdef.z || 0);
           const halfW = Math.max(1.8, Number(gdef.halfW || 2.4));
           const halfD = Math.max(0.2, Number(gdef.halfD || 0.34));
-          const frameH = 2.4;
-          const post = new THREE.Mesh(
-            new THREE.BoxGeometry(0.22, frameH, 0.3),
-            _rtBattle3dV8Mat(THREE, _rtBattle3dV8TintColor(Number(theme.edge || 0xbcc8da), -8), 0.82, "panel")
-          );
-          const left = post.clone();
-          const right = post.clone();
-          left.position.set(gx - halfW, frameH * 0.5, gz);
-          right.position.set(gx + halfW, frameH * 0.5, gz);
-          const door = new THREE.Mesh(
-            new THREE.BoxGeometry((halfW * 2) - 0.18, 1.6, halfD * 2),
-            _rtBattle3dV8Mat(THREE, Number(theme.accent || 0x7cb6ff), 0.66, "rubber")
-          );
-          door.material.emissive = new THREE.Color(_rtBattle3dV8TintColor(Number(theme.accent || 0x7cb6ff), -40));
-          door.material.emissiveIntensity = 0.35;
-          door.position.set(gx, 0.85, gz);
-          group.add(left, right, door);
-          colliders.push({ kind:"gate", x:gx, y:0.85, z:gz, sx:halfW * 2, sy:1.8, sz:halfD * 2 });
           return {
             id: String(gdef.id || `G${gidx + 1}`),
             index: Math.max(0, Number(gdef.index ?? gidx)),
@@ -46999,11 +47583,14 @@ function _openSearchResultByIndex(i){
               halfW: Math.max(2.0, Number(gdef.trigger?.halfW || (halfW + 0.6))),
               halfD: Math.max(0.9, Number(gdef.trigger?.halfD || 1.2))
             },
-            door,
-            frame: [left, right],
+            door: null,
+            frame: null,
             openT: 0
           };
         });
+        const gateVisualGroup = new THREE.Group();
+        gateVisualGroup.name = "rt3d-gate-visuals";
+        group.add(gateVisualGroup);
         // hazards (componentized)
         asArray(cfg.hazards).forEach((hz, idx)=>{
           const built = _rtBattle3dV8HazardMesh(THREE, hz, theme);
@@ -47024,7 +47611,8 @@ function _openSearchResultByIndex(i){
           if ([
             "MovingPlatform","Rotator","Pusher","MovingBar","Conveyor","Laser","FallingFloor","BreakBridge",
             "DisappearingPlatform","WindZone","IceFriction","Quicksand","WaterSlide","TrainCar","RisingLava",
-            "JumpPad","FallingRocks"
+            "JumpPad","FallingRocks","Press","Pendulum","TeleportPad","SteamVent","FloatPlatform","CrackIce",
+            "Sandstorm","BoulderRoll","StonePillar","RhythmPlatform","CarSpawner"
           ].includes(item.type)){
             moving.push(item);
           }
@@ -47032,7 +47620,11 @@ function _openSearchResultByIndex(i){
         b.p3.map = {
           id: cfg.id,
           cfg,
+          theme,
           group,
+          gateVisualGroup,
+          gateVisualRangeKey: "",
+          visibleGateRange: { start: 0, end: -1 },
           colliders,
           hazards,
           moving,
@@ -47053,6 +47645,7 @@ function _openSearchResultByIndex(i){
         b.p3.mapSeed = Math.max(1, Number(mapSeed||1));
         b.p3.lastMapHash = hash;
         scene.add(group);
+        _rtBattle3dV8RefreshGateWindow(true);
       }
       function _rtBattle3dV8ApplyMapNow(){
         const b = _rtBattle3dV8State();
@@ -47083,6 +47676,7 @@ function _openSearchResultByIndex(i){
       function _rtBattle3dV8AnimateMapGimmicks(dt){
         const b = _rtBattle3dV8State();
         const st = _rtBattleState();
+        const THREE = window.THREE;
         const t = _rtBattle3dV8WorldTimeSec();
         const hazards = asArray(b.p3.map?.moving);
         for (const hz of hazards){
@@ -47099,16 +47693,39 @@ function _openSearchResultByIndex(i){
             hz.root.position[axis] = hz.basePos[axis] + Math.sin(t * speed) * amp;
           } else if (type === "Rotator"){
             hz.root.rotation.y = t * Number(p.speed || 1.5) + Number(hz.state.phase || 0);
+          } else if (type === "StonePillar"){
+            hz.root.rotation.y = t * Number(p.speed || 1.7) + Number(hz.state.phase || 0);
+            hz.root.rotation.z = Math.sin((t * 0.8) + Number(hz.state.phase || 0)) * 0.06;
           } else if (type === "Pusher" || type === "MovingBar"){
             const axis = String(p.axis||"x");
             const amp = Number(p.amp || 1.6), speed = Number(p.speed || 1.1);
             hz.root.position[axis] = hz.basePos[axis] + Math.sin(t * speed) * amp;
+          } else if (type === "Pendulum"){
+            const amp = Math.max(0.2, Number(p.amp || 0.7));
+            const speed = Math.max(0.4, Number(p.speed || 1.1));
+            hz.root.rotation.z = Math.sin(t * speed + Number(hz.state.phase || 0)) * amp;
           } else if (type === "Laser"){
             const period = Math.max(0.4, Number(p.period || 2));
             const on = Math.max(0.1, Math.min(period, Number(p.on || period * 0.5)));
             const phase = (t + Number(hz.state.phase || 0)) % period;
             hz.state.active = phase < on;
             if (hz.mesh) hz.mesh.visible = hz.state.active;
+          } else if (type === "Press"){
+            const period = Math.max(0.8, Number(p.period || 2.4));
+            const active = Math.max(0.15, Math.min(period, Number(p.active || 1.0)));
+            const phase = (t + Number(hz.state.phase || 0)) % period;
+            hz.state.active = phase < active;
+            const head = hz.root.userData?.pressHead || hz.mesh || null;
+            if (head){
+              const top = Math.max(0.8, Number(hz.basePos.y || 1.1) + 0.7);
+              const low = Math.max(0.35, Number(p.crushY || 0.46));
+              if (hz.state.active){
+                const f = Math.min(1, phase / active);
+                head.position.y = top - ((top - low) * Math.sin(f * Math.PI));
+              } else {
+                head.position.y = top;
+              }
+            }
           } else if (type === "FallingFloor"){
             const down = Number(p.down || 2.4);
             const recover = Math.max(400, Number(p.recover || 2400));
@@ -47141,16 +47758,124 @@ function _openSearchResultByIndex(i){
               hz.mesh.material.opacity = blink ? 0.45 : 1;
               hz.mesh.material.transparent = true;
             }
+          } else if (type === "CrackIce"){
+            const down = Number(p.down || 3.0);
+            const recover = Math.max(700, Number(p.recover || 2600));
+            if (hz.state.fallen){
+              const elapsed = Date.now() - Number(hz.state.startedAt || 0);
+              hz.root.position.y = hz.basePos.y - down;
+              if (hz.mesh) hz.mesh.visible = false;
+              if (elapsed > recover){
+                hz.state.fallen = false;
+                hz.state.startedAt = 0;
+                hz.state.stepCount = 0;
+                hz.root.position.y = hz.basePos.y;
+                if (hz.mesh) hz.mesh.visible = true;
+                if (hz.root.userData?.crack) hz.root.userData.crack.material.opacity = 0.24;
+              }
+            } else if (hz.mesh) {
+              hz.mesh.visible = true;
+              const steps = Math.max(0, Number(hz.state.stepCount || 0));
+              if (hz.root.userData?.crack){
+                hz.root.userData.crack.material.opacity = Math.min(0.92, 0.24 + (steps * 0.24));
+              }
+            }
           } else if (type === "DisappearingPlatform"){
             const period = Math.max(0.8, Number(p.period || 2.2));
             const on = Math.max(0.1, Math.min(period, Number(p.on || period * 0.5)));
             const phase = (t + Number(hz.state.phase || 0)) % period;
             hz.state.active = phase < on;
             if (hz.mesh) hz.mesh.visible = hz.state.active;
+          } else if (type === "RhythmPlatform"){
+            const period = Math.max(0.8, Number(p.period || 1.8));
+            const on = Math.max(0.1, Math.min(period, Number(p.on || period * 0.6)));
+            const phase = (t + Number(hz.state.phase || 0)) % period;
+            hz.state.active = phase < on;
+            if (hz.mesh) {
+              hz.mesh.visible = hz.state.active;
+              if (hz.mesh.material){
+                hz.mesh.material.emissiveIntensity = hz.state.active ? 0.35 : 0.06;
+                hz.mesh.material.opacity = hz.state.active ? 0.95 : 0.24;
+                hz.mesh.material.transparent = true;
+              }
+            }
           } else if (type === "JumpPad"){
             if (hz.mesh){
               const pulse = (Math.sin(t * 4 + Number(hz.state.phase || 0)) * 0.5 + 0.5);
               hz.mesh.scale.setScalar(1 + pulse * 0.06);
+            }
+          } else if (type === "FloatPlatform"){
+            const amp = Number(p.amp || 0.6);
+            const speed = Number(p.speed || 0.7);
+            hz.root.position.y = hz.basePos.y + Math.sin((t * speed) + Number(hz.state.phase || 0)) * amp;
+          } else if (type === "SteamVent"){
+            const period = Math.max(1.0, Number(p.period || 2.2));
+            const active = Math.max(0.2, Math.min(period, Number(p.active || 0.95)));
+            const phase = (t + Number(hz.state.phase || 0)) % period;
+            hz.state.active = phase < active;
+            const plume = hz.root.userData?.plume || null;
+            if (plume){
+              plume.visible = hz.state.active;
+              const pulse = hz.state.active ? (0.4 + Math.sin(phase * 10) * 0.2) : 0;
+              plume.material.opacity = Math.max(0.08, pulse);
+              plume.scale.setScalar(hz.state.active ? (1 + pulse * 0.25) : 0.82);
+            }
+          } else if (type === "Sandstorm"){
+            hz.root.rotation.y += dt * 1.2;
+            if (hz.mesh){
+              const pulse = (Math.sin((t * 2.2) + Number(hz.state.phase || 0)) * 0.5 + 0.5);
+              hz.mesh.material.opacity = 0.22 + pulse * 0.24;
+            }
+          } else if (type === "BoulderRoll"){
+            const axis = String(p.axis || "x");
+            const amp = Number(p.amp || 4.0);
+            const speed = Number(p.speed || 1.0);
+            hz.root.position[axis] = hz.basePos[axis] + Math.sin((t * speed) + Number(hz.state.phase || 0)) * amp;
+            if (hz.mesh){
+              hz.mesh.rotation.z += dt * speed * 4.2;
+              hz.mesh.rotation.x += dt * speed * 1.8;
+            }
+          } else if (type === "TeleportPad"){
+            if (hz.mesh){
+              const pulse = (Math.sin(t * 5 + Number(hz.state.phase || 0)) * 0.5 + 0.5);
+              hz.mesh.scale.setScalar(1 + pulse * 0.08);
+              hz.mesh.material.emissiveIntensity = 0.2 + pulse * 0.3;
+            }
+          } else if (type === "CarSpawner"){
+            const cars = hz.root.userData?.cars || null;
+            if (cars && THREE){
+              const laneCount = Math.max(1, Number(cars.laneCount || 2));
+              const laneGap = Number(cars.laneGap || 1.55);
+              const carSlots = Math.max(1, Number(cars.carSlots || 6));
+              const pathLength = Math.max(8, Number(cars.pathLength || 16));
+              const speed = Math.max(0.4, Number(p.speed || 1.2));
+              const interval = Math.max(0.6, Number(p.spawnInterval || 1.6));
+              const spacing = Math.max(2.2, speed * interval * 3.2);
+              const phase = Number(hz.state.phase || 0);
+              const mtx = hz.state.mtx || (hz.state.mtx = new THREE.Matrix4());
+              const quat = hz.state.quat || (hz.state.quat = new THREE.Quaternion());
+              const scaleBody = hz.state.scaleBody || (hz.state.scaleBody = new THREE.Vector3(1, 1, 1));
+              const scaleTop = hz.state.scaleTop || (hz.state.scaleTop = new THREE.Vector3(1, 1, 1));
+              const baseX = Number(hz.basePos.x || 0);
+              const baseZ = Number(hz.basePos.z || 0);
+              const yBody = Number(cars.yHeight || hz.basePos.y || 4.0) + 0.24;
+              const yTop = yBody + 0.22;
+              let slot = 0;
+              for (let lane = 0; lane < laneCount; lane += 1){
+                const laneZ = baseZ + ((lane - ((laneCount - 1) * 0.5)) * laneGap);
+                for (let i = 0; i < carSlots; i += 1){
+                  const offset = (i * spacing) + lane * 1.5 + phase * 3.1;
+                  const x = (((t * speed * 6.0) + offset) % (pathLength + spacing)) - (pathLength * 0.5);
+                  quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0);
+                  mtx.compose(new THREE.Vector3(baseX + x, yBody, laneZ), quat, scaleBody);
+                  cars.body.setMatrixAt(slot, mtx);
+                  mtx.compose(new THREE.Vector3(baseX + x, yTop, laneZ), quat, scaleTop);
+                  cars.top.setMatrixAt(slot, mtx);
+                  slot += 1;
+                }
+              }
+              cars.body.instanceMatrix.needsUpdate = true;
+              cars.top.instanceMatrix.needsUpdate = true;
             }
           } else if (type === "FallingRocks"){
             const period = Math.max(1.6, Number(p.period || 2.8));
@@ -47183,10 +47908,18 @@ function _openSearchResultByIndex(i){
             hz.root.position.y = hz.basePos.y + (Math.sin(t * speed) * 0.5 + 0.5) * amp;
           }
         }
+        _rtBattle3dV8RefreshGateWindow(false);
         const gateStates = _rtBattle3dV8GateOpenStates();
         const gateIdx = _rtBattle3dV8CurrentGateIndex();
-        asArray(b.p3.map?.gates).forEach((gate, idx) => {
-          if (!gate || !gate.door) return;
+        const gatesAll = asArray(b.p3.map?.gates);
+        const vr = (b.p3.map?.visibleGateRange && typeof b.p3.map.visibleGateRange === "object")
+          ? b.p3.map.visibleGateRange
+          : { start: 0, end: Math.max(0, gatesAll.length - 1) };
+        const from = Math.max(0, Math.min(Number(vr.start || 0), gateIdx) - 2);
+        const to = Math.min(gatesAll.length - 1, Math.max(Number(vr.end || 0), gateIdx) + 2);
+        for (let idx = from; idx <= to; idx += 1){
+          const gate = gatesAll[idx];
+          if (!gate || !gate.door) continue;
           const gateId = String(gate.id || `G${idx + 1}`);
           const openByState = !!gateStates[gateId] || (idx < gateIdx);
           const openByLegacy = (idx === gateIdx) && !!(st.game3d?.gateOpen ?? b.gateOpen);
@@ -47198,7 +47931,7 @@ function _openSearchResultByIndex(i){
             gate.door.material.opacity = shouldOpen ? 0.45 : 1;
             gate.door.material.transparent = shouldOpen;
           }
-        });
+        }
       }
       function _rtBattle3dV8RectHit(p, hz, extra=0){
         const sx = Number(hz.size?.x || 1), sz = Number(hz.size?.z || 1), sy = Number(hz.size?.y || 1);
@@ -47226,6 +47959,9 @@ function _openSearchResultByIndex(i){
             || type === "IceFriction"
             || type === "Quicksand"
             || type === "JumpPad"
+            || type === "Sandstorm"
+            || type === "SteamVent"
+            || type === "FloatPlatform"
           );
           if (!isContinuous && Number(hz.state?.hitCooldownUntil || 0) > tnow) continue;
           if (type === "DisappearingPlatform" && !hz.state?.active){
@@ -47249,6 +47985,13 @@ function _openSearchResultByIndex(i){
             const f = asArray(hz.params?.force);
             p.vx += Number(f[0] || 0) * dt * 5;
             p.vz += Number(f[2] || 0) * dt * 5;
+          } else if (type === "Sandstorm"){
+            const f = asArray(hz.params?.force);
+            p.vx += Number(f[0] || 0) * dt * 4.2;
+            p.vz += Number(f[2] || 0) * dt * 4.2;
+            p.vx *= 0.985;
+            p.vz *= 0.985;
+            b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 420, b.effectEndsAtMs);
           } else if (type === "Conveyor"){
             const dir = asArray(hz.params?.dir);
             if (p.y <= 1.15){ p.x += Number(dir[0]||0) * Number(hz.params?.speed || 1.4) * dt; p.z += Number(dir[1]||0) * Number(hz.params?.speed || 1.4) * dt; }
@@ -47263,12 +48006,17 @@ function _openSearchResultByIndex(i){
           } else if (type === "Quicksand"){
             p.vx *= 0.78; p.vz *= 0.78;
             b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 350, b.effectEndsAtMs);
+          } else if (type === "SteamVent"){
+            if (hz.state?.active && p.y <= 1.35){
+              p.vy = Math.max(p.vy, Math.max(5.2, Number(hz.params?.power || 8.0)));
+              b.effectKind = "boost"; b.effectEndsAtMs = Math.max(tnow + 420, b.effectEndsAtMs);
+            }
           } else if (type === "Laser"){
             if (!hz.state.active) continue;
             p.vx *= 0.4; p.vz *= 0.4;
             b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 900, b.effectEndsAtMs);
             gotHit = true;
-          } else if (type === "Rotator" || type === "Pusher" || type === "MovingBar"){
+          } else if (type === "Rotator" || type === "Pusher" || type === "MovingBar" || type === "StonePillar" || type === "Pendulum"){
             const cx = Number(hz.root.position.x || 0), cz = Number(hz.root.position.z || 0);
             const dx = p.x - cx, dz = p.z - cz;
             const d = Math.hypot(dx, dz) || 1;
@@ -47277,6 +48025,17 @@ function _openSearchResultByIndex(i){
             p.vz += (dz / d) * force;
             b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 700, b.effectEndsAtMs);
             gotHit = true;
+          } else if (type === "Press"){
+            if (hz.state?.active && hit && p.y <= 1.45){
+              const cp = b.p3.lastCheckpoint || { x: 0, y: 0.9, z: 4 };
+              p.x = Number(cp.x || 0);
+              p.y = Math.max(0.9, Number(cp.y || 0.9));
+              p.z = Number(cp.z || 4);
+              p.vx *= 0.24;
+              p.vz *= 0.24;
+              b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 1200, b.effectEndsAtMs);
+              gotHit = true;
+            }
           } else if (type === "MovingPlatform" || type === "TrainCar"){
             if (p.y <= 1.2){
               const axis = String(hz.params?.axis || "x");
@@ -47285,6 +48044,11 @@ function _openSearchResultByIndex(i){
               if (axis === "x") p.x += v * dt;
               else if (axis === "z") p.z += v * dt;
               else p.y += Math.abs(v) * dt * 0.4;
+            }
+          } else if (type === "FloatPlatform"){
+            if (p.y <= 1.22){
+              p.y = Math.max(p.y, Number(hz.root.position.y || hz.basePos.y || 0.4) + 0.88);
+              p.vy = Math.max(0, p.vy);
             }
           } else if (type === "FallingFloor"){
             if (hit && !hz.state.fallen && p.y <= 1.2){
@@ -47296,6 +48060,29 @@ function _openSearchResultByIndex(i){
               }
             } else if (!hit && !hz.state.fallen){
               hz.state.startedAt = 0;
+            }
+          } else if (type === "CrackIce"){
+            if (hz.state.fallen && hit && p.y <= 1.3){
+              const cp = b.p3.lastCheckpoint || { x: 0, y: 0.9, z: 4 };
+              p.x = Number(cp.x || 0);
+              p.y = Math.max(0.9, Number(cp.y || 0.9));
+              p.z = Number(cp.z || 4);
+              p.vx *= 0.35;
+              p.vz *= 0.35;
+              b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 1200, b.effectEndsAtMs);
+              gotHit = true;
+            } else if (hit && !hz.state.fallen && p.y <= 1.2){
+              const stepsNeed = Math.max(1, Math.trunc(Number(hz.params?.steps || 2)));
+              hz.state.stepCount = Math.max(0, Number(hz.state.stepCount || 0));
+              if ((tnow - Math.max(0, Number(hz.state.lastStepTs || 0))) > 220){
+                hz.state.stepCount += 1;
+                hz.state.lastStepTs = tnow;
+              }
+              if (hz.state.stepCount >= stepsNeed){
+                hz.state.fallen = true;
+                hz.state.startedAt = tnow;
+                hz.state.hitCooldownUntil = tnow + 300;
+              }
             }
           } else if (type === "BreakBridge"){
             if (hz.state.fallen && hit && p.y <= 1.3){
@@ -47325,6 +48112,17 @@ function _openSearchResultByIndex(i){
             } else if (!hit && !hz.state.fallen){
               hz.state.startedAt = 0;
             }
+          } else if (type === "RhythmPlatform"){
+            if (!hz.state?.active && hit && p.y <= 1.3){
+              const cp = b.p3.lastCheckpoint || { x: 0, y: 0.9, z: 4 };
+              p.x = Number(cp.x || 0);
+              p.y = Math.max(0.9, Number(cp.y || 0.9));
+              p.z = Number(cp.z || 4);
+              p.vx *= 0.4;
+              p.vz *= 0.4;
+              b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 900, b.effectEndsAtMs);
+              gotHit = true;
+            }
           } else if (type === "JumpPad"){
             if (hit && p.y <= 1.3){
               const jump = Math.max(4.8, Number(hz.params?.power || 7.2));
@@ -47332,6 +48130,30 @@ function _openSearchResultByIndex(i){
               p.vy = Math.max(p.vy, jump);
               p.vz -= boost;
               b.effectKind = "boost"; b.effectEndsAtMs = Math.max(tnow + 450, b.effectEndsAtMs);
+            }
+          } else if (type === "TeleportPad"){
+            const cooldown = Math.max(400, Number(hz.params?.cooldown || 1400));
+            if (hit && p.y <= 1.35 && (tnow - Math.max(0, Number(hz.state.lastTpTs || 0))) >= cooldown){
+              const dest = asArray(hz.params?.to);
+              p.x = Number(dest[0] || p.x);
+              p.z = Number(dest[1] || p.z - 2.8);
+              p.y = 0.9;
+              p.vx = 0;
+              p.vz = 0;
+              hz.state.lastTpTs = tnow;
+              b.effectKind = "boost"; b.effectEndsAtMs = Math.max(tnow + 520, b.effectEndsAtMs);
+              _rtBattle3dPushToast("info", "ワープしました");
+            }
+          } else if (type === "BoulderRoll"){
+            if (hit && p.y <= 1.5){
+              const cx = Number(hz.root.position.x || 0), cz = Number(hz.root.position.z || 0);
+              const dx = p.x - cx, dz = p.z - cz;
+              const d = Math.hypot(dx, dz) || 1;
+              const push = Number(hz.params?.push || 3.3);
+              p.vx += (dx / d) * push;
+              p.vz += (dz / d) * push;
+              b.effectKind = "debuff"; b.effectEndsAtMs = Math.max(tnow + 900, b.effectEndsAtMs);
+              gotHit = true;
             }
           } else if (type === "FallingRocks"){
             const period = Math.max(1.6, Number(hz.params?.period || 2.8));
@@ -47444,6 +48266,16 @@ function _openSearchResultByIndex(i){
           }
         }
       }
+      function _rtBattle3dV9IsDebugUiEnabled(){
+        try{
+          const u = new URL(String(location.href || ""), location.origin);
+          if (String(u.searchParams.get("debug") || "") === "1") return true;
+        }catch(_){}
+        try{
+          return !!window.__rt3dUiDebug;
+        }catch(_){}
+        return false;
+      }
       function _rtBattle3dV8EnsureUiAddons(){
         const root = _rtBattle3dEnsureRoot();
         const headRight = root.querySelector(".b3d-head-right");
@@ -47457,18 +48289,32 @@ function _openSearchResultByIndex(i){
           }
         }
         const hud = root.querySelector(".b3d-hud");
-        if (hud instanceof HTMLElement && !document.getElementById("rt3dHudDebug")){
-          const card = document.createElement("div");
-          card.className = "b3d-hud-card is-compact";
-          card.innerHTML = `<div class="t">MAP / DEBUG</div><div class="v" id="rt3dHudDebug">-</div>`;
-          hud.appendChild(card);
+        const debugEnabled = _rtBattle3dV9IsDebugUiEnabled();
+        if (hud instanceof HTMLElement){
+          const existingDbg = document.getElementById("rt3dHudDebug");
+          if (debugEnabled && !existingDbg){
+            const card = document.createElement("div");
+            card.className = "b3d-hud-card is-compact";
+            card.innerHTML = `<div class="t">MAP / DEBUG</div><div class="v" id="rt3dHudDebug">-</div>`;
+            hud.appendChild(card);
+          }
+          if (!debugEnabled && existingDbg){
+            const card = existingDbg.closest(".b3d-hud-card");
+            if (card && card.parentNode) card.parentNode.removeChild(card);
+          }
         }
         const main = root.querySelector(".b3d-main");
-        if (main instanceof HTMLElement && !document.getElementById("rt3dUiHitDebug")){
-          const dbg = document.createElement("div");
-          dbg.id = "rt3dUiHitDebug";
-          dbg.style.cssText = "position:absolute;left:10px;top:10px;z-index:30;pointer-events:none;font-size:11px;background:rgba(0,0,0,.55);color:#fff;padding:4px 8px;border-radius:8px;opacity:0;transition:opacity .18s;";
-          main.appendChild(dbg);
+        if (main instanceof HTMLElement){
+          const hitDbg = document.getElementById("rt3dUiHitDebug");
+          if (debugEnabled && !hitDbg){
+            const dbg = document.createElement("div");
+            dbg.id = "rt3dUiHitDebug";
+            dbg.style.cssText = "position:absolute;left:10px;top:10px;z-index:30;pointer-events:none;font-size:11px;background:rgba(0,0,0,.55);color:#fff;padding:4px 8px;border-radius:8px;opacity:0;transition:opacity .18s;";
+            main.appendChild(dbg);
+          }
+          if (!debugEnabled && hitDbg && hitDbg.parentNode){
+            hitDbg.parentNode.removeChild(hitDbg);
+          }
         }
       }
       function _rtBattle3dV8PatchLobbyMapUi(){
@@ -47484,13 +48330,15 @@ function _openSearchResultByIndex(i){
           row.innerHTML = `
             <div class="b3d-mini" style="margin-bottom:4px;">3Dマップ</div>
             <select id="rt3dLobbyMapSelect" class="b3d-select"></select>
-            <div class="b3d-mini" id="rt3dLobbyMapHint" style="margin-top:6px;">ホストのみ変更できます。</div>`;
+            <div class="b3d-mini" id="rt3dLobbyMapHint" style="margin-top:6px;">ホストのみ変更できます。</div>
+            <div class="b3d-mini" id="rt3dLobbyMapDesc" style="margin-top:4px; opacity:.92;"></div>`;
           presetPanel.appendChild(row);
         }
         const st = _rtBattleState();
         const isHost = _rtBattleIsHost();
         const sel = document.getElementById("rt3dLobbyMapSelect");
         const hint = document.getElementById("rt3dLobbyMapHint");
+        const desc = document.getElementById("rt3dLobbyMapDesc");
         if (!(sel instanceof HTMLSelectElement)) return;
         const current = asStr(st.game3d?.mapId || _rtBattle3dV8State().p3.mapId || "bridge").toLowerCase() || "bridge";
         const html = RT3D_MAP_IDS.map((id)=>`<option value="${_escapeHtml(id)}"${id===current?" selected":""}>${_escapeHtml(RT3D_MAP_LABELS[id]||id)}</option>`).join("");
@@ -47500,8 +48348,11 @@ function _openSearchResultByIndex(i){
         }
         sel.disabled = !isHost;
         if (hint) hint.textContent = isHost ? "ホストがマップを変更できます。" : "ホストのみ変更できます。";
+        const selected = String(sel.value || current).toLowerCase();
+        if (desc) desc.textContent = `特徴: ${RT3D_MAP_DESC[selected] || "ステージ情報を読み込み中..."}`;
       }
       function _rtBattle3dV8UpdateDebugHud(){
+        if (!_rtBattle3dV9IsDebugUiEnabled()) return;
         const st = _rtBattleState();
         const b = _rtBattle3dV8State();
         const el = document.getElementById("rt3dHudDebug");
@@ -47512,7 +48363,10 @@ function _openSearchResultByIndex(i){
         const pool = Math.max(0, Number(st.game?.presetWordsLength || 0));
         const gateIdx = Math.max(0, Number(st.game3d?.currentGateIndex ?? b.p3.currentGateIndex ?? 0));
         const cpIdx = Math.max(0, Number(b.p3.checkpointIndex || 0));
-        const txt = `${mapId.toUpperCase()} • G=${gateIdx + 1} • CP=${cpIdx} • Q=${String(qCount)} • IDs=${qLen} • Pool=${pool}`;
+        const perf = b.p3.renderCtl || {};
+        const dpr = Math.round(Number(perf.currentDpr || 1) * 100) / 100;
+        const ql = String(perf.quality || "high");
+        const txt = `${mapId.toUpperCase()} • G=${gateIdx + 1} • CP=${cpIdx} • Q=${String(qCount)} • IDs=${qLen} • Pool=${pool} • DPR=${dpr} (${ql})`;
         if (el.textContent !== txt) el.textContent = txt;
       }
       function _rtBattle3dV8ShowHitTarget(e){
@@ -47543,6 +48397,11 @@ function _openSearchResultByIndex(i){
         if (rt.renderer?.domElement) {
           rt.renderer.domElement.id = "glCanvas";
           rt.renderer.domElement.style.zIndex = "0";
+          const targetDpr = Math.max(0.6, Math.min(1.2, Number(b.p3.renderCtl?.currentDpr || Math.min(1.1, Number(window.devicePixelRatio || 1)))));
+          rt.renderer.setPixelRatio(targetDpr);
+          rt.renderer.setSize(Math.max(1, Number(rt.wrap?.clientWidth || 1)), Math.max(1, Number(rt.wrap?.clientHeight || 1)), false);
+          rt.renderer.shadowMap.enabled = false;
+          b.p3.renderCtl.currentDpr = targetDpr;
         }
         if (rt.camera){
           rt.camera.near = 0.05;
@@ -47616,6 +48475,7 @@ function _openSearchResultByIndex(i){
       _rtBattle3dUpdateLocalMeshAndCamera = function(dt){
         const b = _rtBattle3dV8State();
         const rt = b.runtime || {};
+        const st = _rtBattleState();
         if (rt.camera && rt.localMesh && window.THREE){
           const THREE = window.THREE;
           const target = new THREE.Vector3(b.local.x, 0.95, b.local.z);
@@ -47626,8 +48486,17 @@ function _openSearchResultByIndex(i){
           const side = Math.sin(yaw) * dist;
           const back = Math.cos(yaw) * dist;
           const desired = new THREE.Vector3(target.x + side, target.y + (first ? 0.6 : (2.1 + pitch * 4.0)), target.z + back);
-          rt.camera.position.lerp(desired, Math.min(1, dt * 5.5));
-          rt.camera.lookAt(first ? new THREE.Vector3(target.x + Math.sin(yaw) * 4, target.y + 0.6, target.z + Math.cos(yaw) * 4) : target);
+          const lookTarget = first
+            ? new THREE.Vector3(target.x + Math.sin(yaw) * 4, target.y + 0.6, target.z + Math.cos(yaw) * 4)
+            : target;
+          if (first) {
+            try{ _rtBattle3dV9RestoreOccluderFade(); }catch(_){}
+          }
+          const resolved = first
+            ? desired
+            : _rtBattle3dV9ResolveCameraOcclusion(target, desired, dt, String(st?.phase || "playing"));
+          rt.camera.position.lerp(resolved, Math.min(1, dt * 5.1));
+          rt.camera.lookAt(lookTarget);
           if (rt.localMesh) rt.localMesh.visible = !first;
           return;
         }
@@ -47815,6 +48684,7 @@ function _openSearchResultByIndex(i){
         __rtBattle3dTickV8Base.apply(this, arguments);
         if (!_rtBattle3dIsOpen()) return;
         const b = _rtBattle3dV8State();
+        _rtBattle3dV8TuneRendererQuality(tsNow);
         if (b.p3.inputMode === "ui" && Number(b.p3.uiModeUntil || 0) <= Date.now()){
           b.p3.inputMode = "";
           b.p3.uiModeUntil = 0;
@@ -47877,6 +48747,1860 @@ function _openSearchResultByIndex(i){
         `;
         document.head.appendChild(s);
       })();
+
+      // ROOM_DO_UI_V9_LOBBY_FORTNITE + MOBILE_LANDSCAPE_LOCK
+      function _rtBattle3dV9State(){
+        const b = _rtBattle3dV8State();
+        if (!b.p9 || typeof b.p9 !== "object") b.p9 = {};
+        const p9 = b.p9;
+        if (typeof p9.mobileTab !== "string") p9.mobileTab = "party";
+        if (typeof p9.mobileSettingsOpen !== "boolean") p9.mobileSettingsOpen = false;
+        if (typeof p9.presetSearch !== "string") p9.presetSearch = "";
+        if (!Array.isArray(p9.recentPresetValues)) p9.recentPresetValues = [];
+        if (typeof p9.rotateMode !== "string") p9.rotateMode = "off";
+        if (typeof p9.lastRotateTick !== "number") p9.lastRotateTick = 0;
+        if (typeof p9.lastTagTick !== "number") p9.lastTagTick = 0;
+        if (typeof p9.lockAttempted !== "boolean") p9.lockAttempted = false;
+        if (!Array.isArray(p9.inviteFollowers)) p9.inviteFollowers = [];
+        if (typeof p9.inviteLoading !== "boolean") p9.inviteLoading = false;
+        if (typeof p9.inviteError !== "string") p9.inviteError = "";
+        if (typeof p9.inviteLoadedAt !== "number") p9.inviteLoadedAt = 0;
+        if (!(p9.inviteBusyUsers instanceof Set)) p9.inviteBusyUsers = new Set();
+        if (!p9.inviteSentAtByUser || typeof p9.inviteSentAtByUser !== "object") p9.inviteSentAtByUser = {};
+        if (!(p9.occlusionFaded instanceof Set)) p9.occlusionFaded = new Set();
+        return b;
+      }
+      function _rtBattle3dV9MapSlot(idx){
+        const i = Math.max(0, Number(idx || 0));
+        const row = Math.floor(i / 4);
+        const col = i % 4;
+        return {
+          x: (col - 1.5) * 1.45,
+          z: -0.7 - (row * 1.6)
+        };
+      }
+      function _rtBattle3dV9PlayerKey(p){
+        const uid = Math.max(0, Number(p?.userId || 0));
+        if (uid > 0) return String(uid);
+        const pid = Math.max(0, Number(p?.id || 0));
+        return pid > 0 ? String(pid) : "";
+      }
+      function _rtBattle3dV9IsMobileViewport(){
+        try{
+          if (window.matchMedia && window.matchMedia("(max-width: 1024px)").matches) return true;
+        }catch(_){}
+        const ua = String(navigator.userAgent || "").toLowerCase();
+        return /iphone|ipad|android|mobile/.test(ua);
+      }
+      function _rtBattle3dV9IsLandscape(){
+        try{
+          if (window.matchMedia && window.matchMedia("(orientation: landscape)").matches) return true;
+        }catch(_){}
+        return Number(window.innerWidth || 0) > Number(window.innerHeight || 0);
+      }
+      function _rtBattle3dV9NeedsLandscape(){
+        if (!_rtBattle3dIsOpen()) return false;
+        if (!_rtBattle3dV9IsMobileViewport()) return false;
+        const path = String(location.pathname || "");
+        return /^\/survival\/(lobby|game)\//i.test(path);
+      }
+      function _rtBattle3dV9UseDrawerLayout(){
+        return _rtBattle3dV9IsMobileViewport() && !_rtBattle3dV9IsLandscape();
+      }
+      function _rtBattle3dV9RotateMode(){
+        if (!_rtBattle3dV9NeedsLandscape()) return "off";
+        if (_rtBattle3dV9IsLandscape()) return "ok";
+        const phase = String(_rtBattleState().phase || "lobby");
+        return (phase === "playing" || phase === "countdown") ? "block" : "guide";
+      }
+      function _rtBattle3dV9MapIcon(mapId){
+        const id = String(mapId || "").toLowerCase();
+        if (id === "city") return "location_city";
+        if (id === "snow" || id === "ice") return "ac_unit";
+        if (id === "volcano") return "local_fire_department";
+        if (id === "aqua") return "waves";
+        if (id === "desert" || id === "canyon") return "terrain";
+        if (id === "jungle") return "park";
+        if (id === "factory" || id === "lab") return "precision_manufacturing";
+        if (id === "rail") return "tram";
+        if (id === "ruins") return "domain";
+        if (id === "neon") return "bolt";
+        if (id === "sky") return "flight";
+        if (id === "bridge") return "linear_scale";
+        return "stadia_controller";
+      }
+      function _rtBattle3dV9MapCardsHtml(currentMap, isHost){
+        return RT3D_MAP_IDS.map((id) => {
+          const active = String(id) === String(currentMap);
+          const label = RT3D_MAP_LABELS[id] || id;
+          const desc = RT3D_MAP_DESC[id] || "";
+          return `<button type="button" class="b3d-map-card${active ? " is-active" : ""}" data-rt-battle-action="b3dMapPick" data-map-id="${_escapeHtml(id)}"${isHost ? "" : " disabled"}>
+            <div class="b3d-map-icon"><span class="ms">${_escapeHtml(_rtBattle3dV9MapIcon(id))}</span></div>
+            <div class="b3d-map-name">${_escapeHtml(label)}</div>
+            <div class="b3d-map-desc">${_escapeHtml(desc)}</div>
+          </button>`;
+        }).join("");
+      }
+      function _rtBattle3dV9BuildPresetQuickHtml(allOptions, selectedValue){
+        const p9 = _rtBattle3dV9State().p9 || {};
+        const list = asArray(allOptions).map((row) => ({
+          value: String(row?.value || ""),
+          label: String(row?.label || row?.value || "")
+        })).filter((row) => !!row.value);
+        const search = String(p9.presetSearch || "").trim().toLowerCase();
+        const filtered = search
+          ? list.filter((row) => (row.label + " " + row.value).toLowerCase().includes(search))
+          : list.slice();
+        const recentSet = new Set(asArray(p9.recentPresetValues).map((v) => String(v || "")));
+        const recentRows = list.filter((row) => recentSet.has(row.value)).slice(0, 5);
+        const quickRows = filtered.slice(0, 8);
+        const renderRows = (rows, kind) => rows.map((row) => {
+          const active = row.value === selectedValue;
+          return `<button type="button" class="b3d-preset-chip${active ? " is-active" : ""}" data-rt-battle-action="b3dPresetQuick" data-preset-value="${_escapeHtml(row.value)}">${_escapeHtml(row.label)}</button>`;
+        }).join("");
+        return {
+          filteredOptions: filtered,
+          quickHtml: quickRows.length ? renderRows(quickRows, "quick") : `<div class="b3d-mini-soft">一致するプリセットがありません。</div>`,
+          recentHtml: recentRows.length ? renderRows(recentRows, "recent") : `<div class="b3d-mini-soft">最近使ったプリセットはありません。</div>`
+        };
+      }
+      function _rtBattle3dV9InviteBtnLabel(targetUserId){
+        const b = _rtBattle3dV9State();
+        const p9 = b.p9 || {};
+        const key = String(Math.max(0, Number(targetUserId || 0)));
+        if (p9.inviteBusyUsers instanceof Set && p9.inviteBusyUsers.has(key)) return "送信中…";
+        const sentAt = Math.max(0, Number((p9.inviteSentAtByUser && p9.inviteSentAtByUser[key]) || 0));
+        if (sentAt && (Date.now() - sentAt) < 60000) return "送信済み";
+        return "招待";
+      }
+      function _rtBattle3dV9RenderInvitePanel(st){
+        const b = _rtBattle3dV9State();
+        const p9 = b.p9 || {};
+        const roomCode = String(st?.room?.roomId || st?.roomId || "").trim().toUpperCase();
+        const myUid = _appAuthUserId();
+        const isLogged = _appIsLoggedUser() && myUid > 0;
+        const list = asArray(p9.inviteFollowers)
+          .filter((row) => Math.max(0, Number(row?.userId || 0)) > 0)
+          .filter((row) => Math.max(0, Number(row?.userId || 0)) !== myUid)
+          .slice(0, 16);
+        let bodyHtml = "";
+        if (!isLogged){
+          bodyHtml = `<div class="b3d-invite-empty">招待はログイン時のみ利用できます。</div>`;
+        } else if (p9.inviteLoading){
+          bodyHtml = `<div class="b3d-invite-empty">フォロワーを読み込み中…</div>`;
+        } else if (p9.inviteError){
+          bodyHtml = `<div class="b3d-invite-empty">${_escapeHtml(String(p9.inviteError || ""))}</div>`;
+        } else if (!list.length){
+          bodyHtml = `<div class="b3d-invite-empty">招待可能なフォロワーがいません。</div>`;
+        } else {
+          bodyHtml = list.map((row) => {
+            const uid = Math.max(0, Number(row?.userId || 0));
+            const key = String(uid);
+            const displayName = String(row?.displayName || row?.nickname || "User");
+            const handle = String(row?.handle || row?.nickname || "user").trim().replace(/^@+/, "") || "user";
+            const busy = p9.inviteBusyUsers instanceof Set ? p9.inviteBusyUsers.has(key) : false;
+            const sentAt = Math.max(0, Number((p9.inviteSentAtByUser && p9.inviteSentAtByUser[key]) || 0));
+            const sentRecently = sentAt > 0 && (Date.now() - sentAt) < 60000;
+            const disabled = !roomCode || busy || sentRecently;
+            return `<div class="b3d-invite-row">
+              <div class="b3d-invite-avatar">${_escapeHtml((displayName || "U").slice(0, 1).toUpperCase())}</div>
+              <div class="b3d-invite-meta">
+                <div class="b3d-invite-name">${_escapeHtml(displayName)}</div>
+                <div class="b3d-invite-handle">@${_escapeHtml(handle)}</div>
+              </div>
+              <button class="btn b3d-invite-user-btn" type="button" data-rt-battle-action="b3dInviteUser" data-user-id="${uid}"${disabled ? " disabled" : ""}>${_escapeHtml(_rtBattle3dV9InviteBtnLabel(uid))}</button>
+            </div>`;
+          }).join("");
+        }
+        return `<section class="b3d-invite-zone">
+          <div class="b3d-invite-head">
+            <h5>フレンド招待（フォロワー）</h5>
+            <button class="textbtn b3d-invite-refresh" type="button" data-rt-battle-action="b3dReloadInviteTargets"${p9.inviteLoading ? " disabled" : ""}>更新</button>
+          </div>
+          <div class="b3d-invite-note">${roomCode ? `Room: ${_escapeHtml(roomCode)}` : "ルーム入室後に招待できます"}</div>
+          <div class="b3d-invite-list">${bodyHtml}</div>
+        </section>`;
+      }
+      function _rtBattle3dV9EnsureInviteFollowers(force = false){
+        const b = _rtBattle3dV9State();
+        const p9 = b.p9 || {};
+        const uid = _appAuthUserId();
+        if (!uid || !_appIsLoggedUser()){
+          p9.inviteFollowers = [];
+          p9.inviteLoading = false;
+          p9.inviteError = "招待はログイン時のみ利用できます。";
+          p9.inviteLoadedAt = Date.now();
+          return;
+        }
+        const now = Date.now();
+        const staleMs = 120000;
+        if (p9.inviteLoading) return;
+        if (!force && Number(p9.inviteLoadedAt || 0) > 0 && (now - Number(p9.inviteLoadedAt || 0)) < staleMs){
+          return;
+        }
+        p9.inviteLoading = true;
+        p9.inviteError = "";
+        _appApiJson(`/api/profile/follows?userId=${encodeURIComponent(String(uid))}&kind=followers&limit=120`, { method: "GET" })
+          .then((body) => {
+            const rows = Array.isArray(body?.list) ? body.list : [];
+            p9.inviteFollowers = rows.filter((row) => Math.max(0, Number(row?.userId || 0)) > 0);
+            p9.inviteLoadedAt = Date.now();
+            if (body?.hidden) p9.inviteError = "フォロワー一覧が非公開設定です。";
+          })
+          .catch((err) => {
+            p9.inviteError = String(err?.message || "フォロワー一覧の取得に失敗しました。");
+          })
+          .finally(() => {
+            p9.inviteLoading = false;
+            _rtBattle3dRenderLobbyPanel();
+          });
+      }
+      async function _rtBattle3dV9InviteUser(targetUserId){
+        const uid = Math.max(0, Number(targetUserId || 0));
+        if (!uid) return;
+        const b = _rtBattle3dV9State();
+        const p9 = b.p9 || {};
+        if (!(p9.inviteBusyUsers instanceof Set)) p9.inviteBusyUsers = new Set();
+        const key = String(uid);
+        if (p9.inviteBusyUsers.has(key)) return;
+        const st = _rtBattleState();
+        const roomCode = String(st?.room?.roomId || st?.roomId || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+        if (!roomCode){
+          try{ uiToast("ルームコードが取得できません。"); }catch(_){}
+          return;
+        }
+        p9.inviteBusyUsers.add(key);
+        _rtBattle3dRenderLobbyPanel();
+        try{
+          const body = await _appApiJson("/api/survival/invite", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ targetUserId: uid, roomId: roomCode })
+          });
+          if (!body?.ok) throw new Error(String(body?.message || "招待に失敗しました。"));
+          p9.inviteSentAtByUser[key] = Date.now();
+          if (body?.throttled){
+            try{ uiToast("このユーザーへの招待通知は本日の上限に達しています。"); }catch(_){}
+          } else {
+            const name = String(asArray(p9.inviteFollowers).find((row) => Math.max(0, Number(row?.userId || 0)) === uid)?.displayName || "");
+            try{ uiToast(name ? `${name}さんに招待を送信しました。` : "招待を送信しました。"); }catch(_){}
+          }
+        } catch (err){
+          try{ uiToast(String(err?.message || "招待に失敗しました。")); }catch(_){}
+        } finally {
+          p9.inviteBusyUsers.delete(key);
+          _rtBattle3dRenderLobbyPanel();
+        }
+      }
+      function _rtBattle3dV9RenderPartyPanel(st){
+        const players = asArray(st.players).filter((p) => !!p);
+        const connectedCount = players.filter((p) => !!p.connected).length;
+        const maxPlayers = Math.max(1, Number(st.room?.max || 8));
+        const roomCode = String(st?.room?.roomId || st?.roomId || "------").trim().toUpperCase();
+        const rows = players.length ? players.map((p) => {
+          const me = _rtBattlePlayerMatchesMe(p);
+          const isReady = !!p?.ready;
+          const host = _rtBattlePlayerIsHost(p);
+          const nick = String(p?.nick || "Guest");
+          const handle = String(p?.handle || "").trim();
+          const badge = isReady ? "Ready" : "Not Ready";
+          const badgeClass = isReady ? "is-ready" : "is-wait";
+          return `<div class="b3d-party-row${me ? " is-me" : ""}">
+            <div class="b3d-party-avatar">${_escapeHtml(nick.slice(0, 1).toUpperCase() || "G")}</div>
+            <div class="b3d-party-meta">
+              <div class="b3d-party-name">${_escapeHtml(nick)}${me ? " (You)" : ""}</div>
+              <div class="b3d-party-handle">${_escapeHtml(handle ? `@${handle.replace(/^@+/, "")}` : "@guest")}</div>
+            </div>
+            <span class="b3d-ready-badge ${badgeClass}">${_escapeHtml(badge)}</span>
+            ${host ? `<span class="b3d-host-badge">HOST</span>` : ``}
+          </div>`;
+        }).join("") : `<div class="b3d-party-empty">参加者がいません。</div>`;
+        return `<section class="b3d-party-panel">
+          <div class="b3d-panel-head">
+            <h4>Party</h4>
+            <span class="b3d-panel-note">${connectedCount}/${maxPlayers}</span>
+          </div>
+          <div class="b3d-party-list">${rows}</div>
+          <div class="b3d-roomcode-zone">
+            <div class="b3d-roomcode-label">Invite Code</div>
+            <div class="b3d-roomcode-row">
+              <code>${_escapeHtml(roomCode || "------")}</code>
+              <button class="btn b3d-roomcopy-btn" type="button" data-rt-battle-action="b3dCopyRoomCode">COPY</button>
+            </div>
+          </div>
+          ${_rtBattle3dV9RenderInvitePanel(st)}
+        </section>`;
+      }
+      function _rtBattle3dV9RenderTopStrip(st){
+        const me = _rtBattleMePlayer();
+        const nick = String(me?.nick || st?.nickname || "Guest");
+        const handle = String(me?.handle || "").trim().replace(/^@+/, "");
+        const avatar = (nick || "G").slice(0, 1).toUpperCase();
+        const mapId = String(st?.game3d?.mapId || _rtBattle3dV8State()?.p3?.mapId || "bridge").toLowerCase();
+        const mapName = String(RT3D_MAP_LABELS[mapId] || mapId || "Map");
+        const roomCode = String(st?.room?.roomId || st?.roomId || "------").trim().toUpperCase() || "------";
+        const p = _rtBattle3dV9State();
+        const pingMs = Math.max(0, Math.round(Number(p?.pingMs || 0)));
+        const sync = (Date.now() - Math.max(0, Number(p?.lastNetTs || 0))) < 2500 ? "OK" : "WEAK";
+        return `<section class="b3d-topstrip">
+          <div class="b3d-top-profile">
+            <div class="b3d-top-avatar">${_escapeHtml(avatar)}</div>
+            <div class="b3d-top-meta">
+              <div class="b3d-top-name">${_escapeHtml(nick)}</div>
+              <div class="b3d-top-handle">${_escapeHtml(handle ? `@${handle}` : "@guest")}</div>
+            </div>
+          </div>
+          <div class="b3d-top-stage">
+            <div class="b3d-top-stage-kicker">LOBBY STAGE</div>
+            <div class="b3d-top-stage-row">
+              <span class="b3d-top-map" id="rt3dTopMapName">${_escapeHtml(mapName)}</span>
+              <span class="b3d-top-room" id="rt3dTopRoomCode">ROOM ${_escapeHtml(roomCode)}</span>
+            </div>
+          </div>
+          <div class="b3d-top-sys">
+            <span class="b3d-top-chip" id="rt3dTopPingChip">PING ${pingMs}ms</span>
+            <span class="b3d-top-chip" id="rt3dTopSyncChip">SYNC ${_escapeHtml(sync)}</span>
+          </div>
+        </section>`;
+      }
+      function _rtBattle3dV9LobbyRenderKey(st){
+        const b = _rtBattle3dV9State();
+        const p9 = b.p9 || {};
+        const playersKey = asArray(st?.players).map((p) => {
+          const uid = Math.max(0, Number(p?.userId || 0));
+          const pid = Math.max(0, Number(p?.id || 0));
+          const nick = String(p?.nick || "");
+          const handle = String(p?.handle || "");
+          const flags = `${p?.connected ? 1 : 0}${p?.ready ? 1 : 0}${_rtBattlePlayerIsHost(p) ? 1 : 0}`;
+          return `${uid}:${pid}:${flags}:${nick}:${handle}`;
+        }).join("|");
+        const roomCode = String(st?.room?.roomId || st?.roomId || "");
+        const mapId = String(st?.game3d?.mapId || b.p3?.mapId || "bridge");
+        const preset = String(_rtBattle3dPresetValueFromRef(st?.room?.presetRef) || "");
+        const qCount = String(_rtBattleNormalizeQuestionCountValue(st?.room?.settings?.questionCount || st?.questionCount || 20));
+        const search = String(p9.presetSearch || "");
+        const recent = asArray(p9.recentPresetValues).map((v) => String(v || "")).join(",");
+        const invite = asArray(p9.inviteFollowers).map((u) => `${Math.max(0, Number(u?.userId || 0))}:${String(u?.displayName || "")}`).join("|");
+        return [
+          String(st?.phase || "lobby"),
+          roomCode,
+          mapId,
+          preset,
+          qCount,
+          playersKey,
+          String(!!p9.mobileSettingsOpen),
+          search,
+          recent,
+          String(!!p9.inviteLoading),
+          invite
+        ].join("||");
+      }
+      function _rtBattle3dV9UpdateTopStripLive(st){
+        const p = _rtBattle3dV9State();
+        const pingMs = Math.max(0, Math.round(Number(p?.pingMs || 0)));
+        const sync = (Date.now() - Math.max(0, Number(p?.lastNetTs || 0))) < 2500 ? "OK" : "WEAK";
+        const pingEl = document.getElementById("rt3dTopPingChip");
+        const syncEl = document.getElementById("rt3dTopSyncChip");
+        const roomEl = document.getElementById("rt3dTopRoomCode");
+        const mapEl = document.getElementById("rt3dTopMapName");
+        if (pingEl) pingEl.textContent = `PING ${pingMs}ms`;
+        if (syncEl) syncEl.textContent = `SYNC ${sync}`;
+        if (roomEl){
+          const roomCode = String(st?.room?.roomId || st?.roomId || "------").trim().toUpperCase() || "------";
+          roomEl.textContent = `ROOM ${roomCode}`;
+        }
+        if (mapEl){
+          const mapId = String(st?.game3d?.mapId || _rtBattle3dV8State()?.p3?.mapId || "bridge").toLowerCase();
+          mapEl.textContent = String(RT3D_MAP_LABELS[mapId] || mapId || "Map");
+        }
+      }
+      function _rtBattle3dV9RenderMatchPanel(st){
+        const b = _rtBattle3dV9State();
+        const p9 = b.p9 || {};
+        const isHost = _rtBattleIsHost();
+        const pVal = String(_rtBattle3dPresetValueFromRef(st.room?.presetRef) || "");
+        const qVal = String(_rtBattleNormalizeQuestionCountValue(st.room?.settings?.questionCount || st.questionCount || 20));
+        const mapVal = String(st.game3d?.mapId || _rtBattle3dV8State().p3.mapId || "bridge").toLowerCase() || "bridge";
+        const presetRows = asArray(_rtBattlePresetOptions()).map((o) => ({
+          value: String(o?.value || ""),
+          label: String(o?.label || o?.value || "")
+        }));
+        const presetUi = _rtBattle3dV9BuildPresetQuickHtml(presetRows, pVal);
+        const pOpts = presetRows.map((o) => {
+          const v = String(o?.value || "");
+          return `<option value="${_escapeHtml(v)}"${v === pVal ? " selected" : ""}>${_escapeHtml(String(o?.label || v))}</option>`;
+        }).join("");
+        const qOpts = asArray(_rtBattleQuestionCountOptions()).map((o) => {
+          const v = String(o?.value || "");
+          return `<option value="${_escapeHtml(v)}"${v === qVal ? " selected" : ""}>${_escapeHtml(String(o?.label || v))}</option>`;
+        }).join("");
+        return `<section class="b3d-match-panel">
+          <div class="b3d-panel-head">
+            <h4>Match Settings</h4>
+            <span class="b3d-panel-note">${isHost ? "Host edit" : "Host only"}</span>
+            <button class="textbtn b3d-match-close" type="button" data-rt-battle-action="b3dToggleSettingsDrawer">閉じる</button>
+          </div>
+          <div class="b3d-setting-card">
+            <div class="b3d-setting-title">Mode</div>
+            <div class="b3d-setting-desc">Survival: 正解でゲート開放 / 不正解で巻き戻し。</div>
+          </div>
+          <div class="b3d-setting-card">
+            <div class="b3d-setting-title">Map</div>
+            <div class="b3d-map-grid">${_rtBattle3dV9MapCardsHtml(mapVal, isHost)}</div>
+          </div>
+          <div class="b3d-setting-card">
+            <div class="b3d-setting-title">Preset</div>
+            <input id="rt3dLobbyPresetSearch" class="b3d-select b3d-preset-search" type="search" value="${_escapeHtml(String(p9.presetSearch || ""))}" placeholder="プリセットを検索" ${isHost ? "" : "disabled"} />
+            <div class="b3d-preset-chip-grid">${presetUi.quickHtml}</div>
+            <div class="b3d-mini-soft">最近使用</div>
+            <div class="b3d-preset-chip-grid is-recent">${presetUi.recentHtml}</div>
+            <select id="rt3dLobbyPresetSelect" class="b3d-select" ${isHost ? "" : "disabled"}>${pOpts}</select>
+          </div>
+          <details class="b3d-setting-card b3d-advanced"${_rtBattle3dV9IsMobileViewport() ? "" : " open"}>
+            <summary class="b3d-setting-title">Advanced</summary>
+            <div class="b3d-setting-title">Rounds</div>
+            <select id="rt3dLobbyQuestionCountSelect" class="b3d-select" ${isHost ? "" : "disabled"}>${qOpts}</select>
+          </details>
+        </section>`;
+      }
+      function _rtBattle3dV9RenderBottomBar(st){
+        const p9 = _rtBattle3dV9State().p9 || {};
+        const isHost = _rtBattleIsHost();
+        const players = asArray(st.players).filter((p) => !!p && !!p.connected);
+        const allReady = players.length > 0 && players.every((p) => !!p.ready);
+        const meReady = !!_rtBattleMePlayer()?.ready;
+        const roomCode = String(st.room?.roomId || st.roomId || "------");
+        const canStart = isHost && allReady;
+        return `<div class="b3d-bottombar-v9">
+          <div class="b3d-bottom-actions">
+            <button class="btn${meReady ? "" : " primary"} b3d-ready-btn" type="button" data-rt-battle-action="b3dToggleReady">${meReady ? "READY解除" : "READY"}</button>
+            <button class="btn primary b3d-play-btn" type="button" data-rt-battle-action="b3dStartGame"${canStart ? "" : " disabled"}>PLAY</button>
+            <button class="btn b3d-invite-btn" type="button" data-rt-battle-action="b3dCopyRoomCode">INVITE (${_escapeHtml(roomCode)})</button>
+            <button class="btn b3d-settings-open" type="button" data-rt-battle-action="b3dToggleSettingsDrawer">SETTINGS</button>
+          </div>
+          <div class="b3d-bottom-note">${isHost ? (allReady ? "全員READY。PLAYで開始できます。" : "全員READYでPLAY可能になります。") : "ホストの開始を待っています。"}</div>
+        </div>`;
+      }
+      function _rtBattle3dV9EnsureAuxDom(){
+        _rtBattle3dV9EnsureStyles();
+        const root = document.getElementById("rt3dOverlay");
+        if (!(root instanceof HTMLElement)) return;
+        const headTitle = root.querySelector(".b3d-head .b3d-title");
+        if (headTitle && headTitle.textContent !== "VocabuSurvival"){
+          headTitle.textContent = "VocabuSurvival";
+        }
+        const subLine = document.getElementById("rt3dSubLine");
+        if (subLine){
+          const room = String(_rtBattleState()?.room?.roomId || _rtBattleState()?.roomId || "------");
+          subLine.textContent = `Room ${room}`;
+        }
+        const leaveBtn = root.querySelector(".b3d-head-left [data-rt-battle-action='b3dClose']");
+        if (leaveBtn instanceof HTMLButtonElement){
+          leaveBtn.classList.add("b3d-leave-btn");
+          if (!leaveBtn.dataset.v9Labeled){
+            leaveBtn.dataset.v9Labeled = "1";
+            leaveBtn.textContent = "LEAVE";
+          }
+        }
+        const headRight = root.querySelector(".b3d-head-right");
+        if (headRight instanceof HTMLElement && !headRight.querySelector("[data-rt-battle-action='b3dToggleSettingsDrawer']")){
+          headRight.insertAdjacentHTML("afterbegin",
+            `<button class="btn ov-iconbtn b3d-settings-head-btn" type="button" data-rt-battle-action="b3dToggleSettingsDrawer" aria-label="設定"><span class="ms">tune</span></button>`);
+        }
+        const sceneLayer = document.getElementById("rt3dSceneLayer");
+        if (sceneLayer && !document.getElementById("rt3dLobbyTags")){
+          const tags = document.createElement("div");
+          tags.id = "rt3dLobbyTags";
+          tags.className = "b3d-lobby-tags";
+          sceneLayer.appendChild(tags);
+        }
+        const main = root.querySelector(".b3d-main");
+        if (main && !document.getElementById("rt3dRotateOverlay")){
+          const rotate = document.createElement("div");
+          rotate.id = "rt3dRotateOverlay";
+          rotate.className = "b3d-rotate-overlay";
+          rotate.setAttribute("aria-hidden", "true");
+          rotate.innerHTML = `
+            <div class="b3d-rotate-card">
+              <div class="b3d-rotate-icon"><span class="ms">screen_rotation</span></div>
+              <h4 id="rt3dRotateTitle">端末を横向きにしてください</h4>
+              <div class="b3d-rotate-text" id="rt3dRotateText">3Dロビー/ゲームはランドスケープ前提です。</div>
+              <div class="b3d-rotate-actions">
+                <button class="btn primary" type="button" data-rt-battle-action="b3dTryLandscape">全画面で開始</button>
+              </div>
+            </div>`;
+          main.appendChild(rotate);
+        }
+      }
+      function _rtBattle3dV9RenderLobbyPanel(){
+        const st = _rtBattleState();
+        const b = _rtBattle3dV9State();
+        const layer = document.getElementById("rt3dLobbyLayer");
+        const root = document.getElementById("rt3dOverlay");
+        const useDrawer = _rtBattle3dV9UseDrawerLayout();
+        if (!(layer instanceof HTMLElement)) return;
+        const show = String(st.phase || "lobby") === "lobby";
+        layer.classList.toggle("is-open", show);
+        layer.setAttribute("aria-hidden", show ? "false" : "true");
+        if (root instanceof HTMLElement){
+          root.classList.toggle("is-lobby-v9", show);
+          root.classList.toggle("is-lobby-settings-open", show && useDrawer && !!b.p9.mobileSettingsOpen);
+        }
+        if (!show){
+          b.p9.mobileSettingsOpen = false;
+          return;
+        }
+        if (!useDrawer){
+          b.p9.mobileSettingsOpen = false;
+        }
+        _rtBattle3dV9EnsureInviteFollowers(false);
+        const html = `<div class="b3d-lobby-v9" data-settings-open="${b.p9.mobileSettingsOpen ? "1" : "0"}">
+          ${_rtBattle3dV9RenderTopStrip(st)}
+          ${_rtBattle3dV9RenderPartyPanel(st)}
+          <section class="b3d-lobby-scene-panel">
+            <div class="b3d-scene-copy">
+              <div class="b3d-scene-kicker">VOCABUSURVIVAL LOBBY</div>
+              <h3>中央キャラで待機</h3>
+              <p>左でパーティ確認、右でマッチ設定。準備できたらREADY→PLAY。</p>
+            </div>
+          </section>
+          <button class="b3d-mobile-settings-backdrop" type="button" data-rt-battle-action="b3dToggleSettingsDrawer" aria-label="設定を閉じる"></button>
+          ${_rtBattle3dV9RenderMatchPanel(st)}
+          ${_rtBattle3dV9RenderBottomBar(st)}
+        </div>`;
+        const renderKey = _rtBattle3dV9LobbyRenderKey(st);
+        if (layer.dataset.renderKey !== renderKey){
+          layer.dataset.renderKey = renderKey;
+          layer.innerHTML = html;
+        }
+        _rtBattle3dV9UpdateTopStripLive(st);
+      }
+      function _rtBattle3dV9EnsureLobbyDecor(){
+        const b = _rtBattle3dV9State();
+        const rt = b.runtime || {};
+        const THREE = window.THREE;
+        if (!THREE || !rt.scene) return null;
+        if (rt.v9LobbyDecor && rt.v9LobbyDecor.group) return rt.v9LobbyDecor;
+        const group = new THREE.Group();
+        group.name = "rt3d-v9-lobby-decor";
+        const platform = new THREE.Mesh(
+          new THREE.CylinderGeometry(4.4, 5.2, 0.3, 24),
+          _rtBattle3dV8Mat(THREE, 0x2c3650, 0.56, "metal", 0.22)
+        );
+        platform.position.set(0, -0.08, 0.2);
+        group.add(platform);
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(3.4, 0.08, 10, 32),
+          _rtBattle3dV8Mat(THREE, 0x67a8ff, 0.35, "panel", 0.2)
+        );
+        ring.rotation.x = Math.PI * 0.5;
+        ring.position.set(0, 0.02, 0.2);
+        group.add(ring);
+        const padGroup = new THREE.Group();
+        const pads = [];
+        for (let i = 0; i < 8; i += 1){
+          const pad = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.34, 0.42, 0.06, 18),
+            _rtBattle3dV8Mat(THREE, 0x5f8be0, 0.36, "panel", 0.12)
+          );
+          pad.rotation.x = Math.PI * 0.5;
+          pad.position.set(0, 0.03, 0);
+          padGroup.add(pad);
+          pads.push(pad);
+        }
+        group.add(padGroup);
+        const backWall = new THREE.Mesh(
+          new THREE.BoxGeometry(10.2, 0.46, 0.18),
+          _rtBattle3dV8Mat(THREE, 0x1d2638, 0.82, "panel", 0.08)
+        );
+        backWall.position.set(0, 0.2, -3.9);
+        backWall.userData.noCamBlock = true;
+        group.add(backWall);
+        const lightBars = [];
+        for (let i = 0; i < 4; i += 1){
+          const bar = new THREE.Mesh(
+            new THREE.BoxGeometry(0.18, 3.0, 0.06),
+            _rtBattle3dV8Mat(THREE, 0x6cb4ff, 0.28, "solid", 0.0)
+          );
+          bar.position.set(-2.4 + (i * 1.6), 2.0, -3.76);
+          if (bar.material && bar.material.emissive) {
+            bar.material.emissive = new THREE.Color(0x2e77d8);
+            bar.material.emissiveIntensity = 0.42;
+          }
+          group.add(bar);
+          lightBars.push(bar);
+        }
+        rt.scene.add(group);
+        rt.v9LobbyDecor = { group, pads, lightBars, ring };
+        return rt.v9LobbyDecor;
+      }
+      function _rtBattle3dV9RenderLobbyTags(tsNow){
+        const st = _rtBattleState();
+        const phase = String(st.phase || "lobby");
+        const tags = document.getElementById("rt3dLobbyTags");
+        const b = _rtBattle3dV9State();
+        const rt = b.runtime || {};
+        const THREE = window.THREE;
+        if (!(tags instanceof HTMLElement) || !THREE || !rt.camera || !rt.wrap){
+          return;
+        }
+        if (phase === "lobby" || (phase !== "countdown" && phase !== "playing" && phase !== "result")){
+          tags.innerHTML = "";
+          return;
+        }
+        const items = [];
+        const me = _rtBattleMePlayer();
+        if (rt.localMesh && me){
+          items.push({
+            nick: String(me.nick || st.nickname || "You"),
+            handle: String(me.handle || ""),
+            ready: !!me.ready,
+            pos: rt.localMesh.position
+          });
+        }
+        const others = asArray(st.players).filter((p) => !!p && !!p.connected && !_rtBattlePlayerMatchesMe(p)).slice(0, 7);
+        others.forEach((p) => {
+          const key = _rtBattle3dV9PlayerKey(p);
+          const mesh = key ? (b.remoteMeshes && b.remoteMeshes[key]) : null;
+          if (!mesh) return;
+          items.push({
+            nick: String(p.nick || "Guest"),
+            handle: String(p.handle || ""),
+            ready: !!p.ready,
+            pos: mesh.position
+          });
+        });
+        const w = Math.max(1, Number(rt.wrap.clientWidth || 1));
+        const h = Math.max(1, Number(rt.wrap.clientHeight || 1));
+        const rows = [];
+        for (const item of items){
+          const world = new THREE.Vector3(Number(item.pos.x || 0), Number(item.pos.y || 0) + 1.6, Number(item.pos.z || 0));
+          world.project(rt.camera);
+          if (world.z < -1 || world.z > 1) continue;
+          const x = (world.x * 0.5 + 0.5) * w;
+          const y = (-world.y * 0.5 + 0.5) * h;
+          if (!(x >= -120 && x <= w + 120 && y >= -120 && y <= h + 120)) continue;
+          const handle = item.handle ? `@${item.handle.replace(/^@+/, "")}` : "@guest";
+          rows.push(`<div class="b3d-lobby-tag${item.ready ? " is-ready" : ""}" style="left:${Math.round(x)}px;top:${Math.round(y)}px;">
+            <strong>${_escapeHtml(item.nick)}</strong><span>${_escapeHtml(handle)}</span>
+          </div>`);
+        }
+        const html = rows.join("");
+        if (tags.dataset.hash !== html){
+          tags.dataset.hash = html;
+          tags.innerHTML = html;
+        }
+      }
+      function _rtBattle3dV9UpdateLobbyPresentation(tsNow){
+        const st = _rtBattleState();
+        const phase = String(st.phase || "lobby");
+        const b = _rtBattle3dV9State();
+        const rt = b.runtime || {};
+        const THREE = window.THREE;
+        if (!THREE || !rt.scene) return;
+        const decor = _rtBattle3dV9EnsureLobbyDecor();
+        if (decor && decor.group){
+          decor.group.visible = (phase === "lobby");
+          if (phase === "lobby"){
+            const t = Number(tsNow || performance.now()) * 0.001;
+            if (decor.ring) decor.ring.rotation.z += 0.0035;
+            asArray(decor.lightBars).forEach((bar, idx) => {
+              const pulse = 0.25 + Math.max(0, Math.sin(t * 1.7 + idx * 0.9)) * 0.32;
+              if (bar && bar.material && "emissiveIntensity" in bar.material) bar.material.emissiveIntensity = pulse;
+            });
+          }
+        }
+        if (phase !== "lobby") return;
+        const others = asArray(st.players).filter((p) => !!p && !!p.connected && !_rtBattlePlayerMatchesMe(p)).slice(0, 7);
+        others.forEach((p, idx) => {
+          const key = _rtBattle3dV9PlayerKey(p);
+          const mesh = key ? (b.remoteMeshes && b.remoteMeshes[key]) : null;
+          if (!mesh) return;
+          const slot = _rtBattle3dV9MapSlot(idx);
+          const k = 0.12;
+          mesh.position.x += (slot.x - mesh.position.x) * k;
+          mesh.position.y += (0 - mesh.position.y) * k;
+          mesh.position.z += (slot.z - mesh.position.z) * k;
+          mesh.rotation.y += (Math.PI - mesh.rotation.y) * 0.12;
+          if (mesh.scale && typeof mesh.scale.set === "function"){
+            mesh.scale.set(0.94, 0.94, 0.94);
+          }
+        });
+        if (decor && Array.isArray(decor.pads)){
+          const meReady = !!_rtBattleMePlayer()?.ready;
+          const mePad = decor.pads[0];
+          if (mePad){
+            mePad.visible = true;
+            mePad.position.set(0, 0.04, 1.55);
+            if (mePad.material?.color){
+              mePad.material.color.setHex(meReady ? 0x52d792 : 0x5f8be0);
+            }
+            if ("emissiveIntensity" in (mePad.material || {})){
+              const pulse = 0.16 + Math.max(0, Math.sin((Number(tsNow || performance.now()) * 0.0048))) * (meReady ? 0.4 : 0.18);
+              mePad.material.emissiveIntensity = pulse;
+            }
+          }
+          others.forEach((p, idx) => {
+            const pad = decor.pads[idx + 1];
+            if (!pad) return;
+            const slot = _rtBattle3dV9MapSlot(idx);
+            pad.visible = true;
+            pad.position.set(slot.x, 0.04, slot.z + 0.22);
+          });
+          for (let i = others.length + 1; i < decor.pads.length; i += 1){
+            if (decor.pads[i]) decor.pads[i].visible = false;
+          }
+        }
+      }
+      async function _rtBattle3dV9TryLandscapeLock(requestFullscreen = false){
+        if (!_rtBattle3dV9NeedsLandscape()) return false;
+        let ok = false;
+        const root = document.getElementById("rt3dOverlay");
+        const shell = root ? root.querySelector(".b3d-shell") : null;
+        if (requestFullscreen){
+          try{
+            if (!document.fullscreenElement && shell && typeof shell.requestFullscreen === "function"){
+              await shell.requestFullscreen({ navigationUI: "hide" });
+            }
+          }catch(_){}
+        }
+        try{
+          if (screen?.orientation && typeof screen.orientation.lock === "function"){
+            await screen.orientation.lock("landscape");
+            ok = true;
+          }
+        }catch(_){}
+        _rtBattle3dV9UpdateRotateOverlay();
+        return ok;
+      }
+      function _rtBattle3dV9UpdateRotateOverlay(){
+        _rtBattle3dV9EnsureAuxDom();
+        const root = document.getElementById("rt3dOverlay");
+        const overlay = document.getElementById("rt3dRotateOverlay");
+        if (!(root instanceof HTMLElement) || !(overlay instanceof HTMLElement)) return;
+        const mode = _rtBattle3dV9RotateMode();
+        const p9 = _rtBattle3dV9State().p9 || {};
+        p9.rotateMode = mode;
+        const show = (mode === "guide" || mode === "block");
+        overlay.classList.toggle("is-open", show);
+        overlay.setAttribute("aria-hidden", show ? "false" : "true");
+        root.classList.toggle("is-rotate-block", mode === "block");
+        overlay.dataset.mode = mode;
+        const title = document.getElementById("rt3dRotateTitle");
+        const text = document.getElementById("rt3dRotateText");
+        if (title) title.textContent = mode === "block" ? "横向きにしないとプレイできません" : "端末を横向きにしてください";
+        if (text) {
+          text.textContent = mode === "block"
+            ? "ゲーム中はランドスケープ必須です。横向きにすると自動で再開します。"
+            : "ロビーは横画面推奨です。対応ブラウザでは全画面+向き固定を試せます。";
+        }
+      }
+      function _rtBattle3dV9EnsureStyles(){
+        if (document.getElementById("rt3dV9Styles")) return;
+        const s = document.createElement("style");
+        s.id = "rt3dV9Styles";
+        s.textContent = `
+          #rt3dOverlay{
+            --b3d-v9-panel-bg: rgba(20, 27, 42, 0.56);
+            --b3d-v9-panel-bg-soft: rgba(20, 27, 42, 0.4);
+            --b3d-v9-panel-border: rgba(255, 255, 255, 0.14);
+            --b3d-v9-panel-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+            --b3d-v9-text: #ebf3ff;
+            --b3d-v9-muted: rgba(213, 226, 248, 0.74);
+            --b3d-v9-accent: #73adff;
+            --b3d-v9-ready: #53da99;
+            --b3d-v9-warning: #ffd36a;
+            --b3d-v9-play-glow: 0 0 0 1px rgba(117, 177, 255, 0.52), 0 0 26px rgba(80, 138, 252, 0.4);
+          }
+          #rt3dOverlay .b3d-bg{
+            background:
+              radial-gradient(120% 110% at 82% -20%, rgba(92, 128, 255, 0.22), transparent 56%),
+              radial-gradient(120% 120% at 18% 0%, rgba(87, 215, 247, 0.18), transparent 48%),
+              rgba(6, 9, 15, 0.78);
+          }
+          #rt3dOverlay .b3d-shell{
+            background: radial-gradient(130% 135% at 50% -4%, #253764 0%, #10192d 52%, #090d17 100%);
+            color: var(--b3d-v9-text);
+          }
+          #rt3dOverlay .b3d-head{
+            min-height: 52px;
+            padding: calc(env(safe-area-inset-top, 0px) + 6px) 10px 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            background: linear-gradient(180deg, rgba(10, 14, 22, 0.78), rgba(10, 14, 22, 0.54));
+            backdrop-filter: blur(10px) saturate(1.12);
+          }
+          #rt3dOverlay .b3d-head .b3d-title{font-size:14px; font-weight:900; letter-spacing:.02em;}
+          #rt3dOverlay .b3d-head .b3d-sub{font-size:10px; color:var(--b3d-v9-muted);}
+          #rt3dOverlay .b3d-pill{
+            height:24px;
+            padding:0 8px;
+            border-radius:999px;
+            border:1px solid rgba(255,255,255,.14);
+            background:rgba(8,13,22,.62);
+            color:#e8f2ff;
+            font-size:11px;
+            line-height:1;
+          }
+          #rt3dOverlay .b3d-leave-btn{
+            min-width:74px;
+            min-height:32px;
+            border-radius:10px;
+            border-color:rgba(255,255,255,.18);
+            background:rgba(14,22,35,.7);
+            color:#f4f8ff;
+            font-size:11px;
+            font-weight:900;
+            letter-spacing:.05em;
+          }
+          #rt3dOverlay .b3d-settings-head-btn{display:none;}
+          #rt3dOverlay.is-lobby-v9 .b3d-score-panel{display:none !important;}
+          #rt3dOverlay.is-lobby-v9 .b3d-status-bar{
+            border-color:rgba(255,255,255,.14);
+            background:rgba(8,13,22,.72);
+            color:rgba(225,236,255,.86);
+            box-shadow:0 10px 22px rgba(0,0,0,.28);
+          }
+          #rt3dOverlay .b3d-center-stack{
+            inset:64px 10px calc(env(safe-area-inset-bottom, 0px) + 88px);
+            display:block !important;
+            pointer-events:none;
+            padding:0;
+          }
+          #rt3dOverlay #rt3dLobbyLayer{position:absolute; inset:0;}
+          #rt3dOverlay .b3d-lobby-card{
+            position:absolute;
+            inset:0;
+            display:none;
+            width:100% !important;
+            height:100%;
+            max-width:none !important;
+            border:0 !important;
+            background:transparent !important;
+            box-shadow:none !important;
+            border-radius:0 !important;
+            padding:0 !important;
+            overflow:visible;
+            pointer-events:none;
+          }
+          #rt3dOverlay .b3d-lobby-card.is-open{
+            display:block !important;
+            animation:b3dFadeIn .2s cubic-bezier(.22,1,.36,1);
+          }
+          #rt3dOverlay .b3d-lobby-v9{
+            position:absolute;
+            inset:0;
+            pointer-events:none;
+          }
+          #rt3dOverlay .b3d-lobby-v9 > *{pointer-events:auto;}
+          #rt3dOverlay .b3d-topstrip{
+            position:absolute;
+            top:0;
+            left:0;
+            right:0;
+            display:grid;
+            grid-template-columns:auto minmax(0,1fr) auto;
+            align-items:center;
+            gap:10px;
+            min-height:58px;
+            border-radius:18px;
+            border:1px solid var(--b3d-v9-panel-border);
+            background:linear-gradient(145deg, rgba(26,35,56,.58), rgba(17,24,39,.44));
+            box-shadow:var(--b3d-v9-panel-shadow);
+            backdrop-filter:blur(10px) saturate(1.08);
+            padding:8px 12px;
+          }
+          #rt3dOverlay .b3d-top-profile{display:flex; align-items:center; gap:10px; min-width:0;}
+          #rt3dOverlay .b3d-top-avatar{
+            width:36px;
+            height:36px;
+            border-radius:999px;
+            display:grid;
+            place-items:center;
+            font-size:13px;
+            font-weight:900;
+            color:#0b172c;
+            background:linear-gradient(145deg,#78d6ff,#7fe39b);
+            box-shadow:0 0 0 2px rgba(255,255,255,.2);
+          }
+          #rt3dOverlay .b3d-top-meta{min-width:0;}
+          #rt3dOverlay .b3d-top-name{
+            font-size:13px;
+            font-weight:800;
+            line-height:1.15;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            max-width:220px;
+          }
+          #rt3dOverlay .b3d-top-handle{font-size:11px; color:var(--b3d-v9-muted);}
+          #rt3dOverlay .b3d-top-stage{display:grid; gap:2px; min-width:0; justify-items:center;}
+          #rt3dOverlay .b3d-top-stage-kicker{
+            font-size:10px;
+            letter-spacing:.1em;
+            text-transform:uppercase;
+            color:rgba(163,205,255,.95);
+          }
+          #rt3dOverlay .b3d-top-stage-row{
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            gap:8px;
+            min-width:0;
+          }
+          #rt3dOverlay .b3d-top-map{
+            font-size:16px;
+            font-weight:900;
+            letter-spacing:.02em;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            max-width:260px;
+          }
+          #rt3dOverlay .b3d-top-room{
+            height:24px;
+            border-radius:999px;
+            border:1px solid rgba(255,255,255,.16);
+            background:rgba(9,15,25,.62);
+            color:rgba(232,242,255,.92);
+            padding:0 10px;
+            font-size:11px;
+            font-weight:800;
+            display:inline-flex;
+            align-items:center;
+            letter-spacing:.04em;
+          }
+          #rt3dOverlay .b3d-top-sys{display:flex; align-items:center; gap:8px;}
+          #rt3dOverlay .b3d-top-chip{
+            height:24px;
+            border-radius:999px;
+            border:1px solid rgba(255,255,255,.18);
+            background:rgba(7,12,20,.66);
+            color:#dceaff;
+            display:inline-flex;
+            align-items:center;
+            padding:0 10px;
+            font-size:11px;
+            font-weight:700;
+          }
+          #rt3dOverlay .b3d-party-panel,
+          #rt3dOverlay .b3d-match-panel,
+          #rt3dOverlay .b3d-lobby-scene-panel,
+          #rt3dOverlay .b3d-bottombar-v9{
+            border-radius:18px;
+            border:1px solid var(--b3d-v9-panel-border);
+            background:var(--b3d-v9-panel-bg);
+            box-shadow:var(--b3d-v9-panel-shadow);
+            color:var(--b3d-v9-text);
+            backdrop-filter:blur(10px) saturate(1.06);
+          }
+          #rt3dOverlay .b3d-party-panel{
+            position:absolute;
+            top:72px;
+            left:0;
+            bottom:88px;
+            width:min(304px, 24vw);
+            display:grid;
+            grid-template-rows:auto minmax(0,1fr) auto;
+            min-height:0;
+            overflow:hidden;
+          }
+          #rt3dOverlay .b3d-lobby-scene-panel{
+            position:absolute;
+            top:78px;
+            left:min(320px, calc(24vw + 16px));
+            right:min(356px, calc(26vw + 16px));
+            bottom:102px;
+            position:relative;
+            min-height:0;
+            background:transparent;
+            border:0;
+            box-shadow:none;
+            backdrop-filter:none;
+            pointer-events:none;
+          }
+          #rt3dOverlay .b3d-lobby-scene-panel::before{
+            content:"";
+            position:absolute;
+            inset:8px;
+            border-radius:14px;
+            border:1px solid rgba(191,219,255,.14);
+            background:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012));
+            pointer-events:none;
+          }
+          #rt3dOverlay .b3d-scene-copy{
+            position:absolute;
+            right:16px;
+            bottom:14px;
+            width:min(360px, calc(100% - 26px));
+            border-radius:14px;
+            border:1px solid rgba(160,196,248,.24);
+            background:rgba(7,12,20,.56);
+            padding:10px 12px;
+            box-shadow:0 10px 20px rgba(0,0,0,.22);
+          }
+          #rt3dOverlay .b3d-scene-kicker{
+            font-size:10px;
+            letter-spacing:.08em;
+            text-transform:uppercase;
+            color:rgba(154,207,255,.94);
+          }
+          #rt3dOverlay .b3d-scene-copy h3{margin:4px 0 4px; font-size:18px; line-height:1.2;}
+          #rt3dOverlay .b3d-scene-copy p{margin:0; font-size:12px; line-height:1.45; color:rgba(225,237,255,.78);}
+          #rt3dOverlay .b3d-match-panel{
+            position:absolute;
+            top:72px;
+            right:0;
+            bottom:88px;
+            width:min(340px, 26vw);
+            display:grid;
+            gap:9px;
+            padding:10px;
+            overflow:auto;
+            min-height:0;
+          }
+          #rt3dOverlay .b3d-panel-head{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:8px;
+            padding:10px 10px 4px;
+          }
+          #rt3dOverlay .b3d-panel-head h4{
+            margin:0;
+            font-size:12px;
+            letter-spacing:.08em;
+            text-transform:uppercase;
+            color:#e2eeff;
+          }
+          #rt3dOverlay .b3d-panel-note{font-size:11px; color:var(--b3d-v9-muted);}
+          #rt3dOverlay .b3d-match-close{display:none; min-height:26px; font-size:11px; border-radius:999px;}
+          #rt3dOverlay .b3d-party-list{display:grid; gap:8px; padding:0 10px 10px; overflow:auto; min-height:0;}
+          #rt3dOverlay .b3d-party-row{
+            display:grid;
+            grid-template-columns:34px minmax(0,1fr) auto auto;
+            gap:8px;
+            align-items:center;
+            min-height:46px;
+            border-radius:14px;
+            border:1px solid rgba(164,189,232,.2);
+            background:rgba(9,15,27,.48);
+            padding:6px 8px;
+          }
+          #rt3dOverlay .b3d-party-row.is-me{box-shadow:inset 0 0 0 1px rgba(111,190,255,.44);}
+          #rt3dOverlay .b3d-party-avatar{
+            width:32px; height:32px; border-radius:999px; display:grid; place-items:center;
+            font-size:12px; font-weight:900; color:#0d1730; background:linear-gradient(150deg,#84ccff,#8ae6a7);
+          }
+          #rt3dOverlay .b3d-party-meta{min-width:0;}
+          #rt3dOverlay .b3d-party-name{font-size:12px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+          #rt3dOverlay .b3d-party-handle{font-size:11px; color:var(--b3d-v9-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+          #rt3dOverlay .b3d-ready-badge,
+          #rt3dOverlay .b3d-host-badge{
+            height:20px;
+            border-radius:999px;
+            padding:0 8px;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            font-size:10px;
+            font-weight:900;
+            letter-spacing:.02em;
+          }
+          #rt3dOverlay .b3d-ready-badge{border:1px solid rgba(196,219,255,.32); color:#d8e8ff; background:rgba(148,178,220,.16);}
+          #rt3dOverlay .b3d-ready-badge.is-ready{
+            border-color:rgba(82,220,153,.76);
+            color:#d4ffe6;
+            background:rgba(82,220,153,.24);
+            box-shadow:0 0 14px rgba(82,220,153,.28);
+          }
+          #rt3dOverlay .b3d-host-badge{border:1px solid rgba(255,219,146,.48); color:#ffe5b6; background:rgba(255,202,96,.16);}
+          #rt3dOverlay .b3d-roomcode-zone{display:grid; gap:6px; padding:0 10px 10px;}
+          #rt3dOverlay .b3d-roomcode-label{font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:rgba(223,234,254,.8);}
+          #rt3dOverlay .b3d-roomcode-row{
+            display:flex;
+            align-items:center;
+            gap:8px;
+            border-radius:12px;
+            border:1px solid rgba(170,194,231,.28);
+            background:rgba(8,14,24,.66);
+            padding:8px;
+          }
+          #rt3dOverlay .b3d-roomcode-row code{
+            flex:1;
+            min-width:0;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            font-size:16px;
+            letter-spacing:.1em;
+            font-weight:900;
+            color:#dcecff;
+          }
+          #rt3dOverlay .b3d-roomcopy-btn{min-height:34px; border-radius:10px; font-size:11px; font-weight:900;}
+          #rt3dOverlay .b3d-invite-zone{
+            display:grid;
+            gap:6px;
+            border-top:1px solid rgba(170,194,231,.2);
+            padding:8px 10px 10px;
+            min-height:0;
+          }
+          #rt3dOverlay .b3d-invite-head{display:flex; align-items:center; justify-content:space-between; gap:8px;}
+          #rt3dOverlay .b3d-invite-head h5{margin:0; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:rgba(230,239,255,.92);}
+          #rt3dOverlay .b3d-invite-refresh{min-height:26px; padding:0 10px; border-radius:999px; font-size:11px; line-height:1;}
+          #rt3dOverlay .b3d-invite-note{font-size:10px; color:var(--b3d-v9-muted);}
+          #rt3dOverlay .b3d-invite-list{display:grid; gap:6px; max-height:184px; overflow:auto; padding-right:2px;}
+          #rt3dOverlay .b3d-invite-row{
+            display:grid;
+            grid-template-columns:28px minmax(0,1fr) auto;
+            align-items:center;
+            gap:8px;
+            border-radius:11px;
+            border:1px solid rgba(164,190,232,.24);
+            background:rgba(9,16,29,.54);
+            min-height:40px;
+            padding:6px 7px;
+          }
+          #rt3dOverlay .b3d-invite-avatar{
+            width:26px;
+            height:26px;
+            border-radius:999px;
+            display:grid;
+            place-items:center;
+            font-size:11px;
+            font-weight:900;
+            color:#0f1b32;
+            background:linear-gradient(145deg,#8ad5ff,#8de4ab);
+          }
+          #rt3dOverlay .b3d-invite-name{font-size:11px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+          #rt3dOverlay .b3d-invite-handle{font-size:10px; color:var(--b3d-v9-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+          #rt3dOverlay .b3d-invite-user-btn{min-height:30px; padding:0 10px; border-radius:10px; font-size:11px; font-weight:700;}
+          #rt3dOverlay .b3d-invite-empty{
+            font-size:11px;
+            line-height:1.4;
+            color:rgba(213,226,248,.78);
+            border-radius:11px;
+            border:1px solid rgba(164,188,226,.2);
+            background:rgba(8,14,24,.42);
+            padding:8px;
+          }
+          #rt3dOverlay .b3d-setting-card{
+            display:grid;
+            gap:6px;
+            border-radius:14px;
+            border:1px solid rgba(166,191,230,.22);
+            background:rgba(7,12,22,.54);
+            padding:9px;
+          }
+          #rt3dOverlay .b3d-setting-title{font-size:12px; font-weight:800; letter-spacing:.02em;}
+          #rt3dOverlay .b3d-setting-desc{font-size:11px; color:var(--b3d-v9-muted);}
+          #rt3dOverlay .b3d-match-panel .b3d-select{
+            min-height:40px;
+            border-radius:12px;
+            border:1px solid rgba(170,194,231,.28);
+            background:rgba(8,14,24,.76);
+            color:#eef5ff;
+          }
+          #rt3dOverlay .b3d-preset-search{font-size:12px;}
+          #rt3dOverlay .b3d-preset-chip-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px;}
+          #rt3dOverlay .b3d-preset-chip{
+            min-height:34px;
+            border-radius:10px;
+            border:1px solid rgba(172,197,236,.24);
+            background:rgba(10,16,28,.54);
+            color:#e8f2ff;
+            font-size:11px;
+            font-weight:700;
+            text-align:left;
+            padding:0 10px;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+          }
+          #rt3dOverlay .b3d-preset-chip.is-active{
+            border-color:rgba(112,173,255,.7);
+            box-shadow:0 0 0 1px rgba(112,173,255,.3), 0 0 16px rgba(112,173,255,.26);
+            background:rgba(19,39,70,.64);
+          }
+          #rt3dOverlay .b3d-mini-soft{font-size:10px; color:var(--b3d-v9-muted);}
+          #rt3dOverlay .b3d-advanced summary{cursor:pointer; list-style:none;}
+          #rt3dOverlay .b3d-advanced summary::-webkit-details-marker{display:none;}
+          #rt3dOverlay .b3d-map-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; max-height:248px; overflow:auto; padding-right:2px;}
+          #rt3dOverlay .b3d-map-card{
+            display:grid;
+            grid-template-columns:20px minmax(0,1fr);
+            grid-template-areas:
+              "icon name"
+              "icon desc";
+            column-gap:6px;
+            min-height:58px;
+            border-radius:12px;
+            border:1px solid rgba(162,187,226,.24);
+            background:rgba(11,19,34,.6);
+            color:#ebf4ff;
+            padding:8px;
+            text-align:left;
+            transition:border-color .16s ease, background .16s ease, filter .16s ease;
+          }
+          #rt3dOverlay .b3d-map-card:hover{filter:brightness(1.05);}
+          #rt3dOverlay .b3d-map-card .b3d-map-icon{grid-area:icon; width:18px; display:grid; place-items:start center; color:rgba(177,206,252,.92);}
+          #rt3dOverlay .b3d-map-card .b3d-map-icon .ms{font-size:16px; line-height:1;}
+          #rt3dOverlay .b3d-map-card .b3d-map-name{grid-area:name; font-size:12px; font-weight:800; margin-bottom:3px;}
+          #rt3dOverlay .b3d-map-card .b3d-map-desc{grid-area:desc; font-size:10px; color:rgba(220,232,251,.74); line-height:1.35;}
+          #rt3dOverlay .b3d-map-card.is-active{
+            border-color:rgba(118,188,255,.76);
+            box-shadow:inset 0 0 0 1px rgba(118,188,255,.3), 0 0 14px rgba(118,188,255,.24);
+            background:rgba(25,48,86,.56);
+          }
+          #rt3dOverlay .b3d-map-card:disabled{opacity:.58; cursor:not-allowed;}
+          #rt3dOverlay .b3d-bottombar-v9{
+            position:absolute;
+            left:50%;
+            transform:translateX(-50%);
+            bottom:0;
+            width:min(1000px, calc(100% - 12px));
+            display:grid;
+            gap:6px;
+            padding:10px;
+            background:linear-gradient(180deg, rgba(18,27,43,.78), rgba(10,15,25,.88));
+          }
+          #rt3dOverlay .b3d-bottom-actions{
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+            align-items:center;
+          }
+          #rt3dOverlay .b3d-bottom-actions .btn{
+            min-height:52px;
+            border-radius:14px;
+            font-size:14px;
+            font-weight:900;
+            letter-spacing:.03em;
+          }
+          #rt3dOverlay .b3d-ready-btn,
+          #rt3dOverlay .b3d-play-btn{min-width:188px;}
+          #rt3dOverlay .b3d-ready-btn{
+            background:rgba(18,34,56,.82);
+            border-color:rgba(255,255,255,.2);
+            color:#e8f2ff;
+          }
+          #rt3dOverlay .b3d-ready-btn.primary{
+            background:linear-gradient(135deg, rgba(47,117,255,.92), rgba(63,139,255,.92));
+            border-color:rgba(153,203,255,.72);
+          }
+          #rt3dOverlay .b3d-play-btn{
+            border-color:rgba(117,187,255,.82);
+            background:linear-gradient(140deg, rgba(63,132,255,.98), rgba(86,166,255,.94));
+            color:#f5fbff;
+            box-shadow:var(--b3d-v9-play-glow);
+          }
+          #rt3dOverlay .b3d-play-btn:disabled{
+            opacity:.56;
+            box-shadow:none;
+            filter:saturate(.5);
+          }
+          #rt3dOverlay .b3d-invite-btn{margin-left:auto; min-width:176px;}
+          #rt3dOverlay .b3d-settings-open{display:none; min-width:132px;}
+          #rt3dOverlay .b3d-bottom-note{font-size:11px; color:rgba(216,231,255,.8);}
+          #rt3dOverlay .b3d-lobby-tags{position:absolute; inset:0; z-index:8; pointer-events:none;}
+          #rt3dOverlay .b3d-lobby-tag{
+            position:absolute;
+            transform:translate(-50%,-100%);
+            min-width:88px;
+            max-width:180px;
+            border-radius:12px;
+            border:1px solid rgba(162,190,232,.36);
+            background:rgba(8,16,30,.78);
+            padding:5px 8px;
+            text-align:center;
+            box-shadow:0 6px 16px rgba(0,0,0,.24);
+          }
+          #rt3dOverlay .b3d-lobby-tag strong{display:block; font-size:11px; font-weight:800; color:#ecf4ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+          #rt3dOverlay .b3d-lobby-tag span{display:block; font-size:10px; color:rgba(219,232,255,.72); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+          #rt3dOverlay .b3d-lobby-tag.is-ready{border-color:rgba(82,219,145,.6);}
+          #rt3dOverlay .b3d-rotate-overlay{
+            position:absolute;
+            inset:0;
+            z-index:16;
+            display:none;
+            align-items:center;
+            justify-content:center;
+            padding:calc(env(safe-area-inset-top,0px) + 14px) calc(env(safe-area-inset-right,0px) + 14px) calc(env(safe-area-inset-bottom,0px) + 14px) calc(env(safe-area-inset-left,0px) + 14px);
+            background:rgba(4,8,16,.62);
+            backdrop-filter:blur(6px);
+          }
+          #rt3dOverlay .b3d-rotate-overlay.is-open{display:flex;}
+          #rt3dOverlay .b3d-rotate-card{
+            width:min(520px, calc(100vw - 32px));
+            border-radius:18px;
+            border:1px solid rgba(167,193,236,.24);
+            background:linear-gradient(165deg, rgba(11,20,34,.9), rgba(12,19,32,.82));
+            color:#ebf3ff;
+            padding:18px 16px;
+            text-align:center;
+            box-shadow:0 18px 46px rgba(0,0,0,.35);
+          }
+          #rt3dOverlay .b3d-rotate-icon{font-size:30px; line-height:1; margin-bottom:6px; opacity:.88;}
+          #rt3dOverlay .b3d-rotate-icon .ms{font-size:34px; line-height:1;}
+          #rt3dOverlay .b3d-rotate-card h4{margin:0 0 6px; font-size:18px;}
+          #rt3dOverlay .b3d-rotate-text{font-size:12px; color:rgba(227,238,255,.78); line-height:1.5;}
+          #rt3dOverlay .b3d-rotate-actions{display:flex; justify-content:center; margin-top:12px;}
+          #rt3dOverlay.is-rotate-block .b3d-bottom,
+          #rt3dOverlay.is-rotate-block .b3d-quiz,
+          #rt3dOverlay.is-rotate-block .b3d-score-panel{display:none !important;}
+          #rt3dOverlay .b3d-mobile-settings-backdrop{display:none;}
+          @media (max-width: 1320px){
+            #rt3dOverlay .b3d-party-panel{width:min(282px, 25vw);}
+            #rt3dOverlay .b3d-match-panel{width:min(320px, 27vw);}
+            #rt3dOverlay .b3d-lobby-scene-panel{
+              left:min(296px, calc(25vw + 14px));
+              right:min(336px, calc(27vw + 14px));
+            }
+          }
+          @media (max-width: 1024px){
+            #rt3dOverlay .b3d-head{
+              grid-template-columns:auto 1fr auto;
+              grid-template-areas:"left center right";
+              gap:8px;
+            }
+            #rt3dOverlay .b3d-head-left{grid-area:left;}
+            #rt3dOverlay .b3d-head-center{grid-area:center; justify-self:center; overflow:hidden;}
+            #rt3dOverlay .b3d-head-right{grid-area:right; justify-self:end;}
+            #rt3dOverlay .b3d-head-center .b3d-pill:nth-child(2),
+            #rt3dOverlay .b3d-head-center .b3d-pill:nth-child(3){display:none;}
+            #rt3dOverlay.is-lobby-v9 .b3d-settings-head-btn{display:inline-flex;}
+            #rt3dOverlay .b3d-center-stack{inset:60px 6px calc(env(safe-area-inset-bottom,0px) + 74px);}
+            #rt3dOverlay .b3d-topstrip{
+              left:0;
+              right:0;
+              top:0;
+              grid-template-columns:minmax(0,1fr) auto;
+              grid-template-areas:
+                "profile sys"
+                "stage stage";
+              gap:6px 8px;
+              min-height:0;
+              padding:8px 10px;
+            }
+            #rt3dOverlay .b3d-top-profile{grid-area:profile;}
+            #rt3dOverlay .b3d-top-stage{grid-area:stage; justify-items:start;}
+            #rt3dOverlay .b3d-top-stage-row{justify-content:flex-start;}
+            #rt3dOverlay .b3d-top-map{font-size:14px; max-width:100%;}
+            #rt3dOverlay .b3d-top-sys{grid-area:sys; justify-self:end; align-self:start;}
+            #rt3dOverlay .b3d-lobby-scene-panel{
+              top:70px;
+              left:8px;
+              right:8px;
+              bottom:96px;
+              min-height:0;
+            }
+            #rt3dOverlay .b3d-party-panel{
+              position:absolute;
+              top:84px;
+              left:8px;
+              width:min(320px, 64vw);
+              bottom:98px;
+              max-height:none;
+              z-index:12;
+            }
+            #rt3dOverlay .b3d-match-panel{
+              position:absolute;
+              top:68px;
+              right:0;
+              bottom:82px;
+              width:min(420px, 92vw);
+              z-index:15;
+              transform:translateX(108%);
+              transition:transform .24s cubic-bezier(.22,1,.36,1);
+              display:grid;
+            }
+            #rt3dOverlay.is-lobby-settings-open .b3d-match-panel{transform:translateX(0);}
+            #rt3dOverlay .b3d-mobile-settings-backdrop{
+              position:absolute;
+              inset:0;
+              z-index:14;
+              display:block;
+              opacity:0;
+              pointer-events:none;
+              background:rgba(6,10,16,.56);
+              transition:opacity .2s ease;
+            }
+            #rt3dOverlay.is-lobby-settings-open .b3d-mobile-settings-backdrop{
+              opacity:1;
+              pointer-events:auto;
+            }
+            #rt3dOverlay .b3d-match-close{display:inline-flex;}
+            #rt3dOverlay .b3d-bottombar-v9{
+              position:absolute;
+              left:50%;
+              transform:translateX(-50%);
+              bottom:0;
+              width:calc(100% - 4px);
+            }
+            #rt3dOverlay .b3d-bottom-actions{
+              display:grid;
+              grid-template-columns:repeat(2,minmax(0,1fr));
+              gap:8px;
+            }
+            #rt3dOverlay .b3d-bottom-actions .btn{min-height:44px; font-size:13px; min-width:0;}
+            #rt3dOverlay .b3d-invite-btn{margin-left:0;}
+            #rt3dOverlay .b3d-settings-open{display:inline-flex;}
+          }
+          @media (max-width: 640px){
+            #rt3dOverlay .b3d-party-panel{
+              width:min(300px, 74vw);
+              top:80px;
+            }
+            #rt3dOverlay .b3d-top-name{max-width:132px;}
+            #rt3dOverlay .b3d-top-room{font-size:10px; padding:0 8px;}
+            #rt3dOverlay .b3d-scene-copy{
+              right:10px;
+              bottom:10px;
+              width:min(270px, calc(100% - 18px));
+            }
+            #rt3dOverlay .b3d-map-grid{grid-template-columns:1fr;}
+          }
+          @media (max-width: 1024px) and (orientation: landscape){
+            #rt3dOverlay .b3d-center-stack{
+              inset:60px 6px calc(env(safe-area-inset-bottom,0px) + 70px);
+            }
+            #rt3dOverlay .b3d-topstrip{
+              left:0;
+              right:0;
+              top:0;
+              min-height:54px;
+              padding:8px 10px;
+              gap:8px;
+              grid-template-columns:auto minmax(0,1fr) auto;
+              grid-template-areas:none;
+            }
+            #rt3dOverlay .b3d-top-profile{grid-area:auto;}
+            #rt3dOverlay .b3d-top-stage{grid-area:auto; justify-items:center;}
+            #rt3dOverlay .b3d-top-stage-row{justify-content:center;}
+            #rt3dOverlay .b3d-top-sys{grid-area:auto; justify-self:end;}
+            #rt3dOverlay .b3d-party-panel{
+              top:66px;
+              left:0;
+              bottom:78px;
+              width:min(250px, 30vw);
+              max-height:none;
+            }
+            #rt3dOverlay .b3d-lobby-scene-panel{
+              top:72px;
+              left:min(264px, calc(30vw + 14px));
+              right:min(268px, calc(32vw + 14px));
+              bottom:86px;
+            }
+            #rt3dOverlay .b3d-match-panel{
+              top:66px;
+              right:0;
+              bottom:78px;
+              width:min(252px, 32vw);
+              transform:none !important;
+            }
+            #rt3dOverlay.is-lobby-settings-open .b3d-match-panel{transform:none !important;}
+            #rt3dOverlay .b3d-mobile-settings-backdrop{display:none !important;}
+            #rt3dOverlay .b3d-settings-open,
+            #rt3dOverlay .b3d-settings-head-btn,
+            #rt3dOverlay .b3d-match-close{display:none !important;}
+            #rt3dOverlay .b3d-bottombar-v9{
+              width:calc(100% - 4px);
+              padding:8px 10px;
+            }
+            #rt3dOverlay .b3d-bottom-actions{
+              display:flex;
+              gap:8px;
+              flex-wrap:nowrap;
+            }
+            #rt3dOverlay .b3d-bottom-actions .btn{
+              min-height:40px;
+              font-size:12px;
+            }
+            #rt3dOverlay .b3d-ready-btn,
+            #rt3dOverlay .b3d-play-btn,
+            #rt3dOverlay .b3d-invite-btn{
+              min-width:0;
+              flex:1;
+            }
+            #rt3dOverlay .b3d-invite-btn{margin-left:0;}
+            #rt3dOverlay .b3d-bottom-note{font-size:10px; line-height:1.25;}
+            #rt3dOverlay .b3d-map-grid{max-height:156px;}
+          }
+        `;
+        document.head.appendChild(s);
+      }
+      // stop legacy map-select append on top of new lobby layout
+      _rtBattle3dV8PatchLobbyMapUi = function(){};
+      // replace lobby renderer with V9 composition
+      _rtBattle3dRenderLobbyPanel = function(){
+        _rtBattle3dV9RenderLobbyPanel();
+      };
+      const __rtBattle3dHandleActionV9Base = _rtBattle3dHandleAction;
+      _rtBattle3dHandleAction = function(act, el){
+        const st = _rtBattleState();
+        const b = _rtBattle3dV9State();
+        if (act === "b3dMapPick"){
+          const idRaw = String(el?.getAttribute?.("data-map-id") || "").toLowerCase();
+          const mapId = RT3D_MAP_IDS.includes(idRaw) ? idRaw : "bridge";
+          if (!_rtBattleIsHost()){
+            try{ uiToast("ホストのみマップを変更できます。"); }catch(_){}
+            return true;
+          }
+          b.p3.mapId = mapId;
+          b.p3.mapSeed = Math.max(1, Date.now() % 2147483647);
+          _rtBattleSafeSend({ type: "game3d:map", mapId, mapSeed: b.p3.mapSeed });
+          _rtBattle3dV8ApplyMapNow();
+          _rtBattle3dRenderLobbyPanel();
+          return true;
+        }
+        if (act === "b3dCopyRoomCode"){
+          const code = String(st.room?.roomId || st.roomId || "").trim();
+          if (!code){
+            try{ uiToast("ルームコードがありません"); }catch(_){}
+            return true;
+          }
+          try{
+            if (navigator.clipboard && navigator.clipboard.writeText){
+              navigator.clipboard.writeText(code);
+            }
+          }catch(_){}
+          try{ uiToast(`Copied! ${code}`); }catch(_){}
+          return true;
+        }
+        if (act === "b3dToggleSettingsDrawer"){
+          if (!_rtBattle3dV9UseDrawerLayout()){
+            b.p9.mobileSettingsOpen = false;
+            _rtBattle3dRenderLobbyPanel();
+            return true;
+          }
+          b.p9.mobileSettingsOpen = !b.p9.mobileSettingsOpen;
+          _rtBattle3dRenderLobbyPanel();
+          return true;
+        }
+        if (act === "b3dPresetQuick"){
+          const val = String(el?.getAttribute?.("data-preset-value") || "");
+          if (!val) return true;
+          const sel = document.getElementById("rt3dLobbyPresetSelect");
+          if (sel instanceof HTMLSelectElement){
+            sel.value = val;
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+          return true;
+        }
+        if (act === "b3dReloadInviteTargets"){
+          _rtBattle3dV9EnsureInviteFollowers(true);
+          _rtBattle3dRenderLobbyPanel();
+          return true;
+        }
+        if (act === "b3dInviteUser"){
+          const uid = Math.max(0, Number(el?.getAttribute?.("data-user-id") || 0));
+          if (uid > 0) _rtBattle3dV9InviteUser(uid);
+          return true;
+        }
+        if (act === "b3dLobbyTab"){
+          const tab = String(el?.getAttribute?.("data-tab") || "party");
+          b.p9.mobileTab = (tab === "match") ? "match" : "party";
+          _rtBattle3dRenderLobbyPanel();
+          return true;
+        }
+        if (act === "b3dTryLandscape"){
+          _rtBattle3dV9TryLandscapeLock(true);
+          return true;
+        }
+        if (act === "b3dToggleReady" || act === "b3dStartGame"){
+          b.p9.mobileSettingsOpen = false;
+          _rtBattle3dV9TryLandscapeLock(true);
+        }
+        return __rtBattle3dHandleActionV9Base.apply(this, arguments);
+      };
+      const __rtBattle3dUpdateStatusUiV9Base = _rtBattle3dUpdateStatusUi;
+      _rtBattle3dUpdateStatusUi = function(){
+        __rtBattle3dUpdateStatusUiV9Base.apply(this, arguments);
+        _rtBattle3dV9RenderLobbyPanel();
+        _rtBattle3dV9UpdateRotateOverlay();
+      };
+      function _rtBattle3dV9RestoreOccluderFade(){
+        const b = _rtBattle3dV9State();
+        const faded = b.p9?.occlusionFaded instanceof Set ? b.p9.occlusionFaded : new Set();
+        for (const uuid of faded){
+          const mesh = b.p9?.occlusionMeshById?.[uuid] || null;
+          if (!mesh || !mesh.material) continue;
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          mats.forEach((mat) => {
+            if (!mat || typeof mat !== "object") return;
+            const old = mat.__v9CamFadeOld;
+            if (!old) return;
+            mat.transparent = !!old.transparent;
+            if (typeof old.opacity === "number") mat.opacity = old.opacity;
+            delete mat.__v9CamFadeOld;
+            mat.needsUpdate = true;
+          });
+        }
+        if (b.p9){
+          b.p9.occlusionFaded = new Set();
+          b.p9.occlusionMeshById = {};
+        }
+      }
+      function _rtBattle3dV9ApplyOccluderFade(mesh, phase){
+        const b = _rtBattle3dV9State();
+        if (String(phase || "") !== "lobby"){
+          _rtBattle3dV9RestoreOccluderFade();
+          return;
+        }
+        _rtBattle3dV9RestoreOccluderFade();
+        if (!mesh || !mesh.material) return;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mats.forEach((mat) => {
+          if (!mat || typeof mat !== "object") return;
+          if (!mat.__v9CamFadeOld){
+            mat.__v9CamFadeOld = { transparent: !!mat.transparent, opacity: Number(mat.opacity) };
+          }
+          mat.transparent = true;
+          mat.opacity = Math.min(0.36, Math.max(0.24, Number(mat.opacity || 1) * 0.42));
+          mat.needsUpdate = true;
+        });
+        if (!(b.p9.occlusionFaded instanceof Set)) b.p9.occlusionFaded = new Set();
+        if (!b.p9.occlusionMeshById || typeof b.p9.occlusionMeshById !== "object") b.p9.occlusionMeshById = {};
+        b.p9.occlusionFaded.add(String(mesh.uuid || ""));
+        b.p9.occlusionMeshById[String(mesh.uuid || "")] = mesh;
+      }
+      function _rtBattle3dV9CameraBlockers(phase){
+        const b = _rtBattle3dV9State();
+        const rt = b.runtime || {};
+        const p9 = b.p9 || {};
+        const st = _rtBattleState();
+        const mapHash = String(b?.p3?.lastMapHash || "");
+        const key = `${String(phase || "x")}|${mapHash}|${String(st?.phase || "")}`;
+        if (p9.camBlockerKey === key && Array.isArray(p9.camBlockers)) return p9.camBlockers;
+        const out = [];
+        const seen = new Set();
+        const skip = new Set();
+        if (rt.localMesh?.uuid) skip.add(String(rt.localMesh.uuid));
+        for (const m of Object.values(b.remoteMeshes || {})){
+          if (m?.uuid) skip.add(String(m.uuid));
+        }
+        const addMesh = (mesh) => {
+          if (!mesh || !mesh.isMesh || !mesh.geometry || !mesh.visible) return;
+          if (mesh.userData && mesh.userData.noCamBlock) return;
+          const id = String(mesh.uuid || "");
+          if (!id || seen.has(id) || skip.has(id)) return;
+          const mat = mesh.material;
+          const opacity = Array.isArray(mat)
+            ? Math.max(...mat.map((mm) => Number(mm?.opacity ?? 1)))
+            : Number(mat?.opacity ?? 1);
+          if (opacity <= 0.06) return;
+          seen.add(id);
+          out.push(mesh);
+        };
+        if (String(phase || "") === "lobby"){
+          const grp = rt?.v9LobbyDecor?.group || null;
+          if (grp && typeof grp.traverse === "function"){
+            grp.traverse((node) => addMesh(node));
+          }
+          const mapGroup = b?.p3?.map?.group || null;
+          if (mapGroup && typeof mapGroup.traverse === "function"){
+            mapGroup.traverse((node) => addMesh(node));
+          }
+        } else {
+          asArray(b?.p3?.map?.colliders).forEach((c) => {
+            const mesh = c?.mesh;
+            if (!(mesh && mesh.isMesh)) return;
+            const sy = Number(c?.sy || 0);
+            const y = Number(c?.y || 0);
+            if (sy <= 0.22 && y <= 0.12) return;
+            addMesh(mesh);
+          });
+          asArray(b?.p3?.map?.hazards).forEach((hz) => {
+            if (hz?.mesh) addMesh(hz.mesh);
+            if (hz?.root && typeof hz.root.traverse === "function"){
+              hz.root.traverse((node) => addMesh(node));
+            }
+          });
+          const gvg = b?.p3?.map?.gateVisualGroup || null;
+          if (gvg && typeof gvg.traverse === "function"){
+            gvg.traverse((node) => addMesh(node));
+          }
+        }
+        p9.camBlockers = out;
+        p9.camBlockerKey = key;
+        return out;
+      }
+      function _rtBattle3dV9ResolveCameraOcclusion(target, desired, dt, phase){
+        const b = _rtBattle3dV9State();
+        const rt = b.runtime || {};
+        const THREE = window.THREE;
+        if (!THREE || !rt.camera || !target || !desired) return desired;
+        const dir = desired.clone().sub(target);
+        const dist = Math.max(0, Number(dir.length() || 0));
+        if (!Number.isFinite(dist) || dist < 0.12){
+          _rtBattle3dV9RestoreOccluderFade();
+          return desired;
+        }
+        dir.normalize();
+        if (!(b.p9.camRaycaster instanceof THREE.Raycaster)) b.p9.camRaycaster = new THREE.Raycaster();
+        const ray = b.p9.camRaycaster;
+        ray.set(target, dir);
+        ray.near = 0.08;
+        ray.far = dist;
+        const blockers = _rtBattle3dV9CameraBlockers(phase);
+        const hits = ray.intersectObjects(blockers, true);
+        let hit = null;
+        for (const h of hits){
+          if (!h || !h.object || !h.object.visible) continue;
+          hit = h;
+          break;
+        }
+        if (!hit){
+          _rtBattle3dV9RestoreOccluderFade();
+          return desired;
+        }
+        const padding = 0.34;
+        const safeDist = Math.max(0.74, Number(hit.distance || 0) - padding);
+        const resolved = target.clone().add(dir.multiplyScalar(safeDist));
+        _rtBattle3dV9ApplyOccluderFade(hit.object, phase);
+        return resolved;
+      }
+      const __rtBattle3dUpdateLocalMeshAndCameraV9Base = _rtBattle3dUpdateLocalMeshAndCamera;
+      _rtBattle3dUpdateLocalMeshAndCamera = function(dt){
+        const st = _rtBattleState();
+        if (String(st.phase || "lobby") !== "lobby"){
+          return __rtBattle3dUpdateLocalMeshAndCameraV9Base.apply(this, arguments);
+        }
+        const b = _rtBattle3dV9State();
+        const rt = b.runtime || {};
+        const THREE = window.THREE;
+        if (!THREE || !rt.camera || !rt.localMesh){
+          return __rtBattle3dUpdateLocalMeshAndCameraV9Base.apply(this, arguments);
+        }
+        b.local.x += (0 - Number(b.local.x || 0)) * Math.min(1, Math.max(0.02, dt * 3.2));
+        b.local.z += (1.55 - Number(b.local.z || 1.55)) * Math.min(1, Math.max(0.02, dt * 3.2));
+        b.local.y = 0.9;
+        b.local.vx = 0;
+        b.local.vy = 0;
+        b.local.vz = 0;
+        b.local.grounded = true;
+        const t = Date.now() * 0.001;
+        const bob = Math.sin(t * 2.0) * 0.06;
+        rt.localMesh.position.set(Number(b.local.x || 0), bob, Number(b.local.z || 1.55));
+        rt.localMesh.rotation.y += (Math.PI - Number(rt.localMesh.rotation.y || 0)) * Math.min(1, dt * 5.2);
+        if (rt.localMesh.scale && typeof rt.localMesh.scale.set === "function"){
+          rt.localMesh.scale.set(1.18, 1.18, 1.18);
+        }
+        const swayX = Math.sin(t * 0.72) * 0.34;
+        const swayY = Math.sin(t * 1.02) * 0.08;
+        const camTarget = new THREE.Vector3(0, 1.0, 1.12);
+        const desired = new THREE.Vector3(0.88 + swayX, 2.52 + swayY, 7.8);
+        const resolved = _rtBattle3dV9ResolveCameraOcclusion(camTarget, desired, dt, "lobby");
+        rt.camera.position.lerp(resolved, Math.min(1, dt * 2.2));
+        rt.camera.lookAt(camTarget);
+      };
+      const __rtBattle3dSyncRemoteMeshesV9Base = _rtBattle3dSyncRemoteMeshes;
+      _rtBattle3dSyncRemoteMeshes = function(dt){
+        __rtBattle3dSyncRemoteMeshesV9Base.apply(this, arguments);
+        const st = _rtBattleState();
+        if (String(st.phase || "lobby") !== "lobby") return;
+        const b = _rtBattle3dV9State();
+        const others = asArray(st.players).filter((p) => !!p && !!p.connected && !_rtBattlePlayerMatchesMe(p)).slice(0, 7);
+        others.forEach((p, idx) => {
+          const key = _rtBattle3dV9PlayerKey(p);
+          const mesh = key ? (b.remoteMeshes && b.remoteMeshes[key]) : null;
+          if (!mesh) return;
+          const slot = _rtBattle3dV9MapSlot(idx);
+          mesh.position.x += (slot.x - Number(mesh.position.x || 0)) * Math.min(1, Math.max(0.02, dt * 4.0));
+          mesh.position.y += (0 - Number(mesh.position.y || 0)) * Math.min(1, Math.max(0.02, dt * 4.0));
+          mesh.position.z += (slot.z - Number(mesh.position.z || 0)) * Math.min(1, Math.max(0.02, dt * 4.0));
+          mesh.rotation.y += (Math.PI - Number(mesh.rotation.y || 0)) * Math.min(1, dt * 4.0);
+          if (mesh.scale && typeof mesh.scale.set === "function"){
+            mesh.scale.set(0.94, 0.94, 0.94);
+          }
+        });
+      };
+      const __rtBattle3dStepPhysicsV9Base = _rtBattle3dStepPhysics;
+      _rtBattle3dStepPhysics = function(dt){
+        if (_rtBattle3dV9RotateMode() === "block"){
+          const b = _rtBattle3dV9State();
+          b.input.fwd = false;
+          b.input.back = false;
+          b.input.left = false;
+          b.input.right = false;
+          b.input.jump = false;
+          b.jumpQueued = false;
+          b.local.vx = 0;
+          b.local.vz = 0;
+          b.local.vy = 0;
+          b.local.grounded = true;
+          return;
+        }
+        return __rtBattle3dStepPhysicsV9Base.apply(this, arguments);
+      };
+      const __rtBattle3dTickV9Base = _rtBattle3dTick;
+      _rtBattle3dTick = function(tsNow){
+        __rtBattle3dTickV9Base.apply(this, arguments);
+        if (!_rtBattle3dIsOpen()) return;
+        const b = _rtBattle3dV9State();
+        const now = Math.max(0, Number(tsNow || performance.now()));
+        _rtBattle3dV9UpdateLobbyPresentation(now);
+        if ((now - Math.max(0, Number(b.p9.lastTagTick || 0))) > 48){
+          b.p9.lastTagTick = now;
+          _rtBattle3dV9RenderLobbyTags(now);
+        }
+        if ((now - Math.max(0, Number(b.p9.lastRotateTick || 0))) > 220){
+          b.p9.lastRotateTick = now;
+          _rtBattle3dV9UpdateRotateOverlay();
+        }
+      };
+      const __rtBattle3dOpenV9Base = _rtBattle3dOpen;
+      _rtBattle3dOpen = async function(){
+        await __rtBattle3dOpenV9Base.apply(this, arguments);
+        const b = _rtBattle3dV9State();
+        b.p9.lockAttempted = false;
+        _rtBattle3dV9EnsureAuxDom();
+        _rtBattle3dV9RenderLobbyPanel();
+        _rtBattle3dV9UpdateRotateOverlay();
+      };
+      const __rtBattle3dCloseV9Base = _rtBattle3dClose;
+      _rtBattle3dClose = function(){
+        const ret = __rtBattle3dCloseV9Base.apply(this, arguments);
+        const root = document.getElementById("rt3dOverlay");
+        if (root){
+          root.classList.remove("is-rotate-block");
+          root.classList.remove("is-lobby-v9");
+          root.classList.remove("is-lobby-settings-open");
+        }
+        try{ _rtBattle3dV9RestoreOccluderFade(); }catch(_){}
+        return ret;
+      };
+      if (!window.__rt3dV9OrientationBound){
+        window.__rt3dV9OrientationBound = true;
+        const onRotate = () => { try{ _rtBattle3dV9UpdateRotateOverlay(); }catch(_){} };
+        window.addEventListener("resize", onRotate, { passive:true });
+        window.addEventListener("orientationchange", onRotate, { passive:true });
+        document.addEventListener("fullscreenchange", onRotate);
+      }
+      if (!window.__rt3dV9UiBound){
+        window.__rt3dV9UiBound = true;
+        document.addEventListener("input", (e) => {
+          const target = e.target;
+          if (!(target instanceof HTMLElement)) return;
+          if (!target.closest("#rt3dOverlay")) return;
+          if (target.id === "rt3dLobbyPresetSearch"){
+            const b = _rtBattle3dV9State();
+            b.p9.presetSearch = String(target.value || "").slice(0, 80);
+            _rtBattle3dRenderLobbyPanel();
+          }
+        }, true);
+        document.addEventListener("change", (e) => {
+          const target = e.target;
+          if (!(target instanceof HTMLElement)) return;
+          if (!target.closest("#rt3dOverlay")) return;
+          if (target.id === "rt3dLobbyPresetSelect"){
+            const b = _rtBattle3dV9State();
+            const val = String(target.value || "");
+            if (val){
+              const next = [val, ...asArray(b.p9.recentPresetValues).filter((v) => String(v || "") !== val)].slice(0, 8);
+              b.p9.recentPresetValues = next;
+            }
+          }
+        }, true);
+      }
 
       function _lockViewportZoom(){
         if (window.__vqZoomLocked) return;
