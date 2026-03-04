@@ -41764,10 +41764,6 @@ function _openSearchResultByIndex(i){
           try{ uiToast("接続されていません。"); }catch(_){}
           return;
         }
-        if (!_rtBattleIsHost()){
-          try{ uiToast("ホストのみ開始できます。"); }catch(_){}
-          return;
-        }
         const ok = _rtBattleSafeSend({ type: "game:start" });
         if (!ok) try{ uiToast("開始送信に失敗しました。"); }catch(_){}
       }
@@ -45096,10 +45092,10 @@ function _openSearchResultByIndex(i){
               <div class="b3d-mini" style="margin-top:8px;">開始前に全員Readyが必要です。</div>
               <div class="b3d-actions-row" style="margin-top:10px;">
                 <button class="btn${_rtBattleMePlayer()?.ready ? "" : " primary"}" type="button" data-rt-battle-action="b3dToggleReady">${_rtBattleMePlayer()?.ready ? "Ready解除" : "Ready"}</button>
-                <button class="btn primary" type="button" data-rt-battle-action="b3dStartGame"${!isHost ? " disabled" : ""}>開始</button>
+                <button class="btn primary" type="button" data-rt-battle-action="b3dStartGame">開始</button>
                 <button class="textbtn" type="button" data-rt-battle-action="b3dClose">ロビーへ戻る</button>
               </div>
-              ${!isHost ? `<div class="b3d-mini" style="margin-top:8px;">ホストのみ開始できます。</div>` : ``}
+              <div class="b3d-mini" style="margin-top:8px;">接続中プレイヤーは開始できます。</div>
             </div>
             <div class="b3d-grid">
               <div class="b3d-panel">
@@ -49170,13 +49166,11 @@ function _openSearchResultByIndex(i){
         const allReady = players.length > 0 && players.every((p) => !!p.ready);
         const meReady = !!_rtBattleMePlayer()?.ready;
         const roomCode = String(st.room?.roomId || st.roomId || "------");
-        const canStart = isHost && players.length >= 1;
+        const canStart = players.length >= 1;
         const readyCount = players.filter((p) => !!p.ready).length;
-        const note = isHost
-          ? (allReady
-            ? "全員READY。PLAYで開始できます。"
-            : `READY ${readyCount}/${players.length}（PLAY時に未READYは自動でREADYになります）`)
-          : "ホストの開始を待っています。";
+        const note = allReady
+          ? "全員READY。PLAYで開始できます。"
+          : `READY ${readyCount}/${players.length}（PLAY時に未READYは自動でREADYになります）`;
         return `<div class="b3d-bottombar-v9">
           <div class="b3d-bottom-actions">
             <button class="btn${meReady ? "" : " primary"} b3d-ready-btn" type="button" data-rt-battle-action="b3dToggleReady">${meReady ? "READY解除" : "READY"}</button>
