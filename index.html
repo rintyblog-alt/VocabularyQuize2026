@@ -49170,7 +49170,13 @@ function _openSearchResultByIndex(i){
         const allReady = players.length > 0 && players.every((p) => !!p.ready);
         const meReady = !!_rtBattleMePlayer()?.ready;
         const roomCode = String(st.room?.roomId || st.roomId || "------");
-        const canStart = isHost && allReady;
+        const canStart = isHost && players.length >= 1;
+        const readyCount = players.filter((p) => !!p.ready).length;
+        const note = isHost
+          ? (allReady
+            ? "全員READY。PLAYで開始できます。"
+            : `READY ${readyCount}/${players.length}（PLAY時に未READYは自動でREADYになります）`)
+          : "ホストの開始を待っています。";
         return `<div class="b3d-bottombar-v9">
           <div class="b3d-bottom-actions">
             <button class="btn${meReady ? "" : " primary"} b3d-ready-btn" type="button" data-rt-battle-action="b3dToggleReady">${meReady ? "READY解除" : "READY"}</button>
@@ -49178,7 +49184,7 @@ function _openSearchResultByIndex(i){
             <button class="btn b3d-invite-btn" type="button" data-rt-battle-action="b3dCopyRoomCode">INVITE (${_escapeHtml(roomCode)})</button>
             <button class="btn b3d-settings-open" type="button" data-rt-battle-action="b3dToggleSettingsDrawer">SETTINGS</button>
           </div>
-          <div class="b3d-bottom-note">${isHost ? (allReady ? "全員READY。PLAYで開始できます。" : "全員READYでPLAY可能になります。") : "ホストの開始を待っています。"}</div>
+          <div class="b3d-bottom-note">${_escapeHtml(note)}</div>
         </div>`;
       }
       function _rtBattle3dV9EnsureAuxDom(){
