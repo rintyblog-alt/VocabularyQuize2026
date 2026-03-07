@@ -24453,12 +24453,12 @@ function _openSearchResultByIndex(i){
       }
       async function _appPushMaybePrompt(reason = "boot"){
         if (!_appPushSupported() || !_appIsLoggedUser() || !_appPushIsStandalone()) return;
-        if (!_appPushHasSeenUpdateNotice() && reason !== "after_notice") return;
         _appPushState.permission = String(Notification.permission || "default");
         if (_appPushState.permission === "granted"){
           await _appPushSyncBrowserSubscription({ silent: true }).catch(() => {});
           return;
         }
+        if (!_appPushHasSeenUpdateNotice() && reason !== "after_notice") return;
         if (_appPushState.permission === "denied" || _appPushDismissedRecently() || _appPushState.prompting) return;
         _appPushState.prompting = true;
         try{
