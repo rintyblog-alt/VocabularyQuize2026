@@ -18130,25 +18130,6 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
       applyTheme();
       applyFontSize();
       applyMotionSetting();
-      _appPushRenderStatus();
-      document.addEventListener("click", (event) => {
-        const refreshBtn = event.target.closest("#appPushRefreshBtn");
-        if (refreshBtn){
-          event.preventDefault();
-          void (async () => {
-            _appPushState.lastError = "";
-            _appPushRenderStatus();
-            await _appPushFetchServerStatus().catch(() => {});
-            await _appPushBootstrap("manual").catch(() => {});
-          })();
-          return;
-        }
-        const repairBtn = event.target.closest("#appPushRepairBtn");
-        if (repairBtn){
-          event.preventDefault();
-          void _appPushRepairSubscription();
-        }
-      });
       try{ insights.reduceMotion = _isMotionReduced(); }catch{}
       try{
         const mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -24829,6 +24810,25 @@ function _openSearchResultByIndex(i){
           _appPushRenderStatus();
         }
       }
+      _appPushRenderStatus();
+      document.addEventListener("click", (event) => {
+        const refreshBtn = event.target.closest("#appPushRefreshBtn");
+        if (refreshBtn){
+          event.preventDefault();
+          void (async () => {
+            _appPushState.lastError = "";
+            _appPushRenderStatus();
+            await _appPushFetchServerStatus().catch(() => {});
+            await _appPushBootstrap("manual").catch(() => {});
+          })();
+          return;
+        }
+        const repairBtn = event.target.closest("#appPushRepairBtn");
+        if (repairBtn){
+          event.preventDefault();
+          void _appPushRepairSubscription();
+        }
+      });
       async function _appPushShowLocalNotification(title, body){
         if (!_appPushSupported() || String(Notification.permission || "") !== "granted") return;
         try{
