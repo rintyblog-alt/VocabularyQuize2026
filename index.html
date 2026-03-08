@@ -45472,7 +45472,7 @@ function _openSearchResultByIndex(i){
       }
       function _rtBattleAllReady(){
         const players = asArray(_rtBattleState().players).filter((p) => !!p?.connected);
-        return asArray(players).length >= 2 && players.every((p) => !!p.ready);
+        return asArray(players).length >= 1 && players.every((p) => !!p.ready);
       }
       function _rtBattleRemainingMs(){
         const endsAt = Math.max(0, Number(_rtBattleState().game?.questionEndsAtMs || 0));
@@ -45915,7 +45915,7 @@ function _openSearchResultByIndex(i){
         if (phase === "lobby"){
           const ready = !!me?.ready;
           const hasPreset = !!(_rtBattleState().room?.presetRef);
-          const canStart = _rtBattleIsHost() && _rtBattleAllReady() && hasPreset;
+          const canStart = _rtBattleIsHost() && _rtBattleAllReady();
           return `<section class="insight-card" style="padding:12px; margin-top:10px;">
             <div class="insight-head"><div class="insight-title">待機画面</div><div class="insight-note">${_escapeHtml(String(st.room?.roomId || ""))}</div></div>
             <div class="mini" style="margin-top:6px;">Readyを押して待機し、ホストが開始します。</div>
@@ -45924,7 +45924,7 @@ function _openSearchResultByIndex(i){
               ${_rtBattleIsHost() ? `<button class="btn" type="button" data-rt-battle-action="gameStart"${(!st.connected || !canStart) ? " disabled" : ""}>Start</button>` : ""}
               <button class="textbtn" type="button" data-rt-battle-action="disconnect"${!st.connected && !st.connecting ? " disabled" : ""}>退出</button>
             </div>
-            ${_rtBattleIsHost() ? `<div class="mini" style="margin-top:8px;">${!hasPreset ? "プリセットを選択してください。" : (canStart ? "全員Ready。開始できます。" : "2人以上かつ全員Readyで開始できます。")}</div>` : ``}
+            ${_rtBattleIsHost() ? `<div class="mini" style="margin-top:8px;">${canStart ? `全員Ready。開始できます。${!hasPreset ? " プリセット未選択時はALLで始まります。" : ""}` : "接続中プレイヤーがReadyになると開始できます。"}</div>` : ``}
           </section>`;
         }
         if (phase === "playing"){
@@ -46975,7 +46975,7 @@ function _openSearchResultByIndex(i){
         const me = _rtBattleMePlayer();
         const ready = !!me?.ready;
         const hasPreset = !!(st.room?.presetRef);
-        const canStart = _rtBattleIsHost() && _rtBattleAllReady() && hasPreset && st.connected;
+        const canStart = _rtBattleIsHost() && _rtBattleAllReady() && st.connected;
         const phase = String(st.phase || "lobby");
         return `<div class="ov-sheet-stack">
           <section class="ov-card settings-group">
@@ -46994,7 +46994,7 @@ function _openSearchResultByIndex(i){
               <button class="textbtn" type="button" data-rt-battle-action="disconnect"${(!st.connected && !st.connecting) ? " disabled" : ""}>退出</button>
               ${_rtBattleIsHost() ? `<button class="textbtn" type="button" data-rt-battle-action="backLobby"${!st.connected ? " disabled" : ""}>ロビーに戻す</button>` : ``}
             </div>
-            <div class="ov-mini" style="margin-top:8px;">${!hasPreset ? "プリセットを選択してください。" : (canStart ? "開始できます。" : "全員Readyで開始可能です。")}</div>
+            <div class="ov-mini" style="margin-top:8px;">${canStart ? `開始できます。${!hasPreset ? " 未選択時はALLで開始します。" : ""}` : "接続中プレイヤーがReadyになると開始可能です。"}</div>
           </section>
           <section class="ov-card settings-group">
             <div class="ov-sheet-headline">出題数</div>
@@ -47886,6 +47886,14 @@ function _openSearchResultByIndex(i){
 
       // ROOM_DO_UI_V4_3D_BETA: minimal 3D realtime battle demo overlay using existing room WS
       const RT3D_THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js";
+      const RT3D_LOADING_HINTS = [
+        "正解するとゲートが開きます。",
+        "不正解だと前のチェックポイントに戻ります。",
+        "マップごとにギミックの配置が変わります。",
+        "READY のあと PLAY でマッチ開始です。",
+        "VocabuSurvival は最大 8 人で遊べます。",
+        "フレンド招待を使うと合流が速くなります。"
+      ];
       let __rt3dThreePromise = null;
       function _rtBattle3dState(){
         const st = _rtBattleState();
@@ -47931,6 +47939,19 @@ function _openSearchResultByIndex(i){
         if (typeof b.runtime.toastActive !== "boolean") b.runtime.toastActive = false;
         if (typeof b.runtime.lastShownFinishCount !== "number") b.runtime.lastShownFinishCount = 0;
         if (typeof b.runtime.seenGatePrompt !== "boolean") b.runtime.seenGatePrompt = false;
+        if (!b.load || typeof b.load !== "object") b.load = {};
+        if (typeof b.load.open !== "boolean") b.load.open = false;
+        if (typeof b.load.stage !== "string") b.load.stage = "boot";
+        if (typeof b.load.title !== "string") b.load.title = "VocabuSurvival";
+        if (typeof b.load.subtitle !== "string") b.load.subtitle = "Loading arena...";
+        if (typeof b.load.progress !== "number") b.load.progress = 0;
+        if (typeof b.load.context !== "string") b.load.context = "";
+        if (typeof b.load.hintIndex !== "number") b.load.hintIndex = 0;
+        if (typeof b.load.hintRotatedAt !== "number") b.load.hintRotatedAt = 0;
+        if (typeof b.load.openedAt !== "number") b.load.openedAt = 0;
+        if (typeof b.load.minVisibleUntil !== "number") b.load.minVisibleUntil = 0;
+        if (typeof b.load.hintTimerId !== "number" && b.load.hintTimerId !== null) b.load.hintTimerId = null;
+        if (typeof b.load.closeTimerId !== "number" && b.load.closeTimerId !== null) b.load.closeTimerId = null;
         return b;
       }
       function _rtBattle3dEnsureStyles(){
@@ -47995,6 +48016,19 @@ function _openSearchResultByIndex(i){
           #rt3dOverlay .b3d-overlay-card{width:min(480px, calc(100vw - 24px)); border:1px solid var(--border,#ddd); background:rgba(255,255,255,.98); border-radius:16px; padding:14px; box-shadow:0 10px 24px rgba(0,0,0,.12);}
           #rt3dOverlay .b3d-overlay-card h4{margin:0 0 6px;}
           #rt3dOverlay .b3d-overlay-card .mini{line-height:1.4;}
+          #rt3dOverlay .b3d-loading-layer{position:absolute; inset:0; z-index:12; display:none; align-items:center; justify-content:center; padding:calc(env(safe-area-inset-top,0px) + 24px) max(18px, env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 24px) max(18px, env(safe-area-inset-left,0px)); background:radial-gradient(120% 120% at 50% 0%, rgba(77,121,255,.18), transparent 52%), linear-gradient(180deg, rgba(5,8,14,.76), rgba(5,8,14,.88)); backdrop-filter:blur(10px) saturate(1.02);}
+          #rt3dOverlay .b3d-loading-layer.is-open{display:flex; animation:b3dLoadingFadeIn .24s cubic-bezier(.22,1,.36,1);}
+          #rt3dOverlay .b3d-loading-card{width:min(560px, calc(100vw - 36px)); border:1px solid rgba(255,255,255,.1); background:linear-gradient(180deg, rgba(19,27,44,.92), rgba(11,17,29,.94)); color:#edf4ff; border-radius:24px; padding:26px 24px 22px; box-shadow:0 18px 54px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.06); display:grid; gap:12px;}
+          #rt3dOverlay .b3d-loading-kicker{display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:rgba(214,228,255,.72);}
+          #rt3dOverlay .b3d-loading-stage{display:inline-flex; align-items:center; justify-content:center; min-width:92px; height:28px; padding:0 12px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05);}
+          #rt3dOverlay .b3d-loading-title{margin:0; font-size:clamp(28px,4vw,38px); line-height:1.02; letter-spacing:.01em;}
+          #rt3dOverlay .b3d-loading-subtitle{font-size:15px; line-height:1.55; color:rgba(231,239,255,.86);}
+          #rt3dOverlay .b3d-loading-progress-meta{display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:12px; color:rgba(215,228,249,.72);}
+          #rt3dOverlay .b3d-loading-bar{position:relative; height:14px; border-radius:999px; overflow:hidden; background:rgba(255,255,255,.08); box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);}
+          #rt3dOverlay .b3d-loading-bar-fill{height:100%; width:0; border-radius:inherit; background:linear-gradient(90deg, #5ba8ff 0%, #7c8eff 45%, #84e4ff 100%); box-shadow:0 0 20px rgba(107,163,255,.42); transition:width .28s cubic-bezier(.22,1,.36,1);}
+          #rt3dOverlay .b3d-loading-hint-wrap{display:grid; gap:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,.08);}
+          #rt3dOverlay .b3d-loading-hint-label{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:rgba(214,228,255,.55);}
+          #rt3dOverlay .b3d-loading-hint{font-size:14px; line-height:1.55; color:rgba(241,246,255,.92);}
           @media (max-width: 768px){
             #rt3dOverlay .b3d-head{grid-template-columns:auto 1fr; grid-template-areas:"left right" "center center";}
             #rt3dOverlay .b3d-head-left{grid-area:left;}
@@ -48010,8 +48044,13 @@ function _openSearchResultByIndex(i){
             #rt3dOverlay .b3d-mbtn{width:52px; height:52px;}
             #rt3dOverlay .b3d-jump{width:68px; height:68px;}
             #rt3dOverlay .b3d-status-bar{max-width:calc(100vw - 24px);}
+            #rt3dOverlay .b3d-loading-card{width:min(100%, calc(100vw - 24px)); padding:22px 18px 18px; border-radius:20px; gap:10px;}
+            #rt3dOverlay .b3d-loading-kicker{font-size:10px;}
+            #rt3dOverlay .b3d-loading-subtitle{font-size:14px;}
+            #rt3dOverlay .b3d-loading-hint{font-size:13px;}
           }
           @keyframes b3dFadeIn{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+          @keyframes b3dLoadingFadeIn{from{opacity:0; transform:scale(.985)} to{opacity:1; transform:none}}
         `;
         document.head.appendChild(s);
       }
@@ -48078,6 +48117,25 @@ function _openSearchResultByIndex(i){
                   </div>
                 </div>
               </div>
+              <div class="b3d-loading-layer" id="rt3dLoadingLayer" aria-hidden="true">
+                <div class="b3d-loading-card">
+                  <div class="b3d-loading-kicker">
+                    <span>Loading Screen</span>
+                    <span class="b3d-loading-stage" id="rt3dLoadingStage">BOOT</span>
+                  </div>
+                  <h3 class="b3d-loading-title" id="rt3dLoadingTitle">VocabuSurvival</h3>
+                  <div class="b3d-loading-subtitle" id="rt3dLoadingSubtitle">Loading arena...</div>
+                  <div class="b3d-loading-progress-meta">
+                    <span>Preparing match</span>
+                    <span id="rt3dLoadingPct">0%</span>
+                  </div>
+                  <div class="b3d-loading-bar"><div class="b3d-loading-bar-fill" id="rt3dLoadingBarFill"></div></div>
+                  <div class="b3d-loading-hint-wrap">
+                    <div class="b3d-loading-hint-label">Hint</div>
+                    <div class="b3d-loading-hint" id="rt3dLoadingHint">正解するとゲートが開きます。</div>
+                  </div>
+                </div>
+              </div>
               <div class="b3d-status-bar" id="rt3dStatusBar">接続待機</div>
             </div>
             <div class="b3d-bottom">
@@ -48121,6 +48179,130 @@ function _openSearchResultByIndex(i){
           choices: ["需要", "供給", "価格", "契約"],
           correctIndex: 0
         };
+      }
+      function _rtBattle3dLoadingDefaults(stage, extra){
+        const v8MapId = (typeof _rtBattle3dV8State === "function") ? String(_rtBattle3dV8State()?.p3?.mapId || "") : "";
+        const mapId = String(extra?.mapId || _rtBattleState()?.game3d?.mapId || v8MapId || "bridge").toLowerCase();
+        const mapName = String((typeof RT3D_MAP_LABELS === "object" && RT3D_MAP_LABELS && RT3D_MAP_LABELS[mapId]) || mapId || "Arena");
+        if (stage === "boot") return { subtitle: "Initializing scene...", progress: 12 };
+        if (stage === "assets") return { subtitle: "Loading arena assets...", progress: 28 };
+        if (stage === "scene") return { subtitle: "Building lobby scene...", progress: 52 };
+        if (stage === "map") return { subtitle: `${mapName} を読み込み中...`, progress: 68 };
+        if (stage === "sync") return { subtitle: "Syncing players...", progress: 84 };
+        if (stage === "match") return { subtitle: "Preparing match...", progress: 58 };
+        if (stage === "round") return { subtitle: "Starting match...", progress: 92 };
+        if (stage === "ready") return { subtitle: "Ready to play", progress: 100 };
+        return { subtitle: "Loading arena...", progress: 24 };
+      }
+      function _rtBattle3dEnsureLoadingTimer(){
+        const b = _rtBattle3dState();
+        const load = b.load || {};
+        if (load.hintTimerId) return;
+        load.hintTimerId = setInterval(() => {
+          const bb = _rtBattle3dState();
+          const ll = bb.load || {};
+          if (!ll.open) return;
+          ll.hintIndex = (Math.max(0, Number(ll.hintIndex || 0)) + 1) % RT3D_LOADING_HINTS.length;
+          ll.hintRotatedAt = Date.now();
+          _rtBattle3dRenderLoading();
+        }, 2800);
+      }
+      function _rtBattle3dStopLoadingTimer(){
+        const b = _rtBattle3dState();
+        const load = b.load || {};
+        if (load.hintTimerId){
+          clearInterval(load.hintTimerId);
+          load.hintTimerId = null;
+        }
+      }
+      function _rtBattle3dRenderLoading(){
+        const b = _rtBattle3dState();
+        const load = b.load || {};
+        const layer = document.getElementById("rt3dLoadingLayer");
+        if (!(layer instanceof HTMLElement)) return;
+        const sub = document.getElementById("rt3dLoadingSubtitle");
+        const bar = document.getElementById("rt3dLoadingBarFill");
+        const pct = document.getElementById("rt3dLoadingPct");
+        const stageEl = document.getElementById("rt3dLoadingStage");
+        const hint = document.getElementById("rt3dLoadingHint");
+        const title = document.getElementById("rt3dLoadingTitle");
+        const progress = Math.max(0, Math.min(100, Math.round(Number(load.progress || 0))));
+        layer.classList.toggle("is-open", !!load.open);
+        layer.setAttribute("aria-hidden", load.open ? "false" : "true");
+        if (title) title.textContent = String(load.title || "VocabuSurvival");
+        if (sub) sub.textContent = String(load.subtitle || "Loading arena...");
+        if (bar) bar.style.width = `${progress}%`;
+        if (pct) pct.textContent = `${progress}%`;
+        if (stageEl) stageEl.textContent = String(load.stage || "boot").toUpperCase();
+        if (hint) hint.textContent = RT3D_LOADING_HINTS[Math.max(0, Number(load.hintIndex || 0)) % RT3D_LOADING_HINTS.length];
+      }
+      function _rtBattle3dSetLoadingStage(stage, options){
+        const b = _rtBattle3dState();
+        const load = b.load || {};
+        const meta = _rtBattle3dLoadingDefaults(stage, options || {});
+        const now = Date.now();
+        if (load.closeTimerId){
+          clearTimeout(load.closeTimerId);
+          load.closeTimerId = null;
+        }
+        if (!load.open){
+          load.open = true;
+          load.openedAt = now;
+          load.minVisibleUntil = now + 360;
+          if (!RT3D_LOADING_HINTS.includes(String(load.lastHint || ""))){
+            load.hintIndex = Math.floor(Math.random() * RT3D_LOADING_HINTS.length);
+          }
+          _rtBattle3dEnsureLoadingTimer();
+        } else {
+          load.minVisibleUntil = Math.max(Number(load.minVisibleUntil || 0), now + 140);
+        }
+        b.loading = true;
+        load.stage = String(stage || "boot");
+        load.context = String(options?.context || load.context || "");
+        load.title = String(options?.title || "VocabuSurvival");
+        load.subtitle = String(options?.subtitle || meta.subtitle || "Loading arena...");
+        load.progress = Math.max(Number(load.progress || 0), Number(options?.progress ?? meta.progress ?? 0));
+        load.hintRotatedAt = now;
+        _rtBattle3dRenderLoading();
+      }
+      function _rtBattle3dFinishLoading(options){
+        const b = _rtBattle3dState();
+        const load = b.load || {};
+        if (!load.open && !b.loading) return;
+        const delayMs = Math.max(0, Number(options?.delayMs ?? 220));
+        load.stage = "ready";
+        load.subtitle = String(options?.subtitle || "Ready to play");
+        load.progress = 100;
+        _rtBattle3dRenderLoading();
+        if (load.closeTimerId){
+          clearTimeout(load.closeTimerId);
+          load.closeTimerId = null;
+        }
+        const waitMs = Math.max(delayMs, Math.max(0, Number(load.minVisibleUntil || 0) - Date.now()));
+        load.closeTimerId = setTimeout(() => {
+          const bb = _rtBattle3dState();
+          const ll = bb.load || {};
+          ll.closeTimerId = null;
+          ll.open = false;
+          ll.context = "";
+          bb.loading = false;
+          _rtBattle3dStopLoadingTimer();
+          _rtBattle3dRenderLoading();
+        }, waitMs);
+      }
+      function _rtBattle3dCancelLoading(){
+        const b = _rtBattle3dState();
+        const load = b.load || {};
+        if (load.closeTimerId){
+          clearTimeout(load.closeTimerId);
+          load.closeTimerId = null;
+        }
+        load.open = false;
+        load.context = "";
+        load.progress = 0;
+        b.loading = false;
+        _rtBattle3dStopLoadingTimer();
+        _rtBattle3dRenderLoading();
       }
       function _rtBattle3dActiveInputIsEditable(){
         const ae = document.activeElement;
@@ -48831,22 +49013,25 @@ function _openSearchResultByIndex(i){
         root.setAttribute("aria-hidden", "false");
         b._prevBodyOverflow = document.body.style.overflow || "";
         document.body.style.overflow = "hidden";
+        _rtBattle3dSetLoadingStage("boot", { context: "open" });
         _rtBattle3dHideError();
         _rtBattle3dRenderQuizUi();
         _rtBattle3dRenderResult();
         _rtBattle3dUpdateStatusUi();
         try{
           await _rtBattle3dEnsureThree();
+          _rtBattle3dSetLoadingStage("assets", { context: "open" });
           _rtBattle3dEnsureScene();
+          _rtBattle3dSetLoadingStage("scene", { context: "open" });
           _rtBattle3dSyncFromSnapshot();
+          _rtBattle3dSetLoadingStage("sync", { context: "open" });
           _rtBattle3dSendLocalState(true);
           _rtBattle3dStartLoops();
-          b.loading = false;
-          b.status = "操作可能";
+          b.status = "ロビーを準備しました";
           _rtBattle3dUpdateStatusUi();
           _rtBattle3dPushToast("info", "ゲートに近づくと問題が出ます");
         }catch(err){
-          b.loading = false;
+          _rtBattle3dCancelLoading();
           _rtBattle3dShowError(String(err?.message || "3D初期化に失敗しました。"));
         }
       }
@@ -48854,7 +49039,7 @@ function _openSearchResultByIndex(i){
         const b = _rtBattle3dState();
         if (!b.open) return;
         b.open = false;
-        b.loading = false;
+        _rtBattle3dCancelLoading();
         b.quizOpen = false;
         _rtBattle3dStopLoops();
         _rtBattle3dDestroyScene();
@@ -49192,7 +49377,7 @@ function _openSearchResultByIndex(i){
               <div class="b3d-mini">Room <code>${_escapeHtml(roomId)}</code> ・ ${players.filter((p)=>!!p.connected).length}/${Math.max(1, Number(st.room?.max || 8))}人</div>
               <div class="b3d-mini" style="margin-top:4px;">${_escapeHtml(dbgLine)}</div>
               <div class="b3d-round-track"><i style="width:${_rtBattle3dRoundProgressPct()}%"></i></div>
-              <div class="b3d-mini" style="margin-top:8px;">開始前に全員Readyが必要です。</div>
+              <div class="b3d-mini" style="margin-top:8px;">開始前に参加者のReadyが必要です。</div>
               <div class="b3d-actions-row" style="margin-top:10px;">
                 <button class="btn${_rtBattleMePlayer()?.ready ? "" : " primary"}" type="button" data-rt-battle-action="b3dToggleReady">${_rtBattleMePlayer()?.ready ? "Ready解除" : "Ready"}</button>
                 <button class="btn primary" type="button" data-rt-battle-action="b3dStartGame">開始</button>
@@ -49697,6 +49882,7 @@ function _openSearchResultByIndex(i){
           return true;
         }
         if (act === "b3dStartGame"){
+          if (_rtBattle3dIsOpen()) _rtBattle3dSetLoadingStage("match", { context: "match_start", progress: 42 });
           const ok = _rtBattleSafeSend({ type: "game:start" });
           if (!ok) { try{ uiToast("ゲーム開始に失敗しました"); }catch(_){} }
           return true;
@@ -49717,6 +49903,7 @@ function _openSearchResultByIndex(i){
         const st = _rtBattleState();
         const b = _rtBattle3dPhase1State();
         if (type === "countdown:start"){
+          if (_rtBattle3dIsOpen()) _rtBattle3dSetLoadingStage("match", { context: "match_start", progress: 58 });
           b.countdownStartAtMs = Math.max(0, Number(msg?.startAtMs || 0));
           b.countdownEndsAtMs = Math.max(0, Number(msg?.endsAtMs || 0));
           b.quizOpen = false;
@@ -49730,6 +49917,7 @@ function _openSearchResultByIndex(i){
           return;
         }
         if (type === "game:question"){
+          if (_rtBattle3dIsOpen()) _rtBattle3dSetLoadingStage("round", { context: "match_start", progress: 92 });
           b.quizRoundIndex = Math.max(0, Number((msg?.round || 1) - 1));
           b.quizSubmittedRound = -1;
           b.quizOpen = false;
@@ -49743,6 +49931,7 @@ function _openSearchResultByIndex(i){
           if (_rtBattle3dIsOpen()){
             _rtBattle3dRenderQuizUi();
             _rtBattle3dUpdateStatusUi();
+            _rtBattle3dFinishLoading({ delayMs: 180, subtitle: "Match ready" });
           }
           return;
         }
@@ -50895,6 +51084,7 @@ function _openSearchResultByIndex(i){
         const peAuto = [
           ".b3d-hud-card",".b3d-score-panel",".b3d-toast-wrap",".b3d-quiz",".b3d-result",".b3d-overlay-msg",
           ".b3d-status-bar",".b3d-lobby-card",".b3d-countdown-card",".b3d-round-card",".b3d-chatdock",".b3d-joystick",".b3d-jump2",
+          ".b3d-loading-layer",
           ".b3d-camreset",".b3d-chat-toggle",".b3d-gfx-badge"
         ];
         peAuto.forEach((sel)=> root.querySelectorAll(sel).forEach((el)=>{ if (el instanceof HTMLElement) el.style.pointerEvents = "auto"; }));
@@ -51753,6 +51943,26 @@ function _openSearchResultByIndex(i){
         const mapSeed = Math.max(1, Number(st.game3d?.mapSeed || b.p3.mapSeed || 1));
         _rtBattle3dV8BuildMap(mapId, mapSeed);
       }
+      const __rtBattle3dV8ApplyMapNowBase = _rtBattle3dV8ApplyMapNow;
+      _rtBattle3dV8ApplyMapNow = function(){
+        const b = _rtBattle3dV8State();
+        const st = _rtBattleState();
+        const mapId = asStr(st.game3d?.mapId || b.p3.mapId || "bridge").toLowerCase() || "bridge";
+        const startedHere = _rtBattle3dIsOpen() && !b.loading;
+        if (_rtBattle3dIsOpen()){
+          _rtBattle3dSetLoadingStage("map", {
+            context: startedHere ? "map_switch" : ((b.load && b.load.context) || "open"),
+            mapId,
+            progress: startedHere ? 44 : 66
+          });
+        }
+        const ret = __rtBattle3dV8ApplyMapNowBase.apply(this, arguments);
+        if (_rtBattle3dIsOpen() && startedHere){
+          _rtBattle3dSetLoadingStage("sync", { context: "map_switch", mapId, progress: 88 });
+          requestAnimationFrame(() => _rtBattle3dFinishLoading({ delayMs: 260, subtitle: `${RT3D_MAP_LABELS[mapId] || mapId} ready` }));
+        }
+        return ret;
+      };
       function _rtBattle3dV8CurrentGateIndex(){
         const st = _rtBattleState();
         const b = _rtBattle3dV8State();
@@ -54658,6 +54868,7 @@ function _openSearchResultByIndex(i){
         _rtBattle3dV9EnsureAuxDom();
         _rtBattle3dV9RenderLobbyPanel();
         _rtBattle3dV9UpdateRotateOverlay();
+        _rtBattle3dFinishLoading({ delayMs: 220, subtitle: "Lobby ready" });
       };
       const __rtBattle3dCloseV9Base = _rtBattle3dClose;
       _rtBattle3dClose = function(){
