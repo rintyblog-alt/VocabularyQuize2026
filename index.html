@@ -7604,6 +7604,119 @@ main{
   letter-spacing:.04em;
 }
 
+.app-push-status-card{
+  margin-top:18px;
+  padding:20px;
+  border-radius:24px;
+  border:1px solid rgba(15,23,42,.08);
+  background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(248,250,252,.9));
+  box-shadow:0 18px 42px rgba(15,23,42,.08);
+}
+.app-push-status-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:14px;
+}
+.app-push-status-title{
+  font-size:16px;
+  font-weight:800;
+  color:#0f172a;
+}
+.app-push-status-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:32px;
+  padding:0 12px;
+  border-radius:999px;
+  border:1px solid rgba(15,23,42,.1);
+  background:rgba(255,255,255,.92);
+  color:#334155;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.02em;
+}
+.app-push-status-badge[data-tone="ok"]{
+  color:#166534;
+  border-color:rgba(22,101,52,.22);
+  background:rgba(240,253,244,.96);
+}
+.app-push-status-badge[data-tone="warn"]{
+  color:#92400e;
+  border-color:rgba(146,64,14,.2);
+  background:rgba(255,247,237,.96);
+}
+.app-push-status-badge[data-tone="muted"]{
+  color:#475569;
+  border-color:rgba(71,85,105,.16);
+  background:rgba(248,250,252,.96);
+}
+.app-push-status-copy{
+  margin:0;
+  color:#475569;
+  font-size:14px;
+  line-height:1.7;
+}
+.app-push-status-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  margin-top:16px;
+}
+.app-push-status-cell{
+  min-width:0;
+  padding:14px 16px;
+  border-radius:18px;
+  background:rgba(248,250,252,.96);
+  border:1px solid rgba(148,163,184,.16);
+}
+.app-push-status-cell .k{
+  display:block;
+  margin-bottom:6px;
+  color:#64748b;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.03em;
+}
+.app-push-status-cell .v{
+  display:block;
+  color:#0f172a;
+  font-size:14px;
+  font-weight:800;
+  line-height:1.5;
+  word-break:break-word;
+}
+.app-push-status-error{
+  display:none;
+  margin-top:14px;
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid rgba(185,28,28,.14);
+  background:rgba(254,242,242,.98);
+  color:#991b1b;
+  font-size:13px;
+  line-height:1.6;
+}
+.app-push-status-error.is-visible{
+  display:block;
+}
+.app-push-status-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:16px;
+}
+.app-push-status-actions .btn{
+  min-width:160px;
+}
+@media (max-width: 820px){
+  .app-push-status-grid{
+    grid-template-columns:1fr;
+  }
+}
+
 .btn,
 .navbtn,
 .textbtn,
@@ -12288,6 +12401,34 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
                 <button class="app-settings-row" type="button" data-settings-shortcut="openTerms">
                   <span>Terms</span><span>›</span>
                 </button>
+              </div>
+            </div>
+            <div class="app-push-status-card">
+              <div class="app-push-status-head">
+                <div class="app-push-status-title">iPhone通知の状態</div>
+                <span class="app-push-status-badge" id="appPushStatusBadge" data-tone="muted">未確認</span>
+              </div>
+              <p class="app-push-status-copy" id="appPushStatusSummary">
+                ホーム画面に追加した VocabuQuiz で通知を許可すると、アプリ内通知に加えて iPhone の通知でも受け取れます。
+              </p>
+              <div class="app-push-status-grid">
+                <div class="app-push-status-cell">
+                  <span class="k">通知権限</span>
+                  <span class="v" id="appPushPermissionValue">未確認</span>
+                </div>
+                <div class="app-push-status-cell">
+                  <span class="k">起動モード</span>
+                  <span class="v" id="appPushStandaloneValue">未確認</span>
+                </div>
+                <div class="app-push-status-cell">
+                  <span class="k">サーバー登録</span>
+                  <span class="v" id="appPushServerValue">未確認</span>
+                </div>
+              </div>
+              <div class="app-push-status-error" id="appPushStatusError"></div>
+              <div class="app-push-status-actions">
+                <button class="btn secondary" type="button" id="appPushRefreshBtn">状態を更新</button>
+                <button class="btn primary" type="button" id="appPushRepairBtn">通知を再登録</button>
               </div>
             </div>
           </section>
@@ -17989,6 +18130,25 @@ body.quiz-focus[data-ui-v2="1"] .topbar{
       applyTheme();
       applyFontSize();
       applyMotionSetting();
+      _appPushRenderStatus();
+      document.addEventListener("click", (event) => {
+        const refreshBtn = event.target.closest("#appPushRefreshBtn");
+        if (refreshBtn){
+          event.preventDefault();
+          void (async () => {
+            _appPushState.lastError = "";
+            _appPushRenderStatus();
+            await _appPushFetchServerStatus().catch(() => {});
+            await _appPushBootstrap("manual").catch(() => {});
+          })();
+          return;
+        }
+        const repairBtn = event.target.closest("#appPushRepairBtn");
+        if (repairBtn){
+          event.preventDefault();
+          void _appPushRepairSubscription();
+        }
+      });
       try{ insights.reduceMotion = _isMotionReduced(); }catch{}
       try{
         const mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -24252,7 +24412,12 @@ function _openSearchResultByIndex(i){
         noticeShowing: false,
         config: null,
         registration: null,
-        permission: (typeof Notification !== "undefined" ? String(Notification.permission || "default") : "unsupported")
+        permission: (typeof Notification !== "undefined" ? String(Notification.permission || "default") : "unsupported"),
+        syncing: false,
+        lastError: "",
+        lastStage: "",
+        lastSyncAt: 0,
+        serverStatus: null
       };
       function _appLoadSubscriptionNotifyMap(){
         try{
@@ -24283,6 +24448,67 @@ function _openSearchResultByIndex(i){
           && "serviceWorker" in navigator
           && "PushManager" in window
           && "Notification" in window;
+      }
+      function _appPushUiEls(){
+        return {
+          badge: document.getElementById("appPushStatusBadge"),
+          summary: document.getElementById("appPushStatusSummary"),
+          permission: document.getElementById("appPushPermissionValue"),
+          standalone: document.getElementById("appPushStandaloneValue"),
+          server: document.getElementById("appPushServerValue"),
+          error: document.getElementById("appPushStatusError"),
+          refresh: document.getElementById("appPushRefreshBtn"),
+          repair: document.getElementById("appPushRepairBtn")
+        };
+      }
+      function _appPushRenderStatus(){
+        const els = _appPushUiEls();
+        if (!els.summary) return;
+        const permission = String((typeof Notification !== "undefined" ? Notification.permission : _appPushState.permission) || "default");
+        const supported = _appPushSupported();
+        const standalone = _appPushIsStandalone();
+        const totalActive = Math.max(0, Number(_appPushState.serverStatus?.totalActive || 0));
+        let badgeText = "未確認";
+        let badgeTone = "muted";
+        let summary = "ホーム画面に追加した VocabuQuiz で通知を許可すると、アプリ内通知に加えて iPhone の通知でも受け取れます。";
+        if (!supported) {
+          badgeText = "非対応";
+          summary = "この環境では Web Push を利用できません。iPhone の Safari からホーム画面に追加した VocabuQuiz で開いてください。";
+        } else if (!standalone) {
+          badgeText = "Safari表示";
+          summary = "いまは Safari で開かれています。iPhone通知はホーム画面に追加した VocabuQuiz でのみ有効です。";
+        } else if (permission !== "granted") {
+          badgeText = "許可待ち";
+          badgeTone = "warn";
+          summary = "ホーム画面版 VocabuQuiz では通知許可がまだ完了していません。再登録を押して許可してください。";
+        } else if (totalActive > 0) {
+          badgeText = "受信準備OK";
+          badgeTone = "ok";
+          summary = "iPhone通知の受信設定は完了しています。今後の新着通知はアプリ内通知に加えて iPhone 通知でも届きます。";
+        } else if (_appPushState.syncing) {
+          badgeText = "確認中";
+          summary = "通知の登録状態を確認しています。しばらく待っても登録済みにならない場合は、再登録を試してください。";
+        } else {
+          badgeText = "未登録";
+          badgeTone = "warn";
+          summary = "通知許可は見えていますが、サーバー側の端末登録がまだ完了していません。再登録を押して再試行してください。";
+        }
+        els.badge.textContent = badgeText;
+        els.badge.dataset.tone = badgeTone;
+        els.summary.textContent = summary;
+        els.permission.textContent = permission === "granted" ? "許可済み" : (permission === "denied" ? "拒否済み" : "未許可");
+        els.standalone.textContent = standalone ? "ホーム画面版" : "Safari / 通常ブラウザ";
+        els.server.textContent = totalActive > 0 ? `${totalActive}台登録済み` : "未登録";
+        const errorText = String(_appPushState.lastError || "").trim();
+        if (errorText) {
+          els.error.textContent = `登録エラー: ${errorText}`;
+          els.error.classList.add("is-visible");
+        } else {
+          els.error.textContent = "";
+          els.error.classList.remove("is-visible");
+        }
+        if (els.refresh) els.refresh.disabled = !!_appPushState.syncing;
+        if (els.repair) els.repair.disabled = !!_appPushState.syncing;
       }
       function _appPushDismissedRecently(){
         try{
@@ -24347,8 +24573,35 @@ function _openSearchResultByIndex(i){
         if (!_appPushSupported()) return null;
         if (_appPushState.registration) return _appPushState.registration;
         const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-        _appPushState.registration = reg;
-        return reg;
+        try{ await reg.update(); }catch{}
+        let readyReg = reg;
+        try{
+          readyReg = await Promise.race([
+            navigator.serviceWorker.ready,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("SERVICE_WORKER_READY_TIMEOUT")), 10000))
+          ]);
+        }catch(err){
+          console.warn("[push] service worker ready failed:", String(err?.message || err));
+        }
+        _appPushState.registration = readyReg || reg;
+        return _appPushState.registration;
+      }
+      async function _appPushFetchServerStatus(){
+        if (!_appIsLoggedUser()) {
+          _appPushState.serverStatus = null;
+          _appPushRenderStatus();
+          return null;
+        }
+        try{
+          const body = await _appApiJson("/api/push/status", { method: "GET" });
+          _appPushState.serverStatus = (body && typeof body === "object") ? body : null;
+          return _appPushState.serverStatus;
+        }catch(err){
+          _appPushState.lastError = String(err?.message || err || "").trim();
+          return null;
+        }finally{
+          _appPushRenderStatus();
+        }
       }
       async function _appPushSyncWorkerContext(context){
         if (!_appPushSupported()) return;
@@ -24391,33 +24644,100 @@ function _openSearchResultByIndex(i){
           }
         }catch{}
       }
-      async function _appPushSyncBrowserSubscription({ silent = false } = {}){
+      async function _appPushSyncBrowserSubscription({ silent = false, forceResubscribe = false } = {}){
         if (!_appPushSupported() || !_appIsLoggedUser()) return false;
+        _appPushState.syncing = true;
+        _appPushState.lastError = "";
+        _appPushState.lastStage = "permission";
         _appPushState.permission = String(Notification.permission || "default");
-        if (_appPushState.permission !== "granted") return false;
-        const cfg = await _appPushConfigFetch();
-        _appPushState.config = cfg || null;
-        if (!cfg?.enabled || !cfg?.publicKey) return false;
-        const reg = await _appEnsurePushWorker();
-        if (!reg) return false;
-        let sub = await reg.pushManager.getSubscription();
-        if (!sub){
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: _appPushUrlBase64ToUint8Array(cfg.publicKey)
+        _appPushRenderStatus();
+        try{
+          if (_appPushState.permission !== "granted") return false;
+          _appPushState.lastStage = "config";
+          const cfg = await _appPushConfigFetch();
+          _appPushState.config = cfg || null;
+          if (!cfg?.enabled || !cfg?.publicKey) {
+            _appPushState.lastError = "Web Push がまだ有効化されていません。";
+            return false;
+          }
+          _appPushState.lastStage = "worker";
+          const reg = await _appEnsurePushWorker();
+          if (!reg) {
+            _appPushState.lastError = "Service Worker を初期化できませんでした。";
+            return false;
+          }
+          _appPushState.lastStage = "subscription";
+          let sub = await reg.pushManager.getSubscription();
+          if (forceResubscribe && sub) {
+            try { await sub.unsubscribe(); } catch {}
+            sub = null;
+          }
+          if (!sub) {
+            sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: _appPushUrlBase64ToUint8Array(cfg.publicKey)
+            });
+          }
+          if (!sub) {
+            _appPushState.lastError = "Push購読を生成できませんでした。";
+            return false;
+          }
+          _appPushState.lastStage = "server";
+          const syncBody = await _appApiJson("/api/push/subscribe", {
+            method: "POST",
+            body: JSON.stringify({
+              subscription: sub.toJSON ? sub.toJSON() : sub,
+              platform: _appPushIsStandalone() ? "standalone" : "browser"
+            })
           });
+          await _appPushSyncWorkerContext(syncBody).catch(() => {});
+          _appPushState.lastSyncAt = Date.now();
+          _appPushState.lastStage = "done";
+          await _appPushFetchServerStatus().catch(() => {});
+          if (!silent) uiToast("iPhone通知の受信設定を保存しました。");
+          return true;
+        }catch(err){
+          const msg = String(err?.message || err || "不明なエラー");
+          _appPushState.lastError = msg;
+          console.warn("[push] sync failed:", msg);
+          if (!silent) {
+            uiAlert(`iPhone通知の登録に失敗しました。\n${msg}`, {
+              title: "通知設定"
+            });
+          }
+          return false;
+        }finally{
+          _appPushState.syncing = false;
+          _appPushRenderStatus();
         }
-        if (!sub) return false;
-        const syncBody = await _appApiJson("/api/push/subscribe", {
-          method: "POST",
-          body: JSON.stringify({
-            subscription: sub.toJSON ? sub.toJSON() : sub,
-            platform: _appPushIsStandalone() ? "standalone" : "browser"
-          })
-        });
-        await _appPushSyncWorkerContext(syncBody).catch(() => {});
-        if (!silent) uiToast("iPhone通知の受信設定を保存しました。");
-        return true;
+      }
+      async function _appPushRepairSubscription(){
+        if (!_appPushSupported()){
+          uiAlert("この環境では Web Push を利用できません。", { title: "通知設定" });
+          return false;
+        }
+        if (!_appPushIsStandalone()){
+          uiAlert("Safari ではなく、ホーム画面に追加した VocabuQuiz から開いてください。", { title: "通知設定" });
+          return false;
+        }
+        if (!_appIsLoggedUser()){
+          uiToast("ログイン後に通知設定を行ってください。");
+          return false;
+        }
+        _appPushState.permission = String(Notification.permission || "default");
+        if (_appPushState.permission !== "granted"){
+          try{
+            const permission = await Notification.requestPermission();
+            _appPushState.permission = String(permission || "default");
+          }catch(err){
+            _appPushState.lastError = String(err?.message || err || "通知許可に失敗しました。");
+            _appPushRenderStatus();
+            return false;
+          }
+        }
+        const ok = await _appPushSyncBrowserSubscription({ silent: false, forceResubscribe: true }).catch(() => false);
+        await _appPushFetchServerStatus().catch(() => {});
+        return ok;
       }
       async function _appMaybeShowPushUpdateNotice(reason = "boot"){
         if (!_appIsLoggedUser() || _appPushState.noticeShowing) return false;
@@ -24503,8 +24823,10 @@ function _openSearchResultByIndex(i){
         try{
           await _appSubscriptionSyncNotifyState().catch(() => {});
           await _appPushMaybePrompt(reason).catch(() => {});
+          await _appPushFetchServerStatus().catch(() => {});
         }finally{
           _appPushState.bootstrapping = false;
+          _appPushRenderStatus();
         }
       }
       async function _appPushShowLocalNotification(title, body){
