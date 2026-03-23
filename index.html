@@ -28905,10 +28905,7 @@ body[data-ui-v2="1"] .app-v2-sidebar-foot{
               <div class="settings-section-title">Qredit Card 審査</div>
               <div id="adminQreditCardLockedNote" class="note">Qredit Card の審査は Admin ログイン後に確認できます。</div>
               <div class="settings-group hidden" id="adminQreditCardGroup">
-                <label class="settings-row is-static" for="adminQreditCardKey">
-                  <span class="label">Admin Key</span>
-                  <input class="spell-input" id="adminQreditCardKey" type="password" autocomplete="off" placeholder="env.ADMIN_KEY" />
-                </label>
+                <div class="note">Admin ログイン済みなら、申請一覧の閲覧と審査操作をそのまま行えます。</div>
                 <label class="settings-row is-static" for="adminQreditCardStatusFilter">
                   <span class="label">表示ステータス</span>
                   <select class="select settings-select" id="adminQreditCardStatusFilter">
@@ -46578,7 +46575,6 @@ function _openSearchResultByIndex(i){
         return {
           group: document.getElementById("adminQreditCardGroup"),
           locked: document.getElementById("adminQreditCardLockedNote"),
-          key: document.getElementById("adminQreditCardKey"),
           status: document.getElementById("adminQreditCardStatus"),
           filter: document.getElementById("adminQreditCardStatusFilter"),
           list: document.getElementById("adminQreditCardList"),
@@ -46594,13 +46590,17 @@ function _openSearchResultByIndex(i){
         if (kind === "ok") status.classList.add("ok");
         if (kind === "error") status.classList.add("error");
       }
-      function _adminQreditCardAdminKey(){
-        const els = _adminQreditCardEls();
-        return String(els.key?.value || document.getElementById("adminEnforcementKey")?.value || document.getElementById("adminAiIngestKey")?.value || "").trim();
-      }
-      function _adminQreditCardHeaders(){
-        const key = _adminQreditCardAdminKey();
-        return key ? { "x-admin-key": key } : {};
+      async function _adminQreditCardAuthHeaders(){
+        const headers = {};
+        try{
+          const auth = _adminGetAuth();
+          const user = _adminState.user || auth?.currentUser || null;
+          if (user && typeof user.getIdToken === "function"){
+            const token = String(await user.getIdToken()).trim();
+            if (token) headers["x-firebase-id-token"] = token;
+          }
+        }catch{}
+        return headers;
       }
       function _adminQreditCardRiskChips(risk){
         const src = (risk && typeof risk === "object") ? risk : {};
@@ -46736,9 +46736,10 @@ function _openSearchResultByIndex(i){
         _adminQreditCardSetStatus("読み込み中…");
         try{
           const qs = status ? `?status=${encodeURIComponent(status)}&limit=60` : "?limit=60";
+          const headers = await _adminQreditCardAuthHeaders();
           const body = await _appApiJson(`/api/admin/qredit-card/applications${qs}`, {
             method: "GET",
-            headers: _adminQreditCardHeaders()
+            headers
           });
           _adminState.qreditCardDashboard.applications = Array.isArray(body?.applications) ? body.applications : [];
           if (!_adminState.qreditCardDashboard.selectedId && _adminState.qreditCardDashboard.applications.length){
@@ -46771,9 +46772,10 @@ function _openSearchResultByIndex(i){
         }
         _adminQreditCardSetStatus(act === "approve" ? "承認中…" : (act === "hold" ? "保留にしています…" : "却下しています…"));
         try{
+          const headers = await _adminQreditCardAuthHeaders();
           await _appApiJson("/api/admin/qredit-card/review", {
             method: "POST",
-            headers: _adminQreditCardHeaders(),
+            headers,
             body: JSON.stringify({
               applicationId: appId,
               action: act,
