@@ -19674,10 +19674,57 @@ body[data-ui-v2="1"] .topbar{
 body[data-ui-v2="1"] main{
   padding-top:18px !important;
 }
-body[data-ui-v2="1"] .vq-os-dock{
-  display:flex !important;
+@media (max-width: 1023px){
+  body[data-ui-v2="1"]{
+    --app-v2-topbar-h: 56px !important;
+  }
+  body[data-ui-v2="1"] .topbar{
+    display:block !important;
+  }
+  body[data-ui-v2="1"] main{
+    padding-top: calc(var(--app-v2-topbar-h) + 10px) !important;
+  }
+  body[data-ui-v2="1"] .topbar-inner{
+    min-height: var(--app-v2-topbar-h);
+    padding: 6px 12px !important;
+  }
+  body[data-ui-v2="1"] .topbar-left{
+    width: 100%;
+    min-width: 0;
+    gap: 10px;
+    align-items: center;
+  }
+  body[data-ui-v2="1"] .topbar .brand{
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+  body[data-ui-v2="1"] .topbar .brand-title{
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -.02em;
+  }
+  body[data-ui-v2="1"] .topbar .brand-sub,
+  body[data-ui-v2="1"] .topbar #authGuestBadge,
+  body[data-ui-v2="1"] .topbar-actions,
+  body[data-ui-v2="1"] #menuBtn,
+  body[data-ui-v2="1"] #backBtn,
+  body[data-ui-v2="1"] #insightsBtn,
+  body[data-ui-v2="1"] #topPresetBtn,
+  body[data-ui-v2="1"] #searchBtn,
+  body[data-ui-v2="1"] #notifyBtn,
+  body[data-ui-v2="1"] #appV2RightPanelBtn,
+  body[data-ui-v2="1"] #quizExitTopBtn{
+    display: none !important;
+  }
+  body[data-ui-v2="1"] .app-v2-sidebar-toggle{
+    display: inline-flex !important;
+    flex: 0 0 auto;
+  }
 }
 .vq-os-dock{
+  display:none !important;
   gap:18px;
   padding:6px 24px 24px;
 }
