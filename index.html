@@ -19800,7 +19800,9 @@ body[data-ui-v2="1"] .app-tabbar{
   box-shadow:0 24px 48px rgba(15, 23, 42, .08), inset 0 1px 0 rgba(255,255,255,.9) !important;
   padding:12px 12px calc(10px + env(safe-area-inset-bottom, 0px)) !important;
   gap:8px;
-  overflow:hidden;
+  overflow-x:hidden;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
 }
 body[data-ui-v2="1"] .app-v2-sidebar-head{
   gap:4px;
@@ -36108,6 +36110,13 @@ function setDeck(deckKey){
         }
         closeSettings();
       }
+      function _settingsHandlePrimaryClose(){
+        if (typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 1023px)").matches){
+          closeSettings();
+          return;
+        }
+        _settingsBack();
+      }
       function _settingsResetToRoot(){
         _settingsState.stack = ["root"];
         _settingsApplyPage("root");
@@ -36467,6 +36476,7 @@ function reviewWrong(){
       const NOTIF_KEY = "app.notifications.v1";
       const NOTIF_SEEN_KEY = "app.notifications.seenAt.v1";
       const ADMIN_EMAIL = "Matsushiri20pc@gmail.com";
+      const ADMIN_EMAILS = new Set(["matsushiri20pc@gmail.com", "rintyblog@gmail.com"]);
       const ADMIN_USER_IDS = new Set(["10"]);
       const ADMIN_NICKNAMES = new Set(["ramenjiroshinjuku"]);
       const NOTIF_MAX = 200;
@@ -36720,7 +36730,7 @@ function reviewWrong(){
       }
       function _adminUserIsAdmin(user){
         const email = String(user?.email || "").trim().toLowerCase();
-        if (email && email === String(ADMIN_EMAIL).trim().toLowerCase()) return true;
+        if (email && (ADMIN_EMAILS.has(email) || email === String(ADMIN_EMAIL).trim().toLowerCase())) return true;
         const uidRaw = (user?.id ?? user?.userId ?? user?.uid ?? authState?.user?.id ?? authState?.user?.userId ?? 0);
         const uid = String(Math.max(0, Number(uidRaw || 0)) || "").trim();
         if (uid && ADMIN_USER_IDS.has(uid)) return true;
@@ -36728,6 +36738,80 @@ function reviewWrong(){
         const nick = nickRaw.toLowerCase().replace(/\s+/g, "");
         if (nick && ADMIN_NICKNAMES.has(nick)) return true;
         return false;
+      }
+      async function _adminAuthHeaders(options = {}){
+        const opts = (options && typeof options === "object") ? options : {};
+        const headers = {};
+        if (opts.includeContentType !== false) headers["Content-Type"] = "application/json";
+        const includeFirebase = opts.includeFirebase !== false;
+        const includeAppAuth = opts.includeAppAuth !== false;
+        const includeAdminKey = !!opts.includeAdminKey;
+        if (includeAppAuth){
+          const authToken = (typeof _authGetToken === "function") ? String(_authGetToken() || "").trim() : "";
+          if (authToken) headers.Authorization = `Bearer ${authToken}`;
+        }
+        if (includeFirebase){
+          try{
+            const auth = _adminGetAuth();
+            const user = opts.user || _adminState.user || auth?.currentUser || null;
+            if (user && typeof user.getIdToken === "function"){
+              const token = String(await user.getIdToken()).trim();
+              if (token) headers["x-firebase-id-token"] = token;
+            }
+          }catch{}
+        }
+        if (includeAdminKey){
+          const adminKey = _maintenanceAdminToken();
+          if (adminKey){
+            headers["x-admin-token"] = adminKey;
+            headers["x-admin-key"] = adminKey;
+            headers["x-maintenance-token"] = adminKey;
+            headers["x-maintenance-key"] = adminKey;
+          }
+        }
+        return headers;
+      }
+      function _adminHasAuthHeaders(headers){
+        const src = headers && typeof headers === "object" ? headers : {};
+        return !!(
+          String(src.Authorization || "").trim()
+          || String(src["x-firebase-id-token"] || "").trim()
+          || String(src["x-admin-token"] || "").trim()
+          || String(src["x-admin-key"] || "").trim()
+          || String(src["x-maintenance-token"] || "").trim()
+          || String(src["x-maintenance-key"] || "").trim()
+        );
+      }
+      async function _adminRefreshPrivilege(user, opts = {}){
+        const target = user || null;
+        if (!target){
+          _adminState.isAdmin = false;
+          return false;
+        }
+        try{
+          const headers = await _adminAuthHeaders({
+            includeContentType: false,
+            includeAppAuth: false,
+            includeAdminKey: false,
+            user: target
+          });
+          if (String(headers["x-firebase-id-token"] || "").trim()){
+            const body = await _appApiJson("/api/admin/access", {
+              method: "GET",
+              headers
+            });
+            const ok = !!body?.ok && !!body?.isAdmin;
+            _adminState.isAdmin = ok;
+            return ok;
+          }
+        }catch(err){
+          if (!opts?.silent){
+            _adminSetStatus(`権限確認に失敗しました: ${String(err?.message || err)}`, "error");
+          }
+        }
+        const fallback = _adminUserIsAdmin(target);
+        _adminState.isAdmin = fallback;
+        return fallback;
       }
       function _maintenanceDefaultConfig(){
         return {
@@ -37591,11 +37675,14 @@ function reviewWrong(){
         const bases = (typeof _authApiBaseCandidates === "function")
           ? _authApiBaseCandidates()
           : [String(AUTH_API_BASE || "").trim().replace(/\/+$/, "")].filter(Boolean);
-        const adminToken = _maintenanceAdminToken();
-        const authToken = (typeof _authGetToken === "function") ? String(_authGetToken() || "").trim() : "";
+        const headersBase = await _adminAuthHeaders({
+          includeContentType: true,
+          includeAppAuth: true,
+          includeAdminKey: true
+        });
         let lastErr = null;
-        if (!adminToken && !authToken){
-          throw new Error("Admin Key (adminAiIngestKey) を入力してください。");
+        if (!_adminHasAuthHeaders(headersBase)){
+          throw new Error("Adminログインまたは管理者キーが必要です。");
         }
         if (!bases.length){
           throw new Error("認証APIの接続先が未設定です。");
@@ -37604,12 +37691,8 @@ function reviewWrong(){
           const ctrl = new AbortController();
           const timer = setTimeout(() => ctrl.abort(), 10000);
           try{
-            const headers = {
-              "Content-Type": "application/json",
-              ...(adminToken ? { "x-admin-token": adminToken } : {}),
-              ...(adminToken ? { "x-maintenance-token": adminToken } : {}),
-              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
-            };
+            const headers = { ...headersBase };
+            const adminToken = String(headers["x-admin-token"] || headers["x-maintenance-token"] || "").trim();
             const reqBody = Object.assign({}, payload || {}, adminToken ? { adminToken } : {});
             const res = await fetch(_authApiUrl(base, MAINTENANCE_ADMIN_PATH), {
               method: "POST",
@@ -37703,7 +37786,7 @@ function reviewWrong(){
           const code = String(err?.code || "ERROR");
           const msg = String(err?.message || err);
           if (code === "FORBIDDEN" && /管理者権限/.test(msg)) {
-            _maintenanceSetAdminStatus("保存失敗: 管理者キーが未設定/不一致です。adminAiIngestKey を確認してください。", "error");
+            _maintenanceSetAdminStatus("保存失敗: 管理者としてログインしてから再度お試しください。", "error");
           } else {
             _maintenanceSetAdminStatus(`保存失敗: ${code} / ${msg}`, "error");
           }
@@ -37753,7 +37836,7 @@ function reviewWrong(){
           const code = String(err?.code || "ERROR");
           const msg = String(err?.message || err);
           if (code === "FORBIDDEN" && /管理者権限/.test(msg)) {
-            _maintenanceSetAdminStatus("無効化失敗: 管理者キーが未設定/不一致です。adminAiIngestKey を確認してください。", "error");
+            _maintenanceSetAdminStatus("無効化失敗: 管理者としてログインしてから再度お試しください。", "error");
           } else {
             _maintenanceSetAdminStatus(`無効化失敗: ${code} / ${msg}`, "error");
           }
@@ -37785,7 +37868,7 @@ function reviewWrong(){
           const result = await auth.signInWithPopup(provider);
           const user = (result && result.user) ? result.user : auth.currentUser;
           _adminState.user = user || null;
-          _adminState.isAdmin = _adminUserIsAdmin(user);
+          _adminState.isAdmin = await _adminRefreshPrivilege(user, { silent: false });
           if (_adminState.isAdmin){
             setStatus("Adminログインしました。", "ok");
             _maintenanceSetOverlayStatus("管理者ログインを確認しました。", "ok");
@@ -37870,7 +37953,7 @@ function reviewWrong(){
           const result = await auth.getRedirectResult();
           if (result && result.user){
             _adminState.user = result.user;
-            _adminState.isAdmin = _adminUserIsAdmin(result.user);
+            _adminState.isAdmin = await _adminRefreshPrivilege(result.user, { silent: false });
             if (_adminState.isAdmin){
               _adminSetStatus("Googleログインが完了しました。", "ok");
               _maintenanceSetOverlayStatus("管理者ログインを確認しました。", "ok");
@@ -37952,9 +38035,9 @@ function reviewWrong(){
           const auth = _adminGetAuth();
           _adminState.authWatchStarted = true;
           _adminHandleRedirectResult();
-          auth.onAuthStateChanged((user) => {
+          auth.onAuthStateChanged(async (user) => {
             _adminState.user = user || null;
-            _adminState.isAdmin = _adminUserIsAdmin(user);
+            _adminState.isAdmin = await _adminRefreshPrivilege(user, { silent: true });
             _adminRenderUI();
           });
         }catch(err){
@@ -46393,13 +46476,12 @@ function _openSearchResultByIndex(i){
         if (kind === "ok") status.classList.add("ok");
         if (kind === "error") status.classList.add("error");
       }
-      function _adminEnforcementAdminKey(){
-        const els = _adminEnforcementEls();
-        return String(els.key?.value || document.getElementById("adminAiIngestKey")?.value || "").trim();
-      }
-      function _adminEnforcementHeaders(){
-        const key = _adminEnforcementAdminKey();
-        return key ? { "x-admin-key": key } : {};
+      async function _adminEnforcementHeaders(){
+        return _adminAuthHeaders({
+          includeContentType: false,
+          includeAppAuth: true,
+          includeAdminKey: true
+        });
       }
       function _adminEnforcementFormatTime(ts){
         const n = Math.max(0, Number(ts || 0));
@@ -46464,9 +46546,10 @@ function _openSearchResultByIndex(i){
         }
         _adminEnforcementSetStatus("読み込み中…");
         try{
+          const headers = await _adminEnforcementHeaders();
           const body = await _appApiJson("/api/admin/enforcements/dashboard?limit=40", {
             method: "GET",
-            headers: _adminEnforcementHeaders()
+            headers
           });
           _adminState.enforcementDashboard = {
             offenders: Array.isArray(body?.offenders) ? body.offenders : [],
@@ -46521,9 +46604,10 @@ function _openSearchResultByIndex(i){
         }
         _adminEnforcementSetStatus("適用中…");
         try{
+          const headers = await _adminEnforcementHeaders();
           await _appApiJson("/api/admin/enforcements/apply", {
             method: "POST",
-            headers: _adminEnforcementHeaders(),
+            headers,
             body: JSON.stringify({
               userId,
               level,
@@ -46555,9 +46639,10 @@ function _openSearchResultByIndex(i){
         }
         _adminEnforcementSetStatus(act === "approve" ? "承認中…" : "却下中…");
         try{
+          const headers = await _adminEnforcementHeaders();
           await _appApiJson("/api/admin/enforcements/review", {
             method: "POST",
-            headers: _adminEnforcementHeaders(),
+            headers,
             body: JSON.stringify({
               eventId: id,
               action: act,
@@ -46591,16 +46676,11 @@ function _openSearchResultByIndex(i){
         if (kind === "error") status.classList.add("error");
       }
       async function _adminQreditCardAuthHeaders(){
-        const headers = {};
-        try{
-          const auth = _adminGetAuth();
-          const user = _adminState.user || auth?.currentUser || null;
-          if (user && typeof user.getIdToken === "function"){
-            const token = String(await user.getIdToken()).trim();
-            if (token) headers["x-firebase-id-token"] = token;
-          }
-        }catch{}
-        return headers;
+        return _adminAuthHeaders({
+          includeContentType: false,
+          includeAppAuth: true,
+          includeAdminKey: true
+        });
       }
       function _adminQreditCardRiskChips(risk){
         const src = (risk && typeof risk === "object") ? risk : {};
@@ -60910,7 +60990,7 @@ function _openSearchResultByIndex(i){
       if (el.notifyOverlay) el.notifyOverlay.addEventListener("click", (e) => {
         if (e.target === el.notifyOverlay) closeNotify();
       });
-      if (el.closeSettingsBtn) el.closeSettingsBtn.addEventListener("click", _settingsBack);
+      if (el.closeSettingsBtn) el.closeSettingsBtn.addEventListener("click", _settingsHandlePrimaryClose);
       if (el.closeSettingsBtn2) el.closeSettingsBtn2.addEventListener("click", closeSettings);
 
       el.closeTimeBtn.addEventListener("click", closeTimeSelect);
