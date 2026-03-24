@@ -3159,7 +3159,7 @@ a{ color: inherit; }
     .xselect-portal{
       position: fixed;
       inset: 0;
-      z-index: 2605;
+      z-index: 21000;
       background: transparent;
     }
     .xselect-portal[hidden]{
@@ -25811,6 +25811,19 @@ body[data-ui-v2="1"] .app-v2-sidebar-foot{
   outline:none;
   box-shadow:var(--vq-ui-focus), 0 20px 40px rgba(15, 23, 42, .09), inset 0 1px 0 rgba(255,255,255,.98);
 }
+.app-v2-qod-entry{
+  border-color:rgba(205, 214, 226, .92);
+  background:linear-gradient(180deg, rgba(255,255,255,.99), rgba(244,247,250,.96));
+}
+.app-v2-qod-entry:hover,
+.app-v2-qod-entry:focus-visible{
+  border-color:rgba(183, 193, 207, .98);
+}
+.app-v2-qod-entry .app-v2-qredit-card-icon{
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255,255,255,.96), rgba(255,255,255,.28) 42%, transparent 58%),
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(233,238,245,.94));
+}
 .app-v2-qredit-card-icon{
   width:42px;
   height:42px;
@@ -27246,6 +27259,322 @@ body[data-ui-v2="1"] .app-v2-sidebar-foot{
 .app-qredit-card-cta{
   min-height:54px;
 }
+.app-qod-intro-visual{
+  position:relative;
+  width:min(100%, 520px);
+  min-height:280px;
+  margin:0 auto;
+  display:grid;
+  place-items:center;
+}
+.app-qod-intro-visual::before{
+  content:"";
+  position:absolute;
+  inset:auto 12% 8% 12%;
+  height:34px;
+  border-radius:999px;
+  background:radial-gradient(circle at center, rgba(15,23,42,.12), rgba(15,23,42,.02) 66%, transparent 78%);
+  filter:blur(10px);
+}
+.app-qod-intro-stack{
+  position:relative;
+  width:min(100%, 360px);
+  aspect-ratio:1.1/1;
+}
+.app-qod-intro-sheet{
+  position:absolute;
+  inset:0;
+  border-radius:28px;
+  border:1px solid rgba(217,223,232,.96);
+  background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(246,248,251,.95));
+  box-shadow:0 20px 50px rgba(15,23,42,.08), inset 0 1px 0 rgba(255,255,255,.96);
+}
+.app-qod-intro-sheet--rear{
+  transform:translate(-28px, 18px) rotate(-8deg);
+  opacity:.72;
+}
+.app-qod-intro-sheet--mid{
+  transform:translate(26px, 14px) rotate(7deg);
+  opacity:.82;
+}
+.app-qod-intro-sheet--front{
+  padding:24px 24px 22px;
+  display:grid;
+  gap:18px;
+}
+.app-qod-intro-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.app-qod-intro-kicker{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:#425166;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.app-qod-intro-kicker .ms{
+  font-size:18px;
+  color:#1f4fa8;
+}
+.app-qod-intro-chip{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:30px;
+  padding:0 12px;
+  border-radius:999px;
+  border:1px solid rgba(211,218,228,.96);
+  background:rgba(255,255,255,.78);
+  color:#4b5b70;
+  font-size:12px;
+  font-weight:680;
+}
+.app-qod-intro-body{
+  display:grid;
+  gap:10px;
+}
+.app-qod-intro-title{
+  color:#0f172a;
+  font-size:28px;
+  line-height:1.08;
+  font-weight:780;
+  letter-spacing:-.05em;
+}
+.app-qod-intro-sub{
+  color:#607085;
+  font-size:14px;
+  line-height:1.72;
+}
+.app-qod-intro-metrics{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+.app-qod-intro-metric{
+  border:1px solid rgba(218,224,233,.96);
+  border-radius:18px;
+  background:rgba(255,255,255,.8);
+  padding:14px 15px;
+  display:grid;
+  gap:6px;
+}
+.app-qod-intro-metric .k{
+  color:#7b8795;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.app-qod-intro-metric .v{
+  color:#122033;
+  font-size:16px;
+  font-weight:730;
+  line-height:1.35;
+}
+.app-qod-list{
+  width:min(100%, 640px);
+  margin:0;
+  padding:0;
+  list-style:none;
+  display:grid;
+  gap:10px;
+}
+.app-qod-list li{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  color:#425166;
+  font-size:14px;
+  line-height:1.75;
+}
+.app-qod-list-bullet{
+  width:22px;
+  height:22px;
+  border-radius:999px;
+  border:1px solid rgba(211,218,228,.94);
+  background:rgba(255,255,255,.82);
+  color:#1f4fa8;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-size:13px;
+  font-weight:700;
+  flex:0 0 22px;
+  margin-top:2px;
+}
+.app-qod-form-grid{
+  display:grid;
+  gap:14px;
+}
+.app-qod-form-grid--cols{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+.app-qod-field-note{
+  color:#68788c;
+  font-size:12px;
+  line-height:1.65;
+}
+.app-qod-inline-note{
+  color:#5f6d7e;
+  font-size:13px;
+  line-height:1.72;
+}
+.app-qod-notice{
+  width:min(100%, 720px);
+  margin:0 auto;
+  border:1px solid rgba(219,224,232,.94);
+  border-radius:18px;
+  background:linear-gradient(180deg, rgba(249,250,252,.98), rgba(244,246,249,.96));
+  padding:14px 16px;
+  color:#435368;
+  font-size:13px;
+  line-height:1.72;
+}
+.app-qod-confirm-layout{
+  display:grid;
+  gap:16px;
+}
+.app-qod-screen--flow{
+  min-height:100%;
+  height:100%;
+}
+.app-qod-screen-main--scroll{
+  width:100%;
+  overflow:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  padding-bottom:8px;
+}
+.app-qod-screen-main--scroll::-webkit-scrollbar{
+  width:10px;
+}
+.app-qod-screen-main--scroll::-webkit-scrollbar-thumb{
+  border-radius:999px;
+  background:rgba(148,163,184,.34);
+}
+.app-qod-screen-main--confirm{
+  justify-items:center;
+  text-align:center;
+}
+.app-qod-screen-main--confirm .app-qredit-card-title-block,
+.app-qod-screen-main--confirm .app-qod-inline-note{
+  text-align:center;
+}
+.app-qod-screen-main--confirm .app-qod-confirm-layout{
+  width:min(100%, 640px);
+  justify-items:center;
+}
+.app-qod-screen-main--confirm .app-qod-confirm-layout > *{
+  width:100%;
+}
+.app-qod-screen-main--confirm .app-qod-checklist{
+  justify-items:center;
+}
+.app-qod-screen-main--confirm .app-qod-check{
+  width:100%;
+  text-align:left;
+}
+.app-qod-checklist{
+  display:grid;
+  gap:12px;
+}
+.app-qod-check{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  border:1px solid rgba(220,224,232,.92);
+  border-radius:18px;
+  background:rgba(255,255,255,.84);
+  padding:14px 16px;
+}
+.app-qod-check input{
+  width:18px;
+  height:18px;
+  margin-top:2px;
+  accent-color:#1f4fa8;
+  flex:0 0 18px;
+}
+.app-qod-check span{
+  color:#334155;
+  font-size:14px;
+  line-height:1.7;
+}
+.app-qod-status-wrap{
+  width:min(100%, 560px);
+  margin:0 auto;
+  display:grid;
+  gap:18px;
+  justify-items:center;
+  text-align:center;
+}
+.app-qod-status-icon{
+  width:78px;
+  height:78px;
+  border-radius:26px;
+  border:1px solid rgba(214,220,229,.96);
+  background:linear-gradient(180deg, rgba(255,255,255,.99), rgba(242,245,249,.95));
+  color:#28405f;
+  box-shadow:0 20px 44px rgba(15,23,42,.08), inset 0 1px 0 rgba(255,255,255,.96);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+.app-qod-status-icon .ms{
+  font-size:34px;
+}
+.app-qod-status-icon--success{
+  color:#0f766e;
+}
+.app-qod-status-icon--warning{
+  color:#9a6700;
+}
+.app-qod-status-icon--danger{
+  color:#b42318;
+}
+.app-qod-loading{
+  width:70px;
+  height:70px;
+  border-radius:999px;
+  border:4px solid rgba(203,213,225,.42);
+  border-top-color:#1f4fa8;
+  animation:appQodSpin 1.05s linear infinite;
+}
+.app-qod-summary-grid{
+  width:min(100%, 720px);
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+.app-qod-summary-item{
+  border:1px solid rgba(219,224,232,.92);
+  border-radius:18px;
+  background:rgba(255,255,255,.84);
+  padding:14px 15px;
+  display:grid;
+  gap:6px;
+}
+.app-qod-summary-item .k{
+  color:#7b8795;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.app-qod-summary-item .v{
+  color:#0f172a;
+  font-size:15px;
+  font-weight:690;
+  line-height:1.55;
+}
+@keyframes appQodSpin{
+  to{ transform:rotate(360deg); }
+}
 .app-qredit-sheet{
   width:min(760px, calc(100vw - 28px));
   max-height:min(88vh, 860px);
@@ -28061,6 +28390,36 @@ body[data-ui-v2="1"] .app-v2-sidebar-foot{
   .app-qredit-card-cta,
   .app-qredit-card-secondary-cta{
     width:100%;
+  }
+  .app-qod-intro-visual{
+    min-height:240px;
+  }
+  .app-qod-intro-stack{
+    width:min(100%, 314px);
+  }
+  .app-qod-intro-sheet--front{
+    padding:20px 20px 18px;
+    gap:16px;
+  }
+  .app-qod-intro-title{
+    font-size:24px;
+  }
+  .app-qod-intro-metrics,
+  .app-qod-summary-grid,
+  .app-qod-form-grid--cols{
+    grid-template-columns:minmax(0, 1fr);
+  }
+  .app-qod-list li,
+  .app-qod-check span{
+    font-size:13px;
+  }
+  .app-qod-status-icon{
+    width:68px;
+    height:68px;
+    border-radius:22px;
+  }
+  .app-qod-status-icon .ms{
+    font-size:30px;
   }
   .app-qredit-sheet{
     width:min(100vw - 16px, 100vw);
@@ -30816,6 +31175,19 @@ body[data-ui-v2="1"] .app-v2-sidebar-foot{
           </span>
           <span class="ms app-v2-qredit-card-go" aria-hidden="true">chevron_right</span>
         </button>
+        <button class="app-v2-qredit-card-entry app-v2-qod-entry" id="appV2QodBtn" type="button" data-v2-action="open-qod" aria-label="QOD申請を開く">
+          <span class="app-v2-qredit-card-icon" aria-hidden="true">
+            <span class="ms">fact_check</span>
+          </span>
+          <span class="app-v2-qredit-card-copy">
+            <span class="app-v2-qredit-card-title-row">
+              <span class="app-v2-qredit-card-title">QOD</span>
+              <span class="app-v2-qredit-card-badge" id="appV2QodBadge">NEW</span>
+            </span>
+            <span class="app-v2-qredit-card-sub" id="appV2QodSub">Quiz Developers Program</span>
+          </span>
+          <span class="ms app-v2-qredit-card-go" aria-hidden="true">chevron_right</span>
+        </button>
       </div>
     </nav>
     <button class="app-v2-sidebar-backdrop" id="appV2SidebarBackdrop" type="button" aria-label="サイドバーを閉じる"></button>
@@ -32841,6 +33213,9 @@ body[data-ui-v2="1"] .app-v2-sidebar-foot{
   </div>
   <div class="overlay hidden app-qredit-card-overlay" id="appQreditCardOverlay" role="dialog" aria-modal="true" aria-labelledby="appQreditCardTitle">
     <div class="app-qredit-card-onboarding" id="appQreditCardFlowRoot"></div>
+  </div>
+  <div class="overlay hidden app-qredit-card-overlay" id="appQodOverlay" role="dialog" aria-modal="true" aria-labelledby="appQodTitle">
+    <div class="app-qredit-card-onboarding" id="appQodFlowRoot"></div>
   </div>
 
   <!-- Optional public config fallback. Keep placeholder-only in repo. -->
@@ -37122,6 +37497,9 @@ body[data-ui-v2="1"] .app-v2-sidebar-foot{
         appV2QreditCardBtn: document.getElementById("appV2QreditCardBtn"),
         appV2QreditCardSub: document.getElementById("appV2QreditCardSub"),
         appV2QreditCardBadge: document.getElementById("appV2QreditCardBadge"),
+        appV2QodBtn: document.getElementById("appV2QodBtn"),
+        appV2QodSub: document.getElementById("appV2QodSub"),
+        appV2QodBadge: document.getElementById("appV2QodBadge"),
         appV2StatHighPriority: document.getElementById("appV2StatHighPriority"),
         appV2StatHighPrioritySub: document.getElementById("appV2StatHighPrioritySub"),
         appV2StatToday: document.getElementById("appV2StatToday"),
@@ -37461,6 +37839,8 @@ body[data-ui-v2="1"] .app-v2-sidebar-foot{
         appQreditOverlay: document.getElementById("appQreditOverlay"),
         appQreditCardOverlay: document.getElementById("appQreditCardOverlay"),
         appQreditCardFlowRoot: document.getElementById("appQreditCardFlowRoot"),
+        appQodOverlay: document.getElementById("appQodOverlay"),
+        appQodFlowRoot: document.getElementById("appQodFlowRoot"),
         appQreditCloseBtn: document.getElementById("appQreditCloseBtn"),
         appQreditValue: document.getElementById("appQreditValue"),
         appQreditSummary: document.getElementById("appQreditSummary"),
@@ -44515,6 +44895,11 @@ function _openSearchResultByIndex(i){
       const APP_QREDIT_CARD_THEME_DEFAULT = "frost-white";
       const APP_QREDIT_CARD_STATUS_NONE = "none";
       const APP_QREDIT_CARD_STATUS_PENDING = "pending";
+      const APP_QREDIT_CARD_STATUS_SUBMITTED = "submitted";
+      const APP_QREDIT_CARD_STATUS_QUEUED = "queued";
+      const APP_QREDIT_CARD_STATUS_QUEUED_NEXT = "queued_for_next_business_window";
+      const APP_QREDIT_CARD_STATUS_UNDER_REVIEW = "under_review";
+      const APP_QREDIT_CARD_STATUS_UNDER_EXTENDED_REVIEW = "under_extended_review";
       const APP_QREDIT_CARD_STATUS_ON_HOLD = "on_hold";
       const APP_QREDIT_CARD_STATUS_APPROVED = "approved";
       const APP_QREDIT_CARD_STATUS_REJECTED = "rejected";
@@ -44778,6 +45163,922 @@ function _openSearchResultByIndex(i){
       let _appQreditCardLoadedKey = "";
       let _appQreditCardRuntimeSecureCode = "";
       let _appQreditCardViewerRuntime = null;
+      const APP_QOD_STORAGE_PREFIX = "app.qod.state.v1";
+      const APP_QOD_STATUS_DRAFT = "draft";
+      const APP_QOD_STATUS_SUBMITTED = "submitted";
+      const APP_QOD_STATUS_QUEUED = "queued";
+      const APP_QOD_STATUS_QUEUED_NEXT = "queued_for_next_business_window";
+      const APP_QOD_STATUS_UNDER_REVIEW = "under_review";
+      const APP_QOD_STATUS_UNDER_EXTENDED_REVIEW = "under_extended_review";
+      const APP_QOD_STATUS_FINANCIAL_RISK_REVIEW = "financial_risk_review";
+      const APP_QOD_STATUS_APPROVED = "approved";
+      const APP_QOD_STATUS_REJECTED = "rejected";
+      const APP_QOD_STATUS_ON_HOLD = "on_hold";
+      const APP_QOD_PREFECTURES = Object.freeze(["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"]);
+      const APP_QOD_CONFIRM_CHECK_KEYS = Object.freeze(["accuracy", "revenue", "misconduct", "paypay"]);
+      const _appQodState = {
+        ownerKey: "guest",
+        open: false,
+        hasAppliedQOD: false,
+        hasCompletedQOD: false,
+        qodApplicationStep: "intro",
+        qodApplicationStatus: APP_QOD_STATUS_DRAFT,
+        qodFormData: {
+          fullName: "",
+          fullNameKana: "",
+          birthDate: "",
+          prefecture: "",
+          city: "",
+          phone: "",
+          email: "",
+          paypayId: ""
+        },
+        notificationPreference: "app",
+        confirmScrolled: false,
+        confirmChecks: { accuracy: false, revenue: false, misconduct: false, paypay: false },
+        submittedAt: 0,
+        reviewedAt: 0,
+        reviewNote: "",
+        applicationId: "",
+        nextReviewAt: 0,
+        statusLoading: false,
+        statusLoadedAt: 0
+      };
+      let _appQodLoadedKey = "";
+      let _appQodSubmitTimer = 0;
+      function _appDefaultQodState(){
+        return {
+          ownerKey: _appQreditCardOwnerKey(),
+          open: false,
+          hasAppliedQOD: false,
+          hasCompletedQOD: false,
+          qodApplicationStep: "intro",
+          qodApplicationStatus: APP_QOD_STATUS_DRAFT,
+          qodFormData: {
+            fullName: "",
+            fullNameKana: "",
+            birthDate: "",
+            prefecture: "",
+            city: "",
+            phone: "",
+            email: String(authState?.user?.email || "").trim(),
+            paypayId: ""
+          },
+          notificationPreference: "app",
+          confirmScrolled: false,
+          confirmChecks: { accuracy: false, revenue: false, misconduct: false, paypay: false },
+          submittedAt: 0,
+          reviewedAt: 0,
+          reviewNote: "",
+          applicationId: "",
+          nextReviewAt: 0,
+          statusLoading: false,
+          statusLoadedAt: 0
+        };
+      }
+      function _appQodStorageKey(){
+        return `${APP_QOD_STORAGE_PREFIX}:${_appQreditCardOwnerKey()}`;
+      }
+      function _appQodReadStorage(force = false){
+        const key = _appQodStorageKey();
+        if (!force && _appQodLoadedKey === key) return _appQodState;
+        const base = _appDefaultQodState();
+        let stored = {};
+        try{
+          const raw = localStorage.getItem(key);
+          if (raw) stored = JSON.parse(raw) || {};
+        }catch{}
+        const confirmChecks = (stored.confirmChecks && typeof stored.confirmChecks === "object") ? stored.confirmChecks : {};
+        const form = (stored.qodFormData && typeof stored.qodFormData === "object") ? stored.qodFormData : {};
+        Object.assign(_appQodState, base, {
+          ownerKey: key,
+          open: !!stored.open,
+          hasAppliedQOD: !!stored.hasAppliedQOD,
+          hasCompletedQOD: !!stored.hasCompletedQOD,
+          qodApplicationStep: String(stored.qodApplicationStep || base.qodApplicationStep || "intro"),
+          qodApplicationStatus: String(stored.qodApplicationStatus || base.qodApplicationStatus || APP_QOD_STATUS_DRAFT),
+          qodFormData: {
+            fullName: String(form.fullName || base.qodFormData.fullName || ""),
+            fullNameKana: String(form.fullNameKana || base.qodFormData.fullNameKana || ""),
+            birthDate: String(form.birthDate || base.qodFormData.birthDate || ""),
+            prefecture: String(form.prefecture || base.qodFormData.prefecture || ""),
+            city: String(form.city || base.qodFormData.city || ""),
+            phone: String(form.phone || base.qodFormData.phone || ""),
+            email: String(form.email || base.qodFormData.email || ""),
+            paypayId: String(form.paypayId || base.qodFormData.paypayId || "")
+          },
+          notificationPreference: String(stored.notificationPreference || base.notificationPreference || "app"),
+          confirmScrolled: !!stored.confirmScrolled,
+          confirmChecks: {
+            accuracy: !!confirmChecks.accuracy,
+            revenue: !!confirmChecks.revenue,
+            misconduct: !!confirmChecks.misconduct,
+            paypay: !!confirmChecks.paypay
+          },
+          submittedAt: Math.max(0, Number(stored.submittedAt || 0) || 0),
+          reviewedAt: Math.max(0, Number(stored.reviewedAt || 0) || 0),
+          reviewNote: String(stored.reviewNote || ""),
+          applicationId: String(stored.applicationId || ""),
+          nextReviewAt: Math.max(0, Number(stored.nextReviewAt || 0) || 0),
+          statusLoading: false,
+          statusLoadedAt: Math.max(0, Number(stored.statusLoadedAt || 0) || 0)
+        });
+        _appQodLoadedKey = key;
+        return _appQodState;
+      }
+      function _appQodPersist(){
+        const key = _appQodStorageKey();
+        const payload = {
+          open: !!_appQodState.open,
+          hasAppliedQOD: !!_appQodState.hasAppliedQOD,
+          hasCompletedQOD: !!_appQodState.hasCompletedQOD,
+          qodApplicationStep: String(_appQodState.qodApplicationStep || "intro"),
+          qodApplicationStatus: String(_appQodState.qodApplicationStatus || APP_QOD_STATUS_DRAFT),
+          qodFormData: {
+            fullName: String(_appQodState.qodFormData?.fullName || ""),
+            fullNameKana: String(_appQodState.qodFormData?.fullNameKana || ""),
+            birthDate: String(_appQodState.qodFormData?.birthDate || ""),
+            prefecture: String(_appQodState.qodFormData?.prefecture || ""),
+            city: String(_appQodState.qodFormData?.city || ""),
+            phone: String(_appQodState.qodFormData?.phone || ""),
+            email: String(_appQodState.qodFormData?.email || ""),
+            paypayId: String(_appQodState.qodFormData?.paypayId || "")
+          },
+          notificationPreference: String(_appQodState.notificationPreference || "app"),
+          confirmScrolled: !!_appQodState.confirmScrolled,
+          confirmChecks: {
+            accuracy: !!_appQodState.confirmChecks?.accuracy,
+            revenue: !!_appQodState.confirmChecks?.revenue,
+            misconduct: !!_appQodState.confirmChecks?.misconduct,
+            paypay: !!_appQodState.confirmChecks?.paypay
+          },
+          submittedAt: Math.max(0, Number(_appQodState.submittedAt || 0) || 0),
+          reviewedAt: Math.max(0, Number(_appQodState.reviewedAt || 0) || 0),
+          reviewNote: String(_appQodState.reviewNote || ""),
+          applicationId: String(_appQodState.applicationId || ""),
+          nextReviewAt: Math.max(0, Number(_appQodState.nextReviewAt || 0) || 0),
+          statusLoadedAt: Math.max(0, Number(_appQodState.statusLoadedAt || 0) || 0)
+        };
+        try{ localStorage.setItem(key, JSON.stringify(payload)); }catch{}
+      }
+      function _appQodNormalizeStatus(status){
+        const key = String(status || "").trim().toLowerCase();
+        if (
+          key === APP_QOD_STATUS_DRAFT
+          || key === APP_QOD_STATUS_SUBMITTED
+          || key === APP_QOD_STATUS_QUEUED
+          || key === APP_QOD_STATUS_QUEUED_NEXT
+          || key === APP_QOD_STATUS_UNDER_REVIEW
+          || key === APP_QOD_STATUS_UNDER_EXTENDED_REVIEW
+          || key === APP_QOD_STATUS_FINANCIAL_RISK_REVIEW
+          || key === APP_QOD_STATUS_APPROVED
+          || key === APP_QOD_STATUS_REJECTED
+          || key === APP_QOD_STATUS_ON_HOLD
+          || key === "hold"
+        ){
+          return key;
+        }
+        return APP_QOD_STATUS_DRAFT;
+      }
+      function _appQodIsSubmittedLike(status){
+        const key = _appQodNormalizeStatus(status);
+        return key === APP_QOD_STATUS_SUBMITTED
+          || key === APP_QOD_STATUS_QUEUED
+          || key === APP_QOD_STATUS_QUEUED_NEXT
+          || key === APP_QOD_STATUS_UNDER_REVIEW;
+      }
+      function _appQodIsHoldLike(status){
+        const key = _appQodNormalizeStatus(status);
+        return key === APP_QOD_STATUS_ON_HOLD
+          || key === "hold"
+          || key === APP_QOD_STATUS_UNDER_EXTENDED_REVIEW
+          || key === APP_QOD_STATUS_FINANCIAL_RISK_REVIEW;
+      }
+      function _appQodSyncIdentity(){
+        _appQodState.ownerKey = _appQreditCardOwnerKey();
+        const email = String(authState?.user?.email || "").trim();
+        if (email && !_appQodState.qodFormData.email){
+          _appQodState.qodFormData.email = email;
+        }
+      }
+      function _appQodStatusLabel(status){
+        const key = _appQodNormalizeStatus(status);
+        if (key === APP_QOD_STATUS_APPROVED) return "承認";
+        if (key === APP_QOD_STATUS_QUEUED_NEXT) return "営業時間開始後に審査";
+        if (_appQodIsHoldLike(key)) return "追加確認中";
+        if (key === APP_QOD_STATUS_REJECTED) return "却下";
+        if (_appQodIsSubmittedLike(key)) return "審査中";
+        return "未申請";
+      }
+      function _appQodResultStepForStatus(status){
+        const key = _appQodNormalizeStatus(status);
+        if (key === APP_QOD_STATUS_APPROVED) return "result-approved";
+        if (_appQodIsHoldLike(key)) return "result-hold";
+        if (key === APP_QOD_STATUS_REJECTED) return "result-rejected";
+        if (_appQodIsSubmittedLike(key)) return "submitted";
+        return "";
+      }
+      function _appQodProgressPhase(step){
+        const key = String(step || "");
+        if (key === "input") return 1;
+        if (key === "confirm") return 2;
+        if (key === "submitting" || key === "submitted" || key.indexOf("result-") === 0) return 3;
+        return 0;
+      }
+      function _appQodProgressHtml(step){
+        const phase = _appQodProgressPhase(step);
+        if (!phase) return "";
+        const fill = phase <= 1 ? 0 : (phase === 2 ? 50 : 100);
+        return `
+          <div class="app-qredit-card-progress" style="--app-qredit-card-progress-fill:${fill}%;">
+            <div class="app-qredit-card-progress-track"><span class="app-qredit-card-progress-fill"></span></div>
+            <div class="app-qredit-card-progress-steps">
+              ${["入力","確認","申請"].map((label, index) => {
+                const stepIndex = index + 1;
+                const klass = phase > stepIndex ? "is-complete" : (phase === stepIndex ? "is-active" : "");
+                return `<div class="app-qredit-card-progress-step ${klass}"><span class="app-qredit-card-progress-dot" aria-hidden="true"></span><span class="app-qredit-card-progress-label">${label}</span></div>`;
+              }).join("")}
+            </div>
+          </div>
+        `;
+      }
+      function _appQodHeaderHtml(step, { showBack = false } = {}){
+        return `
+          <div class="app-qredit-card-shell-head">
+            <div class="app-qredit-card-shell-nav">
+              ${showBack
+                ? `<button class="textbtn app-qredit-card-back" type="button" data-qod-action="back">戻る</button>`
+                : `<span class="app-qredit-card-shell-spacer" aria-hidden="true"></span>`}
+              <button class="icon-btn app-qredit-card-close" type="button" data-qod-action="close" aria-label="QODを閉じる">
+                <span class="ms" aria-hidden="true">close</span>
+              </button>
+            </div>
+            ${_appQodProgressHtml(step)}
+          </div>
+        `;
+      }
+      function _appQodIntroVisualHtml(){
+        return `
+          <div class="app-qod-intro-visual" aria-hidden="true">
+            <div class="app-qod-intro-stack">
+              <div class="app-qod-intro-sheet app-qod-intro-sheet--rear"></div>
+              <div class="app-qod-intro-sheet app-qod-intro-sheet--mid"></div>
+              <div class="app-qod-intro-sheet app-qod-intro-sheet--front">
+                <div class="app-qod-intro-top">
+                  <div class="app-qod-intro-kicker"><span class="ms">fact_check</span><span>QOD Review</span></div>
+                  <span class="app-qod-intro-chip">Program</span>
+                </div>
+                <div class="app-qod-intro-body">
+                  <div class="app-qod-intro-title">Preset Creator</div>
+                  <div class="app-qod-intro-sub">自作問題を公開し、完走実績に応じた収益化を目指せる申請フローです。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      function _appQodConfirmTextHtml(){
+        const sections = [
+          ["QODの概要", "Quiz Developers Program は、VocabuQuiz 内で自作プリセットを公開し、条件を満たした内容に対して収益化の対象を検討するための申請制度です。"],
+          ["収益化条件", "公開プリセットの完走数や品質、継続的な利用状況などをもとに総合的に確認します。完走数のみで支払いが確定するわけではありません。"],
+          ["審査時間", "申請内容は順次確認されます。審査には最短数分〜最大3営業日かかり、通常は30分〜1日程度を想定しています。"],
+          ["虚偽申請の禁止", "虚偽の申請情報、不正な収益化目的の行為、本人以外の PayPay ID の無断登録などは禁止されます。"],
+          ["継続確認について", "参加後もアカウント状態や公開内容の品質を確認する場合があります。必要に応じて追加の確認や一時停止を行うことがあります。"],
+          ["通知と連絡", "審査結果や確認事項は、登録した電話番号・メールアドレス、またはアプリ内通知で案内されます。"]
+        ];
+        return sections.concat(sections).map(([title, body]) => `
+          <section class="app-qredit-card-terms-section">
+            <h4>${_escapeHtml(title)}</h4>
+            <p>${_escapeHtml(body)}</p>
+          </section>
+        `).join("");
+      }
+      function _appQodValidateForm(formData = _appQodState.qodFormData){
+        const fullName = String(formData?.fullName || "").trim();
+        const fullNameKana = String(formData?.fullNameKana || "").trim();
+        const birthDate = String(formData?.birthDate || "").trim();
+        const prefecture = String(formData?.prefecture || "").trim();
+        const city = String(formData?.city || "").trim();
+        const phone = String(formData?.phone || "").trim();
+        const email = String(formData?.email || "").trim();
+        const paypayId = String(formData?.paypayId || "").trim();
+        if (!fullName) return { ok: false, message: "氏名を入力してください。" };
+        if (!fullNameKana) return { ok: false, message: "カタカナ氏名を入力してください。" };
+        if (!birthDate) return { ok: false, message: "生年月日を入力してください。" };
+        if (!prefecture) return { ok: false, message: "都道府県を選択してください。" };
+        if (!city) return { ok: false, message: "市区町村を入力してください。" };
+        if (!phone && !email) return { ok: false, message: "電話番号またはメールアドレスを入力してください。" };
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, message: "メールアドレスの形式を確認してください。" };
+        if (!paypayId) return { ok: false, message: "PayPay ID を入力してください。" };
+        return { ok: true, message: "入力内容を確認できました。申請確認へ進めます。" };
+      }
+      function _appQodCommitFormFromInputs(){
+        const next = { ..._appQodState.qodFormData };
+        const mapping = {
+          fullName: "appQodFullNameInput",
+          fullNameKana: "appQodFullNameKanaInput",
+          birthDate: "appQodBirthDateInput",
+          prefecture: "appQodPrefectureInput",
+          city: "appQodCityInput",
+          phone: "appQodPhoneInput",
+          email: "appQodEmailInput",
+          paypayId: "appQodPayPayIdInput"
+        };
+        Object.entries(mapping).forEach(([key, id]) => {
+          const node = document.getElementById(id);
+          if (node instanceof HTMLInputElement || node instanceof HTMLSelectElement){
+            next[key] = String(node.value || "").trim();
+          }
+        });
+        _appQodState.qodFormData = next;
+        _appQodState.notificationPreference = next.email ? "email" : "app";
+        return next;
+      }
+      function _appQodConfirmReady(){
+        return !!_appQodState.confirmScrolled && APP_QOD_CONFIRM_CHECK_KEYS.every((key) => !!_appQodState.confirmChecks[key]);
+      }
+      function _appQodSummaryHtml(){
+        const form = _appQodState.qodFormData || {};
+        return `
+          <div class="app-qod-summary-grid">
+            <article class="app-qod-summary-item"><div class="k">氏名</div><div class="v">${_escapeHtml(form.fullName || "—")}</div></article>
+            <article class="app-qod-summary-item"><div class="k">カタカナ氏名</div><div class="v">${_escapeHtml(form.fullNameKana || "—")}</div></article>
+            <article class="app-qod-summary-item"><div class="k">生年月日</div><div class="v">${_escapeHtml(form.birthDate || "—")}</div></article>
+            <article class="app-qod-summary-item"><div class="k">都道府県</div><div class="v">${_escapeHtml(form.prefecture || "—")}</div></article>
+            <article class="app-qod-summary-item"><div class="k">市区町村</div><div class="v">${_escapeHtml(form.city || "—")}</div></article>
+            <article class="app-qod-summary-item"><div class="k">連絡先</div><div class="v">${_escapeHtml(form.phone || form.email || "—")}</div></article>
+            <article class="app-qod-summary-item"><div class="k">PayPay ID</div><div class="v">${_escapeHtml(form.paypayId || "—")}</div></article>
+          </div>
+        `;
+      }
+      function _appQodNormalizeStatusPayload(raw){
+        const src = (raw && typeof raw === "object")
+          ? ((raw.qod && typeof raw.qod === "object") ? raw.qod : raw)
+          : null;
+        if (!src) return null;
+        const application = (src.application && typeof src.application === "object") ? src.application : null;
+        return {
+          hasAppliedQOD: !!src.hasAppliedQOD || !!application,
+          hasCompletedQOD: !!src.hasCompletedQOD || _appQodNormalizeStatus(src.qodApplicationStatus || application?.status) === APP_QOD_STATUS_APPROVED,
+          qodApplicationStatus: _appQodNormalizeStatus(src.qodApplicationStatus || application?.status || APP_QOD_STATUS_DRAFT),
+          qodFormData: {
+            fullName: String(src.qodFormData?.fullName || application?.fullName || ""),
+            fullNameKana: String(src.qodFormData?.fullNameKana || application?.fullNameKana || ""),
+            birthDate: String(src.qodFormData?.birthDate || application?.birthDate || ""),
+            prefecture: String(src.qodFormData?.prefecture || application?.prefecture || ""),
+            city: String(src.qodFormData?.city || application?.city || ""),
+            phone: String(src.qodFormData?.phone || application?.phone || ""),
+            email: String(src.qodFormData?.email || application?.email || ""),
+            paypayId: String(src.qodFormData?.paypayId || application?.paypayId || "")
+          },
+          submittedAt: Math.max(0, Number(src.submittedAt || application?.submittedAt || 0) || 0),
+          reviewedAt: Math.max(0, Number(src.reviewedAt || application?.reviewedAt || 0) || 0),
+          reviewNote: String(src.reviewNote || application?.reviewNote || ""),
+          application: application ? {
+            applicationId: String(application.applicationId || ""),
+            status: _appQodNormalizeStatus(application.status || APP_QOD_STATUS_DRAFT),
+            submittedAt: Math.max(0, Number(application.submittedAt || 0) || 0),
+            reviewedAt: Math.max(0, Number(application.reviewedAt || 0) || 0),
+            reviewNote: String(application.reviewNote || ""),
+            notifyMethod: String(application.notifyMethod || ""),
+            nextReviewAt: Math.max(0, Number(application.nextReviewAt || 0) || 0)
+          } : null
+        };
+      }
+      function _appQodApplyStatusPayload(raw, { persist = true, preserveDraft = true } = {}){
+        const payload = _appQodNormalizeStatusPayload(raw);
+        if (!payload) return null;
+        const application = payload.application;
+        const fallbackEmail = String(authState?.user?.email || "").trim();
+        _appQodState.hasAppliedQOD = !!payload.hasAppliedQOD;
+        _appQodState.hasCompletedQOD = !!payload.hasCompletedQOD;
+        _appQodState.qodApplicationStatus = payload.qodApplicationStatus;
+        _appQodState.statusLoadedAt = Date.now();
+        _appQodState.reviewNote = String(payload.reviewNote || "");
+        _appQodState.submittedAt = Math.max(0, Number(payload.submittedAt || 0) || 0);
+        _appQodState.reviewedAt = Math.max(0, Number(payload.reviewedAt || 0) || 0);
+        if (application){
+          _appQodState.applicationId = String(application.applicationId || "");
+          _appQodState.nextReviewAt = Math.max(0, Number(application.nextReviewAt || 0) || 0);
+          _appQodState.notificationPreference = String(application.notifyMethod || _appQodState.notificationPreference || "app");
+        } else if (!preserveDraft){
+          _appQodState.applicationId = "";
+          _appQodState.nextReviewAt = 0;
+        }
+        const nextForm = payload.qodFormData || {};
+        _appQodState.qodFormData = {
+          fullName: String(nextForm.fullName || _appQodState.qodFormData.fullName || ""),
+          fullNameKana: String(nextForm.fullNameKana || _appQodState.qodFormData.fullNameKana || ""),
+          birthDate: String(nextForm.birthDate || _appQodState.qodFormData.birthDate || ""),
+          prefecture: String(nextForm.prefecture || _appQodState.qodFormData.prefecture || ""),
+          city: String(nextForm.city || _appQodState.qodFormData.city || ""),
+          phone: String(nextForm.phone || _appQodState.qodFormData.phone || ""),
+          email: String(nextForm.email || _appQodState.qodFormData.email || fallbackEmail || ""),
+          paypayId: String(nextForm.paypayId || _appQodState.qodFormData.paypayId || "")
+        };
+        if (!_appQodState.qodFormData.email && fallbackEmail) _appQodState.qodFormData.email = fallbackEmail;
+        const resultStep = _appQodResultStepForStatus(payload.qodApplicationStatus);
+        if (payload.hasAppliedQOD && resultStep) _appQodState.qodApplicationStep = resultStep;
+        if (persist) _appQodPersist();
+        try{ _appQodRenderSidebarEntry(); }catch{}
+        return _appQodState;
+      }
+      async function _appQodRefreshStatus(force = false){
+        if (!authState?.user){
+          _appQodReadStorage(false);
+          _appQodState.hasAppliedQOD = false;
+          _appQodState.hasCompletedQOD = false;
+          _appQodState.qodApplicationStatus = APP_QOD_STATUS_DRAFT;
+          _appQodState.applicationId = "";
+          _appQodState.reviewNote = "";
+          _appQodState.submittedAt = 0;
+          _appQodState.reviewedAt = 0;
+          _appQodState.nextReviewAt = 0;
+          _appQodState.statusLoadedAt = 0;
+          _appQodPersist();
+          try{ _appQodRenderSidebarEntry(); }catch{}
+          return null;
+        }
+        const age = Date.now() - Math.max(0, Number(_appQodState.statusLoadedAt || 0) || 0);
+        if (!force && age < 12000) return _appQodState;
+        if (_appQodState.statusLoading) return _appQodState;
+        _appQodState.statusLoading = true;
+        try{
+          const body = await _appApiJson("/api/qod/status", { method: "GET" });
+          _appQodApplyStatusPayload(body, { persist: true, preserveDraft: true });
+        }catch(err){
+          if (Number(err?.status || 0) === 401){
+            _appQodState.statusLoadedAt = 0;
+          } else {
+            console.warn("[qod] status failed:", String(err?.message || err));
+          }
+        }finally{
+          _appQodState.statusLoading = false;
+          try{ _appQodRenderSidebarEntry(); }catch{}
+        }
+        return _appQodState;
+      }
+      async function _appQodSubmitApplication(){
+        const form = _appQodCommitFormFromInputs();
+        const validation = _appQodValidateForm(form);
+        if (!validation.ok){
+          uiToast(validation.message);
+          return;
+        }
+        _appQodState.qodApplicationStep = "submitting";
+        _appQodPersist();
+        _appQodRenderFlow();
+        showLoading("QOD の申請を送信しています…");
+        try{
+          const body = await _appApiJson("/api/qod/apply", {
+            method: "POST",
+            body: JSON.stringify({
+              fullName: form.fullName,
+              fullNameKana: form.fullNameKana,
+              birthDate: form.birthDate,
+              prefecture: form.prefecture,
+              city: form.city,
+              phone: form.phone,
+              email: form.email,
+              paypayId: form.paypayId,
+              notifyMethod: form.email ? "email_and_app" : "app_and_push"
+            })
+          });
+          _appQodApplyStatusPayload(body, { persist: true, preserveDraft: true });
+          _appQodState.qodApplicationStep = _appQodResultStepForStatus(_appQodState.qodApplicationStatus) || "submitted";
+          _appQodPersist();
+          _appQodRenderFlow();
+        }catch(err){
+          _appQodState.qodApplicationStep = "confirm";
+          _appQodPersist();
+          _appQodRenderFlow();
+          uiToast(String(err?.message || "QOD の申請に失敗しました。"));
+        }finally{
+          hideLoading();
+        }
+      }
+      function _appQodRenderSidebarEntry(){
+        _appQodReadStorage(false);
+        const btnEl = el?.appV2QodBtn || document.getElementById("appV2QodBtn");
+        const subEl = el?.appV2QodSub || document.getElementById("appV2QodSub");
+        const badgeEl = el?.appV2QodBadge || document.getElementById("appV2QodBadge");
+        if (!btnEl) return;
+        const status = _appQodNormalizeStatus(_appQodState.qodApplicationStatus || APP_QOD_STATUS_DRAFT);
+        let subText = "Quiz Developers Program";
+        let badgeText = "NEW";
+        let showBadge = true;
+        if (status === APP_QOD_STATUS_APPROVED){
+          subText = "参加が承認されました";
+          badgeText = "承認";
+        } else if (_appQodIsHoldLike(status)){
+          subText = "追加確認中";
+          badgeText = "保留";
+        } else if (status === APP_QOD_STATUS_REJECTED){
+          subText = "結果を確認";
+          badgeText = "確認";
+        } else if (status === APP_QOD_STATUS_QUEUED_NEXT){
+          subText = "営業時間開始後に審査";
+          badgeText = "受付済み";
+        } else if (_appQodIsSubmittedLike(status) || status === APP_QOD_STATUS_QUEUED){
+          subText = "審査中";
+          badgeText = "審査中";
+        }
+        if (subEl) subEl.textContent = subText;
+        if (badgeEl){
+          badgeEl.textContent = badgeText;
+          badgeEl.classList.toggle("hidden", !showBadge);
+        }
+      }
+      function _appQodBindInputStep(){
+        const noteEl = document.getElementById("appQodInputNote");
+        const btnEl = document.getElementById("appQodContinueBtn");
+        if (!(btnEl instanceof HTMLButtonElement)) return;
+        const sync = () => {
+          const form = _appQodCommitFormFromInputs();
+          const validation = _appQodValidateForm(form);
+          btnEl.disabled = !validation.ok;
+          if (noteEl) noteEl.textContent = validation.message;
+        };
+        document.querySelectorAll("#appQodFlowRoot input, #appQodFlowRoot select").forEach((node) => {
+          node.addEventListener("input", sync);
+          node.addEventListener("change", sync);
+        });
+        try{
+          const rootEl = document.getElementById("appQodFlowRoot");
+          if (rootEl && typeof _customSelectEnhance === "function") _customSelectEnhance(rootEl);
+        }catch{}
+        setTimeout(sync, 0);
+      }
+      function _appQodBindConfirmStep(){
+        const scrollEl = document.getElementById("appQodConfirmScroll");
+        const btnEl = document.getElementById("appQodSubmitBtn");
+        const noteEl = document.getElementById("appQodConfirmNote");
+        if (!(scrollEl instanceof HTMLElement) || !(btnEl instanceof HTMLButtonElement)) return;
+        const sync = () => {
+          const reached = (scrollEl.scrollTop + scrollEl.clientHeight) >= (scrollEl.scrollHeight - 16);
+          if (reached) _appQodState.confirmScrolled = true;
+          APP_QOD_CONFIRM_CHECK_KEYS.forEach((key) => {
+            const node = document.getElementById(`appQodCheck_${key}`);
+            _appQodState.confirmChecks[key] = !!(node instanceof HTMLInputElement && node.checked);
+          });
+          btnEl.disabled = !_appQodConfirmReady();
+          if (noteEl) noteEl.textContent = _appQodConfirmReady()
+            ? "確認が完了しました。申請を開始できます。"
+            : (_appQodState.confirmScrolled ? "すべての確認項目に同意してください。" : "本文を最後まで確認すると申請できます。");
+        };
+        scrollEl.addEventListener("scroll", sync, { passive: true });
+        APP_QOD_CONFIRM_CHECK_KEYS.forEach((key) => {
+          document.getElementById(`appQodCheck_${key}`)?.addEventListener("change", sync);
+        });
+        setTimeout(sync, 0);
+      }
+      function _appQodRenderFlow(){
+        _appQodReadStorage(false);
+        const overlayEl = el?.appQodOverlay || document.getElementById("appQodOverlay");
+        const rootEl = el?.appQodFlowRoot || document.getElementById("appQodFlowRoot");
+        if (!overlayEl || !rootEl) return;
+        overlayEl.dataset.step = String(_appQodState.qodApplicationStep || "");
+        if (!_appQodState.open){
+          overlayEl.classList.add("hidden");
+          rootEl.innerHTML = "";
+          return;
+        }
+        overlayEl.classList.remove("hidden");
+        const step = String(_appQodState.qodApplicationStep || "intro");
+        const form = _appQodState.qodFormData || {};
+        const validation = _appQodValidateForm(form);
+        let html = "";
+        if (step === "intro"){
+          html = `
+            ${_appQodHeaderHtml(step)}
+            <div class="app-qredit-card-screen app-qredit-card-screen--intro">
+              <div class="app-qredit-card-screen-main app-qredit-card-screen-main--center">
+                ${_appQodIntroVisualHtml()}
+                <div class="app-qredit-card-copy-block">
+                  <h2 id="appQodTitle">Quiz Developers Program</h2>
+                  <p>自作問題を公開し、条件を満たすことで収益化を目指せる開発者向けプログラムです。</p>
+                  <ul class="app-qod-list" aria-label="QOD の紹介">
+                    <li><span class="app-qod-list-bullet" aria-hidden="true">•</span><span>自作プリセットを公開できます</span></li>
+                    <li><span class="app-qod-list-bullet" aria-hidden="true">•</span><span>完走実績に応じて収益化の対象になります</span></li>
+                    <li><span class="app-qod-list-bullet" aria-hidden="true">•</span><span>申請後は審査を経て参加できます</span></li>
+                  </ul>
+                </div>
+              </div>
+              <div class="app-qredit-card-footer">
+                <button class="navbtn primary app-qredit-card-cta" type="button" data-qod-action="to-input">続ける</button>
+              </div>
+            </div>
+          `;
+        } else if (step === "input"){
+          html = `
+            ${_appQodHeaderHtml(step, { showBack: true })}
+            <div class="app-qredit-card-screen app-qod-screen--flow">
+              <div class="app-qredit-card-screen-main app-qod-screen-main--scroll">
+                <div class="app-qredit-card-title-block">
+                  <h2 id="appQodTitle">QOD の情報を確認</h2>
+                  <p>申請に必要な情報を入力してください。</p>
+                </div>
+                <section class="app-qredit-card-panel">
+                  <div class="app-qod-form-grid app-qod-form-grid--cols">
+                    <label class="app-qredit-card-field">
+                      <span class="k">氏名</span>
+                      <input class="spell-input" id="appQodFullNameInput" type="text" maxlength="40" value="${_escapeHtml(form.fullName || "")}" placeholder="例: 山田 太郎" />
+                      <span class="app-qod-field-note">申請内容の確認に使用します</span>
+                    </label>
+                    <label class="app-qredit-card-field">
+                      <span class="k">カタカナ氏名</span>
+                      <input class="spell-input" id="appQodFullNameKanaInput" type="text" maxlength="40" value="${_escapeHtml(form.fullNameKana || "")}" placeholder="例: ヤマダ タロウ" />
+                      <span class="app-qod-field-note">申請情報の確認に使用します</span>
+                    </label>
+                    <label class="app-qredit-card-field">
+                      <span class="k">生年月日</span>
+                      <input class="spell-input" id="appQodBirthDateInput" type="date" value="${_escapeHtml(form.birthDate || "")}" />
+                      <span class="app-qod-field-note">申請情報の確認に使用します</span>
+                    </label>
+                    <label class="app-qredit-card-field">
+                      <span class="k">都道府県</span>
+                      <select class="select" id="appQodPrefectureInput">
+                        <option value="">都道府県を選択</option>
+                        ${APP_QOD_PREFECTURES.map((name) => `<option value="${_escapeHtml(name)}" ${form.prefecture === name ? "selected" : ""}>${_escapeHtml(name)}</option>`).join("")}
+                      </select>
+                    </label>
+                    <label class="app-qredit-card-field">
+                      <span class="k">市区町村</span>
+                      <input class="spell-input" id="appQodCityInput" type="text" maxlength="48" value="${_escapeHtml(form.city || "")}" placeholder="例: 新宿区" />
+                    </label>
+                    <label class="app-qredit-card-field">
+                      <span class="k">電話番号</span>
+                      <input class="spell-input" id="appQodPhoneInput" type="tel" maxlength="20" value="${_escapeHtml(form.phone || "")}" placeholder="090-1234-5678" />
+                      <span class="app-qod-field-note">審査結果や確認事項の連絡に使用します</span>
+                    </label>
+                    <label class="app-qredit-card-field">
+                      <span class="k">メールアドレス</span>
+                      <input class="spell-input" id="appQodEmailInput" type="email" maxlength="120" value="${_escapeHtml(form.email || "")}" placeholder="name@example.com" />
+                      <span class="app-qod-field-note">審査結果や確認事項の連絡に使用します</span>
+                    </label>
+                    <label class="app-qredit-card-field">
+                      <span class="k">PayPay ID</span>
+                      <input class="spell-input" id="appQodPayPayIdInput" type="text" maxlength="60" value="${_escapeHtml(form.paypayId || "")}" placeholder="PayPay ID を入力" />
+                      <span class="app-qod-field-note">収益受取確認に使用します</span>
+                    </label>
+                  </div>
+                </section>
+                <div class="app-qod-notice">審査には最短数分〜最大3営業日かかります。通常は30分〜1日程度です。</div>
+                <div class="app-qod-inline-note" id="appQodInputNote">${_escapeHtml(validation.message)}</div>
+              </div>
+              <div class="app-qredit-card-footer">
+                <button class="navbtn primary app-qredit-card-cta" id="appQodContinueBtn" type="button" data-qod-action="to-confirm" ${validation.ok ? "" : "disabled"}>続ける</button>
+              </div>
+            </div>
+          `;
+        } else if (step === "confirm"){
+          html = `
+            ${_appQodHeaderHtml(step, { showBack: true })}
+            <div class="app-qredit-card-screen app-qod-screen--flow">
+              <div class="app-qredit-card-screen-main app-qod-screen-main--scroll app-qod-screen-main--confirm">
+                <div class="app-qredit-card-title-block app-qredit-card-title-block--center">
+                  <h2 id="appQodTitle">申請・審査前のご確認</h2>
+                  <p>収益化条件や申請時の注意事項をご確認ください。</p>
+                </div>
+                <div class="app-qod-confirm-layout">
+                  ${_appQodSummaryHtml()}
+                  <section class="app-qredit-card-panel app-qredit-card-panel--terms">
+                    <div class="app-qredit-card-terms-scroll" id="appQodConfirmScroll">
+                      <div class="app-qredit-card-terms-copy">
+                        ${_appQodConfirmTextHtml()}
+                      </div>
+                    </div>
+                  </section>
+                  <div class="app-qod-checklist">
+                    <label class="app-qod-check"><input id="appQodCheck_accuracy" type="checkbox" ${_appQodState.confirmChecks.accuracy ? "checked" : ""} /><span>入力内容に誤りがないことを確認しました</span></label>
+                    <label class="app-qod-check"><input id="appQodCheck_revenue" type="checkbox" ${_appQodState.confirmChecks.revenue ? "checked" : ""} /><span>収益化条件と審査内容を確認しました</span></label>
+                    <label class="app-qod-check"><input id="appQodCheck_misconduct" type="checkbox" ${_appQodState.confirmChecks.misconduct ? "checked" : ""} /><span>不正利用や虚偽申請を行わないことに同意します</span></label>
+                    <label class="app-qod-check"><input id="appQodCheck_paypay" type="checkbox" ${_appQodState.confirmChecks.paypay ? "checked" : ""} /><span>報酬受取方法が PayPay のみであることを確認しました</span></label>
+                  </div>
+                </div>
+                <div class="app-qod-inline-note" id="appQodConfirmNote">${_appQodConfirmReady() ? "確認が完了しました。申請を開始できます。" : "本文を最後まで確認し、すべての項目に同意してください。"}</div>
+              </div>
+              <div class="app-qredit-card-footer">
+                <button class="navbtn primary app-qredit-card-cta" id="appQodSubmitBtn" type="button" data-qod-action="submit-application" ${_appQodConfirmReady() ? "" : "disabled"}>申請</button>
+              </div>
+            </div>
+          `;
+        } else if (step === "submitting"){
+          html = `
+            ${_appQodHeaderHtml(step)}
+            <div class="app-qredit-card-screen">
+              <div class="app-qredit-card-screen-main app-qredit-card-screen-main--center">
+                <div class="app-qod-status-wrap">
+                  <div class="app-qod-loading" aria-hidden="true"></div>
+                  <div class="app-qredit-card-title-block app-qredit-card-title-block--center">
+                    <h2 id="appQodTitle">申請中…</h2>
+                    <p>入力内容を確認しています。</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (step === "submitted"){
+          html = `
+            ${_appQodHeaderHtml(step)}
+            <div class="app-qredit-card-screen">
+              <div class="app-qredit-card-screen-main app-qredit-card-screen-main--center">
+                <div class="app-qod-status-wrap">
+                  <div class="app-qod-status-icon"><span class="ms" aria-hidden="true">shield</span></div>
+                  <div class="app-qredit-card-title-block app-qredit-card-title-block--center">
+                    <h2 id="appQodTitle">審査を開始しました</h2>
+                    <p>申請内容を確認し、順次審査を行います。</p>
+                  </div>
+                  <div class="app-qod-inline-note">審査には最短数分〜最大3営業日かかります。通常は30分〜1日程度です。収益化に関わる確認を行うため、Qredit Card より時間を要する場合があります。</div>
+                  <div class="app-qod-inline-note">審査結果は、登録した連絡先またはアプリ内通知でお知らせします。</div>
+                  ${_appQodSummaryHtml()}
+                  <div class="app-qredit-card-action-stack">
+                    <button class="navbtn primary app-qredit-card-cta" type="button" data-qod-action="done">完了</button>
+                    <button class="btn secondary app-qredit-card-secondary-cta" type="button" data-qod-action="go-home">ホームへ戻る</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (step === "result-approved"){
+          html = `
+            ${_appQodHeaderHtml(step)}
+            <div class="app-qredit-card-screen">
+              <div class="app-qredit-card-screen-main app-qredit-card-screen-main--center">
+                <div class="app-qod-status-wrap">
+                  <div class="app-qod-status-icon app-qod-status-icon--success"><span class="ms" aria-hidden="true">verified</span></div>
+                  <div class="app-qredit-card-title-block app-qredit-card-title-block--center">
+                    <h2 id="appQodTitle">申請が承認されました</h2>
+                    <p>Quiz Developers Program への参加が承認されました。</p>
+                  </div>
+                  <div class="app-qod-inline-note">自作プリセットの公開や、実績に応じた収益化機能を利用できるようになりました。</div>
+                  <div class="app-qod-inline-note">詳細はアプリ内通知または登録した連絡先でも確認できます。</div>
+                  <div class="app-qredit-card-action-stack">
+                    <button class="navbtn primary app-qredit-card-cta" type="button" data-qod-action="go-library">はじめる</button>
+                    <button class="btn secondary app-qredit-card-secondary-cta" type="button" data-qod-action="go-home">ダッシュボードへ</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (step === "result-hold"){
+          html = `
+            ${_appQodHeaderHtml(step)}
+            <div class="app-qredit-card-screen">
+              <div class="app-qredit-card-screen-main app-qredit-card-screen-main--center">
+                <div class="app-qod-status-wrap">
+                  <div class="app-qod-status-icon app-qod-status-icon--warning"><span class="ms" aria-hidden="true">schedule</span></div>
+                  <div class="app-qredit-card-title-block app-qredit-card-title-block--center">
+                    <h2 id="appQodTitle">申請を確認中です</h2>
+                    <p>追加の確認が必要なため、審査を継続しています。</p>
+                  </div>
+                  <div class="app-qod-inline-note">審査状況に応じて、結果は引き続き通知します。しばらくお待ちください。</div>
+                  <div class="app-qredit-card-action-stack">
+                    <button class="navbtn primary app-qredit-card-cta" type="button" data-qod-action="done">閉じる</button>
+                    <button class="btn secondary app-qredit-card-secondary-cta" type="button" data-qod-action="go-home">ホームへ戻る</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (step === "result-rejected"){
+          html = `
+            ${_appQodHeaderHtml(step)}
+            <div class="app-qredit-card-screen">
+              <div class="app-qredit-card-screen-main app-qredit-card-screen-main--center">
+                <div class="app-qod-status-wrap">
+                  <div class="app-qod-status-icon app-qod-status-icon--danger"><span class="ms" aria-hidden="true">description</span></div>
+                  <div class="app-qredit-card-title-block app-qredit-card-title-block--center">
+                    <h2 id="appQodTitle">申請は承認されませんでした</h2>
+                    <p>現在の申請内容では、Quiz Developers Program への参加条件を満たしていない可能性があります。</p>
+                  </div>
+                  <div class="app-qod-inline-note">入力内容やアカウント状況を確認のうえ、必要に応じて再申請してください。</div>
+                  <div class="app-qredit-card-action-stack">
+                    <button class="navbtn primary app-qredit-card-cta" type="button" data-qod-action="review-rejected">内容を確認する</button>
+                    <button class="btn secondary app-qredit-card-secondary-cta" type="button" data-qod-action="go-home">ホームへ戻る</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+        rootEl.innerHTML = html;
+        if (step === "input") _appQodBindInputStep();
+        if (step === "confirm") _appQodBindConfirmStep();
+      }
+      function _appQodResetDraftFlow(){
+        _appQodReadStorage(false);
+        _appQodSyncIdentity();
+        _appQodState.qodApplicationStep = "intro";
+        _appQodState.qodApplicationStatus = APP_QOD_STATUS_DRAFT;
+        _appQodState.confirmScrolled = false;
+        _appQodState.confirmChecks = { accuracy: false, revenue: false, misconduct: false, paypay: false };
+      }
+      async function _appQodOpen(){
+        _appV2SetSidebarOpen(false);
+        _appQodReadStorage(false);
+        _appQodSyncIdentity();
+        await _appQodRefreshStatus(true).catch(() => null);
+        const status = _appQodNormalizeStatus(_appQodState.qodApplicationStatus || APP_QOD_STATUS_DRAFT);
+        const resultStep = _appQodResultStepForStatus(status);
+        if (!_appQodState.hasAppliedQOD || !resultStep || status === APP_QOD_STATUS_DRAFT){
+          _appQodResetDraftFlow();
+        } else {
+          _appQodState.qodApplicationStep = resultStep || "submitted";
+        }
+        if (_appQodState.hasAppliedQOD && _appQodIsSubmittedLike(status)){
+          _appQodState.qodApplicationStep = "submitted";
+        }
+        _appQodState.open = true;
+        _appQodPersist();
+        _appQodRenderFlow();
+      }
+      function _appQodClose(){
+        _appQodState.open = false;
+        if (_appQodSubmitTimer){
+          clearTimeout(_appQodSubmitTimer);
+          _appQodSubmitTimer = 0;
+        }
+        const overlayEl = el?.appQodOverlay || document.getElementById("appQodOverlay");
+        if (overlayEl) overlayEl.classList.add("hidden");
+        _appQodPersist();
+        _appQodRenderFlow();
+      }
+      function _appQodBack(){
+        const prev = {
+          input: "intro",
+          confirm: "input"
+        }[String(_appQodState.qodApplicationStep || "")];
+        if (!prev) return;
+        _appQodState.qodApplicationStep = prev;
+        _appQodPersist();
+        _appQodRenderFlow();
+      }
+      function _appQodHandleAction(action){
+        const next = String(action || "").trim();
+        if (!next) return;
+        if (next === "close"){
+          _appQodClose();
+          return;
+        }
+        if (next === "back"){
+          _appQodBack();
+          return;
+        }
+        if (next === "to-input"){
+          if (!authState?.user){
+            _appQodClose();
+            _authOpenGate("login", "QOD の申請はログイン後に利用できます。");
+            return;
+          }
+          _appQodState.qodApplicationStep = "input";
+          _appQodPersist();
+          _appQodRenderFlow();
+          return;
+        }
+        if (next === "to-confirm"){
+          const form = _appQodCommitFormFromInputs();
+          const validation = _appQodValidateForm(form);
+          if (!validation.ok){
+            uiToast(validation.message);
+            _appQodRenderFlow();
+            return;
+          }
+          _appQodState.qodApplicationStep = "confirm";
+          _appQodState.confirmScrolled = false;
+          _appQodState.confirmChecks = { accuracy: false, revenue: false, misconduct: false, paypay: false };
+          _appQodPersist();
+          _appQodRenderFlow();
+          return;
+        }
+        if (next === "submit-application"){
+          if (!_appQodConfirmReady()) return;
+          void _appQodSubmitApplication();
+          return;
+        }
+        if (next === "done"){
+          _appQodClose();
+          return;
+        }
+        if (next === "go-home"){
+          _appQodClose();
+          _appSetTab("home");
+          return;
+        }
+        if (next === "go-library"){
+          _appQodClose();
+          _appSetTab("library");
+          return;
+        }
+        if (next === "review-rejected"){
+          _appQodState.hasAppliedQOD = false;
+          _appQodState.qodApplicationStatus = APP_QOD_STATUS_DRAFT;
+          _appQodState.qodApplicationStep = "input";
+          _appQodPersist();
+          _appQodRenderSidebarEntry();
+          _appQodRenderFlow();
+        }
+      }
       function _appQreditCardReadStorage(force = false){
         const key = _appQreditCardStorageKey();
         if (!force && _appQreditCardLoadedKey === key) return _appQreditCardState;
@@ -44914,7 +46215,13 @@ function _openSearchResultByIndex(i){
         const key = String(status || "").trim().toLowerCase();
         if (
           key === APP_QREDIT_CARD_STATUS_PENDING
+          || key === APP_QREDIT_CARD_STATUS_SUBMITTED
+          || key === APP_QREDIT_CARD_STATUS_QUEUED
+          || key === APP_QREDIT_CARD_STATUS_QUEUED_NEXT
+          || key === APP_QREDIT_CARD_STATUS_UNDER_REVIEW
+          || key === APP_QREDIT_CARD_STATUS_UNDER_EXTENDED_REVIEW
           || key === APP_QREDIT_CARD_STATUS_ON_HOLD
+          || key === "hold"
           || key === APP_QREDIT_CARD_STATUS_APPROVED
           || key === APP_QREDIT_CARD_STATUS_REJECTED
         ){
@@ -44922,10 +46229,24 @@ function _openSearchResultByIndex(i){
         }
         return APP_QREDIT_CARD_STATUS_NONE;
       }
+      function _appQreditCardIsPendingLike(status){
+        const key = _appQreditCardNormalizeAppStatus(status);
+        return key === APP_QREDIT_CARD_STATUS_PENDING
+          || key === APP_QREDIT_CARD_STATUS_SUBMITTED
+          || key === APP_QREDIT_CARD_STATUS_QUEUED
+          || key === APP_QREDIT_CARD_STATUS_UNDER_REVIEW;
+      }
+      function _appQreditCardIsHoldLike(status){
+        const key = _appQreditCardNormalizeAppStatus(status);
+        return key === APP_QREDIT_CARD_STATUS_ON_HOLD
+          || key === "hold"
+          || key === APP_QREDIT_CARD_STATUS_UNDER_EXTENDED_REVIEW;
+      }
       function _appQreditCardStatusLabel(status){
         const key = _appQreditCardNormalizeAppStatus(status);
-        if (key === APP_QREDIT_CARD_STATUS_PENDING) return "審査待ち";
-        if (key === APP_QREDIT_CARD_STATUS_ON_HOLD) return "確認中";
+        if (key === APP_QREDIT_CARD_STATUS_QUEUED_NEXT) return "営業時間開始後に審査";
+        if (_appQreditCardIsHoldLike(key)) return "追加確認中";
+        if (_appQreditCardIsPendingLike(key)) return "審査中";
         if (key === APP_QREDIT_CARD_STATUS_APPROVED) return "承認済み";
         if (key === APP_QREDIT_CARD_STATUS_REJECTED) return "却下";
         return "未申請";
@@ -44936,9 +46257,10 @@ function _openSearchResultByIndex(i){
       }
       function _appQreditCardReviewStatusTitle(status){
         const key = _appQreditCardNormalizeAppStatus(status);
-        if (key === APP_QREDIT_CARD_STATUS_ON_HOLD) return "Qredit Card の申請を確認しています";
+        if (key === APP_QREDIT_CARD_STATUS_QUEUED_NEXT) return "Qredit Card の審査受付を完了しました";
+        if (_appQreditCardIsHoldLike(key)) return "Qredit Card の追加確認を行っています";
         if (key === APP_QREDIT_CARD_STATUS_REJECTED) return "Qredit Card の申請結果をお知らせします";
-        return "Qredit Card の審査を申し込みました";
+        return "Qredit Card の審査を開始しました";
       }
       function _appQreditCardRandomDigits(len = 4){
         const size = Math.max(1, Number(len || 4) || 4);
@@ -46321,11 +47643,14 @@ function _openSearchResultByIndex(i){
         } else if (_appQreditCardState.hasIssuedQreditCard){
           subText = "カード情報を確認";
           showBadge = false;
-        } else if (status === APP_QREDIT_CARD_STATUS_PENDING){
-          subText = "審査待ち";
+        } else if (status === APP_QREDIT_CARD_STATUS_QUEUED_NEXT){
+          subText = "営業時間開始後に審査";
+          badgeText = "受付済み";
+        } else if (_appQreditCardIsPendingLike(status)){
+          subText = "審査中";
           badgeText = "審査中";
-        } else if (status === APP_QREDIT_CARD_STATUS_ON_HOLD){
-          subText = "確認中";
+        } else if (_appQreditCardIsHoldLike(status)){
+          subText = "追加確認中";
           badgeText = "保留";
         } else if (status === APP_QREDIT_CARD_STATUS_REJECTED){
           subText = "結果を確認";
@@ -46490,24 +47815,36 @@ function _openSearchResultByIndex(i){
                 })}
                 ${_appQreditCardInteractiveViewerUiHtml()}
                 ${_appQreditCardThemeSelectorHtml(themeId)}
-                <div class="app-qredit-card-inline-note">審査には最速数分〜最大3営業日かかります。</div>
+                <div class="app-qredit-card-inline-note">審査には最短数分〜最大3営業日かかります。通常は30分〜1日程度です。</div>
                 <button class="navbtn primary app-qredit-card-cta" type="button" data-qredit-card-action="submit-application">審査を申し込む</button>
               </div>
             </div>
           `;
         } else if (step === "submitted"){
-          const appStatus = _appQreditCardNormalizeAppStatus(_appQreditCardState.qreditCardApplicationStatus || APP_QREDIT_CARD_STATUS_PENDING);
+          const appStatus = _appQreditCardNormalizeAppStatus(_appQreditCardState.qreditCardApplicationStatus || APP_QREDIT_CARD_STATUS_SUBMITTED);
           const statusLine = _appQreditCardStatusLabel(appStatus);
           const notifyLine = _appQreditCardNotifyLabel(_appQreditCardState.notificationPreference);
           const canEdit = appStatus === APP_QREDIT_CARD_STATUS_REJECTED;
+          const summaryText = appStatus === APP_QREDIT_CARD_STATUS_REJECTED
+            ? "今回の審査結果と、再申請前に確認したい内容をまとめました。"
+            : (appStatus === APP_QREDIT_CARD_STATUS_QUEUED_NEXT
+              ? "営業時間開始後に、登録した通知方法で審査結果をお知らせします。"
+              : (_appQreditCardIsHoldLike(appStatus)
+                ? "追加の確認を行っています。審査結果は、登録した通知方法でお知らせします。"
+                : "審査結果は、登録した通知方法でお知らせします。"));
+          const timingText = appStatus === APP_QREDIT_CARD_STATUS_QUEUED_NEXT
+            ? "営業時間外の申請は、翌営業日 09:00 以降に順次審査を開始します。審査には最短数分〜最大3営業日かかります。通常は30分〜1日程度です。"
+            : (_appQreditCardIsHoldLike(appStatus)
+              ? "追加確認が必要な場合でも、審査には最短数分〜最大3営業日かかります。通常は30分〜1日程度です。"
+              : "メールアドレスを登録した場合は、メールでも通知されます。未登録の場合は、アプリ内通知またはWEBプッシュ通知でお知らせします。審査には最短数分〜最大3営業日かかります。通常は30分〜1日程度です。");
           html = `
             ${_appQreditCardHeaderHtml(step)}
             <div class="app-qredit-card-screen">
               <div class="app-qredit-card-screen-main">
                 <div class="app-qredit-card-title-block app-qredit-card-title-block--center">
                   <h2 id="appQreditCardTitle">${_escapeHtml(_appQreditCardReviewStatusTitle(appStatus))}</h2>
-                  <p>${_escapeHtml(appStatus === APP_QREDIT_CARD_STATUS_REJECTED ? "今回の審査結果と、再申請前に確認したい内容をまとめました。" : "審査結果は、登録した通知方法でお知らせします。")}</p>
-                  <div class="app-qredit-card-inline-note">メールアドレスを登録した場合は、メールでも通知されます。未登録の場合は、アプリ内通知またはWEBプッシュ通知でお知らせします。審査には最速数分〜最大3営業日かかります。</div>
+                  <p>${_escapeHtml(summaryText)}</p>
+                  <div class="app-qredit-card-inline-note">${_escapeHtml(timingText)}</div>
                 </div>
                 ${_appQreditCardApplicationSummaryHtml()}
                 <section class="app-qredit-card-panel">
@@ -47127,7 +48464,7 @@ function _openSearchResultByIndex(i){
             return;
           }
           const status = _appQreditCardNormalizeAppStatus(_appQreditCardState.qreditCardApplicationStatus || APP_QREDIT_CARD_STATUS_NONE);
-          if (status === APP_QREDIT_CARD_STATUS_PENDING || status === APP_QREDIT_CARD_STATUS_ON_HOLD || status === APP_QREDIT_CARD_STATUS_REJECTED){
+          if (_appQreditCardIsPendingLike(status) || _appQreditCardIsHoldLike(status) || status === APP_QREDIT_CARD_STATUS_QUEUED_NEXT || status === APP_QREDIT_CARD_STATUS_REJECTED){
             _appQreditCardState.qreditCardFlowStep = "submitted";
             _appQreditCardPersist();
             _appQreditCardRenderFlow();
@@ -47597,8 +48934,12 @@ function _openSearchResultByIndex(i){
       function _appRenderQreditAll(){
         try{ _appRenderQreditSidebarChip(); }catch{}
         try{ _appQreditCardRenderSidebarEntry(); }catch{}
+        try{ _appQodRenderSidebarEntry(); }catch{}
         try{
           if (_appQreditCardState.open) _appQreditCardRenderFlow();
+        }catch{}
+        try{
+          if (_appQodState.open) _appQodRenderFlow();
         }catch{}
         try{
           if (_appQreditState.sheetOpen) _appQreditRenderSheet();
@@ -50662,6 +52003,7 @@ function _openSearchResultByIndex(i){
         );
         _appRenderQreditSidebarChip();
         _appQreditCardRenderSidebarEntry();
+        _appQodRenderSidebarEntry();
         if (el.appV2GreetingText) el.appV2GreetingText.textContent = _appV2GreetingTextForHour(Date.now());
         _appSetNameWithOfficialBadge(el.appV2GreetingName, name, officialIdentity);
         if (el.appV2DateText) el.appV2DateText.textContent = `今日は ${_appV2DateText(_publicAppConfigNowMs())} です。`;
@@ -64508,14 +65850,25 @@ function _openSearchResultByIndex(i){
         if (!(target instanceof Element)) return;
         const overlayEl = document.getElementById("appQreditOverlay");
         const qreditCardOverlayEl = document.getElementById("appQreditCardOverlay");
+        const qodOverlayEl = document.getElementById("appQodOverlay");
         const qreditCardActionBtn = target.closest("[data-qredit-card-action]");
+        const qodActionBtn = target.closest("[data-qod-action]");
         if (qreditCardActionBtn){
           event.preventDefault();
           _appQreditCardHandleAction(qreditCardActionBtn.getAttribute("data-qredit-card-action") || "", qreditCardActionBtn);
           return;
         }
+        if (qodActionBtn){
+          event.preventDefault();
+          _appQodHandleAction(qodActionBtn.getAttribute("data-qod-action") || "");
+          return;
+        }
         if (qreditCardOverlayEl && target === qreditCardOverlayEl){
           _appQreditCardClose();
+          return;
+        }
+        if (qodOverlayEl && target === qodOverlayEl){
+          _appQodClose();
           return;
         }
         if (target.closest("#appV2QreditChip") || target.closest("[data-qredit-open]")){
@@ -64595,6 +65948,10 @@ function _openSearchResultByIndex(i){
         }
       });
       document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && _appQodState.open){
+          _appQodClose();
+          return;
+        }
         if (event.key === "Escape" && _appQreditCardState.open){
           _appQreditCardClose();
           return;
@@ -65434,6 +66791,10 @@ function _openSearchResultByIndex(i){
         if (appV2ActionBtn && (appV2ActionBtn.closest("#appTabBar") || appV2ActionBtn.closest("#viewTitle") || appV2ActionBtn.closest("#appRightDrawer") || appV2ActionBtn.closest(".topbar"))){
           e.preventDefault();
           const action = String(appV2ActionBtn.getAttribute("data-v2-action") || "");
+          if (action === "open-qod"){
+            _appQodOpen();
+            return;
+          }
           if (action === "open-qredit-card"){
             void _appQreditCardOpen();
             return;
