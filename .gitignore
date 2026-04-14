@@ -4,3 +4,8 @@
 !.dev.vars.example
 .env*
 !.env.example
+
+# Exclude from wrangler asset uploads
+.git
+node_modules
+*.jsonl

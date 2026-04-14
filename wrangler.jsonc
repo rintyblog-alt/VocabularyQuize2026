@@ -10,5 +10,9 @@
   },
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+  "routes": [
+    { "pattern": "www.vocabuquiz.app/*", "zone_id": "d90ab7dd21d497b452a313a04edb26fd" },
+    { "pattern": "vocabuquiz.app/*", "zone_id": "d90ab7dd21d497b452a313a04edb26fd" }
   ]
 }
