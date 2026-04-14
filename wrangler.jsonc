@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ocabulary-uize2026",
+  "name": "vocabuquiz-api",
   "compatibility_date": "2026-04-13",
   "observability": {
     "enabled": true
