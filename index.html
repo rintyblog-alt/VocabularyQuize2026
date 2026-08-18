@@ -206,7 +206,16 @@
   </script>
   <!-- スマホの上下の色。ラベンダー（--vq-accent）にそろえる。
        以前の緑（#18c77a）は、いまのどこの色とも合っていなかった。 -->
-  <meta name="theme-color" content="#756DB3" />
+  <!-- ★ iPhone をホーム画面から開いたとき、時計のある帯を塗るのが この色（2026-08-18）。
+       ここが紫（#756DB3）だったので、**紫の帯 → アプリの地色** で段差ができ、
+       「画面がスマホの一番上まで来ていない」ように見えていた。
+       アプリの地色（--vq-bg-canvas）と同じにすると 帯が地続きになり、
+       上端まで アプリが伸びて見える。
+       ★ **レイアウトは 一切いじらない。** apple-mobile-web-app-capable /
+         status-bar-style は 置かないまま（置くと 上下の確保が全部こちらの
+         責任になり、以前 まる一日ぶんの誤修正を生んだ）。塗る色だけ 変える。 -->
+  <meta name="theme-color" content="#F7F6FB" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#131218" media="(prefers-color-scheme: dark)" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,500,0,0" />
   <script>
   /* Low-perf auto-detect: 高スペには影響なし — モバイルは対象外 */
@@ -61369,6 +61378,16 @@ function setDeck(deckKey){
         if (meta){
           meta.setAttribute("content", mode === "dark" ? "dark light" : "light dark");
         }
+        /* ★ 時計のある帯の色も 合わせる（2026-08-18）。
+           アプリ側のテーマ（自動/ライト/ダーク）は 端末の設定と 食い違うことが
+           あるので、**実際に適用した側**の地色を 両方の meta へ書く。
+           そうしないと 端末がライトでアプリがダークのとき、上だけ白く残る。 */
+        try {
+          const 地色 = mode === "dark" ? "#131218" : "#F7F6FB";
+          document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){
+            m.setAttribute("content", 地色);
+          });
+        } catch (e) {}
         _scheduleAutoTheme();
       }
       try { window._autoThemeIsDark = _autoThemeIsDark; } catch (e) {}
@@ -161788,7 +161807,10 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
     "body.vq-yoko #vqLiveEdge .isl{transform-origin:center center;}",
     "body.vq-yoko-r #vqLiveEdge .isl{transform:translateX(-50%) rotate(90deg);}",
     "body.vq-yoko-l #vqLiveEdge .isl{transform:translateX(-50%) rotate(-90deg);}",
+    /* 回すと 幅と高さが 入れ替わるので 幅を vh で決める。
+       古い端末むけに 100vh を先に、対応する端末には 100dvh を後で当てる。 */
     "body.vq-yoko #vqLiveEdge.open .isl{width:min(680px,calc(100vh - 24px));}",
+    "body.vq-yoko #vqLiveEdge.open .isl{width:min(680px,calc(100dvh - 24px));}",
     "body.vq-yoko-r #vqLiveEdge.open .isl{transform:translateX(-50%) rotate(90deg);}",
     "body.vq-yoko-l #vqLiveEdge.open .isl{transform:translateX(-50%) rotate(-90deg);}",
     "body.vq-yoko #vqLiveAR{transform-origin:bottom left;}",
