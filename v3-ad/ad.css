@@ -1,0 +1,162 @@
+/* ══════════════════════════════════════════════════════════════════
+   VocabuQuiz V3 広告 — 共通トークンと骨組み（DESIGN.md §5）
+   ここは統合者が管理する。シーン固有の見た目は各 scenes-*.css へ。
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+  --vq-bg: #05060f;
+  --vq-blue: #4f8dff;
+  --vq-cyan: #64e0ff;
+  --vq-pink: #ff2d92;
+  --vq-violet: #8b85d8;
+  --vq-ink: #f2f4ff;
+  --vq-ink-sub: #c9cff2;
+  --vq-glass: rgba(14, 16, 34, 0.55);
+  --vq-glass-border: rgba(150, 160, 255, 0.22);
+  --vq-glow-blue: 0 0 40px rgba(79, 141, 255, 0.25), 0 0 120px rgba(79, 141, 255, 0.12);
+  --vq-glow-pink: 0 0 40px rgba(255, 45, 146, 0.22), 0 0 120px rgba(255, 45, 146, 0.10);
+  --vq-font: "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  background: var(--vq-bg);
+  color: var(--vq-ink);
+  font-family: var(--vq-font);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.vqad-canvas {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+}
+#vqad-far { z-index: 0; }
+#vqad-near { z-index: 1; }
+
+/* ── 舞台とシーン層 ─────────────────────────────────────────── */
+/* 舞台はカメラ（main.js が --cam-* を毎フレーム書く）ごと動く。
+   シーン側は「中央のパネル」を作るだけでよく、画角は camera が決める。 */
+#vqad-stage {
+  position: fixed; inset: 0; z-index: 2;
+  transform: translate3d(calc(var(--cam-x, 0) * 1px), calc(var(--cam-y, 0) * 1px), 0)
+             scale(var(--cam-z, 1));
+  transform-origin: var(--cam-ox, 50%) var(--cam-oy, 50%);
+  will-change: transform;
+}
+#vqad-film { z-index: 3; pointer-events: none; mix-blend-mode: screen; }
+.vqad-scene {
+  position: absolute; inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.vqad-scene.is-on { visibility: visible; }
+
+/* ── 共通のガラスパネル ──────────────────────────────────────── */
+/* ガラス面。安っぽく見えない条件は「縁の高光り」と「内側の落ち込み」。
+   一枚の半透明板ではなく、光が当たった物体として組む。 */
+.vqad-glass {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0) 42%),
+    linear-gradient(180deg, rgba(30,34,68,0.62), rgba(12,14,32,0.72));
+  border: 1px solid rgba(150, 160, 255, 0.16);
+  border-radius: 22px;
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),          /* 上辺の高光り */
+    inset 0 0 60px rgba(80, 110, 255, 0.055),      /* 内側の空気 */
+    0 30px 70px -30px rgba(0,0,0,0.9),             /* 接地影 */
+    0 0 60px rgba(79, 141, 255, 0.14),
+    0 0 160px rgba(255, 45, 146, 0.06);
+}
+/* 面を横切る微かな艶（動かさない。動かすと安く見える） */
+.vqad-glass::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(112deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 34%);
+}
+
+/* ── 共通コピー ─────────────────────────────────────────────── */
+/* コピーは 1 文字ずつ出す（vqad-kin）。行ごとフェードは安く見える。 */
+.vqad-kin { display: inline-block; white-space: pre; will-change: transform, opacity, filter; }
+
+.vqad-copy {
+  position: absolute;
+  left: 50%; transform: translateX(-50%);
+  bottom: clamp(64px, 12vh, 120px);
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: clamp(21px, 3.35vw, 42px);
+  color: var(--vq-ink);
+  text-shadow: 0 0 24px rgba(120, 150, 255, 0.55), 0 0 80px rgba(255, 45, 146, 0.25);
+  white-space: nowrap;
+}
+.vqad-copy-sub {
+  font-size: clamp(12px, 1.3vw, 17px);
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  color: var(--vq-ink-sub);
+  margin-top: 14px;
+  opacity: 0.85;
+}
+
+/* ── 開始オーバーレイ ────────────────────────────────────────── */
+.vqad-start {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 50% 42%, rgba(24, 28, 66, 0.55), rgba(5, 6, 15, 0.92) 70%);
+  cursor: pointer;
+  transition: opacity 0.7s ease, visibility 0.7s ease;
+}
+.vqad-start.is-hidden { opacity: 0; visibility: hidden; }
+.vqad-start-inner { text-align: center; }
+.vqad-start-kicker {
+  font-size: clamp(18px, 2.4vw, 28px);
+  font-weight: 800; letter-spacing: 0.34em;
+  color: var(--vq-ink);
+  text-shadow: 0 0 30px rgba(120, 150, 255, 0.7);
+}
+.vqad-start-v3 {
+  font-size: clamp(64px, 12vw, 150px);
+  font-weight: 900; line-height: 1.05;
+  letter-spacing: 0.02em;
+  background: linear-gradient(100deg, var(--vq-cyan), var(--vq-blue) 38%, var(--vq-violet) 62%, var(--vq-pink));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 34px rgba(110, 120, 255, 0.45));
+}
+.vqad-start-play {
+  margin: 26px auto 0;
+  display: inline-flex; align-items: center; gap: 10px;
+  height: 52px; padding: 0 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(180, 190, 255, 0.4);
+  background: rgba(20, 24, 54, 0.6);
+  color: var(--vq-ink);
+  font-size: 16px; font-weight: 700; letter-spacing: 0.14em;
+  box-shadow: var(--vq-glow-blue);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.vqad-start:hover .vqad-start-play {
+  transform: translateY(-2px);
+  box-shadow: 0 0 50px rgba(100, 224, 255, 0.35), 0 0 140px rgba(255, 45, 146, 0.18);
+}
+.vqad-start-sub {
+  margin-top: 18px;
+  font-size: 12px; letter-spacing: 0.28em;
+  color: rgba(201, 207, 242, 0.65);
+}
+
+/* ── reduced motion ─────────────────────────────────────────── */
+html.vqad-rm .vqad-scene { transition: opacity 0.5s ease; }
+html.vqad-rm .vqad-canvas { opacity: 0.7; }
+
+/* ── モバイル ───────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  .vqad-copy { white-space: normal; width: 92vw; font-size: clamp(18px, 5.6vw, 26px); }
+}

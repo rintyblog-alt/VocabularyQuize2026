@@ -1,0 +1,817 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   VocabuQuiz 公式サイト — 土台（段A・2026-08-18）
+
+   ★ ダークモード固定。ライトモードは作らない。
+   ★ 紫は **面ではなく光**。彩度の高い紫の面積は 1 画面の 10% 以下。
+   ★ overflow-x: hidden は **使わない**。はみ出す原因そのものを消す。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ══ 1. トークン ═════════════════════════════════════════════════════════ */
+:root {
+  color-scheme: dark;
+
+  /* 背景 — 紫を含んだ黒。純黒にしない */
+  --bg-base:        #0a0612;
+  --bg-elevated:    #130d1f;
+  --surface:        #1a1129;
+  --surface-hover:  #221630;
+
+  /* 文字 */
+  --text-primary:   #f4f1f8;
+  --text-secondary: #a99fc0;
+  --text-muted:     #7a6f92;
+
+  /* 紫 — 面ではなく「光」として使う */
+  --accent:         #8b5cf6;
+  --accent-soft:    #c4b5fd;
+  --accent-deep:    #5b21b6;
+  --accent-glow:    rgba(139, 92, 246, 0.35);
+
+  /* 罫線 */
+  --border:         #2a1f3d;
+  --border-strong:  #3d2d56;
+
+  /* 状態 */
+  --ok:             #34d399;
+  --warn:           #fbbf24;
+  --error:          #f87171;
+
+  /* 文字の大きさ — **すべて可変**。固定 px を本文に使わない */
+  --fs-display: clamp(2.25rem, 7vw, 5rem);
+  --fs-h1:      clamp(1.75rem, 4.5vw, 3rem);
+  --fs-h2:      clamp(1.375rem, 3vw, 2rem);
+  --fs-h3:      clamp(1.125rem, 2vw, 1.375rem);
+  --fs-body:    clamp(0.9375rem, 1.2vw, 1rem);
+  --fs-small:   clamp(0.8125rem, 1vw, 0.875rem);
+
+  /* 間隔 — 8px 基準 */
+  --sp-1: 8px;  --sp-2: 16px; --sp-3: 24px; --sp-4: 32px;
+  --sp-5: 40px; --sp-6: 48px; --sp-8: 64px;
+  --section-gap: clamp(64px, 12vw, 160px);
+  --container:   1200px;
+  --gutter:      clamp(20px, 5vw, 48px);
+
+  /* 触れる場所の最小の大きさ。44px を下回らせない */
+  --tap: 44px;
+
+  --font-en: "Jost", "Inter", system-ui, -apple-system, sans-serif;
+  --font-ja: "Zen Kaku Gothic New", "Noto Sans JP", "Hiragino Sans",
+             "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+}
+
+/* ══ 2. 下ごしらえ ═══════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  /* ★ iOS で入力欄に触れたとき勝手に拡大させない（本文 16px 以上） */
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-ja);
+  font-size: var(--fs-body);
+  line-height: 1.8;
+  /* ★ 触れたときの青い箱を消す。既定のままだと安っぽく見える */
+  -webkit-tap-highlight-color: rgba(139, 92, 246, 0.18);
+  /* ★ overflow-x: hidden は使わない。
+     はみ出しは「はみ出す要素を直す」で解決する。 */
+}
+
+img, svg, video { max-width: 100%; height: auto; display: block; }
+img { background: var(--bg-elevated); }
+
+a { color: var(--accent-soft); text-decoration: none; }
+a:hover { color: var(--text-primary); }
+
+button { font: inherit; color: inherit; }
+
+h1, h2, h3 { font-family: var(--font-en); font-weight: 500; line-height: 1.3; margin: 0; }
+h1 { font-size: var(--fs-h1); }
+h2 { font-size: var(--fs-h2); }
+h3 { font-size: var(--fs-h3); }
+p  { margin: 0 0 1em; }
+
+/* 目に見えないが読み上げには残す */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* キーボードで動かしている人にだけ枠を出す */
+:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* 最初の飛び先。キーボード操作でヘッダーを何度も抜けなくてよくする */
+.skip {
+  position: absolute; left: var(--gutter); top: -100px; z-index: 100;
+  background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 12px 20px; min-height: var(--tap);
+  display: inline-flex; align-items: center;
+  transition: top .16s ease-out;
+}
+.skip:focus { top: 12px; }
+
+/* ══ 3. 枠組み ═══════════════════════════════════════════════════════════ */
+.container {
+  width: 100%;
+  max-width: var(--container);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.section { padding-block: var(--section-gap); position: relative; }
+.section + .section { padding-top: 0; }
+
+.section__label {
+  font-family: var(--font-en);
+  font-size: var(--fs-small);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+  margin: 0 0 var(--sp-2);
+}
+.section__lead {
+  color: var(--text-secondary);
+  max-width: 62ch;
+  margin-top: var(--sp-2);
+}
+
+/* 並び。**768px 未満は必ず 1 列**にする */
+.grid { display: grid; gap: var(--sp-3); }
+.grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1023px) { .grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 767px)  {
+  .grid--2, .grid--3, .grid--4 { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 表は **その中だけ**横に流す。ページ全体を横スクロールさせない */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: var(--sp-3);
+  min-width: 0;   /* ★ grid の中で中身がはみ出すのを止める */
+}
+
+/* ══ 4. 宇宙の背景 ═══════════════════════════════════════════════════════
+   ★ position: fixed を使わない（iOS Safari で崩れる）。
+     sticky で貼り付け、負の余白で本文をその上へ重ねる。 */
+.space {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  margin-bottom: -100svh;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;          /* ← 縦横ともこの箱の中で完結させる */
+}
+.space__svg { width: 100%; height: 100%; display: block; }
+
+/* 星の瞬き。3〜6 秒周期。それより速くしない */
+.star { animation: twinkle var(--dur, 4.5s) ease-in-out var(--delay, 0s) infinite; }
+@keyframes twinkle {
+  0%, 100% { opacity: var(--o1, .18); }
+  50%      { opacity: var(--o2, .5); }
+}
+
+/* モバイルでは星を減らす（デスクトップ 60 → モバイル 20） */
+@media (max-width: 767px) {
+  .star--extra { display: none; }
+}
+
+.page { position: relative; z-index: 1; }
+
+/* ══ 5. ヘッダー ═════════════════════════════════════════════════════════ */
+.header {
+  position: relative;
+  z-index: 30;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-base) 82%, transparent);
+  backdrop-filter: blur(12px);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.header__inner {
+  display: flex; align-items: center; gap: var(--sp-2);
+  min-height: 68px;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: var(--font-en); font-weight: 600; letter-spacing: .01em;
+  color: var(--text-primary); font-size: 1.0625rem;
+  min-height: var(--tap);
+}
+.brand__mark { width: 26px; height: 26px; flex: 0 0 auto; }
+
+.nav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.nav__link {
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  min-height: var(--tap);
+  display: inline-flex; align-items: center;
+  border-radius: 8px;
+  font-size: var(--fs-small);
+  transition: color .16s ease-out, background .16s ease-out;
+}
+.nav__link:hover { color: var(--text-primary); background: var(--surface); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: var(--tap); padding: 0 20px;
+  border-radius: 10px; border: 1px solid transparent;
+  font-family: var(--font-ja); font-size: var(--fs-small); font-weight: 600;
+  cursor: pointer; text-align: center;
+  transition: transform .16s ease-out, box-shadow .16s ease-out, background .16s ease-out;
+}
+.btn--primary {
+  background: var(--accent); color: #fff;
+  box-shadow: 0 6px 20px -8px var(--accent-glow);
+}
+.btn--primary:hover { transform: translateY(-2px); box-shadow: 0 12px 26px -10px var(--accent-glow); color: #fff; }
+.btn--ghost {
+  background: transparent; color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.btn--ghost:hover { transform: translateY(-2px); background: var(--surface-hover); }
+
+/* ハンバーガー */
+.burger {
+  display: none;
+  width: var(--tap); height: var(--tap);
+  align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border-strong);
+  border-radius: 10px; cursor: pointer; margin-left: auto;
+}
+.burger__bar {
+  display: block; width: 18px; height: 1.6px; background: var(--text-primary);
+  position: relative; border-radius: 2px;
+  transition: transform .2s ease-out, opacity .2s ease-out;
+}
+.burger__bar::before, .burger__bar::after {
+  content: ""; position: absolute; left: 0; width: 18px; height: 1.6px;
+  background: var(--text-primary); border-radius: 2px;
+  transition: transform .2s ease-out;
+}
+.burger__bar::before { top: -6px; }
+.burger__bar::after  { top: 6px; }
+.burger[aria-expanded="true"] .burger__bar { transform: rotate(45deg); }
+.burger[aria-expanded="true"] .burger__bar::before { transform: translateY(6px) rotate(-90deg); }
+.burger[aria-expanded="true"] .burger__bar::after  { opacity: 0; }
+
+@media (max-width: 899px) {
+  .nav { display: none; }
+  .burger { display: inline-flex; }
+}
+
+/* 画面いっぱいのメニュー */
+.menu {
+  position: fixed; inset: 0; z-index: 40;
+  background: var(--bg-base);
+  display: flex; flex-direction: column;
+  padding: calc(var(--sp-3) + env(safe-area-inset-top, 0px)) var(--gutter)
+           calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  opacity: 0; visibility: hidden;
+  /* ★ visibility に **時間を持つ transition を掛けてはいけない**
+     （2026-08-18・実測）。掛けると、開いた直後はまだ hidden 扱いで、
+     中のボタンに焦点を当てても黙って失敗する（キーボードで開けなくなる）。
+     開くときは 0 秒で切り替え、閉じるときだけ薄くなり切ってから隠す。 */
+  transition: opacity .24s ease-out, visibility 0s linear .24s;
+}
+.menu[data-open="true"] {
+  opacity: 1; visibility: visible;
+  transition: opacity .24s ease-out, visibility 0s linear 0s;
+}
+.menu__head { display: flex; align-items: center; justify-content: space-between; }
+.menu__close {
+  width: var(--tap); height: var(--tap);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border-strong);
+  border-radius: 10px; cursor: pointer;
+}
+.menu__list {
+  list-style: none; margin: var(--sp-6) 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.menu__link {
+  display: flex; align-items: center;
+  min-height: 56px; padding: 0 8px;
+  font-family: var(--font-en); font-size: var(--fs-h3);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+}
+.menu__foot { margin-top: auto; display: grid; gap: var(--sp-1); }
+body[data-menu="open"] { overflow: hidden; }
+
+/* ══ 6. フッター ═════════════════════════════════════════════════════════ */
+.footer {
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding-block: var(--sp-8);
+  padding-bottom: calc(var(--sp-8) + env(safe-area-inset-bottom, 0px));
+  margin-top: var(--section-gap);
+}
+.footer__grid {
+  display: grid; gap: var(--sp-4);
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 767px) { .footer__grid { grid-template-columns: minmax(0, 1fr); } }
+.footer__title {
+  font-family: var(--font-en); font-size: var(--fs-small);
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--text-secondary); margin: 0 0 var(--sp-2);
+}
+.footer__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.footer__link {
+  display: inline-flex; align-items: center;
+  min-height: var(--tap);
+  /* ★ 「RSS」のように短い文字だと **幅が 24px しか無かった**（実測）。
+     高さだけ 44px にしても、指は当たらない。幅も確保する。 */
+  min-width: var(--tap);
+  color: var(--text-secondary); font-size: var(--fs-small);
+}
+.footer__link:hover { color: var(--text-primary); }
+.footer__note { color: var(--text-secondary); font-size: var(--fs-small); max-width: 46ch; }
+.footer__legal {
+  margin-top: var(--sp-6); padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary); font-size: var(--fs-small);
+  display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3);
+}
+
+/* ══ 7. スクロール演出 ═══════════════════════════════════════════════════
+   fade + 上へ 8〜16px だけ。回転・拡大・横スライドは使わない。
+   一度出たら二度と再生しない（JS 側で once）。 */
+.reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity .5s ease-out, transform .5s ease-out;
+}
+.reveal[data-shown="true"] { opacity: 1; transform: none; }
+
+/* ══ 8. 動きを減らす設定を尊重する ═══════════════════════════════════════
+   ★ 止めるだけでなく、**最終状態を静止画として見せる**。
+     消えたままにすると、内容そのものが読めなくなる。 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1 !important; transform: none !important; }
+  .star { animation: none !important; opacity: .34; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   段B — ヒーロー（2026-08-18）
+
+   ★ 切り替えは **fade だけ**。横スライドは使わない。
+   ★ 重ねるのに position: absolute を使わず、**同じ grid のマス**へ置く。
+     absolute だと高さが 0 になり、いちばん背の高い札に合わせられない。
+   ══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ヘッダーの分だけ差し引く。100svh のまま置くと、
+     点の並びと一時停止が画面の外へ落ちる。 */
+  --header-h: calc(68px + env(safe-area-inset-top, 0px));
+}
+
+.hero {
+  position: relative;
+  min-height: calc(100svh - var(--header-h));
+  display: grid;
+  align-content: center;
+  padding-block: var(--sp-6);
+}
+
+.hero__stage {
+  display: grid;                 /* 全部の札を同じマスへ重ねる */
+  align-items: center;
+}
+/* ★ 見出し（カルーセルの枠）に焦点が当たったとき、画面いっぱいの枠が出ると
+   じゃまなので消す。**操作するもの（点・一時停止・リンク）には枠を出す**ので、
+   キーボードでどこにいるかは分かる。 */
+.hero:focus { outline: none; }
+
+.hero__slide {
+  grid-area: 1 / 1;
+  display: grid;
+  /* 和文の見出しは 1 文字が大きい。文字側を広めに取らないと 3 行に折れる */
+  grid-template-columns: minmax(0, 1.22fr) minmax(0, 0.78fr);
+  gap: clamp(24px, 5vw, 64px);
+  align-items: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .5s ease-out, visibility 0s linear .5s;
+}
+.hero__slide[data-active="true"] {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity .5s ease-out, visibility 0s linear 0s;
+}
+@media (max-width: 899px) {
+  .hero__slide { grid-template-columns: minmax(0, 1fr); }
+  .hero__art { order: -1; }
+}
+
+.hero__eyebrow {
+  font-family: var(--font-en);
+  font-size: var(--fs-small);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+  margin: 0 0 var(--sp-2);
+}
+.hero__title {
+  font-size: var(--fs-display);
+  line-height: 1.15;
+  font-family: var(--font-ja);
+  font-weight: 700;
+  margin: 0;
+  /* お知らせの見出しは長さが決まっていない。**枠から出さない** */
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.hero__lead {
+  color: var(--text-secondary);
+  max-width: 46ch;
+  margin-top: var(--sp-3);
+}
+.hero__cta { margin-top: var(--sp-4); display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+/* 操作まわり */
+.hero__controls {
+  display: flex; align-items: center; gap: var(--sp-2);
+  margin-top: var(--sp-5);
+}
+.hero__dots { display: flex; gap: 2px; }
+.hero__dot {
+  width: var(--tap); height: var(--tap);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; cursor: pointer; border-radius: 10px;
+}
+.hero__dot::before {
+  content: ""; width: 28px; height: 3px; border-radius: 999px;
+  background: var(--border-strong);
+  transition: background .2s ease-out;
+}
+.hero__dot[aria-selected="true"]::before { background: var(--accent); }
+.hero__dot:hover::before { background: var(--accent-soft); }
+
+.hero__pause {
+  width: var(--tap); height: var(--tap);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border-strong);
+  border-radius: 10px; cursor: pointer; color: var(--text-primary);
+  margin-left: auto;
+}
+.hero__pause svg { width: 16px; height: 16px; }
+.hero__pause .icon-play { display: none; }
+.hero__pause[data-paused="true"] .icon-play { display: block; }
+.hero__pause[data-paused="true"] .icon-pause { display: none; }
+
+/* ══ Lumi の絵 ═══════════════════════════════════════════════════════════
+   ★ 「話すと書類になる」を 1 枚で表す。
+   ★ **既定の見た目を「終わった状態」にしてある。**
+     こうしておくと、動きを止めた人にも中身がそのまま残る
+     （animation を止めるだけで最終状態が出る）。 */
+.lumi { width: 100%; height: auto; }
+
+.lumi__orb   { animation: lumi-orb 8s ease-in-out infinite; }
+.lumi__wave  { animation: lumi-wave 8s ease-out infinite; transform-box: fill-box; transform-origin: center; opacity: 0; }
+.lumi__wave--2 { animation-delay: .6s; }
+.lumi__wave--3 { animation-delay: 1.2s; }
+.lumi__paper { animation: lumi-paper 8s ease-out infinite; }
+/* 輪郭は「引かれる」。周長はおよそ 744 なので 760 で足りる */
+.lumi__edge { stroke-dasharray: 760; stroke-dashoffset: 0;
+              animation: lumi-draw 8s ease-out infinite; }
+.lumi__line  { animation: lumi-line 8s ease-out infinite; transform-box: fill-box; transform-origin: left center; }
+.lumi__line--2 { animation-delay: .18s; }
+.lumi__line--3 { animation-delay: .36s; }
+.lumi__line--4 { animation-delay: .54s; }
+.lumi__sym   { animation: lumi-sym 8s ease-out infinite; }
+.lumi__sym--2 { animation-delay: .3s; }
+
+/* 光球はごく弱く息をする。目立たせない */
+@keyframes lumi-orb {
+  0%, 100% { opacity: .95; }
+  40%      { opacity: 1; }
+}
+/* 波紋: 光球から広がり、**紙面のところまで届く**。
+   ★ 1.6 倍で止めていたら、波紋が光球のまわりで消えるだけになり、
+     「紙面へ収束する」がまったく読めなかった（実測して直した）。
+     紙面に届く大きさまで広げ、届いたところで消える。
+   ★ 線の太さは広げても変えない（vector-effect="non-scaling-stroke"）。 */
+@keyframes lumi-wave {
+  0%           { transform: scale(.6); opacity: 0; }
+  3%           { opacity: .85; }
+  26%          { transform: scale(9); opacity: 0; }
+  26.01%, 100% { transform: scale(.6); opacity: 0; }
+}
+/* 紙面の輪郭が **描かれて**現れる（波紋が届いた先で線になる） */
+@keyframes lumi-paper {
+  0%, 24%   { opacity: 0; }
+  32%, 100% { opacity: 1; }
+}
+@keyframes lumi-draw {
+  0%, 24%   { stroke-dashoffset: 760; }
+  44%, 100% { stroke-dashoffset: 0; }
+}
+/* 本文の行が左から右へ伸びる */
+@keyframes lumi-line {
+  0%, 40%   { transform: scaleX(0); }
+  58%, 100% { transform: scaleX(1); }
+}
+/* 数式記号が浮かび上がる */
+@keyframes lumi-sym {
+  0%, 60%   { opacity: 0; }
+  72%, 100% { opacity: 1; }
+}
+
+/* ★ 動きを減らす設定では、**最終状態のまま**。 */
+@media (prefers-reduced-motion: reduce) {
+  .lumi__wave { opacity: 0 !important; }
+  .lumi__paper, .lumi__sym { opacity: 1 !important; transform: none !important; }
+  .lumi__edge { stroke-dashoffset: 0 !important; }
+  .lumi__line { transform: scaleX(1) !important; }
+  .hero__slide { transition: none !important; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   見えているときだけ動かす（段C以降・2026-08-18）
+
+   ★ 規約「1 画面で同時に動くのは 1 つ」を **作りで守る**。
+     画面に入っていない絵は止める。気をつけるのではなく、止まるようにする。 */
+[data-anim="off"] * { animation-play-state: paused !important; }
+[data-anim="on"]  * { animation-play-state: running; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   段C — Lumiとは（3 ステップ）／できること
+   ══════════════════════════════════════════════════════════════════════════ */
+.steps { display: grid; gap: var(--sp-3); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 767px) { .steps { grid-template-columns: minmax(0, 1fr); } }
+
+.step {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: var(--sp-3);
+  min-width: 0;
+  display: grid;
+  gap: var(--sp-2);
+  align-content: start;
+}
+.step__n {
+  font-family: var(--font-en); font-size: var(--fs-small);
+  letter-spacing: .14em; color: var(--accent-soft);
+}
+.step__art { width: 100%; height: auto; }
+.step h3 { font-family: var(--font-ja); font-weight: 700; }
+.step p { color: var(--text-secondary); margin: 0; }
+
+.feature { position: relative; }
+.feature h3 { font-family: var(--font-ja); font-weight: 700; margin-bottom: 6px; }
+.feature p { color: var(--text-secondary); margin: 0; }
+.feature__icon { width: 34px; height: 34px; margin-bottom: var(--sp-2); }
+.badge-beta {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; letter-spacing: .04em;
+  color: var(--warn); background: rgba(251, 191, 36, .12);
+  border: 1px solid rgba(251, 191, 36, .35);
+  border-radius: 999px; padding: 2px 10px; margin-left: 8px;
+  vertical-align: middle;
+}
+.feature__note {
+  margin-top: var(--sp-2); padding: 10px 12px;
+  border: 1px solid rgba(251, 191, 36, .3);
+  background: rgba(251, 191, 36, .07);
+  border-radius: 10px;
+  color: var(--text-primary); font-size: var(--fs-small); line-height: 1.7;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   段D — 説明の絵 2 つ（差別化の核）
+
+   ★ どちらも **既定が最終状態**。動きを止めた人にも、
+     何を言っている絵なのかがそのまま残る。
+   ══════════════════════════════════════════════════════════════════════════ */
+.demo { display: grid; gap: var(--sp-3); }
+.demo__figure {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: var(--sp-3);
+  min-width: 0;
+}
+.demo__svg { width: 100%; height: auto; }
+.demo__caption {
+  font-family: var(--font-ja); font-weight: 700;
+  font-size: var(--fs-h3); margin: 0;
+}
+.demo__sub { color: var(--text-secondary); margin: 6px 0 0; }
+
+/* ── ① 検証が走る（7 秒・うち静止 2 秒）───────────────────────────── */
+.chk__scan  { animation: chk-scan 7s linear infinite; }
+.chk__bad   { animation: chk-bad 7s linear infinite; }
+.chk__bad--2 { animation-delay: .45s; }
+.chk__bad--3 { animation-delay: .9s; }
+.chk__fix   { animation: chk-fix 7s linear infinite; }
+.chk__fix--2 { animation-delay: .45s; }
+.chk__fix--3 { animation-delay: .9s; }
+.chk__stamp { animation: chk-stamp 7s ease-out infinite; }
+
+@keyframes chk-scan {
+  0%           { transform: translateY(0);    opacity: 0; }
+  4%           { opacity: .9; }
+  30%          { transform: translateY(196px); opacity: .9; }
+  34%, 100%    { transform: translateY(196px); opacity: 0; }
+}
+/* 直すべき所が赤くなる → 直ると消える */
+@keyframes chk-bad {
+  0%, 12%      { opacity: 0; }
+  16%, 50%     { opacity: 1; }
+  58%, 100%    { opacity: 0; }
+}
+/* 直ったところが緑になる */
+@keyframes chk-fix {
+  0%, 52%      { opacity: 0; }
+  60%, 100%    { opacity: 1; }
+}
+@keyframes chk-stamp {
+  0%, 66%      { opacity: 0; }
+  74%, 100%    { opacity: 1; }
+}
+
+/* ── ② 直しても壊れない（6 秒・うち静止 2 秒）─────────────────────── */
+.edit__bubble { animation: ed-bubble 6s ease-out infinite; }
+.edit__glow   { animation: ed-glow 6s ease-out infinite; }
+.edit__old    { animation: ed-old 6s linear infinite; }
+.edit__new    { animation: ed-new 6s linear infinite; }
+.edit__tick   { animation: ed-tick 6s ease-out infinite; }
+.edit__tick--2 { animation-delay: .1s; }
+.edit__tick--3 { animation-delay: .2s; }
+.edit__tick--4 { animation-delay: .3s; }
+.edit__tick--5 { animation-delay: .4s; }
+.edit__tick--6 { animation-delay: .5s; }
+.edit__tick--7 { animation-delay: .6s; }
+
+@keyframes ed-bubble {
+  0%, 6%    { opacity: 0; }
+  12%, 62%  { opacity: 1; }
+  70%, 100% { opacity: 0; }
+}
+@keyframes ed-glow {
+  0%, 18%   { opacity: 0; }
+  26%, 62%  { opacity: 1; }
+  72%, 100% { opacity: 0; }
+}
+@keyframes ed-old { 0%, 28% { opacity: 1; } 34%, 100% { opacity: 0; } }
+@keyframes ed-new { 0%, 30% { opacity: 0; } 36%, 100% { opacity: 1; } }
+@keyframes ed-tick { 0%, 44% { opacity: 0; } 54%, 100% { opacity: .55; } }
+
+@media (prefers-reduced-motion: reduce) {
+  /* 最終状態: 直したあと・検証済み・7 枚に印 */
+  .chk__scan, .chk__bad, .edit__bubble, .edit__old { opacity: 0 !important; }
+  .chk__fix, .chk__stamp, .edit__new { opacity: 1 !important; }
+  .edit__glow { opacity: 1 !important; }
+  .edit__tick { opacity: .55 !important; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   段E — 稼働状況
+   ★ 状態は **色だけで伝えない**。文字とアイコンも必ず付ける。
+   ══════════════════════════════════════════════════════════════════════════ */
+.status__head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.status__pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  border-radius: 999px; padding: 8px 16px; min-height: 40px;
+  border: 1px solid var(--border-strong);
+  font-weight: 700; font-size: var(--fs-small);
+}
+.status__pill[data-state="operational"] { color: var(--ok);    border-color: rgba(52,211,153,.45);  background: rgba(52,211,153,.10); }
+.status__pill[data-state="degraded"]    { color: var(--warn);  border-color: rgba(251,191,36,.45);  background: rgba(251,191,36,.10); }
+.status__pill[data-state="outage"]      { color: var(--error); border-color: rgba(248,113,113,.45); background: rgba(248,113,113,.10); }
+.status__pill[data-state="unknown"]     { color: var(--text-secondary); }
+.status__pill svg { width: 16px; height: 16px; }
+.status__updated { color: var(--text-secondary); font-size: var(--fs-small); }
+
+.status__grid { display: grid; gap: var(--sp-3); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 767px) { .status__grid { grid-template-columns: minmax(0, 1fr); } }
+.status__item { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: var(--sp-3); min-width: 0; }
+.status__label { font-size: var(--fs-small); color: var(--text-secondary); margin: 0 0 6px; }
+.status__value { font-family: var(--font-en); font-size: clamp(1.75rem, 4vw, 2.5rem); font-weight: 600; line-height: 1.15; }
+.status__unit  { font-size: var(--fs-small); color: var(--text-secondary); margin-left: 6px; }
+.status__none  { font-size: var(--fs-body); color: var(--text-secondary); }
+.status__note  { color: var(--text-secondary); font-size: var(--fs-small); margin-top: var(--sp-3); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   段F — ニュース（一覧・記事）
+   ══════════════════════════════════════════════════════════════════════════ */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: var(--sp-4) 0 var(--sp-5); }
+.chip {
+  display: inline-flex; align-items: center; min-height: var(--tap); padding: 0 16px;
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  color: var(--text-secondary); font-size: var(--fs-small);
+  transition: color .16s ease-out, background .16s ease-out, border-color .16s ease-out;
+}
+.chip:hover { color: var(--text-primary); background: var(--surface-hover); }
+.chip.is-on { color: var(--accent-soft); border-color: var(--accent); background: rgba(139,92,246,.12); }
+
+.news-grid { display: grid; gap: var(--sp-3); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1023px) { .news-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 639px)  { .news-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.news-card {
+  display: grid; gap: 8px; align-content: start; min-width: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: var(--sp-3);
+  color: var(--text-primary);
+  transition: transform .16s ease-out, border-color .16s ease-out;
+}
+.news-card:hover { transform: translateY(-2px); border-color: var(--border-strong); color: var(--text-primary); }
+.news-card__cat {
+  justify-self: start; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+  color: var(--accent-soft); border: 1px solid var(--border-strong);
+  border-radius: 999px; padding: 2px 10px;
+}
+.news-card__title { font-family: var(--font-ja); font-weight: 700; font-size: var(--fs-h3); line-height: 1.5; overflow-wrap: anywhere; }
+.news-card__date { color: var(--text-secondary); font-size: var(--fs-small); }
+.news-card__sum  { color: var(--text-secondary); font-size: var(--fs-small); line-height: 1.7; }
+
+.pager { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--sp-5); }
+.pager__n {
+  width: var(--tap); height: var(--tap);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-strong); border-radius: 10px;
+  color: var(--text-secondary); font-family: var(--font-en);
+}
+.pager__n.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.empty { color: var(--text-secondary); text-align: center; padding: var(--sp-8) 0; }
+
+.article { max-width: 760px; }
+.article__date { color: var(--text-secondary); font-size: var(--fs-small); margin-top: var(--sp-2); }
+.share { display: flex; flex-wrap: wrap; gap: 8px; margin: var(--sp-4) 0 var(--sp-5); }
+.article__body { line-height: 1.9; }
+.article__body h2 { margin: var(--sp-6) 0 var(--sp-2); font-family: var(--font-ja); font-weight: 700; }
+.article__body h3 { margin: var(--sp-5) 0 var(--sp-2); font-family: var(--font-ja); font-weight: 700; }
+.article__body ul { padding-left: 1.4em; color: var(--text-secondary); }
+.article__body li { margin: .3em 0; }
+.article__body p  { color: var(--text-secondary); }
+.article__body code {
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 5px; padding: 1px 6px; font-size: .92em;
+}
+.md-pre {
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 10px; padding: var(--sp-2); overflow-x: auto;
+}
+.md-pre code { background: none; border: 0; padding: 0; }
+.article__more { margin-top: var(--sp-8); padding-top: var(--sp-4); border-top: 1px solid var(--border); }
+.article__more h2 { margin-bottom: var(--sp-3); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   段G — ロードマップ / 安全
+   ══════════════════════════════════════════════════════════════════════════ */
+.road { margin-top: var(--sp-6); }
+.road__h { display: flex; align-items: center; gap: 10px; font-family: var(--font-ja); font-weight: 700; }
+.road__dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
+.road__dot[data-n="0"] { background: var(--ok); }
+.road__dot[data-n="1"] { background: var(--accent); }
+.road__dot[data-n="2"] { background: var(--border-strong); }
+.road__desc { color: var(--text-secondary); font-size: var(--fs-small); margin: 6px 0 var(--sp-2); }
+.road__list { margin: 0; padding-left: 1.3em; color: var(--text-secondary); }
+.road__list li { margin: .35em 0; }
+
+.safety { margin-top: var(--sp-6); max-width: 760px; }
+.safety h2 { font-family: var(--font-ja); font-weight: 700; margin-bottom: var(--sp-2); }
+.safety ul { margin: 0; padding-left: 1.3em; color: var(--text-secondary); line-height: 1.9; }
+.safety li { margin: .45em 0; }
+.safety strong { color: var(--text-primary); }
+.notice-beta {
+  border: 1px solid rgba(251,191,36,.35); background: rgba(251,191,36,.08);
+  border-radius: 12px; padding: var(--sp-3); color: var(--text-secondary); line-height: 1.9;
+}
+.notice-beta strong { color: var(--warn); display: block; margin-bottom: 6px; }
+
+/* ★ 文章の中のリンクは 44px にしない（行が割れて読みにくくなる）。
+   代わりに **下線を付けて、リンクだと分かる**ようにする。
+   WCAG 2.5.8 も「文の流れの中のリンク」を大きさの例外にしている。 */
+.article__body a, .safety a, .footer__note a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}

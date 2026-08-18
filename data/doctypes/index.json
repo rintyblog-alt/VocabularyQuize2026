@@ -1,0 +1,4 @@
+{
+  "_": "書式カタログの目次。ここへ名前を足すだけで DocType が増える（デプロイ不要）。",
+  "doctypes": ["exam_paper", "answer_sheet", "answer_key"]
+}

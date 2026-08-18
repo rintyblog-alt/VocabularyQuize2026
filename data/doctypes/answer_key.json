@@ -1,0 +1,34 @@
+{
+  "id": "answer_key",
+  "kind": "docs",
+  "displayName": "解答解説",
+  "aliases": ["解答例", "模範解答", "解説", "答えと解説", "解答"],
+  "parent": "exam_paper",
+  "requiredFields": [
+    { "key": "examName", "label": "試験名", "dataType": "text", "fillPolicy": "llm_allowed" },
+    { "key": "subject", "label": "科目", "dataType": "text", "fillPolicy": "llm_allowed" },
+    { "key": "answers", "label": "解答", "dataType": "text", "fillPolicy": "derived",
+      "note": "問題 JSON の correctAnswer / isCorrect から出す。書き直さない" },
+    { "key": "explanations", "label": "解説", "dataType": "text", "fillPolicy": "derived",
+      "note": "問題 JSON の explanation。無いときは 空のまま（作らない）" }
+  ],
+  "optionalFields": [
+    { "key": "choiceExplanations", "label": "選択肢ごとの解説", "dataType": "text", "fillPolicy": "derived" }
+  ],
+  "regions": [
+    { "id": "title", "label": "", "showLabel": false, "fields": ["examName"], "headingType": "heading1" },
+    { "id": "body", "label": "解答と解説", "fields": ["answers", "explanations"], "headingType": "heading2" }
+  ],
+  "calculations": [],
+  "validations": [
+    { "rule": "answerPerQuestion", "severity": "error" },
+    { "rule": "noPlaceholder", "severity": "error" }
+  ],
+  "printSpec": {
+    "paper": "A4", "orientation": "portrait",
+    "margins": { "top": 20, "right": 18, "bottom": 20, "left": 18 },
+    "pageNumber": true
+  },
+  "source": { "kind": "manual", "ref": "手書き（exam_paper と対）", "checkedAt": "2026-08-17" },
+  "status": "approved"
+}

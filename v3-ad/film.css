@@ -1,0 +1,103 @@
+/* ══════════════════════════════════════════════════════════════════
+   VocabuQuiz V3 広告 — フィルム層の DOM 部（film.js が挿入する 2 枚）
+
+   グレインと光条は canvas（#vqad-film / mix-blend-mode: screen）が描く。
+   screen では「暗くする」ことができないので、周辺減光だけはこちらの
+   multiply の板で行う。色収差は本物の RGB 分離が重いので、画面の縁だけに
+   寒色→暖色のリングを screen で薄く乗せる擬似で済ませる。
+
+   重ねる順（film.js が canvas の直後へこの順で挿す）:
+     #vqad-film (screen) → .vqad-film-ca (screen) → .vqad-film-vig (multiply)
+   ヴィネットは光学的に最後にかかるので必ず一番上。
+   z-index は stage(2)/film canvas(3) と同じ帯に置き、コントロール(40) より下。
+
+   ※ 全画面の合成レイヤーはここまで。backdrop-filter は 1 枚も使わない。
+   ══════════════════════════════════════════════════════════════════ */
+
+.vqad-film-ca,
+.vqad-film-vig {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  contain: layout paint;
+  will-change: opacity;
+}
+
+/* ── 色収差 ＋ ハレーション ──────────────────────────────────────
+   ・要素そのものの背景 = ごく淡い白のハレーション。
+     真っ黒を少しだけ持ち上げると「プリントされた黒」になる（デジタルの
+     完全な 0,0,0 は安く見える）。
+   ・::before = 寒色のリング（内側）、::after = 暖色のリング（外側）。
+     縁ほど像がずれる、というレンズの癖だけを取り出した表現。
+   要素自身が screen なので、疑似要素側にブレンドは付けない（付けると
+   親のスタッキングコンテキスト内で閉じてしまい効かない）。 */
+.vqad-film-ca {
+  z-index: 3;
+  mix-blend-mode: screen;
+  opacity: 0.94;
+  background:
+    radial-gradient(ellipse 70% 72% at 50% 46%,
+      rgba(255, 255, 255, 0.020) 0%,
+      rgba(255, 255, 255, 0.009) 56%,
+      rgba(255, 255, 255, 0.002) 100%);
+}
+.vqad-film-ca::before,
+.vqad-film-ca::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+/* 内側の縁 = 青へずれる */
+.vqad-film-ca::before {
+  background:
+    radial-gradient(ellipse 74% 80% at 50% 50%,
+      rgba(64, 120, 255, 0) 54%,
+      rgba(64, 120, 255, 0.055) 84%,
+      rgba(64, 120, 255, 0.014) 100%);
+}
+/* 外側の縁 = 赤へずれる。青より必ず外・必ず弱く（逆にすると玩具に見える） */
+.vqad-film-ca::after {
+  background:
+    radial-gradient(ellipse 88% 92% at 50% 50%,
+      rgba(255, 64, 96, 0) 68%,
+      rgba(255, 64, 96, 0.038) 93%,
+      rgba(255, 72, 120, 0.010) 100%);
+}
+
+/* ── 周辺減光 ────────────────────────────────────────────────────
+   1 枚目 = 全体の落ち。2 枚目 = 四隅の締め。角がすっと沈むと画角が生まれる。
+   純黒での multiply は通常合成と同じ結果になるが、意味を明示するために
+   multiply を宣言しておく（後から色味を足しても破綻しない）。 */
+.vqad-film-vig {
+  z-index: 4;
+  mix-blend-mode: multiply;
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 74% 80% at 50% 47%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(0, 0, 0, 0.20) 74%,
+      rgba(0, 0, 0, 0.56) 100%),
+    radial-gradient(ellipse 118% 62% at 50% 50%,
+      rgba(0, 0, 0, 0) 58%,
+      rgba(0, 0, 0, 0.18) 100%);
+}
+
+/* ── 省モーション ────────────────────────────────────────────────
+   明滅・光条・粒の入れ替わりは film.js 側で止める。ここでは静止画として
+   成立する濃さに落とすだけ。 */
+html.vqad-rm .vqad-film-ca { opacity: 0.7; }
+html.vqad-rm .vqad-film-vig { opacity: 0.92; }
+
+/* ── モバイル ────────────────────────────────────────────────────
+   画面が小さいと同じヴィネットでは締まりすぎて内容が読めなくなる。 */
+@media (max-width: 700px) {
+  .vqad-film-vig {
+    background:
+      radial-gradient(ellipse 82% 86% at 50% 48%,
+        rgba(0, 0, 0, 0) 46%,
+        rgba(0, 0, 0, 0.15) 78%,
+        rgba(0, 0, 0, 0.44) 100%);
+  }
+  .vqad-film-ca::before,
+  .vqad-film-ca::after { opacity: 0.6; }
+}

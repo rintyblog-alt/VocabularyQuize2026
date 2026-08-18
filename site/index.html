@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="ja" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0612">
+<title>VocabuQuiz — 話すと、試験になる。</title>
+<meta name="description" content="話しかけるだけで、試験も資料もそのまま使える形で組み上がる。VocabuQuiz は、AI が作り、機械が確かめる学習ツールです。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/site/site.css">
+</head>
+<body>
+
+<a class="skip" href="#main">本文へ移動</a>
+
+<!-- ══ 宇宙の背景 ═══════════════════════════════════════════════════════
+     ★ position: fixed を使わない（iOS Safari で崩れる）。sticky で貼る。
+     ★ 星は デスクトップ 60 / モバイル 20（--extra が付いた 40 個を隠す）。
+     ★ 紫の帯は **1 本だけ**。増やすと必ず安っぽくなる。 -->
+<div class="space" aria-hidden="true">
+  <svg class="space__svg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice"
+       xmlns="http://www.w3.org/2000/svg" focusable="false">
+    <defs>
+      <radialGradient id="glowA" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="#8b5cf6" stop-opacity="0.55"/>
+        <stop offset="55%"  stop-color="#5b21b6" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="#5b21b6" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="glowB" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="#c4b5fd" stop-opacity="0.32"/>
+        <stop offset="60%"  stop-color="#8b5cf6" stop-opacity="0.10"/>
+        <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="band" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%"   stop-color="#8b5cf6" stop-opacity="0"/>
+        <stop offset="45%"  stop-color="#c4b5fd" stop-opacity="0.20"/>
+        <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+      </linearGradient>
+      <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur stdDeviation="60"/>
+      </filter>
+      <filter id="soft2" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur stdDeviation="34"/>
+      </filter>
+    </defs>
+
+    <!-- 紫の光 2 か所。**面ではなく光**として置く -->
+    <ellipse cx="250" cy="180" rx="420" ry="300" fill="url(#glowA)" filter="url(#soft)" opacity="0.72"/>
+    <ellipse cx="1230" cy="720" rx="380" ry="260" fill="url(#glowB)" filter="url(#soft)" opacity="0.6"/>
+
+    <!-- 紫の帯。1 画面に 1 本まで -->
+    <g filter="url(#soft2)" opacity="0.85">
+      <path d="M -200 700 L 900 -140 L 1010 -60 L -90 780 Z" fill="url(#band)"/>
+    </g>
+
+    <!-- 星。デスクトップ 60 個 / モバイル 20 個（--extra を隠す） -->
+    <g id="starLayer">
+      <circle class="star" cx="92"   cy="118" r="1.2" fill="#fff" style="--o1:.20;--o2:.48;--dur:4.2s;--delay:0s"/>
+      <circle class="star" cx="205"  cy="512" r="0.9" fill="#fff" style="--o1:.16;--o2:.42;--dur:5.1s;--delay:.6s"/>
+      <circle class="star" cx="318"  cy="246" r="1.4" fill="#fff" style="--o1:.22;--o2:.50;--dur:3.6s;--delay:1.2s"/>
+      <circle class="star" cx="441"  cy="702" r="1.0" fill="#fff" style="--o1:.15;--o2:.40;--dur:5.7s;--delay:.3s"/>
+      <circle class="star" cx="566"  cy="88"  r="0.8" fill="#fff" style="--o1:.18;--o2:.44;--dur:4.8s;--delay:1.9s"/>
+      <circle class="star" cx="690"  cy="410" r="1.3" fill="#fff" style="--o1:.20;--o2:.47;--dur:3.9s;--delay:.9s"/>
+      <circle class="star" cx="812"  cy="642" r="1.1" fill="#fff" style="--o1:.17;--o2:.43;--dur:5.4s;--delay:2.4s"/>
+      <circle class="star" cx="944"  cy="176" r="0.9" fill="#fff" style="--o1:.15;--o2:.38;--dur:4.4s;--delay:1.5s"/>
+      <circle class="star" cx="1068" cy="530" r="1.5" fill="#fff" style="--o1:.24;--o2:.50;--dur:3.4s;--delay:.2s"/>
+      <circle class="star" cx="1190" cy="300" r="1.0" fill="#fff" style="--o1:.16;--o2:.41;--dur:5.9s;--delay:2.1s"/>
+      <circle class="star" cx="1312" cy="760" r="1.2" fill="#fff" style="--o1:.19;--o2:.46;--dur:4.1s;--delay:.7s"/>
+      <circle class="star" cx="1396" cy="94"  r="0.8" fill="#fff" style="--o1:.15;--o2:.37;--dur:5.2s;--delay:1.1s"/>
+      <circle class="star" cx="148"  cy="820" r="1.1" fill="#fff" style="--o1:.18;--o2:.45;--dur:3.8s;--delay:2.7s"/>
+      <circle class="star" cx="378"  cy="404" r="0.9" fill="#fff" style="--o1:.16;--o2:.40;--dur:4.6s;--delay:.4s"/>
+      <circle class="star" cx="612"  cy="796" r="1.3" fill="#fff" style="--o1:.21;--o2:.48;--dur:5.5s;--delay:1.7s"/>
+      <circle class="star" cx="742"  cy="130" r="1.0" fill="#fff" style="--o1:.17;--o2:.42;--dur:4.0s;--delay:2.9s"/>
+      <circle class="star" cx="880"  cy="466" r="0.8" fill="#fff" style="--o1:.15;--o2:.36;--dur:5.8s;--delay:1.0s"/>
+      <circle class="star" cx="1006" cy="836" r="1.4" fill="#fff" style="--o1:.23;--o2:.49;--dur:3.5s;--delay:.5s"/>
+      <circle class="star" cx="1252" cy="452" r="1.0" fill="#fff" style="--o1:.16;--o2:.41;--dur:4.9s;--delay:2.2s"/>
+      <circle class="star" cx="60"   cy="366" r="1.1" fill="#fff" style="--o1:.18;--o2:.44;--dur:5.3s;--delay:1.4s"/>
+
+      <circle class="star star--extra" cx="128"  cy="248" r="0.9" fill="#fff" style="--o1:.15;--o2:.38;--dur:4.3s;--delay:.8s"/>
+      <circle class="star star--extra" cx="262"  cy="668" r="1.2" fill="#fff" style="--o1:.19;--o2:.45;--dur:5.6s;--delay:2.0s"/>
+      <circle class="star star--extra" cx="352"  cy="112" r="0.8" fill="#fff" style="--o1:.15;--o2:.36;--dur:3.7s;--delay:1.3s"/>
+      <circle class="star star--extra" cx="480"  cy="336" r="1.0" fill="#fff" style="--o1:.17;--o2:.42;--dur:4.7s;--delay:.1s"/>
+      <circle class="star star--extra" cx="524"  cy="576" r="1.3" fill="#fff" style="--o1:.21;--o2:.47;--dur:5.0s;--delay:2.6s"/>
+      <circle class="star star--extra" cx="648"  cy="262" r="0.9" fill="#fff" style="--o1:.16;--o2:.39;--dur:4.5s;--delay:1.8s"/>
+      <circle class="star star--extra" cx="704"  cy="560" r="1.1" fill="#fff" style="--o1:.18;--o2:.43;--dur:3.9s;--delay:.9s"/>
+      <circle class="star star--extra" cx="786"  cy="352" r="0.8" fill="#fff" style="--o1:.15;--o2:.37;--dur:5.4s;--delay:2.3s"/>
+      <circle class="star star--extra" cx="850"  cy="742" r="1.2" fill="#fff" style="--o1:.20;--o2:.46;--dur:4.2s;--delay:1.6s"/>
+      <circle class="star star--extra" cx="912"  cy="60"  r="1.0" fill="#fff" style="--o1:.17;--o2:.41;--dur:5.7s;--delay:.2s"/>
+      <circle class="star star--extra" cx="978"  cy="392" r="0.9" fill="#fff" style="--o1:.16;--o2:.38;--dur:4.0s;--delay:2.8s"/>
+      <circle class="star star--extra" cx="1042" cy="666" r="1.3" fill="#fff" style="--o1:.22;--o2:.48;--dur:3.6s;--delay:1.1s"/>
+      <circle class="star star--extra" cx="1124" cy="212" r="0.8" fill="#fff" style="--o1:.15;--o2:.35;--dur:5.1s;--delay:.6s"/>
+      <circle class="star star--extra" cx="1168" cy="608" r="1.1" fill="#fff" style="--o1:.18;--o2:.44;--dur:4.4s;--delay:2.5s"/>
+      <circle class="star star--extra" cx="1230" cy="120" r="1.0" fill="#fff" style="--o1:.17;--o2:.40;--dur:5.9s;--delay:1.9s"/>
+      <circle class="star star--extra" cx="1288" cy="586" r="0.9" fill="#fff" style="--o1:.16;--o2:.39;--dur:3.8s;--delay:.4s"/>
+      <circle class="star star--extra" cx="1356" cy="330" r="1.2" fill="#fff" style="--o1:.19;--o2:.46;--dur:4.8s;--delay:2.1s"/>
+      <circle class="star star--extra" cx="1414" cy="676" r="0.8" fill="#fff" style="--o1:.15;--o2:.36;--dur:5.5s;--delay:1.2s"/>
+      <circle class="star star--extra" cx="36"   cy="600" r="1.0" fill="#fff" style="--o1:.17;--o2:.42;--dur:4.1s;--delay:.7s"/>
+      <circle class="star star--extra" cx="180"  cy="42"  r="1.1" fill="#fff" style="--o1:.18;--o2:.43;--dur:5.2s;--delay:2.7s"/>
+      <circle class="star star--extra" cx="222"  cy="380" r="0.8" fill="#fff" style="--o1:.15;--o2:.37;--dur:3.5s;--delay:1.5s"/>
+      <circle class="star star--extra" cx="296"  cy="850" r="1.2" fill="#fff" style="--o1:.20;--o2:.45;--dur:4.6s;--delay:.3s"/>
+      <circle class="star star--extra" cx="412"  cy="182" r="0.9" fill="#fff" style="--o1:.16;--o2:.38;--dur:5.8s;--delay:2.4s"/>
+      <circle class="star star--extra" cx="498"  cy="774" r="1.0" fill="#fff" style="--o1:.17;--o2:.41;--dur:3.9s;--delay:1.0s"/>
+      <circle class="star star--extra" cx="576"  cy="462" r="1.3" fill="#fff" style="--o1:.21;--o2:.47;--dur:4.9s;--delay:2.9s"/>
+      <circle class="star star--extra" cx="668"  cy="866" r="0.8" fill="#fff" style="--o1:.15;--o2:.35;--dur:5.3s;--delay:.5s"/>
+      <circle class="star star--extra" cx="756"  cy="228" r="1.1" fill="#fff" style="--o1:.18;--o2:.44;--dur:4.3s;--delay:1.7s"/>
+      <circle class="star star--extra" cx="836"  cy="512" r="0.9" fill="#fff" style="--o1:.16;--o2:.39;--dur:5.6s;--delay:2.2s"/>
+      <circle class="star star--extra" cx="900"  cy="798" r="1.2" fill="#fff" style="--o1:.19;--o2:.46;--dur:3.7s;--delay:.8s"/>
+      <circle class="star star--extra" cx="1000" cy="146" r="0.8" fill="#fff" style="--o1:.15;--o2:.36;--dur:4.5s;--delay:1.4s"/>
+      <circle class="star star--extra" cx="1096" cy="440" r="1.0" fill="#fff" style="--o1:.17;--o2:.42;--dur:5.0s;--delay:2.6s"/>
+      <circle class="star star--extra" cx="1146" cy="828" r="1.3" fill="#fff" style="--o1:.22;--o2:.48;--dur:4.7s;--delay:.1s"/>
+      <circle class="star star--extra" cx="1218" cy="222" r="0.9" fill="#fff" style="--o1:.16;--o2:.38;--dur:5.4s;--delay:1.8s"/>
+      <circle class="star star--extra" cx="1330" cy="486" r="1.1" fill="#fff" style="--o1:.18;--o2:.43;--dur:4.0s;--delay:2.0s"/>
+      <circle class="star star--extra" cx="1380" cy="200" r="0.8" fill="#fff" style="--o1:.15;--o2:.37;--dur:5.7s;--delay:.9s"/>
+      <circle class="star star--extra" cx="76"   cy="716" r="1.0" fill="#fff" style="--o1:.17;--o2:.40;--dur:3.6s;--delay:2.3s"/>
+      <circle class="star star--extra" cx="240"  cy="160" r="1.2" fill="#fff" style="--o1:.19;--o2:.45;--dur:4.4s;--delay:1.6s"/>
+      <circle class="star star--extra" cx="460"  cy="620" r="0.9" fill="#fff" style="--o1:.16;--o2:.39;--dur:5.1s;--delay:.2s"/>
+      <circle class="star star--extra" cx="620"  cy="330" r="0.8" fill="#fff" style="--o1:.15;--o2:.35;--dur:4.2s;--delay:2.8s"/>
+      <circle class="star star--extra" cx="1420" cy="430" r="1.1" fill="#fff" style="--o1:.18;--o2:.44;--dur:5.8s;--delay:1.3s"/>
+    </g>
+  </svg>
+</div>
+
+<div class="page">
+
+  <!-- ══ ヘッダー ═════════════════════════════════════════════════════ -->
+  <header class="header">
+    <div class="container header__inner">
+      <a class="brand" href="/site" data-path="/site">
+        <svg class="brand__mark" viewBox="0 0 32 32" preserveAspectRatio="xMidYMid meet"
+             xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+          <defs>
+            <radialGradient id="bm" cx="50%" cy="42%" r="58%">
+              <stop offset="0%" stop-color="#c4b5fd"/>
+              <stop offset="100%" stop-color="#5b21b6"/>
+            </radialGradient>
+          </defs>
+          <circle cx="16" cy="16" r="7" fill="url(#bm)"/>
+          <circle cx="16" cy="16" r="11.5" fill="none" stroke="#8b5cf6" stroke-opacity=".55" stroke-width="1.2"/>
+          <circle cx="16" cy="16" r="15" fill="none" stroke="#8b5cf6" stroke-opacity=".22" stroke-width="1"/>
+        </svg>
+        <span>VocabuQuiz</span>
+      </a>
+
+      <nav class="nav" aria-label="メインナビゲーション">
+        <a class="nav__link" href="/site#lumi" data-path="/site/lumi">Lumiとは</a>
+        <a class="nav__link" href="/site#features" data-path="/site/features">できること</a>
+        <a class="nav__link" href="/site/news" data-path="/site/news">ニュース</a>
+        <a class="nav__link" href="/site/roadmap" data-path="/site/roadmap">ロードマップ</a>
+        <a class="nav__link" href="/site/safety" data-path="/site/safety">安全とプライバシー</a>
+        <!-- ★ ドメイン取得までは **認証 UI を置かない**（段H）。
+             ここに独自ログインを作ると、後で必ず二重アカウントになる。 -->
+        <a class="btn btn--primary" href="/" style="margin-left:8px">アプリを開く</a>
+      </nav>
+
+      <button class="burger" id="burger" type="button"
+              aria-expanded="false" aria-controls="menu" aria-label="メニューを開く">
+        <span class="burger__bar"></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ══ 画面いっぱいのメニュー ═══════════════════════════════════════ -->
+  <div class="menu" id="menu" data-open="false" role="dialog" aria-modal="true" aria-label="メニュー">
+    <div class="menu__head">
+      <span class="brand" aria-hidden="true">
+        <svg class="brand__mark" viewBox="0 0 32 32" preserveAspectRatio="xMidYMid meet"
+             xmlns="http://www.w3.org/2000/svg" focusable="false">
+          <circle cx="16" cy="16" r="7" fill="#8b5cf6"/>
+          <circle cx="16" cy="16" r="11.5" fill="none" stroke="#8b5cf6" stroke-opacity=".55" stroke-width="1.2"/>
+        </svg>
+        <span>VocabuQuiz</span>
+      </span>
+      <button class="menu__close" id="menuClose" type="button" aria-label="メニューを閉じる">
+        <svg viewBox="0 0 24 24" width="20" height="20" preserveAspectRatio="xMidYMid meet"
+             fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+    </div>
+    <ul class="menu__list">
+      <li><a class="menu__link" href="/site#lumi">Lumiとは</a></li>
+      <li><a class="menu__link" href="/site#features">できること</a></li>
+      <li><a class="menu__link" href="/site/news">ニュース</a></li>
+      <li><a class="menu__link" href="/site/roadmap">ロードマップ</a></li>
+      <li><a class="menu__link" href="/site/safety">安全とプライバシー</a></li>
+    </ul>
+    <div class="menu__foot">
+      <a class="btn btn--primary" href="/">アプリを開く</a>
+      <a class="btn btn--ghost" href="/site/contact">お問い合わせ</a>
+    </div>
+  </div>
+
+  <!-- ══ 本文 ═════════════════════════════════════════════════════════ -->
+  <main id="main">
+
+    <!-- ══ ヒーロー（段B）════════════════════════════════════════════
+         ★ 切り替えは fade だけ。横スライドは使わない。
+         ★ 1 画面で回り続けるのは **Lumi の絵 1 つだけ**（背景の星は別）。 -->
+    <section class="hero container" id="hero" tabindex="-1"
+             role="region" aria-roledescription="カルーセル" aria-label="VocabuQuiz の紹介">
+      <p id="heroLive" class="sr-only" aria-live="polite"></p>
+
+      <div class="hero__stage" id="heroStage">
+
+        <!-- 1 枚目: Lumi -->
+        <div class="hero__slide" data-active="true" data-title="Lumiと、新たな世界へ。"
+             role="group" aria-roledescription="スライド" aria-label="1 / 4">
+          <div class="hero__body">
+            <p class="hero__eyebrow">Lumi</p>
+            <h1 class="hero__title">Lumiと、<br>新たな世界へ。</h1>
+            <p class="hero__lead">
+              話しかけるだけでいい。Lumi が聞き取り、組み立て、
+              そのまま印刷できる形にして返します。
+            </p>
+            <p class="hero__cta">
+              <a class="btn btn--primary" href="/site#lumi">Lumiとは</a>
+              <a class="btn btn--ghost" href="/">アプリを開く</a>
+            </p>
+          </div>
+          <div class="hero__art" data-anim="off">
+            <!-- ★ 「話すと書類になる」を 1 枚で表す絵。
+                 光球 → 波紋 3 本 → 紙面へ収束 → 本文と数式が浮かぶ。
+                 8 秒で 1 周（うち 2 秒は静止）。 -->
+            <svg class="lumi" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid meet"
+                 xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="話しかけた声が広がり、紙面になって本文と数式が現れる様子">
+              <defs>
+                <radialGradient id="orb" cx="50%" cy="45%" r="55%">
+                  <stop offset="0%"   stop-color="#c4b5fd"/>
+                  <stop offset="55%"  stop-color="#8b5cf6"/>
+                  <stop offset="100%" stop-color="#5b21b6"/>
+                </radialGradient>
+                <radialGradient id="orbGlow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%"   stop-color="#8b5cf6" stop-opacity=".55"/>
+                  <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+                </radialGradient>
+              </defs>
+
+              <!-- 光球（中心） -->
+              <circle cx="80" cy="150" r="46" fill="url(#orbGlow)"/>
+              <circle class="lumi__orb" cx="80" cy="150" r="17" fill="url(#orb)"/>
+
+              <!-- 波紋 3 本 -->
+              <circle class="lumi__wave"            cx="80" cy="150" r="17" fill="none" stroke="#c4b5fd" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+              <circle class="lumi__wave lumi__wave--2" cx="80" cy="150" r="17" fill="none" stroke="#c4b5fd" stroke-width="1.4" vector-effect="non-scaling-stroke"/>
+              <circle class="lumi__wave lumi__wave--3" cx="80" cy="150" r="17" fill="none" stroke="#c4b5fd" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+
+              <!-- 紙面（波紋の収束先） -->
+              <g class="lumi__paper" style="transform-box:fill-box;transform-origin:center">
+                <rect x="180" y="56" width="184" height="188" rx="8" fill="#130d1f" opacity=".95"/>
+                <rect class="lumi__edge" x="180" y="56" width="184" height="188" rx="8"
+                      fill="none" stroke="#c4b5fd" stroke-width="1.4"/>
+                <!-- 本文の行（左から右へ伸びる） -->
+                <rect class="lumi__line"            x="200" y="86"  width="118" height="5" rx="2.5" fill="#7a6f92"/>
+                <rect class="lumi__line lumi__line--2" x="200" y="104" width="144" height="5" rx="2.5" fill="#5f5678"/>
+                <rect class="lumi__line lumi__line--3" x="200" y="122" width="96"  height="5" rx="2.5" fill="#5f5678"/>
+                <rect class="lumi__line lumi__line--4" x="200" y="196" width="132" height="5" rx="2.5" fill="#5f5678"/>
+                <!-- 数式記号 -->
+                <text class="lumi__sym" x="200" y="164" font-size="26" fill="#c4b5fd"
+                      font-family="Jost, serif">&#8730;</text>
+                <text class="lumi__sym lumi__sym--2" x="238" y="164" font-size="26" fill="#c4b5fd"
+                      font-family="Jost, serif">&#8747;</text>
+                <text class="lumi__sym" x="274" y="164" font-size="26" fill="#a99fc0"
+                      font-family="Jost, serif">&#931;</text>
+                <text class="lumi__sym lumi__sym--2" x="310" y="164" font-size="24" fill="#a99fc0"
+                      font-family="Jost, serif">x&#178;</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 2 枚目: Quick Mock -->
+        <div class="hero__slide" data-active="false" data-title="声で、試験が組み上がる。"
+             role="group" aria-roledescription="スライド" aria-label="2 / 4" inert aria-hidden="true">
+          <div class="hero__body">
+            <p class="hero__eyebrow">Quick Mock</p>
+            <h1 class="hero__title">声で、試験が<br>組み上がる。</h1>
+            <p class="hero__lead">
+              配点も、解答欄の高さも、紙面の収まりも。
+              言うだけで整った試験になり、そのまま印刷できます。
+            </p>
+            <p class="hero__cta">
+              <a class="btn btn--primary" href="/site#features">できること</a>
+              <a class="btn btn--ghost" href="/">アプリを開く</a>
+            </p>
+          </div>
+          <div class="hero__art">
+            <svg class="lumi" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid meet"
+                 xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="声が試験の紙面に組み上がる様子">
+              <rect x="118" y="40" width="164" height="220" rx="8"
+                    fill="#130d1f" stroke="#3d2d56" stroke-width="1.4"/>
+              <rect x="138" y="66"  width="90"  height="6" rx="3" fill="#a99fc0"/>
+              <rect x="138" y="96"  width="124" height="5" rx="2.5" fill="#5f5678"/>
+              <rect x="138" y="114" width="104" height="5" rx="2.5" fill="#5f5678"/>
+              <rect x="138" y="146" width="124" height="26" rx="4" fill="none" stroke="#3d2d56"/>
+              <rect x="138" y="184" width="124" height="26" rx="4" fill="none" stroke="#3d2d56"/>
+              <rect x="138" y="226" width="70"  height="5" rx="2.5" fill="#5f5678"/>
+              <circle cx="300" cy="150" r="30" fill="none" stroke="#8b5cf6" stroke-opacity=".5"/>
+              <circle cx="300" cy="150" r="12" fill="#8b5cf6" fill-opacity=".85"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 3 枚目: Ver3 -->
+        <div class="hero__slide" data-active="false" data-title="Ver3、無限の可能性へ。"
+             role="group" aria-roledescription="スライド" aria-label="3 / 4" inert aria-hidden="true">
+          <div class="hero__body">
+            <p class="hero__eyebrow">Ver3</p>
+            <h1 class="hero__title">Ver3、無限の<br>可能性へ。</h1>
+            <p class="hero__lead">
+              作れるものも、確かめられることも、まだ増え続けています。
+              いま何ができて、次に何が来るのかを公開しています。
+            </p>
+            <p class="hero__cta">
+              <a class="btn btn--primary" href="/site/roadmap">ロードマップ</a>
+              <a class="btn btn--ghost" href="/">アプリを開く</a>
+            </p>
+          </div>
+          <div class="hero__art">
+            <svg class="lumi" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid meet"
+                 xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="中心から外へ広がっていく軌道">
+              <circle cx="200" cy="150" r="16" fill="url(#orb)"/>
+              <ellipse cx="200" cy="150" rx="64"  ry="30" fill="none" stroke="#8b5cf6" stroke-opacity=".45" transform="rotate(-18 200 150)"/>
+              <ellipse cx="200" cy="150" rx="102" ry="48" fill="none" stroke="#8b5cf6" stroke-opacity=".3"  transform="rotate(-18 200 150)"/>
+              <ellipse cx="200" cy="150" rx="140" ry="66" fill="none" stroke="#8b5cf6" stroke-opacity=".18" transform="rotate(-18 200 150)"/>
+              <circle cx="262" cy="128" r="4" fill="#c4b5fd"/>
+              <circle cx="118" cy="176" r="3" fill="#c4b5fd" fill-opacity=".8"/>
+              <circle cx="316" cy="184" r="2.5" fill="#a99fc0" fill-opacity=".7"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 4 枚目: 最新のお知らせ（中身はサーバから。無ければ札ごと消す） -->
+        <div class="hero__slide" id="heroNews" data-active="false" data-title="最新のお知らせ"
+             role="group" aria-roledescription="スライド" aria-label="4 / 4" inert aria-hidden="true">
+          <div class="hero__body">
+            <p class="hero__eyebrow" data-news-category>お知らせ</p>
+            <h1 class="hero__title" data-news-title>読み込んでいます</h1>
+            <p class="hero__lead" data-news-summary></p>
+            <p class="hero__cta">
+              <a class="btn btn--primary" href="/site/news" data-news-link>記事を読む</a>
+              <a class="btn btn--ghost" href="/site/news">ニュース一覧</a>
+            </p>
+          </div>
+          <div class="hero__art">
+            <svg class="lumi" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid meet"
+                 xmlns="http://www.w3.org/2000/svg" role="img" aria-label="お知らせ">
+              <rect x="96" y="66" width="208" height="168" rx="8"
+                    fill="#130d1f" stroke="#3d2d56" stroke-width="1.4"/>
+              <rect x="118" y="92"  width="60"  height="16" rx="8" fill="#8b5cf6" fill-opacity=".3"/>
+              <rect x="118" y="124" width="164" height="6" rx="3" fill="#a99fc0"/>
+              <rect x="118" y="144" width="132" height="5" rx="2.5" fill="#5f5678"/>
+              <rect x="118" y="162" width="148" height="5" rx="2.5" fill="#5f5678"/>
+              <rect x="118" y="196" width="86"  height="5" rx="2.5" fill="#5f5678"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- 操作: 点の並び と 一時停止 -->
+      <div class="hero__controls">
+        <div class="hero__dots" role="tablist" aria-label="スライドを選ぶ">
+          <button class="hero__dot" type="button" role="tab" data-index="0" aria-selected="true"  aria-label="1 枚目：Lumiと、新たな世界へ。"></button>
+          <button class="hero__dot" type="button" role="tab" data-index="1" aria-selected="false" aria-label="2 枚目：声で、試験が組み上がる。"></button>
+          <button class="hero__dot" type="button" role="tab" data-index="2" aria-selected="false" aria-label="3 枚目：Ver3、無限の可能性へ。"></button>
+          <button class="hero__dot" type="button" role="tab" data-index="3" aria-selected="false" aria-label="4 枚目：最新のお知らせ"></button>
+        </div>
+        <button class="hero__pause" id="heroPause" type="button"
+                data-paused="false" aria-pressed="false" aria-label="自動送りを止める">
+          <svg class="icon-pause" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet"
+               fill="currentColor" aria-hidden="true" focusable="false">
+            <rect x="7" y="5" width="3.6" height="14" rx="1"/><rect x="13.4" y="5" width="3.6" height="14" rx="1"/>
+          </svg>
+          <svg class="icon-play" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet"
+               fill="currentColor" aria-hidden="true" focusable="false">
+            <path d="M8 5.5v13l11-6.5z"/>
+          </svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ══ 段C — Lumiとは ═══════════════════════════════════════════ -->
+    <section class="section container" id="lumi">
+      <p class="section__label reveal">Lumiとは</p>
+      <h2 class="reveal" data-delay="60">話しかけると、使える形になって返ってくる。</h2>
+      <p class="section__lead reveal" data-delay="120">
+        指示のしかたを覚える必要はありません。ふつうに話すだけで、
+        Lumi が聞き取り、組み立て、そのまま印刷できる形にします。
+      </p>
+
+      <div class="steps" style="margin-top:var(--sp-5)">
+        <div class="step reveal" data-delay="60">
+          <span class="step__n">STEP 1</span>
+          <svg class="step__art" viewBox="0 0 320 120" preserveAspectRatio="xMidYMid meet"
+               xmlns="http://www.w3.org/2000/svg" role="img" aria-label="マイクに向かって話す">
+            <rect x="30" y="34" width="22" height="38" rx="11" fill="none" stroke="#c4b5fd" stroke-width="1.6"/>
+            <path d="M22 62a19 19 0 0 0 38 0" fill="none" stroke="#c4b5fd" stroke-width="1.6"/>
+            <path d="M41 81v10M32 91h18" stroke="#c4b5fd" stroke-width="1.6" stroke-linecap="round"/>
+            <g stroke="#8b5cf6" stroke-width="3" stroke-linecap="round">
+              <path d="M86 52v16"/><path d="M100 42v36"/><path d="M114 48v24"/>
+              <path d="M128 36v48"/><path d="M142 46v28"/><path d="M156 40v40"/>
+              <path d="M170 50v20"/><path d="M184 44v32"/><path d="M198 52v16"/>
+              <path d="M212 46v28"/><path d="M226 54v12"/><path d="M240 48v24"/>
+              <path d="M254 56v8"/><path d="M268 50v20"/><path d="M282 54v12"/>
+            </g>
+          </svg>
+          <h3>話しかける</h3>
+          <p>「数Ⅰの小テスト、20 問、配点は 5 点ずつ」。それだけで通じます。</p>
+        </div>
+
+        <div class="step reveal" data-delay="120">
+          <span class="step__n">STEP 2</span>
+          <svg class="step__art" viewBox="0 0 320 120" preserveAspectRatio="xMidYMid meet"
+               xmlns="http://www.w3.org/2000/svg" role="img" aria-label="構造が組み上がる">
+            <rect x="24"  y="24" width="120" height="14" rx="4" fill="#8b5cf6" fill-opacity=".5"/>
+            <rect x="24"  y="48" width="200" height="9"  rx="4" fill="#5f5678"/>
+            <rect x="24"  y="66" width="168" height="9"  rx="4" fill="#5f5678"/>
+            <rect x="24"  y="90" width="140" height="9"  rx="4" fill="#5f5678"/>
+            <rect x="248" y="20" width="48"  height="80" rx="6" fill="none" stroke="#3d2d56"/>
+            <path d="M256 44h32M256 58h32M256 72h20" stroke="#5f5678" stroke-width="3" stroke-linecap="round"/>
+            <path d="M232 60h10M232 40h10M232 80h10" stroke="#c4b5fd" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <h3>Lumiが組み立てる</h3>
+          <p>配点も、解答欄の高さも、紙面の収まりも。構造として組み上げます。</p>
+        </div>
+
+        <div class="step reveal" data-delay="180">
+          <span class="step__n">STEP 3</span>
+          <svg class="step__art" viewBox="0 0 320 120" preserveAspectRatio="xMidYMid meet"
+               xmlns="http://www.w3.org/2000/svg" role="img" aria-label="印刷して使う">
+            <rect x="96" y="14" width="76" height="30" rx="4" fill="none" stroke="#3d2d56"/>
+            <rect x="76" y="44" width="116" height="40" rx="6" fill="#1a1129" stroke="#c4b5fd" stroke-width="1.4"/>
+            <rect x="96" y="76" width="76" height="34" rx="4" fill="#130d1f" stroke="#3d2d56"/>
+            <path d="M104 88h60M104 98h40" stroke="#5f5678" stroke-width="3" stroke-linecap="round"/>
+            <circle cx="176" cy="58" r="3" fill="#34d399"/>
+            <path d="M214 62h34M214 62l-8-8M214 62l-8 8" stroke="#c4b5fd" stroke-width="2"
+                  fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="256" y="40" width="44" height="46" rx="5" fill="none" stroke="#3d2d56"/>
+            <path d="M264 54h28M264 64h28M264 74h18" stroke="#5f5678" stroke-width="2.6" stroke-linecap="round"/>
+          </svg>
+          <h3>そのまま使える</h3>
+          <p>印刷しても崩れません。PDF でも、デジタルでの受験でも同じ形です。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 段C — できること ═════════════════════════════════════════ -->
+    <section class="section container" id="features">
+      <p class="section__label reveal">できること</p>
+      <h2 class="reveal" data-delay="60">作る・解く・話す・まとめる。</h2>
+      <div class="grid grid--4" style="margin-top:var(--sp-5)">
+        <div class="card feature reveal" data-delay="60">
+          <svg class="feature__icon" viewBox="0 0 32 32" preserveAspectRatio="xMidYMid meet"
+               xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"
+               fill="none" stroke="#c4b5fd" stroke-width="1.6" stroke-linecap="round">
+            <rect x="7" y="4" width="18" height="24" rx="3"/>
+            <path d="M12 12h8M12 17h8M12 22h5"/>
+          </svg>
+          <h3>Quick Mock</h3>
+          <p>模試・定期テストを素早く作る</p>
+        </div>
+        <div class="card feature reveal" data-delay="120">
+          <svg class="feature__icon" viewBox="0 0 32 32" preserveAspectRatio="xMidYMid meet"
+               xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"
+               fill="none" stroke="#c4b5fd" stroke-width="1.6" stroke-linecap="round">
+            <rect x="4" y="6" width="10" height="10" rx="2"/><rect x="18" y="6" width="10" height="10" rx="2"/>
+            <rect x="4" y="20" width="10" height="6" rx="2"/><rect x="18" y="20" width="10" height="6" rx="2"/>
+          </svg>
+          <h3>プリセット</h3>
+          <p>問題をクイズ形式で解く</p>
+        </div>
+        <div class="card feature reveal" data-delay="180">
+          <svg class="feature__icon" viewBox="0 0 32 32" preserveAspectRatio="xMidYMid meet"
+               xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"
+               fill="none" stroke="#c4b5fd" stroke-width="1.6" stroke-linecap="round">
+            <rect x="12" y="4" width="8" height="14" rx="4"/>
+            <path d="M8 15a8 8 0 0 0 16 0M16 23v5M12 28h8"/>
+          </svg>
+          <h3>VocabuSpeak</h3>
+          <p>英会話・スピーキング</p>
+        </div>
+        <div class="card feature reveal" data-delay="240">
+          <svg class="feature__icon" viewBox="0 0 32 32" preserveAspectRatio="xMidYMid meet"
+               xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"
+               fill="none" stroke="#c4b5fd" stroke-width="1.6" stroke-linecap="round">
+            <path d="M4 10l12-5 12 5-12 5z"/><path d="M4 16l12 5 12-5"/><path d="M4 22l12 5 12-5"/>
+          </svg>
+          <h3>Workplace<span class="badge-beta">β</span></h3>
+          <p>文書・表計算・スライド</p>
+          <p class="feature__note">β版です。生成結果は必ずご確認ください。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 段D — 検証が走る ═════════════════════════════════════════
+         ★ 「AI で問題が作れます」は誰でも言える。
+           **機械が確かめている**ことは、ここでしか言えない。 -->
+    <section class="section container" id="verify">
+      <p class="section__label reveal">検証</p>
+      <h2 class="reveal" data-delay="60">AIが作り、機械が確かめる。</h2>
+      <p class="section__lead reveal" data-delay="120">
+        できあがった紙面を、そのまま渡したりはしません。
+        選択肢が空のまま、数式が文字のまま、配点が足りない ——
+        機械が上から下まで見て、直してから出します。
+      </p>
+
+      <div class="demo__figure reveal" data-delay="180" data-anim="off" style="margin-top:var(--sp-4)">
+        <svg class="demo__svg" viewBox="0 0 640 300" preserveAspectRatio="xMidYMid meet"
+             xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="紙面を上から下へ検査し、3 か所の不備を見つけて直し、検証済みになる様子">
+          <!-- 紙面 -->
+          <rect x="150" y="24" width="340" height="252" rx="8" fill="#130d1f" stroke="#3d2d56" stroke-width="1.4"/>
+          <rect x="176" y="48" width="120" height="8" rx="4" fill="#a99fc0"/>
+
+          <!-- 1) 選択肢が「○○」のまま -->
+          <rect x="176" y="80" width="220" height="7" rx="3.5" fill="#5f5678"/>
+          <text class="chk__bad" x="176" y="108" font-size="15" fill="#f87171" font-family="Jost, sans-serif">A. &#9675;&#9675;</text>
+          <text class="chk__fix" x="176" y="108" font-size="15" fill="#34d399" font-family="Jost, sans-serif">A. 直角三角形</text>
+
+          <!-- 2) 数式が生のまま -->
+          <text class="chk__bad chk__bad--2" x="176" y="146" font-size="14" fill="#f87171" font-family="Jost, monospace">$x^2+5x+6$</text>
+          <text class="chk__fix chk__fix--2" x="176" y="148" font-size="19" fill="#34d399" font-family="Jost, serif">x&#178; + 5x + 6</text>
+
+          <!-- 3) 配点欄が空 -->
+          <rect x="176" y="176" width="140" height="7" rx="3.5" fill="#5f5678"/>
+          <rect class="chk__bad chk__bad--3" x="392" y="168" width="72" height="24" rx="4" fill="none" stroke="#f87171" stroke-width="1.4"/>
+          <g class="chk__fix chk__fix--3">
+            <rect x="392" y="168" width="72" height="24" rx="4" fill="none" stroke="#34d399" stroke-width="1.4"/>
+            <text x="428" y="185" font-size="13" fill="#34d399" text-anchor="middle" font-family="Jost, sans-serif">5 点</text>
+          </g>
+
+          <rect x="176" y="212" width="200" height="7" rx="3.5" fill="#5f5678"/>
+          <rect x="176" y="234" width="160" height="7" rx="3.5" fill="#5f5678"/>
+
+          <!-- 上から下へ流れる光 -->
+          <g class="chk__scan">
+            <rect x="150" y="30" width="340" height="2" fill="#8b5cf6"/>
+            <rect x="150" y="24" width="340" height="14" fill="#8b5cf6" fill-opacity=".14"/>
+          </g>
+
+          <!-- 検証済みの札 -->
+          <g class="chk__stamp">
+            <rect x="500" y="34" width="112" height="34" rx="17" fill="rgba(52,211,153,.12)" stroke="#34d399"/>
+            <path d="M518 51l7 7 13-14" fill="none" stroke="#34d399" stroke-width="2.2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+            <text x="546" y="56" font-size="13" fill="#34d399" font-family="Jost, sans-serif">検証済み</text>
+          </g>
+        </svg>
+        <p class="demo__caption" style="margin-top:var(--sp-2)">AIが作り、機械が確かめる。</p>
+        <p class="demo__sub">
+          プレースホルダの残り、数式の露出、配点の合計、解答欄の高さ、はみ出し、重なり ——
+          出す前に機械が見ています。
+        </p>
+      </div>
+    </section>
+
+    <!-- ══ 段D — 直しても壊れない ═══════════════════════════════════
+         ★ ここが最大の説得材料。**汎用の AI には構造的にできない。** -->
+    <section class="section container" id="stable">
+      <p class="section__label reveal">非破壊編集</p>
+      <h2 class="reveal" data-delay="60">1枚直しても、残りは1バイトも変わらない。</h2>
+      <p class="section__lead reveal" data-delay="120">
+        「3 枚目のタイトルを変えて」と言ったとき、変わるのは 3 枚目だけです。
+        作り直しではなく、その場所だけを書き換えているからです。
+      </p>
+
+      <div class="demo__figure reveal" data-delay="180" data-anim="off" style="margin-top:var(--sp-4)">
+        <svg class="demo__svg" viewBox="0 0 640 320" preserveAspectRatio="xMidYMid meet"
+             xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="8 枚のスライドのうち 3 枚目だけが書き換わり、ほかの 7 枚は変わらない様子">
+          <defs>
+            <g id="cardBody">
+              <rect x="0" y="0" width="136" height="82" rx="7" fill="#130d1f" stroke="#3d2d56" stroke-width="1.2"/>
+              <rect x="14" y="44" width="94" height="6" rx="3" fill="#4a4260"/>
+              <rect x="14" y="58" width="72" height="6" rx="3" fill="#4a4260"/>
+            </g>
+            <g id="tick">
+              <path d="M0 4l4 4 8-9" fill="none" stroke="#34d399" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </g>
+          </defs>
+
+          <!-- 1〜8 枚目 -->
+          <g transform="translate(16,72)"><use href="#cardBody"/><rect x="14" y="18" width="62" height="8" rx="4" fill="#8079a0"/>
+            <g class="edit__tick" transform="translate(112,64)"><use href="#tick"/></g></g>
+          <g transform="translate(168,72)"><use href="#cardBody"/><rect x="14" y="18" width="74" height="8" rx="4" fill="#8079a0"/>
+            <g class="edit__tick edit__tick--2" transform="translate(112,64)"><use href="#tick"/></g></g>
+
+          <!-- 3 枚目（ここだけ変わる） -->
+          <g transform="translate(320,72)">
+            <g class="edit__glow">
+              <rect x="-6" y="-6" width="148" height="94" rx="11" fill="none" stroke="#8b5cf6" stroke-width="2"/>
+              <rect x="-12" y="-12" width="160" height="106" rx="14" fill="none" stroke="#8b5cf6" stroke-opacity=".28"/>
+            </g>
+            <use href="#cardBody"/>
+            <text class="edit__old" x="14" y="26" font-size="12" fill="#8079a0" font-family="Jost, sans-serif">3. 旧タイトル</text>
+            <text class="edit__new" x="14" y="26" font-size="12" fill="#c4b5fd" font-family="Jost, sans-serif">3. 三角比のまとめ</text>
+          </g>
+
+          <g transform="translate(472,72)"><use href="#cardBody"/><rect x="14" y="18" width="58" height="8" rx="4" fill="#8079a0"/>
+            <g class="edit__tick edit__tick--3" transform="translate(112,64)"><use href="#tick"/></g></g>
+
+          <g transform="translate(16,182)"><use href="#cardBody"/><rect x="14" y="18" width="70" height="8" rx="4" fill="#8079a0"/>
+            <g class="edit__tick edit__tick--4" transform="translate(112,64)"><use href="#tick"/></g></g>
+          <g transform="translate(168,182)"><use href="#cardBody"/><rect x="14" y="18" width="54" height="8" rx="4" fill="#8079a0"/>
+            <g class="edit__tick edit__tick--5" transform="translate(112,64)"><use href="#tick"/></g></g>
+          <g transform="translate(320,182)"><use href="#cardBody"/><rect x="14" y="18" width="80" height="8" rx="4" fill="#8079a0"/>
+            <g class="edit__tick edit__tick--6" transform="translate(112,64)"><use href="#tick"/></g></g>
+          <g transform="translate(472,182)"><use href="#cardBody"/><rect x="14" y="18" width="64" height="8" rx="4" fill="#8079a0"/>
+            <g class="edit__tick edit__tick--7" transform="translate(112,64)"><use href="#tick"/></g></g>
+
+          <!-- 頼みごとの吹き出し -->
+          <g class="edit__bubble">
+            <rect x="196" y="12" width="256" height="40" rx="20" fill="#1a1129" stroke="#8b5cf6" stroke-width="1.2"/>
+            <path d="M372 52l10 12 4-12z" fill="#1a1129" stroke="#8b5cf6" stroke-width="1.2"/>
+            <text x="324" y="37" font-size="14" fill="#f4f1f8" text-anchor="middle" font-family="Jost, sans-serif">3枚目のタイトルを変えて</text>
+          </g>
+        </svg>
+        <p class="demo__caption" style="margin-top:var(--sp-2)">1枚直しても、残り7枚は1バイトも変わりません。</p>
+        <p class="demo__sub">
+          全体を作り直す仕組みでは、直すたびにほかの場所も書き換わります。
+          VocabuQuiz は「どこを直すか」を番地で指しているので、それが起きません。
+        </p>
+      </div>
+    </section>
+
+    <!-- ══ 段E — Lumiの稼働状況 ═════════════════════════════════════
+         ★ **提供元の名前も残枠も出さない。** いつ止まるかを教えることになる。 -->
+    <section class="section container" id="status">
+      <p class="section__label reveal">稼働状況</p>
+      <h2 class="reveal" data-delay="60">いま、動いています。</h2>
+      <p class="section__lead reveal" data-delay="120">
+        60 秒ごとに更新しています。数字は実際の記録から出したものです。
+      </p>
+
+      <div class="reveal" data-delay="180" style="margin-top:var(--sp-4)">
+        <div class="status__head">
+          <span class="status__pill" id="statusPill" data-state="unknown">
+            <svg viewBox="0 0 16 16" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false"
+                 fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <circle cx="8" cy="8" r="6"/><path d="M8 5v4" id="statusMark"/>
+            </svg>
+            <span id="statusText">確認しています</span>
+          </span>
+          <span class="status__updated" id="statusUpdated"></span>
+        </div>
+
+        <div class="status__grid">
+          <div class="status__item">
+            <p class="status__label">直近 24 時間の稼働率</p>
+            <div id="statusUptime"><span class="status__none">確認しています</span></div>
+          </div>
+          <div class="status__item">
+            <p class="status__label">今日の生成件数（100 件単位）</p>
+            <div id="statusGen"><span class="status__none">確認しています</span></div>
+          </div>
+          <div class="status__item">
+            <p class="status__label">平均応答時間</p>
+            <div id="statusLatency"><span class="status__none">確認しています</span></div>
+          </div>
+        </div>
+
+        <p class="status__note">
+          稼働率は 24 時間で 10 件に満たない場合は出しません（数が少なすぎて意味を持たないため）。
+          提供元の名前や残りの枠は公開していません。
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ══ フッター ═════════════════════════════════════════════════════ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__grid">
+        <div>
+          <p class="footer__title">VocabuQuiz</p>
+          <p class="footer__note">
+            話すと、試験になる。AI が作り、機械が確かめる学習ツールです。
+          </p>
+        </div>
+        <div>
+          <p class="footer__title">サイト</p>
+          <ul class="footer__list">
+            <li><a class="footer__link" href="/site/news">ニュース</a></li>
+            <li><a class="footer__link" href="/site/roadmap">ロードマップ</a></li>
+            <li><a class="footer__link" href="/site/safety">安全とプライバシー</a></li>
+            <li><a class="footer__link" href="/site/news/feed.xml">RSS</a></li>
+          </ul>
+        </div>
+        <div>
+          <p class="footer__title">運営</p>
+          <ul class="footer__list">
+            <li><a class="footer__link" href="/site/about">運営者情報</a></li>
+            <li><a class="footer__link" href="/site/contact">お問い合わせ</a></li>
+            <li><a class="footer__link" href="/site/terms">利用規約</a></li>
+            <li><a class="footer__link" href="/site/privacy">プライバシーポリシー</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer__legal">
+        <span>&copy; 2026 VocabuQuiz</span>
+        <span>Workplace はβ版です。生成結果は必ずご確認ください。</span>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<script src="/site/site.js" defer></script>
+<script src="/site/hero.js" defer></script>
+<script src="/site/status.js" defer></script>
+</body>
+</html>

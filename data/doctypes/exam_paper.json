@@ -1,0 +1,57 @@
+{
+  "id": "exam_paper",
+  "kind": "docs",
+  "displayName": "問題用紙",
+  "aliases": ["テスト用紙", "試験問題", "問題冊子", "テスト", "試験", "小テスト", "定期テスト", "問題"],
+  "parent": null,
+  "requiredFields": [
+    { "key": "school", "label": "学校名／クラス名", "dataType": "text", "fillPolicy": "user_input",
+      "hint": "学校名やクラス名を書いてもらう欄です" },
+    { "key": "examName", "label": "試験名", "dataType": "text", "fillPolicy": "llm_allowed",
+      "note": "「2学期 中間試験」のように、いつ・何の試験かが分かる名前" },
+    { "key": "examDate", "label": "実施日", "dataType": "date", "fillPolicy": "user_input",
+      "hint": "実施日を書いてもらう欄です" },
+    { "key": "subject", "label": "科目", "dataType": "text", "fillPolicy": "llm_allowed" },
+    { "key": "duration", "label": "試験時間", "dataType": "number", "fillPolicy": "llm_allowed",
+      "note": "分で書く" },
+    { "key": "fullMarks", "label": "満点", "dataType": "number", "fillPolicy": "derived",
+      "note": "配点の合計から出す" },
+    { "key": "クラス", "label": "クラス", "dataType": "text", "fillPolicy": "user_input",
+      "hint": "受ける人が書く欄です" },
+    { "key": "出席番号", "label": "出席番号", "dataType": "text", "fillPolicy": "user_input",
+      "hint": "受ける人が書く欄です" },
+    { "key": "氏名", "label": "氏名", "dataType": "text", "fillPolicy": "user_input",
+      "hint": "受ける人が書く欄です" },
+    { "key": "notice", "label": "注意事項", "dataType": "text", "fillPolicy": "llm_allowed" },
+    { "key": "questions", "label": "問題", "dataType": "text", "fillPolicy": "derived",
+      "note": "問題エンジンの出した問題 JSON から並べる。ここで問題を作らない" }
+  ],
+  "optionalFields": [
+    { "key": "pageNumber", "label": "ページ番号", "dataType": "text", "fillPolicy": "derived" },
+    { "key": "points", "label": "配点表示", "dataType": "text", "fillPolicy": "derived" }
+  ],
+  "regions": [
+    { "id": "title", "label": "", "showLabel": false, "fields": ["examName"], "headingType": "heading1" },
+    { "id": "meta", "label": "", "showLabel": false, "fields": ["subject", "duration"] },
+    { "id": "identity", "label": "", "showLabel": false, "fields": ["クラス", "出席番号", "氏名"] },
+    { "id": "notice", "label": "注意", "fields": ["notice"], "itemType": "bullet", "headingType": "heading3" },
+    { "id": "body", "label": "", "showLabel": false, "fields": ["questions"] }
+  ],
+  "calculations": [],
+  "validations": [
+    { "rule": "noPlaceholder", "severity": "error" },
+    { "rule": "choicesAtLeast", "value": 2, "severity": "error" },
+    { "rule": "pointsSumEqualsFullMarks", "severity": "error" }
+  ],
+  "printSpec": {
+    "paper": "A4", "orientation": "portrait",
+    "margins": { "top": 20, "right": 18, "bottom": 20, "left": 18 },
+    "pageNumber": true
+  },
+  "source": {
+    "kind": "manual",
+    "ref": "手書き。問題そのものは VocabuQuiz の問題エンジン（domain/qmodel.js）の出力を並べるだけ",
+    "checkedAt": "2026-08-17"
+  },
+  "status": "approved"
+}

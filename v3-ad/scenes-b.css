@@ -1,0 +1,669 @@
+/* ══════════════════════════════════════════════════════════════════
+   VocabuQuiz V3 広告 — Scene 4 / 5 / 6 の見た目（実装 D）
+
+   美学の前提:
+   ・面は「光の当たった物体」。上辺 1px の高光り / 内側の落ち込み / 接地影。
+   ・キャンディ色は使わない。深いインディゴ〜グラファイトに、アクセントは 1 面 1 色。
+   ・イージングは cubic-bezier(0.16,1,0.3,1) の「長い尾」。出現に 0.7〜1.1 秒かけてよい。
+   ・模様は敷かない。線は極細 6〜10% まで。
+   連続アニメ（波形・グラフ・モーフ・スイープ）は JS が CSS 変数で駆動する。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ════════════ Scene 4 — クイズプレイヤー ════════════ */
+
+.scene-s4 {
+  /* JS が毎フレーム更新する変数（モーフ量・カーソル行・スマホ出現・正解の滲み） */
+  --s4-m: 0;
+  --s4-pm: 0;
+  --s4-cy: 0;
+  --s4-ok: 0;
+  /* 横移動は持たせない。24vw も流すとカードが右上の隅に寄り、画面の左 70% が
+     真っ黒の死に領域になっていた（実測 47.5s）。変形は「画面中央でスマホ枠に収まる」。 */
+  --s4-mx: 0vw;
+  --s4-sc: 0.56;    /* 縮小量。660px のカードが枠の内寸 290px へ収まる（左右 15px の額縁） */
+  --s4-row: 66px;   /* 選択肢 1 行分（高さ 54px + 間隔 12px） */
+  --e: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.s4-wrap {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding-bottom: 9vh;
+  perspective: 1400px;
+}
+
+/* ── モーフ層: 右へ滑りながら縮小（値と微ブレは JS が local から） ── */
+.s4-cardwrap {
+  transform: translateX(calc(var(--s4-m) * var(--s4-mx)))
+             scale(calc(1 - var(--s4-m) * var(--s4-sc)));
+  will-change: transform, filter;
+}
+
+/* ── 問題カード ──
+   ここだけ backdrop-filter を持たせない。親に filter（モーションブラー）が
+   乗ると backdrop がその親で切れてフロストが消えるため。
+   代わりに深いインディゴの不透明面 + 縁の光で「物体」として立てる。 */
+.s4-card {
+  width: min(660px, 88vw);
+  padding: 30px 34px 32px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0) 38%),
+    linear-gradient(168deg, rgba(34, 39, 78, 0.95), rgba(13, 15, 34, 0.97));
+  border: 1px solid rgba(148, 160, 226, 0.20);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),          /* 上辺の高光り */
+    inset 0 -1px 0 rgba(0, 0, 0, 0.45),               /* 底辺の落ち込み */
+    inset 0 0 90px rgba(70, 100, 220, 0.07),
+    0 40px 90px -34px rgba(0, 0, 0, 0.95),            /* 接地影 */
+    0 0 70px rgba(79, 141, 255, 0.10);
+  /* 出現: 奥からスケール + ぼかし解除 + 上昇（長い尾で 0.95 秒） */
+  opacity: 0;
+  transform: translateY(34px) scale(0.94) rotateX(6deg);
+  filter: blur(12px);
+  transition: opacity 0.85s ease,
+              transform 0.95s var(--e),
+              filter 0.8s ease;
+}
+.scene-s4.beat-0 .s4-card { opacity: 1; transform: none; filter: none; }
+
+/* 上辺: 「12 / 20」と進捗バー（5px。満ちる側だけ淡く光る） */
+.s4-top { display: flex; align-items: center; gap: 18px; margin-bottom: 26px; }
+.s4-count {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.16em;
+  color: rgba(201, 207, 242, 0.62); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.s4-bar {
+  flex: 1; height: 5px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.s4-bar-fill {
+  height: 100%; width: var(--w, 60%);
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(79, 141, 255, 0.85), var(--vq-cyan));
+  box-shadow: 0 0 14px rgba(100, 224, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* 設問（小さく淡く広く）と英文（主役） */
+.s4-q {
+  font-size: 11.5px; color: rgba(201, 207, 242, 0.52);
+  letter-spacing: 0.20em; text-transform: none;
+  opacity: 0; transform: translateY(10px);
+  transition: opacity 0.7s ease, transform 0.8s var(--e);
+}
+.scene-s4.beat-1 .s4-q { opacity: 1; transform: none; }
+.s4-sentence {
+  margin: 12px 0 26px;
+  font-size: clamp(19px, 2.3vw, 25px); font-weight: 700; letter-spacing: 0.02em;
+  color: var(--vq-ink);
+  text-shadow: 0 0 26px rgba(130, 160, 255, 0.28);
+  opacity: 0; transform: translateY(12px);
+  transition: opacity 0.75s ease 0.05s, transform 0.9s var(--e) 0.05s;
+}
+.scene-s4.beat-2 .s4-sentence { opacity: 1; transform: none; }
+
+/* ── 選択肢 ── */
+.s4-choices { position: relative; display: flex; flex-direction: column; gap: 12px; }
+.s4-choice {
+  position: relative; z-index: 1; overflow: hidden;
+  display: flex; align-items: center; gap: 14px;
+  height: 54px; padding: 0 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(146, 158, 224, 0.16);
+  /* 面の光り方: 上から差す光 + 上辺 1px の高光り + 内側の落ち込み */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.32),
+    inset 0 -14px 22px -18px rgba(0, 0, 0, 0.8);
+  font-size: 14.5px; color: var(--vq-ink);
+  opacity: 0; transform: translateY(16px);
+  transition: opacity 0.7s ease var(--d, 0s), transform 0.85s var(--e) var(--d, 0s),
+              border-color 0.5s ease, box-shadow 0.6s ease, background 0.5s ease;
+}
+.scene-s4.beat-3 .s4-choice { opacity: 1; transform: none; }
+
+/* 行を舐める光のスイープ（左→右 0.6 秒。位置と濃さは JS の --sw / --swo） */
+.s4-choice::before {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg,
+    rgba(255, 255, 255, 0) 34%,
+    rgba(186, 212, 255, 0.16) 50%,
+    rgba(255, 255, 255, 0) 66%);
+  transform: translate3d(calc(var(--sw, 0) * 240% - 120%), 0, 0);
+  opacity: var(--swo, 0);
+}
+
+.s4-key {
+  flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.04em;
+  color: rgba(201, 207, 242, 0.72);
+  border: 1px solid rgba(146, 158, 224, 0.26);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  transition: color 0.5s ease, border-color 0.5s ease, background 0.5s ease;
+}
+.s4-choice-text { letter-spacing: 0.02em; }
+
+/* カーソルの帯（A → B へ。縦位置は JS の --s4-cy） */
+.s4-cursor {
+  position: absolute; left: 0; right: 0; top: 0; z-index: 0;
+  height: 54px; border-radius: 14px;
+  background: rgba(112, 142, 245, 0.10);
+  border: 1px solid rgba(140, 160, 255, 0.16);
+  transform: translateY(calc(var(--s4-cy) * var(--s4-row)));
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  pointer-events: none;
+}
+.scene-s4.beat-4 .s4-cursor { opacity: 1; }
+.scene-s4.beat-5 .s4-cursor { opacity: 0; }
+
+/* 正解の滲み（B 行の背後。0 → 最大 → 少し戻す。値は JS の --s4-ok） */
+.s4-ok {
+  position: absolute; z-index: 0; left: 0; right: 0;
+  top: var(--s4-row); height: 54px;
+  border-radius: 14px;
+  pointer-events: none;
+  background: radial-gradient(60% 130% at 50% 50%,
+    rgba(120, 226, 200, calc(var(--s4-ok) * 0.16)), rgba(120, 226, 200, 0) 72%);
+  box-shadow:
+    0 0 calc(var(--s4-ok) * 40px) rgba(118, 226, 200, calc(var(--s4-ok) * 0.26)),
+    0 0 calc(var(--s4-ok) * 130px) rgba(90, 190, 255, calc(var(--s4-ok) * 0.10));
+}
+
+/* B が選択された瞬間（青の縁光。塗りは足さない） */
+.scene-s4.beat-5 .s4-choice[data-k="B"] {
+  border-color: rgba(120, 162, 255, 0.60);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.32),
+    0 0 26px rgba(79, 141, 255, 0.22);
+}
+.scene-s4.beat-5 .s4-choice[data-k="B"] .s4-key {
+  color: #eaf1ff; border-color: rgba(140, 180, 255, 0.7);
+  background: rgba(79, 141, 255, 0.24);
+}
+
+/* 正解（ミント。1 度だけ、面の内側からも淡く光る） */
+.scene-s4.beat-6 .s4-choice[data-k="B"] {
+  border-color: rgba(126, 226, 200, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.30),
+    inset 0 0 34px rgba(118, 226, 200, 0.10);
+}
+.scene-s4.beat-6 .s4-choice[data-k="B"] .s4-key {
+  color: #04241e; border-color: rgba(150, 235, 212, 0.85);
+  background: rgba(140, 230, 205, 0.88);
+}
+
+/* チェック（線は JS が dashoffset で描く） */
+.s4-check-wrap { margin-left: auto; display: inline-flex; }
+.s4-check {
+  width: 20px; height: 20px;
+  color: #8fe6cd;
+  filter: drop-shadow(0 0 8px rgba(110, 220, 190, 0.55));
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+.s4-check path { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.scene-s4.beat-6 .s4-check { opacity: 1; }
+
+/* ── スマホ枠（モーフの着地点） ── */
+.s4-phone {
+  /* カードは .s4-wrap の padding-bottom 分だけ上に寄っている。
+     枠はそこから少し下げ、カードが画面の上寄りに収まるようにする（実機の見え方）。 */
+  position: absolute; left: 50%; top: calc(50% - 4.5vh + 14px);
+  width: 320px; height: min(540px, 70vh);
+  border-radius: 46px;
+  border: 1px solid rgba(168, 180, 246, 0.32);
+  background: linear-gradient(168deg, rgba(16, 19, 42, 0.5), rgba(7, 9, 22, 0.6));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 0 60px rgba(80, 120, 255, 0.07),
+    0 40px 90px -40px rgba(0, 0, 0, 0.95),
+    0 0 40px rgba(79, 141, 255, 0.14);
+  /* 立ち上がりのスケールは 0.97 まで。0.92 から起こすと、出現途中の枠の内寸が
+     まだ縮み切っていないカードより狭くなり、カードが枠をはみ出して見える。 */
+  transform: translate(calc(-50% + var(--s4-mx)), -50%)
+             scale(calc(0.97 + 0.03 * var(--s4-pm)));
+  opacity: var(--s4-pm);
+  pointer-events: none;
+}
+.s4-phone-notch {
+  position: absolute; top: 14px; left: 50%;
+  transform: translateX(-50%);
+  width: 96px; height: 19px; border-radius: 10px;
+  background: rgba(5, 6, 16, 0.92);
+  border: 1px solid rgba(150, 160, 255, 0.10);
+}
+/* ホームインジケータ。実機の要素を 1 本入れるだけで枠の下半分が「余白」ではなく
+   「画面の下端」に読める（偽の UI を足さずに間を締める）。 */
+.s4-phone::after {
+  content: "";
+  position: absolute; left: 50%; bottom: 13px;
+  transform: translateX(-50%);
+  width: 108px; height: 4px; border-radius: 999px;
+  background: rgba(190, 200, 245, 0.26);
+}
+
+/* ════════════ Scene 5 — VocabuSpeak ════════════ */
+
+.scene-s5 { --e: cubic-bezier(0.16, 1, 0.3, 1); }
+
+.s5-wrap {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding-bottom: 10vh;
+  perspective: 1400px;
+}
+
+/* パネル（ここは backdrop-filter を使う。同時 2 枚以内に収まる） */
+.s5-panel {
+  width: min(700px, 90vw);
+  padding: 22px 32px 26px;
+  border-color: rgba(216, 168, 200, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    inset 0 0 80px rgba(150, 90, 180, 0.045),
+    0 44px 96px -38px rgba(0, 0, 0, 0.95),
+    0 0 80px rgba(214, 96, 156, 0.09);
+  opacity: 0;
+  transform: translateY(34px) scale(0.94) rotateX(6deg);
+  filter: blur(12px);
+  transition: opacity 0.85s ease, transform 0.95s var(--e), filter 0.8s ease;
+}
+.scene-s5.beat-0 .s5-panel { opacity: 1; transform: none; filter: none; }
+
+/* 機能名は極小キャップス 1 行 + 極細の罫線だけ（チップは並べない） */
+.s5-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.s5-kicker {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.30em;
+  color: rgba(232, 200, 220, 0.55); white-space: nowrap;
+}
+.s5-rule { flex: 1; height: 1px; background: rgba(255, 255, 255, 0.07); }
+
+/* ── 音の帯 ── */
+.s5-wave-wrap { position: relative; height: 92px; margin-bottom: 14px; }
+.s5-wave-halo {
+  position: absolute; inset: -14px -6px;
+  pointer-events: none;
+  background: radial-gradient(48% 110% at 50% 50%,
+    rgba(158, 174, 255, 0.13), rgba(158, 174, 255, 0) 70%);
+  opacity: var(--o, 0.06);
+}
+.s5-wave { position: absolute; inset: 0; }
+.s5-wave-svg { display: block; width: 100%; height: 100%; }
+.s5-wave-axis { stroke-width: 1; opacity: 0.22; }
+
+/* ── 会話（話者ラベルは吹き出しの外。角丸は控えめの 14px） ── */
+.s5-chat { display: flex; flex-direction: column; gap: 18px; min-height: 0; }
+.s5-row { display: flex; flex-direction: column; gap: 7px; }
+.s5-row-ai { align-items: flex-start; }
+.s5-row-user { align-items: flex-end; }
+
+.s5-name {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.30em;
+  color: rgba(201, 207, 242, 0.42);
+  padding: 0 2px;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+/* 幅 100% にしておかないと吹き出しの max-width の基準が縮んで折り返す */
+.s5-userline {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 12px; width: 100%;
+}
+
+.s5-bubble {
+  display: inline-flex; align-items: center;
+  max-width: 78%;
+  padding: 13px 18px;
+  border-radius: 14px;
+  font-size: 15.5px; letter-spacing: 0.01em;
+  white-space: pre-wrap;
+  color: var(--vq-ink);
+  /* 面は暗く。上辺の高光りと接地影で「板」ではなく「物体」に */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 20px 34px -26px rgba(0, 0, 0, 0.9);
+  opacity: 0; transform: translateY(14px);
+  transition: opacity 0.7s ease, transform 0.85s var(--e);
+}
+.s5-ai   { border: 1px solid rgba(232, 118, 168, 0.26); }
+.s5-user { border: 1px solid rgba(104, 158, 255, 0.30); }
+.scene-s5.beat-1 .s5-row-ai .s5-name, .scene-s5.beat-1 .s5-ai { opacity: 1; }
+.scene-s5.beat-1 .s5-ai { transform: none; }
+.scene-s5.beat-3 .s5-row-user .s5-name, .scene-s5.beat-3 .s5-user { opacity: 1; }
+.scene-s5.beat-3 .s5-user { transform: none; }
+
+/* タイプ文字（表示は JS が is-on で差分制御。キャレットが常に打点に付く） */
+.s5-ch { display: none; }
+.s5-ch.is-on { display: inline; }
+.s5-caret {
+  display: none;
+  width: 1.5px; height: 1.05em;
+  margin-left: 2px;
+  background: currentColor;
+  opacity: 0.8;
+  vertical-align: -0.15em;
+}
+.s5-caret.is-on { display: inline-block; animation: s5-caret-blink 1s steps(1) infinite; }
+/* 点滅は状態を持たない装飾ループ */
+@keyframes s5-caret-blink { 0%, 58% { opacity: 0.8; } 59%, 100% { opacity: 0; } }
+
+/* 字幕・翻訳（小さく淡く、字間を広く） */
+.s5-sub {
+  font-size: 12px; color: rgba(201, 207, 242, 0.50); letter-spacing: 0.08em;
+  padding-left: 3px;
+  opacity: 0; transform: translateY(8px);
+  transition: opacity 0.8s ease, transform 0.85s var(--e);
+}
+.scene-s5.beat-2 .s5-sub { opacity: 1; transform: none; }
+
+/* マイク（吹き出しの外。控えめに脈動） */
+.s5-mic {
+  position: relative; flex-shrink: 0;
+  width: 32px; height: 32px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(79, 141, 255, 0.14);
+  border: 1px solid rgba(120, 165, 255, 0.36);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  color: #bcd3ff;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+.scene-s5.beat-3 .s5-mic { opacity: 1; }
+.s5-mic-icon { display: inline-flex; width: 16px; height: 16px; }
+.s5-mic-icon svg { width: 100%; height: 100%; }
+.s5-mic-ring {
+  position: absolute; inset: -6px;
+  border-radius: 999px;
+  border: 1px solid rgba(130, 180, 255, 0.8);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* ── スコア: 主役は 1 つ。右に小さく数値だけ ──
+   計測前は「空のゲージ」を薄く待機させていたが、読めない極小ラベル（発音/流暢さ/文法）と
+   半透明の円が幽霊のように残って見えた（実測 54s / 60s）。
+   出る前は visibility で完全に消し、高さも畳んでパネルを詰める。
+   max-height なので確定後の高さは中身が決める（数値がずれても崩れない）。 */
+.s5-scores {
+  display: flex; align-items: center; justify-content: center; gap: 40px;
+  margin-top: 0;
+  max-height: 0; overflow: hidden;
+  visibility: hidden;
+  opacity: 0; transform: translateY(14px);
+  transition: opacity 0.75s ease, transform 0.85s var(--e),
+              max-height 0.7s var(--e), margin-top 0.7s var(--e),
+              visibility 0.75s linear;
+}
+.scene-s5.beat-4 .s5-scores {
+  visibility: visible;
+  opacity: 1; transform: none;
+  max-height: 200px; margin-top: 22px;
+}
+
+.s5-hero { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.s5-hero-ring { position: relative; width: 108px; height: 108px; }
+.s5-hero-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.s5-hero-track { fill: none; stroke: rgba(255, 255, 255, 0.07); stroke-width: 4; }
+.s5-hero-val {
+  fill: none; stroke: #d67ca4; stroke-width: 4; stroke-linecap: round;
+  stroke-dasharray: 0 100;
+  filter: drop-shadow(0 0 9px rgba(214, 124, 164, 0.42));
+}
+.s5-hero-num {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: clamp(26px, 2.7vw, 33px); font-weight: 800; letter-spacing: 0.01em;
+  color: var(--vq-ink);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 24px rgba(214, 124, 164, 0.3);
+}
+.s5-hero-label {
+  font-size: 10px; letter-spacing: 0.26em;
+  color: rgba(201, 207, 242, 0.52);
+}
+
+.s5-side { display: flex; flex-direction: column; gap: 18px; }
+/* --o は JS が local から。計測が始まる行だけが立ち上がる */
+.s5-side-item { display: flex; flex-direction: column; gap: 3px; opacity: var(--o, 0); }
+.s5-side-label {
+  font-size: 9.5px; letter-spacing: 0.24em;
+  color: rgba(201, 207, 242, 0.42);
+}
+.s5-side-num {
+  font-size: 21px; font-weight: 700; letter-spacing: 0.02em;
+  color: rgba(242, 244, 255, 0.88);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ════════════ Scene 6 — Insight ════════════ */
+
+/* グラフカードと統計カード列は必ず同じ外寸に収める。
+   1 か所（--s6-w）だけを見て両方が幅を決めるので、右端がずれようがない。 */
+.scene-s6 { --e: cubic-bezier(0.16, 1, 0.3, 1); --s6-w: min(980px, 92vw); }
+
+.s6-wrap {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 20px;
+  padding-bottom: 11vh;
+  perspective: 1400px;
+}
+
+/* ── 主役: 折れ線グラフ ── */
+.s6-chart {
+  width: var(--s6-w);
+  padding: 22px 28px 18px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    inset 0 0 90px rgba(80, 150, 255, 0.05),
+    0 44px 96px -38px rgba(0, 0, 0, 0.95),
+    0 0 80px rgba(79, 141, 255, 0.10);
+  opacity: 0;
+  transform: translateY(34px) scale(0.95) rotateX(5deg);
+  filter: blur(12px);
+  transition: opacity 0.85s ease, transform 0.95s var(--e), filter 0.8s ease;
+}
+.scene-s6.beat-0 .s6-chart { opacity: 1; transform: none; filter: none; }
+.s6-chart-title {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.24em;
+  color: rgba(201, 207, 242, 0.50);
+  margin-bottom: 10px;
+}
+/* 面をパネルの端まで届かせる（内側で切ると図表くさい）。角丸で切り取る。 */
+.s6-svg-wrap { width: calc(100% + 56px); margin: 0 -28px -18px; }
+.s6-svg { display: block; width: 100%; height: auto; }
+.s6-gridline { stroke: rgba(255, 255, 255, 0.06); stroke-width: 1; }
+.s6-area { opacity: var(--o, 0); }
+.s6-line {
+  stroke-dasharray: 1; stroke-dashoffset: 1;
+  filter: drop-shadow(0 0 10px rgba(100, 224, 255, 0.35));
+}
+.s6-dot { fill: #e6faff; filter: drop-shadow(0 0 10px rgba(100, 224, 255, 0.9)); }
+.s6-dot-halo { fill: rgba(100, 224, 255, 0.16); }
+
+/* ── 統計: 塗らない。枠線 1px と大きな数字だけ ──
+   3 枚は同じグリッドに必ず 3 枚とも並ぶ。1 枚でも遅れて出ると列の右端が
+   グラフの右端と揃わず、グリッドが折れて見える。 */
+.s6-stats {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;
+  width: var(--s6-w);
+}
+.s6-stat {
+  padding: 17px 22px 19px;
+  border-radius: 16px;
+  border: 1px solid rgba(146, 158, 224, 0.16);
+  background: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  opacity: 0; transform: translateY(18px);
+  transition: opacity 0.7s ease var(--d, 0s), transform 0.85s var(--e) var(--d, 0s);
+}
+/* 3 枚同時。時差は最大 0.08 秒（それ以上ずらすと「揃っていない列」に見える） */
+.s6-stat-0 { --d: 0s; }
+.s6-stat-1 { --d: 0.04s; }
+.s6-stat-2 { --d: 0.08s; }
+.scene-s6.beat-1 .s6-stat { opacity: 1; transform: none; }
+.s6-stat-label {
+  font-size: 10px; letter-spacing: 0.22em;
+  color: rgba(201, 207, 242, 0.46);
+}
+.s6-stat-row { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
+.s6-stat-num {
+  font-size: clamp(28px, 3vw, 40px); font-weight: 800; letter-spacing: 0.01em;
+  line-height: 1;
+  color: var(--vq-ink);
+  text-shadow: 0 0 22px rgba(100, 224, 255, 0.24);
+  font-variant-numeric: tabular-nums;
+}
+/* 単位は数値と同系の白。沈ませると「76」が裸の数字に見えて作りかけになる。
+   数値の 45% までの大きさ、ベースライン揃え（.s6-stat-row が baseline）。 */
+.s6-stat-unit {
+  font-size: clamp(13px, 1.34vw, 18px);
+  font-weight: 600; letter-spacing: 0.05em; white-space: nowrap;
+  color: rgba(238, 242, 255, 0.78);
+  text-shadow: 0 0 16px rgba(100, 224, 255, 0.18);
+}
+
+/* ── 苦手 → 次のおすすめ ── */
+.s6-reco {
+  opacity: 0; transform: translateY(14px);
+  transition: opacity 0.8s ease, transform 0.9s var(--e);
+}
+.scene-s6.beat-2 .s6-reco { opacity: 1; transform: none; }
+.s6-reco-inner {
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; gap: 18px;
+  padding: 13px 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(146, 158, 224, 0.18);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.008));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.32),
+    0 22px 40px -30px rgba(0, 0, 0, 0.9);
+}
+/* 光のスイープは 1 回だけ（無限ループにしない。位置は JS の --sw / --swo） */
+.s6-reco-sweep {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg,
+    rgba(255, 255, 255, 0) 34%,
+    rgba(170, 218, 255, 0.16) 50%,
+    rgba(255, 255, 255, 0) 66%);
+  transform: translate3d(calc(var(--sw, 0) * 240% - 120%), 0, 0);
+  opacity: var(--swo, 0);
+}
+
+.s6-chip { display: inline-flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+.s6-chip-kicker { font-size: 9.5px; letter-spacing: 0.24em; color: rgba(201, 207, 242, 0.44); }
+.s6-chip-body { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; color: var(--vq-ink); }
+.s6-chip-weak .s6-chip-body { color: rgba(242, 244, 255, 0.72); }
+.s6-chip-next .s6-chip-body {
+  color: #bfeeff;
+  text-shadow: 0 0 18px rgba(100, 224, 255, 0.35);
+}
+.s6-arrow {
+  display: inline-flex; width: 40px; height: 12px;
+  color: rgba(160, 200, 255, 0.55);
+}
+.s6-arrow svg { width: 100%; height: 100%; }
+
+/* ════════════ コピー（1 文字ずつ。位置だけ CSS が持つ） ════════════ */
+
+.s4-copy .vqad-kin, .s5-copy1 .vqad-kin, .s5-copy2 .vqad-kin, .s6-copy .vqad-kin {
+  opacity: 0; /* update が呼ばれる前に素の状態を見せない */
+}
+
+/* ════════════ reduced motion（フェードのみで成立させる） ════════════ */
+
+html.vqad-rm .s4-card, html.vqad-rm .s4-q, html.vqad-rm .s4-sentence,
+html.vqad-rm .s4-choice,
+html.vqad-rm .s5-panel, html.vqad-rm .s5-bubble, html.vqad-rm .s5-sub,
+html.vqad-rm .s5-scores,
+html.vqad-rm .s6-chart, html.vqad-rm .s6-stat, html.vqad-rm .s6-reco {
+  transform: none !important;
+  filter: none !important;
+  transition-property: opacity;
+  transition-duration: 0.6s;
+}
+html.vqad-rm .s4-cardwrap { transform: none !important; filter: none !important; }
+html.vqad-rm .s4-phone { opacity: 0 !important; }
+html.vqad-rm .s4-choice::before, html.vqad-rm .s6-reco-sweep { display: none; }
+html.vqad-rm .s5-caret.is-on { animation: none; opacity: 0.8; }
+
+/* ════════════ モバイル（崩壊させない） ════════════ */
+
+@media (max-width: 700px) {
+  /* モーフはその場で縮小。枠はカードの最終幅から作るので比率が崩れない。
+     幅は 84vw まで。カメラが最大 1.18 倍まで寄るので 90vw だと端が切れる。 */
+  .scene-s4 { --s4-mx: 0vw; --s4-row: 60px; --s4-sc: 0.42; }
+  .s4-card { width: 82vw; padding: 22px 18px 24px; }
+  .s4-sentence { font-size: 17px; margin: 10px 0 20px; }
+  .s4-choice, .s4-cursor, .s4-ok { height: 48px; }
+  .s4-choice { font-size: 13px; padding: 0 13px; gap: 10px; }
+  .s4-phone { width: calc(82vw * 0.58 + 30px); height: min(430px, 62vh); }
+  .s4-phone-notch { width: 72px; height: 16px; }
+  .s4-phone::after { width: 84px; bottom: 10px; }
+
+  .s5-panel { width: 84vw; padding: 18px 18px 20px; }
+  .s5-wave-wrap { height: 74px; margin-bottom: 12px; }
+  .s5-bubble { max-width: 92%; font-size: 14px; padding: 11px 14px; }
+  .s5-chat { gap: 16px; min-height: 0; }
+  .s5-scores { gap: 24px; }
+  .scene-s5.beat-4 .s5-scores { margin-top: 18px; }
+  .s5-hero-ring { width: 92px; height: 92px; }
+  .s5-hero-num { font-size: 24px; }
+
+  .scene-s6 { --s6-w: 84vw; }
+  .s6-chart { padding: 16px 18px 12px; }
+  .s6-svg-wrap { width: calc(100% + 36px); margin: 0 -18px -12px; }
+  .s6-stats { gap: 8px; }
+  .s6-stat { padding: 12px 10px 13px; }
+  .s6-stat-row { gap: 4px; }
+  .s6-stat-num { font-size: 20px; }
+  .s6-stat-unit { font-size: 9px; letter-spacing: 0.02em; }
+  .s6-stat-label { font-size: 9px; letter-spacing: 0.12em; }
+  .s6-reco-inner {
+    max-width: 84vw;
+    flex-wrap: wrap; justify-content: center; gap: 10px; border-radius: 22px;
+  }
+  .s6-arrow { width: 30px; }
+}
+
+/* 低い画面ではパネルの余白を詰める（コピーと重ねない） */
+@media (max-height: 780px) {
+  .s4-card { padding: 22px 26px 24px; }
+  .s4-top { margin-bottom: 18px; }
+  .s4-sentence { margin: 10px 0 18px; }
+
+  .s5-panel { padding: 18px 26px 20px; }
+  .s5-wave-wrap { height: 80px; margin-bottom: 12px; }
+  .s5-chat { gap: 14px; min-height: 0; }
+  /* margin-top は「出たあと」だけ。素の .s5-scores に書くと畳んだ状態の 0 を上書きする */
+  .s5-scores { gap: 30px; }
+  .scene-s5.beat-4 .s5-scores { margin-top: 16px; }
+  .s5-hero-ring { width: 96px; height: 96px; }
+
+  .s6-wrap { gap: 14px; }
+  .s6-chart { padding: 16px 22px 12px; }
+  .s6-stat { padding: 12px 18px 14px; }
+}
