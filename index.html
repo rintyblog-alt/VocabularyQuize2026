@@ -177,6 +177,16 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/assets/icon/favicon-16.png?v=3" />
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/icon/apple-touch-icon-180.png?v=3" />
   <meta name="apple-mobile-web-app-title" content="VocabuQuiz" />
+  <!-- ★ 画面を **時計の下まで伸ばす**（2026-08-18・Rinty の指示）。
+       この 2 行が無いと iOS は必ず時計の下から始めるので、上に帯が残る。
+       ★ 代わりに「上下の余白を確保する責任」が こちら側に移る。
+         前にこれで失敗しているので、上に貼り付く要素は
+         必ず env(safe-area-inset-top) を見ること（下は inset-bottom）。
+         いまの主要な場所は すでに見ている:
+           #vqTopbar / #vqLiveEdge .isl / .vqtb-only-on main / #vqMobBar
+       ★ 戻すときは この 2 行を消すだけ。他は触らない。 -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta property="og:image" content="/assets/icon/og-1200x630.png?v=3" />
   <!-- ★ apple-mobile-web-app-capable と status-bar-style は **置かない**。
 
