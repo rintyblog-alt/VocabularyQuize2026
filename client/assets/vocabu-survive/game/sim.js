@@ -23,6 +23,14 @@ export const PHASE = {
   FINISHED: "finished"
 };
 
+/* 遊び方（要件 18）。**レースが 本命**。ほかは その 上に 足した もの。 */
+export const MODE = {
+  RACE: "race",             /* 先に ゴールした 人が 勝ち */
+  TIMEATTACK: "timeattack", /* 1 人で 記録に 挑む（中身は レースと 同じ） */
+  SURVIVAL: "survival",     /* 落ちたら 脱落。最後まで 残った 人が 勝ち */
+  QUIZRUSH: "quizrush"      /* 制限時間内に 門を 多く 通った 人が 勝ち */
+};
+
 export class Sim {
   /**
    * @param {import("./course.js").Course} course
@@ -37,6 +45,12 @@ export class Sim {
     this.phase = PHASE.COUNTDOWN;
     this.countdown = opt.countdown === undefined ? 3.2 : opt.countdown;
     this.timeLimit = opt.timeLimit === undefined ? 300 : opt.timeLimit;
+    this.mode = opt.mode || MODE.RACE;
+    /* 脱落した 人（サバイバル）。id の 集まり。 */
+    this.eliminated = new Set();
+    /* ★ サバイバルの 残り。1 回で 終わりに すると **8 秒で 決着した**（実測）。
+       3 回 落ちるまで 続ける。落ちるたび 中間地点へ 戻る。 */
+    this.lives = opt.lives === undefined ? 3 : opt.lives;
     this.events = [];              /* 音・演出へ 渡す */
     this.finishOrder = [];
     this._near = [];
@@ -56,6 +70,8 @@ export class Sim {
       const sp = C.spawns[i % Math.max(1, C.spawns.length)] || { x: 0, y: 1, z: -3, yaw: 0 };
       p.reset({ x: sp.x, y: sp.y + 0.3, z: sp.z, yaw: 0 });
       p.slot = i;
+      p.lives = this.mode === MODE.SURVIVAL ? this.lives : 0;
+      p.eliminated = false;
     }
     this.time = 0; this.raceTime = 0;
     this.phase = PHASE.COUNTDOWN;
@@ -136,10 +152,27 @@ export class Sim {
       this._scan(p);
 
       if (respawn) {
-        const cp = C.respawnPoint(p.checkpoint, p.slot || 0);
-        p.respawnAt(cp);
-        /* 門の 答えは 中間地点より 先の ものだけ 消す */
-        this.events.push({ t: "respawn", p });
+        if (this.mode === MODE.SURVIVAL && !p.finished) {
+          p.lives = Math.max(0, (p.lives | 0) - 1);
+          if (p.lives > 0) {
+            /* まだ 残っている。中間地点へ 戻す。 */
+            p.respawnAt(C.respawnPoint(p.checkpoint, p.slot || 0));
+            this.events.push({ t: "respawn", p, lives: p.lives });
+          } else {
+            /* ★ 残り 0。**脱落**。早く 落ちるほど 下位。 */
+            this.eliminated.add(p.id);
+            p.finished = true;
+            p.eliminated = true;
+            p.finishTime = this.raceTime;
+            const 残り = this.players.filter((q) => !q.finished).length;
+            p.rank = 残り + 1;
+            this.events.push({ t: "eliminated", p, left: 残り });
+          }
+        } else {
+          const cp = C.respawnPoint(p.checkpoint, p.slot || 0);
+          p.respawnAt(cp);
+          this.events.push({ t: "respawn", p });
+        }
       }
 
       p.progress = C.progressOf(p.x, p.z);
@@ -148,13 +181,20 @@ export class Sim {
     /* ⑤ 順位 */
     this._rank();
 
-    /* ⑥ 制限時間 */
+    /* ⑥ おしまいの 条件 */
     if (this.raceTime >= this.timeLimit) {
       this.phase = PHASE.FINISHED;
       this.events.push({ t: "timeup" });
     } else if (this.players.length && this.players.every((p) => p.finished)) {
       this.phase = PHASE.FINISHED;
       this.events.push({ t: "allfinished" });
+    } else if (this.mode === MODE.SURVIVAL && this.players.length > 1
+               && this.players.filter((p) => !p.finished).length <= 1) {
+      /* 残り 1 人 に なったら 終わり。その 人が 1 位。 */
+      const 勝 = this.players.find((p) => !p.finished);
+      if (勝) { 勝.finished = true; 勝.rank = 1; 勝.finishTime = this.raceTime; }
+      this.phase = PHASE.FINISHED;
+      this.events.push({ t: "lastone", p: 勝 || null });
     }
     return this.events;
   }
@@ -255,6 +295,13 @@ export class Sim {
   }
 
   _rank() {
+    if (this.mode === MODE.QUIZRUSH) {
+      /* ★ クイズラッシュは **正解した 門の 数**が 先。同じなら 進んだ 距離。 */
+      const rows = this.players.slice().sort((a, b) =>
+        (b.quizCorrect - a.quizCorrect) || (b.progress - a.progress));
+      for (let i = 0; i < rows.length; i++) rows[i].rank = i + 1;
+      return;
+    }
     const rest = this.players.filter((p) => !p.finished);
     rest.sort((a, b) => b.progress - a.progress);
     const base = this.finishOrder.length;
@@ -268,6 +315,7 @@ export class Sim {
       rank: p.rank, progress: p.progress, finished: p.finished,
       finishTime: p.finishTime, checkpoint: p.checkpoint,
       correct: p.quizCorrect, wrong: p.quizWrong, respawns: p.respawns,
+      eliminated: !!p.eliminated, lives: p.lives | 0,
       pct: this.course.length > 0 ? Math.min(1, p.progress / this.course.length) : 0
     }));
     rows.sort((a, b) => a.rank - b.rank);

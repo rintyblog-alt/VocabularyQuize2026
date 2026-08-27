@@ -25,7 +25,7 @@ import { BeanVisual, registerBeanMeshes, BEAN_HEIGHT } from "./bean.js";
 import { buildCourse } from "./course.js";
 import { Player, FixedStepper, STEP, TUNE } from "./player.js";
 import { Bot } from "./bot.js";
-import { Sim, PHASE } from "./sim.js";
+import { Sim, PHASE, MODE } from "./sim.js";
 import { GATE_STATE } from "./gate.js";
 import { Input } from "./input.js";
 import { TouchPad, TOUCH_CSS } from "../ui/touch.js";
@@ -115,7 +115,10 @@ export class MatchScreen {
     this.renderer.shadowRadius = 22;
 
     /* 人を 並べる */
-    this.sim = new Sim(this.course, { timeLimit: cfg.timeLimit || 300, countdown: 3.2 });
+    /* 遊び方。クイズラッシュだけ 制限時間が 短い（100 秒で 何問 通せるか）。 */
+    const mode = cfg.mode || MODE.RACE;
+    const 制限 = cfg.timeLimit || (mode === MODE.QUIZRUSH ? 100 : 300);
+    this.sim = new Sim(this.course, { timeLimit: 制限, countdown: 3.2, mode });
     this.visuals.clear();
     this.bots.length = 0;
     const me = new Player({ id: "me", name: cfg.myName || "あなた", colorIndex: cfg.myColor || 0, isLocal: true });
@@ -366,7 +369,10 @@ export class MatchScreen {
         this.hud.toast("中間地点 " + e.index, "good");
         if (this.fx) this.fx.confetti(e.p.x, e.p.y, e.p.z, 16, [this.course.palette.spring, this.course.palette.gold]);
       }
-      else if (e.t === "respawn" && e.p === this.local) { this.hud.toast("戻されました", "bad"); this.cam.hit(0.5); }
+      else if (e.t === "respawn" && e.p === this.local) {
+        this.hud.toast(e.lives !== undefined ? ("戻されました（残り " + e.lives + ")") : "戻されました", "bad");
+        this.cam.hit(0.5);
+      }
       else if (e.t === "hit") {
         if (e.p === this.local) this.cam.hit(clamp((e.power || 6) / 12, 0.3, 1));
         if (this.fx) this.fx.hit(e.p.x, e.p.y + 0.8, e.p.z, clamp((e.power || 6) / 9, 0.4, 1.4), this.course.palette.hot);
@@ -385,6 +391,14 @@ export class MatchScreen {
           }
           this._finish();
         } else this.hud.toast(e.p.name + " が ゴール（" + e.rank + "位）");
+      } else if (e.t === "eliminated") {
+        /* サバイバル: 落ちたら 脱落 */
+        if (e.p === this.local) { this.hud.big("脱落…", "goal"); this._finish(); }
+        else this.hud.toast(e.p.name + " が 脱落（残り " + e.left + " 人）", "bad");
+        if (this.fx) this.fx.hit(e.p.x, e.p.y + 0.8, e.p.z, 1.2, this.course.palette.danger);
+      } else if (e.t === "lastone") {
+        if (e.p === this.local) this.hud.big("生き残った!", "goal");
+        this._finish();
       } else if (e.t === "timeup") this._finish();
       else if (e.t === "allfinished") this._finish();
       if (this.app && this.app.audio) this.app.audio.onEvent(e, this.local);
@@ -520,6 +534,7 @@ export class MatchScreen {
         rank: p.rank, total: this.sim.players.length, finished: p.finished,
         time: p.finishTime, correct: p.quizCorrect, wrong: p.quizWrong,
         respawns: p.respawns, xp, best: newBest ? p.finishTime : best, newBest,
+        eliminated: !!p.eliminated, mode: this.sim.mode,
         standings: rows, courseName: this.course.name
       });
       if (this.net && this.net.sendResult) {

@@ -53,9 +53,11 @@ export class ResultPanel {
   show(d) {
     const rank = d.rank || 0;
     const medal = rank >= 1 && rank <= 3 ? MEDAL[rank - 1] : "";
-    this.titleEl.textContent = d.finished
-      ? (medal ? medal + " " + rank + "位" : rank + "位")
-      : "ゴールできませんでした";
+    this.titleEl.textContent = d.eliminated
+      ? (rank === 1 ? "🥇 生き残った!" : rank + "位（脱落）")
+      : (d.finished
+        ? (medal ? medal + " " + rank + "位" : rank + "位")
+        : "ゴールできませんでした");
     this.titleEl.setAttribute("data-rank", String(rank));
     this.subEl.textContent = d.courseName + " ・ " + d.total + "人";
 
@@ -83,7 +85,8 @@ export class ResultPanel {
         h("span", { class: "vs-res-no vs-mono", text: String(r.rank) }),
         dot,
         h("span", { class: "vs-res-nm", text: r.name }),
-        h("span", { class: "vs-res-tm vs-mono", text: r.finished ? fmt(r.finishTime) : (Math.round(r.pct * 100) + "%") })));
+        h("span", { class: "vs-res-tm vs-mono",
+          text: r.eliminated ? "脱落" : (r.finished ? fmt(r.finishTime) : (Math.round(r.pct * 100) + "%")) })));
     }
     this.el.setAttribute("data-on", "1");
   }
