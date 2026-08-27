@@ -3284,6 +3284,12 @@ html.vq-css-wait body.auth-booting > *:not(#authBootSplash):not(.vqload-defs){vi
             </div>
           </section>
 
+          <!-- VocabuSurvive（2026-08-28）。
+               中身は 影の DOM で 作るので ここは 空の 器だけ。
+               本体の CSS が 中へ 入らないので 見た目の 事故が 起きない。 -->
+          <section class="app-tab-page" id="appSurvivePage" aria-label="VocabuSurvive"
+                   style="position:relative;padding:0;overflow:hidden;min-height:0"></section>
+
           <!-- VocabuSurvival v3 -->
           <section class="app-tab-page" id="appSurvival3Page" aria-label="VocabuSurvival">
             <div class="vq-survival-unavailable" role="status" aria-live="polite">
@@ -3692,6 +3698,12 @@ html.vq-css-wait body.auth-booting > *:not(#authBootSplash):not(.vqload-defs){vi
           <button class="app-tab-btn" type="button" data-app-tab="survival3" data-sidebar-tooltip="VocabuSurvival" aria-label="VocabuSurvival" aria-selected="false" title="VocabuSurvival">
             <span class="ms" aria-hidden="true">sports_esports</span>
             <span class="vq-sidebar-item-label">VocabuSurvival</span>
+          </button>
+          <!-- VocabuSurvive（2026-08-28）。旧 VocabuSurvival とは 別の 画面。
+               押すまで 部品を 読まない（＝見ない人には 1 バイトも 流れない）。 -->
+          <button class="app-tab-btn" type="button" data-app-tab="survive" data-sidebar-tooltip="VocabuSurvive" aria-label="VocabuSurvive" aria-selected="false" title="VocabuSurvive">
+            <span class="ms" aria-hidden="true">videogame_asset</span>
+            <span class="vq-sidebar-item-label">VocabuSurvive</span>
           </button>
           <!-- タイマー。ほかのタブと違って **画面を切り替えない**（重ねて開く）。
                勉強を中断させないため、いま見ているものはそのまま残す。 -->
@@ -6018,7 +6030,33 @@ html.vq-css-wait body.auth-booting > *:not(#authBootSplash):not(.vqload-defs){vi
        いまは 自前配信の MathJax で **SVG に固める**（core/math/svg.js）。
        本体は 数式が出てきたときだけ /vendor/mathjax/ から読む。 -->
 
-<script id="vq-core" src="/js/vq-core.244f4e5814.js"></script>
+<!-- ★ VocabuSurvive の 束の 置き場（2026-08-28）。
+     **ここでは 読み込まない。** タブを 開いたときに 初めて 取りに行く。
+     指紋つきの 名前なので vqrehash / vqsurvive が ここを 書き換える。 -->
+<script>window.__VQ_SURVIVE_SRC="/js/vq-survive.bdaf6ad60b.js";</script>
+<style>
+/* VocabuSurvive の 器（2026-08-28）。
+   ★ 1.4MB の vq-ds.css へは 足さない。あそこを 直すと 名前が 変わり、
+     全員が 1.4MB を もう一度 落とすことに なる。ここは 数行なので
+     index.html（毎回 取りに来る）に 置く。 */
+body[data-app-tab="survive"] #appSurvivePage{ display:block; }
+#appSurvivePage{
+  position:relative; width:100%; max-width:none !important;
+  margin:0; padding:0; overflow:hidden;
+  border-radius:16px;
+  background:#0b0e26;
+  min-height:320px;
+  /* 高さは JS が その場で 測って入れる（上に 何が 乗るかは 版で 変わる） */
+  contain: layout paint style;
+}
+body[data-app-tab="survive"] #viewTitle .hero{ display:none; }
+/* 遊んでいる 間は 画面を 動かさない（指の 操作が 引っぱられる） */
+body[data-app-tab="survive"]{ overscroll-behavior:none; }
+@media (max-width: 879px){
+  #appSurvivePage{ border-radius:0; }
+}
+</style>
+<script id="vq-core" src="/js/vq-core.27238bb9e4.js"></script>
 <script type="module" src="/assets/survival/runtime.js"></script>
 <!-- ★ three.js の 先読みをやめた（2026-08-18）。
      Qredit のカードを 立体で見せるためだけの 118KB を、**見ない人にも**
@@ -9514,7 +9552,7 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
 })();
 
 </script>
-<script id="vq-shell" src="/js/vq-shell.1361fde546.js"></script>
+<script id="vq-shell" src="/js/vq-shell.17aee19602.js"></script>
 <script id="vq-feed" src="/js/vq-feed.f87ad2feb4.js"></script>
 <!-- DM（1 対 1 のやりとり）。左のサイドパネルから 開く。
      相互フォローでない相手へは 3 件まで（サーバでも 止めている）。 -->
@@ -12049,7 +12087,7 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
     { label: "Feed", icon: "message", tab: "inbox", kw: "feed フィード タイムライン inbox" },
     { label: "NEWS", icon: "news", tab: "news", kw: "news ニュース お知らせ" },
     { label: "Insights", icon: "trend", tab: "insight", kw: "insight 分析 統計 成績 レポート" },
-    { label: "VocabuSurvival", icon: "shield", tab: "survival3", kw: "survival サバイバル 対戦" },
+    { label: "VocabuSurvive", icon: "sports_esports", tab: "survive", kw: "survive サバイブ ゲーム 対戦 3d アスレチック クイズ" },
     { label: "Quick Chat", icon: "zap", tab: "chat", kw: "chat ai チャット quick 質問" },
     { label: "通知", icon: "bell", tab: "notifications", kw: "notification 通知 お知らせ" },
     { label: "Subscription", icon: "crown", tab: "subscription", kw: "subscription プラン 課金 pro" }

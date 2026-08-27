@@ -492,7 +492,10 @@ const SEED_FLAGS = [
   ["dm", "DM", "mail", "fn:dm", "main", 35, 1, "on", "NEW"],
   ["news", "NEWS", "news", "tab:news", "main", 40, 1, "on", ""],
   ["insights", "Insights", "trend", "tab:insight", "main", 50, 1, "on", ""],
-  ["survival", "VocabuSurvival", "shield", "tab:survival3", "main", 60, 1, "on", ""],
+  /* 旧 VocabuSurvival は 画面が Error 2800 で 塞がっている（2026-08-28 実測）。
+     下の 一度きりの 直しで 左パネルから 外し、代わりに VocabuSurvive を 出す。 */
+  ["survival", "VocabuSurvival", "shield", "tab:survival3", "hidden", 60, 0, "off", ""],
+  ["survive", "VocabuSurvive", "game", "tab:survive", "main", 60, 1, "on", "NEW"],
   ["timer", "タイマー", "timer", "fn:timer", "tools", 10, 1, "on", ""],
   ["quick_chat", "Quick Chat", "zap", "tab:chat", "tools", 20, 1, "on", ""],
   ["notifications", "通知", "bell", "tab:notifications", "tools", 30, 1, "on", ""],
@@ -592,6 +595,18 @@ export async function ensureAdminSchema(env) {
          VALUES (?1,?2,'',?3,?4,?5,?6,'all','[]',100,'',?7,?8,?9,'seed',?10)`
       ).bind(f[0], f[1], f[7], f[6], f[5], f[8], f[2], f[3], f[4], nowIso()).run().catch(() => {});
     }
+    /* ── 一度きりの 直し（2026-08-28）───────────────────────────────
+       種は INSERT OR IGNORE なので、**すでに ある 行は 変わらない**。
+       旧 VocabuSurvival の 行は 前の 種で 作られていて、いまも
+       左パネルに 出てしまう。画面は Error 2800 で 何も できないので 外す。
+       ただし **管理画面で 誰かが 触った 行は 触らない**（updated_by で 見る）。 */
+    await env.DB.prepare(
+      `UPDATE feature_flags
+          SET visible_in_sidebar = 0, section = 'hidden', state = 'off',
+              updated_by = 'seed', updated_at = ?1
+        WHERE key = 'survival' AND updated_by = 'seed' AND path = 'tab:survival3'`
+    ).bind(nowIso()).run().catch(() => {});
+
     for (const r of SEED_REASONS) {
       await env.DB.prepare(
         `INSERT OR IGNORE INTO admin_reason_categories (key, label, sort_order, active) VALUES (?1,?2,?3,1)`
@@ -807,6 +822,7 @@ const PATH_FLAGS = [
   [/^\/api\/live\//i, "lumi_live"],
   [/^\/api\/lumi\//i, "lumi_live"],
   [/^\/api\/survival\//i, "survival"],
+  [/^\/api\/survive\//i, "survive"],
   [/^\/api\/posts\//i, "feed"],
   [/^\/api\/dm\//i, "dm"],
   [/^\/api\/news\//i, "news"],

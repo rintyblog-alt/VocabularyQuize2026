@@ -32,7 +32,9 @@
     menu: '<path d="M3.5 7h17M3.5 12h17M3.5 17h17"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/>',
-    timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M9 2h6"/>'
+    timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M9 2h6"/>',
+    /* VocabuSurvive（2026-08-28）。手に持つ コントローラ。 */
+    game: '<rect x="2.5" y="7" width="19" height="10" rx="5"/><path d="M7 10.5v3M5.5 12h3"/><circle cx="16" cy="11" r="1"/><circle cx="18.2" cy="13.2" r="1"/>'
   };
   function svg(name) { return '<svg viewBox="0 0 24 24" ' + P + '>' + (ICON[name] || '') + '</svg>'; }
 
@@ -71,7 +73,7 @@
     { key: "dm", label: "DM", icon: "mail", path: "fn:dm", section: "main", order: 35 },
     { key: "news", label: "NEWS", icon: "news", path: "tab:news", section: "main", order: 40 },
     { key: "insights", label: "Insights", icon: "trend", path: "tab:insight", section: "main", order: 50 },
-    { key: "survival", label: "VocabuSurvival", icon: "shield", path: "tab:survival3", section: "main", order: 60 },
+    { key: "survive", label: "VocabuSurvive", icon: "game", path: "tab:survive", section: "main", order: 60 },
     { key: "timer", label: "タイマー", icon: "timer", path: "fn:timer", section: "tools", order: 10 },
     { key: "quick_chat", label: "Quick Chat", icon: "zap", path: "tab:chat", section: "tools", order: 20 },
     { key: "notifications", label: "通知", icon: "bell", path: "tab:notifications", section: "tools", order: 30 },

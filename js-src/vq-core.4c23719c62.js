@@ -13008,6 +13008,9 @@ function _openSearchResultByIndex(i){
         CHAT: "chat",
         NEWS: "news",
         SURVIVAL3: "survival3",
+        /* VocabuSurvive（2026-08-28）。旧 VocabuSurvival(v1/v2/v3) とは
+           別物なので **別の鍵**にしてある。旧のほうは触っていない。 */
+        SURVIVE: "survive",
         /* Qredit は「重ねる窓」ではなく、ほかと同じ 1 枚の画面にした。
            窓だと、戻る・共有・再読み込みで消え、下の画面と二重にスクロールする。 */
         QREDIT: "qredit"
@@ -13022,6 +13025,7 @@ function _openSearchResultByIndex(i){
         APP_TAB_KEY.CHAT,
         APP_TAB_KEY.NEWS,
         APP_TAB_KEY.SURVIVAL3,
+        APP_TAB_KEY.SURVIVE,
         APP_TAB_KEY.QREDIT
       ]);
       const APP_TAB_ALIAS = Object.freeze({
@@ -13040,6 +13044,9 @@ function _openSearchResultByIndex(i){
         news: APP_TAB_KEY.NEWS,
         survival3: APP_TAB_KEY.SURVIVAL3,
         survival: APP_TAB_KEY.SURVIVAL3,
+        survive: APP_TAB_KEY.SURVIVE,
+        vocabusurvive: APP_TAB_KEY.SURVIVE,
+        game: APP_TAB_KEY.SURVIVE,
         qredit: APP_TAB_KEY.QREDIT,
         wallet: APP_TAB_KEY.QREDIT,
         "qredit-card": APP_TAB_KEY.QREDIT
@@ -43048,6 +43055,9 @@ actionタイプ:
         if (tab !== APP_TAB_KEY.SURVIVAL3 && window.VocabuSurvivalV3) {
           try { window.VocabuSurvivalV3.close(); } catch(_){}
         }
+        /* VocabuSurvive（2026-08-28）。**押されるまで 1 バイトも 読まない。** */
+        if (tab === APP_TAB_KEY.SURVIVE) _appSurviveOpen();
+        else _appSurviveClose();
         if (tab === APP_TAB_KEY.CHAT){
           _appCollabRender();
           const collabPane = _appCollabNormalizePane(_appCollabState.pane);
@@ -43091,6 +43101,119 @@ actionタイプ:
           try { window.VocabuSurvivalV3.close(); } catch(_){}
         }
         container.innerHTML = _appSurvival3UnavailableHTML();
+      }
+
+      /* ══ VocabuSurvive（2026-08-28）══════════════════════════════════════
+         旧 VocabuSurvival(v1/v2/v3) とは 別物。触っていない。
+
+         決めごと:
+           ・束（/js/vq-survive.*.js）は **タブを 開いたときに 初めて 読む**。
+             旧 v1/v3 は index.html から 毎回 読まれていて、見ない人にも
+             合計 5,038 行が 流れていた。同じ 過ちを 繰り返さない。
+           ・中身は 影の DOM。本体の CSS（1.4MB）と ぶつからない。
+           ・高さは **その場で 測る**。上に 何が 乗っているかは
+             画面の 幅や 版で 変わるので、決め打ちにすると どこかで ずれる。
+         ════════════════════════════════════════════════════════════════ */
+      let _appSurviveLoading = null;
+      let _appSurviveFitBound = false;
+
+      function _appSurviveFit(){
+        const el = document.getElementById("appSurvivePage");
+        if (!el || document.body.dataset.appTab !== APP_TAB_KEY.SURVIVE) return;
+        try{
+          const top = el.getBoundingClientRect().top;
+          const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight || 0;
+          const h = Math.max(320, Math.round(vh - top - 4));
+          el.style.height = h + "px";
+        }catch(e){}
+      }
+
+      function _appSurviveLoad(){
+        if (window.VocabuSurvive) return Promise.resolve(window.VocabuSurvive);
+        if (_appSurviveLoading) return _appSurviveLoading;
+        const src = String(window.__VQ_SURVIVE_SRC || "");
+        if (!src) return Promise.reject(new Error("VocabuSurvive の 置き場が 分かりません"));
+        _appSurviveLoading = new Promise((res, rej) => {
+          const sc = document.createElement("script");
+          sc.src = src;
+          sc.async = true;
+          sc.onload = () => {
+            if (window.VocabuSurvive) res(window.VocabuSurvive);
+            else rej(new Error("読み込めましたが 中身が ありません"));
+          };
+          sc.onerror = () => rej(new Error("読み込めません: " + src));
+          (document.body || document.documentElement).appendChild(sc);
+        });
+        _appSurviveLoading.catch(() => { _appSurviveLoading = null; });
+        return _appSurviveLoading;
+      }
+
+      function _appSurviveShowError(container, msg){
+        container.textContent = "";
+        const box = document.createElement("div");
+        box.style.cssText = "display:flex;flex-direction:column;align-items:center;justify-content:center;"
+          + "gap:14px;height:100%;min-height:320px;padding:32px;text-align:center;color:#64748b";
+        const icon = document.createElement("span");
+        icon.className = "ms";
+        icon.setAttribute("aria-hidden", "true");
+        icon.style.cssText = "font-size:44px;color:#94a3b8";
+        icon.textContent = "sports_esports";
+        const p1 = document.createElement("p");
+        p1.style.cssText = "font-size:15px;font-weight:700;color:#334155;margin:0";
+        p1.textContent = "VocabuSurvive を 開けませんでした";
+        const p2 = document.createElement("p");
+        p2.style.cssText = "font-size:13px;margin:0;max-width:34em;line-height:1.8";
+        p2.textContent = String(msg || "");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.style.cssText = "height:40px;padding:0 18px;border-radius:12px;border:1px solid #cbd5e1;"
+          + "background:#fff;color:#334155;font-weight:700;cursor:pointer";
+        btn.textContent = "もう一度";
+        btn.addEventListener("click", () => { _appSurviveLoading = null; _appSurviveOpen(); });
+        box.appendChild(icon); box.appendChild(p1); box.appendChild(p2); box.appendChild(btn);
+        container.appendChild(box);
+      }
+
+      function _appSurviveOpen(){
+        const container = document.getElementById("appSurvivePage");
+        if (!container) return;
+        if (!_appSurviveFitBound){
+          _appSurviveFitBound = true;
+          window.addEventListener("resize", _appSurviveFit, { passive: true });
+          if (window.visualViewport) window.visualViewport.addEventListener("resize", _appSurviveFit, { passive: true });
+          window.addEventListener("orientationchange", () => setTimeout(_appSurviveFit, 220), { passive: true });
+          /* 本体から 出るための 橋（結果画面の「VocabuQuiz へ戻る」）*/
+          window.__vqSurviveExit = () => { try { _appSetTab(APP_TAB_KEY.HOME); } catch(e){} };
+        }
+        _appSurviveFit();
+        setTimeout(_appSurviveFit, 60);
+        if (window.VocabuSurvive){
+          try { window.VocabuSurvive.open(container); } catch(e){ _appSurviveShowError(container, String(e && e.message || e)); }
+          return;
+        }
+        /* 読み込み中の 印。束が 届くまでの 数百ミリ秒だけ 出る。 */
+        container.textContent = "";
+        const wait = document.createElement("div");
+        wait.style.cssText = "display:flex;align-items:center;justify-content:center;height:100%;"
+          + "min-height:320px;color:#94a3b8;font-size:13px;gap:10px";
+        wait.textContent = "VocabuSurvive を 読み込んでいます…";
+        container.appendChild(wait);
+        _appSurviveLoad().then((api) => {
+          if (document.body.dataset.appTab !== APP_TAB_KEY.SURVIVE) return;
+          container.textContent = "";
+          _appSurviveFit();
+          api.open(container);
+        }).catch((e) => {
+          if (document.body.dataset.appTab !== APP_TAB_KEY.SURVIVE) return;
+          _appSurviveShowError(container, String(e && e.message || e));
+        });
+      }
+
+      function _appSurviveClose(){
+        if (!window.VocabuSurvive) return;
+        try { window.VocabuSurvive.close(); } catch(e){}
+        const el = document.getElementById("appSurvivePage");
+        if (el) el.style.height = "";
       }
 
       /* ── NEWS ── */
