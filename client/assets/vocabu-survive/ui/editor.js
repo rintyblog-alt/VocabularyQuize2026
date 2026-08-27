@@ -67,8 +67,14 @@ export class EditorScreen {
         "aria-label": THEME_LABEL[t] || t, title: THEME_LABEL[t] || t,
         onclick: () => { this.course.theme = t; this._render(); }
       }, THEME_LABEL[t] || t);
+      /* ★ 風景の 色を **枠**に 使うと、暗い 風景（ネオン・遺跡）で 枠が 消えて
+         「押せる もの」に 見えなく なる（実写で 気づいた）。
+         枠は いつも 同じ 薄さに して、色は 小さな 丸で 見せる。 */
       const th = themeOf(t);
-      b.style.borderColor = "rgb(" + th.sky.horizon.map((v) => Math.round(v * 255)).join(",") + ")";
+      const dot = document.createElement("i");
+      dot.className = "vs-ed-tdot";
+      dot.style.background = "rgb(" + th.sky.horizon.map((v) => Math.round(v * 255)).join(",") + ")";
+      b.insertBefore(dot, b.firstChild);
       this.themeRow.appendChild(b);
     }
 
@@ -373,8 +379,11 @@ export const EDITOR_CSS = `
   border:1px solid ${PALETTE.line}; background:rgba(255,255,255,.05); color:#f3f5ff;
   font:inherit; font-size:14px; }
 .vs-ed-themes{ display:flex; flex-wrap:wrap; gap:4px; }
-.vs-ed-theme{ padding:4px 9px; border-radius:999px; border:1px solid ${PALETTE.line};
-  background:transparent; color:rgba(243,245,255,.78); font:inherit; font-size:11.5px; cursor:pointer; }
+.vs-ed-theme{ display:inline-flex; align-items:center; gap:5px;
+  padding:4px 10px 4px 7px; border-radius:999px; border:1px solid ${PALETTE.line};
+  background:transparent; color:rgba(243,245,255,.82); font:inherit; font-size:11.5px; cursor:pointer; }
+.vs-ed-tdot{ width:9px; height:9px; border-radius:50%; flex:0 0 auto;
+  box-shadow:0 0 0 1px rgba(0,0,0,.35) inset; }
 .vs-ed-theme[aria-checked="true"]{ background:rgba(255,255,255,.14); color:#fff; font-weight:800;
   border-width:2px; }
 .vs-ed-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:3px;
