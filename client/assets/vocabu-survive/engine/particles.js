@@ -70,7 +70,7 @@ export class Particles {
         -dirx * (1 + Math.random()) + (Math.random() - 0.5) * 1.4,
         0.6 + Math.random() * 1.4,
         -dirz * (1 + Math.random()) + (Math.random() - 0.5) * 1.4,
-        0.34 + Math.random() * 0.24, 0.16 + Math.random() * 0.14,
+        0.28 + Math.random() * 0.18, 0.10 + Math.random() * 0.08,
         color[0], color[1], color[2], 0, -5, 3.2);
     }
   }

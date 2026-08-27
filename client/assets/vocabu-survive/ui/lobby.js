@@ -72,6 +72,49 @@ export class LobbyScreen {
     } catch (e) {}
   }
 
+  /* ── 記録 ───────────────────────────────────────────────────────
+     ★ 自己ベストは **手元**に ある（試合が 終わるたび 書いている）ので
+       通信を 待たずに すぐ 出す。上位は 届いてから 足す。 */
+  _renderRecord(c) {
+    const el = this.recordEl;
+    el.textContent = "";
+    let best = 0;
+    try { best = Number(localStorage.getItem("vq.survive.best.v1:" + c.id) || 0) || 0; } catch (e) {}
+    el.appendChild(h("span", { class: "vs-lb-rec-lab", text: "自己ベスト" }));
+    el.appendChild(h("strong", { class: "vs-lb-rec-v vs-mono", text: best > 0 ? fmtTime(best) : "—" }));
+    const top = this._lbCache[c.id];
+    if (top === undefined) {
+      el.appendChild(h("span", { class: "vs-lb-rec-lab", text: "みんなの 記録" }));
+      el.appendChild(h("span", { class: "vs-lb-rec-v", text: "…" }));
+      this._loadBoard(c.id);
+    } else if (top && top.length) {
+      el.appendChild(h("span", { class: "vs-lb-rec-lab", text: "1 位" }));
+      el.appendChild(h("strong", { class: "vs-lb-rec-v vs-mono", text: fmtTime(top[0].bestMs / 1000) }));
+      el.appendChild(h("span", { class: "vs-lb-rec-who", text: top[0].name }));
+      if (top.length > 1) {
+        el.appendChild(h("span", { class: "vs-lb-rec-lab", text: "2 位" }));
+        el.appendChild(h("span", { class: "vs-lb-rec-v vs-mono", text: fmtTime(top[1].bestMs / 1000) }));
+      }
+    } else {
+      el.appendChild(h("span", { class: "vs-lb-rec-lab", text: "みんなの 記録" }));
+      el.appendChild(h("span", { class: "vs-lb-rec-v", text: "まだ ありません" }));
+    }
+  }
+
+  async _loadBoard(id) {
+    this._lbCache[id] = null;   /* 二重に 取りに 行かない */
+    try {
+      const base = String(window.VQ_API_BASE || "").replace(/\/+$/, "");
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 5000);
+      const r = await fetch(base + "/api/survive/leaderboard/" + encodeURIComponent(id), { signal: ctrl.signal });
+      clearTimeout(to);
+      const d = await r.json();
+      this._lbCache[id] = (d && d.rows) || [];
+    } catch (e) { this._lbCache[id] = []; }
+    if (COURSES[this.courseIndex] && COURSES[this.courseIndex].id === id) this._renderRecord(COURSES[this.courseIndex]);
+  }
+
   /** あそび方を 出す（ロビーの ? から。試合の 最初にも 出る） */
   _showHelp() {
     if (!this._help) {
@@ -141,6 +184,9 @@ export class LobbyScreen {
     }
 
     this.previewEl = h("div", { class: "vs-lb-preview" });
+    /* コースごとの 記録（自分の 自己ベスト ＋ みんなの 上位） */
+    this.recordEl = h("div", { class: "vs-lb-record" });
+    this._lbCache = Object.create(null);
 
     /* 遊び方 */
     this.modeRow = h("div", { class: "vs-lb-modes", role: "radiogroup", "aria-label": "遊び方" });
@@ -238,7 +284,7 @@ export class LobbyScreen {
           this.friendsNote, this.friendsEl),
         /* 中 */
         h("section", { class: "vs-card vs-lb-course", "aria-label": "コース" },
-          this.previewEl, this.tierRow, this.courseList),
+          this.previewEl, this.recordEl, this.tierRow, this.courseList),
         /* 右 */
         h("section", { class: "vs-card vs-lb-right", "aria-label": "参加者" },
           h("div", { class: "vs-lb-lab", text: "遊び方" }), this.modeRow,
@@ -419,6 +465,8 @@ export class LobbyScreen {
         h("span", { text: "難しさ " + c.difficulty + " / 10" }),
         h("span", { text: c.recommendedPlayers[0] + "〜" + c.recommendedPlayers[1] + " 人" }))));
 
+    this._renderRecord(c);
+
     for (let i = 0; i < this.courseCards.length; i++) {
       this.courseCards[i].setAttribute("aria-selected", i === this.courseIndex ? "true" : "false");
     }
@@ -572,6 +620,11 @@ export class LobbyScreen {
 }
 
 function rgb(a) { return "rgb(" + Math.round(a[0] * 255) + "," + Math.round(a[1] * 255) + "," + Math.round(a[2] * 255) + ")"; }
+function fmtTime(s) {
+  if (!s || s <= 0) return "—";
+  const m = Math.floor(s / 60), r = s - m * 60;
+  return m + ":" + (r < 10 ? "0" : "") + r.toFixed(2);
+}
 
 export const LOBBY_CSS = `
 .vs-lobby{ position:absolute; inset:0; display:flex; flex-direction:column;
@@ -619,6 +672,11 @@ export const LOBBY_CSS = `
 .vs-lb-pv-nm{ font-size:clamp(20px,3.4vw,30px); font-weight:900; margin:6px 0 4px; }
 .vs-lb-pv-core{ font-size:12.5px; color:rgba(255,255,255,.86); max-width:44em; line-height:1.6; }
 .vs-lb-pv-meta{ display:flex; gap:12px; margin-top:8px; font-size:11px; color:rgba(255,255,255,.78); }
+.vs-lb-record{ display:flex; align-items:baseline; gap:7px; flex-wrap:wrap;
+  padding:0 2px 10px; font-size:12px; color:rgba(243,245,255,.62); }
+.vs-lb-rec-lab{ font-size:10.5px; font-weight:800; letter-spacing:.06em; color:rgba(243,245,255,.42); }
+.vs-lb-rec-v{ font-size:13px; color:${PALETTE.amber}; font-weight:800; }
+.vs-lb-rec-who{ font-size:11px; color:rgba(243,245,255,.5); }
 .vs-lb-tiers{ display:flex; gap:5px; flex-wrap:wrap; margin-bottom:9px; }
 .vs-lb-tier{ height:28px; padding:0 11px; border-radius:999px; font-size:11.5px; font-weight:700;
   background:rgba(255,255,255,.06); border:1px solid ${PALETTE.line}; color:rgba(243,245,255,.66); }

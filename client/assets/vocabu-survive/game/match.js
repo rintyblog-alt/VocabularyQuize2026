@@ -220,6 +220,7 @@ export class MatchScreen {
 
   exit() {
     try { if (typeof window.__vqSurviveImmersive === "function") window.__vqSurviveImmersive(false); } catch (e) {}
+    this._quitClose();
     if (this._helpTimer) { clearTimeout(this._helpTimer); this._helpTimer = 0; }
     this.help.hide();
     this.running = false;
@@ -318,8 +319,10 @@ export class MatchScreen {
           const d = vis && vis.draw ? vis.draw : p;
           if (Math.hypot(d.x - this.cam.pos[0], d.z - this.cam.pos[2]) > 34) continue;
           const sp = p.speed / TUNE.maxSpeed;
+          /* ★ 大きすぎると 緑の 泡が 浮いている ように 見える（実写で 確認）。
+             走っている 本人の 足元だけ、小さめに。 */
           this.fx.dust(d.x, d.y, d.z, p.vx / (p.speed || 1), p.vz / (p.speed || 1),
-            sp * (this.settings.particles || 1), this.course.palette.floorAlt);
+            sp * (this.settings.particles || 1) * 0.7, this.course.palette.floorAlt);
         }
       }
       this.fx.update(dt);
@@ -602,8 +605,27 @@ export class MatchScreen {
     } catch (e) {}
   }
 
+  /** ★ 走っている 途中で ✕ を 押しても すぐ 抜けない。
+      間違えて 押すと それまでの 走りが 全部 消える。 */
   _confirmQuit() {
-    this.onQuit();
+    if (this.sim.phase === PHASE.FINISHED || !this.running) { this.onQuit(); return; }
+    if (this._quitAsk) { this._quitClose(); this.onQuit(); return; }
+    const box = h("div", { class: "vs-quit", role: "dialog", "aria-label": "やめますか" },
+      h("div", { class: "vs-quit-card" },
+        h("p", { class: "vs-quit-t", text: "この 試合を やめますか？" }),
+        h("p", { class: "vs-quit-s", text: "ここまでの 走りは 記録されません。" }),
+        h("div", { class: "vs-quit-btns" },
+          h("button", { class: "vs-btn is-ghost", type: "button", onclick: () => this._quitClose() }, "つづける"),
+          h("button", { class: "vs-btn", type: "button", onclick: () => { this._quitClose(); this.onQuit(); } }, "やめる"))));
+    this._quitAsk = box;
+    this.el.appendChild(box);
+    /* 逃げ道: Esc でも 閉じる */
+    this._quitKey = (e) => { if (e.key === "Escape") this._quitClose(); };
+    window.addEventListener("keydown", this._quitKey, true);
+  }
+  _quitClose() {
+    if (this._quitKey) { try { window.removeEventListener("keydown", this._quitKey, true); } catch (e) {} this._quitKey = null; }
+    if (this._quitAsk) { try { this._quitAsk.remove(); } catch (e) {} this._quitAsk = null; }
   }
 
   _fatal(msg) {
@@ -659,6 +681,14 @@ export const MATCH_CSS = TOUCH_CSS + HUD_CSS + QUIZ_CSS + RESULT_CSS + `
   right:auto; bottom:auto; top:calc(10px + var(--vs-safe-t));
   width:34px; height:34px; border-radius:11px;
 }
+.vs-quit{ position:absolute; inset:0; z-index:10; display:flex; align-items:center; justify-content:center;
+  background:rgba(6,8,22,.72); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
+.vs-quit-card{ width:min(380px,90%); background:rgba(12,15,36,.96);
+  border:1px solid rgba(255,255,255,.16); border-radius:18px; padding:20px; text-align:center;
+  box-shadow:0 20px 60px rgba(0,0,0,.5); }
+.vs-quit-t{ font-size:16px; font-weight:800; margin-bottom:6px; }
+.vs-quit-s{ font-size:12px; color:rgba(243,245,255,.6); margin-bottom:16px; }
+.vs-quit-btns{ display:flex; gap:9px; justify-content:center; }
 .vs-fatal{
   position:absolute; inset:0; z-index:10; display:flex; flex-direction:column;
   align-items:center; justify-content:center; gap:12px; text-align:center; padding:24px;
