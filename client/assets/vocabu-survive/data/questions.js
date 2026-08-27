@@ -150,6 +150,121 @@ export function localQuestions(n, seed) {
   return out;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   自分の 単語帳（手元に あるもの）
+
+   ★ **サーバを 通さない。** 理由:
+     ① プリセットの 実体は 1 つの 大きな かたまり（vq2.presets.v1）に
+        まとめて 入っている。ひとつ 引くだけでも 全部を 読む ことに なる。
+     ② 自分の 単語帳は 自分の 端末に すでに ある。取りに 行く 必要が ない。
+     ③ 他の 人には 引けない ので、**ひとりで 遊ぶ ときだけ** 使える。
+        対戦で 使うと 自分だけ 自分の 単語・相手は 控えの 単語に なり、
+        同じ 問題で 競って いない ことに なる。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** 単語帳の 中身（3 通りの 形）から [表, 裏] を 取り出す。 */
+function ペアを取り出す(d) {
+  if (!d || typeof d !== "object") return [];
+  const rows = (Array.isArray(d.cards) && d.cards.length) ? d.cards
+    : (Array.isArray(d.words) && d.words.length) ? d.words
+    : (Array.isArray(d.items) && d.items.length) ? d.items
+    : (Array.isArray(d.rows) ? d.rows : []);
+  const got = [];
+  for (const w of rows) {
+    if (!w || typeof w !== "object") continue;
+    const a = String(w.front || w.term || w.word || w.q || w.left || "").trim().slice(0, 60);
+    const b = String(w.back || w.meaning || w.answer || w.a || w.right || "").trim().slice(0, 60);
+    if (a && b) got.push([a, b]);
+  }
+  return got;
+}
+
+/** 手元の 単語帳の 一覧。8 語 未満の ものは 4 択が 作れない ので 出さない。 */
+export function listLocalPresets() {
+  const out = [];
+  try {
+    const st = window.VQ2 && window.VQ2.store;
+    if (!st || typeof st.listPresets !== "function") return out;
+    const list = st.listPresets() || [];
+    for (const p of list) {
+      if (!p || !p.id) continue;
+      const pairs = ペアを取り出す(p);
+      if (pairs.length < 8) continue;
+      out.push({ id: String(p.id), name: String(p.name || p.title || p.id).slice(0, 60), words: pairs.length, kind: "mine" });
+    }
+  } catch (e) { /* 本体が まだ 起きて いない ＝ 空 */ }
+  out.sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  return out.slice(0, 60);
+}
+
+/** 手元の 単語帳 1 つ から ペアを 取り出す。 */
+export function localPresetPairs(id) {
+  try {
+    const st = window.VQ2 && window.VQ2.store;
+    if (!st || typeof st.listPresets !== "function") return null;
+    for (const p of (st.listPresets() || [])) {
+      if (p && String(p.id) === String(id)) {
+        const pairs = ペアを取り出す(p);
+        return pairs.length >= 8 ? pairs : null;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+/** 誰でも 読める 単語帳（公開・公式）の 一覧。 */
+export async function listSharedPresets() {
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 4500);
+    const tk = token();
+    const r = await fetch(apiBase() + "/api/survive/presets", {
+      headers: tk ? { Authorization: "Bearer " + tk } : {},
+      signal: ctrl.signal
+    });
+    clearTimeout(to);
+    if (!r.ok) return { public: [], official: [] };
+    const d = await r.json();
+    return {
+      public: Array.isArray(d && d.public) ? d.public : [],
+      official: Array.isArray(d && d.official) ? d.official : []
+    };
+  } catch (e) { return { public: [], official: [] }; }
+}
+
+/**
+ * ペアから 問題を 作る。**サーバと 同じ 手順**（同じ 種 → 同じ 問題）。
+ * ここが ずれると、ひとり用と 対戦で 難しさが 変わって しまう。
+ */
+export function questionsFromPairs(pairs, count, seed) {
+  const rnd = mulberry((seed || 1) >>> 0);
+  const pool = pairs.slice();
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+  }
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const p = pool[i % pool.length];
+    if (!p) break;
+    const wrong = [];
+    let guard = 0;
+    while (wrong.length < 3 && guard++ < 200) {
+      const q = pool[Math.floor(rnd() * pool.length)];
+      if (!q || q[1] === p[1] || wrong.indexOf(q[1]) >= 0) continue;
+      wrong.push(q[1]);
+    }
+    while (wrong.length < 3) wrong.push("—");
+    const choices = [p[1], wrong[0], wrong[1], wrong[2]];
+    for (let k = choices.length - 1; k > 0; k--) {
+      const j = Math.floor(rnd() * (k + 1));
+      const t = choices[k]; choices[k] = choices[j]; choices[j] = t;
+    }
+    out.push({ prompt: String(p[0]), choices: choices.map(String), answer: choices.indexOf(p[1]), tag: "意味" });
+  }
+  return out;
+}
+
 function apiBase() {
   try {
     if (typeof window !== "undefined" && window.VQ_API_BASE) return String(window.VQ_API_BASE).replace(/\/+$/, "");
@@ -168,6 +283,18 @@ function token() {
 export async function fetchQuestions(opt) {
   const n = Math.max(1, opt.count || 6);
   const seed = opt.seed || 1;
+
+  /* 自分の 単語帳は **手元で 作る**（通信 なし・失敗 なし） */
+  if (opt.presetKind === "mine" && opt.presetId) {
+    const pairs = localPresetPairs(opt.presetId);
+    if (pairs) {
+      const q = questionsFromPairs(pairs, n, seed);
+      if (q.length >= n) return q.map(norm);
+      if (q.length) return q.map(norm).concat(localQuestions(n - q.length, seed + 7));
+    }
+    /* 単語帳が 消えて いた ときは 黙って 控えへ 落ちる（門が 開かなく なるより よい） */
+  }
+
   try {
     const base = apiBase();
     const ctrl = new AbortController();
@@ -176,7 +303,10 @@ export async function fetchQuestions(opt) {
     const r = await fetch(base + "/api/survive/questions", {
       method: "POST",
       headers: Object.assign({ "Content-Type": "application/json" }, tk ? { Authorization: "Bearer " + tk } : {}),
-      body: JSON.stringify({ count: n, presetId: opt.presetId || "", seed, difficulty: opt.difficulty || 1 }),
+      body: JSON.stringify({
+        count: n, presetId: opt.presetId || "", presetKind: opt.presetKind || "",
+        presetOwner: opt.presetOwner || 0, seed, difficulty: opt.difficulty || 1
+      }),
       signal: ctrl.signal
     });
     clearTimeout(to);

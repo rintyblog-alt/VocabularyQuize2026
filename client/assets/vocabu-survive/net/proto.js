@@ -12,6 +12,7 @@ export const C2S = {
   COLOR: "color",     /* {v:0..7} */
   COURSE: "course",   /* {id} 部屋主だけ */
   MODE: "mode",       /* {v} 部屋主だけ */
+  PRESET: "preset",   /* {kind,id,owner,name} 部屋主だけ。公開・公式のみ */
   START: "start",     /* {length} 部屋主だけ */
   INPUT: "in",        /* {seq, s:{x,y,z,yaw,g,st,pr,cp,rs}} */
   GATE: "gate",       /* {g, a} 答えの 番号。正誤は サーバが 決める */

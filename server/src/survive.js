@@ -176,6 +176,92 @@ function mulberry(seed) {
   };
 }
 
+/* ── 単語帳の 中身（プリセットの JSON）から [表, 裏] の 組を 取り出す ──
+   ★ 形が **3 通り** ある。cards（いまの 形）/ words（古い 形）/ items（AI が 作る 形）。
+     どれか 1 つしか 見ていないと 「単語帳を 選んだのに 控えの 問題が 出る」に なる。 */
+function ペアを取り出す(d) {
+  if (!d || typeof d !== "object") return [];
+  const rows = (Array.isArray(d.cards) && d.cards.length) ? d.cards
+    : (Array.isArray(d.words) && d.words.length) ? d.words
+    : (Array.isArray(d.items) && d.items.length) ? d.items
+    : (Array.isArray(d.rows) ? d.rows : []);
+  const got = [];
+  for (const w of rows) {
+    if (!w || typeof w !== "object") continue;
+    const a = S(w.front || w.term || w.word || w.q || w.left, 60);
+    const b = S(w.back || w.meaning || w.answer || w.a || w.right, 60);
+    if (a && b) got.push([a, b]);
+  }
+  return got;
+}
+
+/* ── 公開されている 単語帳を 1 つ 読む ────────────────────────────
+   ★ ここで 読めるのは **公開されている もの だけ**。
+     自分の 単語帳（手元に しか ない）は サーバを 通さず 画面の 中で 作る。 */
+async function 公開の単語帳(env, kind, id, owner) {
+  if (!env.DB || !id) return null;
+  try {
+    if (kind === "official") {
+      const r = await env.DB.prepare(
+        "SELECT name, words_json FROM official_presets WHERE id = ?1 LIMIT 1"
+      ).bind(id).first();
+      if (!r) return null;
+      let w = [];
+      try { w = JSON.parse(String(r.words_json || "[]")); } catch (e) { w = []; }
+      return { name: S(r.name, 80), pairs: ペアを取り出す(Array.isArray(w) ? { words: w } : w) };
+    }
+    if (kind === "public") {
+      const uid = N(owner, 0);
+      if (!uid) return null;
+      const r = await env.DB.prepare(
+        "SELECT name, public_title, preset_json FROM public_presets " +
+        "WHERE user_id = ?1 AND preset_id = ?2 AND is_public = 1 AND deleted_at = 0 LIMIT 1"
+      ).bind(uid, id).first();
+      if (!r) return null;
+      let d = null;
+      try { d = JSON.parse(String(r.preset_json || "{}")); } catch (e) { return null; }
+      return { name: S(r.public_title || r.name, 80), pairs: ペアを取り出す(d) };
+    }
+  } catch (e) { /* 読めなければ 控えへ */ }
+  return null;
+}
+
+/* ══ ①-b 選べる 単語帳の 一覧 ═══════════════════════════════════════
+   返すのは **誰でも 読める もの だけ**（公開・公式）。
+   ★ 自分の 単語帳を ここに 載せない のには 理由が ある:
+     対戦相手の 端末からは その 単語帳を 引けない。
+     引けないまま 始めると 自分だけ 自分の 単語・相手は 控えの 単語に なり、
+     「同じ 問題で 競っている」ことに ならない。
+     ひとりで 遊ぶ ときの 自分の 単語帳は 画面の 中（手元の 控え）から 出す。 */
+async function handlePresets(request, env) {
+  const out = { ok: true, public: [], official: [] };
+  if (!env.DB) return json(out);
+  const me = await userFromRequest(request, env);
+  if (me && me.blocked) return bad("ACCOUNT_BLOCKED", "この アカウントは いま 使えません。", 403);
+  try {
+    const rs = await env.DB.prepare(
+      "SELECT user_id AS uid, preset_id AS pid, name, public_title FROM public_presets " +
+      "WHERE is_public = 1 AND deleted_at = 0 ORDER BY updated_at DESC LIMIT 40"
+    ).all();
+    for (const r of (rs?.results || [])) {
+      const nm = S(r.public_title || r.name, 80);
+      if (!nm) continue;
+      out.public.push({ id: S(r.pid, 80), owner: N(r.uid, 0), name: nm, kind: "public" });
+    }
+  } catch (e) { /* 表が まだ 無い＝空で 返す */ }
+  try {
+    const rs = await env.DB.prepare(
+      "SELECT id, name, word_count AS n FROM official_presets ORDER BY delivered_at DESC LIMIT 40"
+    ).all();
+    for (const r of (rs?.results || [])) {
+      const nm = S(r.name, 80);
+      if (!nm) continue;
+      out.official.push({ id: S(r.id, 80), owner: 0, name: nm, words: N(r.n, 0), kind: "official" });
+    }
+  } catch (e) { /* 同上 */ }
+  return json(out);
+}
+
 function buildQuestions(pairs, count, seed) {
   const rnd = mulberry(seed >>> 0 || 1);
   const pool = pairs.slice();
@@ -224,7 +310,16 @@ async function handleQuestions(request, env) {
        前は user_id で 絞らずに 引いていた（しかも 列名が 違って 常に 失敗）。
        あのまま 動いて いたら、鍵を 当てれば 他人の 単語帳を 読めた。 */
   const presetId = S(body.presetId, 80);
-  if (presetId && env.DB) {
+  const presetKind = S(body.presetKind, 16);
+  let 単語帳名 = "";
+
+  /* 公開・公式の 単語帳は **誰でも 同じものを 引ける**ので 対戦でも 使える。 */
+  if (presetId && (presetKind === "public" || presetKind === "official")) {
+    const got = await 公開の単語帳(env, presetKind, presetId, body.presetOwner);
+    if (got && got.pairs.length >= 8) { pairs = got.pairs; 単語帳名 = got.name; }
+  }
+
+  if (!pairs && presetId && env.DB) {
     const me = await userFromRequest(request, env);
     if (me && !me.blocked) {
       try {
@@ -248,7 +343,11 @@ async function handleQuestions(request, env) {
 
   if (!pairs) pairs = FALLBACK_WORDS;
   const questions = buildQuestions(pairs, count, seed);
-  return json({ ok: true, questions, source: pairs === FALLBACK_WORDS ? "builtin" : "preset" });
+  return json({
+    ok: true, questions,
+    source: pairs === FALLBACK_WORDS ? "builtin" : "preset",
+    words: pairs.length, name: 単語帳名
+  });
 }
 
 /* ══ ② 友だち ═════════════════════════════════════════════════════════
@@ -526,6 +625,7 @@ export async function handleSurviveRequest(request, env, ctx) {
       return await handleWsUpgrade(request, env, path.slice("/ws/survive/".length));
     }
     if (m === "POST" && path === "/api/survive/questions") return await handleQuestions(request, env);
+    if (m === "GET" && path === "/api/survive/presets") return await handlePresets(request, env);
     if (m === "GET" && path === "/api/survive/friends") return await handleFriends(request, env);
     if (m === "POST" && path === "/api/survive/result") return await handleResult(request, env);
     if (m === "GET" && path === "/api/survive/stats") return await handleStats(request, env);
@@ -581,6 +681,7 @@ export class SurviveRoom {
     const st = await this.state.storage.get("room").catch(() => null);
     this.room = (st && typeof st === "object") ? st : {
       roomId: "", hostId: 0, courseId: "c01", mode: "race", max: 8,
+      presetKind: "", presetId: "", presetOwner: 0, presetName: "",
       phase: "lobby",                 /* lobby / countdown / running / finished */
       createdAt: Date.now(), expiresAt: Date.now() + ROOM_TTL_MS,
       seed: (Date.now() / 1000) | 0,
@@ -601,6 +702,8 @@ export class SurviveRoom {
     const r = this.room;
     return {
       roomId: r.roomId, hostId: r.hostId, courseId: r.courseId, mode: r.mode,
+      presetKind: r.presetKind || "", presetId: r.presetId || "",
+      presetOwner: r.presetOwner || 0, presetName: r.presetName || "",
       phase: r.phase, max: r.max, seed: r.seed, startAt: r.startAt,
       players: Object.values(r.players).map((p) => ({
         id: String(p.uid), name: p.name, colorIndex: p.color,
@@ -721,6 +824,19 @@ export class SurviveRoom {
       r.courseId = S(m.id, 24) || r.courseId;
       this._all({ t: "room", room: this._publicRoom() }); this._save(); return;
     }
+    /* ★ 対戦で 使えるのは **誰でも 読める もの だけ**（公開・公式）。
+       「自分の 単語帳」は 相手の 端末から 引けない ので ここでは 受けない。
+       受けて しまうと 相手だけ 控えの 単語に なり、同じ 問題で 競って いない。 */
+    if (t === "preset" && uid === r.hostId && r.phase === "lobby") {
+      const k = S(m.kind, 16);
+      if (k === "public" || k === "official") {
+        r.presetKind = k; r.presetId = S(m.id, 80);
+        r.presetOwner = N(m.owner, 0); r.presetName = S(m.name, 80);
+      } else {
+        r.presetKind = ""; r.presetId = ""; r.presetOwner = 0; r.presetName = "";
+      }
+      this._all({ t: "room", room: this._publicRoom() }); this._save(); return;
+    }
     if (t === "mode" && uid === r.hostId && r.phase === "lobby") {
       r.mode = S(m.v, 24) || r.mode;
       this._all({ t: "room", room: this._publicRoom() }); this._save(); return;
@@ -831,8 +947,15 @@ export class SurviveRoom {
     r.startAt = Date.now() + COUNTDOWN_MS;
     r.courseLength = Math.max(0, N(courseLength, 0));
     r.finishOrder = [];
-    /* 問題を **サーバで 作る**。全員 同じ もの。答えは 隠して 配る。 */
-    r.questions = buildQuestions(FALLBACK_WORDS, 10, r.seed >>> 0);
+    /* 問題を **サーバで 作る**。全員 同じ もの。答えは 隠して 配る。
+       ★ 部屋主が 選んだ 単語帳（公開・公式）が あれば そこから。
+         読めなければ 黙って 内蔵の 単語へ 落ちる。門が 開かなく なるより よい。 */
+    let 種本 = FALLBACK_WORDS;
+    if (r.presetKind === "public" || r.presetKind === "official") {
+      const got = await 公開の単語帳(this.env, r.presetKind, r.presetId, r.presetOwner);
+      if (got && got.pairs.length >= 8) 種本 = got.pairs;
+    }
+    r.questions = buildQuestions(種本, 10, r.seed >>> 0);
     for (const p of Object.values(r.players)) {
       p.pr = 0; p.cp = 0; p.fin = false; p.finTime = 0; p.rank = 0;
       p.qc = 0; p.qw = 0; p.gates = {}; p.cheat = 0; p.rs = 0;

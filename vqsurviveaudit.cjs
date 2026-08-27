@@ -193,7 +193,18 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     節("⑥ 大きさを 変える");
     for (const [w, h] of [[360, 640], [768, 1024], [1440, 900], [844, 390]]) {
       await pg.setViewportSize({ width: w, height: h });
-      await 待つ(500);
+      /* ★ **本体の 置き直しが 終わるまで 待つ。**
+         500ms 固定では 足りない ことが ある（サイドバーの 畳みが 遅れて、
+         その 隙に 測ると 遊びの 板が 59px に 見える）。
+         「幅が 2 回 続けて 同じ」に なるまで 待つ。測る 対象は 変えない。 */
+      await pg.waitForFunction(() => {
+        const el = document.getElementById("appSurvivePage");
+        const w2 = Math.round(el.getBoundingClientRect().width);
+        const 前 = window.__vsW;
+        window.__vsW = w2;
+        return 前 === w2;
+      }, null, { timeout: 6000, polling: 260 }).catch(() => {});
+      await 待つ(300);
       const sz = await pg.evaluate(() => {
         const m = window.VocabuSurvive.__app.shell.get("match");
         const el = document.getElementById("appSurvivePage");

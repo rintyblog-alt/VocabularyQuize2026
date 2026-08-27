@@ -195,6 +195,15 @@ export class SurviveNet {
   setColor(v) { this.send({ t: C2S.COLOR, v: v | 0 }); }
   setCourse(id) { this.send({ t: C2S.COURSE, id: String(id) }); }
   setMode(v) { this.send({ t: C2S.MODE, v: String(v) }); }
+  setPreset(q) {
+    this.send({
+      t: C2S.PRESET,
+      kind: q && q.kind ? String(q.kind) : "",
+      id: q && q.id ? String(q.id) : "",
+      owner: (q && q.owner) | 0,
+      name: q && q.name ? String(q.name).slice(0, 80) : ""
+    });
+  }
   start(courseLength) { this.send({ t: C2S.START, length: courseLength || 0 }); }
   sendAnswer(gateIndex, pick) { this.send({ t: C2S.GATE, g: gateIndex | 0, a: pick | 0 }); }
   sendFinish() { this.send({ t: C2S.FINISH }); }

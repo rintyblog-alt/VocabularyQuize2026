@@ -13,6 +13,7 @@
    1 人でも 遊べる（要件）。相手が いない ときは ボットが 入る。
    ══════════════════════════════════════════════════════════════════════════ */
 import { h, svg } from "./shell.js";
+import { listLocalPresets, listSharedPresets } from "../data/questions.js";
 import { PALETTE, BEAN_COLORS, beanByIndex } from "./theme.js";
 import { COURSES, tierOf, TIERS } from "../data/courses.js";
 import { themeOf } from "../game/theme3d.js";
@@ -47,6 +48,8 @@ export class LobbyScreen {
     this.roomId = "";
     this.isHost = false;
     this.net = null;
+    /* 門に 出る 問題の 出どころ。kind: "" = 内蔵 / mine / public / official */
+    this.qz = { kind: "", id: "", owner: 0, name: "内蔵の 単語" };
 
     this._restore();
     this.el = this._build();
@@ -58,6 +61,12 @@ export class LobbyScreen {
       if (typeof raw.course === "number") this.courseIndex = Math.max(0, Math.min(COURSES.length - 1, raw.course));
       if (raw.mode) this.mode = raw.mode;
       if (typeof raw.color === "number") this.me.colorIndex = raw.color % BEAN_COLORS.length;
+      if (raw.qz && typeof raw.qz === "object") {
+        this.qz = {
+          kind: String(raw.qz.kind || ""), id: String(raw.qz.id || ""),
+          owner: (raw.qz.owner | 0) || 0, name: String(raw.qz.name || "内蔵の 単語")
+        };
+      }
       this.volume = typeof raw.volume === "number" ? raw.volume : 0.7;
       this.musicOn = raw.music !== false;
       this.invertY = !!raw.invert;
@@ -68,7 +77,7 @@ export class LobbyScreen {
     try {
       localStorage.setItem(PICK_KEY, JSON.stringify({
         course: this.courseIndex, mode: this.mode, color: this.me.colorIndex,
-        volume: this.volume, music: this.musicOn, invert: this.invertY
+        volume: this.volume, music: this.musicOn, invert: this.invertY, qz: this.qz
       }));
     } catch (e) {}
   }
@@ -256,6 +265,18 @@ export class LobbyScreen {
         h("div", { class: "vs-lb-togglerow" }, this.musicBtn, this.invertBtn),
         h("p", { class: "vs-lb-note", text: "画質は 次の 試合から 変わります。" })));
 
+    /* ── 門に 出る 問題（要件 12・自分の 単語で 遊べる ように）─────────
+       ★ **ひとり用と 対戦で できる ことが 違う。**
+         自分の 単語帳は 自分の 端末に しか ない ので、相手からは 引けない。
+         そのまま 対戦に 使うと 自分だけ 自分の 単語・相手は 内蔵の 単語に なり、
+         「同じ 問題で 競っている」ことに ならない。だから 対戦では 選べなく する。 */
+    this.qzName = h("b", { class: "vs-lb-qz-nm", text: this.qz.name || "内蔵の 単語" });
+    this.qzList = h("div", { class: "vs-lb-qz-list", role: "radiogroup", "aria-label": "門に 出る 問題" });
+    this.qzNote = h("p", { class: "vs-lb-note", text: "読み込み中…" });
+    this.qzEl = h("details", { class: "vs-lb-qz" },
+      h("summary", null, h("span", { text: "門の 問題: " }), this.qzName),
+      h("div", { class: "vs-lb-qz-body" }, this.qzList, this.qzNote));
+
     this.botRow = h("div", { class: "vs-lb-bots" });
     this.botCount = 3;
     for (const n of [0, 1, 3, 5, 7]) {
@@ -289,6 +310,7 @@ export class LobbyScreen {
         /* 右 */
         h("section", { class: "vs-card vs-lb-right", "aria-label": "参加者" },
           h("div", { class: "vs-lb-lab", text: "遊び方" }), this.modeRow,
+          h("div", { class: "vs-lb-lab", text: "門に 出る 問題" }), this.qzEl,
           h("div", { class: "vs-lb-lab", text: "人数（相手が いなければ ボット）" }), this.botRow,
           h("div", { class: "vs-lb-lab", text: "いま 集まっている 人" }), this.partyEl,
           this.roomEl,
@@ -319,6 +341,78 @@ export class LobbyScreen {
   }
 
   /* ── 動き ─────────────────────────────────────────────────────── */
+  /* 一覧を 作り直す。中で しか 呼ばない。 */
+  _renderQuiz() {
+    const 対戦中 = !!(this.net && this.roomId);
+    this.qzList.textContent = "";
+    const 行 = (q, 使える, 添え) => {
+      const えらばれている = (this.qz.kind || "") === (q.kind || "") &&
+        String(this.qz.id || "") === String(q.id || "") &&
+        (this.qz.owner | 0) === (q.owner | 0);
+      const b = h("button", {
+        class: "vs-lb-qz-it", type: "button", role: "radio",
+        "aria-checked": えらばれている ? "true" : "false",
+        disabled: !使える,
+        onclick: () => { if (使える) this._setQuiz(q); }
+      }, h("span", { class: "vs-lb-qz-l", text: q.name }),
+         添え ? h("span", { class: "vs-lb-qz-s", text: 添え }) : null);
+      this.qzList.appendChild(b);
+    };
+
+    行({ kind: "", id: "", owner: 0, name: "内蔵の 単語" }, true, "いつでも 使える 英単語 80");
+
+    const mine = this._qzMine || [];
+    if (mine.length) {
+      this.qzList.appendChild(h("div", { class: "vs-lb-qz-h", text: "あなたの 単語帳" }));
+      for (const q of mine) {
+        行(q, !対戦中, 対戦中 ? "対戦では 使えません" : q.words + " 語");
+      }
+    }
+    const shared = (this._qzOfficial || []).concat(this._qzPublic || []);
+    if (shared.length) {
+      this.qzList.appendChild(h("div", { class: "vs-lb-qz-h", text: "みんなの 単語帳（対戦でも 使えます）" }));
+      for (const q of shared) 行(q, true, q.kind === "official" ? "公式" : "公開");
+    }
+
+    this.qzName.textContent = this.qz.name || "内蔵の 単語";
+    if (!mine.length && !shared.length) {
+      this.qzNote.textContent = "使える 単語帳が まだ ありません。プリセットを 作ると ここに 出ます。";
+    } else if (対戦中 && this.qz.kind === "mine") {
+      this.qzNote.textContent = "対戦では あなたの 単語帳を 使えません（相手の 端末から 引けない ため）。内蔵の 単語で 始めます。";
+    } else if (対戦中 && !this.isHost) {
+      this.qzNote.textContent = "対戦の 問題は 部屋主が 選びます。";
+    } else {
+      this.qzNote.textContent = "自分の 単語帳を 選ぶと、門の 問題が その 単語に なります。";
+    }
+    for (const b of this.qzList.children) {
+      if (対戦中 && !this.isHost && b.tagName === "BUTTON") b.disabled = true;
+    }
+  }
+
+  _setQuiz(q) {
+    this.qz = { kind: q.kind || "", id: String(q.id || ""), owner: (q.owner | 0) || 0, name: String(q.name || "内蔵の 単語") };
+    this._save();
+    if (this.net && this.roomId && this.isHost && this.net.setPreset) {
+      /* 自分の 単語帳は 対戦へ 送らない（送っても サーバが 断る） */
+      this.net.setPreset(this.qz.kind === "mine" ? { kind: "", id: "", owner: 0, name: "" } : this.qz);
+    }
+    try { this.qzEl.open = false; } catch (e) {}
+    this._render();
+  }
+
+  async _loadPresets() {
+    this._qzMine = listLocalPresets();
+    this._renderQuiz();
+    const shared = await listSharedPresets();
+    this._qzOfficial = shared.official || [];
+    this._qzPublic = shared.public || [];
+    /* 選んで いた ものが 消えて いたら 内蔵へ 戻す（無い 単語帳のまま 始めない） */
+    if (this.qz.kind === "mine" && !this._qzMine.some((q) => String(q.id) === String(this.qz.id))) {
+      this.qz = { kind: "", id: "", owner: 0, name: "内蔵の 単語" }; this._save();
+    }
+    this._renderQuiz();
+  }
+
   _setColor(i) { this.me.colorIndex = i; this._save(); this._render(); if (this.net && this.net.setColor) this.net.setColor(i); }
   _toggleReady() {
     this.ready = !this.ready;
@@ -347,6 +441,10 @@ export class LobbyScreen {
       } catch (e) { len = 0; }
       this.net.setCourse(c.id);
       this.net.setMode(this.mode);
+      if (this.net.setPreset) {
+        this.net.setPreset(this.qz.kind === "mine" || !this.qz.kind
+          ? { kind: "", id: "", owner: 0, name: "" } : this.qz);
+      }
       this.net.start(len);
       this.netNote.textContent = "始めます…";
       return;
@@ -354,6 +452,9 @@ export class LobbyScreen {
     this.onPlay({
       courseId: c.id,
       mode: this.mode,
+      presetKind: this.qz.kind || "",
+      presetId: this.qz.id || "",
+      presetOwner: this.qz.owner || 0,
       bots: this.mode === "timeattack" ? 0 : this.botCount,
       myName: this.me.name,
       myColor: this.me.colorIndex,
@@ -523,6 +624,8 @@ export class LobbyScreen {
     this.musicBtn.textContent = this.musicOn ? "曲を 鳴らす" : "曲を 止める";
     this.invertBtn.setAttribute("aria-pressed", this.invertY ? "true" : "false");
 
+    if (this.qzList) this._renderQuiz();
+
     this.roomEl.textContent = "";
     if (this.roomId) {
       this.roomEl.appendChild(h("div", { class: "vs-lb-roomid" },
@@ -545,6 +648,7 @@ export class LobbyScreen {
     } catch (e) {}
     this._render();
     this._loadFriends();
+    this._loadPresets();
   }
   exit() {}
   resize() {}
@@ -723,6 +827,26 @@ export const LOBBY_CSS = `
 .vs-lb-roomid{ margin-top:9px; display:flex; align-items:center; justify-content:space-between;
   padding:8px 11px; border-radius:10px; background:rgba(255,255,255,.06); font-size:13px; }
 .vs-lb-roomlab{ font-size:10.5px; color:rgba(243,245,255,.5); }
+.vs-lb-qz{ margin:0 0 4px; border:1px solid ${PALETTE.line}; border-radius:12px;
+  background:rgba(255,255,255,.03); }
+.vs-lb-qz summary{ list-style:none; cursor:pointer; padding:9px 12px; font-size:13px;
+  color:rgba(243,245,255,.72); display:flex; align-items:center; gap:4px; }
+.vs-lb-qz summary::-webkit-details-marker{ display:none; }
+.vs-lb-qz summary::after{ content:"▸"; margin-left:auto; opacity:.5; }
+.vs-lb-qz[open] summary::after{ content:"▾"; }
+.vs-lb-qz-nm{ color:${PALETTE.mint}; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vs-lb-qz-body{ padding:0 8px 8px; }
+.vs-lb-qz-list{ max-height:210px; overflow-y:auto; display:flex; flex-direction:column; gap:3px; }
+.vs-lb-qz-h{ font-size:11px; font-weight:800; letter-spacing:.04em; color:rgba(243,245,255,.42);
+  padding:8px 4px 2px; }
+.vs-lb-qz-it{ display:flex; align-items:baseline; gap:8px; width:100%; text-align:left;
+  padding:7px 10px; border-radius:9px; border:1px solid transparent; background:transparent;
+  color:rgba(243,245,255,.86); font:inherit; font-size:13px; cursor:pointer; }
+.vs-lb-qz-it:hover:not(:disabled){ background:rgba(255,255,255,.06); }
+.vs-lb-qz-it[aria-checked="true"]{ border-color:${PALETTE.mint}; background:rgba(90,230,190,.12); }
+.vs-lb-qz-it:disabled{ opacity:.4; cursor:default; }
+.vs-lb-qz-l{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vs-lb-qz-s{ flex:0 0 auto; font-size:11px; color:rgba(243,245,255,.5); }
 .vs-lb-settings{ margin-top:14px; border-top:1px solid ${PALETTE.line}; padding-top:10px; }
 .vs-lb-settings summary{ font-size:12px; font-weight:800; color:rgba(243,245,255,.62);
   cursor:pointer; list-style:none; padding:4px 0; }

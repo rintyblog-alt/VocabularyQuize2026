@@ -178,7 +178,8 @@ export class MatchScreen {
     } else {
       this.questions = localQuestions(need, seed);
       fetchQuestions({
-        count: need, presetId: cfg.presetId || "", seed, difficulty: def.difficulty
+        count: need, presetId: cfg.presetId || "", presetKind: cfg.presetKind || "",
+        presetOwner: cfg.presetOwner || 0, seed, difficulty: def.difficulty
       }).then((qs) => {
         /* まだ 1 問も 出していない ときだけ 差し替える */
         if (this.qIndex === 0 && qs && qs.length >= need) this.questions = qs;
