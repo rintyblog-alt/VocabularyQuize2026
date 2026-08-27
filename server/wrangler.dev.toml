@@ -1,0 +1,216 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  開発・検証用（vocabuquiz-api-dev）
+#  ・本番 vocabuquiz-api / D1 vocabuquiz_auth には **一切触れない**
+#  ・D1 は vocabuquiz_auth_dev、定期実行なし、R2 なし
+#  ・出し方: cd server && wrangler deploy --config wrangler.dev.toml
+# ══════════════════════════════════════════════════════════════════════════════
+name = "vocabuquiz-api-dev"
+main = "src/worker.js"
+compatibility_date = "2026-02-16"
+workers_dev = true
+[assets]
+directory = "../client"
+binding = "ASSETS"
+html_handling = "none"
+not_found_handling = "single-page-application"   # 開発用は / でアプリが開くようにする
+# ★ /admin だけは **アセットより先に Worker を通す**（2026-08-18・実測）。
+#   これが無いと、ブラウザの画面遷移（Sec-Fetch-Mode: navigate）のとき
+#   アセット層の single-page-application フォールバックが先に効いて、
+#   /admin を開いても **アプリ本体の index.html** が返ってしまう。
+#   curl では再現しない（navigate を送らないため）。
+# ★ **/api/* も必ず入れること**（2026-08-18・実測でここを踏んだ）。
+#   run_worker_first を「リスト」で書くと、**載っていない道は全部アセット優先**に
+#   なる。/admin だけ書いたら /api/flags/effective が index.html を返し、
+#   API が丸ごと壊れた。載せ忘れ = その API が死ぬ、という書き方なので注意。
+run_worker_first = ["/admin", "/admin/*", "/site", "/site/*", "/sitemap.xml", "/api/*", "/ws/*", "/s/*", "/manifest.json"]
+
+[[durable_objects.bindings]]
+name = "RT_ROOMS"
+class_name = "RealtimeRoom"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "RoomDO"
+
+[ai]
+binding = "AI"
+
+[vars]
+# 開発版だけ：Workers AI のモデルを直接ためす口を開ける。
+# 本番の wrangler.toml には**入れない**（誰でもモデルを回せてしまうため）。
+AI_PROBE_ENABLED = "1"
+# ── LUMI の使用量の上限 ──────────────────────────────────────────
+# **これは仮の値**。「1 回で何 % 使うか」はまだ決めていないので、
+# 画面と記録の確認ができるようにここだけ入れてある。
+# 0 = まだ決めていない（画面は「上限は未設定」と出し、0% とは言わない）
+# -1 = 無制限
+# プランごとに変えるときは LUMI_DAILY_LIMIT_PAID のように後ろを足す。
+# 無料は日次 50。2026-08-13 に供給を測り直して 5 倍にした。
+#   旧: 供給 約780本/日 → 78人ぶん → 日次 10
+#   新: 供給 5,974本/日（実測）→ 119人ぶん → 日次 50
+# 供給の内訳（すべて実測。詳しくは worker.js の AIGEN_GROQ_MODELS 付近）:
+#   Groq   6鍵 5,400,000トークン/日 ÷ 1本5,543 =   974本/日
+#   Gemini 5鍵 × 3モデル = 15バケツ × 500回 ÷ 1.5回 = 5,000本/日
+# 週次は 日次×4 を目安にする（日次×7 以上だと週次が効かない）。
+LUMI_DAILY_LIMIT = "50"
+LUMI_WEEKLY_LIMIT = "200"
+# この上限は **いつまでの仮の値か**。本番で実際に何回使われるかを見て決め直す。
+# 画面（プラン使用制限のモーダル）にもこの日付をそのまま出す。
+# 空にすると期限を出さなくなる。過ぎたかどうかの判定はサーバでやる。
+LUMI_LIMIT_UNTIL = "2026-09-30T23:59:59+09:00"
+LUMI_DAILY_LIMIT_PAID = "100"
+LUMI_WEEKLY_LIMIT_PAID = "400"
+# 1 回あたりの重み。資料つきは字数も待ち時間も増えるので少し重い（実測は上のコメント）。
+LUMI_COST_PLAIN = "1"
+LUMI_COST_FILES = "1.5"
+# 優先モデル（OPENAI_API_KEY がある場合）
+MODEL_NORMAL = "gpt-5-mini"
+MODEL_REASON = "gpt-5.2"
+# VQ AI ONE MAX (chat) は Meta Llama 系を優先
+CHAT_PROVIDER = "gemini"   # Quick Chat を Gemini へ（鍵は GEMINI_CHAT_KEY 系。無ければ生成の鍵を借りる）
+# ── Quick Chat のモデル ────────────────────────────────────────────────
+#  **1 日の回数（RPD）はモデルごとに全く違う。** 管理画面の実数（2026-08-12）:
+#    Gemini 3.6 Flash        RPM  5 / TPM 250K / RPD   20   ← 話し相手には使えない
+#    Gemini 3   Flash        RPM  5 / TPM 250K / RPD   20   ← 同上
+#    Gemini 3.1 Flash Lite   RPM 15 / TPM 250K / RPD  500
+#    Gemini 3.5 Flash Lite   RPM 15 / TPM 250K / RPD  500
+#  Flash は 1 日 20 回しかない。**Lite を使う。**
+#  LUMI（作問）の主は 3.1 Flash Lite なので、Quick Chat は 3.5 Flash Lite を主にする。
+#  ※ 枠は **プロジェクトごと**。鍵を分けても同じプロジェクトなら同じ枠を分け合う。
+GEMINI_CHAT_MODEL = "gemini-3.5-flash-lite"
+GEMINI_CHAT_MODEL_STRONG = "gemini-3.1-flash-lite"
+CHAT_MODEL_PRIMARY = "@cf/meta/llama-4-scout-17b-16e-instruct"
+CHAT_MODEL_REASONING = "@cf/meta/llama-4-scout-17b-16e-instruct"
+CHAT_MAX_TOKENS_NORMAL = "8192"
+CHAT_MAX_TOKENS_REASONING = "8192"
+# 将来的に Meta 系の OpenAI-compatible endpoint を使う場合は secret / vars で切替
+# CHAT_API_BASE = "https://example.meta.endpoint/v1"
+# wrangler secret put CHAT_API_KEY
+# Workers AI フォールバックモデル（OPENAI_API_KEY が無い場合）
+AI_MODEL_NORMAL = "@cf/meta/llama-3.1-8b-instruct-fp8-fast"
+AI_MODEL_REASONING = "@cf/meta/llama-3.1-8b-instruct"
+SUPPORT_AI_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct"
+AI_MODEL_VISION = "@cf/meta/llama-3.2-11b-vision-instruct"
+SCAN_VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct"
+AI_MODEL_LLAVA = "@cf/llava-hf/llava-1.5-7b-hf"
+SCAN_TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+SCAN_VERIFY_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+PRESET_BUILD_MODEL = "@cf/moonshotai/kimi-k2.6"
+PRESET_BUILD_MODEL_FALLBACK = "@cf/zai-org/glm-4.7-flash"
+DATA_PACK_SCHEDULE_ENABLED = "0"
+PACK_SOURCE_URL = "https://rintyblog-alt.github.io/VocabularyQuize2026/"
+# 検証用だけの VAPID 鍵。**本番とは別のものを使う**（本番の秘密鍵は読み戻せないため、
+# ここで新しく作った）。対になる秘密鍵は wrangler secret で dev worker にだけ入れてある。
+WEB_PUSH_VAPID_PUBLIC_KEY = "BB1f9ZQJ23aTbPVhRLqJkPP-tR6rY15CH1gRYTYrjeZMt5SgbA9fJrxqBLfCm6vcqtFWQOs47U7vsX6azopClZI"
+WEB_PUSH_SUBJECT = "mailto:notify@vocabuquiz.app"
+# SearXNG (Render.com) — Deep Search 用 Web 検索バックエンド
+SEARXNG_URL = "https://vocabuquiz-search.onrender.com"
+# Sede Pages Deploy — アカウント ID は秘密ではないのでここに置く
+CF_ACCOUNT_ID = "1655c547a7bf146d63095abdc576ea50"
+
+# CF_PAGES_API_TOKEN は **ここに書かない**。
+#   用途: Worker 実行時の runtime secret（env.CF_PAGES_API_TOKEN を
+#         worker.js の handleSedeDeploy と /api/sede/list-models が読む）。
+#         デプロイ認証ではないので、ローカル環境変数では代用できない。
+#   登録: npx wrangler secret put CF_PAGES_API_TOKEN
+#   ローカル検証: server/.dev.vars に書く（.gitignore 済み）
+# 2026-07-28: 以前ここへ平文で置いていたトークンは **失効させること**。
+# 未設定なら Sede のデプロイと models 一覧が 500 を返すだけで、他機能は動く。
+
+# ── 新規登録 メールアドレス確認（Gmail 所有確認）: 公開設定値のみ（秘密値は下の secret put で登録） ──
+TURNSTILE_SITE_KEY = ""                              # 公開サイトキー（未設定なら widget 非表示・登録は動作）。クライアントは config.public.js の turnstile.siteKey を参照
+EMAIL_FROM_NAME = "VocabuQuiz"
+EMAIL_FROM_ADDRESS = "verify@mail.vocabuquiz.app"
+APP_BASE_URL = "https://vocabuquiz.app"
+TERMS_VERSION = "2026-08-10"
+PRIVACY_VERSION = "2026-08-10"
+OTP_EXPIRES_SECONDS = "600"
+OTP_RESEND_COOLDOWN_SECONDS = "30"
+OTP_MAX_RESENDS = "3"
+OTP_MAX_FAILED_ATTEMPTS = "5"
+# 秘密値（コミット禁止・実値はコマンドで登録。RESEND/TURNSTILE 未設定時は安全側=メール送信不可/Turnstile検証スキップ）:
+#   npx wrangler secret put RESEND_API_KEY
+#   npx wrangler secret put TURNSTILE_SECRET_KEY
+#   npx wrangler secret put OTP_PEPPER
+#   npx wrangler secret put REGISTRATION_SESSION_SECRET
+
+# Web Push の秘密鍵は secret で設定
+# wrangler secret put WEB_PUSH_VAPID_PRIVATE_KEY
+
+# ── 管理ダッシュボード（/admin）─────────────────────────────────────
+# 最初の owner を 1 人だけ作るための宛先。**以後は画面から招待する。**
+# ここを変えても、すでに owner がいるなら何も起きない（作り直さない）。
+# ★ 検証用 Worker は **自動検証専用のアドレス**にしておく。
+#   自分の本当のアドレスにすると、テストが作った管理者・Ban・招待が
+#   自分のアカウントに混ざる。ローカル（wrangler.local.toml）だけ自分の宛先。
+ADMIN_BOOTSTRAP_EMAIL = "admin@vocabuquiz.dev"
+# 初回パスワード設定に必要な合言葉。**必ず入れること**（未設定だと、
+# 上のメールアドレスを知っている人なら誰でも owner の錠を掛けられる）。
+#   npx wrangler secret put ADMIN_BOOTSTRAP_TOKEN --config wrangler.dev.toml
+
+# data_pack 管理APIのトークン（本番は wrangler secret put DATA_PACK_ADMIN_TOKEN 推奨）
+# DATA_PACK_ADMIN_TOKEN = "change-me"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vocabuquiz_auth_dev"
+database_id = "c553b4ef-29ff-4077-9b02-bb66ec710fc9"
+remote = true
+
+# 例: data_pack 保存先KV
+# [[kv_namespaces]]
+# binding = "SEARCH_KV"
+# id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# preview_id = "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+
+# 例: 巨大packをR2で運用する場合（任意）
+# [[r2_buckets]]
+# binding = "PACK_R2"
+# bucket_name = "vocabuquiz-pack"
+# preview_bucket_name = "vocabuquiz-pack-preview"
+
+# 投稿へ添える画像の置き場所。
+# 画像は D1 へ入れない（1 件 2048 字の文字列しか持てず、行も肥大するため）。
+# ここへ実体を置き、投稿には /api/media/<key> の URL だけを持たせる。
+# 本番へ出す前に、この名前のバケットを作っておくこと（未作成だとデプロイが失敗する）。
+# ── 画像・動画の置き場所（R2）──────────────────────────────────────
+# いまは **R2 がアカウントで未有効**なので外してある。
+# その間は D1（media_blobs）が肩代わりする。1 本 24MB まで。
+#
+# 有効にしたあとの手順（server/ で実行）:
+#   1) ダッシュボードで R2 を有効化（本人のみ・規約同意と支払い方法の登録）
+#   2) npx wrangler r2 bucket create vocabuquiz-media-dev
+#   3) 下の 3 行のコメントを外す
+#   4) npx wrangler deploy --config wrangler.dev.toml
+#
+# 移し替えは要らない。読み出しは R2 →（無ければ）D1 の順に見るので、
+# それまでにあげた分もそのまま出る。新しくあげた分だけ R2 へ入る。
+# [[r2_buckets]]
+# binding = "MEDIA_R2"
+# bucket_name = "vocabuquiz-media-dev"
+
+# [triggers] 開発用では定期実行を止める（本番と同じ処理を二重に走らせない）
+
+[[migrations]]
+tag = "rt-room-v1"
+new_classes = ["RealtimeRoom"]
+
+[[migrations]]
+tag = "room-do-v1"
+new_classes = ["RoomDO"]
+
+# ── 写真・動画・ファイルの 3 つめの 置き場（2026-08-19）──────────────
+#   置き場は 上から順に 選ぶ:
+#     ① R2  … 10GB・転送量 0 円。**いちばん良い**が いま 未有効（下を見よ）
+#     ② D1  … 5GB のうち 3GB まで。いま ここだけを 使っている
+#     ③ KV  … 1GB。D1 が 一杯のときの 受け皿
+#   3 つとも 「追加料金なし の枠」の 内側で 止めてある（超えると 課金される契約なので）。
+#
+#   ★ KV の 中身を 書く仕組みは 前から src/worker.js に 在ったが、
+#     **一度も 繋がれていなかった**（名前空間が 無かった）。ここで 繋ぐ。
+#   ★ KV は 書き換えの 反映に 最大 60 秒 かかる。ただし 鍵は 毎回 新しく作る
+#     （使い回さない）ので、あげた直後に 読めない ということは 起きない。
+
+[[kv_namespaces]]
+binding = "MEDIA_KV"
+id = "e51cb0e3707e417482508710cf1fec09"

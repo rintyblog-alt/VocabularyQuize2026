@@ -1,0 +1,106 @@
+{
+  "level": "a1",
+  "categoryId": "cafe",
+  "lessonId": "a1-cafe-01",
+  "title": "カフェで注文する",
+  "order": 10,
+  "estimatedMinutes": 8,
+  "goals": ["飲み物を注文できる", "サイズを伝えられる", "持ち帰りか店内かを言える"],
+  "expressions": ["I'd like ...", "Can I have ...?", "For here or to go?"],
+  "atoms": [
+    { "en": "I'd like a cup of coffee, please.", "ja": "コーヒーを一杯お願いします。",
+      "family": "cafe_order_basic", "g": ["polite_request"], "v": ["coffee", "cup"], "blank": "coffee",
+      "alt": ["Can I have a coffee, please?", "Could I get a coffee?"],
+      "err": "I like a cup of coffee, please.",
+      "situation": "カフェで飲み物を注文します。" },
+    { "en": "Can I have a small latte?", "ja": "スモールのラテをもらえますか。",
+      "family": "cafe_order_basic", "g": ["question", "modal"], "v": ["latte", "small"], "blank": "latte",
+      "alt": ["Could I have a small latte?"] },
+    { "en": "Could I get an iced tea, please?", "ja": "アイスティーをいただけますか。",
+      "family": "cafe_order_basic", "g": ["polite_request", "article"], "v": ["tea", "iced"], "blank": "iced",
+      "err": "Could I get a iced tea, please?" },
+    { "en": "For here, please.", "ja": "店内でお願いします。", "family": "cafe_here_togo",
+      "g": ["politeness"], "v": ["here"], "blank": "here",
+      "situation": "店員に「店内でお召し上がりですか」と聞かれました。" },
+    { "en": "To go, please.", "ja": "持ち帰りでお願いします。", "family": "cafe_here_togo",
+      "g": ["politeness"], "v": ["go"], "blank": "please",
+      "alt": ["Takeaway, please."] },
+    { "en": "How much is it?", "ja": "いくらですか。", "family": "cafe_pay",
+      "g": ["question"], "v": ["much"], "blank": "much",
+      "situation": "値段を聞きます。" },
+    { "en": "Can I pay by card?", "ja": "カードで払えますか。", "family": "cafe_pay",
+      "g": ["question", "modal", "preposition"], "v": ["card", "pay"], "blank": "card",
+      "err": "Can I pay with card?" },
+    { "en": "Here you are.", "ja": "はい、どうぞ。", "family": "cafe_pay",
+      "g": ["politeness"], "v": ["here"] },
+    { "en": "Do you have any sandwiches?", "ja": "サンドイッチはありますか。",
+      "family": "cafe_food", "g": ["question", "plural"], "v": ["sandwiches"], "blank": "sandwiches",
+      "err": "Do you have any sandwich?" },
+    { "en": "I would like it without sugar.", "ja": "砂糖なしでお願いします。",
+      "family": "cafe_custom", "g": ["preposition"], "v": ["sugar", "without"], "blank": "without",
+      "situation": "飲み物に砂糖を入れないでほしいと伝えます。" },
+    { "en": "Could you make it warm?", "ja": "温かくしてもらえますか。",
+      "family": "cafe_custom", "g": ["polite_request"], "v": ["warm"], "blank": "warm" },
+    { "en": "What size would you like?", "ja": "サイズはどれになさいますか。",
+      "family": "cafe_staff", "g": ["question", "modal"], "v": ["size"], "blank": "size" },
+    { "en": "That will be five dollars.", "ja": "五ドルになります。",
+      "family": "cafe_staff", "g": ["future"], "v": ["dollars"], "blank": "dollars" },
+    { "en": "Your coffee will be ready soon.", "ja": "コーヒーはまもなくできあがります。",
+      "family": "cafe_staff", "g": ["future"], "v": ["ready", "soon"], "blank": "ready" }
+  ],
+  "dialogues": [
+    {
+      "id": "a1-cafe-dlg-01",
+      "title": "カフェで注文する",
+      "userRole": "お客",
+      "aiRole": "カフェの店員",
+      "descriptionJa": "カフェで飲み物を注文して、持ち帰りだと伝えましょう。",
+      "estimatedTurns": 5,
+      "estimatedMinutes": 3,
+      "missionGoals": [
+        { "id": "m1", "descriptionJa": "飲み物を注文する", "requiredIntentIds": ["order_drink"] },
+        { "id": "m2", "descriptionJa": "サイズを伝える", "requiredIntentIds": ["say_size"] },
+        { "id": "m3", "descriptionJa": "持ち帰りだと伝える", "requiredIntentIds": ["say_togo"] }
+      ],
+      "startNodeId": "n1",
+      "nodes": [
+        { "id": "n1", "aiText": "Hi! What can I get for you?",
+          "japaneseTranslation": "いらっしゃいませ。ご注文はお決まりですか。",
+          "hint": "I'd like ... / Can I have ...",
+          "expectedIntents": [
+            { "intentId": "order_drink", "examples": ["I'd like a coffee, please.", "Can I have a latte?", "A tea, please."], "nextNodeId": "n2" }
+          ],
+          "fallbackNodeId": "n1b" },
+        { "id": "n1b", "aiText": "Sure. What would you like to drink?",
+          "japaneseTranslation": "はい。何をお飲みになりますか。",
+          "hint": "飲み物の名前を言ってみましょう。",
+          "expectedIntents": [
+            { "intentId": "order_drink", "examples": ["Coffee, please."], "nextNodeId": "n2" }
+          ] },
+        { "id": "n2", "aiText": "Sure. What size would you like?",
+          "japaneseTranslation": "かしこまりました。サイズはどれになさいますか。",
+          "hint": "Small / Medium / Large",
+          "expectedIntents": [
+            { "intentId": "say_size", "examples": ["Small, please.", "A medium one.", "Large, please."], "nextNodeId": "n3" }
+          ],
+          "fallbackNodeId": "n2b" },
+        { "id": "n2b", "aiText": "We have small, medium and large. Which one?",
+          "japaneseTranslation": "スモール、ミディアム、ラージがあります。どれにしますか。",
+          "expectedIntents": [
+            { "intentId": "say_size", "examples": ["Medium."], "nextNodeId": "n3" }
+          ] },
+        { "id": "n3", "aiText": "For here or to go?",
+          "japaneseTranslation": "店内でお召し上がりですか、お持ち帰りですか。",
+          "hint": "To go, please. / For here, please.",
+          "expectedIntents": [
+            { "intentId": "say_togo", "examples": ["To go, please.", "Takeaway, please."], "nextNodeId": "n4" },
+            { "intentId": "say_here", "examples": ["For here, please."], "nextNodeId": "n4" }
+          ] },
+        { "id": "n4", "aiText": "That will be four dollars. Here you are. Have a nice day!",
+          "japaneseTranslation": "四ドルになります。どうぞ。よい一日を。",
+          "completionNode": true,
+          "expectedIntents": [] }
+      ]
+    }
+  ]
+}

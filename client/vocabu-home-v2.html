@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VocabuQuiz — Learning Workspace</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined">
+<style>
+  /* Material Icons を .ms クラスで使えるよう統一 */
+  .ms {
+    font-family: 'Material Icons Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 18px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+  }
+</style>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#1F2937',
+          'ink-soft': '#374151',
+          'ink-mute': '#6B7280',
+          'ink-lite': '#9CA3AF',
+          line: '#E5E7EB',
+          surface: '#F8FAFB',
+          card: '#FFFFFF',
+          'brand-purple': '#6366F1',
+          'brand-purple-deep': '#4F46E5'
+        },
+        fontFamily: {
+          sans: ['Inter', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'sans-serif']
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body { letter-spacing: 0.01em; }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: 10px;
+    font-size: 14px; font-weight: 500; color: #374151;
+    transition: background .15s ease, color .15s ease;
+    cursor: pointer; user-select: none;
+  }
+  .nav-item:hover { background: #F3F4F6; }
+  .nav-item.active {
+    background: linear-gradient(135deg, #6366F1, #818CF8);
+    color: #fff; box-shadow: 0 4px 16px rgba(99, 102, 241, .25);
+  }
+  .nav-item .ms { font-size: 20px; }
+  .nav-item .badge {
+    margin-left: auto; font-size: 10px; font-weight: 700;
+    padding: 2px 6px; border-radius: 999px;
+    background: #EF4444; color: #fff; letter-spacing: .03em;
+  }
+  .greet-card {
+    background: linear-gradient(135deg, #6366F1 0%, #818CF8 100%);
+    color: #fff; border-radius: 24px; padding: 28px 32px;
+    position: relative; overflow: hidden;
+    box-shadow: 0 8px 32px rgba(99, 102, 241, .15);
+  }
+  .greet-card::before, .greet-card::after {
+    content: ''; position: absolute; border-radius: 50%;
+    background: rgba(255,255,255,.08);
+  }
+  .greet-card::before { width: 200px; height: 200px; right: -60px; top: -80px; }
+  .greet-card::after { width: 120px; height: 120px; right: 80px; top: 100px; background: rgba(255,255,255,.06); }
+  .quick-card {
+    border-radius: 20px; padding: 22px 24px; color: #fff;
+    position: relative; overflow: hidden; cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .quick-card:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(0,0,0,.08); }
+  .quick-card .ico {
+    width: 44px; height: 44px; border-radius: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,.18); backdrop-filter: blur(10px);
+  }
+  .quick-card .arrow {
+    position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+    color: rgba(255,255,255,.7);
+  }
+  .section-card {
+    background: #fff; border: 1px solid #E5E7EB; border-radius: 16px;
+    padding: 16px 20px; cursor: pointer;
+    transition: box-shadow .15s ease, border-color .15s ease;
+  }
+  .section-card:hover { border-color: #C7D2FE; box-shadow: 0 6px 18px rgba(0,0,0,.05); }
+  .news-card {
+    background: #fff; border: 1px solid #E5E7EB; border-radius: 16px;
+    overflow: hidden; cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .news-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,.06); }
+  .news-thumb {
+    height: 110px; display: flex; align-items: center; justify-content: center;
+  }
+  .fab {
+    position: fixed; right: 32px; bottom: 32px;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: linear-gradient(135deg, #6366F1, #4F46E5);
+    color: #fff; box-shadow: 0 8px 24px rgba(99,102,241,.4);
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .fab:hover { transform: scale(1.06); box-shadow: 0 12px 32px rgba(99,102,241,.5); }
+  .fab .ms { font-size: 28px; }
+  .progress-bar { background: rgba(255,255,255,.25); border-radius: 999px; height: 6px; overflow: hidden; }
+  .progress-fill { background: #fff; height: 100%; border-radius: 999px; }
+  .premium-bar { background: #E5E7EB; border-radius: 999px; height: 4px; overflow: hidden; }
+  .premium-fill { background: linear-gradient(90deg, #6366F1, #818CF8); height: 100%; border-radius: 999px; }
+</style>
+</head>
+<body class="bg-surface font-sans text-ink antialiased">
+
+<div class="flex min-h-screen">
+
+  <!-- ╔══════ SIDEBAR ══════╗ -->
+  <aside class="w-60 bg-card border-r border-line flex flex-col">
+    <!-- Logo -->
+    <div class="px-5 py-5 flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-purple to-brand-purple-deep flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+        <span class="ms">menu_book</span>
+      </div>
+      <div>
+        <div class="text-[15px] font-bold text-ink leading-tight">VocabuQuiz</div>
+        <div class="text-[10px] text-ink-mute tracking-wider">Learning Workspace</div>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="px-3 mt-2 flex-1 space-y-1">
+      <div class="nav-item active"><span class="ms">home</span>HOME</div>
+      <div class="nav-item"><span class="ms">collections_bookmark</span>Presets</div>
+      <div class="nav-item"><span class="ms">dynamic_feed</span>Feed<span class="badge">NEW</span></div>
+      <div class="nav-item"><span class="ms">notifications</span>Notifications</div>
+      <div class="nav-item"><span class="ms">newspaper</span>News</div>
+      <div class="nav-item"><span class="ms">insights</span>Insights</div>
+      <div class="nav-item"><span class="ms">bolt</span>Quick Chat</div>
+      <div class="nav-item"><span class="ms">workspace_premium</span>Subscription<span class="badge">NEW</span></div>
+      <div class="nav-item"><span class="ms">videogame_asset</span>VocabuSurvival</div>
+      <div class="nav-item"><span class="ms">settings</span>Settings</div>
+      <div class="nav-item"><span class="ms">apps</span>MENU</div>
+      <div class="nav-item"><span class="ms">credit_card</span>Qredit Card</div>
+      <div class="nav-item"><span class="ms">today</span>QOD</div>
+    </nav>
+
+    <!-- User -->
+    <div class="px-4 py-4 border-t border-line">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="relative">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-br from-brand-purple to-brand-purple-deep flex items-center justify-center text-white font-bold text-sm">r</div>
+          <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border-2 border-white rounded-full"></span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-1">
+            <div class="text-[13px] font-semibold text-ink truncate">rintyade</div>
+            <span class="text-[10px]">👑</span>
+          </div>
+          <div class="text-[11px] text-ink-mute truncate">@rinty_0401</div>
+        </div>
+        <button class="text-ink-mute hover:text-ink p-1"><span class="ms" style="font-size:18px;">more_horiz</span></button>
+      </div>
+
+      <div class="bg-surface rounded-xl p-3">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-1.5">
+            <span class="ms text-[14px] text-amber-500">workspace_premium</span>
+            <span class="text-[11px] font-semibold text-ink">プレミアムプラン</span>
+          </div>
+          <div class="text-[10px] text-ink-mute">更新日 2025/06/30</div>
+        </div>
+        <div class="flex items-baseline gap-1 mb-1.5">
+          <span class="ms text-[12px] text-brand-purple">paid</span>
+          <span class="text-[12px] font-bold text-ink">138,970</span>
+          <span class="text-[10px] text-ink-mute">/ 200,000</span>
+        </div>
+        <div class="premium-bar"><div class="premium-fill" style="width: 69%"></div></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ╔══════ MAIN ══════╗ -->
+  <main class="flex-1 min-w-0">
+
+    <!-- Topbar -->
+    <header class="px-8 py-5 flex items-center gap-4">
+      <div class="flex-1 max-w-2xl relative">
+        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none ms" style="font-size:18px;">search</span>
+        <input type="text" placeholder="検索..."
+          class="w-full bg-card border border-line rounded-xl pl-11 pr-16 py-2.5 text-[14px] text-ink placeholder:text-ink-mute focus:outline-none focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20 transition">
+        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-ink-mute bg-surface border border-line rounded-md px-2 py-0.5 font-mono">⌘K</span>
+      </div>
+      <button class="ml-auto w-10 h-10 rounded-full bg-card border border-line text-ink-soft hover:text-ink hover:bg-surface transition flex items-center justify-center" aria-label="テーマ切替">
+        <span class="ms">light_mode</span>
+      </button>
+      <button class="w-10 h-10 rounded-full bg-card border border-line text-ink-soft hover:text-ink hover:bg-surface transition flex items-center justify-center relative" aria-label="通知">
+        <span class="ms">notifications</span>
+      </button>
+      <div class="relative">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-brand-purple to-brand-purple-deep flex items-center justify-center text-white font-bold text-sm">r</div>
+        <span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 border-2 border-card rounded-full"></span>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <div class="px-8 pb-12">
+
+      <!-- Greeting -->
+      <div class="mb-6">
+        <div class="text-[13px] text-ink-soft mb-1">👋 こんばんは</div>
+        <h1 class="text-[24px] font-bold text-ink">rintyade, おつかれさま</h1>
+      </div>
+
+      <!-- Top cards row -->
+      <div class="grid grid-cols-3 gap-5 mb-6">
+        <!-- Greet learning card (span 2) -->
+        <div class="greet-card col-span-2">
+          <div class="relative z-10">
+            <div class="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center mb-5">
+              <span class="ms" style="font-size:22px;">auto_stories</span>
+            </div>
+            <div class="text-[11px] font-semibold uppercase tracking-wider text-white/80 mb-1">前回の学習</div>
+            <div class="text-[22px] font-bold leading-tight">英検対策 第2週 (101-200)</div>
+            <div class="mt-8">
+              <div class="flex items-end justify-between mb-2">
+                <span class="text-[13px] text-white/85">正答率</span>
+                <span class="text-[20px] font-bold tracking-tight">97<span class="text-[14px]">%</span></span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" style="width: 97%"></div></div>
+              <div class="text-[11px] text-white/70 mt-3">最終学習 : 1日前</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right column 2 small cards -->
+        <div class="flex flex-col gap-5">
+          <a class="quick-card flex items-center gap-4" style="background: linear-gradient(135deg, #34D399, #10B981);">
+            <div class="ico"><span class="ms" style="font-size:20px;">play_arrow</span></div>
+            <div>
+              <div class="text-[15px] font-bold leading-tight">学習を始める</div>
+              <div class="text-[11px] text-white/85 mt-0.5">プリセット & モード選択</div>
+            </div>
+            <span class="ms arrow">chevron_right</span>
+          </a>
+          <a class="quick-card flex items-center gap-4" style="background: linear-gradient(135deg, #FB923C, #F97316);">
+            <div class="ico"><span class="ms" style="font-size:20px;">chat_bubble_outline</span></div>
+            <div>
+              <div class="text-[15px] font-bold leading-tight">Quick Chat</div>
+              <div class="text-[11px] text-white/85 mt-0.5">AIに質問する</div>
+            </div>
+            <span class="ms arrow">chevron_right</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- 3 sections row -->
+      <div class="grid grid-cols-3 gap-5 mb-10">
+        <!-- MY TODO -->
+        <div>
+          <div class="flex items-center justify-between mb-3 px-1">
+            <div class="text-[11px] font-bold tracking-wider text-ink uppercase">MY TODO</div>
+            <a href="#" class="text-[11px] text-ink-mute hover:text-ink">すべて見る</a>
+          </div>
+          <div class="section-card flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-brand-purple flex-shrink-0">
+              <span class="ms">play_circle</span>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-[13px] font-semibold text-ink truncate">英検対策 第2週 (101-200)</div>
+              <div class="text-[11px] text-ink-mute mt-0.5">CHOICE ・ 1日前</div>
+            </div>
+            <span class="ms text-ink-lite">chevron_right</span>
+          </div>
+        </div>
+
+        <!-- MY WEAK -->
+        <div>
+          <div class="flex items-center justify-between mb-3 px-1">
+            <div class="text-[11px] font-bold tracking-wider text-ink uppercase">MY WEAK</div>
+            <a href="#" class="text-[11px] text-ink-mute hover:text-ink">すべて見る</a>
+          </div>
+          <div class="section-card flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-red-500 flex-shrink-0">
+              <span class="ms">trending_down</span>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-[13px] font-semibold text-ink truncate">My Preset</div>
+              <div class="text-[11px] text-red-500 mt-0.5">正答率 50%</div>
+            </div>
+            <span class="ms text-ink-lite">chevron_right</span>
+          </div>
+        </div>
+
+        <!-- WORLD PRESETS -->
+        <div>
+          <div class="flex items-center justify-between mb-3 px-1">
+            <div class="text-[11px] font-bold tracking-wider text-ink uppercase">WORLD PRESETS</div>
+            <a href="#" class="text-[11px] text-ink-mute hover:text-ink">すべて見る</a>
+          </div>
+          <div class="section-card flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600 flex-shrink-0">
+              <span class="ms">public</span>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-[13px] font-semibold text-ink truncate">MY WAY 英コミュⅡ Lesson 9 単語集</div>
+              <div class="text-[11px] text-ink-mute mt-0.5">(総進 2学年末)<br>sub:english</div>
+            </div>
+            <span class="ms text-ink-lite">chevron_right</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- News -->
+      <section>
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-[15px] font-bold text-ink">最新ニュース</h2>
+          <a href="#" class="text-[11px] text-ink-mute hover:text-ink bg-surface border border-line px-3 py-1.5 rounded-full">もっと見る</a>
+        </div>
+        <div class="grid grid-cols-4 gap-5">
+          <article class="news-card">
+            <div class="news-thumb" style="background: linear-gradient(135deg, #C7D2FE, #A5B4FC);">
+              <span class="ms text-white" style="font-size: 48px; opacity: .8;">extension</span>
+            </div>
+            <div class="p-4">
+              <div class="text-[10px] text-brand-purple font-bold uppercase tracking-wider mb-1">Weekly Update</div>
+              <div class="text-[13px] font-semibold text-ink leading-snug mb-2">5月のアップデートまとめ</div>
+              <div class="text-[10px] text-ink-mute">2025/05/20</div>
+            </div>
+          </article>
+
+          <article class="news-card">
+            <div class="news-thumb" style="background: linear-gradient(135deg, #BBF7D0, #86EFAC);">
+              <span class="ms text-emerald-700" style="font-size: 48px; opacity: .8;">school</span>
+            </div>
+            <div class="p-4">
+              <div class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-1">Study Tips</div>
+              <div class="text-[13px] font-semibold text-ink leading-snug mb-2">効率的な学習のコツ</div>
+              <div class="text-[10px] text-ink-mute">2025/05/18</div>
+            </div>
+          </article>
+
+          <article class="news-card">
+            <div class="news-thumb" style="background: linear-gradient(135deg, #FED7AA, #FDBA74);">
+              <span class="ms text-orange-600" style="font-size: 48px; opacity: .8;">headphones</span>
+            </div>
+            <div class="p-4">
+              <div class="text-[10px] text-orange-600 font-bold uppercase tracking-wider mb-1">New Feature</div>
+              <div class="text-[13px] font-semibold text-ink leading-snug mb-2">新しい学習モードが追加</div>
+              <div class="text-[10px] text-ink-mute">2025/05/15</div>
+            </div>
+          </article>
+
+          <article class="news-card">
+            <div class="news-thumb" style="background: linear-gradient(135deg, #BFDBFE, #93C5FD);">
+              <span class="ms text-blue-700" style="font-size: 48px; opacity: .8;">emoji_events</span>
+            </div>
+            <div class="p-4">
+              <div class="text-[10px] text-blue-600 font-bold uppercase tracking-wider mb-1">Event</div>
+              <div class="text-[13px] font-semibold text-ink leading-snug mb-2">ランキングイベント開催中!</div>
+              <div class="text-[10px] text-ink-mute">2025/05/10</div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+    </div>
+
+    <button class="fab" aria-label="新規作成"><span class="ms">add</span></button>
+  </main>
+
+</div>
+
+</body>
+</html>

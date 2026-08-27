@@ -1,0 +1,101 @@
+/* ── Reset + base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font: var(--vq-type-body-md);
+  letter-spacing: var(--vq-tracking-body);
+  color: var(--vq-text);
+  background: var(--vq-bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-wrap: anywhere;
+}
+
+img, svg, video, canvas { display: block; max-width: 100%; }
+input, button, textarea, select { font: inherit; letter-spacing: inherit; color: inherit; }
+p, h1, h2, h3, h4, h5, h6 { overflow-wrap: anywhere; }
+
+h1 { font: var(--vq-type-heading-xl); letter-spacing: var(--vq-tracking-tight); }
+h2 { font: var(--vq-type-heading-lg); letter-spacing: var(--vq-tracking-tight); }
+h3 { font: var(--vq-type-heading-md); }
+h4 { font: var(--vq-type-heading-sm); }
+
+a { color: var(--vq-text-link); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+code, pre { font: var(--vq-type-code); }
+
+::selection { background: var(--vq-selection-bg); }
+
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--vq-border-focus);
+  outline-offset: 2px;
+  border-radius: var(--vq-r-xs);
+}
+
+/* Scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--vq-border-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--vq-border-strong);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Reduced motion — 情報を失わず動きだけを止める */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* ── Layout utilities ─────────────────────────────────────── */
+.vq-stack { display: flex; flex-direction: column; }
+.vq-row { display: flex; align-items: center; }
+.vq-wrap { display: flex; flex-wrap: wrap; }
+.vq-grow { flex: 1 1 auto; min-width: 0; }
+.vq-visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.vq-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vq-clamp-2 {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vq-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+/* ── Shared keyframes ─────────────────────────────────────── */
+@keyframes vq-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes vq-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes vq-fade-down { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes vq-scale-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes vq-slide-left { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@keyframes vq-slide-right { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+@keyframes vq-spin { to { transform: rotate(360deg); } }
+@keyframes vq-pulse { 50% { opacity: 0.55; } }
+@keyframes vq-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes vq-pop { 0% { transform: scale(0.8); } 55% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes vq-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-3px); }
+  40%, 60% { transform: translateX(3px); }
+}

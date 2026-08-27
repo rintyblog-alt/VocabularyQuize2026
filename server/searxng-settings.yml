@@ -1,0 +1,206 @@
+use_default_settings: true
+
+general:
+  instance_name: "VocabuQuiz Search"
+  enable_metrics: false
+
+search:
+  default_lang: "ja"
+  default_locale: "ja"
+  safe_search: 1
+  max_results: 10
+  autocomplete: "duckduckgo"
+  formats:
+    - html
+    - json
+
+server:
+  image_proxy: false
+  method: "GET"
+
+outgoing:
+  request_timeout: 4.0
+  max_request_timeout: 6.0
+  pool_connections: 100
+  pool_maxsize: 20
+  headers:
+    Accept-Language: "ja,ja-JP;q=0.9,en;q=0.8"
+
+ui:
+  default_theme: simple
+  default_locale: ja
+  center_alignment: true
+
+engines:
+
+  #----------------------------
+  # 汎用検索（Sede以外全モデル）
+  #----------------------------
+
+  - name: google
+    engine: google
+    weight: 3.0
+    language: ja
+    region: ja-JP
+    disabled: false
+    categories: [general, news]
+
+  - name: bing
+    engine: bing
+    weight: 2.5
+    language: ja-JP
+    disabled: false
+    categories: [general, news]
+
+  - name: duckduckgo
+    engine: duckduckgo
+    weight: 2.0
+    language: ja-JP
+    disabled: false
+    categories: [general]
+
+  - name: yahoo
+    engine: yahoo
+    language: ja
+    weight: 2.5
+    disabled: false
+    categories: [general, news]
+
+  - name: startpage
+    engine: startpage
+    weight: 2.0
+    disabled: false
+    categories: [general]
+
+  - name: qwant
+    engine: qwant
+    weight: 1.5
+    disabled: false
+    categories: [general, news]
+
+  - name: brave
+    engine: brave
+    weight: 2.0
+    language: ja
+    disabled: false
+    categories: [general, news]
+
+  - name: wikipedia
+    engine: wikipedia
+    weight: 2.5
+    language: ja
+    disabled: false
+    categories: [general, science]
+
+  - name: wikidata
+    engine: wikidata
+    weight: 2.0
+    disabled: false
+    categories: [general, science]
+
+  #----------------------------
+  # ニュース（Sede以外全モデル）
+  #----------------------------
+
+  - name: bing news
+    engine: bing_news
+    weight: 3.0
+    language: ja-JP
+    disabled: false
+    categories: [news]
+
+  - name: google news
+    engine: google_news
+    weight: 3.0
+    language: ja
+    region: JP
+    disabled: false
+    categories: [news]
+
+  #----------------------------
+  # 天気・地震（Sede以外全モデル）
+  #----------------------------
+
+  - name: open_meteo
+    engine: open_meteo
+    weight: 3.0
+    disabled: false
+    categories: [weather]
+
+  #----------------------------
+  # 学術（Professor・Seed Pro・Deepthink）
+  #----------------------------
+
+  - name: google scholar
+    engine: google_scholar
+    weight: 2.0
+    language: ja
+    disabled: false
+    categories: [science]
+
+  - name: arxiv
+    engine: arxiv
+    weight: 2.0
+    disabled: false
+    categories: [science]
+
+  - name: wolframalpha
+    engine: wolframalpha
+    weight: 3.0
+    disabled: false
+    categories: [science]
+
+  #----------------------------
+  # IT・プログラミング（全モデル・Sedeは特に重視）
+  #----------------------------
+
+  - name: stackoverflow
+    engine: stackoverflow
+    weight: 2.5
+    disabled: false
+    categories: [it]
+
+  - name: github
+    engine: github
+    weight: 2.0
+    disabled: false
+    categories: [it]
+
+  - name: npm
+    engine: npm
+    weight: 2.0
+    disabled: false
+    categories: [it]
+
+  - name: pypi
+    engine: pypi
+    weight: 2.0
+    disabled: false
+    categories: [it]
+
+  - name: bing images
+    disabled: true
+
+  - name: google images
+    disabled: true
+
+  - name: google videos
+    disabled: true
+
+categories_as_tabs:
+  general:
+    title: 一般
+  news:
+    title: ニュース
+  science:
+    title: 学術
+  it:
+    title: IT
+  weather:
+    title: 天気
+
+plugins:
+  - plugin: tracker_url_remover
+    enabled: true
+  - plugin: unit_converter
+    enabled: true

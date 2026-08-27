@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Sede /capture Prototype</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        primary: { 50:'#f0f5ff',100:'#dde8ff',200:'#c0d4ff',300:'#95b6ff',400:'#6492ff',500:'#2b70ef',600:'#2250df',700:'#1a40b5',800:'#13318d',900:'#0e266a',950:'#07194e' }
+      },
+      fontFamily: { sans: ['Inter','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','sans-serif'] }
+    }
+  }
+}
+</script>
+<style>
+  body { font-family: 'Inter', 'Hiragino Sans', sans-serif; }
+  .text-body { color: #3d4b5f; }
+  .ms { font-family: 'Material Symbols Rounded'; font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin-icon { animation: spin 1s linear infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+  .capture-dot { animation: pulse 1.5s ease-in-out infinite; }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- ═══ ヘッダー ═══ -->
+<header class="bg-white border-b border-slate-200">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center">
+        <span class="ms text-white" style="font-size:22px;">videocam</span>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold text-slate-900">Sede <span class="text-primary-500">/capture</span></h1>
+        <p class="text-sm text-slate-500">画面共有で AI が修正・生成をサポート（プロトタイプ）</p>
+      </div>
+    </div>
+    <div class="ml-auto flex items-center gap-3">
+      <button id="btnSettings" class="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50">
+        <span class="ms" style="font-size:18px;">settings</span> 設定
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ═══ 設定パネル（初回 or /key コマンド時） ═══ -->
+<div id="settingsPanel" class="max-w-3xl mx-auto mt-6 px-6 hidden">
+  <div class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="ms text-primary-500" style="font-size:24px;">key</span>
+      <h2 class="text-lg font-bold text-slate-900">API キー・モデル設定</h2>
+    </div>
+    <p class="text-sm text-slate-600 mb-4">Claude API キーを入力してください。ブラウザ localStorage にのみ保存、サーバー送信なし。</p>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Anthropic API キー</label>
+        <input id="apiKey" type="password" placeholder="sk-ant-api03-..." class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500/50" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">モデル</label>
+        <div class="relative">
+          <select id="modelSelect" class="w-full appearance-none pl-3 pr-10 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500/50 bg-white">
+            <option value="claude-haiku-4-5">Haiku 4.5 ($1/$5) — 激安・高速</option>
+            <option value="claude-sonnet-4-6" selected>Sonnet 4.6 ($3/$15) — バランス型</option>
+            <option value="claude-opus-4-7">Opus 4.7 ($5/$25) — 最高精度</option>
+          </select>
+          <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">キャプチャ間隔</label>
+        <div class="flex gap-2">
+          <button data-interval="5000" class="interval-btn flex-1 px-3 py-2 text-sm rounded-lg border border-slate-200 hover:border-primary-300">5秒</button>
+          <button data-interval="10000" class="interval-btn flex-1 px-3 py-2 text-sm rounded-lg border-2 border-primary-500 bg-primary-50 text-primary-700 font-semibold">10秒</button>
+          <button data-interval="15000" class="interval-btn flex-1 px-3 py-2 text-sm rounded-lg border border-slate-200 hover:border-primary-300">15秒</button>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">最大セッション時間</label>
+        <div class="flex gap-2">
+          <button data-maxtime="60000" class="maxtime-btn flex-1 px-3 py-2 text-sm rounded-lg border border-slate-200 hover:border-primary-300">1分</button>
+          <button data-maxtime="180000" class="maxtime-btn flex-1 px-3 py-2 text-sm rounded-lg border-2 border-primary-500 bg-primary-50 text-primary-700 font-semibold">3分</button>
+          <button data-maxtime="300000" class="maxtime-btn flex-1 px-3 py-2 text-sm rounded-lg border border-slate-200 hover:border-primary-300">5分</button>
+        </div>
+      </div>
+    </div>
+    <div class="mt-5 flex gap-2">
+      <button id="btnSaveSettings" class="inline-flex items-center justify-center gap-2 h-10 px-5 text-sm font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700">保存</button>
+      <button id="btnCloseSettings" class="inline-flex items-center justify-center h-10 px-4 text-sm font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ メイン: チャット + 入力 ═══ -->
+<main class="max-w-3xl mx-auto mt-6 px-6 pb-32">
+  <!-- Welcome -->
+  <div id="welcomeView" class="text-center py-16">
+    <div class="w-16 h-16 mx-auto rounded-full bg-primary-50 flex items-center justify-center mb-4">
+      <span class="ms text-primary-500" style="font-size:32px;">screen_share</span>
+    </div>
+    <h2 class="text-2xl font-bold text-slate-900 mb-2">画面を共有して AI に見せる</h2>
+    <p class="text-base text-slate-600 mb-6">Figma、他のゲーム、デザイン例などを見せて Sede のコードに反映。</p>
+    <div class="flex justify-center gap-2 flex-wrap">
+      <button class="example-btn inline-flex items-center gap-2 h-10 px-4 text-sm font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50" data-example="このデザインを再現して">
+        <span class="ms" style="font-size:16px;">palette</span> このデザインを再現
+      </button>
+      <button class="example-btn inline-flex items-center gap-2 h-10 px-4 text-sm font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50" data-example="この画面の違和感を指摘して">
+        <span class="ms" style="font-size:16px;">visibility</span> バグを探して
+      </button>
+      <button class="example-btn inline-flex items-center gap-2 h-10 px-4 text-sm font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50" data-example="このアニメーションを参考に作って">
+        <span class="ms" style="font-size:16px;">animation</span> アニメを参考に
+      </button>
+    </div>
+  </div>
+
+  <!-- Chat list -->
+  <div id="chatList" class="space-y-3"></div>
+</main>
+
+<!-- ═══ 入力欄（画面下部固定） ═══ -->
+<div class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200">
+  <div class="max-w-3xl mx-auto px-6 py-4">
+    <div class="relative flex items-end gap-2">
+      <button id="btnCaptureCmd" class="inline-flex items-center gap-1.5 h-10 px-3 text-sm font-medium bg-primary-50 text-primary-700 rounded-lg hover:bg-primary-100 border border-primary-200 shrink-0">
+        <span class="ms" style="font-size:18px;">videocam</span> /capture
+      </button>
+      <div class="flex-1 relative">
+        <textarea id="msgInput" rows="1" placeholder="追加指示を入力（任意）" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500/50 resize-none leading-relaxed"></textarea>
+      </div>
+      <button id="btnSend" class="inline-flex items-center justify-center w-10 h-10 bg-primary-500 text-white rounded-lg hover:bg-primary-700 shrink-0" aria-label="送信">
+        <span class="ms" style="font-size:20px;">arrow_upward</span>
+      </button>
+    </div>
+    <div class="mt-2 text-xs text-slate-500 flex items-center gap-2">
+      <span class="ms" style="font-size:14px;">info</span>
+      <span>/capture で画面共有 → AI が観察して修正提案</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Capture Modal（設定確認） ═══ -->
+<div id="captureModal" class="fixed inset-0 bg-black/50 items-center justify-center z-40 hidden">
+  <div class="bg-white rounded-xl border border-slate-200 p-6 shadow-xl max-w-md w-full mx-4">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
+        <span class="ms text-primary-600" style="font-size:22px;">screen_share</span>
+      </div>
+      <h2 class="text-lg font-bold text-slate-900">画面キャプチャを開始</h2>
+    </div>
+    <p class="text-sm text-slate-600 mb-4">ブラウザが画面共有の許可を求めます。共有する画面またはウィンドウを選択してください。</p>
+    <div class="bg-slate-50 rounded-lg p-3 mb-4 text-xs text-slate-600 space-y-1">
+      <div class="flex items-center gap-2"><span class="ms" style="font-size:14px;color:#6366f1;">schedule</span> <span id="captureInfoInterval">10秒ごと</span>にキャプチャ</div>
+      <div class="flex items-center gap-2"><span class="ms" style="font-size:14px;color:#6366f1;">timer</span> 最大 <span id="captureInfoMaxTime">3分</span> で自動停止</div>
+      <div class="flex items-center gap-2"><span class="ms" style="font-size:14px;color:#6366f1;">psychology</span> モデル: <span id="captureInfoModel">Sonnet 4.6</span></div>
+    </div>
+    <div class="mb-4">
+      <label class="block text-sm font-medium text-slate-700 mb-1">追加指示（任意）</label>
+      <textarea id="captureInstruction" rows="2" placeholder="例: このデザインを Three.js で再現して" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500/50"></textarea>
+    </div>
+    <div class="flex gap-2">
+      <button id="btnStartCapture" class="flex-1 inline-flex items-center justify-center gap-2 h-10 px-4 text-sm font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700">
+        <span class="ms" style="font-size:18px;">play_arrow</span> 開始
+      </button>
+      <button id="btnCancelCapture" class="inline-flex items-center justify-center h-10 px-4 text-sm font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Capture View（共有中の画面 + AI パネル） ═══ -->
+<div id="captureView" class="fixed inset-0 bg-slate-900 z-50 hidden flex flex-col">
+  <!-- ヘッダー -->
+  <div class="bg-slate-800 border-b border-slate-700 px-4 py-3 flex items-center gap-3">
+    <div class="flex items-center gap-2">
+      <div class="w-2.5 h-2.5 rounded-full bg-red-500 capture-dot"></div>
+      <span class="text-sm font-semibold text-white">共有中</span>
+    </div>
+    <div class="text-xs text-slate-400">
+      <span id="captureTimer">00:00</span> / <span id="captureMaxDisplay">03:00</span>
+    </div>
+    <div class="text-xs text-slate-400">
+      フレーム: <span id="captureFrameCount">0</span> / 推定コスト: $<span id="captureCost">0.00</span>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <button id="btnStopCapture" class="inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium bg-red-500 text-white rounded-lg hover:bg-red-600">
+        <span class="ms" style="font-size:16px;">stop</span> 停止
+      </button>
+    </div>
+  </div>
+  <!-- メイン: 左プレビュー + 右AIチャット -->
+  <div class="flex-1 flex overflow-hidden">
+    <div class="flex-1 bg-black relative overflow-hidden">
+      <video id="captureVideo" class="w-full h-full object-contain" autoplay muted playsinline></video>
+      <div id="captureFlash" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-150"></div>
+      <div class="absolute bottom-4 left-4 bg-slate-900/80 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-lg">
+        <span id="captureStatus">準備中...</span>
+      </div>
+    </div>
+    <div class="w-96 bg-white border-l border-slate-200 flex flex-col">
+      <div class="border-b border-slate-200 px-4 py-3">
+        <div class="text-sm font-semibold text-slate-900">AI の観察</div>
+      </div>
+      <div id="captureAIList" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ JavaScript ═══ -->
+<script>
+(function(){
+  'use strict';
+
+  /* ── State ── */
+  const state = {
+    apiKey: localStorage.getItem('sede.capture.apikey') || '',
+    model: localStorage.getItem('sede.capture.model') || 'claude-sonnet-4-6',
+    interval: parseInt(localStorage.getItem('sede.capture.interval') || '10000'),
+    maxTime: parseInt(localStorage.getItem('sede.capture.maxtime') || '180000'),
+    capturing: false,
+    stream: null,
+    captureLoop: null,
+    countdownLoop: null,
+    startTime: 0,
+    frameCount: 0,
+    totalCost: 0,
+    instruction: ''
+  };
+
+  const MODEL_PRICING = {
+    'claude-haiku-4-5':  { in: 1, out: 5, label: 'Haiku 4.5' },
+    'claude-sonnet-4-6': { in: 3, out: 15, label: 'Sonnet 4.6' },
+    'claude-opus-4-7':   { in: 5, out: 25, label: 'Opus 4.7' }
+  };
+
+  /* ── 設定UI ── */
+  const elApiKey = document.getElementById('apiKey');
+  const elModelSelect = document.getElementById('modelSelect');
+  const elSettingsPanel = document.getElementById('settingsPanel');
+
+  elApiKey.value = state.apiKey;
+  elModelSelect.value = state.model;
+
+  document.getElementById('btnSettings').addEventListener('click', () => {
+    elSettingsPanel.classList.toggle('hidden');
+  });
+  document.getElementById('btnCloseSettings').addEventListener('click', () => {
+    elSettingsPanel.classList.add('hidden');
+  });
+  document.getElementById('btnSaveSettings').addEventListener('click', () => {
+    state.apiKey = elApiKey.value.trim();
+    state.model = elModelSelect.value;
+    localStorage.setItem('sede.capture.apikey', state.apiKey);
+    localStorage.setItem('sede.capture.model', state.model);
+    localStorage.setItem('sede.capture.interval', String(state.interval));
+    localStorage.setItem('sede.capture.maxtime', String(state.maxTime));
+    elSettingsPanel.classList.add('hidden');
+    addChatMsg('system', '設定を保存しました');
+  });
+
+  document.querySelectorAll('.interval-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.interval = parseInt(btn.dataset.interval);
+      document.querySelectorAll('.interval-btn').forEach(b => {
+        b.className = 'interval-btn flex-1 px-3 py-2 text-sm rounded-lg border border-slate-200 hover:border-primary-300';
+      });
+      btn.className = 'interval-btn flex-1 px-3 py-2 text-sm rounded-lg border-2 border-primary-500 bg-primary-50 text-primary-700 font-semibold';
+    });
+  });
+  document.querySelectorAll('.maxtime-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.maxTime = parseInt(btn.dataset.maxtime);
+      document.querySelectorAll('.maxtime-btn').forEach(b => {
+        b.className = 'maxtime-btn flex-1 px-3 py-2 text-sm rounded-lg border border-slate-200 hover:border-primary-300';
+      });
+      btn.className = 'maxtime-btn flex-1 px-3 py-2 text-sm rounded-lg border-2 border-primary-500 bg-primary-50 text-primary-700 font-semibold';
+    });
+  });
+
+  /* ── チャット ── */
+  const elChatList = document.getElementById('chatList');
+  const elWelcome = document.getElementById('welcomeView');
+
+  function addChatMsg(role, text, attach) {
+    if (elWelcome && !elWelcome.classList.contains('hidden')) {
+      elWelcome.classList.add('hidden');
+    }
+    const msg = document.createElement('div');
+    if (role === 'user') {
+      msg.className = 'flex justify-end';
+      msg.innerHTML = `<div class="max-w-[80%] px-4 py-2.5 bg-primary-500 text-white rounded-xl text-sm">${escapeHtml(text)}</div>`;
+    } else if (role === 'ai') {
+      msg.className = 'flex gap-3';
+      msg.innerHTML = `
+        <div class="w-8 h-8 rounded-full bg-primary-100 flex-shrink-0 flex items-center justify-center"><span class="ms text-primary-600" style="font-size:18px;">smart_toy</span></div>
+        <div class="flex-1 max-w-[80%] px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 leading-relaxed">${renderMarkdown(text)}</div>
+      `;
+    } else if (role === 'system') {
+      msg.className = 'flex justify-center';
+      msg.innerHTML = `<div class="text-xs text-slate-500 bg-slate-100 px-3 py-1 rounded-full">${escapeHtml(text)}</div>`;
+    }
+    if (attach) {
+      const imgWrap = document.createElement('div');
+      imgWrap.className = 'mt-2';
+      imgWrap.innerHTML = `<img src="${attach}" class="max-w-full rounded-lg border border-slate-200" alt="capture" />`;
+      msg.querySelector('div:last-child').appendChild(imgWrap);
+    }
+    elChatList.appendChild(msg);
+    window.scrollTo(0, document.body.scrollHeight);
+  }
+
+  function renderMarkdown(t) {
+    return escapeHtml(t)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">$1</code>')
+      .replace(/\n/g, '<br>');
+  }
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  /* ── サンプルプロンプト ── */
+  const elInput = document.getElementById('msgInput');
+  document.querySelectorAll('.example-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      elInput.value = btn.dataset.example;
+      elInput.focus();
+    });
+  });
+
+  elInput.addEventListener('input', () => {
+    elInput.style.height = 'auto';
+    elInput.style.height = Math.min(elInput.scrollHeight, 160) + 'px';
+  });
+
+  /* ── /capture 起動 ── */
+  function openCaptureModal() {
+    if (!state.apiKey) {
+      addChatMsg('system', 'API キーが未設定です。設定から入力してください。');
+      elSettingsPanel.classList.remove('hidden');
+      return;
+    }
+    state.instruction = elInput.value.trim();
+    document.getElementById('captureInstruction').value = state.instruction;
+    document.getElementById('captureInfoInterval').textContent = (state.interval/1000) + '秒ごと';
+    document.getElementById('captureInfoMaxTime').textContent = formatMs(state.maxTime);
+    document.getElementById('captureInfoModel').textContent = MODEL_PRICING[state.model].label;
+    const modal = document.getElementById('captureModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+
+  document.getElementById('btnCaptureCmd').addEventListener('click', openCaptureModal);
+
+  document.getElementById('btnSend').addEventListener('click', () => {
+    const txt = elInput.value.trim();
+    if (!txt) return;
+    if (txt.startsWith('/capture')) {
+      elInput.value = txt.replace(/^\/capture\s*/, '');
+      openCaptureModal();
+      return;
+    }
+    addChatMsg('user', txt);
+    elInput.value = '';
+    elInput.style.height = 'auto';
+    addChatMsg('system', '通常チャットはこのプロトタイプでは未対応。/capture のみ動作します。');
+  });
+
+  elInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      document.getElementById('btnSend').click();
+    }
+  });
+
+  document.getElementById('btnCancelCapture').addEventListener('click', () => {
+    const modal = document.getElementById('captureModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  });
+
+  document.getElementById('btnStartCapture').addEventListener('click', async () => {
+    state.instruction = document.getElementById('captureInstruction').value.trim();
+    const modal = document.getElementById('captureModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    await startCapture();
+  });
+
+  /* ── 画面共有スタート ── */
+  async function startCapture() {
+    try {
+      state.stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always' },
+        audio: false
+      });
+    } catch (e) {
+      addChatMsg('system', '画面共有がキャンセルされました: ' + e.message);
+      return;
+    }
+    const video = document.getElementById('captureVideo');
+    video.srcObject = state.stream;
+    const captureView = document.getElementById('captureView');
+    captureView.classList.remove('hidden');
+
+    state.capturing = true;
+    state.startTime = Date.now();
+    state.frameCount = 0;
+    state.totalCost = 0;
+
+    const aiList = document.getElementById('captureAIList');
+    aiList.innerHTML = `<div class="text-xs text-slate-500 bg-slate-50 rounded-lg p-3">
+      画面共有を開始しました。${state.interval/1000}秒ごとに AI がフレームを解析します。
+      ${state.instruction ? '<br><br><strong>指示:</strong> ' + escapeHtml(state.instruction) : ''}
+    </div>`;
+
+    document.getElementById('captureMaxDisplay').textContent = formatMs(state.maxTime);
+
+    state.stream.getVideoTracks()[0].addEventListener('ended', stopCapture);
+
+    /* カウントダウン */
+    updateTimer();
+    state.countdownLoop = setInterval(updateTimer, 1000);
+
+    /* 初回即キャプチャ（軽く待って video 準備完了させる） */
+    setTimeout(captureFrame, 1500);
+
+    /* 定期キャプチャ */
+    state.captureLoop = setInterval(() => {
+      if (!state.capturing) return;
+      const elapsed = Date.now() - state.startTime;
+      if (elapsed >= state.maxTime) { stopCapture(); return; }
+      captureFrame();
+    }, state.interval);
+  }
+
+  function updateTimer() {
+    const elapsed = Date.now() - state.startTime;
+    document.getElementById('captureTimer').textContent = formatMs(elapsed);
+    if (elapsed >= state.maxTime) stopCapture();
+  }
+
+  function formatMs(ms) {
+    const s = Math.floor(ms/1000);
+    const m = Math.floor(s/60);
+    const ss = s - m*60;
+    return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+  }
+
+  document.getElementById('btnStopCapture').addEventListener('click', stopCapture);
+
+  function stopCapture() {
+    state.capturing = false;
+    if (state.captureLoop) { clearInterval(state.captureLoop); state.captureLoop = null; }
+    if (state.countdownLoop) { clearInterval(state.countdownLoop); state.countdownLoop = null; }
+    if (state.stream) {
+      state.stream.getTracks().forEach(t => t.stop());
+      state.stream = null;
+    }
+    const captureView = document.getElementById('captureView');
+    captureView.classList.add('hidden');
+    addChatMsg('system', `キャプチャ終了: ${state.frameCount}フレーム / 推定コスト $${state.totalCost.toFixed(3)}`);
+  }
+
+  /* ── フレームキャプチャ + Claude Vision 送信 ── */
+  async function captureFrame() {
+    if (!state.capturing) return;
+    const video = document.getElementById('captureVideo');
+    if (!video.videoWidth || !video.videoHeight) return;
+
+    /* Canvas でフレーム取得、長辺を 1280px 程度に縮小（コスト節約） */
+    const canvas = document.createElement('canvas');
+    const scale = Math.min(1280 / video.videoWidth, 1);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+    const base64 = dataUrl.split(',')[1];
+
+    /* 白フラッシュ演出 */
+    const flash = document.getElementById('captureFlash');
+    flash.style.opacity = '0.4';
+    setTimeout(() => { flash.style.opacity = '0'; }, 150);
+
+    state.frameCount++;
+    document.getElementById('captureFrameCount').textContent = state.frameCount;
+    document.getElementById('captureStatus').textContent = `フレーム ${state.frameCount} を解析中...`;
+
+    appendAIBubble('loading', `フレーム ${state.frameCount} を Claude に送信中...`);
+
+    try {
+      const result = await callClaudeVision(base64, state.instruction);
+      replaceLastAIBubble(result.text, canvas.toDataURL('image/jpeg', 0.4));
+      state.totalCost += result.cost;
+      document.getElementById('captureCost').textContent = state.totalCost.toFixed(3);
+      document.getElementById('captureStatus').textContent = '待機中';
+    } catch (e) {
+      replaceLastAIBubble('エラー: ' + (e.message || e), null);
+      document.getElementById('captureStatus').textContent = 'エラー発生';
+    }
+  }
+
+  function appendAIBubble(type, text) {
+    const aiList = document.getElementById('captureAIList');
+    const bubble = document.createElement('div');
+    bubble.className = 'ai-bubble bg-slate-50 rounded-lg p-3 text-sm text-slate-800';
+    if (type === 'loading') {
+      bubble.innerHTML = `<div class="flex items-center gap-2 text-slate-500"><span class="ms spin-icon" style="font-size:16px;">autorenew</span><span>${escapeHtml(text)}</span></div>`;
+    } else {
+      bubble.innerHTML = renderMarkdown(text);
+    }
+    aiList.appendChild(bubble);
+    aiList.scrollTop = aiList.scrollHeight;
+    return bubble;
+  }
+
+  function replaceLastAIBubble(text, thumbSrc) {
+    const aiList = document.getElementById('captureAIList');
+    const last = aiList.lastElementChild;
+    if (!last) return;
+    last.className = 'ai-bubble bg-white border border-slate-200 rounded-lg p-3 text-sm text-slate-800';
+    let html = '';
+    if (thumbSrc) {
+      html += `<img src="${thumbSrc}" class="mb-2 w-full rounded border border-slate-200" alt="frame" />`;
+    }
+    html += '<div class="text-xs text-slate-400 mb-1">フレーム ' + state.frameCount + '</div>';
+    html += '<div>' + renderMarkdown(text) + '</div>';
+    last.innerHTML = html;
+    aiList.scrollTop = aiList.scrollHeight;
+  }
+
+  async function callClaudeVision(base64Image, userInstruction) {
+    const systemPrompt = `あなたは Sede (AI コードジェネレーター) の画面観察アシスタントです。共有された画面を見て、簡潔に日本語で以下を出力:
+
+1. 画面に何が映っているか（1〜2行）
+2. Sede のコード生成・修正に活かせる具体的な提案（2〜3行）
+
+長い説明は不要。箇条書きで簡潔に。`;
+
+    const userText = userInstruction
+      ? `【ユーザー指示】${userInstruction}\n\n画面を見て分析してください。`
+      : `この画面を分析してください。`;
+
+    const body = {
+      model: state.model,
+      max_tokens: 400,
+      system: systemPrompt,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
+          { type: 'text', text: userText }
+        ]
+      }]
+    };
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': state.apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || 'API error');
+
+    const text = data.content.map(c => c.type === 'text' ? c.text : '').join('').trim();
+    const usage = data.usage || {};
+    const inputTokens = usage.input_tokens || 0;
+    const outputTokens = usage.output_tokens || 0;
+    const pricing = MODEL_PRICING[state.model];
+    const cost = (inputTokens * pricing.in / 1e6) + (outputTokens * pricing.out / 1e6);
+    return { text, cost, inputTokens, outputTokens };
+  }
+
+  /* ── 起動時に API キー未設定なら設定パネル自動表示 ── */
+  if (!state.apiKey) {
+    elSettingsPanel.classList.remove('hidden');
+  }
+
+})();
+</script>
+</body>
+</html>

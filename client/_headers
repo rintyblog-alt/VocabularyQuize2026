@@ -1,0 +1,33 @@
+# 名前の中に 中身の指紋が入っているものは 1 年 溜めてよい。
+# 中身が変われば 名前が変わるので、古いものが 配られ続けることは起きない。
+# 逆に 名前が同じ間は 取りに行く意味が無い（2 回目からは 1 バイトも流れない）。
+/js/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/css/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/vendor/lib/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/vendor/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# AR App が 借りる 道具（p5 / matter / chart / three / d3 / tone）。
+# 名前に 版が 入っているので 1 年 溜めてよい。版を上げるときは 名前を変える。
+/vendor/arapp/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/index.html
+  Cache-Control: no-cache, must-revalidate
+
+# 音声会話の 生音を 扱う部品。指紋が 名前に入っていないので
+# 1 年 溜めさせない（直しても 届かなくなる）。
+/vq-live-pcm.worklet.js
+  Cache-Control: no-cache, must-revalidate
+
+# 名前に 指紋が 入っている 音（作業中に流すもの）。1 年 溜めてよい。
+# ★ 指紋の無い /vq-lumi-think.m4a は 前の版のための 控えなので
+#   ここには 入れない（差し替えたのに 届かない、を 避ける）。
+/vq-lumi-think.*.m4a
+  Cache-Control: public, max-age=31536000, immutable

@@ -1,0 +1,407 @@
+@charset "utf-8";
+
+/* ══════════════════════════════════════════════════════════════════
+   VocabuQuiz — Login UI Kit  ★ログイン画面のみ★
+   VocabuQuiz UI Studio v0.2 "Bloom" の実コンポーネント & デザイントークンを
+   本体へ移植したもの（ui-studio/src/ui/styles/{tokens,base,components}.css,
+   src/ui/components/{Button,Field,Feedback,Choice}.tsx が出所）。
+   - トークンは .vqk / #authGate[data-auth-panel="login"] にスコープ（:root非汚染）。
+   - コンポーネントCSSは .vq-* クラス（本体で未使用＝衝突ゼロ）を .vqk で更にスコープ。
+   - 認証JS(_authSubmitLogin 等)・API・トークン処理・DOM ID は一切変更していない。
+   - Sign Up / Password Reset 等でも再利用できる共通部品として実装。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Design tokens（UI Studio tokens.css を移植・ログインにスコープ） ── */
+#authLoginPanel.vqk,
+html body #authGate#authGate.vqa[data-auth-panel="login"]{
+  --vq-lav-25:#FCFBFE; --vq-lav-50:#F7F6FB; --vq-lav-100:#F4F2FB; --vq-lav-150:#EEECF9;
+  --vq-lav-200:#EAE8F7; --vq-lav-300:#D5D0EC; --vq-lav-400:#A79FD1; --vq-lav-500:#8A81C2;
+  --vq-lav-600:#756DB3; --vq-lav-650:#6961A8; --vq-lav-700:#5F579E; --vq-lav-800:#4D4683;
+  --vq-lav-900:#3B3567; --vq-lav-950:#262244;
+  --vq-gray-0:#FFFFFF; --vq-gray-25:#FCFBFE; --vq-gray-50:#F9F8FC; --vq-gray-100:#F4F3F9;
+  --vq-gray-150:#EFEDF5; --vq-gray-200:#E7E4EF; --vq-gray-300:#D7D2E4; --vq-gray-400:#BBB7C5;
+  --vq-gray-500:#9994A8; --vq-gray-600:#7A7589; --vq-gray-650:#686477; --vq-gray-700:#5A5568;
+  --vq-gray-800:#454151; --vq-gray-850:#353143; --vq-gray-900:#2B2836; --vq-gray-950:#211F29;
+  --vq-bg:var(--vq-gray-25); --vq-bg-subtle:var(--vq-lav-50); --vq-bg-elevated:var(--vq-gray-0);
+  --vq-surface:var(--vq-gray-0); --vq-surface-hover:#F7F5FC; --vq-surface-active:#F1EEF8;
+  --vq-surface-selected:var(--vq-lav-150); --vq-surface-disabled:var(--vq-gray-100);
+  --vq-surface-sunken:var(--vq-lav-50); --vq-surface-overlay:rgba(38,34,68,.40);
+  --vq-border:var(--vq-gray-200); --vq-border-subtle:var(--vq-gray-150);
+  --vq-border-strong:var(--vq-gray-300); --vq-border-focus:var(--vq-lav-600);
+  --vq-text:var(--vq-gray-800); --vq-text-secondary:var(--vq-gray-650);
+  --vq-text-tertiary:var(--vq-gray-500); --vq-text-disabled:var(--vq-gray-400);
+  --vq-text-inverse:#ffffff; --vq-text-link:var(--vq-lav-700);
+  --vq-accent:var(--vq-lav-600); --vq-accent-hover:var(--vq-lav-650); --vq-accent-active:var(--vq-lav-700);
+  --vq-accent-subtle:var(--vq-lav-200); --vq-accent-subtle-hover:#E0DCF2;
+  --vq-accent-text:var(--vq-lav-700); --vq-accent-contrast:#ffffff; --vq-solid-ink:#ffffff;
+  --vq-success:#70AD86; --vq-success-strong:#3F7D58; --vq-success-bg:#E9F5ED; --vq-success-text:#3E7A56;
+  --vq-warning:#E5A85F; --vq-warning-bg:#FFF3E5; --vq-warning-text:#925F1D;
+  --vq-danger:#D67777; --vq-danger-strong:#B14F4F; --vq-danger-strong-hover:#9E4444;
+  --vq-danger-hover:#C96666; --vq-danger-bg:#FCEAEA; --vq-danger-text:#A94A4A;
+  --vq-info:#708FC5; --vq-info-bg:#EAF0F9; --vq-info-text:#4A69A4;
+  --vq-focus-ring:0 0 0 3px color-mix(in srgb, var(--vq-lav-600) 26%, transparent);
+  --vq-il-blob:#EDEAF9; --vq-il-a:#A79FD1; --vq-il-b:#756DB3; --vq-il-c:#F2C08A;
+  --vq-il-d:#F1B7C8; --vq-il-e:#A9C6EA; --vq-il-paper:#FFFFFF; --vq-il-ink:#454151; --vq-il-line:#D7D2E4;
+  --vq-font-sans:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Segoe UI",Roboto,"Yu Gothic UI","Meiryo",sans-serif;
+  --vq-font-display:ui-rounded,"Hiragino Maru Gothic ProN","Arial Rounded MT Bold",-apple-system,"Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",sans-serif;
+  --vq-type-display:800 clamp(29px,4.4vw,38px)/1.32 var(--vq-font-display);
+  --vq-type-heading-xl:750 25px/1.4 var(--vq-font-display);
+  --vq-type-heading-lg:700 20px/1.45 var(--vq-font-display);
+  --vq-type-heading-md:700 17px/1.55 var(--vq-font-sans);
+  --vq-type-heading-sm:650 14.5px/1.5 var(--vq-font-sans);
+  --vq-type-body-lg:400 16px/1.85 var(--vq-font-sans);
+  --vq-type-body-md:400 14.5px/1.8 var(--vq-font-sans);
+  --vq-type-body-sm:400 13px/1.7 var(--vq-font-sans);
+  --vq-type-label:600 13px/1.4 var(--vq-font-sans);
+  --vq-type-caption:500 11.5px/1.5 var(--vq-font-sans);
+  --vq-tracking-tight:-0.002em; --vq-tracking-body:0.01em;
+  --vq-sp-0:0px; --vq-sp-1:2px; --vq-sp-2:4px; --vq-sp-3:6px; --vq-sp-4:8px; --vq-sp-5:12px;
+  --vq-sp-6:16px; --vq-sp-7:20px; --vq-sp-8:24px; --vq-sp-9:32px; --vq-sp-10:40px; --vq-sp-11:48px;
+  --vq-r-none:0px; --vq-r-xs:6px; --vq-r-sm:10px; --vq-r-md:14px; --vq-r-lg:18px; --vq-r-xl:22px; --vq-r-2xl:28px; --vq-r-full:999px;
+  --vq-shadow-subtle:0 1px 2px rgba(84,72,140,.05);
+  --vq-shadow-raised:0 2px 4px rgba(84,72,140,.04),0 6px 16px rgba(84,72,140,.07);
+  --vq-shadow-floating:0 4px 12px rgba(84,72,140,.08),0 16px 40px rgba(84,72,140,.12);
+  --vq-shadow-modal:0 10px 24px rgba(60,50,110,.10),0 32px 80px rgba(60,50,110,.18);
+  --vq-shadow-accent:0 6px 16px color-mix(in srgb, var(--vq-accent) 24%, transparent);
+  --vq-dur-fast:120ms; --vq-dur-normal:200ms; --vq-dur-slow:300ms; --vq-dur-deliberate:420ms;
+  --vq-ease-standard:cubic-bezier(.25,.65,.2,1); --vq-ease-enter:cubic-bezier(.16,1,.3,1); --vq-ease-spring:cubic-bezier(.32,1.25,.4,1);
+  --vq-control-h-sm:32px; --vq-control-h-md:42px; --vq-control-h-lg:50px; --vq-field-px:14px;
+  color-scheme:light;
+}
+/* Dark theme values（UI Studio の柔らかいダークラベンダー）— OSがダーク時のみ */
+@media (prefers-color-scheme: dark) and (min-width:99999px){
+  #authLoginPanel.vqk,
+  html body #authGate#authGate.vqa[data-auth-panel="login"]{
+    --vq-bg:#17161D; --vq-bg-subtle:#1C1B24; --vq-bg-elevated:#211F29;
+    --vq-surface:#211F29; --vq-surface-hover:#272430; --vq-surface-active:#2D2A39;
+    --vq-surface-selected:#302B44; --vq-surface-disabled:#1E1D25; --vq-surface-sunken:#1B1A22;
+    --vq-surface-overlay:rgba(9,8,14,.62);
+    --vq-border:#393543; --vq-border-subtle:#2C2937; --vq-border-strong:#4A4559; --vq-border-focus:#A59BE0;
+    --vq-text:#F5F2FA; --vq-text-secondary:#CBC5D5; --vq-text-tertiary:#928B9E; --vq-text-disabled:#655F73;
+    --vq-text-inverse:#211F29; --vq-text-link:#B5ABEA;
+    --vq-accent:#A59BE0; --vq-accent-hover:#B5ACE9; --vq-accent-active:#C2BBEF;
+    --vq-accent-subtle:#2E2A45; --vq-accent-subtle-hover:#39335A; --vq-accent-text:#BCB2F0;
+    --vq-accent-contrast:#232040; --vq-solid-ink:#17161D;
+    --vq-success:#7FC69A; --vq-success-strong:#7FC69A; --vq-success-bg:#20342A; --vq-success-text:#A8DDBE;
+    --vq-warning:#E4B778; --vq-warning-bg:#372B17; --vq-warning-text:#ECCA97;
+    --vq-danger:#E08D8D; --vq-danger-strong:#DE8484; --vq-danger-strong-hover:#E9A0A0;
+    --vq-danger-hover:#E9A0A0; --vq-danger-bg:#3B2225; --vq-danger-text:#F0A9A9;
+    --vq-info:#8FA9DC; --vq-info-bg:#202A3D; --vq-info-text:#AFC4EA;
+    --vq-focus-ring:0 0 0 3px color-mix(in srgb, #A59BE0 34%, transparent);
+    --vq-il-blob:#2B2740; --vq-il-a:#6F66A6; --vq-il-b:#A59BE0; --vq-il-c:#C99555;
+    --vq-il-d:#C97F97; --vq-il-e:#7292C1; --vq-il-paper:#2A2735; --vq-il-ink:#E8E4F1; --vq-il-line:#4A4559;
+    --vq-shadow-subtle:0 1px 2px rgba(0,0,0,.32);
+    --vq-shadow-raised:0 2px 4px rgba(0,0,0,.32),0 6px 16px rgba(0,0,0,.36);
+    --vq-shadow-floating:0 4px 12px rgba(0,0,0,.42),0 16px 40px rgba(0,0,0,.46);
+    --vq-shadow-modal:0 10px 24px rgba(0,0,0,.46),0 32px 80px rgba(0,0,0,.6);
+    --vq-shadow-accent:0 6px 16px color-mix(in srgb, #A59BE0 26%, transparent);
+    color-scheme:dark;
+  }
+}
+
+/* ── Keyframes（衝突回避のため vqlk 接頭辞） ─────────────────────── */
+@keyframes vqlkSpin{ to{ transform:rotate(360deg);} }
+@keyframes vqlkPop{ 0%{transform:scale(.8)} 55%{transform:scale(1.12)} 100%{transform:scale(1)} }
+@keyframes vqlkFadeUp{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:none;} }
+@keyframes vqlkShake{ 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-3px)} 40%,60%{transform:translateX(3px)} }
+
+/* ── Layout utils ─────────────────────────────────────────────── */
+.vqk .vq-grow{ flex:1 1 auto; min-width:0; }
+.vqk [hidden]{ display:none !important; }
+
+/* ── Button（UI Studio Button.tsx / .vq-btn） ─────────────────── */
+.vqk .vq-btn{
+  --_h:var(--vq-control-h-md);
+  position:relative; display:inline-flex; align-items:center; justify-content:center;
+  gap:var(--vq-sp-3); height:var(--_h); padding:0 calc(var(--_h) * .42);
+  border:1px solid transparent; border-radius:var(--vq-r-md);
+  font:var(--vq-type-label); font-size:14px; letter-spacing:.01em;
+  cursor:pointer; user-select:none; white-space:nowrap;
+  transition:background var(--vq-dur-fast) var(--vq-ease-standard),
+    border-color var(--vq-dur-fast) var(--vq-ease-standard),
+    color var(--vq-dur-fast) var(--vq-ease-standard),
+    box-shadow var(--vq-dur-fast) var(--vq-ease-standard),
+    transform var(--vq-dur-fast) var(--vq-ease-standard);
+}
+.vqk .vq-btn:active:not(:disabled){ transform:scale(.975); }
+.vqk .vq-btn:disabled{ cursor:not-allowed; }
+.vqk .vq-btn--sm{ --_h:var(--vq-control-h-sm); font-size:13px; border-radius:var(--vq-r-sm); }
+.vqk .vq-btn--lg{ --_h:var(--vq-control-h-lg); font-size:15px; }
+.vqk .vq-btn--full{ width:100%; }
+.vqk .vq-btn--primary{ background:var(--vq-accent); color:var(--vq-accent-contrast); }
+.vqk .vq-btn--primary:hover:not(:disabled){ background:var(--vq-accent-hover); box-shadow:var(--vq-shadow-accent); }
+.vqk .vq-btn--primary:active:not(:disabled){ background:var(--vq-accent-active); }
+.vqk .vq-btn--primary:disabled{ background:var(--vq-surface-disabled); color:var(--vq-text-disabled); }
+.vqk .vq-btn--secondary{
+  background:var(--vq-surface); color:var(--vq-accent-text);
+  border-color:color-mix(in srgb, var(--vq-accent) 42%, transparent);
+}
+.vqk .vq-btn--secondary:hover:not(:disabled){ background:var(--vq-accent-subtle); border-color:color-mix(in srgb, var(--vq-accent) 55%, transparent); }
+.vqk .vq-btn--secondary:disabled{ background:var(--vq-surface-disabled); color:var(--vq-text-disabled); border-color:transparent; }
+.vqk .vq-btn.is-loading{ pointer-events:none; }
+.vqk .vq-btn.is-loading > .vq-btn__content{ opacity:0; }
+.vqk .vq-btn__spinner{ position:absolute; inset:0; display:grid; place-items:center; opacity:0; }
+.vqk .vq-btn.is-loading > .vq-btn__spinner{ opacity:1; }
+.vqk .vq-btn__content{ display:inline-flex; align-items:center; gap:var(--vq-sp-3); }
+
+/* ── Icon button（.vq-iconbtn） ──────────────────────────────── */
+.vqk .vq-iconbtn{
+  --_h:var(--vq-control-h-md);
+  display:inline-flex; align-items:center; justify-content:center;
+  width:var(--_h); height:var(--_h); flex:0 0 auto;
+  border:1px solid transparent; border-radius:var(--vq-r-md);
+  background:transparent; color:var(--vq-text-secondary); cursor:pointer;
+  transition:background var(--vq-dur-fast) var(--vq-ease-standard), color var(--vq-dur-fast) var(--vq-ease-standard);
+}
+.vqk .vq-iconbtn:hover:not(:disabled){ background:var(--vq-surface-active); color:var(--vq-text); }
+.vqk .vq-iconbtn:active:not(:disabled){ transform:scale(.94); }
+.vqk .vq-iconbtn:disabled{ color:var(--vq-text-disabled); cursor:not-allowed; }
+.vqk .vq-iconbtn--sm{ --_h:var(--vq-control-h-sm); border-radius:var(--vq-r-sm); }
+
+/* ── Field（Field.tsx / .vq-field） ──────────────────────────── */
+.vqk .vq-field{ display:flex; flex-direction:column; gap:var(--vq-sp-3); min-width:0; }
+.vqk .vq-field__label{ font:var(--vq-type-label); color:var(--vq-text); display:flex; gap:var(--vq-sp-2); align-items:baseline; }
+.vqk .vq-field__hint{ font:var(--vq-type-caption); color:var(--vq-text-tertiary); display:flex; align-items:center; gap:var(--vq-sp-2); }
+.vqk .vq-field__error{ font:var(--vq-type-caption); font-weight:600; color:var(--vq-danger-text); display:flex; align-items:center; gap:var(--vq-sp-2); }
+
+/* ── Input / Select（.vq-input） ─────────────────────────────── */
+.vqk .vq-input{
+  position:relative; display:flex; align-items:center; height:var(--vq-control-h-md);
+  background:var(--vq-surface); color:var(--vq-text);
+  border:1px solid var(--vq-border); border-radius:var(--vq-r-md);
+  transition:border-color var(--vq-dur-fast) var(--vq-ease-standard), box-shadow var(--vq-dur-fast) var(--vq-ease-standard), background var(--vq-dur-fast) var(--vq-ease-standard);
+}
+.vqk .vq-input:hover:not(.is-disabled){ border-color:var(--vq-border-strong); }
+.vqk .vq-input:focus-within{ border-color:var(--vq-border-focus); box-shadow:var(--vq-focus-ring); }
+.vqk .vq-input.is-invalid{ border-color:var(--vq-danger); }
+.vqk .vq-input.is-invalid:focus-within{ box-shadow:0 0 0 3px color-mix(in srgb, var(--vq-danger) 24%, transparent); }
+.vqk .vq-input.is-disabled{ background:var(--vq-surface-disabled); color:var(--vq-text-disabled); }
+.vqk .vq-input__icon{ display:grid; place-items:center; padding-left:var(--vq-field-px); color:var(--vq-text-tertiary); flex:0 0 auto; }
+.vqk .vq-input__trail{ display:flex; align-items:center; gap:var(--vq-sp-1); padding-right:var(--vq-sp-3); flex:0 0 auto; color:var(--vq-text-tertiary); }
+.vqk .vq-select-chevron{ pointer-events:none; margin-right:var(--vq-sp-3); color:var(--vq-text-tertiary); flex:0 0 auto; }
+
+/* ── Checkbox（Choice.tsx / .vq-check） ──────────────────────── */
+.vqk .vq-check{ display:inline-flex; align-items:center; gap:var(--vq-sp-4); cursor:pointer; position:relative; }
+.vqk .vq-check > input{ position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
+.vqk .vq-check__box{
+  width:18px; height:18px; flex:0 0 auto; display:grid; place-items:center;
+  border:1.5px solid var(--vq-border-strong); border-radius:var(--vq-r-xs);
+  background:var(--vq-surface); color:transparent;
+  transition:background var(--vq-dur-fast) var(--vq-ease-standard), border-color var(--vq-dur-fast), color var(--vq-dur-fast);
+}
+.vqk .vq-check:hover input:not(:disabled) ~ .vq-check__box{ border-color:var(--vq-accent); }
+.vqk .vq-check input:checked ~ .vq-check__box{ background:var(--vq-accent); border-color:var(--vq-accent); color:var(--vq-accent-contrast); }
+.vqk .vq-check input:focus-visible ~ .vq-check__box{ box-shadow:var(--vq-focus-ring); }
+.vqk .vq-check input:disabled ~ .vq-check__box{ background:var(--vq-surface-disabled); border-color:var(--vq-border); }
+.vqk .vq-check input:checked ~ .vq-check__box svg{ animation:vqlkPop var(--vq-dur-slow) var(--vq-ease-spring); }
+.vqk .vq-check__label{ font-size:14px; line-height:1.6; user-select:none; color:var(--vq-text-secondary); }
+
+/* ── Alert（Feedback.tsx / .vq-alert） ───────────────────────── */
+.vqk .vq-alert{
+  display:flex; gap:var(--vq-sp-4); align-items:flex-start;
+  padding:var(--vq-sp-5) var(--vq-sp-6);
+  border:1px solid var(--vq-border); border-radius:var(--vq-r-md);
+  background:var(--vq-surface); font:var(--vq-type-body-sm); color:var(--vq-text);
+}
+.vqk .vq-alert__icon{ flex:0 0 auto; margin-top:2px; }
+.vqk .vq-alert__title{ font-weight:650; margin-bottom:2px; }
+.vqk .vq-alert .vqk-alert-body{ color:var(--vq-text-secondary); }
+.vqk .vq-alert--info{ background:var(--vq-info-bg); border-color:color-mix(in srgb, var(--vq-info) 26%, transparent); }
+.vqk .vq-alert--info .vq-alert__icon{ color:var(--vq-info-text); }
+.vqk .vq-alert--warning{ background:var(--vq-warning-bg); border-color:color-mix(in srgb, var(--vq-warning) 34%, transparent); }
+.vqk .vq-alert--warning .vq-alert__icon{ color:var(--vq-warning-text); }
+.vqk .vq-alert--danger{ background:var(--vq-danger-bg); border-color:color-mix(in srgb, var(--vq-danger) 28%, transparent); }
+.vqk .vq-alert--danger .vq-alert__icon{ color:var(--vq-danger-text); }
+
+/* ── Spinner（Feedback.tsx / .vq-spinner） ───────────────────── */
+.vqk .vq-spinner{ animation:vqlkSpin .8s linear infinite; color:currentColor; }
+
+/* ══════════════════════════════════════════════════════════════
+   Auth Shell — ログインだけを Bloom の落ち着いたカードに。
+   ゲート＝背景 / auth-gate-card＝カード をログイン時のみテーマ。
+   （既存 vqa の !important に勝つため #authGate を2重掛け＋data属性で加点）
+   ══════════════════════════════════════════════════════════════ */
+html body #authGate#authGate.vqa[data-auth-panel="login"]{
+  background:
+    radial-gradient(72% 60% at 12% 4%, rgba(117,109,179,.16), transparent 60%),
+    radial-gradient(80% 70% at 92% 0%, rgba(167,159,209,.18), transparent 56%),
+    linear-gradient(180deg, #F7F6FC 0%, #F1EFFA 100%) !important;
+}
+@media (prefers-color-scheme: dark) and (min-width:99999px){
+  html body #authGate#authGate.vqa[data-auth-panel="login"]{
+    background:
+      radial-gradient(72% 60% at 12% 4%, rgba(120,110,190,.20), transparent 60%),
+      linear-gradient(180deg, #17161D 0%, #131218 100%) !important;
+  }
+}
+html body #authGate#authGate.vqa[data-auth-panel="login"] .auth-gate-card{
+  width:min(430px,94vw) !important; max-width:min(430px,94vw) !important;
+  background:var(--vq-surface) !important;
+  border:1px solid var(--vq-border-subtle) !important;
+  border-radius:var(--vq-r-xl) !important;
+  box-shadow:var(--vq-shadow-modal) !important;
+}
+html body #authGate#authGate.vqa[data-auth-panel="login"] .auth-gate-form-side{
+  padding:clamp(24px,5vw,34px) clamp(20px,5vw,32px) clamp(22px,4vw,30px) !important;
+}
+/* パネル本体をフレックス列に（コンポーネント間の縦リズム） */
+html body #authGate#authGate.vqa #authLoginPanel.vqk.is-active{
+  display:flex !important; flex-direction:column; gap:var(--vq-sp-5);
+  padding:0 !important; border:0 !important; background:none !important;
+  text-align:left; letter-spacing:var(--vq-tracking-body);
+  font-family:var(--vq-font-sans); color:var(--vq-text);
+  animation:vqlkFadeUp var(--vq-dur-slow) var(--vq-ease-enter);
+}
+
+.vqk .vqk-auth__brand{ display:flex; align-items:center; gap:var(--vq-sp-4); }
+.vqk .vqk-logo{
+  width:38px; height:38px; flex:0 0 auto; border-radius:12px; display:grid; place-items:center;
+  background:var(--vq-accent); color:#fff; font:800 14px/1 var(--vq-font-display); letter-spacing:.04em;
+  box-shadow:0 6px 14px color-mix(in srgb, var(--vq-accent) 30%, transparent);
+}
+.vqk .vqk-logo-name{ font:var(--vq-type-heading-sm); color:var(--vq-text); }
+.vqk .vqk-trust{ display:inline-flex; align-items:center; gap:5px; font:var(--vq-type-caption); color:var(--vq-text-tertiary); }
+.vqk .vqk-trust svg{ opacity:.85; }
+
+.vqk .vqk-auth__illus{ display:grid; place-items:center; margin:var(--vq-sp-1) 0 var(--vq-sp-1); }
+.vqk .vqk-auth__illus svg{ width:min(184px,60%); height:auto; }
+
+.vqk .vqk-auth__head{ display:flex; flex-direction:column; gap:var(--vq-sp-2); }
+.vqk .vqk-auth__title{ font:var(--vq-type-heading-xl); letter-spacing:var(--vq-tracking-tight); color:var(--vq-text); margin:0; }
+.vqk .vqk-auth__sub{ font:var(--vq-type-body-md); color:var(--vq-text-secondary); margin:0; }
+
+/* ライブ状態表示（#authLoginStatus）— _authSetStatus が .error/.ok を付与 */
+.vqk .vqk-status{ display:none; }
+.vqk .vqk-status.error, .vqk .vqk-status.ok{
+  display:flex; align-items:flex-start; gap:var(--vq-sp-4);
+  padding:var(--vq-sp-5) var(--vq-sp-6); border:1px solid transparent;
+  border-radius:var(--vq-r-md); font:var(--vq-type-body-sm); font-weight:550;
+  animation:vqlkFadeUp var(--vq-dur-normal) var(--vq-ease-enter);
+}
+.vqk .vqk-status.error{ background:var(--vq-danger-bg); border-color:color-mix(in srgb, var(--vq-danger) 28%, transparent); color:var(--vq-danger-text); }
+.vqk .vqk-status.ok{ background:var(--vq-success-bg); border-color:color-mix(in srgb, var(--vq-success) 30%, transparent); color:var(--vq-success-text); }
+.vqk .vqk-status.error::before, .vqk .vqk-status.ok::before{
+  content:""; width:17px; height:17px; flex:0 0 auto; margin-top:1px; background:currentColor;
+  -webkit-mask:var(--_vqic) center/contain no-repeat; mask:var(--_vqic) center/contain no-repeat;
+}
+.vqk .vqk-status.error{ --_vqic:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='m15 9-6 6'/><path d='m9 9 6 6'/></svg>"); }
+.vqk .vqk-status.ok{ --_vqic:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21.801 10A10 10 0 1 1 17 3.335'/><path d='m9 11 3 3L22 4'/></svg>"); }
+
+.vqk .vqk-form{ display:flex; flex-direction:column; gap:var(--vq-sp-5); margin:0; }
+.vqk .vqk-caps{ color:var(--vq-warning-text); }
+.vqk .vqk-caps svg{ flex:0 0 auto; }
+.vqk .vqk-options{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--vq-sp-4); }
+.vqk .vqk-textlink{
+  background:none; border:0; padding:2px 2px; margin:0; cursor:pointer;
+  font:var(--vq-type-label); font-size:13px; color:var(--vq-text-link); border-radius:var(--vq-r-xs);
+  transition:color var(--vq-dur-fast);
+}
+.vqk .vqk-textlink:hover{ color:var(--vq-accent-active); text-decoration:underline; text-underline-offset:3px; }
+.vqk .vqk-cta-arrow{ transition:transform var(--vq-dur-fast) var(--vq-ease-standard); }
+.vqk .vq-btn--primary:hover:not(:disabled) .vqk-cta-arrow{ transform:translateX(2px); }
+
+.vqk .vqk-divider{ display:flex; align-items:center; gap:var(--vq-sp-6); color:var(--vq-text-tertiary); font:var(--vq-type-caption); margin:var(--vq-sp-1) 0; }
+.vqk .vqk-divider::before, .vqk .vqk-divider::after{ content:""; flex:1; border-top:1px solid var(--vq-border); }
+.vqk .vqk-minor{ display:flex; align-items:center; justify-content:center; gap:var(--vq-sp-4); flex-wrap:wrap; }
+.vqk .vqk-dot-sep{ color:var(--vq-border-strong); }
+.vqk .vqk-legal{ font:var(--vq-type-caption); line-height:1.7; color:var(--vq-text-tertiary); text-align:center; margin:0; }
+.vqk .vqk-legal-link{ background:none; border:0; padding:0; margin:0; cursor:pointer; font:inherit; color:var(--vq-text-link); }
+.vqk .vqk-legal-link:hover{ text-decoration:underline; text-underline-offset:2px; }
+.vqk .vqk-hidden{ display:none !important; }
+
+/* モバイル戻る（ゲスト/ウェルカムへ）— スマホのみ表示 */
+.vqk .vqk-back{ position:absolute; top:2px; left:-6px; display:none; }
+@media (max-width:640px){
+  .vqk .vqk-back{ display:inline-flex; }
+  html body #authGate#authGate.vqa #authLoginPanel.vqk{ padding-top:var(--vq-sp-8) !important; }
+  html body #authGate#authGate.vqa[data-auth-panel="login"] .auth-gate-card{ width:100% !important; max-width:100% !important; }
+}
+
+/* フォーカスリング（Bloom lavender で統一・vqa の indigo を上書き） */
+html body #authGate#authGate.vqa[data-auth-panel="login"] :is(a,button,input,select,[tabindex]):focus-visible{
+  outline:2px solid var(--vq-lav-600) !important; outline-offset:2px !important; border-radius:10px !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Legacy neutralizers — 既存 #authGate の !important ベース規則が
+   移植コンポーネントに滲まないよう、ログインの入力/ボタンのみ無効化。
+   （login固有IDのみ対象＝register/reset/changepw へは無影響）
+   ══════════════════════════════════════════════════════════════ */
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel .vq-input > #authLoginNickname,
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel .vq-input > #authLoginPassword,
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel .vq-input > #authLoginGrade{
+  flex:1 !important; min-width:0 !important; width:auto !important; height:100% !important; min-height:0 !important;
+  margin:0 !important; padding:0 var(--vq-field-px) !important;
+  border:0 !important; border-radius:inherit !important;
+  background:none !important; box-shadow:none !important; outline:none !important;
+  font:inherit !important; font-size:14.5px !important; color:inherit !important;
+  letter-spacing:var(--vq-tracking-body) !important; -webkit-text-fill-color:currentColor !important;
+}
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel .vq-input > .vq-input__icon + #authLoginNickname,
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel .vq-input > .vq-input__icon + #authLoginPassword{
+  padding-left:var(--vq-sp-4) !important;
+}
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel .vq-input > #authLoginNickname::placeholder,
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel .vq-input > #authLoginPassword::placeholder{
+  color:var(--vq-text-tertiary) !important; opacity:1 !important;
+}
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel .vq-input > #authLoginGrade{
+  appearance:none !important; -webkit-appearance:none !important; cursor:pointer !important; padding-right:var(--vq-sp-2) !important;
+}
+/* 送信ボタン（#authLoginSubmitBtn）の既存レイアウト !important を無効化し .vq-btn へ委譲 */
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel #authLoginSubmitBtn.vq-btn{
+  margin:0 !important; display:inline-flex !important; align-items:center !important;
+  justify-content:center !important; gap:var(--vq-sp-3) !important; position:relative !important;
+  width:100% !important; height:var(--vq-control-h-lg) !important;
+  background:var(--vq-accent) !important; color:var(--vq-accent-contrast) !important;
+  border:1px solid transparent !important; border-radius:var(--vq-r-md) !important;
+  font:var(--vq-type-label) !important; font-size:15px !important; letter-spacing:.01em !important;
+  text-decoration:none !important; box-shadow:none !important;
+}
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel #authLoginSubmitBtn.vq-btn:hover:not(:disabled){ background:var(--vq-accent-hover) !important; box-shadow:var(--vq-shadow-accent) !important; }
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel #authLoginSubmitBtn.vq-btn:active:not(:disabled){ background:var(--vq-accent-active) !important; }
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel #authLoginSubmitBtn.vq-btn:disabled{ background:var(--vq-surface-disabled) !important; color:var(--vq-text-disabled) !important; box-shadow:none !important; }
+/* 全ログインボタン(.vq-btn)の旧影を除去＝UI Studioのフラット外観。primaryのhoverのみaccent影を許可 */
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel .vq-btn{ box-shadow:none !important; }
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel .vq-btn--primary:hover:not(:disabled){ box-shadow:var(--vq-shadow-accent) !important; }
+/* 「アカウントを作成する」= UI Studio の secondary（白地・ラベンダー枠・影なし）をID指定で確実に */
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel #authLoginOpenRegisterLinkBtn.vq-btn{
+  background:var(--vq-surface) !important; background-image:none !important; color:var(--vq-accent-text) !important;
+  border:1px solid color-mix(in srgb, var(--vq-accent) 42%, transparent) !important;
+  box-shadow:none !important; border-radius:var(--vq-r-md) !important;
+}
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel #authLoginOpenRegisterLinkBtn.vq-btn:hover:not(:disabled){
+  background:var(--vq-accent-subtle) !important; border-color:color-mix(in srgb, var(--vq-accent) 55%, transparent) !important; box-shadow:none !important;
+}
+
+/* パスワード表示ボタン = UI Studio のアイコンボタン（透明・枠なし・ホバー面） */
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel #authLoginPwToggle,
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel .vq-input__trail .vq-iconbtn{
+  background:transparent !important; background-image:none !important; border:1px solid transparent !important;
+  box-shadow:none !important; color:var(--vq-text-tertiary) !important; border-radius:var(--vq-r-sm) !important;
+}
+html body #authGate#authGate.vqa[data-auth-panel="login"] #authLoginPanel #authLoginPwToggle:hover{
+  background:var(--vq-surface-active) !important; color:var(--vq-text) !important;
+}
+/* 4月の学年繰り上げ注意文を非表示（7月＝周知済み・上下の余白確保） */
+#authGate .auth-v2-grade-notice,
+#authLoginPanel .vqk-gradenotice{ display:none !important; }
+
+/* 再設定画面：入力欄・ラベルを左揃え（中央寄せを解除） */
+#authGate #authResetPanel,
+#authGate #authResetPanel .auth-panel-copy,
+#authGate #authResetPanel .auth-form-shell,
+#authGate #authResetPanel .auth-gate-row,
+#authGate #authResetPanel .auth-gate-label,
+#authGate #authResetPanel .auth-confirm-value{ text-align:left !important; align-items:stretch !important; }
+#authGate #authResetPanel .spell-input,
+#authGate #authResetPanel .auth-line-input,
+#authGate #authResetPanel .auth-line-select,
+#authGate #authResetPanel select{ text-align:left !important; }
+
+/* Reduced motion — 情報は保持し動きのみ停止 */
+@media (prefers-reduced-motion: reduce){
+  #authLoginPanel.vqk *, #authLoginPanel.vqk *::before, #authLoginPanel.vqk *::after{
+    animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important;
+  }
+}

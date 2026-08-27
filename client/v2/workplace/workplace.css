@@ -1,0 +1,871 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Vocabu Workplace — 画面の見た目
+   ・色・間隔・角・影はすべて Bloom トークン（--vq-*）から取る。直書きしない。
+   ・320px でも横スクロールを起こさない。表とグリッドだけ、自分の中で横へ流す。
+   ・操作できるものは 44px 以上（--vq-tap-min）。
+   ══════════════════════════════════════════════════════════════════════ */
+
+.wp { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--vq-bg); }
+.wp * { box-sizing: border-box; }
+/* 線画アイコンの既定の大きさ。これが無いと、ボタンの外に置いたアイコン
+   （検索欄・空状態など）が親いっぱいまで伸びる。 */
+.wp-i { width: 18px; height: 18px; flex: 0 0 auto; display: inline-block; vertical-align: middle; }
+
+/* ── 上の帯 ───────────────────────────────────────────────────── */
+.wp-top {
+  display: flex; align-items: center; gap: var(--vq-sp-3);
+  padding: var(--vq-sp-3) var(--vq-sp-5);
+  border-bottom: 1px solid var(--vq-border-subtle);
+  background: var(--vq-surface); flex: 0 0 auto; min-height: 56px;
+}
+.wp-top__title {
+  font: var(--vq-type-heading-sm); color: var(--vq-text);
+  border: 1px solid transparent; border-radius: var(--vq-radius-sm);
+  padding: 4px 8px; min-width: 60px; max-width: min(46vw, 420px);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: transparent;
+}
+.wp-top__title:hover { border-color: var(--vq-border); }
+.wp-top__title:focus { outline: none; border-color: var(--vq-accent); background: var(--vq-bg); }
+.wp-top__sp { flex: 1 1 auto; min-width: 0; }
+.wp-top__grp { display: flex; align-items: center; gap: 2px; }
+
+/* 保存の状態。色だけで伝えない（必ず文字が付く）。 */
+.wp-save {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font: var(--vq-type-caption); color: var(--vq-text-secondary);
+  padding: 4px 10px; border-radius: 999px; background: var(--vq-surface-sunken);
+}
+.wp-save__d { width: 7px; height: 7px; border-radius: 50%; background: var(--vq-text-tertiary); flex: 0 0 auto; }
+.wp-save.is-saving .wp-save__d { background: var(--vq-accent); animation: wp-pulse 1s ease-in-out infinite; }
+.wp-save.is-saved .wp-save__d { background: var(--vq-success); }
+.wp-save.is-dirty .wp-save__d { background: var(--vq-warning); }
+.wp-save.is-offline { background: var(--vq-warning-bg); color: var(--vq-warning-text); }
+.wp-save.is-offline .wp-save__d { background: var(--vq-warning); }
+.wp-save.is-failed, .wp-save.is-conflict { background: var(--vq-danger-bg); color: var(--vq-danger-text); }
+.wp-save.is-failed .wp-save__d, .wp-save.is-conflict .wp-save__d { background: var(--vq-danger); }
+@keyframes wp-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.is-reduced .wp-save__d { animation: none !important; }
+
+/* ── ボタン ───────────────────────────────────────────────────── */
+.wp-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 36px; min-width: 36px; padding: 0 12px;
+  font: var(--vq-type-label); color: var(--vq-text);
+  background: transparent; border: 1px solid transparent;
+  border-radius: var(--vq-radius-sm); cursor: pointer;
+  transition: background var(--vq-dur-fast) var(--vq-ease-standard);
+}
+.wp-btn:hover { background: var(--vq-surface-hover); }
+.wp-btn:active { background: var(--vq-surface-active); }
+.wp-btn:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }
+.wp-btn[disabled] { opacity: .45; cursor: not-allowed; }
+.wp-btn.is-icon { padding: 0; width: 36px; }
+.wp-btn.is-outline { border-color: var(--vq-border); background: var(--vq-surface); }
+.wp-btn.is-primary { background: var(--vq-accent); color: var(--vq-accent-contrast); }
+.wp-btn.is-primary:hover { background: var(--vq-accent-hover); }
+.wp-btn.is-danger { color: var(--vq-danger-text); }
+.wp-btn.is-danger:hover { background: var(--vq-danger-bg); }
+.wp-btn.is-on { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }
+.wp-btn.is-lg { height: 44px; padding: 0 18px; }
+.wp-btn .wp-i { width: 18px; height: 18px; flex: 0 0 auto; }
+.wp-sep { width: 1px; align-self: stretch; margin: 6px 4px; background: var(--vq-border-subtle); }
+
+/* ── ツールバー（横に流れる。折り返さない） ───────────────────── */
+.wp-tools {
+  display: flex; align-items: center; gap: 2px; flex: 0 0 auto;
+  padding: 6px var(--vq-sp-4);
+  border-bottom: 1px solid var(--vq-border-subtle);
+  background: var(--vq-surface); overflow-x: auto; scrollbar-width: thin;
+}
+.wp-tools::-webkit-scrollbar { height: 5px; }
+.wp-tools::-webkit-scrollbar-thumb { background: var(--vq-border); border-radius: 3px; }
+
+/* 選択したものに応じて出る帯（Progressive Disclosure §2.2） */
+.wp-ctx {
+  display: flex; align-items: center; gap: 2px;
+  padding: 5px var(--vq-sp-4); background: var(--vq-accent-subtle);
+  border-bottom: 1px solid var(--vq-border-subtle); overflow-x: auto; flex: 0 0 auto;
+}
+.wp-ctx__l { font: var(--vq-type-caption); color: var(--vq-accent-text); margin-right: 8px; white-space: nowrap; }
+
+/* ── 本体の 3 分割 ────────────────────────────────────────────── */
+.wp-body { display: flex; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.wp-left, .wp-right {
+  flex: 0 0 auto; background: var(--vq-surface); overflow-y: auto; overflow-x: hidden;
+  border-right: 1px solid var(--vq-border-subtle);
+}
+.wp-right { border-right: 0; border-left: 1px solid var(--vq-border-subtle); width: 288px; }
+.wp-left { width: 232px; }
+.wp-main { flex: 1 1 auto; min-width: 0; overflow: auto; position: relative; background: var(--vq-bg-canvas); }
+.wp-panel__h {
+  font: var(--vq-type-label); color: var(--vq-text-secondary);
+  padding: var(--vq-sp-3) var(--vq-sp-4) var(--vq-sp-2);
+  position: sticky; top: 0; background: var(--vq-surface); z-index: 2;
+}
+
+/* ── カード一覧（ホーム）─────────────────────────────────────── */
+.wp-home { padding: var(--vq-sp-6) var(--vq-sp-6) 96px; max-width: 1240px; margin: 0 auto; width: 100%; }
+.wp-hero__t { font: var(--vq-type-display); color: var(--vq-text); margin: 0 0 6px; }
+.wp-hero__s { font: var(--vq-type-body-md); color: var(--vq-text-secondary); margin: 0 0 var(--vq-sp-5); }
+.wp-quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--vq-sp-3); margin-bottom: var(--vq-sp-6); }
+.wp-quick__c {
+  display: flex; align-items: center; gap: var(--vq-sp-3); text-align: left;
+  /* グリッドの子は既定で内容より小さくならない。320px で 30px はみ出していたので
+     min-width: 0 を明示する（これが無いと省略記号も効かない）。 */
+  min-width: 0;
+  padding: var(--vq-sp-3) var(--vq-sp-4); min-height: 68px;
+  background: var(--vq-surface); border: 1px solid var(--vq-border-subtle);
+  border-radius: var(--vq-radius-md); cursor: pointer;
+  transition: border-color var(--vq-dur-fast), transform var(--vq-dur-fast);
+}
+.wp-quick__c:hover { border-color: var(--vq-accent); transform: translateY(-1px); }
+.wp-quick__c:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }
+.wp-quick__i {
+  width: 40px; height: 40px; border-radius: var(--vq-radius-sm); flex: 0 0 auto;
+  display: grid; place-items: center; color: #fff;
+}
+.wp-quick__i .wp-i { width: 21px; height: 21px; }
+.wp-quick__c > span:last-child { min-width: 0; }
+.wp-quick__n { display: block; font: var(--vq-type-body-md); color: var(--vq-text); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-quick__d { display: block; font: var(--vq-type-caption); color: var(--vq-text-tertiary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+
+.wp-tabs { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--vq-border-subtle); margin-bottom: var(--vq-sp-4); }
+.wp-tab {
+  flex: 0 0 auto; padding: 10px 14px; min-height: 44px;
+  font: var(--vq-type-label); color: var(--vq-text-secondary);
+  background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap;
+}
+.wp-tab:hover { color: var(--vq-text); }
+.wp-tab[aria-selected="true"] { color: var(--vq-accent-text); border-bottom-color: var(--vq-accent); font-weight: 600; }
+
+.wp-filters { display: flex; align-items: center; gap: var(--vq-sp-2); flex-wrap: wrap; margin-bottom: var(--vq-sp-4); }
+.wp-search {
+  display: flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 0; max-width: 380px;
+  height: 40px; padding: 0 12px; background: var(--vq-surface);
+  border: 1px solid var(--vq-border); border-radius: var(--vq-radius-sm);
+}
+.wp-search:focus-within { border-color: var(--vq-accent); }
+.wp-search input { flex: 1 1 auto; min-width: 0; border: 0; background: none; outline: none;
+  font: var(--vq-type-body-sm); color: var(--vq-text); }
+
+.wp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: var(--vq-sp-4); }
+.wp-grid.is-compact { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: var(--vq-sp-3); }
+.wp-grid.is-list { grid-template-columns: 1fr; gap: 6px; }
+
+.wp-card {
+  display: flex; flex-direction: column; text-align: left; overflow: hidden;
+  background: var(--vq-surface); border: 1px solid var(--vq-border-subtle);
+  border-radius: var(--vq-radius-md); cursor: pointer; position: relative;
+  transition: border-color var(--vq-dur-fast), box-shadow var(--vq-dur-fast), transform var(--vq-dur-fast);
+}
+.wp-card:hover { border-color: var(--vq-border-strong); box-shadow: var(--vq-shadow-raised); transform: translateY(-2px); }
+.wp-card:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }
+.wp-card__banner { height: 92px; position: relative; overflow: hidden; flex: 0 0 auto; }
+.wp-card__prev {
+  position: absolute; inset: 0; padding: 10px 12px; overflow: hidden;
+  background: var(--vq-surface); font: var(--vq-type-caption); color: var(--vq-text-tertiary);
+  line-height: 1.45;
+}
+.wp-card__prev.is-doc div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wp-card__prev .h { font-weight: 700; color: var(--vq-text-secondary); }
+.wp-card__ptable { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.wp-card__ptable td { border: 1px solid var(--vq-border-subtle); padding: 2px 4px;
+  font-size: 9px; height: 15px; overflow: hidden; white-space: nowrap; color: var(--vq-text-secondary); }
+.wp-card__badge {
+  position: absolute; left: 10px; top: 10px; width: 26px; height: 26px; border-radius: 7px;
+  display: grid; place-items: center; color: #fff; background: rgba(0,0,0,.28); backdrop-filter: blur(3px);
+}
+.wp-card__badge svg { width: 15px; height: 15px; }
+.wp-card__b { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.wp-card__t { font: var(--vq-type-body-sm); font-weight: 600; color: var(--vq-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-card__m { font: var(--vq-type-caption); color: var(--vq-text-tertiary);
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.wp-card__acts { position: absolute; right: 8px; top: 8px; display: flex; gap: 4px; }
+.wp-card__act {
+  width: 30px; height: 30px; border-radius: 8px; border: 0; cursor: pointer;
+  display: grid; place-items: center; color: var(--vq-text-secondary);
+  background: var(--vq-surface-overlay); opacity: 0; transition: opacity var(--vq-dur-fast);
+}
+.wp-card:hover .wp-card__act, .wp-card__act:focus-visible, .wp-card__act.is-on { opacity: 1; }
+.wp-card__act.is-on { color: var(--vq-favorite); }
+.wp-card__act svg { width: 16px; height: 16px; }
+
+.wp-grid.is-list .wp-card { flex-direction: row; align-items: center; padding: 8px 10px; gap: 10px; }
+.wp-grid.is-list .wp-card__banner { width: 42px; height: 42px; border-radius: 8px; flex: 0 0 auto; }
+.wp-grid.is-list .wp-card__prev { display: none; }
+.wp-grid.is-list .wp-card__b { padding: 0; flex: 1 1 auto; }
+.wp-grid.is-list .wp-card__acts { position: static; opacity: 1; }
+.wp-grid.is-list .wp-card__act { opacity: 1; }
+
+/* ── チップ・バッジ ───────────────────────────────────────────── */
+.wp-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+  border-radius: 999px; font: var(--vq-type-caption);
+  background: var(--vq-surface-sunken); color: var(--vq-text-secondary);
+}
+.wp-chip.is-accent { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }
+.wp-chip.is-ok { background: var(--vq-success-bg); color: var(--vq-success-text); }
+.wp-chip.is-warn { background: var(--vq-warning-bg); color: var(--vq-warning-text); }
+.wp-chip.is-err { background: var(--vq-danger-bg); color: var(--vq-danger-text); }
+.wp-chip.is-beta { background: var(--vq-ai-bg); color: var(--vq-ai-text); }
+
+/* ── 入力 ─────────────────────────────────────────────────────── */
+.wp-in, .wp-sel, .wp-ta {
+  width: 100%; min-height: 38px; padding: 8px 10px;
+  font: var(--vq-type-body-sm); color: var(--vq-text);
+  background: var(--vq-bg); border: 1px solid var(--vq-border); border-radius: var(--vq-radius-sm);
+  outline: none;
+}
+.wp-in:focus, .wp-sel:focus, .wp-ta:focus { border-color: var(--vq-accent); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }
+.wp-ta { min-height: 76px; resize: vertical; line-height: 1.6; }
+.wp-sel { appearance: none; padding-right: 30px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat: no-repeat; background-position: right 8px center; background-size: 16px; }
+.wp-lab { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-bottom: 4px; line-height: 1.4; }
+.wp-row { margin-bottom: var(--vq-sp-3); }
+.wp-inline { display: flex; align-items: center; gap: 8px; }
+.wp-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  min-height: 36px; font: var(--vq-type-body-sm); color: var(--vq-text); }
+.wp-switch input { width: 18px; height: 18px; accent-color: var(--vq-accent); flex: 0 0 auto; }
+
+/* ── 空の状態 ─────────────────────────────────────────────────── */
+.wp-empty { text-align: center; padding: 64px 20px; }
+.wp-empty__i { width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 14px;
+  display: grid; place-items: center; background: var(--vq-surface-sunken); color: var(--vq-text-tertiary); }
+.wp-empty__i svg { width: 26px; height: 26px; }
+.wp-empty__t { font: var(--vq-type-heading-sm); color: var(--vq-text); margin-bottom: 6px; }
+.wp-empty__d { font: var(--vq-type-body-sm); color: var(--vq-text-secondary); margin-bottom: 18px; }
+
+/* ── コマンドパレット（§2.4）───────────────────────────────────── */
+.wp-cmd-bd { position: fixed; inset: 0; background: var(--vq-scrim, rgba(15,23,42,.42)); z-index: 60; }
+.wp-cmd {
+  position: fixed; left: 50%; top: 12vh; transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px)); max-height: 66vh; z-index: 61;
+  background: var(--vq-bg-elevated); border: 1px solid var(--vq-border);
+  border-radius: var(--vq-radius-lg); box-shadow: var(--vq-shadow-modal);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.wp-cmd__in { display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  border-bottom: 1px solid var(--vq-border-subtle); }
+.wp-cmd__in input { flex: 1 1 auto; border: 0; outline: none; background: none;
+  font: var(--vq-type-body-md); color: var(--vq-text); }
+.wp-cmd__l { overflow-y: auto; padding: 6px; }
+.wp-cmd__g { font: var(--vq-type-caption); color: var(--vq-text-tertiary); padding: 8px 10px 4px; }
+.wp-cmd__i {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px;
+  padding: 8px 10px; border: 0; background: none; cursor: pointer;
+  border-radius: var(--vq-radius-sm); text-align: left;
+  font: var(--vq-type-body-sm); color: var(--vq-text);
+}
+.wp-cmd__i:hover, .wp-cmd__i.is-sel { background: var(--vq-surface-hover); }
+.wp-cmd__i.is-sel { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }
+.wp-cmd__i svg { width: 17px; height: 17px; flex: 0 0 auto; color: var(--vq-text-tertiary); }
+.wp-cmd__k { margin-left: auto; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }
+
+/* ── 右クリックのメニュー ─────────────────────────────────────── */
+.wp-ctxmenu {
+  position: absolute; z-index: 64; min-width: 208px; max-width: 300px;
+  padding: 5px; background: var(--vq-bg-elevated);
+  border: 1px solid var(--vq-border); border-radius: var(--vq-radius-md);
+  box-shadow: var(--vq-shadow-floating); max-height: 74vh; overflow-y: auto;
+}
+.wp-ctxmenu__i {
+  display: flex; align-items: center; gap: 9px; width: 100%; min-height: 34px;
+  padding: 6px 9px; border: 0; background: none; cursor: pointer; text-align: left;
+  border-radius: var(--vq-radius-sm); font: var(--vq-type-body-sm); color: var(--vq-text);
+}
+.wp-ctxmenu__i:hover, .wp-ctxmenu__i.is-focus { background: var(--vq-surface-hover); }
+.wp-ctxmenu__i:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }
+.wp-ctxmenu__i[disabled] { opacity: .4; cursor: not-allowed; }
+.wp-ctxmenu__i.is-danger { color: var(--vq-danger-text); }
+.wp-ctxmenu__i.is-danger:hover { background: var(--vq-danger-bg); }
+.wp-ctxmenu__i.is-on { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }
+.wp-ctxmenu__i .wp-i { width: 16px; height: 16px; color: var(--vq-text-tertiary); }
+.wp-ctxmenu__i.is-danger .wp-i { color: var(--vq-danger-text); }
+.wp-ctxmenu__k { margin-left: auto; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }
+.wp-ctxmenu__sep { height: 1px; background: var(--vq-border-subtle); margin: 5px 4px; }
+/* ── 色を自由に決める窓 ───────────────────────────────────────── */
+.wp-pop { min-width: auto; max-width: 340px; padding: 10px; }
+.wp-cp { width: 288px; max-width: 100%; }
+.wp-cp__hint { font: var(--vq-type-caption); color: var(--vq-text-secondary);
+  margin-bottom: 8px; line-height: 1.5; }
+.wp-cp__l { font: var(--vq-type-caption); color: var(--vq-text-tertiary); margin: 10px 0 5px; }
+.wp-cp__l:first-child { margin-top: 0; }
+.wp-cp__grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.wp-cp__row { display: flex; flex-wrap: wrap; gap: 4px; }
+.wp-cp__s { width: 100%; aspect-ratio: 1; min-width: 24px; min-height: 24px; padding: 0;
+  border: 1px solid var(--vq-border-subtle); border-radius: 5px; cursor: pointer; }
+.wp-cp__row .wp-cp__s { width: 26px; height: 26px; aspect-ratio: auto; }
+.wp-cp__s:hover { transform: scale(1.14); border-color: var(--vq-text); }
+.wp-cp__s.is-on { outline: 2px solid var(--vq-accent); outline-offset: 1px; }
+.wp-cp__s:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }
+.wp-cp__custom { display: flex; align-items: center; gap: 6px; }
+.wp-cp__wheel { width: 40px; height: 36px; padding: 0; border: 1px solid var(--vq-border);
+  border-radius: var(--vq-radius-sm); background: none; cursor: pointer; flex: 0 0 auto; }
+.wp-cp__hex { flex: 1 1 auto; min-width: 0; font: var(--vq-type-code); min-height: 36px; }
+.wp-cp__none { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 34px;
+  padding: 6px 8px; margin-bottom: 8px; border: 1px solid var(--vq-border);
+  border-radius: var(--vq-radius-sm); background: var(--vq-surface); cursor: pointer;
+  font: var(--vq-type-body-sm); color: var(--vq-text); }
+.wp-cp__none:hover { background: var(--vq-surface-hover); }
+
+/* 囲い文字 */
+.wp-enc { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.6em; height: 1.6em; padding: 0 .12em; margin: 0 .06em;
+  border: 1.5px solid currentColor; line-height: 1; vertical-align: -.28em; }
+.wp-enc__t { display: inline-block; font-size: .74em; }
+
+/* 記号を選ぶ */
+.wp-sym { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 3px; }
+.wp-sym__b { min-height: 34px; border: 1px solid transparent; border-radius: 5px;
+  background: none; cursor: pointer; font-size: 17px; color: var(--vq-text); padding: 0; }
+.wp-sym__b:hover { background: var(--vq-accent-subtle); border-color: var(--vq-accent); }
+
+/* 色見本 */
+.wp-swatch { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px; max-width: 260px; }
+.wp-swatch__b { width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  border: 1px solid var(--vq-border); padding: 0; }
+.wp-swatch__b:hover { transform: scale(1.12); }
+.wp-swatch__b:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }
+.wp-swatch__b.is-none { position: relative; }
+.wp-swatch__b.is-none::after { content: ""; position: absolute; inset: 3px;
+  background: linear-gradient(to bottom right, transparent 45%, var(--vq-danger) 45%,
+    var(--vq-danger) 55%, transparent 55%); }
+
+/* ── パネル（挿入・書式・ページ設定・AI など）──────────────────
+   Docs / Sheets / Slides / Forms のどれでも、画面の真ん中に出す窓にする。
+   下から出す形はやめた（本文の上へ細長く乗って、選んだ場所が隠れるため）。
+   高さは中身なり。あふれた分だけ、窓の中で送る。 */
+.wp-sheet-host {
+  position: fixed; inset: 0; z-index: 55;
+  display: grid; place-items: center;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+.wp-sheet-bd { position: absolute; inset: 0; background: var(--vq-scrim, rgba(15,23,42,.42)); }
+.wp-sheet {
+  position: relative; z-index: 1;
+  width: min(560px, 100%); max-height: 100%;
+  background: var(--vq-bg-elevated); border: 1px solid var(--vq-border-subtle);
+  /* --vq-radius-lg はこの影の中まで届いていない（他の角も 0 のまま）。
+     窓が角ばって見えるのを避けるため、ここは控えの実値を必ず持たせる。 */
+  border-radius: var(--vq-radius-lg, 16px); box-shadow: var(--vq-shadow-modal);
+  display: flex; flex-direction: column; overflow: hidden;
+  animation: wp-sheet-in 160ms cubic-bezier(.2, .8, .3, 1);
+}
+@keyframes wp-sheet-in {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+.is-reduced .wp-sheet { animation: none; }
+@media (prefers-reduced-motion: reduce) { .wp-sheet { animation: none; } }
+.wp-sheet__h { display: flex; align-items: center; gap: 10px; padding: 14px 12px 14px 18px;
+  border-bottom: 1px solid var(--vq-border-subtle); flex: 0 0 auto; }
+.wp-sheet__t { font: var(--vq-type-heading-sm); color: var(--vq-text); flex: 1 1 auto; }
+.wp-sheet__b { overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 14px 18px 18px; flex: 1 1 auto; min-height: 0; }
+
+/* ── Docs ─────────────────────────────────────────────────────── */
+.wpd-page { max-width: 820px; margin: 0 auto; padding: 40px 28px 160px; }
+
+/* ── 紙として出すとき ──────────────────────────────────────────
+   幅も余白も本物の寸法（mm→px）。paper.js が --pw / --pmt などで渡す。
+   入力欄は 1 つのまま。途切れ目は線で見せるだけにする
+   （紙ごとに入力欄を分けると、行をまたいだ選択と貼り付けが壊れるため）。 */
+.wpd-stage { background: var(--vq-surface-sunken); padding: 24px 16px 160px; min-height: 100%; }
+.wpd-stage .wpd-page.is-paper {
+  width: var(--pw); max-width: none; margin: 0;
+  padding: var(--pmt) var(--pmr) var(--pmb) var(--pml);
+  background: transparent; color: #1e293b;
+  position: relative; z-index: 1; box-sizing: border-box; min-height: 0;
+}
+/* ── 紙を 1 枚ずつ並べる ──────────────────────────────────────
+   白い長方形（.wpd-sheet）を後ろに置き、その上に 1 枚続きの入力欄を敷く。
+   入力欄の中には、紙の切れ目に「すき間ぶんの詰め物」(.wpd-gap) が入る。 */
+.wpd-stack { position: relative; width: var(--pw); margin: 0 auto; }
+.wpd-sheets { position: absolute; inset: 0; pointer-events: none; }
+.wpd-sheet { position: absolute; left: 0; width: var(--pw);
+  background: var(--pbg, #fff); border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .12), 0 8px 24px rgba(15, 23, 42, .10); }
+/* 紙の右下に小さくページ番号（印刷には出ない・画面の目印） */
+.wpd-sheet__n { position: absolute; right: 10px; bottom: 6px;
+  font: var(--vq-type-caption); color: var(--vq-text-tertiary); user-select: none; }
+/* 切れ目の詰め物。ここには文字を置けない。 */
+.wpd-gap { user-select: none; pointer-events: none; }
+/* 紙のときは、中の文字色を紙に合わせる（暗い配色でも紙は白いまま） */
+.wpd-stage .wpd-page.is-paper .wpd-b__c { color: #1e293b; }
+.wpd-stage .wpd-page.is-paper .wpd-b__c:empty::before { color: #94a3b8; }
+/* 用紙の情報を出す小さな帯 */
+.wpd-paperbar { display: flex; align-items: center; gap: 10px; justify-content: center;
+  padding: 0 0 12px; font: var(--vq-type-caption); color: var(--vq-text-secondary); }
+.wpd-paperbar button { font: inherit; color: var(--vq-primary); background: none;
+  border: 0; cursor: pointer; padding: 2px 4px; border-radius: 4px; }
+.wpd-paperbar button:hover { background: var(--vq-surface); }
+.is-mobile .wpd-stage { padding: 12px 8px 180px; }
+/* 狭い画面では紙を縮めて全部見せる（横に切れて読めないのを防ぐ） */
+.wpd-stage[data-fit="1"] .wpd-page.is-paper { transform-origin: top center; }
+/* ── 1 枚続きの文書 ───────────────────────────────────────────
+   入力欄はこれ 1 つだけ。Enter で段落が増えるのも、まとめて選んで消すのも、
+   ブラウザ本来の動きにまかせる（段落ごとに欄を分けると全部おかしくなる）。 */
+.wpd-doc { outline: none; min-height: 60vh; font: var(--vq-type-body-md);
+  color: var(--vq-text); line-height: 1.9; word-break: break-word; }
+.wpd-doc:focus { outline: none; }
+.wpd-doc > * { margin: 0 0 0.55em; }
+.wpd-doc > *:last-child { margin-bottom: 0; }
+.wpd-doc h1 { font: var(--vq-type-heading-xl); font-weight: 700; margin: 1.1em 0 .45em; }
+.wpd-doc h2 { font: var(--vq-type-heading-lg); font-weight: 700; margin: .95em 0 .4em; }
+.wpd-doc h3 { font: var(--vq-type-heading-md); font-weight: 700; margin: .8em 0 .35em; }
+.wpd-doc h4 { font: var(--vq-type-heading-sm); font-weight: 700; margin: .7em 0 .3em; }
+.wpd-doc p { min-height: 1.9em; }
+.wpd-doc ul.wpd-list, .wpd-doc ol.wpd-list { padding-left: 1.6em; margin: 0 0 .55em; }
+.wpd-doc li { margin: 0 0 .15em; }
+.wpd-doc blockquote { border-left: 3px solid var(--vq-border-strong); padding-left: 14px;
+  color: var(--vq-text-secondary); font-style: italic; margin: .6em 0; }
+.wpd-doc pre { font: var(--vq-type-code); background: var(--vq-surface-sunken);
+  padding: 10px 12px; border-radius: var(--vq-radius-sm); white-space: pre-wrap; }
+.wpd-doc .wpd-callout { background: var(--vq-accent-subtle); padding: 10px 14px;
+  border-radius: var(--vq-radius-md); }
+.wpd-doc .wpd-todo { display: flex; align-items: flex-start; gap: 8px; }
+.wpd-doc .wpd-todo__t { flex: 1 1 auto; min-width: 0; }
+.wpd-doc .wpd-todo.is-done .wpd-todo__t { text-decoration: line-through; color: var(--vq-text-tertiary); }
+.wpd-doc .wpd-hr { border: 0; border-top: 1px solid var(--vq-border-strong); margin: 1em 0; }
+.wpd-doc .wpd-pb { border-top: 1px dashed var(--vq-border-strong); text-align: center;
+  margin: 1em 0; user-select: none; }
+.wpd-doc .wpd-pb span { font: var(--vq-type-caption); color: var(--vq-text-tertiary);
+  background: var(--vq-surface); padding: 0 8px; position: relative; top: -.7em; }
+.wpd-doc .wpd-fig { margin: .8em 0; }
+.wpd-doc .wpd-fig img { max-width: 100%; display: block; }
+.wpd-doc .wpd-fig figcaption { font: var(--vq-type-caption); color: var(--vq-text-tertiary);
+  margin-top: 5px; outline: none; }
+.wpd-doc .wpd-toc > div { font: var(--vq-type-body-sm); color: var(--vq-text-secondary); line-height: 2; }
+.wpd-doc .wpd-math { text-align: center; padding: 10px;
+  background: var(--vq-surface-sunken); border-radius: 6px; }
+/* 空の段落に「ここから書けます」を出す。1 つ目だけ。 */
+.wpd-doc > p:only-child:empty::before,
+.wpd-doc > p:first-child:empty::before {
+  content: "ここに文字を入力（「/」でメニュー）"; color: var(--vq-text-tertiary); pointer-events: none;
+}
+/* 紙のときは、中身の色を紙に合わせる */
+.wpd-stage .wpd-page.is-paper .wpd-doc { color: #1e293b; }
+.wpd-stage .wpd-page.is-paper .wpd-doc blockquote { color: #475569; }
+
+.wpd-b { position: relative; margin: 0 0 2px; }
+.wpd-b__c {
+  outline: none; min-height: 1.7em; padding: 3px 2px; line-height: 1.85;
+  font: var(--vq-type-body-md); color: var(--vq-text); word-break: break-word;
+}
+.wpd-b__c:empty::before { content: attr(data-ph); color: var(--vq-text-tertiary); pointer-events: none; }
+.wpd-b[data-type="heading1"] .wpd-b__c { font: var(--vq-type-heading-xl); font-weight: 700; margin-top: 22px; }
+.wpd-b[data-type="heading2"] .wpd-b__c { font: var(--vq-type-heading-lg); font-weight: 700; margin-top: 18px; }
+.wpd-b[data-type="heading3"] .wpd-b__c { font: var(--vq-type-heading-md); font-weight: 700; margin-top: 14px; }
+.wpd-b[data-type="heading4"] .wpd-b__c { font: var(--vq-type-heading-sm); font-weight: 700; margin-top: 12px; }
+.wpd-b[data-type="quote"] .wpd-b__c { border-left: 3px solid var(--vq-border-strong);
+  padding-left: 14px; color: var(--vq-text-secondary); font-style: italic; }
+.wpd-b[data-type="code"] .wpd-b__c { font: var(--vq-type-code); background: var(--vq-surface-sunken);
+  border-radius: var(--vq-radius-sm); padding: 12px 14px; white-space: pre-wrap; }
+.wpd-b[data-type="callout"] { background: var(--vq-accent-subtle); border-radius: var(--vq-radius-sm);
+  padding: 12px 14px; margin: 10px 0; }
+.wpd-b__li { display: flex; gap: 8px; align-items: flex-start; }
+.wpd-b__mk { flex: 0 0 auto; color: var(--vq-text-tertiary); user-select: none;
+  font: var(--vq-type-body-md); line-height: 1.85; min-width: 20px; }
+.wpd-b__li .wpd-b__c { flex: 1 1 auto; min-width: 0; }
+.wpd-b__ck { width: 17px; height: 17px; margin-top: 6px; accent-color: var(--vq-accent); flex: 0 0 auto; }
+.wpd-b[data-type="divider"] hr { border: 0; border-top: 1px solid var(--vq-border); margin: 20px 0; }
+.wpd-b[data-type="pagebreak"] { border-top: 2px dashed var(--vq-border-strong); margin: 26px 0;
+  text-align: center; }
+.wpd-b[data-type="pagebreak"] span { font: var(--vq-type-caption); color: var(--vq-text-tertiary);
+  background: var(--vq-bg-canvas); padding: 0 8px; position: relative; top: -9px; }
+.wpd-b img { max-width: 100%; border-radius: var(--vq-radius-sm); display: block; }
+.wpd-b.is-sel { background: var(--vq-surface-selected); border-radius: 4px; }
+.wpd-hand {
+  position: absolute; left: -30px; top: 3px; width: 24px; height: 24px; opacity: 0;
+  display: grid; place-items: center; border: 0; background: none; cursor: grab;
+  color: var(--vq-text-tertiary); border-radius: 5px;
+}
+.wpd-b:hover .wpd-hand, .wpd-hand:focus-visible { opacity: 1; }
+.wpd-hand:hover { background: var(--vq-surface-hover); }
+.wpd-tbl { width: 100%; border-collapse: collapse; margin: 10px 0; table-layout: fixed; }
+.wpd-tbl td, .wpd-tbl th { border: 1px solid var(--vq-border); padding: 8px 10px;
+  font: var(--vq-type-body-sm); color: var(--vq-text); min-width: 40px; vertical-align: top;
+  position: relative; word-break: break-word; }
+.wpd-tbl.is-resizing { user-select: none; }
+/* 列の境目をつまむ取っ手 */
+.wpd-colgrip { position: absolute; right: -4px; top: 0; width: 9px; height: 100%;
+  cursor: col-resize; z-index: 3; }
+.wpd-colgrip::after { content: ""; position: absolute; left: 3px; top: 0; width: 3px; height: 100%;
+  background: transparent; }
+.wpd-colgrip:hover::after, .wpd-tbl.is-resizing .wpd-colgrip::after { background: var(--vq-accent); }
+
+/* ツールバーの中の書体と数字 */
+.wp-tool-sel { width: auto; min-width: 122px; height: 32px; min-height: 32px; padding: 0 26px 0 8px;
+  font: var(--vq-type-body-sm); flex: 0 0 auto; }
+.wp-num { display: inline-flex; align-items: center; gap: 1px; flex: 0 0 auto; }
+.wp-num__i { width: 52px; height: 32px; text-align: center; border: 1px solid var(--vq-border);
+  border-radius: var(--vq-radius-sm); background: var(--vq-bg); color: var(--vq-text);
+  font: var(--vq-type-body-sm); }
+.wp-num__i:focus { outline: none; border-color: var(--vq-accent); }
+.wp-num .wp-btn { height: 32px; min-width: 30px; width: 30px; font-size: 12px; }
+.wpd-tbl th { background: var(--vq-surface-sunken); font-weight: 600; }
+.wpd-tbl td:focus, .wpd-tbl th:focus { outline: 2px solid var(--vq-accent); outline-offset: -2px; }
+.wpd-tblwrap { overflow-x: auto; }
+.wpd-outline__i { display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0;
+  background: none; cursor: pointer; border-radius: 5px; font: var(--vq-type-body-sm);
+  color: var(--vq-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wpd-outline__i:hover { background: var(--vq-surface-hover); color: var(--vq-text); }
+.wpd-outline__i.l2 { padding-left: 22px; }
+.wpd-outline__i.l3 { padding-left: 34px; font: var(--vq-type-caption); }
+.wpd-outline__i.l4 { padding-left: 46px; font: var(--vq-type-caption); }
+.wpd-cmt { background: var(--vq-warning-bg); border-radius: 3px; }
+.wpd-stat { display: flex; gap: 14px; padding: 8px var(--vq-sp-5); border-top: 1px solid var(--vq-border-subtle);
+  font: var(--vq-type-caption); color: var(--vq-text-tertiary); background: var(--vq-surface); flex: 0 0 auto; }
+
+/* ── Sheets ───────────────────────────────────────────────────── */
+.wps-bar { display: flex; align-items: stretch; gap: 6px; padding: 4px var(--vq-sp-4);
+  border-bottom: 1px solid var(--vq-border-subtle); background: var(--vq-surface); flex: 0 0 auto; }
+.wps-bar__ref { width: 82px; flex: 0 0 auto; font: var(--vq-type-code); text-align: center; }
+.wps-bar__f { flex: 1 1 auto; min-width: 0; font: var(--vq-type-code); }
+.wps-scroll { flex: 1 1 auto; overflow: auto; position: relative; background: var(--vq-bg); }
+.wps-tbl { border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.wps-tbl th, .wps-tbl td { border-right: 1px solid var(--vq-border-subtle);
+  border-bottom: 1px solid var(--vq-border-subtle); padding: 0; height: 26px; }
+.wps-h {
+  background: var(--vq-surface-sunken); font: var(--vq-type-caption); color: var(--vq-text-secondary);
+  text-align: center; position: sticky; z-index: 3; user-select: none; cursor: pointer; font-weight: 600;
+}
+.wps-h.is-col { top: 0; }
+.wps-h.is-row { left: 0; z-index: 2; }
+.wps-h.is-corner { top: 0; left: 0; z-index: 4; }
+.wps-h.is-hi { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }
+/* 幅と高さをつまむ取っ手 */
+.wps-grip { position: absolute; z-index: 6; }
+.wps-grip.is-col { right: -3px; top: 0; width: 7px; height: 100%; cursor: col-resize; }
+.wps-grip.is-row { left: 0; bottom: -3px; height: 7px; width: 100%; cursor: row-resize; }
+.wps-grip:hover { background: var(--vq-accent); }
+.wps-c { position: relative; background: var(--vq-bg); overflow: hidden;
+  font: var(--vq-type-body-sm); color: var(--vq-text); padding: 2px 5px;
+  white-space: nowrap; text-overflow: ellipsis; cursor: cell; }
+.wps-c.is-sel { outline: 2px solid var(--vq-accent); outline-offset: -2px; z-index: 1; }
+.wps-c.is-rng { background: var(--vq-accent-subtle); }
+.wps-c.is-num { text-align: right; }
+.wps-c.is-err { color: var(--vq-danger-text); font-weight: 600; }
+.wps-c input { position: absolute; inset: 0; width: 100%; height: 100%; border: 0;
+  padding: 2px 5px; font: var(--vq-type-body-sm); background: var(--vq-bg); color: var(--vq-text);
+  outline: 2px solid var(--vq-accent); outline-offset: -2px; z-index: 5; }
+/* 選んでいるセルの上に置く、見えない入力欄。
+   ここへ焦点があるので、英字も日本語（変換）も、押した直後から打てる。 */
+.wps-ghost {
+  position: absolute; z-index: 6; border: 0; margin: 0;
+  padding: 2px 5px; font: var(--vq-type-body-sm); color: transparent;
+  background: transparent; caret-color: transparent; outline: none;
+  min-width: 0;
+}
+.wps-ghost.is-live {
+  color: var(--vq-text); background: var(--vq-bg); caret-color: var(--vq-accent);
+  outline: 2px solid var(--vq-accent); outline-offset: -2px;
+  min-width: 160px;
+}
+.wps-tabs { display: flex; align-items: center; gap: 3px; padding: 5px var(--vq-sp-3);
+  border-top: 1px solid var(--vq-border-subtle); background: var(--vq-surface);
+  overflow-x: auto; flex: 0 0 auto; min-height: 40px; }
+.wps-tab { flex: 0 0 auto; height: 30px; padding: 0 12px; border: 1px solid transparent;
+  border-radius: 6px; background: none; cursor: pointer; white-space: nowrap;
+  font: var(--vq-type-body-sm); color: var(--vq-text-secondary); }
+.wps-tab.is-on { background: var(--vq-accent-subtle); color: var(--vq-accent-text);
+  font-weight: 600; border-color: var(--vq-accent); }
+.wps-fx { padding: 10px 12px; }
+.wps-fx__i { display: block; width: 100%; text-align: left; padding: 7px 9px; border: 0;
+  background: none; cursor: pointer; border-radius: 5px; }
+.wps-fx__i:hover { background: var(--vq-surface-hover); }
+.wps-fx__n { font: var(--vq-type-code); color: var(--vq-accent-text); font-weight: 600; }
+.wps-fx__d { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }
+
+/* ── Slides ───────────────────────────────────────────────────── */
+.wpp-thumbs { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.wpp-th { position: relative; border: 2px solid transparent; border-radius: 7px;
+  background: var(--vq-surface-sunken); cursor: pointer; overflow: hidden; padding: 0; }
+.wpp-th.is-on { border-color: var(--vq-accent); }
+.wpp-th__n { position: absolute; left: 5px; top: 4px; font: var(--vq-type-caption);
+  color: var(--vq-text-tertiary); z-index: 2; }
+.wpp-th__c { width: 100%; aspect-ratio: 16/9; position: relative; overflow: hidden;
+  background: #fff; }
+.wpp-stage { display: grid; place-items: center; height: 100%; padding: 20px; overflow: hidden; }
+.wpp-fit { position: relative; flex: 0 0 auto; }
+.wpp-canvas { position: absolute; left: 0; top: 0; background: #fff;
+  box-shadow: var(--vq-shadow-raised); overflow: hidden; }
+.wpp-el { position: absolute; cursor: move; }
+.wpp-el.is-sel { outline: 2px solid var(--vq-accent); }
+.wpp-el.is-editing { outline: 2px solid var(--vq-accent); cursor: text; }
+.wpp-el__t { width: 100%; height: 100%; outline: none; overflow: hidden; word-break: break-word; }
+.wpp-el__t.is-editing { cursor: text; overflow: auto; outline: none; user-select: text; }
+.wpp-el__t.is-editing:empty::before { content: attr(data-ph); opacity: .45; }
+/* 動かしているあいだの位置と大きさ */
+.wpp-readout {
+  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
+  z-index: 8; pointer-events: none; white-space: nowrap;
+  padding: 5px 12px; border-radius: 999px;
+  background: var(--vq-solid-ink, rgba(15,23,42,.88)); color: #fff;
+  font: var(--vq-type-caption); font-variant-numeric: tabular-nums;
+}
+.wpp-readout[hidden] { display: none; }
+.wpp-hnd { position: absolute; width: 11px; height: 11px; background: var(--vq-accent);
+  border: 2px solid #fff; border-radius: 50%; z-index: 5; }
+.wpp-hnd.nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.wpp-hnd.ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.wpp-hnd.sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.wpp-hnd.se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+/* テーマの飾り（背景に敷く SVG） */
+.wpp-decor { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 0; }
+/* スライドの表 */
+.wpp-tbl .wpp-td:focus { outline: 2px solid var(--vq-accent); outline-offset: -2px; }
+.wpp-colgrip { position: absolute; right: -4px; top: 0; width: 9px; height: 100%;
+  cursor: col-resize; z-index: 4; }
+.wpp-colgrip:hover::after { content: ""; position: absolute; left: 3px; top: 0;
+  width: 3px; height: 100%; background: var(--vq-accent); }
+
+/* テーマを選ぶカード */
+.wp-thgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
+.wp-thc { padding: 0; border: 2px solid var(--vq-border-subtle); border-radius: var(--vq-radius-md);
+  background: var(--vq-surface); cursor: pointer; overflow: hidden; text-align: left; }
+.wp-thc:hover { border-color: var(--vq-border-strong); }
+.wp-thc.is-on { border-color: var(--vq-accent); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }
+.wp-thc__p { position: relative; aspect-ratio: 16/9; overflow: hidden; padding: 12px 14px; }
+.wp-thc__p svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.wp-thc__t { position: relative; font-size: 15px; font-weight: 700; line-height: 1.3; }
+.wp-thc__s { position: relative; font-size: 10px; margin-top: 3px; }
+.wp-thc__a { position: absolute; left: 14px; bottom: 12px; width: 34px; height: 4px; border-radius: 2px; }
+.wp-thc__n { padding: 7px 10px; font: var(--vq-type-caption); color: var(--vq-text); font-weight: 600; }
+
+/* ── 画面の切り替えと要素のアニメーション ─────────────────────── */
+@keyframes wpp-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wpp-slidein { from { opacity: .3; transform: translateX(6%); } to { opacity: 1; transform: none; } }
+@keyframes wpp-zoomin { from { opacity: 0; transform: scale(.88); } to { opacity: 1; transform: none; } }
+@keyframes wpp-pushin { from { transform: translateY(8%); opacity: .2; } to { transform: none; opacity: 1; } }
+@keyframes wpp-dissolvein { from { opacity: 0; filter: blur(9px); } to { opacity: 1; filter: none; } }
+@keyframes wpp-flipin { from { opacity: 0; transform: perspective(1200px) rotateY(22deg); }
+  to { opacity: 1; transform: none; } }
+.wpp-present__c.wpp-in-fade { animation: wpp-fade var(--wpp-dur, 300ms) var(--vq-ease-standard) both; }
+.wpp-present__c.wpp-in-slide { animation: wpp-slidein var(--wpp-dur, 300ms) var(--vq-ease-standard) both; }
+.wpp-present__c.wpp-in-zoom { animation: wpp-zoomin var(--wpp-dur, 300ms) var(--vq-ease-standard) both; }
+.wpp-present__c.wpp-in-push { animation: wpp-pushin var(--wpp-dur, 300ms) var(--vq-ease-standard) both; }
+.wpp-present__c.wpp-in-dissolve { animation: wpp-dissolvein var(--wpp-dur, 300ms) var(--vq-ease-standard) both; }
+.wpp-present__c.wpp-in-flip { animation: wpp-flipin var(--wpp-dur, 300ms) var(--vq-ease-standard) both; }
+.wpp-present__c.is-back.wpp-in-slide { animation-name: wpp-slideinback; }
+@keyframes wpp-slideinback { from { opacity: .3; transform: translateX(-6%); } to { opacity: 1; transform: none; } }
+
+@keyframes wpp-a-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wpp-a-up { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
+@keyframes wpp-a-left { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: none; } }
+@keyframes wpp-a-right { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: none; } }
+@keyframes wpp-a-zoom { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: none; } }
+@keyframes wpp-a-pop { 0% { opacity: 0; transform: scale(.5); } 70% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: none; } }
+.wpp-anim { opacity: 0; animation-duration: 460ms; animation-fill-mode: both;
+  animation-timing-function: var(--vq-ease-enter, cubic-bezier(.2,.8,.2,1)); }
+.wpp-anim-fade { animation-name: wpp-a-fade; }
+.wpp-anim-up { animation-name: wpp-a-up; }
+.wpp-anim-left { animation-name: wpp-a-left; }
+.wpp-anim-right { animation-name: wpp-a-right; }
+.wpp-anim-zoom { animation-name: wpp-a-zoom; }
+.wpp-anim-pop { animation-name: wpp-a-pop; }
+.is-reduced .wpp-anim, .is-reduced .wpp-present__c { animation: none !important; opacity: 1 !important; }
+@media (prefers-reduced-motion: reduce) {
+  .wpp-anim, .wpp-present__c { animation: none !important; opacity: 1 !important; }
+}
+
+.wpp-present { position: fixed; inset: 0; background: #000; z-index: 70;
+  display: grid; place-items: center; }
+.wpp-present__c { position: relative; background: #fff; overflow: hidden; }
+.wpp-present__bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 16px;
+  display: flex; align-items: center; gap: 12px; color: #fff;
+  background: linear-gradient(to top, rgba(0,0,0,.6), transparent); }
+.wpp-notes { padding: 10px 14px; border-top: 1px solid var(--vq-border-subtle);
+  background: var(--vq-surface); flex: 0 0 auto; }
+
+/* ── Forms ────────────────────────────────────────────────────── */
+.wpf-wrap { max-width: 720px; margin: 0 auto; padding: 22px 16px 120px; }
+.wpf-banner { height: 96px; border-radius: var(--vq-radius-md); margin-bottom: 14px; }
+.wpf-card { background: var(--vq-surface); border: 1px solid var(--vq-border-subtle);
+  border-radius: var(--vq-radius-md); padding: 18px; margin-bottom: 12px; position: relative; }
+.wpf-card.is-sel { border-color: var(--vq-accent); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }
+.wpf-card__q { font: var(--vq-type-body-md); font-weight: 600; color: var(--vq-text); margin-bottom: 4px; }
+.wpf-card__d { font: var(--vq-type-body-sm); color: var(--vq-text-secondary); margin-bottom: 10px; }
+.wpf-req { color: var(--vq-danger-text); margin-left: 3px; }
+.wpf-opt { display: flex; align-items: center; gap: 10px; padding: 9px 8px; min-height: 44px;
+  border-radius: var(--vq-radius-sm); cursor: pointer; }
+.wpf-opt:hover { background: var(--vq-surface-hover); }
+.wpf-opt input { width: 19px; height: 19px; accent-color: var(--vq-accent); flex: 0 0 auto; }
+.wpf-scale { display: flex; gap: 6px; flex-wrap: wrap; }
+.wpf-scale__b { min-width: 44px; height: 44px; border: 1px solid var(--vq-border);
+  border-radius: var(--vq-radius-sm); background: var(--vq-surface); cursor: pointer;
+  font: var(--vq-type-body-sm); color: var(--vq-text); }
+.wpf-scale__b.is-on { background: var(--vq-accent); color: var(--vq-accent-contrast); border-color: var(--vq-accent); }
+.wpf-star { display: flex; gap: 4px; }
+.wpf-star__b { width: 40px; height: 40px; border: 0; background: none; cursor: pointer;
+  color: var(--vq-border-strong); display: grid; place-items: center; }
+.wpf-star__b.is-on { color: var(--vq-favorite); }
+.wpf-star__b svg { width: 26px; height: 26px; fill: currentColor; }
+.wpf-mx { width: 100%; border-collapse: collapse; }
+.wpf-mx th, .wpf-mx td { border: 1px solid var(--vq-border-subtle); padding: 8px;
+  font: var(--vq-type-body-sm); text-align: center; }
+.wpf-mx th:first-child, .wpf-mx td:first-child { text-align: left; }
+.wpf-mxwrap { overflow-x: auto; }
+.wpf-mxm { display: none; }
+.wpf-err { color: var(--vq-danger-text); font: var(--vq-type-caption); margin-top: 6px; }
+.wpf-prog { height: 4px; background: var(--vq-surface-sunken); border-radius: 2px; overflow: hidden; margin-bottom: 16px; }
+.wpf-prog__f { height: 100%; background: var(--vq-accent); transition: width var(--vq-dur-normal); }
+.wpf-add { display: flex; flex-wrap: wrap; gap: 6px; }
+.wpf-add__b { display: flex; align-items: center; gap: 7px; padding: 8px 11px; min-height: 40px;
+  border: 1px solid var(--vq-border); border-radius: var(--vq-radius-sm);
+  background: var(--vq-surface); cursor: pointer; font: var(--vq-type-body-sm); color: var(--vq-text); }
+.wpf-add__b:hover { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }
+.wpf-add__b svg { width: 16px; height: 16px; color: var(--vq-text-tertiary); }
+.wpf-stat { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.wpf-stat__c { background: var(--vq-surface); border: 1px solid var(--vq-border-subtle);
+  border-radius: var(--vq-radius-md); padding: 14px; }
+.wpf-stat__n { font: var(--vq-type-display); color: var(--vq-text); line-height: 1.15; }
+.wpf-stat__l { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }
+
+/* ── グラフ ───────────────────────────────────────────────────── */
+.wp-chart { width: 100%; overflow-x: auto; }
+.wp-chart svg { display: block; max-width: 100%; height: auto; }
+.wp-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px;
+  font: var(--vq-type-caption); color: var(--vq-text-secondary); }
+.wp-legend__i { display: inline-flex; align-items: center; gap: 6px; }
+.wp-legend__s { width: 11px; height: 11px; border-radius: 3px; flex: 0 0 auto; }
+
+/* ── テンプレート ─────────────────────────────────────────────── */
+.wp-tpl { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+.wp-tpl__c { text-align: left; background: var(--vq-surface); border: 1px solid var(--vq-border-subtle);
+  border-radius: var(--vq-radius-md); overflow: hidden; cursor: pointer; padding: 0; }
+.wp-tpl__c:hover { border-color: var(--vq-accent); }
+.wp-tpl__b { height: 64px; }
+.wp-tpl__t { padding: 9px 11px; font: var(--vq-type-body-sm); font-weight: 600; color: var(--vq-text); }
+.wp-tpl__d { padding: 0 11px 11px; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }
+
+/* ── AI パネル ────────────────────────────────────────────────── */
+.wp-ai { padding: 12px; }
+.wp-ai__scope { background: var(--vq-ai-bg); color: var(--vq-ai-text); border-radius: var(--vq-radius-sm);
+  padding: 9px 11px; font: var(--vq-type-caption); margin-bottom: 10px; line-height: 1.5; }
+.wp-ai__a { display: flex; flex-direction: column; gap: 4px; }
+.wp-ai__b { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 40px;
+  padding: 8px 10px; border: 0; border-radius: var(--vq-radius-sm); background: none;
+  cursor: pointer; text-align: left; font: var(--vq-type-body-sm); color: var(--vq-text); }
+.wp-ai__b:hover { background: var(--vq-surface-hover); }
+.wp-ai__b svg { width: 16px; height: 16px; color: var(--vq-ai); flex: 0 0 auto; }
+.wp-diff { border: 1px solid var(--vq-border); border-radius: var(--vq-radius-sm); overflow: hidden; }
+.wp-diff__h { padding: 7px 10px; background: var(--vq-surface-sunken);
+  font: var(--vq-type-caption); color: var(--vq-text-secondary); }
+.wp-diff__b { padding: 11px; font: var(--vq-type-body-sm); color: var(--vq-text);
+  line-height: 1.75; max-height: 210px; overflow-y: auto; white-space: pre-wrap; }
+.wp-diff__b.is-old { background: var(--vq-danger-bg); }
+.wp-diff__b.is-new { background: var(--vq-success-bg); }
+
+/* ── モバイル（§21）───────────────────────────────────────────── */
+.is-mobile .wp-home { padding: var(--vq-sp-4) var(--vq-sp-4) 110px; }
+.is-mobile .wp-quick { grid-template-columns: repeat(2, 1fr); gap: var(--vq-sp-2); }
+.is-mobile .wp-quick__c { min-height: 60px; padding: 10px; }
+.is-mobile .wp-quick__d { display: none; }
+.is-mobile .wp-grid { grid-template-columns: 1fr; }
+.is-mobile .wp-grid.is-compact { grid-template-columns: repeat(2, 1fr); }
+.is-mobile .wp-left, .is-mobile .wp-right { display: none; }
+.is-mobile .wp-top { padding: 8px 10px; gap: 4px; min-height: 52px; }
+.is-mobile .wp-top__title { max-width: 40vw; font: var(--vq-type-body-md); }
+.is-mobile .wpd-page { padding: 18px 14px 180px; }
+.is-mobile .wpd-page.is-paper { padding: 26px 18px; margin: 10px; }
+.is-mobile .wpd-hand { display: none; }
+.is-mobile .wpf-wrap { padding: 14px 12px 120px; }
+.is-mobile .wpf-card { padding: 14px; }
+.is-mobile .wpf-mxwrap { display: none; }
+.is-mobile .wpf-mxm { display: block; }
+.is-mobile .wpp-stage { padding: 10px; }
+.is-mobile .wp-hero__t { font: var(--vq-type-heading-xl); }
+.wp-fab {
+  position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0));
+  width: 56px; height: 56px; border-radius: 50%; border: 0; z-index: 20;
+  background: var(--vq-accent); color: var(--vq-accent-contrast);
+  box-shadow: var(--vq-shadow-floating); cursor: pointer; display: none;
+  place-items: center;
+}
+.is-mobile .wp-fab { display: grid; }
+.wp-fab svg { width: 25px; height: 25px; }
+/* モバイルの下部ツールバー。内容を隠さないよう、本体側に余白を確保している。 */
+.wp-mbar {
+  display: none; position: sticky; bottom: 0; z-index: 12;
+  align-items: center; gap: 2px; padding: 6px 8px;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0));
+  background: var(--vq-surface); border-top: 1px solid var(--vq-border-subtle); overflow-x: auto;
+}
+.is-mobile .wp-mbar { display: flex; }
+.wp-mbar .wp-btn { height: 40px; min-width: 44px; }
+
+/* ── 書体を選ぶ窓 ─────────────────────────────────────────────── */
+.wp-fontbtn { max-width: 168px; }
+.wp-fontbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-fp__q { margin-bottom: 8px; min-height: 34px; }
+.wp-fp__i {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px;
+  padding: 5px 8px; border: 0; background: none; cursor: pointer; text-align: left;
+  border-radius: var(--vq-radius-sm); color: var(--vq-text);
+}
+.wp-fp__i:hover { background: var(--vq-surface-hover); }
+.wp-fp__i.is-on { background: var(--vq-accent-subtle); }
+.wp-fp__i[hidden] { display: none; }
+/* 二択（縦／横 など）。どちらが選ばれているか一目で分かるように。 */
+.wp-seg { display: inline-flex; gap: 0; border: 1px solid var(--vq-border);
+  border-radius: var(--vq-radius-md); overflow: hidden; background: var(--vq-surface); }
+.wp-seg__b { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px;
+  border: 0; background: none; cursor: pointer; font: var(--vq-type-body-sm);
+  color: var(--vq-text-secondary); }
+.wp-seg__b + .wp-seg__b { border-left: 1px solid var(--vq-border); }
+.wp-seg__b:hover { background: var(--vq-surface-hover); }
+.wp-seg__b.is-on { background: var(--vq-accent-subtle); color: var(--vq-primary); font-weight: 600; }
+.wp-seg__b svg { width: 16px; height: 16px; }
+
+/* ── 処理中のモーダル（設定と同じ出し方）───────────────────── */
+.wp-mod { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; }
+.wp-mod__bd { position: absolute; inset: 0; background: rgba(15, 23, 42, .38); }
+.wp-mod__w { position: relative; width: min(440px, calc(100vw - 32px));
+  background: var(--vq-surface); border-radius: var(--vq-radius-lg);
+  box-shadow: var(--vq-shadow-lg, 0 20px 60px rgba(15,23,42,.28));
+  padding: var(--vq-sp-5); display: flex; flex-direction: column; gap: var(--vq-sp-3); }
+.wp-mod__h { font: var(--vq-type-heading-sm); color: var(--vq-text); }
+.wp-mod__n { font: var(--vq-type-caption); color: var(--vq-text-secondary); }
+.wp-mod__bar { height: 4px; border-radius: 2px; background: var(--vq-surface-sunken); overflow: hidden; }
+.wp-mod__bar i { display: block; height: 100%; width: 38%; border-radius: 2px;
+  background: var(--vq-accent); animation: wp-mod-run 1.15s ease-in-out infinite; }
+@keyframes wp-mod-run { 0% { transform: translateX(-100%); } 100% { transform: translateX(310%); } }
+.is-reduced .wp-mod__bar i { animation: none; width: 100%; }
+.wp-mod__s { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.wp-mod__s li { display: flex; align-items: center; gap: 8px;
+  font: var(--vq-type-body-sm); color: var(--vq-text-tertiary); }
+.wp-mod__s li.is-now { color: var(--vq-text); font-weight: 600; }
+.wp-mod__s li.is-done { color: var(--vq-text-secondary); }
+.wp-mod__d { width: 8px; height: 8px; border-radius: 50%; background: var(--vq-border-strong); flex: 0 0 auto; }
+.wp-mod__s li.is-now .wp-mod__d { background: var(--vq-accent); }
+.wp-mod__s li.is-done .wp-mod__d { background: var(--vq-success); }
+.wp-mod__o { max-height: 108px; overflow: auto; font: var(--vq-type-code);
+  font-size: 11.5px; line-height: 1.55; color: var(--vq-text-tertiary);
+  background: var(--vq-surface-sunken); border-radius: var(--vq-radius-sm);
+  padding: 8px 10px; white-space: pre-wrap; word-break: break-word; }
+.wp-mod__o:empty { display: none; }
+.wp-mod__f { display: flex; justify-content: flex-end; }
+
+/* 色の窓の「文字の色 / 蛍光ペン」切替 */
+.wp-cp__seg { width: 100%; margin: 0 0 8px; }
+.wp-cp__seg .wp-seg__b { flex: 1 1 0; justify-content: center; height: 34px; }
+
+.wp-fp__i { min-height: 42px; align-items: flex-start; }
+.wp-fp__n { font: var(--vq-type-body-sm); flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 何に向く書体かの一言。並べるだけだと選べないので添える。 */
+.wp-fp__d { font: var(--vq-type-caption); color: var(--vq-text-tertiary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 見本。その書体そのもので出す。 */
+.wp-fp__s { margin-left: auto; font-size: 19px; line-height: 1.2; color: var(--vq-text);
+  flex: 0 0 auto; padding-top: 2px; max-width: 118px; overflow: hidden; white-space: nowrap; }
+.wp-fp__x { font: var(--vq-type-caption); color: var(--vq-warning-text);
+  background: var(--vq-warning-bg); padding: 1px 6px; border-radius: 999px; flex: 0 0 auto; }

@@ -1,0 +1,548 @@
+{
+  "$comment": "生成の品質と速度を測るテストケース。コードへ散らさず、ここだけで管理する（§5）。特定の文言を検出して通す実装が入っていないかを見るため、同じ意味を違う言い方で書いたケースを必ず混ぜる。",
+  "version": 1,
+  "profiles": {
+    "none": {
+      "kind": "none"
+    },
+    "small_text_pdf": {
+      "kind": "text",
+      "file": "tmp_exam_build/nihonshi-large.txt",
+      "pages": 1
+    },
+    "medium_text_pdf": {
+      "kind": "text",
+      "file": "tmp_exam_build/nihonshi-large.txt",
+      "repeat": 6,
+      "pages": 6
+    },
+    "scanned_pdf": {
+      "kind": "images",
+      "dir": "tmp_kanji_pages_img",
+      "pages": 3
+    }
+  },
+  "cases": [
+    {
+      "id": "A1-reorder-10",
+      "group": "A 単一形式",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "高校1年生向けの英文並び替え問題を10問作成してください。全問、語句カードを正しい順番に並べる形式にしてください。4択、穴埋め、短答、自由記述は禁止です。正答と日本語解説を付けてください。",
+      "expected": {
+        "totalQuestions": 10,
+        "allowedEngines": [
+          "reorder"
+        ],
+        "forbiddenEngines": [
+          "single_choice",
+          "fill_blank",
+          "text_input",
+          "free_text"
+        ],
+        "correctAnswerRequired": true,
+        "explanationRequired": true
+      },
+      "budget": {
+        "maxTotalDurationMs": 120000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "A1b-reorder-alias",
+      "group": "A 単一形式",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "英語の語句整序問題を10問つくってください。単語カードを正しい順番に並べる形式だけにしてください。",
+      "$note": "A1 と同じ意図を別の言い方で。文字列一致で通す実装が入っていたらここで落ちる。",
+      "expected": {
+        "totalQuestions": 10,
+        "allowedEngines": [
+          "reorder"
+        ],
+        "forbiddenEngines": [
+          "single_choice",
+          "free_text"
+        ]
+      },
+      "budget": {
+        "maxTotalDurationMs": 120000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "A2-fill-10",
+      "group": "A 単一形式",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "中学生向けの英語穴埋め問題を10問作成してください。全問を空欄補充形式にしてください。4択、並び替え、記述問題は禁止です。",
+      "expected": {
+        "totalQuestions": 10,
+        "allowedEngines": [
+          "fill_blank"
+        ],
+        "forbiddenEngines": [
+          "single_choice",
+          "reorder",
+          "free_text"
+        ]
+      },
+      "budget": {
+        "maxTotalDurationMs": 120000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "A3-matching-8",
+      "group": "A 単一形式",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "歴史用語と説明を対応させるマッチング問題を8問作成してください。通常の4択やテキスト記述にはしないでください。",
+      "expected": {
+        "totalQuestions": 8,
+        "allowedEngines": [
+          "matching"
+        ],
+        "forbiddenEngines": [
+          "single_choice",
+          "text_input",
+          "free_text"
+        ]
+      },
+      "budget": {
+        "maxTotalDurationMs": 120000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "A4-errcorr-10",
+      "group": "A 単一形式",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "高校英語の誤文訂正問題を10問作成してください。誤りの箇所、修正後の英文、解説を必ず付けてください。",
+      "expected": {
+        "totalQuestions": 10,
+        "allowedEngines": [
+          "error_correction"
+        ],
+        "explanationRequired": true
+      },
+      "budget": {
+        "maxTotalDurationMs": 120000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "B1-mixed-12",
+      "group": "B 複数形式と配分",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "高校英語の問題を12問作成してください。内訳：英文並び替え4問、穴埋め4問、誤文訂正4問。4択、正誤、自由記述は禁止です。",
+      "expected": {
+        "totalQuestions": 12,
+        "exactEngineDistribution": {
+          "reorder": 4,
+          "fill_blank": 4,
+          "error_correction": 4
+        },
+        "forbiddenEngines": [
+          "single_choice",
+          "true_false",
+          "free_text"
+        ]
+      },
+      "budget": {
+        "maxTotalDurationMs": 150000,
+        "maxAiCalls": 10,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "B2-mixed-15",
+      "group": "B 複数形式と配分",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "中学理科の問題を15問作成してください。内訳：4択5問、穴埋め5問、マッチング5問。各形式の数を変更しないでください。",
+      "expected": {
+        "totalQuestions": 15,
+        "exactEngineDistribution": {
+          "single_choice": 5,
+          "fill_blank": 5,
+          "matching": 5
+        }
+      },
+      "budget": {
+        "maxTotalDurationMs": 180000,
+        "maxAiCalls": 10,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "C1-no-mcq",
+      "group": "C 禁止条件",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "英語問題を10問作成してください。4択問題は1問も作らないでください。",
+      "expected": {
+        "totalQuestions": 10,
+        "forbiddenEngines": [
+          "single_choice"
+        ]
+      },
+      "budget": {
+        "maxTotalDurationMs": 120000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "C2-no-writing",
+      "group": "C 禁止条件",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "社会の問題を10問作成してください。自由記述、短答、作文形式は禁止です。",
+      "expected": {
+        "totalQuestions": 10,
+        "forbiddenEngines": [
+          "free_text",
+          "text_input"
+        ]
+      },
+      "budget": {
+        "maxTotalDurationMs": 120000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "C3-no-choices",
+      "group": "C 禁止条件",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "選択肢を使わない問題だけを8問作成してください。",
+      "expected": {
+        "totalQuestions": 8,
+        "forbiddenEngines": [
+          "single_choice",
+          "multi_choice",
+          "true_false"
+        ]
+      },
+      "budget": {
+        "maxTotalDurationMs": 120000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "D1-count-1",
+      "group": "D 問題数",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "日本史の問題を1問だけ作ってください。",
+      "expected": {
+        "totalQuestions": 1
+      },
+      "budget": {
+        "maxTotalDurationMs": 60000,
+        "maxAiCalls": 6,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "D2-count-5",
+      "group": "D 問題数",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "日本史の問題を5問作ってください。",
+      "expected": {
+        "totalQuestions": 5
+      },
+      "budget": {
+        "maxTotalDurationMs": 90000,
+        "maxAiCalls": 6,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "D3-count-10",
+      "group": "D 問題数",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "日本史の問題を10問作ってください。",
+      "expected": {
+        "totalQuestions": 10
+      },
+      "budget": {
+        "maxTotalDurationMs": 120000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "D4-count-20",
+      "group": "D 問題数",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "日本史の問題を20問作ってください。",
+      "expected": {
+        "totalQuestions": 20
+      },
+      "budget": {
+        "maxTotalDurationMs": 240000,
+        "maxAiCalls": 12,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "D5-count-15",
+      "group": "D 問題数",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "日本史の問題を15問作ってください。",
+      "expected": {
+        "totalQuestions": 15
+      },
+      "budget": {
+        "maxTotalDurationMs": 240000,
+        "maxAiCalls": 10
+      }
+    },
+    {
+      "id": "D6-count-30",
+      "group": "D 問題数",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "日本史の問題を30問作ってください。",
+      "expected": {
+        "totalQuestions": 30
+      },
+      "budget": {
+        "maxTotalDurationMs": 420000,
+        "maxAiCalls": 16
+      }
+    },
+    {
+      "id": "E1-elementary",
+      "group": "E 難易度",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "小学生向けの理科の穴埋め問題を6問作ってください。全問を空欄補充にしてください。",
+      "$note": "難易度の指定で形式が勝手に変わらないことを見る。",
+      "expected": {
+        "totalQuestions": 6,
+        "allowedEngines": [
+          "fill_blank"
+        ]
+      },
+      "budget": {
+        "maxTotalDurationMs": 90000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "E2-univ",
+      "group": "E 難易度",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "大学受験レベルの難しい英文並び替え問題を6問作ってください。並び替え以外は使わないでください。",
+      "expected": {
+        "totalQuestions": 6,
+        "allowedEngines": [
+          "reorder"
+        ]
+      },
+      "budget": {
+        "maxTotalDurationMs": 90000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "F1-vague",
+      "group": "F 曖昧",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "英語のいい感じの問題を10問作って。",
+      "$note": "形式の指定が無い。数と正答は守り、対応済みの形式だけを使うこと。",
+      "expected": {
+        "totalQuestions": 10,
+        "correctAnswerRequired": true,
+        "productionTypesOnly": true
+      },
+      "budget": {
+        "maxTotalDurationMs": 120000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "G1-contradiction",
+      "group": "G 矛盾",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "全問4択にしてください。ただし、4択問題は禁止です。10問作ってください。",
+      "$note": "勝手に解釈して作らず、矛盾として返すこと。",
+      "expected": {
+        "contractStatus": "contradictory",
+        "mustNotPublish": true
+      },
+      "budget": {
+        "maxTotalDurationMs": 30000,
+        "maxAiCalls": 1
+      }
+    },
+    {
+      "id": "H1-unsupported",
+      "group": "H 未対応形式",
+      "engine": "preset",
+      "profile": "none",
+      "prompt": "ホログラム立体操作問題を10問作ってください。",
+      "$note": "対応していないと明示し、代わりに 4択や短答へ黙って変えないこと。",
+      "expected": {
+        "contractStatus": "unsupported",
+        "mustNotPublish": true
+      },
+      "budget": {
+        "maxTotalDurationMs": 30000,
+        "maxAiCalls": 1
+      }
+    },
+    {
+      "id": "M1-mock-reorder",
+      "group": "M Quick Mock",
+      "engine": "mock",
+      "profile": "small_text_pdf",
+      "prompt": "添付資料から英文並び替え問題を10問作成してください。短答、4択は禁止です。",
+      "$note": "同じ指示を試験側で。Preset と同じ解釈になること（§23）。",
+      "expected": {
+        "totalQuestions": 10,
+        "allowedEngines": [
+          "reorder"
+        ]
+      },
+      "budget": {
+        "maxTotalDurationMs": 240000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "M2-mock-mixed",
+      "group": "M Quick Mock",
+      "engine": "mock",
+      "profile": "small_text_pdf",
+      "prompt": "添付資料から12問の試験問題を作ってください。内訳：穴埋め4問、正誤4問、記述4問。",
+      "expected": {
+        "totalQuestions": 12,
+        "exactEngineDistribution": {
+          "fill_blank": 4,
+          "true_false": 4,
+          "free_text": 4
+        }
+      },
+      "budget": {
+        "maxTotalDurationMs": 300000,
+        "maxAiCalls": 10,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "S1-doc-body-only",
+      "group": "S 資料",
+      "engine": "preset",
+      "profile": "small_text_pdf",
+      "prompt": "添付資料の学習本文だけから10問作成してください。表紙、目次、注意事項、著作権、発行情報、解答ページは使わないでください。各問題に根拠ページを保存してください。資料にない一般知識を追加しないでください。",
+      "expected": {
+        "totalQuestions": 10,
+        "sourceOnly": true,
+        "citationRequired": true
+      },
+      "budget": {
+        "maxTotalDurationMs": 180000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "S2-doc-reorder",
+      "group": "S 資料",
+      "engine": "preset",
+      "profile": "small_text_pdf",
+      "prompt": "添付資料から英文並び替え問題を10問作成してください。全問、実際に語句カードを並べる形式にしてください。短答、4択、穴埋めは禁止です。",
+      "expected": {
+        "totalQuestions": 10,
+        "allowedEngines": [
+          "reorder"
+        ],
+        "sourceOnly": true
+      },
+      "budget": {
+        "maxTotalDurationMs": 180000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "S3-doc-impossible",
+      "group": "S 資料",
+      "engine": "preset",
+      "profile": "small_text_pdf",
+      "prompt": "添付資料だけから異なる英文並び替え問題を30問作成してください。30問分の内容がない場合、一般知識や別形式で補完しないでください。",
+      "$note": "作れないなら作れる数を返す。別形式へ変えたり、同じ英文を水増ししたら失格。",
+      "expected": {
+        "allowShortfall": true,
+        "noPadding": true,
+        "allowedEngines": [
+          "reorder"
+        ]
+      },
+      "budget": {
+        "maxTotalDurationMs": 240000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "S4-scanned",
+      "group": "S 資料",
+      "engine": "preset",
+      "profile": "scanned_pdf",
+      "prompt": "この資料から6問作ってください。",
+      "expected": {
+        "totalQuestions": 6,
+        "sourceOnly": true
+      },
+      "budget": {
+        "maxTotalDurationMs": 300000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    },
+    {
+      "id": "S5-scanned-again",
+      "group": "S 資料（2 回目）",
+      "engine": "preset",
+      "profile": "scanned_pdf",
+      "reuseJobOf": "S4-scanned",
+      "prompt": "この資料から6問作ってください。",
+      "$note": "同じ資料の 2 回目。ページの読み取りが 0 回になること。",
+      "expected": {
+        "totalQuestions": 6,
+        "sourceOnly": true,
+        "expectNoPageReads": true
+      },
+      "budget": {
+        "maxTotalDurationMs": 180000,
+        "maxAiCalls": 8,
+        "maxRepairCalls": 3
+      }
+    }
+  ]
+}

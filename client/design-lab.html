@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>デザインの試し場 — VocabuQuiz</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+         background: #eef0f4; color: #1e2330; padding: 16px 20px 60px; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .note { font-size: 13px; color: #5b6474; margin-bottom: 14px; line-height: 1.7; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+  button { height: 34px; padding: 0 14px; font: inherit; font-size: 13px; border: 1px solid #c9cfda;
+           background: #fff; border-radius: 8px; cursor: pointer; }
+  button:hover { background: #f6f8fb; }
+  button.on { background: #1e2330; color: #fff; border-color: #1e2330; }
+  input[type=text] { height: 34px; padding: 0 10px; font: inherit; font-size: 13px;
+                     border: 1px solid #c9cfda; border-radius: 8px; width: 220px; }
+  .wrap { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+  .vqd-page { box-shadow: 0 6px 24px rgba(15,23,42,.14); border-radius: 6px; }
+  .stack { display: flex; flex-wrap: wrap; gap: 12px; }
+  .info { flex: 1 1 300px; min-width: 280px; background: #fff; border: 1px solid #dfe4ec;
+          border-radius: 10px; padding: 14px 16px; font-size: 12.5px; line-height: 1.9; }
+  .info h2 { font-size: 13px; margin: 10px 0 4px; color: #5b6474; }
+  .info h2:first-child { margin-top: 0; }
+  .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px;
+        border: 1px solid rgba(0,0,0,.15); vertical-align: -2px; margin-right: 6px; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .ng { color: #b91c1c; font-weight: 700; }
+  .ok { color: #15803d; }
+  .grid100 { display: grid; width: 100%; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 12px; }
+  #view.wide { flex: 1 1 100%; }
+  .cap { font-size: 11px; color: #5b6474; margin-top: 3px; }
+</style>
+</head>
+<body>
+<h1>デザインの試し場（Phase 1 / Phase 2）</h1>
+<p class="note">
+  Seed（10 軸）から 色・書体・余白・形・レイアウトを <b>計算だけ</b>で作っています。LLM は動いていません。<br>
+  「別の Seed」を押すたびに 別のデザインが出ます。<code>?seed=…</code> を付けると 同じものを何度でも再現できます。
+</p>
+<div class="bar">
+  <button id="b1" class="on">1 枚</button>
+  <button id="b20">20 枚のデッキ</button>
+  <button id="b100">100 個 いっぺんに</button>
+  <span style="width:12px"></span>
+  <button id="bnew">別の Seed</button>
+  <input type="text" id="seedin" placeholder="Seed（例 6-4-2-17-0-0-2-0-1-0）" />
+  <button id="bgo">この Seed で</button>
+  <span id="stat" style="font-size:12px;color:#5b6474"></span>
+</div>
+<div class="wrap">
+  <div id="view" class="stack"></div>
+  <div class="info" id="info"></div>
+</div>
+
+<script src="/design/color.js"></script>
+<script src="/design/seed.js"></script>
+<script src="/design/font-families.js"></script>
+<script src="/design/font-pairs.js"></script>
+<script src="/design/derive.js"></script>
+<script src="/design/constraints.js"></script>
+<script src="/design/layout-grammar.js"></script>
+<script src="/design/layout-diversity.js"></script>
+<script src="/design/layout-resolve.js"></script>
+<script src="/design/gate.js"></script>
+<script src="/design/ir.js"></script>
+<script src="/design/preview.js"></script>
+<script src="/design/sample.js"></script>
+<script>
+(function () {
+  "use strict";
+  var V = window.VQD;
+  var view = document.getElementById("view"), info = document.getElementById("info");
+  var stat = document.getElementById("stat");
+  var 種 = 1;
+  var いまのSeed = null, 表示 = "1";
+
+  function rng() { return V.constraints.rngOf(種++); }
+
+  /* デッキを 1 つ組む（中身は確認用のダミー原稿） */
+  function デッキ(seed, 枚, 形の種) {
+    var deck = V.ir.newDeck({ title: "文化祭の企画", audience: "全校生徒", pageCount: 枚 }, seed);
+    var r = V.constraints.rngOf(形の種 === undefined ? 999 : 形の種);
+    var specs = [];
+    for (var i = 0; i < 枚; i++) specs.push(V.grammar.randomSpec(r));
+    var 整 = V.diversity.整える(specs, 7);
+    整.specs.forEach(function (sp, i) {
+      var purpose = V.grammar.PURPOSES[i % V.grammar.PURPOSES.length];
+      var pg = V.ir.newPage(purpose, sp, i);
+      var 寸 = V.measure.上限一覧(sp, deck.tokens, { purpose: purpose });
+      pg.content = sp.slots.map(function (s, k) {
+        return V.ir.中身をそろえる(
+          Object.assign({ slotIndex: k }, V.sample.中身(s.role, 寸[k], i + k)), s.role);
+      });
+      deck.pages.push(pg);
+    });
+    V.ir.全部解く(deck);
+    return deck;
+  }
+
+  function 比の行(名, 値, 要る) {
+    var ok = 値 >= 要る;
+    return "<div>" + 名 + ": <b class='" + (ok ? "ok" : "ng") + "'>" + 値.toFixed(2)
+      + "</b> <span style='color:#8a93a3'>（要 " + 要る + "）</span></div>";
+  }
+
+  function 情報(deck, 面積) {
+    var t = deck.tokens, s = t.seed, p = V.fonts.of(s.fontPair);
+    var 色 = t.color;
+    function sw(n, v) { return "<div><span class='sw' style='background:" + v + "'></span>" + n + " <code>" + v + "</code></div>"; }
+    var err = deck.pages.reduce(function (n, x) { return n + x.issues.filter(function (i) { return i.深刻 === "error"; }).length; }, 0);
+    var warn = deck.pages.reduce(function (n, x) { return n + x.issues.filter(function (i) { return i.深刻 === "warning"; }).length; }, 0);
+    info.innerHTML =
+      "<h2>Seed</h2><code>" + t.seedKey + "</code>"
+      + "<div style='margin-top:6px'>色相 " + s.hue + "° ／ " + s.scheme + " ／ " + s.mode
+      + " ／ 書体 " + s.fontPair + "（" + p.名 + "）<br>比 " + s.typeScale + " ／ " + s.grid
+      + " 列 ／ " + s.spacing + " ／ " + s.shape + " ／ 飾り " + s.accent + " ／ 地 " + s.background + "</div>"
+      + "<h2>色</h2>" + sw("地", 色.bg) + sw("面", 色.surface) + sw("本文", 色.textPrimary)
+      + sw("副文", 色.textSecondary) + sw("差し色", 色.accent) + sw("うすい差し色", 色.accentSoft)
+      + sw("副の色", 色.secondary) + sw("罫線", 色.border)
+      + "<h2>コントラスト比</h2>"
+      + 比の行("本文 / 地", t.比.本文, 7.0) + 比の行("副文 / 地", t.比.副文, 4.5)
+      + 比の行("差し色の上の文字", t.比.差し色の上の文字, 4.5)
+      + 比の行("差し色 / 地", t.比.差し色と地, 4.5)
+      + 比の行("うすい差し色の上の本文", t.比.うすい差し色の上の本文, 7.0)
+      + 比の行("罫線 / 地", t.比.罫線, 3.0)
+      + "<h2>字の大きさ</h2><code>" + JSON.stringify(t.type.size) + "</code>"
+      + "<h2>余白</h2><code>" + JSON.stringify(t.space) + "</code>"
+      + "<h2>書体</h2>見出し <code>" + t.type.stack.display.join(" / ") + "</code><br>"
+      + "本文 <code>" + t.type.stack.body.join(" / ") + "</code>"
+      + "<h2>濃い色（S&gt;60%）の面積</h2>"
+      + "<b class='" + (面積 <= 0.10 ? "ok" : "ng") + "'>" + (面積 * 100).toFixed(1) + "%</b>"
+      + " <span style='color:#8a93a3'>（上限 10%）</span>"
+      + "<h2>Layout Gate</h2>error <b class='" + (err ? "ng" : "ok") + "'>" + err + "</b>"
+      + " ／ warning " + warn;
+  }
+
+  function 描く() {
+    var seed = いまのSeed;
+    view.innerHTML = "";
+    if (表示 === "100") {
+      info.innerHTML = "<h2>100 個 いっぺんに</h2>ここで <b>明らかにダサい・読めないもの</b>が"
+        + "1 つでもあれば、制約を足す番です。";
+      view.className = "stack wide";
+      var g = document.createElement("div");
+      g.className = "grid100";
+      var html = [], 面積NG = 0, errAll = 0;
+      var r = V.constraints.rngOf(20260817);
+      for (var i = 0; i < 100; i++) {
+        var s2 = V.constraints.randomSeed(r);
+        var d2 = デッキ(s2, 1, 1000 + i * 7);
+        var a = V.gate.濃い色の面積比(d2.pages[0].resolved, d2.tokens);
+        if (a > 0.10) 面積NG++;
+        errAll += d2.pages[0].issues.filter(function (x) { return x.深刻 === "error"; }).length;
+        html.push("<div><div style='width:236px'>"
+          + V.preview.pageHtml(d2.pages[0], d2.tokens, { scale: 236 / 960 })
+          + "</div><div class='cap'>" + d2.tokens.seedKey + "</div></div>");
+      }
+      g.innerHTML = html.join("");
+      view.appendChild(g);
+      stat.textContent = "100 個 ／ Gate error " + errAll + " ／ 面積 10% 超 " + 面積NG + " 件";
+      return;
+    }
+    view.className = "stack";
+    var 枚 = 表示 === "20" ? 20 : 1;
+    var deck = デッキ(seed, 枚, 枚 === 1 ? 1000 + (seed.hue + seed.fontPair) * 7 : 999);
+    var 拡 = 枚 === 1 ? 0.72 : 0.34;
+    view.innerHTML = deck.pages.map(function (p, i) {
+      return "<div><div>" + V.preview.pageHtml(p, deck.tokens, { scale: 拡 }) + "</div>"
+        + "<div class='cap'>" + (i + 1) + ". " + p.purpose + " ／ "
+        + p.layout.partition.count + "分割 " + p.layout.partition.direction
+        + " " + p.layout.partition.ratio.join(":") + " ／ " + p.layout.gravity
+        + (p.layout.bleed ? " ／ 端まで" : "") + "</div></div>";
+    }).join("");
+    var 面積 = deck.pages.reduce(function (m, p) {
+      return Math.max(m, V.gate.濃い色の面積比(p.resolved, deck.tokens)); }, 0);
+    情報(deck, 面積);
+    var 種類 = {};
+    deck.pages.forEach(function (p) { 種類[V.diversity.key(p.layout)] = 1; });
+    stat.textContent = 枚 + " 枚 ／ レイアウト " + Object.keys(種類).length + " 種";
+    try { history.replaceState(null, "", "?seed=" + deck.tokens.seedKey); } catch (e) {}
+  }
+
+  function 切替(id) {
+    ["b1", "b20", "b100"].forEach(function (k) { document.getElementById(k).classList.remove("on"); });
+    document.getElementById(id).classList.add("on");
+  }
+  document.getElementById("b1").onclick = function () { 表示 = "1"; 切替("b1"); 描く(); };
+  document.getElementById("b20").onclick = function () { 表示 = "20"; 切替("b20"); 描く(); };
+  document.getElementById("b100").onclick = function () { 表示 = "100"; 切替("b100"); 描く(); };
+  document.getElementById("bnew").onclick = function () {
+    いまのSeed = V.constraints.randomSeed(rng()); if (表示 === "100") { 表示 = "1"; 切替("b1"); } 描く();
+  };
+  document.getElementById("bgo").onclick = function () {
+    var v = document.getElementById("seedin").value.trim();
+    if (!v) return;
+    いまのSeed = V.constraints.nearestValidSeed(V.seed.decode(v)).seed;
+    if (表示 === "100") { 表示 = "1"; 切替("b1"); }
+    描く();
+  };
+
+  var q = new URLSearchParams(location.search).get("seed");
+  いまのSeed = q ? V.constraints.nearestValidSeed(V.seed.decode(q)).seed
+                 : V.constraints.randomSeed(V.constraints.rngOf(20260817));
+  if (q) document.getElementById("seedin").value = q;
+  描く();
+})();
+</script>
+</body>
+</html>

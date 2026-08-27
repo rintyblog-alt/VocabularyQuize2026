@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Lumi 呼びかけ 診断</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px 16px 64px;
+    font-family: Inter, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+    background: #f8fafc; color: #0f172a; line-height: 1.7;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: #64748b; margin: 0 0 20px; line-height: 1.6; }
+  .card {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; color: #334155; }
+  .kv { display: flex; gap: 8px; font-size: 13px; padding: 3px 0; border-bottom: 1px solid #f1f5f9; }
+  .kv:last-child { border-bottom: 0; }
+  .kv b { font-weight: 500; color: #64748b; flex: 0 0 44%; }
+  .kv span { color: #0f172a; word-break: break-all; }
+  .ng { color: #b91c1c; font-weight: 600; }
+  .okv { color: #047857; font-weight: 600; }
+  button {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 48px; padding: 0 22px; font-size: 16px; font-weight: 600;
+    background: #2b70ef; color: #fff; border: 0; border-radius: 10px;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  button.sub2 { background: #fff; color: #334155; border: 1px solid #cbd5e1; font-weight: 500; }
+  button:disabled { opacity: .45; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  #log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-all;
+    background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 12px;
+    min-height: 220px; max-height: 46vh; overflow: auto;
+  }
+  .hint { font-size: 13px; color: #475569; margin: 10px 0 0; }
+  .big { font-size: 15px; font-weight: 600; margin: 14px 0 6px; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0b1220; color: #e2e8f0; }
+    .card { background: #111a2e; border-color: #1e293b; }
+    h2 { color: #cbd5e1; } .kv { border-color: #1e293b; }
+    .kv span { color: #e2e8f0; } .hint { color: #94a3b8; }
+    button.sub2 { background: #111a2e; color: #cbd5e1; border-color: #334155; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Lumi の呼びかけ 診断</h1>
+<p class="sub">
+  「はじめる」を押して、ふつうの声で <b>「ルミ」</b> と 3 回、間をあけて言ってください。<br>
+  30 秒たったら止まります。そのあと「コピー」を押して、結果を貼ってください。
+</p>
+
+<div class="card">
+  <h2>この端末</h2>
+  <div id="env"></div>
+</div>
+
+<div class="row">
+  <button id="go">はじめる</button>
+  <button id="stop" class="sub2" disabled>止める</button>
+  <button id="copy" class="sub2">コピー</button>
+</div>
+
+<div id="log">まだ動かしていません。</div>
+<p class="hint">
+  マイクの許可を聞かれたら「許可」を押してください。<br>
+  ※ このページは端末の中だけで動きます。声はどこへも送りません。
+</p>
+
+<!-- ★ アプリと **同じ判定** を読む。片方だけ直して食い違うのを防ぐ。 -->
+<script src="/vq-wake.js"></script>
+<script>
+(function () {
+  var T0 = Date.now();
+  var lines = [];
+  var logEl = document.getElementById("log");
+
+  function put(s) {
+    var t = ((Date.now() - T0) / 1000).toFixed(2);
+    lines.push(t + "s  " + s);
+    logEl.textContent = lines.join("\n");
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  /* ── この端末のことを、確かめられるものだけ書く ────────────── */
+  var ua = navigator.userAgent;
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  var iosM = ua.match(/OS (\d+)[_.](\d+)/);
+  var standalone = false;
+  try {
+    standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+      || navigator.standalone === true;
+  } catch (e) {}
+
+  var env = {
+    "端末": /iPhone/.test(ua) ? "iPhone" : (/iPad/.test(ua) ? "iPad" : (/Android/.test(ua) ? "Android" : "PC/その他")),
+    "iOS の版": iosM ? (iosM[1] + "." + iosM[2]) : "—",
+    "ホーム画面から開いた": standalone ? "はい（全画面）" : "いいえ（ブラウザ）",
+    "聞き取りの仕組み": SR ? (window.SpeechRecognition ? "あり（標準）" : "あり（webkit）") : "無い",
+    "マイクを取れる": (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ? "はい" : "いいえ",
+    "音を扱える": (window.AudioContext || window.webkitAudioContext) ? "はい" : "いいえ",
+    "安全な接続": location.protocol === "https:" ? "はい" : "いいえ（" + location.protocol + "）",
+    "ブラウザ": ua.slice(0, 110)
+  };
+  var envEl = document.getElementById("env");
+  Object.keys(env).forEach(function (k) {
+    var v = String(env[k]);
+    var cls = /^(無い|いいえ)/.test(v) ? "ng" : (/^(あり|はい)/.test(v) ? "okv" : "");
+    var d = document.createElement("div");
+    d.className = "kv";
+    d.innerHTML = "<b></b><span></span>";
+    d.children[0].textContent = k;
+    d.children[1].textContent = v;
+    if (cls) d.children[1].className = cls;
+    envEl.appendChild(d);
+  });
+
+  var rec = null, tEnd = null, starts = 0, ends = 0, results = 0, woke = 0, errs = [];
+
+  function hook(r) {
+    /* 出るはずの知らせを **全部** 拾う。どれが出ないかが分かることが目的。 */
+    ["start", "audiostart", "soundstart", "speechstart",
+     "speechend", "soundend", "audioend", "nomatch"].forEach(function (n) {
+      r["on" + n] = function () { put("知らせ: " + n); };
+    });
+    r.onstart = function () { starts++; put("知らせ: start（" + starts + " 回目）"); };
+    r.onresult = function (e) {
+      results++;
+      var out = [];
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        var alts = e.results[i];
+        for (var a = 0; a < alts.length; a++) {
+          var tx = (alts[a].transcript || "").trim();
+          /* ★ アプリと同じ判定にかけて、**起きるかどうか**もその場で出す。 */
+          var w = { hit: false };
+          try { if (window.VQ_WAKE) w = window.VQ_WAKE.why(tx); } catch (ex) {}
+          out.push(tx + (e.results[i].isFinal ? "" : "（途中）") + (w.hit ? " ←起きる" : ""));
+        }
+      }
+      if (out.some(function (x) { return /←起きる/.test(x); })) woke++;
+      put("★ 聞こえた: " + JSON.stringify(out));
+    };
+    r.onerror = function (e) {
+      var w = (e && e.error) || "不明";
+      errs.push(w);
+      put("✗ エラー: " + w + (e && e.message ? " / " + e.message : ""));
+    };
+    r.onend = function () {
+      ends++;
+      put("知らせ: end（" + ends + " 回目）");
+      if (running) {
+        /* 勝手に止まったら掛け直す。**掛け直せるかどうか**を見たい。 */
+        setTimeout(function () {
+          if (!running) return;
+          try { r.start(); put("→ 掛け直した（自動）"); }
+          catch (ex) { put("✗ 掛け直せない: " + (ex && ex.name) + " " + (ex && ex.message)); }
+        }, 60);
+      }
+    };
+  }
+
+  var running = false;
+
+  document.getElementById("go").addEventListener("click", function () {
+    if (running) return;
+    lines.length = 0; T0 = Date.now();
+    starts = ends = results = woke = 0; errs = [];
+    put("はじめました。");
+
+    if (!SR) {
+      put("✗ この端末には 聞き取りの仕組みがありません。ここで終わりです。");
+      logEl.textContent = lines.join("\n");
+      return;
+    }
+    running = true;
+    document.getElementById("go").disabled = true;
+    document.getElementById("stop").disabled = false;
+
+    /* ① まずマイクの許可。iPhone は聞き取りと別に聞いてくることがある。 */
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function (ms) {
+        var t = ms.getAudioTracks()[0];
+        put("マイク: 取れました（" + (t ? t.readyState + (t.muted ? " / 無音にされている" : "") : "?") + "）");
+        /* ★ すぐ離す。持ったままだと聞き取りが音を取れない端末がある。 */
+        ms.getTracks().forEach(function (x) { x.stop(); });
+        put("マイク: 離しました");
+        setTimeout(begin, 400);
+      }).catch(function (e) {
+        put("✗ マイクが取れません: " + (e && e.name) + " " + (e && e.message));
+        put("→ それでも聞き取りだけ試します。");
+        begin();
+      });
+    } else { begin(); }
+
+    function begin() {
+      try {
+        rec = new SR();
+        rec.lang = "ja-JP";
+        rec.continuous = true;
+        rec.interimResults = true;
+        try { rec.maxAlternatives = 5; } catch (e) {}
+        put("設定: continuous=" + rec.continuous + " interim=" + rec.interimResults
+          + " max=" + rec.maxAlternatives);
+        hook(rec);
+        rec.start();
+        put("→ start() を呼びました（例外なし）");
+      } catch (e) {
+        put("✗ start() で落ちました: " + (e && e.name) + " " + (e && e.message));
+        return;
+      }
+      tEnd = setTimeout(finish, 30000);
+    }
+  });
+
+  function finish() {
+    if (!running) return;
+    running = false;
+    clearTimeout(tEnd);
+    try { if (rec) { rec.onend = null; rec.abort(); } } catch (e) {}
+    document.getElementById("go").disabled = false;
+    document.getElementById("stop").disabled = true;
+    put("─────────────");
+    put("まとめ: start " + starts + " 回 / end " + ends + " 回 / 聞こえた "
+      + results + " 回 / **呼びかけとして当たった " + woke + " 回** / エラー " + JSON.stringify(errs));
+    if (!starts) put("判定: **一度も始まっていない**（start の知らせが来ていない）");
+    else if (!results) put("判定: 始まったが **一度も聞き取れていない**");
+    else if (!woke) put("判定: 聞き取れているが **呼びかけとして当たっていない**（当て字が足りない）");
+    else put("判定: 聞き取れて、呼びかけとしても当たっている（" + woke + " 回）");
+    logEl.textContent = lines.join("\n");
+  }
+
+  document.getElementById("stop").addEventListener("click", finish);
+
+  document.getElementById("copy").addEventListener("click", function () {
+    var txt = "【この端末】\n"
+      + Object.keys(env).map(function (k) { return k + ": " + env[k]; }).join("\n")
+      + "\n\n【記録】\n" + lines.join("\n");
+    var done = function () { alert("コピーしました。そのまま貼ってください。"); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done).catch(fallback);
+    } else fallback();
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); done(); }
+      catch (e) { alert("コピーできませんでした。画面を長押しして選んでください。"); }
+      document.body.removeChild(ta);
+    }
+  });
+})();
+</script>
+</body>
+</html>

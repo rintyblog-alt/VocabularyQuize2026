@@ -1,0 +1,1714 @@
+{
+ "fonts": [
+  {
+   "id": "anton",
+   "group": "欧文 サンセリフ",
+   "label": "Anton",
+   "family": "Anton",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "極太。一言のキャッチに",
+   "jp": false,
+   "chunks": 3
+  },
+  {
+   "id": "archivo",
+   "group": "欧文 サンセリフ",
+   "label": "Archivo",
+   "family": "Archivo",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "やや幅広で力強い見出し向け",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "barlowcondensed",
+   "group": "欧文 サンセリフ",
+   "label": "Barlow Condensed",
+   "family": "Barlow Condensed",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "表や狭い欄に詰めて置く",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "bebasneue",
+   "group": "欧文 サンセリフ",
+   "label": "Bebas Neue",
+   "family": "Bebas Neue",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "大文字だけの強い見出し",
+   "jp": false,
+   "chunks": 2
+  },
+  {
+   "id": "bricolagegrotesque",
+   "group": "欧文 サンセリフ",
+   "label": "Bricolage Grotesque",
+   "family": "Bricolage Grotesque",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "個性の強い見出しや扉に",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "cabin",
+   "group": "欧文 サンセリフ",
+   "label": "Cabin",
+   "family": "Cabin",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "人文的でやさしい説明文",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "chivo",
+   "group": "欧文 サンセリフ",
+   "label": "Chivo",
+   "family": "Chivo",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "力強い見出しや字幕向け",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "dmsans",
+   "group": "欧文 サンセリフ",
+   "label": "DM Sans",
+   "family": "DM Sans",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "小さい字でも整うUI向け",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "ibmplexsans",
+   "group": "欧文 サンセリフ",
+   "label": "IBM Plex Sans",
+   "family": "IBM Plex Sans",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "コードと並べる技術資料に",
+   "jp": false,
+   "chunks": 18
+  },
+  {
+   "id": "inter",
+   "group": "欧文 サンセリフ",
+   "label": "Inter",
+   "family": "Inter",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "画面のUIと本文に最も無難",
+   "jp": false,
+   "chunks": 21
+  },
+  {
+   "id": "josefinsans",
+   "group": "欧文 サンセリフ",
+   "label": "Josefin Sans",
+   "family": "Josefin Sans",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "装飾的。ロゴや扉ページ",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "jost",
+   "group": "欧文 サンセリフ",
+   "label": "Jost",
+   "family": "Jost",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "Futura風。上品な表紙に",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "karla",
+   "group": "欧文 サンセリフ",
+   "label": "Karla",
+   "family": "Karla",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "少し癖のある小見出し向け",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "lato",
+   "group": "欧文 サンセリフ",
+   "label": "Lato",
+   "family": "Lato",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "やわらかく温かみのある本文",
+   "jp": false,
+   "chunks": 4
+  },
+  {
+   "id": "lexend",
+   "group": "欧文 サンセリフ",
+   "label": "Lexend",
+   "family": "Lexend",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "読みやすさ重視。学習教材に",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "manrope",
+   "group": "欧文 サンセリフ",
+   "label": "Manrope",
+   "family": "Manrope",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "見出しと本文を1書体で",
+   "jp": false,
+   "chunks": 18
+  },
+  {
+   "id": "montserrat",
+   "group": "欧文 サンセリフ",
+   "label": "Montserrat",
+   "family": "Montserrat",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "大きな見出しや表紙に映える",
+   "jp": false,
+   "chunks": 15
+  },
+  {
+   "id": "notosans",
+   "group": "欧文 サンセリフ",
+   "label": "Noto Sans",
+   "family": "Noto Sans",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "日本語と混ぜても崩れない",
+   "jp": false,
+   "chunks": 24
+  },
+  {
+   "id": "nunito",
+   "group": "欧文 サンセリフ",
+   "label": "Nunito",
+   "family": "Nunito",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "先端が丸い。低学年の本文",
+   "jp": false,
+   "chunks": 15
+  },
+  {
+   "id": "opensans",
+   "group": "欧文 サンセリフ",
+   "label": "Open Sans",
+   "family": "Open Sans",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "長い読み物の本文に安定",
+   "jp": false,
+   "chunks": 30
+  },
+  {
+   "id": "oswald",
+   "group": "欧文 サンセリフ",
+   "label": "Oswald",
+   "family": "Oswald",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "狭い幅で大きく見せる見出し",
+   "jp": false,
+   "chunks": 15
+  },
+  {
+   "id": "outfit",
+   "group": "欧文 サンセリフ",
+   "label": "Outfit",
+   "family": "Outfit",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "均一な幾何学。UIの見出し",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "plusjakartasans",
+   "group": "欧文 サンセリフ",
+   "label": "Plus Jakarta Sans",
+   "family": "Plus Jakarta Sans",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "今どきのアプリ画面向け",
+   "jp": false,
+   "chunks": 12
+  },
+  {
+   "id": "poppins",
+   "group": "欧文 サンセリフ",
+   "label": "Poppins",
+   "family": "Poppins",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "円形基調で明るい見出し",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "publicsans",
+   "group": "欧文 サンセリフ",
+   "label": "Public Sans",
+   "family": "Public Sans",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "公的な資料や説明文に中立",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "quicksand",
+   "group": "欧文 サンセリフ",
+   "label": "Quicksand",
+   "family": "Quicksand",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "丸くやさしい。子ども向け",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "roboto",
+   "group": "欧文 サンセリフ",
+   "label": "Roboto",
+   "family": "Roboto",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "汎用。数字や表が読みやすい",
+   "jp": false,
+   "chunks": 27
+  },
+  {
+   "id": "rubik",
+   "group": "欧文 サンセリフ",
+   "label": "Rubik",
+   "family": "Rubik",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "角が丸く親しみやすい見出し",
+   "jp": false,
+   "chunks": 18
+  },
+  {
+   "id": "sora",
+   "group": "欧文 サンセリフ",
+   "label": "Sora",
+   "family": "Sora",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "角ばった近未来的な見出し",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "sourcesans3",
+   "group": "欧文 サンセリフ",
+   "label": "Source Sans 3",
+   "family": "Source Sans 3",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "配布資料や技術文書の本文",
+   "jp": false,
+   "chunks": 21
+  },
+  {
+   "id": "spacegrotesk",
+   "group": "欧文 サンセリフ",
+   "label": "Space Grotesk",
+   "family": "Space Grotesk",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "理系・技術系の見出しに個性",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "worksans",
+   "group": "欧文 サンセリフ",
+   "label": "Work Sans",
+   "family": "Work Sans",
+   "weights": [
+    400,
+    600,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "画面上の長めの本文に",
+   "jp": false,
+   "chunks": 9
+  },
+  {
+   "id": "alegreya",
+   "group": "欧文 セリフ",
+   "label": "Alegreya",
+   "family": "Alegreya",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "手書きの温かみが残る長文本文",
+   "jp": false,
+   "chunks": 14
+  },
+  {
+   "id": "bitter",
+   "group": "欧文 セリフ",
+   "label": "Bitter",
+   "family": "Bitter",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "画面向きのスラブで本文も可",
+   "jp": false,
+   "chunks": 10
+  },
+  {
+   "id": "bodonimoda",
+   "group": "欧文 セリフ",
+   "label": "Bodoni Moda",
+   "family": "Bodoni Moda",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "線の強弱が際立つ雑誌風見出し",
+   "jp": false,
+   "chunks": 8
+  },
+  {
+   "id": "cardo",
+   "group": "欧文 セリフ",
+   "label": "Cardo",
+   "family": "Cardo",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "古典語や引用の多い資料向け",
+   "jp": false,
+   "chunks": 16
+  },
+  {
+   "id": "cormorantgaramond",
+   "group": "欧文 セリフ",
+   "label": "Cormorant Garamond",
+   "family": "Cormorant Garamond",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "細く優美、大きめの見出し向き",
+   "jp": false,
+   "chunks": 10
+  },
+  {
+   "id": "crimsonpro",
+   "group": "欧文 セリフ",
+   "label": "Crimson Pro",
+   "family": "Crimson Pro",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "学術書のような読み物本文に",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "dmserifdisplay",
+   "group": "欧文 セリフ",
+   "label": "DM Serif Display",
+   "family": "DM Serif Display",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "serif",
+   "note": "短い大見出し専用の華やかさ",
+   "jp": false,
+   "chunks": 2
+  },
+  {
+   "id": "ebgaramond",
+   "group": "欧文 セリフ",
+   "label": "EB Garamond",
+   "family": "EB Garamond",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "古典的で落ち着いた長文本文に",
+   "jp": false,
+   "chunks": 14
+  },
+  {
+   "id": "frankruhllibre",
+   "group": "欧文 セリフ",
+   "label": "Frank Ruhl Libre",
+   "family": "Frank Ruhl Libre",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "端正で硬めの見出しと小見出し",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "fraunces",
+   "group": "欧文 セリフ",
+   "label": "Fraunces",
+   "family": "Fraunces",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "個性を出したい表紙や見出しに",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "instrumentserif",
+   "group": "欧文 セリフ",
+   "label": "Instrument Serif",
+   "family": "Instrument Serif",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "serif",
+   "note": "抜け感のある大きめの表題に",
+   "jp": false,
+   "chunks": 2
+  },
+  {
+   "id": "librebaskerville",
+   "group": "欧文 セリフ",
+   "label": "Libre Baskerville",
+   "family": "Libre Baskerville",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "画面で読ませる教材本文に最適",
+   "jp": false,
+   "chunks": 4
+  },
+  {
+   "id": "literata",
+   "group": "欧文 セリフ",
+   "label": "Literata",
+   "family": "Literata",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "電子書籍風の落ち着いた長文に",
+   "jp": false,
+   "chunks": 14
+  },
+  {
+   "id": "lora",
+   "group": "欧文 セリフ",
+   "label": "Lora",
+   "family": "Lora",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "柔らかく上品な記事やコラムに",
+   "jp": false,
+   "chunks": 14
+  },
+  {
+   "id": "merriweather",
+   "group": "欧文 セリフ",
+   "label": "Merriweather",
+   "family": "Merriweather",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "小さい字でも読み崩れない本文",
+   "jp": false,
+   "chunks": 10
+  },
+  {
+   "id": "newsreader",
+   "group": "欧文 セリフ",
+   "label": "Newsreader",
+   "family": "Newsreader",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "新聞記事のような読み物向け",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "notoserif",
+   "group": "欧文 セリフ",
+   "label": "Noto Serif",
+   "family": "Noto Serif",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "多言語が混ざる配布資料の本文",
+   "jp": false,
+   "chunks": 16
+  },
+  {
+   "id": "ptserif",
+   "group": "欧文 セリフ",
+   "label": "PT Serif",
+   "family": "PT Serif",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "欧文キリル混在の資料に強い",
+   "jp": false,
+   "chunks": 8
+  },
+  {
+   "id": "petrona",
+   "group": "欧文 セリフ",
+   "label": "Petrona",
+   "family": "Petrona",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "軽やかで細身、余白の多い誌面に",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "playfairdisplay",
+   "group": "欧文 セリフ",
+   "label": "Playfair Display",
+   "family": "Playfair Display",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "華やかな表紙やタイトルに",
+   "jp": false,
+   "chunks": 8
+  },
+  {
+   "id": "robotoslab",
+   "group": "欧文 セリフ",
+   "label": "Roboto Slab",
+   "family": "Roboto Slab",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "硬質で明快なスラブの見出し",
+   "jp": false,
+   "chunks": 14
+  },
+  {
+   "id": "sourceserif4",
+   "group": "欧文 セリフ",
+   "label": "Source Serif 4",
+   "family": "Source Serif 4",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "UIに馴染む堅実な明朝系本文",
+   "jp": false,
+   "chunks": 12
+  },
+  {
+   "id": "spectral",
+   "group": "欧文 セリフ",
+   "label": "Spectral",
+   "family": "Spectral",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "画面での長文読書に合う本文",
+   "jp": false,
+   "chunks": 10
+  },
+  {
+   "id": "vollkorn",
+   "group": "欧文 セリフ",
+   "label": "Vollkorn",
+   "family": "Vollkorn",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "力強く親しみやすい本文と小見出し",
+   "jp": false,
+   "chunks": 12
+  },
+  {
+   "id": "youngserif",
+   "group": "欧文 セリフ",
+   "label": "Young Serif",
+   "family": "Young Serif",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "serif",
+   "note": "太く素朴、目を引く見出しに",
+   "jp": false,
+   "chunks": 2
+  },
+  {
+   "id": "zillaslab",
+   "group": "欧文 セリフ",
+   "label": "Zilla Slab",
+   "family": "Zilla Slab",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "技術資料や表組みに合うスラブ",
+   "jp": false,
+   "chunks": 4
+  },
+  {
+   "id": "abrilfatface",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Abril Fatface",
+   "family": "Abril Fatface",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "fantasy",
+   "note": "雑誌風の優雅な大見出し",
+   "jp": false,
+   "chunks": 2
+  },
+  {
+   "id": "alfaslabone",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Alfa Slab One",
+   "family": "Alfa Slab One",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "fantasy",
+   "note": "太いスラブの装飾見出し",
+   "jp": false,
+   "chunks": 3
+  },
+  {
+   "id": "archivoblack",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Archivo Black",
+   "family": "Archivo Black",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "fantasy",
+   "note": "重量感のある短い見出し",
+   "jp": false,
+   "chunks": 2
+  },
+  {
+   "id": "bungee",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Bungee",
+   "family": "Bungee",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "fantasy",
+   "note": "看板風の遊びある表示",
+   "jp": false,
+   "chunks": 3
+  },
+  {
+   "id": "caveat",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Caveat",
+   "family": "Caveat",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "cursive",
+   "note": "手書きメモや注釈向け",
+   "jp": false,
+   "chunks": 8
+  },
+  {
+   "id": "courierprime",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Courier Prime",
+   "family": "Courier Prime",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "monospace",
+   "note": "台本やタイプライター風",
+   "jp": false,
+   "chunks": 4
+  },
+  {
+   "id": "dmmono",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "DM Mono",
+   "family": "DM Mono",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "monospace",
+   "note": "軽く静かな数値表示向け",
+   "jp": false,
+   "chunks": 2
+  },
+  {
+   "id": "dancingscript",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Dancing Script",
+   "family": "Dancing Script",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "cursive",
+   "note": "読みやすい軽やかな筆記体",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "firacode",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Fira Code",
+   "family": "Fira Code",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "monospace",
+   "note": "合字が効くコード向け",
+   "jp": false,
+   "chunks": 14
+  },
+  {
+   "id": "fredoka",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Fredoka",
+   "family": "Fredoka",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "fantasy",
+   "note": "丸くて親しみやすい表示",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "greatvibes",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Great Vibes",
+   "family": "Great Vibes",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "cursive",
+   "note": "招待状のような優雅な筆記",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "ibmplexmono",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "IBM Plex Mono",
+   "family": "IBM Plex Mono",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "monospace",
+   "note": "端正で技術文書に合う",
+   "jp": false,
+   "chunks": 10
+  },
+  {
+   "id": "inconsolata",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Inconsolata",
+   "family": "Inconsolata",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "monospace",
+   "note": "細身で行数を稼げる",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "jetbrainsmono",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "JetBrains Mono",
+   "family": "JetBrains Mono",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "monospace",
+   "note": "コード表示に最適な等幅",
+   "jp": false,
+   "chunks": 12
+  },
+  {
+   "id": "lobster",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Lobster",
+   "family": "Lobster",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "fantasy",
+   "note": "ロゴ風の太い装飾書体",
+   "jp": false,
+   "chunks": 5
+  },
+  {
+   "id": "pacifico",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Pacifico",
+   "family": "Pacifico",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "cursive",
+   "note": "陽気なロゴ風の筆記体",
+   "jp": false,
+   "chunks": 5
+  },
+  {
+   "id": "patrickhand",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Patrick Hand",
+   "family": "Patrick Hand",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "cursive",
+   "note": "素朴で読みやすい手書き",
+   "jp": false,
+   "chunks": 3
+  },
+  {
+   "id": "permanentmarker",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Permanent Marker",
+   "family": "Permanent Marker",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "cursive",
+   "note": "太マーカーの手書き強調",
+   "jp": false,
+   "chunks": 1
+  },
+  {
+   "id": "righteous",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Righteous",
+   "family": "Righteous",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "fantasy",
+   "note": "レトロで軽快なタイトル",
+   "jp": false,
+   "chunks": 2
+  },
+  {
+   "id": "robotomono",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Roboto Mono",
+   "family": "Roboto Mono",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "monospace",
+   "note": "本文に馴染む汎用の等幅",
+   "jp": false,
+   "chunks": 12
+  },
+  {
+   "id": "sacramento",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Sacramento",
+   "family": "Sacramento",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "cursive",
+   "note": "細く繊細なサイン風",
+   "jp": false,
+   "chunks": 2
+  },
+  {
+   "id": "satisfy",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Satisfy",
+   "family": "Satisfy",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "cursive",
+   "note": "落ち着いた筆サイン風",
+   "jp": false,
+   "chunks": 1
+  },
+  {
+   "id": "shadowsintolight",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Shadows Into Light",
+   "family": "Shadows Into Light",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "cursive",
+   "note": "軽い手書きの書き込み風",
+   "jp": false,
+   "chunks": 2
+  },
+  {
+   "id": "sourcecodepro",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Source Code Pro",
+   "family": "Source Code Pro",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "monospace",
+   "note": "癖のない標準の等幅",
+   "jp": false,
+   "chunks": 14
+  },
+  {
+   "id": "spacemono",
+   "group": "欧文 等幅・飾り・筆記体",
+   "label": "Space Mono",
+   "family": "Space Mono",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "monospace",
+   "note": "個性的な見出し用の等幅",
+   "jp": false,
+   "chunks": 6
+  },
+  {
+   "id": "notosansjp",
+   "group": "日本語 ゴシック",
+   "label": "Noto Sans 日本語",
+   "family": "Noto Sans JP",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "本文とUIの標準。迷ったらこれ",
+   "jp": true,
+   "chunks": 248
+  },
+  {
+   "id": "notoserifjp",
+   "group": "日本語 明朝",
+   "label": "Noto Serif 日本語",
+   "family": "Noto Serif JP",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "長文の本文に。字数の多い資料向け",
+   "jp": true,
+   "chunks": 248
+  },
+  {
+   "id": "bizudpgothic",
+   "group": "日本語 ゴシック",
+   "label": "BIZ UDPゴシック",
+   "family": "BIZ UDPGothic",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "UD書体。配布資料や教材の本文に",
+   "jp": true,
+   "chunks": 248
+  },
+  {
+   "id": "bizudpmincho",
+   "group": "日本語 明朝",
+   "label": "BIZ UDP明朝",
+   "family": "BIZ UDPMincho",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "UD設計。教材や配布資料の本文に",
+   "jp": true,
+   "chunks": 248
+  },
+  {
+   "id": "zenmarugothic",
+   "group": "日本語 ゴシック",
+   "label": "Zen 丸ゴシック",
+   "family": "Zen Maru Gothic",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "丸ゴシック。低学年や親しみのある面に",
+   "jp": true,
+   "chunks": 244
+  },
+  {
+   "id": "mplusrounded1c",
+   "group": "日本語 丸ゴシック",
+   "label": "M PLUS 丸ゴシック 1c",
+   "family": "M PLUS Rounded 1c",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "ボタンやラベルなど画面UI全般に",
+   "jp": true,
+   "chunks": 252
+  },
+  {
+   "id": "zenkakugothicnew",
+   "group": "日本語 ゴシック",
+   "label": "Zen 角ゴシック New",
+   "family": "Zen Kaku Gothic New",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "端正で見出しが締まる",
+   "jp": true,
+   "chunks": 242
+  },
+  {
+   "id": "shipporimincho",
+   "group": "日本語 明朝",
+   "label": "しっぽり明朝",
+   "family": "Shippori Mincho",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "見出しにも本文にも効く定番明朝",
+   "jp": true,
+   "chunks": 244
+  },
+  {
+   "id": "kleeone",
+   "group": "日本語 明朝",
+   "label": "Klee One（教科書体風）",
+   "family": "Klee One",
+   "weights": [
+    400,
+    600
+   ],
+   "cssGeneric": "serif",
+   "note": "教科書体風。国語や書き取りに",
+   "jp": true,
+   "chunks": 248
+  },
+  {
+   "id": "mplus1p",
+   "group": "日本語 ゴシック",
+   "label": "M PLUS 1p",
+   "family": "M PLUS 1p",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "やわらかい字面。読み物の本文に",
+   "jp": true,
+   "chunks": 252
+  },
+  {
+   "id": "bizudgothic",
+   "group": "日本語 ゴシック",
+   "label": "BIZ UDゴシック（等幅）",
+   "family": "BIZ UDGothic",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "字幅が揃うUD。表や数値の桁揃えに",
+   "jp": true,
+   "chunks": 248
+  },
+  {
+   "id": "ibmplexsansjp",
+   "group": "日本語 ゴシック",
+   "label": "IBM Plex Sans 日本語",
+   "family": "IBM Plex Sans JP",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "英数字混じりの技術文書に強い",
+   "jp": true,
+   "chunks": 246
+  },
+  {
+   "id": "mplus2",
+   "group": "日本語 ゴシック",
+   "label": "M PLUS 2",
+   "family": "M PLUS 2",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "字幅が狭く画面表示に向く",
+   "jp": true,
+   "chunks": 238
+  },
+  {
+   "id": "murecho",
+   "group": "日本語 ゴシック",
+   "label": "Murecho（ムレチョ）",
+   "family": "Murecho",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "軽く癖が少ない。UIラベル向き",
+   "jp": true,
+   "chunks": 240
+  },
+  {
+   "id": "zenkakugothicantique",
+   "group": "日本語 ゴシック",
+   "label": "Zen 角ゴシック Antique",
+   "family": "Zen Kaku Gothic Antique",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "少し古風。落ち着いた紙面に",
+   "jp": true,
+   "chunks": 242
+  },
+  {
+   "id": "sawarabigothic",
+   "group": "日本語 ゴシック",
+   "label": "さわらびゴシック",
+   "family": "Sawarabi Gothic",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "線が細く静か。和文の長文に",
+   "jp": true,
+   "chunks": 121
+  },
+  {
+   "id": "delagothicone",
+   "group": "日本語 ゴシック",
+   "label": "デラゴシック One",
+   "family": "Dela Gothic One",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "極太。スライドの大見出しに",
+   "jp": true,
+   "chunks": 123
+  },
+  {
+   "id": "dotgothic16",
+   "group": "日本語 ゴシック",
+   "label": "ドットゴシック16",
+   "family": "DotGothic16",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "ドット文字。ゲーム風の演出に",
+   "jp": true,
+   "chunks": 123
+  },
+  {
+   "id": "kosugi",
+   "group": "日本語 ゴシック",
+   "label": "小杉ゴシック",
+   "family": "Kosugi",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "素朴で軽い。注釈や補足文に",
+   "jp": true,
+   "chunks": 121
+  },
+  {
+   "id": "yomogi",
+   "group": "日本語 デザイン・手書き",
+   "label": "よもぎ",
+   "family": "Yomogi",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "cursive",
+   "note": "やさしい手書きの吹き出しに",
+   "jp": true,
+   "chunks": 123
+  },
+  {
+   "id": "shizuru",
+   "group": "日本語 デザイン・手書き",
+   "label": "シズル",
+   "family": "Shizuru",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "cursive",
+   "note": "かすれた筆ペン、力強い強調",
+   "jp": true,
+   "chunks": 24
+  },
+  {
+   "id": "stick",
+   "group": "日本語 デザイン・手書き",
+   "label": "スティック",
+   "family": "Stick",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "極細の直線、ミニマルな表示",
+   "jp": true,
+   "chunks": 123
+  },
+  {
+   "id": "trainone",
+   "group": "日本語 デザイン・手書き",
+   "label": "トレイン One",
+   "family": "Train One",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "fantasy",
+   "note": "縁取り線のレトロ看板風",
+   "jp": true,
+   "chunks": 120
+  },
+  {
+   "id": "rampartone",
+   "group": "日本語 デザイン・手書き",
+   "label": "ランパート One",
+   "family": "Rampart One",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "fantasy",
+   "note": "立体的な表紙やロゴ風に",
+   "jp": true,
+   "chunks": 123
+  },
+  {
+   "id": "reggaeone",
+   "group": "日本語 デザイン・手書き",
+   "label": "レゲエ One",
+   "family": "Reggae One",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "fantasy",
+   "note": "勢いのある装飾見出しに",
+   "jp": true,
+   "chunks": 123
+  },
+  {
+   "id": "rocknrollone",
+   "group": "日本語 デザイン・手書き",
+   "label": "ロックンロール One",
+   "family": "RocknRoll One",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "明るく元気なタイトル向き",
+   "jp": true,
+   "chunks": 122
+  },
+  {
+   "id": "kaiseidecol",
+   "group": "日本語 デザイン・手書き",
+   "label": "解星 デコール",
+   "family": "Kaisei Decol",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "serif",
+   "note": "丸みのある装飾明朝、やわらか",
+   "jp": true,
+   "chunks": 123
+  },
+  {
+   "id": "kiwimaru",
+   "group": "日本語 丸ゴシック",
+   "label": "Kiwi 丸明朝",
+   "family": "Kiwi Maru",
+   "weights": [
+    400,
+    500
+   ],
+   "cssGeneric": "serif",
+   "note": "丸みのある明朝。長めの読み物に",
+   "jp": true,
+   "chunks": 246
+  },
+  {
+   "id": "hachimarupop",
+   "group": "日本語 丸ゴシック",
+   "label": "はち丸ポップ",
+   "family": "Hachi Maru Pop",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "cursive",
+   "note": "かわいい手書き。子ども向け教材に",
+   "jp": true,
+   "chunks": 120
+  },
+  {
+   "id": "yuseimagic",
+   "group": "日本語 丸ゴシック",
+   "label": "ゆうせい マジック",
+   "family": "Yusei Magic",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "サインペン風。ひとこと注釈に",
+   "jp": true,
+   "chunks": 121
+  },
+  {
+   "id": "pottaone",
+   "group": "日本語 丸ゴシック",
+   "label": "ポッタ ワン",
+   "family": "Potta One",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "ぽってり太い装飾タイトル向け",
+   "jp": true,
+   "chunks": 114
+  },
+  {
+   "id": "mochiypopone",
+   "group": "日本語 丸ゴシック",
+   "label": "モチイ ポップ",
+   "family": "Mochiy Pop One",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "太くて目立つ。表紙や大見出しに",
+   "jp": true,
+   "chunks": 118
+  },
+  {
+   "id": "kosugimaru",
+   "group": "日本語 丸ゴシック",
+   "label": "小杉丸ゴシック",
+   "family": "Kosugi Maru",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "sans-serif",
+   "note": "細めで軽い。小さな文字も読みやすい",
+   "jp": true,
+   "chunks": 121
+  },
+  {
+   "id": "zenantique",
+   "group": "日本語 明朝",
+   "label": "Zen アンティーク",
+   "family": "Zen Antique",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "serif",
+   "note": "昭和の印刷風。和レトロな表紙に",
+   "jp": true,
+   "chunks": 122
+  },
+  {
+   "id": "zenoldmincho",
+   "group": "日本語 明朝",
+   "label": "Zen オールド明朝",
+   "family": "Zen Old Mincho",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "書籍のような落ち着いた読み物に",
+   "jp": true,
+   "chunks": 244
+  },
+  {
+   "id": "sawarabimincho",
+   "group": "日本語 明朝",
+   "label": "さわらび明朝",
+   "family": "Sawarabi Mincho",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "serif",
+   "note": "細身で軽い。引用や注釈の文に",
+   "jp": true,
+   "chunks": 118
+  },
+  {
+   "id": "hinamincho",
+   "group": "日本語 明朝",
+   "label": "ひな明朝",
+   "family": "Hina Mincho",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "serif",
+   "note": "極細で繊細。大きな見出し向き",
+   "jp": true,
+   "chunks": 123
+  },
+  {
+   "id": "newtegomin",
+   "group": "日本語 明朝",
+   "label": "ニューテゴミン",
+   "family": "New Tegomin",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "serif",
+   "note": "活版のような素朴でレトロな味",
+   "jp": true,
+   "chunks": 118
+  },
+  {
+   "id": "yujisyuku",
+   "group": "日本語 明朝",
+   "label": "佑字 肅（筆書き）",
+   "family": "Yuji Syuku",
+   "weights": [
+    400
+   ],
+   "cssGeneric": "serif",
+   "note": "毛筆調。和の見出しや題字に",
+   "jp": true,
+   "chunks": 123
+  },
+  {
+   "id": "kaiseitokumin",
+   "group": "日本語 明朝",
+   "label": "解星 特ミン",
+   "family": "Kaisei Tokumin",
+   "weights": [
+    400,
+    700
+   ],
+   "cssGeneric": "serif",
+   "note": "太く力強い。表紙や大見出しに",
+   "jp": true,
+   "chunks": 246
+  }
+ ]
+}

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>型ラボ — できあいの ひな型を 見て回る</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#F7F6FB;--sf:#fff;--ln:#E3E0EC;--tx:#241F33;--sb:#615A75;--ac:#5B4EAE}
+  @media (prefers-color-scheme:dark){:root{--bg:#131218;--sf:#1C1B24;--ln:#2F2D3A;--tx:#F1EFF6;--sb:#A9A3BA;--ac:#9C8EF0}}
+  body{background:var(--bg);color:var(--tx);font:16px/1.65 system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+  .wrap{max-width:1240px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:26px;font-weight:800;letter-spacing:-.01em}
+  .lead{color:var(--sb);font-size:14px;margin-top:6px}
+  .n{margin-top:4px;font-size:13px;color:var(--sb)}
+  .bar{position:sticky;top:0;z-index:5;margin:18px -20px 0;padding:12px 20px;background:var(--bg);
+       border-bottom:1px solid var(--ln);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .bar label{font-size:12.5px;color:var(--sb);display:flex;align-items:center;gap:6px}
+  select,input[type=search]{font:inherit;font-size:14px;padding:7px 10px;border-radius:10px;
+       border:1px solid var(--ln);background:var(--sf);color:var(--tx);outline:none}
+  select:focus,input:focus{border-color:var(--ac)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px;margin-top:20px}
+  .card{background:var(--sf);border:1px solid var(--ln);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+  .head{padding:12px 14px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--ln)}
+  .head b{font-size:15px}
+  .head .id{font-size:11.5px;color:var(--sb);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .head .cat{font-size:11px;padding:1px 8px;border-radius:99px;background:var(--bg);color:var(--sb)}
+  .desc{padding:9px 14px;font-size:12.5px;color:var(--sb);border-bottom:1px solid var(--ln)}
+  .slots{padding:8px 14px;font-size:11.5px;color:var(--sb);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+         border-bottom:1px solid var(--ln);word-break:break-all}
+  iframe{width:100%;height:400px;border:0;display:block;background:#fff}
+  .foot{padding:9px 14px;display:flex;gap:8px;flex-wrap:wrap}
+  .foot button{font:inherit;font-size:12.5px;padding:5px 11px;border-radius:9px;border:1px solid var(--ln);
+       background:var(--bg);color:var(--tx);cursor:pointer}
+  .foot button:hover{border-color:var(--ac)}
+  .empty{padding:60px 20px;text-align:center;color:var(--sb)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>型ラボ</h1>
+  <p class="lead">Lumi が ゲーム・アプリ・教材を 出すときに 使う <b>できあいの ひな型</b>。
+    中身（文字・数・並び）を 入れるだけで 動きます。コードは 書きません。</p>
+  <p class="n" id="cnt"></p>
+
+  <div class="bar">
+    <label>分類 <select id="fCat"><option value="">ぜんぶ</option></select></label>
+    <label>骨 <select id="fLay"></select></label>
+    <label>色 <select id="fPal"></select></label>
+    <label>詰 <select id="fDen"></select></label>
+    <input type="search" id="fQ" placeholder="言葉で さがす（例: 九九 / チェックリスト）" style="flex:1;min-width:180px">
+    <button id="shuffle" style="font:inherit;font-size:13px;padding:7px 12px;border-radius:10px;border:1px solid var(--ln);background:var(--sf);color:var(--tx);cursor:pointer">見た目を まぜる</button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>見つかりませんでした。</div>
+</div>
+
+<script src="/core/kata/base.js"></script>
+<script src="/core/kata/play.js"></script>
+<script src="/core/kata/learn.js"></script>
+<script src="/core/kata/tool.js"></script>
+<script src="/core/kata/index.js"></script>
+<script>
+(function () {
+  var V = window.VQK;
+  var g = document.getElementById("grid"), empty = document.getElementById("empty");
+  document.getElementById("cnt").textContent =
+    "芯 " + V.芯の名().length + " 種 × 骨 " + V.骨の名.length + " × 色 " + V.色の名.length
+    + " × 詰 " + V.詰の名.length + " ＝ " + V.かず().toLocaleString("ja-JP") + " 通り"
+    + "（中身の 違いは 芯の " + V.芯の名().length + " 種。ほかは 見た目）";
+
+  function opt(sel, list, 名, 先頭) {
+    var s = document.getElementById(sel);
+    s.innerHTML = (先頭 ? '<option value="">' + 先頭 + "</option>" : "");
+    list.forEach(function (k) {
+      var o = document.createElement("option");
+      o.value = k; o.textContent = 名 ? (名[k].名 + "（" + k + "）") : k;
+      s.appendChild(o);
+    });
+  }
+  opt("fLay", V.骨の名, V.骨たち, "芯に合わせる");
+  opt("fPal", V.色の名, V.色たち, "芯に合わせる");
+  opt("fDen", V.詰の名, V.詰たち, "芯に合わせる");
+  var cats = {};
+  V.型たち().forEach(function (t) { cats[t.分類] = 1; });
+  var fc = document.getElementById("fCat");
+  Object.keys(cats).forEach(function (c) {
+    var o = document.createElement("option"); o.value = c; o.textContent = c; fc.appendChild(o);
+  });
+
+  function 文書(r) {
+    return "<!doctype html><html lang=ja><head><meta charset=utf-8>"
+      + '<meta name=viewport content="width=device-width,initial-scale=1">'
+      + "<style>" + r.css + "</style></head><body><div id=vqapp>" + r.html + "</div>"
+      + "<script>\ntry{\n" + r.js + "\n}catch(e){document.body.innerHTML="
+      + "'<pre style=\"padding:12px;color:#c00\">'+((e&&e.message)||e)+'</pre>';}\n<\/script></body></html>";
+  }
+
+  var 種 = 0;
+  function 描く() {
+    var q = document.getElementById("fQ").value.trim();
+    var cat = fc.value;
+    var lay = document.getElementById("fLay").value;
+    var pal = document.getElementById("fPal").value;
+    var den = document.getElementById("fDen").value;
+    var 並 = V.型たち();
+    if (cat) 並 = 並.filter(function (t) { return t.分類 === cat; });
+    if (q) {
+      var 点 = {};
+      V.さがす(q, 24).forEach(function (x) { 点[x.芯] = x.点; });
+      並 = 並.filter(function (t) { return (点[t.芯] || 0) > 0; })
+             .sort(function (a, b) { return (点[b.芯] || 0) - (点[a.芯] || 0); });
+    }
+    g.innerHTML = "";
+    empty.hidden = !!並.length;
+    並.forEach(function (t) {
+      var m = V.見た目を選ぶ(t.芯, String(種));
+      var id = V.組む(t.芯, lay || m.骨, pal || m.色, den || m.詰);
+      var r;
+      try { r = V.作る(id, t.例 || {}); }
+      catch (e) { return; }
+      var c = document.createElement("div");
+      c.className = "card";
+      var sl = t.スロット.filter(function (s) { return s.鍵 !== "副"; }).map(function (s) {
+        if (s.型 === "表") return s.鍵 + ":[{" + Object.keys(s.形 || {}).join(",") + "}]";
+        if (s.型 === "並び") return s.鍵 + ":[…]";
+        if (s.型 === "選") return s.鍵 + ":" + (s.候補 || []).join("|");
+        return s.鍵 + (s.型 === "数" ? ":数" : s.型 === "真偽" ? ":真偽" : "");
+      }).join("  ");
+      c.innerHTML =
+        '<div class="head"><b></b><span class="cat"></span><span class="id"></span></div>'
+        + '<div class="desc"></div><div class="slots"></div>'
+        + "<iframe sandbox='allow-scripts' title='ためし'></iframe>"
+        + '<div class="foot"><button data-a="re">出しなおす</button>'
+        + '<button data-a="look">見た目を 変える</button>'
+        + '<button data-a="copy">型IDを うつす</button></div>';
+      c.querySelector("b").textContent = t.名;
+      c.querySelector(".cat").textContent = t.分類;
+      c.querySelector(".id").textContent = id;
+      c.querySelector(".desc").textContent = t.説明;
+      c.querySelector(".slots").textContent = sl;
+      var f = c.querySelector("iframe");
+      f.srcdoc = 文書(r);
+      c.querySelector('[data-a="re"]').onclick = function () { f.srcdoc = 文書(V.作る(id, t.例 || {})); };
+      c.querySelector('[data-a="look"]').onclick = function () {
+        var m2 = V.見た目を選ぶ(t.芯, String(Date.now()));
+        var id2 = V.組む(t.芯, lay || m2.骨, pal || m2.色, den || m2.詰);
+        c.querySelector(".id").textContent = id2;
+        f.srcdoc = 文書(V.作る(id2, t.例 || {}));
+      };
+      c.querySelector('[data-a="copy"]').onclick = function () {
+        try { navigator.clipboard.writeText(c.querySelector(".id").textContent); this.textContent = "うつしました"; } catch (e) {}
+      };
+      g.appendChild(c);
+    });
+  }
+  ["fCat", "fLay", "fPal", "fDen"].forEach(function (k) {
+    document.getElementById(k).addEventListener("change", 描く);
+  });
+  var t0 = 0;
+  document.getElementById("fQ").addEventListener("input", function () {
+    clearTimeout(t0); t0 = setTimeout(描く, 220);
+  });
+  document.getElementById("shuffle").onclick = function () { 種++; 描く(); };
+  描く();
+})();
+</script>
+</body>
+</html>

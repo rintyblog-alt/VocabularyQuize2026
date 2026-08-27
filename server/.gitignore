@@ -1,0 +1,16 @@
+# シークレット（実値・コミット禁止）
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# ローカル D1 / wrangler
+.wrangler/
+app.db
+app.db-*
+
+node_modules/
+.DS_Store
+
+# ローカル検証ランチャーの実行ディレクトリ（.dev.vars コピー・ローカルD1）
+.local-run/
+dev.log

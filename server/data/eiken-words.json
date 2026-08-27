@@ -1,0 +1,6140 @@
+{
+  "title": "高3英単語テスト 英検対策",
+  "totalWords": 1000,
+  "weeks": [
+    {
+      "week": 1,
+      "range": "1-100",
+      "deliverAt": "2026-04-12T00:00:00+09:00",
+      "name": "英検対策 第1週 (1-100)",
+      "newFrom": 1,
+      "newTo": 100,
+      "newCount": 30,
+      "reviewFrom": 0,
+      "reviewTo": 0,
+      "reviewCount": 0
+    },
+    {
+      "week": 2,
+      "range": "101-200",
+      "deliverAt": "2026-04-17T09:00:00+09:00",
+      "name": "英検対策 第2週 (101-200)",
+      "newFrom": 101,
+      "newTo": 200,
+      "newCount": 25,
+      "reviewFrom": 1,
+      "reviewTo": 100,
+      "reviewCount": 5
+    },
+    {
+      "week": 3,
+      "range": "201-300",
+      "deliverAt": "2026-04-24T09:00:00+09:00",
+      "name": "英検対策 第3週 (201-300)",
+      "newFrom": 201,
+      "newTo": 300,
+      "newCount": 25,
+      "reviewFrom": 1,
+      "reviewTo": 200,
+      "reviewCount": 5
+    },
+    {
+      "week": 4,
+      "range": "301-400",
+      "deliverAt": "2026-05-01T09:00:00+09:00",
+      "name": "英検対策 第4週 (301-400)",
+      "newFrom": 301,
+      "newTo": 400,
+      "newCount": 25,
+      "reviewFrom": 1,
+      "reviewTo": 300,
+      "reviewCount": 5
+    },
+    {
+      "week": 5,
+      "range": "401-500",
+      "deliverAt": "2026-05-08T09:00:00+09:00",
+      "name": "英検対策 第5週 (401-500)",
+      "newFrom": 401,
+      "newTo": 500,
+      "newCount": 25,
+      "reviewFrom": 1,
+      "reviewTo": 400,
+      "reviewCount": 5
+    },
+    {
+      "week": 6,
+      "range": "501-600",
+      "deliverAt": "2026-05-15T09:00:00+09:00",
+      "name": "英検対策 第6週 (501-600)",
+      "newFrom": 501,
+      "newTo": 600,
+      "newCount": 25,
+      "reviewFrom": 1,
+      "reviewTo": 500,
+      "reviewCount": 5
+    },
+    {
+      "week": 7,
+      "range": "601-700",
+      "deliverAt": "2026-05-29T09:00:00+09:00",
+      "name": "英検対策 第7週 (601-700)",
+      "newFrom": 601,
+      "newTo": 700,
+      "newCount": 25,
+      "reviewFrom": 1,
+      "reviewTo": 600,
+      "reviewCount": 5
+    },
+    {
+      "week": 8,
+      "range": "701-800",
+      "deliverAt": "2026-06-05T09:00:00+09:00",
+      "name": "英検対策 第8週 (701-800)",
+      "newFrom": 701,
+      "newTo": 800,
+      "newCount": 25,
+      "reviewFrom": 1,
+      "reviewTo": 700,
+      "reviewCount": 5
+    },
+    {
+      "week": 9,
+      "range": "801-900",
+      "deliverAt": "2026-06-12T09:00:00+09:00",
+      "name": "英検対策 第9週 (801-900)",
+      "newFrom": 801,
+      "newTo": 900,
+      "newCount": 25,
+      "reviewFrom": 1,
+      "reviewTo": 800,
+      "reviewCount": 5
+    },
+    {
+      "week": 10,
+      "range": "901-1000",
+      "deliverAt": "2026-06-19T09:00:00+09:00",
+      "name": "英検対策 第10週 (901-1000)",
+      "newFrom": 901,
+      "newTo": 1000,
+      "newCount": 25,
+      "reviewFrom": 1,
+      "reviewTo": 900,
+      "reviewCount": 5
+    },
+    {
+      "week": 11,
+      "range": "総復習",
+      "deliverAt": "2026-06-26T09:00:00+09:00",
+      "name": "英検対策 第11週 (総復習)",
+      "newFrom": 1,
+      "newTo": 100,
+      "newCount": 3,
+      "reviewFrom": 0,
+      "reviewTo": 0,
+      "reviewCount": 0
+    }
+  ],
+  "words": [
+    {
+      "id": 1,
+      "word": "apologize",
+      "meaning": "謝る",
+      "pos": "動"
+    },
+    {
+      "id": 2,
+      "word": "cycle",
+      "meaning": "自転車に乗る、循環する、自転車、サイクル、循環",
+      "pos": "動"
+    },
+    {
+      "id": 3,
+      "word": "dislike",
+      "meaning": "を嫌う、嫌悪",
+      "pos": "動"
+    },
+    {
+      "id": 4,
+      "word": "exist",
+      "meaning": "存在する",
+      "pos": "動"
+    },
+    {
+      "id": 5,
+      "word": "float",
+      "meaning": "漂う、浮かぶ、を浮かべる、浮くもの",
+      "pos": "動"
+    },
+    {
+      "id": 6,
+      "word": "flow",
+      "meaning": "流れる、流れ",
+      "pos": "動"
+    },
+    {
+      "id": 7,
+      "word": "arrest",
+      "meaning": "を逮捕する、逮捕",
+      "pos": "動"
+    },
+    {
+      "id": 8,
+      "word": "bark",
+      "meaning": "(犬などが)ほえる、ほえ声",
+      "pos": "動"
+    },
+    {
+      "id": 9,
+      "word": "dig",
+      "meaning": "(を)掘る",
+      "pos": "動"
+    },
+    {
+      "id": 10,
+      "word": "divide",
+      "meaning": "を分ける",
+      "pos": "動"
+    },
+    {
+      "id": 11,
+      "word": "flash",
+      "meaning": "ぴかっと光る、をぱっと照らす、きらめき、発射的な",
+      "pos": "動"
+    },
+    {
+      "id": 12,
+      "word": "babysit",
+      "meaning": "(子供)の世話をする、子供を世話をする",
+      "pos": "動"
+    },
+    {
+      "id": 13,
+      "word": "force",
+      "meaning": "Aに〜することを強いる、力、暴力、軍隊",
+      "pos": "動"
+    },
+    {
+      "id": 14,
+      "word": "increase",
+      "meaning": "増加する、を増やす、増加",
+      "pos": "動"
+    },
+    {
+      "id": 15,
+      "word": "reduce",
+      "meaning": "を減らす、減る",
+      "pos": "動"
+    },
+    {
+      "id": 16,
+      "word": "prevent",
+      "meaning": "を防ぐ、を妨げる",
+      "pos": "動"
+    },
+    {
+      "id": 17,
+      "word": "lower",
+      "meaning": "を下げる、低い方の、下の",
+      "pos": "動"
+    },
+    {
+      "id": 18,
+      "word": "rise",
+      "meaning": "(太陽などが)昇る、(価格・温度などが)上がる",
+      "pos": "動"
+    },
+    {
+      "id": 19,
+      "word": "limit",
+      "meaning": "を制限する、限度",
+      "pos": "動"
+    },
+    {
+      "id": 20,
+      "word": "recognize",
+      "meaning": "をそれとわかる、を認識する、を認める",
+      "pos": "動"
+    },
+    {
+      "id": 21,
+      "word": "remain",
+      "meaning": "のままである、残る",
+      "pos": "動"
+    },
+    {
+      "id": 22,
+      "word": "promote",
+      "meaning": "昇進する、を促進する",
+      "pos": "動"
+    },
+    {
+      "id": 23,
+      "word": "request",
+      "meaning": "を要請する、依頼、要望、リクエスト",
+      "pos": "動"
+    },
+    {
+      "id": 24,
+      "word": "observe",
+      "meaning": "(を)観察する、(法律・習慣など)を守る",
+      "pos": "動"
+    },
+    {
+      "id": 25,
+      "word": "highway",
+      "meaning": "主要[幹線]道路",
+      "pos": "名"
+    },
+    {
+      "id": 26,
+      "word": "lime",
+      "meaning": "ライム、ライムの実",
+      "pos": "名"
+    },
+    {
+      "id": 27,
+      "word": "objection",
+      "meaning": "反対、反対意見",
+      "pos": "名"
+    },
+    {
+      "id": 28,
+      "word": "ketchup",
+      "meaning": "ケチャップ",
+      "pos": "名"
+    },
+    {
+      "id": 29,
+      "word": "rainbow",
+      "meaning": "虹",
+      "pos": "名"
+    },
+    {
+      "id": 30,
+      "word": "imagination",
+      "meaning": "想像(力)",
+      "pos": "名"
+    },
+    {
+      "id": 31,
+      "word": "puppy",
+      "meaning": "子犬",
+      "pos": "名"
+    },
+    {
+      "id": 32,
+      "word": "row",
+      "meaning": "列、横列",
+      "pos": "名"
+    },
+    {
+      "id": 33,
+      "word": "horn",
+      "meaning": "(動物の)角、警笛",
+      "pos": "名"
+    },
+    {
+      "id": 34,
+      "word": "impression",
+      "meaning": "印象、感銘",
+      "pos": "名"
+    },
+    {
+      "id": 35,
+      "word": "leather",
+      "meaning": "革",
+      "pos": "名"
+    },
+    {
+      "id": 36,
+      "word": "lifeguard",
+      "meaning": "(海岸・プールの)監視[救助]員",
+      "pos": "名"
+    },
+    {
+      "id": 37,
+      "word": "palace",
+      "meaning": "宮殿、大邸宅",
+      "pos": "名"
+    },
+    {
+      "id": 38,
+      "word": "photocopy",
+      "meaning": "写真複写、コピー、(を)写真複写[コピー]する",
+      "pos": "名"
+    },
+    {
+      "id": 39,
+      "word": "pole",
+      "meaning": "棒、さお",
+      "pos": "名"
+    },
+    {
+      "id": 40,
+      "word": "politician",
+      "meaning": "政治家",
+      "pos": "名"
+    },
+    {
+      "id": 41,
+      "word": "residence",
+      "meaning": "住居、居住",
+      "pos": "名"
+    },
+    {
+      "id": 42,
+      "word": "spice",
+      "meaning": "スパイス、香辛料",
+      "pos": "名"
+    },
+    {
+      "id": 43,
+      "word": "total",
+      "meaning": "合計、全体、合計の、全体の",
+      "pos": "名"
+    },
+    {
+      "id": 44,
+      "word": "version",
+      "meaning": "版、バージョン",
+      "pos": "名"
+    },
+    {
+      "id": 45,
+      "word": "nephew",
+      "meaning": "おい",
+      "pos": "名"
+    },
+    {
+      "id": 46,
+      "word": "disease",
+      "meaning": "病気",
+      "pos": "名"
+    },
+    {
+      "id": 47,
+      "word": "chemical",
+      "meaning": "化学製品、化学薬品、化学(上)の",
+      "pos": "名"
+    },
+    {
+      "id": 48,
+      "word": "education",
+      "meaning": "教育",
+      "pos": "名"
+    },
+    {
+      "id": 49,
+      "word": "biology",
+      "meaning": "生物学",
+      "pos": "名"
+    },
+    {
+      "id": 50,
+      "word": "generation",
+      "meaning": "世代",
+      "pos": "名"
+    },
+    {
+      "id": 51,
+      "word": "blanket",
+      "meaning": "毛布",
+      "pos": "名"
+    },
+    {
+      "id": 52,
+      "word": "gasoline",
+      "meaning": "ガソリン",
+      "pos": "名"
+    },
+    {
+      "id": 53,
+      "word": "clinic",
+      "meaning": "診療所",
+      "pos": "名"
+    },
+    {
+      "id": 54,
+      "word": "clerk",
+      "meaning": "店員、事務員",
+      "pos": "名"
+    },
+    {
+      "id": 55,
+      "word": "engineer",
+      "meaning": "エンジニア、技術者",
+      "pos": "名"
+    },
+    {
+      "id": 56,
+      "word": "boarding",
+      "meaning": "搭乗、乗船、乗車",
+      "pos": "名"
+    },
+    {
+      "id": 57,
+      "word": "document",
+      "meaning": "文書、書類",
+      "pos": "名"
+    },
+    {
+      "id": 58,
+      "word": "emotion",
+      "meaning": "感情",
+      "pos": "名"
+    },
+    {
+      "id": 59,
+      "word": "congratulation",
+      "meaning": "祝辞、祝いの言葉",
+      "pos": "名"
+    },
+    {
+      "id": 60,
+      "word": "assistant",
+      "meaning": "助手、補佐",
+      "pos": "名"
+    },
+    {
+      "id": 61,
+      "word": "fisherman",
+      "meaning": "漁師、釣り人",
+      "pos": "名"
+    },
+    {
+      "id": 62,
+      "word": "atmosphere",
+      "meaning": "雰囲気、大気",
+      "pos": "名"
+    },
+    {
+      "id": 63,
+      "word": "commercial",
+      "meaning": "コマーシャル",
+      "pos": "名"
+    },
+    {
+      "id": 64,
+      "word": "designer",
+      "meaning": "デザイナー、設計者",
+      "pos": "名"
+    },
+    {
+      "id": 65,
+      "word": "envelope",
+      "meaning": "封筒",
+      "pos": "名"
+    },
+    {
+      "id": 66,
+      "word": "beauty",
+      "meaning": "美、美人",
+      "pos": "名"
+    },
+    {
+      "id": 67,
+      "word": "branch",
+      "meaning": "枝、支流、支店",
+      "pos": "名"
+    },
+    {
+      "id": 68,
+      "word": "diet",
+      "meaning": "ダイエット、日常の食事",
+      "pos": "名"
+    },
+    {
+      "id": 69,
+      "word": "edge",
+      "meaning": "縁、刃",
+      "pos": "名"
+    },
+    {
+      "id": 70,
+      "word": "graduation",
+      "meaning": "卒業、卒業式",
+      "pos": "名"
+    },
+    {
+      "id": 71,
+      "word": "calculator",
+      "meaning": "計算機",
+      "pos": "名"
+    },
+    {
+      "id": 72,
+      "word": "attitude",
+      "meaning": "態度",
+      "pos": "名"
+    },
+    {
+      "id": 73,
+      "word": "disaster",
+      "meaning": "災害、不幸",
+      "pos": "名"
+    },
+    {
+      "id": 74,
+      "word": "forecast",
+      "meaning": "予報",
+      "pos": "名"
+    },
+    {
+      "id": 75,
+      "word": "fat",
+      "meaning": "太った、厚い",
+      "pos": "形"
+    },
+    {
+      "id": 76,
+      "word": "empty",
+      "meaning": "空の",
+      "pos": "形"
+    },
+    {
+      "id": 77,
+      "word": "confident",
+      "meaning": "確信して、自信のある",
+      "pos": "形"
+    },
+    {
+      "id": 78,
+      "word": "exact",
+      "meaning": "正確な",
+      "pos": "形"
+    },
+    {
+      "id": 79,
+      "word": "dead",
+      "meaning": "死んだ",
+      "pos": "形"
+    },
+    {
+      "id": 80,
+      "word": "curious",
+      "meaning": "好奇心の強い、知りたがる",
+      "pos": "形"
+    },
+    {
+      "id": 81,
+      "word": "fantastic",
+      "meaning": "素晴らしい、空想的な",
+      "pos": "形"
+    },
+    {
+      "id": 82,
+      "word": "alike",
+      "meaning": "(互いに)似ている、同様で、同じように",
+      "pos": "形"
+    },
+    {
+      "id": 83,
+      "word": "calm",
+      "meaning": "落ち着いた、平穏",
+      "pos": "形"
+    },
+    {
+      "id": 84,
+      "word": "delicate",
+      "meaning": "取り扱いの難しい、繊細な",
+      "pos": "形"
+    },
+    {
+      "id": 85,
+      "word": "flat",
+      "meaning": "平らな、空気の抜けた、均一の",
+      "pos": "形"
+    },
+    {
+      "id": 86,
+      "word": "following",
+      "meaning": "(その)次の、以下の、次のもの、以下に述べること",
+      "pos": "形"
+    },
+    {
+      "id": 87,
+      "word": "handsome",
+      "meaning": "ハンサムな、端正な顔立ちの",
+      "pos": "形"
+    },
+    {
+      "id": 88,
+      "word": "balanced",
+      "meaning": "バランス[均衡]の取れた",
+      "pos": "形"
+    },
+    {
+      "id": 89,
+      "word": "brave",
+      "meaning": "勇敢な、勇ましい",
+      "pos": "形"
+    },
+    {
+      "id": 90,
+      "word": "careless",
+      "meaning": "(人・行為が)不注意な、軽率な",
+      "pos": "形"
+    },
+    {
+      "id": 91,
+      "word": "foolish",
+      "meaning": "愚かな、ばかな",
+      "pos": "形"
+    },
+    {
+      "id": 92,
+      "word": "freezing",
+      "meaning": "いてつくように寒い[冷たい]",
+      "pos": "形"
+    },
+    {
+      "id": 93,
+      "word": "naturally",
+      "meaning": "自然に、当然",
+      "pos": "副"
+    },
+    {
+      "id": 94,
+      "word": "rarely",
+      "meaning": "めったに〜しない",
+      "pos": "副"
+    },
+    {
+      "id": 95,
+      "word": "shortly",
+      "meaning": "じきに、まもなく",
+      "pos": "副"
+    },
+    {
+      "id": 96,
+      "word": "seldom",
+      "meaning": "めったに〜(し)ない",
+      "pos": "副"
+    },
+    {
+      "id": 97,
+      "word": "totally",
+      "meaning": "完全に、全く、とても",
+      "pos": "副"
+    },
+    {
+      "id": 98,
+      "word": "surprisingly",
+      "meaning": "驚くほど、意外にも",
+      "pos": "副"
+    },
+    {
+      "id": 99,
+      "word": "wrongly",
+      "meaning": "間違って、誤って",
+      "pos": "副"
+    },
+    {
+      "id": 100,
+      "word": "further",
+      "meaning": "もっと遠くに、さらに、もっと遠い、なおいっそうの",
+      "pos": "副"
+    },
+    {
+      "id": 101,
+      "word": "overcome",
+      "meaning": "(を)克服する、(に)打ち勝つ",
+      "pos": "動"
+    },
+    {
+      "id": 102,
+      "word": "insist",
+      "meaning": "強く主張する",
+      "pos": "動"
+    },
+    {
+      "id": 103,
+      "word": "refresh",
+      "meaning": "を元気づける、の気分をさわやかにする",
+      "pos": "動"
+    },
+    {
+      "id": 104,
+      "word": "melt",
+      "meaning": "溶ける、を溶かす",
+      "pos": "動"
+    },
+    {
+      "id": 105,
+      "word": "seek",
+      "meaning": "追求する、を探す",
+      "pos": "動"
+    },
+    {
+      "id": 106,
+      "word": "slide",
+      "meaning": "滑り下りる、を滑らせる、滑ること、滑り台、スライド",
+      "pos": "動"
+    },
+    {
+      "id": 107,
+      "word": "knit",
+      "meaning": "を編む、編み物をする",
+      "pos": "動"
+    },
+    {
+      "id": 108,
+      "word": "resemble",
+      "meaning": "(外見・性質などが)に似ている",
+      "pos": "動"
+    },
+    {
+      "id": 109,
+      "word": "suffer",
+      "meaning": "苦しむ、病気にかかる、(損害・傷痕など)を受ける",
+      "pos": "動"
+    },
+    {
+      "id": 110,
+      "word": "stick",
+      "meaning": "くっつく、を突き刺す",
+      "pos": "動"
+    },
+    {
+      "id": 111,
+      "word": "trap",
+      "meaning": "を閉じ込める、(狩猟)をわなで捕らえる、わな、計略",
+      "pos": "動"
+    },
+    {
+      "id": 112,
+      "word": "switch",
+      "meaning": "をスイッチで切り替える、を変える、転換する、スイッチ",
+      "pos": "動"
+    },
+    {
+      "id": 113,
+      "word": "specialize",
+      "meaning": "専門とする、専攻する",
+      "pos": "動"
+    },
+    {
+      "id": 114,
+      "word": "supply",
+      "meaning": "を供給する、供給",
+      "pos": "動"
+    },
+    {
+      "id": 115,
+      "word": "succeed",
+      "meaning": "成功する、継承する",
+      "pos": "動"
+    },
+    {
+      "id": 116,
+      "word": "tear",
+      "meaning": "を裂く、を破る、を無理やり引き離す",
+      "pos": "動"
+    },
+    {
+      "id": 117,
+      "word": "vote",
+      "meaning": "投票する、を投票で決める、投票",
+      "pos": "動"
+    },
+    {
+      "id": 118,
+      "word": "lock",
+      "meaning": "に鍵をかける、錠(前)",
+      "pos": "動"
+    },
+    {
+      "id": 119,
+      "word": "harm",
+      "meaning": "を傷なう、を傷つける、害",
+      "pos": "動"
+    },
+    {
+      "id": 120,
+      "word": "consider",
+      "meaning": "についてよく考える、(を)熟考する",
+      "pos": "動"
+    },
+    {
+      "id": 121,
+      "word": "release",
+      "meaning": "を解放する、解放、(一般)公開",
+      "pos": "動"
+    },
+    {
+      "id": 122,
+      "word": "argue",
+      "meaning": "と主張する、言い争う",
+      "pos": "動"
+    },
+    {
+      "id": 123,
+      "word": "concentrate",
+      "meaning": "集中する",
+      "pos": "動"
+    },
+    {
+      "id": 124,
+      "word": "delay",
+      "meaning": "を遅らせる、を延期する、遅れ、延期",
+      "pos": "動"
+    },
+    {
+      "id": 125,
+      "word": "angle",
+      "meaning": "角度、観点",
+      "pos": "名"
+    },
+    {
+      "id": 126,
+      "word": "beetle",
+      "meaning": "カブトムシ(の類)",
+      "pos": "名"
+    },
+    {
+      "id": 127,
+      "word": "bookshelf",
+      "meaning": "本棚",
+      "pos": "名"
+    },
+    {
+      "id": 128,
+      "word": "comment",
+      "meaning": "論評、コメント、(と)論評する",
+      "pos": "名"
+    },
+    {
+      "id": 129,
+      "word": "happiness",
+      "meaning": "幸福、幸せ",
+      "pos": "名"
+    },
+    {
+      "id": 130,
+      "word": "nationality",
+      "meaning": "国籍",
+      "pos": "名"
+    },
+    {
+      "id": 131,
+      "word": "researcher",
+      "meaning": "研究者、調査員",
+      "pos": "名"
+    },
+    {
+      "id": 132,
+      "word": "metal",
+      "meaning": "金属",
+      "pos": "名"
+    },
+    {
+      "id": 133,
+      "word": "organization",
+      "meaning": "組織、団体",
+      "pos": "名"
+    },
+    {
+      "id": 134,
+      "word": "population",
+      "meaning": "人口",
+      "pos": "名"
+    },
+    {
+      "id": 135,
+      "word": "image",
+      "meaning": "イメージ、映像",
+      "pos": "名"
+    },
+    {
+      "id": 136,
+      "word": "level",
+      "meaning": "水準、レベル",
+      "pos": "名"
+    },
+    {
+      "id": 137,
+      "word": "opportunity",
+      "meaning": "機会",
+      "pos": "名"
+    },
+    {
+      "id": 138,
+      "word": "mayor",
+      "meaning": "市長",
+      "pos": "名"
+    },
+    {
+      "id": 139,
+      "word": "quality",
+      "meaning": "質",
+      "pos": "名"
+    },
+    {
+      "id": 140,
+      "word": "signal",
+      "meaning": "信号、合図、(に)合図をする",
+      "pos": "名"
+    },
+    {
+      "id": 141,
+      "word": "liquid",
+      "meaning": "液体",
+      "pos": "名"
+    },
+    {
+      "id": 142,
+      "word": "majority",
+      "meaning": "大多数、多数派、過半数",
+      "pos": "名"
+    },
+    {
+      "id": 143,
+      "word": "location",
+      "meaning": "場所、位置",
+      "pos": "名"
+    },
+    {
+      "id": 144,
+      "word": "pain",
+      "meaning": "苦痛、苦労",
+      "pos": "名"
+    },
+    {
+      "id": 145,
+      "word": "reality",
+      "meaning": "現実(性)、現実のもの",
+      "pos": "名"
+    },
+    {
+      "id": 146,
+      "word": "rental",
+      "meaning": "賃貸し[賃借り]すること、レンタル料、賃貸の",
+      "pos": "名"
+    },
+    {
+      "id": 147,
+      "word": "influence",
+      "meaning": "影響、影響を与える",
+      "pos": "名"
+    },
+    {
+      "id": 148,
+      "word": "restroom",
+      "meaning": "(公共建物内の)トイレ、化粧室",
+      "pos": "名"
+    },
+    {
+      "id": 149,
+      "word": "shelter",
+      "meaning": "避難所、住まい、を保護する、避難する",
+      "pos": "名"
+    },
+    {
+      "id": 150,
+      "word": "sheet",
+      "meaning": "1枚(の紙)、(金属・ガラスなどの)薄板、シーツ",
+      "pos": "名"
+    },
+    {
+      "id": 151,
+      "word": "operation",
+      "meaning": "手術、操作",
+      "pos": "名"
+    },
+    {
+      "id": 152,
+      "word": "photograph",
+      "meaning": "写真、(の)写真を撮る",
+      "pos": "名"
+    },
+    {
+      "id": 153,
+      "word": "printer",
+      "meaning": "プリンター、印刷機",
+      "pos": "名"
+    },
+    {
+      "id": 154,
+      "word": "rhythm",
+      "meaning": "リズム",
+      "pos": "名"
+    },
+    {
+      "id": 155,
+      "word": "shrimp",
+      "meaning": "小エビ",
+      "pos": "名"
+    },
+    {
+      "id": 156,
+      "word": "souvenir",
+      "meaning": "みやげ、記念品、思い出の品",
+      "pos": "名"
+    },
+    {
+      "id": 157,
+      "word": "receipt",
+      "meaning": "レシート、領収書、受領",
+      "pos": "名"
+    },
+    {
+      "id": 158,
+      "word": "lecture",
+      "meaning": "講義、講演",
+      "pos": "名"
+    },
+    {
+      "id": 159,
+      "word": "rank",
+      "meaning": "階級、ランク、を等級づけする、位置する",
+      "pos": "名"
+    },
+    {
+      "id": 160,
+      "word": "purse",
+      "meaning": "ハンドバッグ、(主に女性用の)財布",
+      "pos": "名"
+    },
+    {
+      "id": 161,
+      "word": "harmony",
+      "meaning": "調和",
+      "pos": "名"
+    },
+    {
+      "id": 162,
+      "word": "lawyer",
+      "meaning": "弁護士、法律家",
+      "pos": "名"
+    },
+    {
+      "id": 163,
+      "word": "origin",
+      "meaning": "起源",
+      "pos": "名"
+    },
+    {
+      "id": 164,
+      "word": "pause",
+      "meaning": "休止、中止",
+      "pos": "名"
+    },
+    {
+      "id": 165,
+      "word": "popularity",
+      "meaning": "人気",
+      "pos": "名"
+    },
+    {
+      "id": 166,
+      "word": "praise",
+      "meaning": "称賛、賛美、をほめる、を称賛する",
+      "pos": "名"
+    },
+    {
+      "id": 167,
+      "word": "pride",
+      "meaning": "プライド、誇り",
+      "pos": "名"
+    },
+    {
+      "id": 168,
+      "word": "reaction",
+      "meaning": "反応",
+      "pos": "名"
+    },
+    {
+      "id": 169,
+      "word": "rumor",
+      "meaning": "うわさ",
+      "pos": "名"
+    },
+    {
+      "id": 170,
+      "word": "shadow",
+      "meaning": "影、(日)陰",
+      "pos": "名"
+    },
+    {
+      "id": 171,
+      "word": "smoker",
+      "meaning": "喫煙者",
+      "pos": "名"
+    },
+    {
+      "id": 172,
+      "word": "laughter",
+      "meaning": "笑い、笑い声",
+      "pos": "名"
+    },
+    {
+      "id": 173,
+      "word": "miracle",
+      "meaning": "奇跡",
+      "pos": "名"
+    },
+    {
+      "id": 174,
+      "word": "niece",
+      "meaning": "めい",
+      "pos": "名"
+    },
+    {
+      "id": 175,
+      "word": "oyster",
+      "meaning": "カキ",
+      "pos": "名"
+    },
+    {
+      "id": 176,
+      "word": "particular",
+      "meaning": "特定の、特別の",
+      "pos": "形"
+    },
+    {
+      "id": 177,
+      "word": "negative",
+      "meaning": "否定の、消極的な",
+      "pos": "形"
+    },
+    {
+      "id": 178,
+      "word": "ordinary",
+      "meaning": "普通の、並の",
+      "pos": "形"
+    },
+    {
+      "id": 179,
+      "word": "salty",
+      "meaning": "塩辛い、塩気のある",
+      "pos": "形"
+    },
+    {
+      "id": 180,
+      "word": "pure",
+      "meaning": "汚れていない、純粋な",
+      "pos": "形"
+    },
+    {
+      "id": 181,
+      "word": "honest",
+      "meaning": "正直な",
+      "pos": "形"
+    },
+    {
+      "id": 182,
+      "word": "instant",
+      "meaning": "即時の、即席の、瞬間、瞬時",
+      "pos": "形"
+    },
+    {
+      "id": 183,
+      "word": "mad",
+      "meaning": "怒って、狂気の、熱中して",
+      "pos": "形"
+    },
+    {
+      "id": 184,
+      "word": "hidden",
+      "meaning": "隠された、秘密の",
+      "pos": "形"
+    },
+    {
+      "id": 185,
+      "word": "roast",
+      "meaning": "焼いた、あぶった、を(オーブンで)焼く",
+      "pos": "形"
+    },
+    {
+      "id": 186,
+      "word": "stressful",
+      "meaning": "ストレスの原因となる、緊張を強いる",
+      "pos": "形"
+    },
+    {
+      "id": 187,
+      "word": "thin",
+      "meaning": "薄い、細い、やせた",
+      "pos": "形"
+    },
+    {
+      "id": 188,
+      "word": "worth",
+      "meaning": "価値がある、価値",
+      "pos": "形"
+    },
+    {
+      "id": 189,
+      "word": "tough",
+      "meaning": "困難な、頑丈な、堅い",
+      "pos": "形"
+    },
+    {
+      "id": 190,
+      "word": "suitable",
+      "meaning": "適した",
+      "pos": "形"
+    },
+    {
+      "id": 191,
+      "word": "square",
+      "meaning": "平方の、正方形の、平方、正方形、広場",
+      "pos": "形"
+    },
+    {
+      "id": 192,
+      "word": "unfriendly",
+      "meaning": "不親切な、よそよそしい",
+      "pos": "形"
+    },
+    {
+      "id": 193,
+      "word": "indeed",
+      "meaning": "実は、本当に",
+      "pos": "副"
+    },
+    {
+      "id": 194,
+      "word": "extremely",
+      "meaning": "非常に、極端に",
+      "pos": "副"
+    },
+    {
+      "id": 195,
+      "word": "perhaps",
+      "meaning": "もしかすると",
+      "pos": "副"
+    },
+    {
+      "id": 196,
+      "word": "moreover",
+      "meaning": "その上",
+      "pos": "副"
+    },
+    {
+      "id": 197,
+      "word": "regularly",
+      "meaning": "定期的に",
+      "pos": "副"
+    },
+    {
+      "id": 198,
+      "word": "furthermore",
+      "meaning": "その上、さらに",
+      "pos": "副"
+    },
+    {
+      "id": 199,
+      "word": "directly",
+      "meaning": "直接に",
+      "pos": "副"
+    },
+    {
+      "id": 200,
+      "word": "frequently",
+      "meaning": "頻繁に",
+      "pos": "副"
+    },
+    {
+      "id": 201,
+      "word": "major",
+      "meaning": "専攻する、主要な、多数の",
+      "pos": "動"
+    },
+    {
+      "id": 202,
+      "word": "achieve",
+      "meaning": "を達成する、を成し遂げる",
+      "pos": "動"
+    },
+    {
+      "id": 203,
+      "word": "lack",
+      "meaning": "(に)欠けている、がない、不足",
+      "pos": "動"
+    },
+    {
+      "id": 204,
+      "word": "refer",
+      "meaning": "言及する、参照する",
+      "pos": "動"
+    },
+    {
+      "id": 205,
+      "word": "sink",
+      "meaning": "沈む、を沈める",
+      "pos": "動"
+    },
+    {
+      "id": 206,
+      "word": "consist",
+      "meaning": "成る、ある",
+      "pos": "動"
+    },
+    {
+      "id": 207,
+      "word": "spill",
+      "meaning": "をこぼす、にこぼれる",
+      "pos": "動"
+    },
+    {
+      "id": 208,
+      "word": "mention",
+      "meaning": "に言及する、を述べる、言及、配慮",
+      "pos": "動"
+    },
+    {
+      "id": 209,
+      "word": "admit",
+      "meaning": "を(事実・妥当だと)認める",
+      "pos": "動"
+    },
+    {
+      "id": 210,
+      "word": "blow",
+      "meaning": "(風が)吹く、に息を吹きかける",
+      "pos": "動"
+    },
+    {
+      "id": 211,
+      "word": "pretend",
+      "meaning": "のふりをする",
+      "pos": "動"
+    },
+    {
+      "id": 212,
+      "word": "regret",
+      "meaning": "を後悔する、後悔",
+      "pos": "動"
+    },
+    {
+      "id": 213,
+      "word": "meet",
+      "meaning": "(要求・条件など)を満たす、に合う",
+      "pos": "動"
+    },
+    {
+      "id": 214,
+      "word": "provide",
+      "meaning": "を提供す[供給]する",
+      "pos": "動"
+    },
+    {
+      "id": 215,
+      "word": "disagree",
+      "meaning": "意見が食い違う、一致しない",
+      "pos": "動"
+    },
+    {
+      "id": 216,
+      "word": "charge",
+      "meaning": "(税金など)を課す、を請求する、を告発する、料金、出費",
+      "pos": "動"
+    },
+    {
+      "id": 217,
+      "word": "book",
+      "meaning": "を予約する、本",
+      "pos": "動"
+    },
+    {
+      "id": 218,
+      "word": "run",
+      "meaning": "を経営[運営]する、立候補する、走る",
+      "pos": "動"
+    },
+    {
+      "id": 219,
+      "word": "purchase",
+      "meaning": "(高価なもの・大量の物)を購入する、購入、買ったもの",
+      "pos": "動"
+    },
+    {
+      "id": 220,
+      "word": "prefer",
+      "meaning": "の方を好む",
+      "pos": "動"
+    },
+    {
+      "id": 221,
+      "word": "attach",
+      "meaning": "を添付する、を取り付ける",
+      "pos": "動"
+    },
+    {
+      "id": 222,
+      "word": "examine",
+      "meaning": "を検査する、を調べる",
+      "pos": "動"
+    },
+    {
+      "id": 223,
+      "word": "affect",
+      "meaning": "に影響を及ぼす",
+      "pos": "動"
+    },
+    {
+      "id": 224,
+      "word": "treat",
+      "meaning": "を扱う、をみなす、を治療する",
+      "pos": "動"
+    },
+    {
+      "id": 225,
+      "word": "pace",
+      "meaning": "(発展・生活・運動などの)速さ・ペース",
+      "pos": "名"
+    },
+    {
+      "id": 226,
+      "word": "penalty",
+      "meaning": "罰金、罰",
+      "pos": "名"
+    },
+    {
+      "id": 227,
+      "word": "prayer",
+      "meaning": "祈り",
+      "pos": "名"
+    },
+    {
+      "id": 228,
+      "word": "projector",
+      "meaning": "映写機、プロジェクター",
+      "pos": "名"
+    },
+    {
+      "id": 229,
+      "word": "sketch",
+      "meaning": "スケッチ、概略、(を)スケッチする",
+      "pos": "名"
+    },
+    {
+      "id": 230,
+      "word": "treatment",
+      "meaning": "治療、取り扱い",
+      "pos": "名"
+    },
+    {
+      "id": 231,
+      "word": "survey",
+      "meaning": "(詳細な)調査",
+      "pos": "名"
+    },
+    {
+      "id": 232,
+      "word": "temple",
+      "meaning": "寺、神殿",
+      "pos": "名"
+    },
+    {
+      "id": 233,
+      "word": "agency",
+      "meaning": "代理店",
+      "pos": "名"
+    },
+    {
+      "id": 234,
+      "word": "temperature",
+      "meaning": "気温、温度、体温",
+      "pos": "名"
+    },
+    {
+      "id": 235,
+      "word": "trend",
+      "meaning": "傾向、流行",
+      "pos": "名"
+    },
+    {
+      "id": 236,
+      "word": "surface",
+      "meaning": "表面、外見",
+      "pos": "名"
+    },
+    {
+      "id": 237,
+      "word": "throat",
+      "meaning": "のど",
+      "pos": "名"
+    },
+    {
+      "id": 238,
+      "word": "profit",
+      "meaning": "利益、もうけ",
+      "pos": "名"
+    },
+    {
+      "id": 239,
+      "word": "workplace",
+      "meaning": "職場、仕事場",
+      "pos": "名"
+    },
+    {
+      "id": 240,
+      "word": "web",
+      "meaning": "(ワールドワイド)ウェブ、蜘蛛の巣",
+      "pos": "名"
+    },
+    {
+      "id": 241,
+      "word": "task",
+      "meaning": "(課せられた)仕事",
+      "pos": "名"
+    },
+    {
+      "id": 242,
+      "word": "spelling",
+      "meaning": "つづり、(字を正しく)つづること",
+      "pos": "名"
+    },
+    {
+      "id": 243,
+      "word": "summary",
+      "meaning": "要約、まとめ",
+      "pos": "名"
+    },
+    {
+      "id": 244,
+      "word": "thunderstorm",
+      "meaning": "雷を伴う暴風雨",
+      "pos": "名"
+    },
+    {
+      "id": 245,
+      "word": "diamond",
+      "meaning": "ダイヤモンド",
+      "pos": "名"
+    },
+    {
+      "id": 246,
+      "word": "manual",
+      "meaning": "説明書、マニュアル",
+      "pos": "名"
+    },
+    {
+      "id": 247,
+      "word": "theme",
+      "meaning": "テーマ、主題",
+      "pos": "名"
+    },
+    {
+      "id": 248,
+      "word": "thought",
+      "meaning": "考え、思考",
+      "pos": "名"
+    },
+    {
+      "id": 249,
+      "word": "victory",
+      "meaning": "勝利",
+      "pos": "名"
+    },
+    {
+      "id": 250,
+      "word": "sword",
+      "meaning": "剣、刀",
+      "pos": "名"
+    },
+    {
+      "id": 251,
+      "word": "volume",
+      "meaning": "音量、分冊、(シリーズ本などの)巻",
+      "pos": "名"
+    },
+    {
+      "id": 252,
+      "word": "effect",
+      "meaning": "影響、結果",
+      "pos": "名"
+    },
+    {
+      "id": 253,
+      "word": "material",
+      "meaning": "材料、資料、物質の",
+      "pos": "名"
+    },
+    {
+      "id": 254,
+      "word": "statement",
+      "meaning": "発言、声明",
+      "pos": "名"
+    },
+    {
+      "id": 255,
+      "word": "coast",
+      "meaning": "海岸、沿岸",
+      "pos": "名"
+    },
+    {
+      "id": 256,
+      "word": "fear",
+      "meaning": "恐れ、心配、を恐れる",
+      "pos": "名"
+    },
+    {
+      "id": 257,
+      "word": "countryside",
+      "meaning": "田舎、田園地帯",
+      "pos": "名"
+    },
+    {
+      "id": 258,
+      "word": "issue",
+      "meaning": "(雑誌などの)第〜号、発行、問題、を発行する",
+      "pos": "名"
+    },
+    {
+      "id": 259,
+      "word": "condition",
+      "meaning": "状態、状況、条件",
+      "pos": "名"
+    },
+    {
+      "id": 260,
+      "word": "crime",
+      "meaning": "犯罪",
+      "pos": "名"
+    },
+    {
+      "id": 261,
+      "word": "degree",
+      "meaning": "(温度・角度などの)度、程度",
+      "pos": "名"
+    },
+    {
+      "id": 262,
+      "word": "sunlight",
+      "meaning": "日光",
+      "pos": "名"
+    },
+    {
+      "id": 263,
+      "word": "behavior",
+      "meaning": "振る舞い、行動",
+      "pos": "名"
+    },
+    {
+      "id": 264,
+      "word": "childhood",
+      "meaning": "子供のころ、幼児期",
+      "pos": "名"
+    },
+    {
+      "id": 265,
+      "word": "rate",
+      "meaning": "比率、割合、速度",
+      "pos": "名"
+    },
+    {
+      "id": 266,
+      "word": "ancestor",
+      "meaning": "祖先",
+      "pos": "名"
+    },
+    {
+      "id": 267,
+      "word": "earthquake",
+      "meaning": "地震",
+      "pos": "名"
+    },
+    {
+      "id": 268,
+      "word": "freedom",
+      "meaning": "自由",
+      "pos": "名"
+    },
+    {
+      "id": 269,
+      "word": "citizen",
+      "meaning": "市民、国民",
+      "pos": "名"
+    },
+    {
+      "id": 270,
+      "word": "entertainment",
+      "meaning": "娯楽、催し物、もてなし",
+      "pos": "名"
+    },
+    {
+      "id": 271,
+      "word": "frame",
+      "meaning": "額縁、枠",
+      "pos": "名"
+    },
+    {
+      "id": 272,
+      "word": "fare",
+      "meaning": "(乗り物の)料金",
+      "pos": "名"
+    },
+    {
+      "id": 273,
+      "word": "fault",
+      "meaning": "欠点、誤り",
+      "pos": "名"
+    },
+    {
+      "id": 274,
+      "word": "feature",
+      "meaning": "特徴、を呼び物とする",
+      "pos": "名"
+    },
+    {
+      "id": 275,
+      "word": "likely",
+      "meaning": "Aは〜しそうである、ありそうな",
+      "pos": "形"
+    },
+    {
+      "id": 276,
+      "word": "official",
+      "meaning": "公式の、正式の、職務上の、公務員",
+      "pos": "形"
+    },
+    {
+      "id": 277,
+      "word": "ill",
+      "meaning": "病気で",
+      "pos": "形"
+    },
+    {
+      "id": 278,
+      "word": "unusual",
+      "meaning": "異常な、普通でない",
+      "pos": "形"
+    },
+    {
+      "id": 279,
+      "word": "specific",
+      "meaning": "特定の、明確な",
+      "pos": "形"
+    },
+    {
+      "id": 280,
+      "word": "opposite",
+      "meaning": "反対の、正反対の物[人]、〜の向かい側に",
+      "pos": "形"
+    },
+    {
+      "id": 281,
+      "word": "pleasant",
+      "meaning": "気持ちの良い、快い",
+      "pos": "形"
+    },
+    {
+      "id": 282,
+      "word": "awful",
+      "meaning": "ひどい",
+      "pos": "形"
+    },
+    {
+      "id": 283,
+      "word": "direct",
+      "meaning": "直接の、まっすぐな、(を)指揮する、に指図する",
+      "pos": "形"
+    },
+    {
+      "id": 284,
+      "word": "raw",
+      "meaning": "未加工の、生の",
+      "pos": "形"
+    },
+    {
+      "id": 285,
+      "word": "effective",
+      "meaning": "効果的な、有効な",
+      "pos": "形"
+    },
+    {
+      "id": 286,
+      "word": "social",
+      "meaning": "社会の、社会的な",
+      "pos": "形"
+    },
+    {
+      "id": 287,
+      "word": "medical",
+      "meaning": "医学の",
+      "pos": "形"
+    },
+    {
+      "id": 288,
+      "word": "original",
+      "meaning": "最初の、独創的な",
+      "pos": "形"
+    },
+    {
+      "id": 289,
+      "word": "economic",
+      "meaning": "経済の",
+      "pos": "形"
+    },
+    {
+      "id": 290,
+      "word": "global",
+      "meaning": "地球全体の、全体的な",
+      "pos": "形"
+    },
+    {
+      "id": 291,
+      "word": "frequent",
+      "meaning": "頻繁な",
+      "pos": "形"
+    },
+    {
+      "id": 292,
+      "word": "surprising",
+      "meaning": "驚くべき",
+      "pos": "形"
+    },
+    {
+      "id": 293,
+      "word": "environmentally",
+      "meaning": "環境(保護)の点で",
+      "pos": "副"
+    },
+    {
+      "id": 294,
+      "word": "traditionally",
+      "meaning": "伝統的に",
+      "pos": "副"
+    },
+    {
+      "id": 295,
+      "word": "rapidly",
+      "meaning": "急速に、素早く",
+      "pos": "副"
+    },
+    {
+      "id": 296,
+      "word": "properly",
+      "meaning": "適切に、礼儀正しく",
+      "pos": "副"
+    },
+    {
+      "id": 297,
+      "word": "differently",
+      "meaning": "異なって、それとは違って",
+      "pos": "副"
+    },
+    {
+      "id": 298,
+      "word": "dramatically",
+      "meaning": "劇的に",
+      "pos": "副"
+    },
+    {
+      "id": 299,
+      "word": "overtime",
+      "meaning": "時間外に、時間外労働の、時間外(労働)",
+      "pos": "副"
+    },
+    {
+      "id": 300,
+      "word": "freely",
+      "meaning": "自由に",
+      "pos": "副"
+    },
+    {
+      "id": 301,
+      "word": "participate",
+      "meaning": "参加する",
+      "pos": "動"
+    },
+    {
+      "id": 302,
+      "word": "graduate",
+      "meaning": "卒業する、卒業生",
+      "pos": "動"
+    },
+    {
+      "id": 303,
+      "word": "afford",
+      "meaning": "を持つ[する]余裕がある",
+      "pos": "動"
+    },
+    {
+      "id": 304,
+      "word": "donate",
+      "meaning": "を寄付する",
+      "pos": "動"
+    },
+    {
+      "id": 305,
+      "word": "locate",
+      "meaning": "に位置する",
+      "pos": "動"
+    },
+    {
+      "id": 306,
+      "word": "occur",
+      "meaning": "思い浮かぶ、起こす",
+      "pos": "動"
+    },
+    {
+      "id": 307,
+      "word": "employ",
+      "meaning": "を雇う、を用いる",
+      "pos": "動"
+    },
+    {
+      "id": 308,
+      "word": "involve",
+      "meaning": "を巻き込む、を含む",
+      "pos": "動"
+    },
+    {
+      "id": 309,
+      "word": "edit",
+      "meaning": "(原稿を)編集する",
+      "pos": "動"
+    },
+    {
+      "id": 310,
+      "word": "complain",
+      "meaning": "不平を言う",
+      "pos": "動"
+    },
+    {
+      "id": 311,
+      "word": "preserve",
+      "meaning": "を保存する",
+      "pos": "動"
+    },
+    {
+      "id": 312,
+      "word": "inform",
+      "meaning": "に通知する",
+      "pos": "動"
+    },
+    {
+      "id": 313,
+      "word": "estimate",
+      "meaning": "を見積もる、を評価する、見積もり、評価",
+      "pos": "動"
+    },
+    {
+      "id": 314,
+      "word": "click",
+      "meaning": "をクリックする、クリック",
+      "pos": "動"
+    },
+    {
+      "id": 315,
+      "word": "apply",
+      "meaning": "申し込む、を適用[適用]する",
+      "pos": "動"
+    },
+    {
+      "id": 316,
+      "word": "transport",
+      "meaning": "を輸送する",
+      "pos": "動"
+    },
+    {
+      "id": 317,
+      "word": "hand",
+      "meaning": "(物)を手渡す、手、手助け",
+      "pos": "動"
+    },
+    {
+      "id": 318,
+      "word": "compare",
+      "meaning": "を比較する、を例える",
+      "pos": "動"
+    },
+    {
+      "id": 319,
+      "word": "adopt",
+      "meaning": "を採用する、を養子にする",
+      "pos": "動"
+    },
+    {
+      "id": 320,
+      "word": "consume",
+      "meaning": "を消費する",
+      "pos": "動"
+    },
+    {
+      "id": 321,
+      "word": "warn",
+      "meaning": "(に)警告する",
+      "pos": "動"
+    },
+    {
+      "id": 322,
+      "word": "rely",
+      "meaning": "頼る",
+      "pos": "動"
+    },
+    {
+      "id": 323,
+      "word": "respond",
+      "meaning": "答える、反応する",
+      "pos": "動"
+    },
+    {
+      "id": 324,
+      "word": "behave",
+      "meaning": "振る舞う、行儀良くする",
+      "pos": "動"
+    },
+    {
+      "id": 325,
+      "word": "honor",
+      "meaning": "敬意、光栄、名誉、に名誉を与える",
+      "pos": "名"
+    },
+    {
+      "id": 326,
+      "word": "role",
+      "meaning": "(俳優などの)役、役割",
+      "pos": "名"
+    },
+    {
+      "id": 327,
+      "word": "brain",
+      "meaning": "頭脳、脳",
+      "pos": "名"
+    },
+    {
+      "id": 328,
+      "word": "device",
+      "meaning": "装置、工夫",
+      "pos": "名"
+    },
+    {
+      "id": 329,
+      "word": "electricity",
+      "meaning": "電気、電力",
+      "pos": "名"
+    },
+    {
+      "id": 330,
+      "word": "stress",
+      "meaning": "(心身への)ストレス、圧迫感、に緊張を与える",
+      "pos": "名"
+    },
+    {
+      "id": 331,
+      "word": "fuel",
+      "meaning": "燃料、に燃料を補給する",
+      "pos": "名"
+    },
+    {
+      "id": 332,
+      "word": "benefit",
+      "meaning": "利益、恩恵、利益を得る、のためになる",
+      "pos": "名"
+    },
+    {
+      "id": 333,
+      "word": "security",
+      "meaning": "安全、警備、安心",
+      "pos": "名"
+    },
+    {
+      "id": 334,
+      "word": "supplement",
+      "meaning": "サプリメント、栄養補助剤",
+      "pos": "名"
+    },
+    {
+      "id": 335,
+      "word": "focus",
+      "meaning": "焦点、の焦点を合わせる",
+      "pos": "名"
+    },
+    {
+      "id": 336,
+      "word": "client",
+      "meaning": "顧客、(弁護士などへの)依頼人",
+      "pos": "名"
+    },
+    {
+      "id": 337,
+      "word": "bacteria",
+      "meaning": "細菌、バクテリア",
+      "pos": "名"
+    },
+    {
+      "id": 338,
+      "word": "retirement",
+      "meaning": "(定年による)退職、引退",
+      "pos": "名"
+    },
+    {
+      "id": 339,
+      "word": "farming",
+      "meaning": "農業",
+      "pos": "名"
+    },
+    {
+      "id": 340,
+      "word": "case",
+      "meaning": "場合、事例",
+      "pos": "名"
+    },
+    {
+      "id": 341,
+      "word": "advertisement",
+      "meaning": "広告、宣伝",
+      "pos": "名"
+    },
+    {
+      "id": 342,
+      "word": "account",
+      "meaning": "口座、説明、勘定",
+      "pos": "名"
+    },
+    {
+      "id": 343,
+      "word": "data",
+      "meaning": "データ",
+      "pos": "名"
+    },
+    {
+      "id": 344,
+      "word": "solution",
+      "meaning": "解決(策)、解答",
+      "pos": "名"
+    },
+    {
+      "id": 345,
+      "word": "competition",
+      "meaning": "競技(会)、コンクール、競争",
+      "pos": "名"
+    },
+    {
+      "id": 346,
+      "word": "industry",
+      "meaning": "産業、勤勉",
+      "pos": "名"
+    },
+    {
+      "id": 347,
+      "word": "participant",
+      "meaning": "参加者",
+      "pos": "名"
+    },
+    {
+      "id": 348,
+      "word": "payment",
+      "meaning": "支払い",
+      "pos": "名"
+    },
+    {
+      "id": 349,
+      "word": "resident",
+      "meaning": "居住者、在住の",
+      "pos": "名"
+    },
+    {
+      "id": 350,
+      "word": "variety",
+      "meaning": "種類、多様性",
+      "pos": "名"
+    },
+    {
+      "id": 351,
+      "word": "decision",
+      "meaning": "決定、結論",
+      "pos": "名"
+    },
+    {
+      "id": 352,
+      "word": "cell",
+      "meaning": "細胞、(独)房",
+      "pos": "名"
+    },
+    {
+      "id": 353,
+      "word": "head",
+      "meaning": "責任者、頭",
+      "pos": "名"
+    },
+    {
+      "id": 354,
+      "word": "movement",
+      "meaning": "(政治・社会的)運動、動き、動向",
+      "pos": "名"
+    },
+    {
+      "id": 355,
+      "word": "economy",
+      "meaning": "経済、節約",
+      "pos": "名"
+    },
+    {
+      "id": 356,
+      "word": "income",
+      "meaning": "収入",
+      "pos": "名"
+    },
+    {
+      "id": 357,
+      "word": "transportation",
+      "meaning": "輸送[交通](機関)",
+      "pos": "名"
+    },
+    {
+      "id": 358,
+      "word": "communication",
+      "meaning": "意思の疎通、コミュニケーション",
+      "pos": "名"
+    },
+    {
+      "id": 359,
+      "word": "period",
+      "meaning": "期間、時代、終止符",
+      "pos": "名"
+    },
+    {
+      "id": 360,
+      "word": "evidence",
+      "meaning": "証拠",
+      "pos": "名"
+    },
+    {
+      "id": 361,
+      "word": "appointment",
+      "meaning": "(会う)約束、(病院などの)予約",
+      "pos": "名"
+    },
+    {
+      "id": 362,
+      "word": "salary",
+      "meaning": "給料",
+      "pos": "名"
+    },
+    {
+      "id": 363,
+      "word": "creature",
+      "meaning": "生き物",
+      "pos": "名"
+    },
+    {
+      "id": 364,
+      "word": "deadline",
+      "meaning": "締切、期限",
+      "pos": "名"
+    },
+    {
+      "id": 365,
+      "word": "society",
+      "meaning": "社会",
+      "pos": "名"
+    },
+    {
+      "id": 366,
+      "word": "experiment",
+      "meaning": "実験、実験をする",
+      "pos": "名"
+    },
+    {
+      "id": 367,
+      "word": "vitamin",
+      "meaning": "ビタミン",
+      "pos": "名"
+    },
+    {
+      "id": 368,
+      "word": "source",
+      "meaning": "源、原因",
+      "pos": "名"
+    },
+    {
+      "id": 369,
+      "word": "relationship",
+      "meaning": "関係、間柄",
+      "pos": "名"
+    },
+    {
+      "id": 370,
+      "word": "object",
+      "meaning": "物、対象、目的、反対する",
+      "pos": "名"
+    },
+    {
+      "id": 371,
+      "word": "software",
+      "meaning": "ソフトウェア",
+      "pos": "名"
+    },
+    {
+      "id": 372,
+      "word": "air conditioner",
+      "meaning": "冷暖房装置、エアコン",
+      "pos": "名"
+    },
+    {
+      "id": 373,
+      "word": "global warming",
+      "meaning": "地球温暖化",
+      "pos": "名"
+    },
+    {
+      "id": 374,
+      "word": "law",
+      "meaning": "法律、法",
+      "pos": "名"
+    },
+    {
+      "id": 375,
+      "word": "muscle",
+      "meaning": "筋肉",
+      "pos": "名"
+    },
+    {
+      "id": 376,
+      "word": "current",
+      "meaning": "現在の、流通している、流れ、風潮",
+      "pos": "形"
+    },
+    {
+      "id": 377,
+      "word": "environmental",
+      "meaning": "環境の",
+      "pos": "形"
+    },
+    {
+      "id": 378,
+      "word": "rare",
+      "meaning": "珍しい、まれな",
+      "pos": "形"
+    },
+    {
+      "id": 379,
+      "word": "efficient",
+      "meaning": "能率的な",
+      "pos": "形"
+    },
+    {
+      "id": 380,
+      "word": "casual",
+      "meaning": "(衣服が)カジュアルな、略式の",
+      "pos": "形"
+    },
+    {
+      "id": 381,
+      "word": "classic",
+      "meaning": "(文学・芸術などが)最高水準の、典型的な",
+      "pos": "形"
+    },
+    {
+      "id": 382,
+      "word": "positive",
+      "meaning": "肯定的な、積極的な、確信のある",
+      "pos": "形"
+    },
+    {
+      "id": 383,
+      "word": "aware",
+      "meaning": "知って、気づいて",
+      "pos": "形"
+    },
+    {
+      "id": 384,
+      "word": "flexible",
+      "meaning": "融通の利く、柔軟な",
+      "pos": "形"
+    },
+    {
+      "id": 385,
+      "word": "individual",
+      "meaning": "個々の、個人的な、個人",
+      "pos": "形"
+    },
+    {
+      "id": 386,
+      "word": "educational",
+      "meaning": "教育的な、教育の",
+      "pos": "形"
+    },
+    {
+      "id": 387,
+      "word": "physical",
+      "meaning": "身体の、物理的な",
+      "pos": "形"
+    },
+    {
+      "id": 388,
+      "word": "attractive",
+      "meaning": "魅力的な、人を引き付ける",
+      "pos": "形"
+    },
+    {
+      "id": 389,
+      "word": "portable",
+      "meaning": "持ち運びできる",
+      "pos": "形"
+    },
+    {
+      "id": 390,
+      "word": "unlikely",
+      "meaning": "ありそうにもない",
+      "pos": "形"
+    },
+    {
+      "id": 391,
+      "word": "real-estate",
+      "meaning": "不動産の",
+      "pos": "形"
+    },
+    {
+      "id": 392,
+      "word": "due",
+      "meaning": "期限が来て、〜する予定である",
+      "pos": "形"
+    },
+    {
+      "id": 393,
+      "word": "normally",
+      "meaning": "通常は、いつもは",
+      "pos": "副"
+    },
+    {
+      "id": 394,
+      "word": "generally",
+      "meaning": "一般に、だいていい",
+      "pos": "副"
+    },
+    {
+      "id": 395,
+      "word": "nevertheless",
+      "meaning": "それにもかかわらず",
+      "pos": "副"
+    },
+    {
+      "id": 396,
+      "word": "entirely",
+      "meaning": "完全に、全く",
+      "pos": "副"
+    },
+    {
+      "id": 397,
+      "word": "efficiently",
+      "meaning": "能率的に",
+      "pos": "副"
+    },
+    {
+      "id": 398,
+      "word": "meanwhile",
+      "meaning": "その間(に)、一方",
+      "pos": "副"
+    },
+    {
+      "id": 399,
+      "word": "accidentally",
+      "meaning": "誤って、偶然に",
+      "pos": "副"
+    },
+    {
+      "id": 400,
+      "word": "locally",
+      "meaning": "地元で、ある地方で",
+      "pos": "副"
+    },
+    {
+      "id": 401,
+      "word": "upgrade",
+      "meaning": "(の)質を高める、(を)アップグレードする、アップグレード",
+      "pos": "動"
+    },
+    {
+      "id": 402,
+      "word": "register",
+      "meaning": "(を)登録する",
+      "pos": "動"
+    },
+    {
+      "id": 403,
+      "word": "expand",
+      "meaning": "(を)拡大[拡張]する、を膨張させる",
+      "pos": "動"
+    },
+    {
+      "id": 404,
+      "word": "cure",
+      "meaning": "(病気・病気)を治す、(問題など)を解決する、治療、特効薬",
+      "pos": "動"
+    },
+    {
+      "id": 405,
+      "word": "scan",
+      "meaning": "をスキャンする、をは素早く調べる、をざっと見る、スキャン、精密検査",
+      "pos": "動"
+    },
+    {
+      "id": 406,
+      "word": "bend",
+      "meaning": "を曲げる、曲がる",
+      "pos": "動"
+    },
+    {
+      "id": 407,
+      "word": "prove",
+      "meaning": "わかる、を証明する",
+      "pos": "動"
+    },
+    {
+      "id": 408,
+      "word": "transfer",
+      "meaning": "を移す、乗り換える、移転、譲渡、乗り換え",
+      "pos": "動"
+    },
+    {
+      "id": 409,
+      "word": "impress",
+      "meaning": "を感心させる、に(良い)印象を与える",
+      "pos": "動"
+    },
+    {
+      "id": 410,
+      "word": "fold",
+      "meaning": "を折る、を畳む",
+      "pos": "動"
+    },
+    {
+      "id": 411,
+      "word": "emphasize",
+      "meaning": "を強調する",
+      "pos": "動"
+    },
+    {
+      "id": 412,
+      "word": "spin",
+      "meaning": "回る、を回す",
+      "pos": "動"
+    },
+    {
+      "id": 413,
+      "word": "process",
+      "meaning": "(食品・原料など)を加工処理する、過程",
+      "pos": "動"
+    },
+    {
+      "id": 414,
+      "word": "rob",
+      "meaning": "から奪う",
+      "pos": "動"
+    },
+    {
+      "id": 415,
+      "word": "analyze",
+      "meaning": "を分析する",
+      "pos": "動"
+    },
+    {
+      "id": 416,
+      "word": "bury",
+      "meaning": "を埋める、を埋葬する",
+      "pos": "動"
+    },
+    {
+      "id": 417,
+      "word": "sort",
+      "meaning": "を分類する、を選び出す、種類",
+      "pos": "動"
+    },
+    {
+      "id": 418,
+      "word": "update",
+      "meaning": "をアップデートする、を最新のものに更新する、アップデート",
+      "pos": "動"
+    },
+    {
+      "id": 419,
+      "word": "obtain",
+      "meaning": "を得る、を獲得する",
+      "pos": "動"
+    },
+    {
+      "id": 420,
+      "word": "associate",
+      "meaning": "を結びつけて考える",
+      "pos": "動"
+    },
+    {
+      "id": 421,
+      "word": "advance",
+      "meaning": "を促進する、を前へ進める",
+      "pos": "動"
+    },
+    {
+      "id": 422,
+      "word": "progress",
+      "meaning": "進歩[向上]する、進歩、前進",
+      "pos": "動"
+    },
+    {
+      "id": 423,
+      "word": "doubt",
+      "meaning": "を疑う、疑い",
+      "pos": "動"
+    },
+    {
+      "id": 424,
+      "word": "invest",
+      "meaning": "(を)投資する",
+      "pos": "動"
+    },
+    {
+      "id": 425,
+      "word": "ingredient",
+      "meaning": "材料、成分、要素",
+      "pos": "名"
+    },
+    {
+      "id": 426,
+      "word": "agent",
+      "meaning": "仲介者、代理人",
+      "pos": "名"
+    },
+    {
+      "id": 427,
+      "word": "development",
+      "meaning": "発達、発展、開発",
+      "pos": "名"
+    },
+    {
+      "id": 428,
+      "word": "exhibition",
+      "meaning": "展覧(会)、展示(会)",
+      "pos": "名"
+    },
+    {
+      "id": 429,
+      "word": "region",
+      "meaning": "地域、地方",
+      "pos": "名"
+    },
+    {
+      "id": 430,
+      "word": "facility",
+      "meaning": "施設、設備",
+      "pos": "名"
+    },
+    {
+      "id": 431,
+      "word": "aim",
+      "meaning": "狙い、目標、の狙いを定める",
+      "pos": "名"
+    },
+    {
+      "id": 432,
+      "word": "assignment",
+      "meaning": "課題、割り当て",
+      "pos": "名"
+    },
+    {
+      "id": 433,
+      "word": "trail",
+      "meaning": "(山中の)小道",
+      "pos": "名"
+    },
+    {
+      "id": 434,
+      "word": "pressure",
+      "meaning": "圧力、重圧、(人)に圧力をかける",
+      "pos": "名"
+    },
+    {
+      "id": 435,
+      "word": "response",
+      "meaning": "返答、反応",
+      "pos": "名"
+    },
+    {
+      "id": 436,
+      "word": "vehicle",
+      "meaning": "乗り物",
+      "pos": "名"
+    },
+    {
+      "id": 437,
+      "word": "skin",
+      "meaning": "肌、皮膚",
+      "pos": "名"
+    },
+    {
+      "id": 438,
+      "word": "fossil",
+      "meaning": "化石、化石の(ような)",
+      "pos": "名"
+    },
+    {
+      "id": 439,
+      "word": "promotion",
+      "meaning": "昇進、宣伝",
+      "pos": "名"
+    },
+    {
+      "id": 440,
+      "word": "improvement",
+      "meaning": "改善、進歩、向上",
+      "pos": "名"
+    },
+    {
+      "id": 441,
+      "word": "privacy",
+      "meaning": "プライバシー、私生活",
+      "pos": "名"
+    },
+    {
+      "id": 442,
+      "word": "healthcare",
+      "meaning": "医療、健康管理",
+      "pos": "名"
+    },
+    {
+      "id": 443,
+      "word": "term",
+      "meaning": "期間、学期、専門用語",
+      "pos": "名"
+    },
+    {
+      "id": 444,
+      "word": "blood",
+      "meaning": "血、血液",
+      "pos": "名"
+    },
+    {
+      "id": 445,
+      "word": "tourism",
+      "meaning": "観光事業、観光旅行",
+      "pos": "名"
+    },
+    {
+      "id": 446,
+      "word": "construction",
+      "meaning": "建設(工事)建造物",
+      "pos": "名"
+    },
+    {
+      "id": 447,
+      "word": "demand",
+      "meaning": "需要、要求を強く要求する",
+      "pos": "名"
+    },
+    {
+      "id": 448,
+      "word": "crop",
+      "meaning": "作物、収穫高、を短くXる、を収穫する",
+      "pos": "名"
+    },
+    {
+      "id": 449,
+      "word": "campaign",
+      "meaning": "組織的活動運動、キャンペーン、(選挙などの)運動をする",
+      "pos": "名"
+    },
+    {
+      "id": 450,
+      "word": "conference",
+      "meaning": "(公式の)会議、総会",
+      "pos": "名"
+    },
+    {
+      "id": 451,
+      "word": "poison",
+      "meaning": "毒",
+      "pos": "名"
+    },
+    {
+      "id": 452,
+      "word": "delivery",
+      "meaning": "配達",
+      "pos": "名"
+    },
+    {
+      "id": 453,
+      "word": "slum",
+      "meaning": "スラム街",
+      "pos": "名"
+    },
+    {
+      "id": 454,
+      "word": "panel",
+      "meaning": "パネル、羽目板",
+      "pos": "名"
+    },
+    {
+      "id": 455,
+      "word": "death",
+      "meaning": "死",
+      "pos": "名"
+    },
+    {
+      "id": 456,
+      "word": "carbon dioxide",
+      "meaning": "二酸化炭素",
+      "pos": "名"
+    },
+    {
+      "id": 457,
+      "word": "bone",
+      "meaning": "骨",
+      "pos": "名"
+    },
+    {
+      "id": 458,
+      "word": "board",
+      "meaning": "委員会、板、(飛行機など)に乗り込む",
+      "pos": "名"
+    },
+    {
+      "id": 459,
+      "word": "valley",
+      "meaning": "谷、流域",
+      "pos": "名"
+    },
+    {
+      "id": 460,
+      "word": "decade",
+      "meaning": "10年間",
+      "pos": "名"
+    },
+    {
+      "id": 461,
+      "word": "recommendation",
+      "meaning": "推薦、推薦状",
+      "pos": "名"
+    },
+    {
+      "id": 462,
+      "word": "organ",
+      "meaning": "臓器、器官",
+      "pos": "名"
+    },
+    {
+      "id": 463,
+      "word": "contract",
+      "meaning": "契約(書)、協定、(協定など)を結ぶ",
+      "pos": "名"
+    },
+    {
+      "id": 464,
+      "word": "standard",
+      "meaning": "基準、標準、規格、標準の",
+      "pos": "名"
+    },
+    {
+      "id": 465,
+      "word": "consumer",
+      "meaning": "消費者",
+      "pos": "名"
+    },
+    {
+      "id": 466,
+      "word": "production",
+      "meaning": "生産、生産高、作品",
+      "pos": "名"
+    },
+    {
+      "id": 467,
+      "word": "growth",
+      "meaning": "成長、発展、増加",
+      "pos": "名"
+    },
+    {
+      "id": 468,
+      "word": "range",
+      "meaning": "鑑域、(範囲が)及ぶ",
+      "pos": "名"
+    },
+    {
+      "id": 469,
+      "word": "impact",
+      "meaning": "影響、衝撃、強い影響を与える",
+      "pos": "名"
+    },
+    {
+      "id": 470,
+      "word": "roommate",
+      "meaning": "ルームメート、同室者",
+      "pos": "名"
+    },
+    {
+      "id": 471,
+      "word": "expense",
+      "meaning": "費用",
+      "pos": "名"
+    },
+    {
+      "id": 472,
+      "word": "step",
+      "meaning": "1段階、1歩、(階段などの)段",
+      "pos": "名"
+    },
+    {
+      "id": 473,
+      "word": "pattern",
+      "meaning": "パターン、様式、模様、に模様を付ける",
+      "pos": "名"
+    },
+    {
+      "id": 474,
+      "word": "jewelry",
+      "meaning": "宝石類",
+      "pos": "名"
+    },
+    {
+      "id": 475,
+      "word": "tiny",
+      "meaning": "わずかな、とても小さな",
+      "pos": "形"
+    },
+    {
+      "id": 476,
+      "word": "senior",
+      "meaning": "上位の、年長の、先輩の",
+      "pos": "形"
+    },
+    {
+      "id": 477,
+      "word": "mysterious",
+      "meaning": "神秘的な、秘密の",
+      "pos": "形"
+    },
+    {
+      "id": 478,
+      "word": "unhealthy",
+      "meaning": "不健康な",
+      "pos": "形"
+    },
+    {
+      "id": 479,
+      "word": "accurate",
+      "meaning": "正確な",
+      "pos": "形"
+    },
+    {
+      "id": 480,
+      "word": "poisonous",
+      "meaning": "有毒な",
+      "pos": "形"
+    },
+    {
+      "id": 481,
+      "word": "mental",
+      "meaning": "精神の、心の",
+      "pos": "形"
+    },
+    {
+      "id": 482,
+      "word": "false",
+      "meaning": "間違った、不誠実な",
+      "pos": "形"
+    },
+    {
+      "id": 483,
+      "word": "artificial",
+      "meaning": "人工の、不自然な",
+      "pos": "形"
+    },
+    {
+      "id": 484,
+      "word": "historic",
+      "meaning": "歴史上有名な",
+      "pos": "形"
+    },
+    {
+      "id": 485,
+      "word": "actual",
+      "meaning": "実際の、本当の",
+      "pos": "形"
+    },
+    {
+      "id": 486,
+      "word": "cultural",
+      "meaning": "文化の、文化的な",
+      "pos": "形"
+    },
+    {
+      "id": 487,
+      "word": "constant",
+      "meaning": "絶えず続く、不変の",
+      "pos": "形"
+    },
+    {
+      "id": 488,
+      "word": "rude",
+      "meaning": "失礼な",
+      "pos": "形"
+    },
+    {
+      "id": 489,
+      "word": "urban",
+      "meaning": "都会の",
+      "pos": "形"
+    },
+    {
+      "id": 490,
+      "word": "religious",
+      "meaning": "宗教の",
+      "pos": "形"
+    },
+    {
+      "id": 491,
+      "word": "disabled",
+      "meaning": "身体[心身]障がいの",
+      "pos": "形"
+    },
+    {
+      "id": 492,
+      "word": "talented",
+      "meaning": "才能がある",
+      "pos": "形"
+    },
+    {
+      "id": 493,
+      "word": "simply",
+      "meaning": "単に、簡単に",
+      "pos": "副"
+    },
+    {
+      "id": 494,
+      "word": "mainly",
+      "meaning": "主に、概して",
+      "pos": "副"
+    },
+    {
+      "id": 495,
+      "word": "correctly",
+      "meaning": "正しく、正確に",
+      "pos": "副"
+    },
+    {
+      "id": 496,
+      "word": "afterwards",
+      "meaning": "その後、後で",
+      "pos": "副"
+    },
+    {
+      "id": 497,
+      "word": "currently",
+      "meaning": "現在",
+      "pos": "副"
+    },
+    {
+      "id": 498,
+      "word": "healthily",
+      "meaning": "健康的に",
+      "pos": "副"
+    },
+    {
+      "id": 499,
+      "word": "increasingly",
+      "meaning": "ますます",
+      "pos": "副"
+    },
+    {
+      "id": 500,
+      "word": "particularly",
+      "meaning": "特に、とりわけ",
+      "pos": "副"
+    },
+    {
+      "id": 501,
+      "word": "evolve",
+      "meaning": "進化する、発展[進展]する",
+      "pos": "動"
+    },
+    {
+      "id": 502,
+      "word": "represent",
+      "meaning": "を代表する、を表す",
+      "pos": "動"
+    },
+    {
+      "id": 503,
+      "word": "adapt",
+      "meaning": "を適応[適合]させる",
+      "pos": "動"
+    },
+    {
+      "id": 504,
+      "word": "strengthen",
+      "meaning": "を強くする",
+      "pos": "動"
+    },
+    {
+      "id": 505,
+      "word": "react",
+      "meaning": "反応する、反発する",
+      "pos": "動"
+    },
+    {
+      "id": 506,
+      "word": "insert",
+      "meaning": "を挿入する、挿入物",
+      "pos": "動"
+    },
+    {
+      "id": 507,
+      "word": "matter",
+      "meaning": "重大である、問題となる、事、問題",
+      "pos": "動"
+    },
+    {
+      "id": 508,
+      "word": "recover",
+      "meaning": "回復する、を取り戻す",
+      "pos": "動"
+    },
+    {
+      "id": 509,
+      "word": "surround",
+      "meaning": "を囲む",
+      "pos": "動"
+    },
+    {
+      "id": 510,
+      "word": "adjust",
+      "meaning": "を調節する、順応する",
+      "pos": "動"
+    },
+    {
+      "id": 511,
+      "word": "migrate",
+      "meaning": "(鳥・魚が)渡る、移住する",
+      "pos": "動"
+    },
+    {
+      "id": 512,
+      "word": "digest",
+      "meaning": "を消化する",
+      "pos": "動"
+    },
+    {
+      "id": 513,
+      "word": "reset",
+      "meaning": "を再設定する、を初期状態に戻す",
+      "pos": "動"
+    },
+    {
+      "id": 514,
+      "word": "renew",
+      "meaning": "を更新する、を再び始める",
+      "pos": "動"
+    },
+    {
+      "id": 515,
+      "word": "maintain",
+      "meaning": "を維持する",
+      "pos": "動"
+    },
+    {
+      "id": 516,
+      "word": "determine",
+      "meaning": "を決定[決心]する、を正確に知る",
+      "pos": "動"
+    },
+    {
+      "id": 517,
+      "word": "struggle",
+      "meaning": "奮闘する、戦い、闘争",
+      "pos": "動"
+    },
+    {
+      "id": 518,
+      "word": "refund",
+      "meaning": "を払い戻す、返済(金)",
+      "pos": "動"
+    },
+    {
+      "id": 519,
+      "word": "qualify",
+      "meaning": "に資格を与える",
+      "pos": "動"
+    },
+    {
+      "id": 520,
+      "word": "motivate",
+      "meaning": "にやる気を起こさせる、に動機を与える",
+      "pos": "動"
+    },
+    {
+      "id": 521,
+      "word": "convert",
+      "meaning": "を変える",
+      "pos": "動"
+    },
+    {
+      "id": 522,
+      "word": "satisfy",
+      "meaning": "(条件)を満たす、を満足させる",
+      "pos": "動"
+    },
+    {
+      "id": 523,
+      "word": "flood",
+      "meaning": "を水浸しにする、氾濫する、洪水、殺到",
+      "pos": "動"
+    },
+    {
+      "id": 524,
+      "word": "calculate",
+      "meaning": "を計算する",
+      "pos": "動"
+    },
+    {
+      "id": 525,
+      "word": "pamphlet",
+      "meaning": "パンフレット、小冊子",
+      "pos": "名"
+    },
+    {
+      "id": 526,
+      "word": "shark",
+      "meaning": "サメ",
+      "pos": "名"
+    },
+    {
+      "id": 527,
+      "word": "conclusion",
+      "meaning": "結論",
+      "pos": "名"
+    },
+    {
+      "id": 528,
+      "word": "loss",
+      "meaning": "損失",
+      "pos": "名"
+    },
+    {
+      "id": 529,
+      "word": "shortage",
+      "meaning": "不足",
+      "pos": "名"
+    },
+    {
+      "id": 530,
+      "word": "password",
+      "meaning": "パスワード",
+      "pos": "名"
+    },
+    {
+      "id": 531,
+      "word": "code",
+      "meaning": "暗号、コード",
+      "pos": "名"
+    },
+    {
+      "id": 532,
+      "word": "programmer",
+      "meaning": "プログラマー",
+      "pos": "名"
+    },
+    {
+      "id": 533,
+      "word": "instinct",
+      "meaning": "本能",
+      "pos": "名"
+    },
+    {
+      "id": 534,
+      "word": "route",
+      "meaning": "(一定の経路的な)道、手段",
+      "pos": "名"
+    },
+    {
+      "id": 535,
+      "word": "bubble",
+      "meaning": "泡",
+      "pos": "名"
+    },
+    {
+      "id": 536,
+      "word": "banking",
+      "meaning": "銀行業、銀行業務",
+      "pos": "名"
+    },
+    {
+      "id": 537,
+      "word": "label",
+      "meaning": "ラベル、札",
+      "pos": "名"
+    },
+    {
+      "id": 538,
+      "word": "dinosaur",
+      "meaning": "恐竜",
+      "pos": "名"
+    },
+    {
+      "id": 539,
+      "word": "inconvenience",
+      "meaning": "不便(さ)",
+      "pos": "名"
+    },
+    {
+      "id": 540,
+      "word": "poverty",
+      "meaning": "貧困",
+      "pos": "名"
+    },
+    {
+      "id": 541,
+      "word": "fund",
+      "meaning": "資金、基金、に資金を提供する",
+      "pos": "名"
+    },
+    {
+      "id": 542,
+      "word": "aspect",
+      "meaning": "局面、側面、見方",
+      "pos": "名"
+    },
+    {
+      "id": 543,
+      "word": "means",
+      "meaning": "手段",
+      "pos": "名"
+    },
+    {
+      "id": 544,
+      "word": "theory",
+      "meaning": "仮説、理論",
+      "pos": "名"
+    },
+    {
+      "id": 545,
+      "word": "collection",
+      "meaning": "収蔵品、コレクション、収集",
+      "pos": "名"
+    },
+    {
+      "id": 546,
+      "word": "position",
+      "meaning": "場、位置、立場、を置く",
+      "pos": "名"
+    },
+    {
+      "id": 547,
+      "word": "factor",
+      "meaning": "要因、要素",
+      "pos": "名"
+    },
+    {
+      "id": 548,
+      "word": "structure",
+      "meaning": "構造、建造物",
+      "pos": "名"
+    },
+    {
+      "id": 549,
+      "word": "destination",
+      "meaning": "目的地",
+      "pos": "名"
+    },
+    {
+      "id": 550,
+      "word": "combination",
+      "meaning": "組み合わせ、結合",
+      "pos": "名"
+    },
+    {
+      "id": 551,
+      "word": "connection",
+      "meaning": "接続、関係",
+      "pos": "名"
+    },
+    {
+      "id": 552,
+      "word": "link",
+      "meaning": "つながり、関連、を結び付ける",
+      "pos": "名"
+    },
+    {
+      "id": 553,
+      "word": "council",
+      "meaning": "会議、(地方自治体の)議会、評議会",
+      "pos": "名"
+    },
+    {
+      "id": 554,
+      "word": "vegetarian",
+      "meaning": "ベジタリアン、菜食主義者",
+      "pos": "名"
+    },
+    {
+      "id": 555,
+      "word": "laboratory",
+      "meaning": "研究室、実験室",
+      "pos": "名"
+    },
+    {
+      "id": 556,
+      "word": "navy",
+      "meaning": "海軍",
+      "pos": "名"
+    },
+    {
+      "id": 557,
+      "word": "publisher",
+      "meaning": "出版社",
+      "pos": "名"
+    },
+    {
+      "id": 558,
+      "word": "lamp",
+      "meaning": "ランプ、電気スタンド",
+      "pos": "名"
+    },
+    {
+      "id": 559,
+      "word": "insurance",
+      "meaning": "保険",
+      "pos": "名"
+    },
+    {
+      "id": 560,
+      "word": "handwriting",
+      "meaning": "手書き、筆跡",
+      "pos": "名"
+    },
+    {
+      "id": 561,
+      "word": "container",
+      "meaning": "容器、入れ物",
+      "pos": "名"
+    },
+    {
+      "id": 562,
+      "word": "breath",
+      "meaning": "息、呼吸",
+      "pos": "名"
+    },
+    {
+      "id": 563,
+      "word": "entry",
+      "meaning": "入る権利、入場、入学",
+      "pos": "名"
+    },
+    {
+      "id": 564,
+      "word": "jam",
+      "meaning": "場集、渋滞、(機械の)故障、を詰め込む、を渋滞させる",
+      "pos": "名"
+    },
+    {
+      "id": 565,
+      "word": "drug",
+      "meaning": "薬、麻薬",
+      "pos": "名"
+    },
+    {
+      "id": 566,
+      "word": "youth",
+      "meaning": "青年時代、青年期",
+      "pos": "名"
+    },
+    {
+      "id": 567,
+      "word": "mineral",
+      "meaning": "鉱物、ミネラル",
+      "pos": "名"
+    },
+    {
+      "id": 568,
+      "word": "requirement",
+      "meaning": "必要条件、資格",
+      "pos": "名"
+    },
+    {
+      "id": 569,
+      "word": "league",
+      "meaning": "リーグ、競技連盟",
+      "pos": "名"
+    },
+    {
+      "id": 570,
+      "word": "content",
+      "meaning": "中身、内容",
+      "pos": "名"
+    },
+    {
+      "id": 571,
+      "word": "anxiety",
+      "meaning": "不安、心配",
+      "pos": "名"
+    },
+    {
+      "id": 572,
+      "word": "expectation",
+      "meaning": "予想、期待、見込み",
+      "pos": "名"
+    },
+    {
+      "id": 573,
+      "word": "layer",
+      "meaning": "層",
+      "pos": "名"
+    },
+    {
+      "id": 574,
+      "word": "powder",
+      "meaning": "粉",
+      "pos": "名"
+    },
+    {
+      "id": 575,
+      "word": "traveler",
+      "meaning": "旅行者",
+      "pos": "名"
+    },
+    {
+      "id": 576,
+      "word": "anxious",
+      "meaning": "心配して、神経質な",
+      "pos": "形"
+    },
+    {
+      "id": 577,
+      "word": "incorrect",
+      "meaning": "間違った",
+      "pos": "形"
+    },
+    {
+      "id": 578,
+      "word": "stylish",
+      "meaning": "おしゃれな、流行の",
+      "pos": "形"
+    },
+    {
+      "id": 579,
+      "word": "financial",
+      "meaning": "財政(上)の",
+      "pos": "形"
+    },
+    {
+      "id": 580,
+      "word": "enormous",
+      "meaning": "ばく大な、巨大な",
+      "pos": "形"
+    },
+    {
+      "id": 581,
+      "word": "temporary",
+      "meaning": "一時的な",
+      "pos": "形"
+    },
+    {
+      "id": 582,
+      "word": "organic",
+      "meaning": "有機の、有機体の",
+      "pos": "形"
+    },
+    {
+      "id": 583,
+      "word": "blind",
+      "meaning": "目の不自由な",
+      "pos": "形"
+    },
+    {
+      "id": 584,
+      "word": "dizzy",
+      "meaning": "めまいがする",
+      "pos": "形"
+    },
+    {
+      "id": 585,
+      "word": "newborn",
+      "meaning": "生まれたばかりの",
+      "pos": "形"
+    },
+    {
+      "id": 586,
+      "word": "unexpected",
+      "meaning": "意外な、予期しない",
+      "pos": "形"
+    },
+    {
+      "id": 587,
+      "word": "virtual",
+      "meaning": "仮想の",
+      "pos": "形"
+    },
+    {
+      "id": 588,
+      "word": "generous",
+      "meaning": "気前の良い、寛大な",
+      "pos": "形"
+    },
+    {
+      "id": 589,
+      "word": "academic",
+      "meaning": "学問の",
+      "pos": "形"
+    },
+    {
+      "id": 590,
+      "word": "extreme",
+      "meaning": "極度の、極端な",
+      "pos": "形"
+    },
+    {
+      "id": 591,
+      "word": "guilty",
+      "meaning": "罪悪感のある、有罪の",
+      "pos": "形"
+    },
+    {
+      "id": 592,
+      "word": "inexpensive",
+      "meaning": "安価な",
+      "pos": "形"
+    },
+    {
+      "id": 593,
+      "word": "worldwide",
+      "meaning": "世界中に[で]、世界的に、世界的な",
+      "pos": "副"
+    },
+    {
+      "id": 594,
+      "word": "additionally",
+      "meaning": "またさらに、その上に",
+      "pos": "副"
+    },
+    {
+      "id": 595,
+      "word": "commonly",
+      "meaning": "一般に",
+      "pos": "副"
+    },
+    {
+      "id": 596,
+      "word": "closely",
+      "meaning": "綿密に、密接に",
+      "pos": "副"
+    },
+    {
+      "id": 597,
+      "word": "thus",
+      "meaning": "従って、このように",
+      "pos": "副"
+    },
+    {
+      "id": 598,
+      "word": "overnight",
+      "meaning": "一晩中、夜通し、夜通しの",
+      "pos": "副"
+    },
+    {
+      "id": 599,
+      "word": "fairly",
+      "meaning": "公正に、まあまあ、かなり",
+      "pos": "副"
+    },
+    {
+      "id": 600,
+      "word": "relatively",
+      "meaning": "比較的",
+      "pos": "副"
+    },
+    {
+      "id": 601,
+      "word": "chase",
+      "meaning": "を追いかける、追跡",
+      "pos": "動"
+    },
+    {
+      "id": 602,
+      "word": "stare",
+      "meaning": "(を)じっと見る、凝視",
+      "pos": "動"
+    },
+    {
+      "id": 603,
+      "word": "identify",
+      "meaning": "を特定する、を確認する",
+      "pos": "動"
+    },
+    {
+      "id": 604,
+      "word": "commit",
+      "meaning": "(罪など)を犯す、に義務を負わせる",
+      "pos": "動"
+    },
+    {
+      "id": 605,
+      "word": "threaten",
+      "meaning": "を脅す",
+      "pos": "動"
+    },
+    {
+      "id": 606,
+      "word": "monitor",
+      "meaning": "を監視する、監視装置、モニター",
+      "pos": "動"
+    },
+    {
+      "id": 607,
+      "word": "unpack",
+      "meaning": "(包みなど)を開けて中身を出す",
+      "pos": "動"
+    },
+    {
+      "id": 608,
+      "word": "enlarge",
+      "meaning": "を大きく[拡大]する",
+      "pos": "動"
+    },
+    {
+      "id": 609,
+      "word": "stir",
+      "meaning": "(を)かき混ぜる、をかき混ぜす",
+      "pos": "動"
+    },
+    {
+      "id": 610,
+      "word": "postpone",
+      "meaning": "を延期する",
+      "pos": "動"
+    },
+    {
+      "id": 611,
+      "word": "witness",
+      "meaning": "を目撃する、を証明する、目撃者、拡大",
+      "pos": "動"
+    },
+    {
+      "id": 612,
+      "word": "restore",
+      "meaning": "を修復する、(秩序・健康など)を回復させる",
+      "pos": "動"
+    },
+    {
+      "id": 613,
+      "word": "bet",
+      "meaning": "絶対…だと確信する、(を)賭ける",
+      "pos": "動"
+    },
+    {
+      "id": 614,
+      "word": "dive",
+      "meaning": "(頭から)飛び込む、飛び込み",
+      "pos": "動"
+    },
+    {
+      "id": 615,
+      "word": "indicate",
+      "meaning": "を指し示す、を示す",
+      "pos": "動"
+    },
+    {
+      "id": 616,
+      "word": "import",
+      "meaning": "を輸入する、輸入",
+      "pos": "動"
+    },
+    {
+      "id": 617,
+      "word": "vary",
+      "meaning": "変わる、異なる、を変える",
+      "pos": "動"
+    },
+    {
+      "id": 618,
+      "word": "deserve",
+      "meaning": "に値する",
+      "pos": "動"
+    },
+    {
+      "id": 619,
+      "word": "heal",
+      "meaning": "(傷などが)治る、(傷・病人)を治す",
+      "pos": "動"
+    },
+    {
+      "id": 620,
+      "word": "appeal",
+      "meaning": "訴える、懇願する、訴え、懇願",
+      "pos": "動"
+    },
+    {
+      "id": 621,
+      "word": "accomplish",
+      "meaning": "を成し遂げる",
+      "pos": "動"
+    },
+    {
+      "id": 622,
+      "word": "bloom",
+      "meaning": "(花が)咲く、(主に観賞用植物の)花",
+      "pos": "動"
+    },
+    {
+      "id": 623,
+      "word": "tremble",
+      "meaning": "震える",
+      "pos": "動"
+    },
+    {
+      "id": 624,
+      "word": "decline",
+      "meaning": "衰退する、(を)丁重に断る、衰退",
+      "pos": "動"
+    },
+    {
+      "id": 625,
+      "word": "steel",
+      "meaning": "鋼鉄",
+      "pos": "名"
+    },
+    {
+      "id": 626,
+      "word": "surgery",
+      "meaning": "手術、外科",
+      "pos": "名"
+    },
+    {
+      "id": 627,
+      "word": "childcare",
+      "meaning": "育児、子育て",
+      "pos": "名"
+    },
+    {
+      "id": 628,
+      "word": "threat",
+      "meaning": "脅威、脅迫",
+      "pos": "名"
+    },
+    {
+      "id": 629,
+      "word": "error",
+      "meaning": "誤り、間違い",
+      "pos": "名"
+    },
+    {
+      "id": 630,
+      "word": "flexibility",
+      "meaning": "柔軟性",
+      "pos": "名"
+    },
+    {
+      "id": 631,
+      "word": "lifetime",
+      "meaning": "一生",
+      "pos": "名"
+    },
+    {
+      "id": 632,
+      "word": "mess",
+      "meaning": "取り散らかしたもの、混乱",
+      "pos": "名"
+    },
+    {
+      "id": 633,
+      "word": "function",
+      "meaning": "機能、職務、機能する",
+      "pos": "名"
+    },
+    {
+      "id": 634,
+      "word": "gender",
+      "meaning": "性別",
+      "pos": "名"
+    },
+    {
+      "id": 635,
+      "word": "household",
+      "meaning": "家族、世帯、家庭(用)の",
+      "pos": "名"
+    },
+    {
+      "id": 636,
+      "word": "vaccine",
+      "meaning": "ワクチン",
+      "pos": "名"
+    },
+    {
+      "id": 637,
+      "word": "calculation",
+      "meaning": "計算",
+      "pos": "名"
+    },
+    {
+      "id": 638,
+      "word": "user",
+      "meaning": "利用者、使用者、ユーザー",
+      "pos": "名"
+    },
+    {
+      "id": 639,
+      "word": "liquid",
+      "meaning": "液体、液体の",
+      "pos": "名"
+    },
+    {
+      "id": 640,
+      "word": "manufacturer",
+      "meaning": "製造業者、メーカー",
+      "pos": "名"
+    },
+    {
+      "id": 641,
+      "word": "satellite",
+      "meaning": "衛星、人工衛星",
+      "pos": "名"
+    },
+    {
+      "id": 642,
+      "word": "civilization",
+      "meaning": "文明、文明化",
+      "pos": "名"
+    },
+    {
+      "id": 643,
+      "word": "feeling",
+      "meaning": "感情、気持ち",
+      "pos": "名"
+    },
+    {
+      "id": 644,
+      "word": "graph",
+      "meaning": "グラフ",
+      "pos": "名"
+    },
+    {
+      "id": 645,
+      "word": "luxury",
+      "meaning": "ぜいたく(品)",
+      "pos": "名"
+    },
+    {
+      "id": 646,
+      "word": "newsletter",
+      "meaning": "会報、ニュースレター",
+      "pos": "名"
+    },
+    {
+      "id": 647,
+      "word": "ray",
+      "meaning": "光線",
+      "pos": "名"
+    },
+    {
+      "id": 648,
+      "word": "partnership",
+      "meaning": "提携、協力",
+      "pos": "名"
+    },
+    {
+      "id": 649,
+      "word": "session",
+      "meaning": "活動のための集まり、会期",
+      "pos": "名"
+    },
+    {
+      "id": 650,
+      "word": "cruise",
+      "meaning": "遊覧航海、巡航、クルーズ",
+      "pos": "名"
+    },
+    {
+      "id": 651,
+      "word": "microscope",
+      "meaning": "顕微鏡",
+      "pos": "名"
+    },
+    {
+      "id": 652,
+      "word": "ecotourism",
+      "meaning": "エコツーリズム",
+      "pos": "名"
+    },
+    {
+      "id": 653,
+      "word": "identity",
+      "meaning": "身元、同一物であること",
+      "pos": "名"
+    },
+    {
+      "id": 654,
+      "word": "contrast",
+      "meaning": "対照",
+      "pos": "名"
+    },
+    {
+      "id": 655,
+      "word": "sunset",
+      "meaning": "日没",
+      "pos": "名"
+    },
+    {
+      "id": 656,
+      "word": "chess",
+      "meaning": "チェス",
+      "pos": "名"
+    },
+    {
+      "id": 657,
+      "word": "kindergarten",
+      "meaning": "幼稚園",
+      "pos": "名"
+    },
+    {
+      "id": 658,
+      "word": "length",
+      "meaning": "長さ",
+      "pos": "名"
+    },
+    {
+      "id": 659,
+      "word": "contribution",
+      "meaning": "貢献、寄付(金)",
+      "pos": "名"
+    },
+    {
+      "id": 660,
+      "word": "economics",
+      "meaning": "経済学",
+      "pos": "名"
+    },
+    {
+      "id": 661,
+      "word": "gap",
+      "meaning": "すき間、割れ目、隔たり",
+      "pos": "名"
+    },
+    {
+      "id": 662,
+      "word": "wool",
+      "meaning": "羊毛",
+      "pos": "名"
+    },
+    {
+      "id": 663,
+      "word": "tail",
+      "meaning": "しっぽ、末端、後部",
+      "pos": "名"
+    },
+    {
+      "id": 664,
+      "word": "fiber",
+      "meaning": "繊維",
+      "pos": "名"
+    },
+    {
+      "id": 665,
+      "word": "humidity",
+      "meaning": "湿気、湿度",
+      "pos": "名"
+    },
+    {
+      "id": 666,
+      "word": "perfume",
+      "meaning": "香り、香水",
+      "pos": "名"
+    },
+    {
+      "id": 667,
+      "word": "feather",
+      "meaning": "羽",
+      "pos": "名"
+    },
+    {
+      "id": 668,
+      "word": "semester",
+      "meaning": "(2学期制の)学期",
+      "pos": "名"
+    },
+    {
+      "id": 669,
+      "word": "tongue",
+      "meaning": "舌、言語",
+      "pos": "名"
+    },
+    {
+      "id": 670,
+      "word": "occasion",
+      "meaning": "(特定の)時、場合、行事",
+      "pos": "名"
+    },
+    {
+      "id": 671,
+      "word": "rhythm",
+      "meaning": "リズム、調子",
+      "pos": "名"
+    },
+    {
+      "id": 672,
+      "word": "authority",
+      "meaning": "当局、権威、権限",
+      "pos": "名"
+    },
+    {
+      "id": 673,
+      "word": "cancer",
+      "meaning": "がん、悪性腫瘍",
+      "pos": "名"
+    },
+    {
+      "id": 674,
+      "word": "tribe",
+      "meaning": "部族",
+      "pos": "名"
+    },
+    {
+      "id": 675,
+      "word": "curious",
+      "meaning": "好奇心の強い、知りたがる、奇妙な",
+      "pos": "形"
+    },
+    {
+      "id": 676,
+      "word": "ethnic",
+      "meaning": "民族的な",
+      "pos": "形"
+    },
+    {
+      "id": 677,
+      "word": "leftover",
+      "meaning": "食べ残しの、食べ残し",
+      "pos": "形"
+    },
+    {
+      "id": 678,
+      "word": "potential",
+      "meaning": "潜在的な、潜在(能)力、可能性",
+      "pos": "形"
+    },
+    {
+      "id": 679,
+      "word": "general",
+      "meaning": "一般的な、全体の",
+      "pos": "形"
+    },
+    {
+      "id": 680,
+      "word": "complex",
+      "meaning": "複雑な、複合の、複合体",
+      "pos": "形"
+    },
+    {
+      "id": 681,
+      "word": "overall",
+      "meaning": "全般[全体]的な",
+      "pos": "形"
+    },
+    {
+      "id": 682,
+      "word": "alternative",
+      "meaning": "代わりの、二者択一の、代わりになるもの、二者(以上)の選択",
+      "pos": "形"
+    },
+    {
+      "id": 683,
+      "word": "cheerful",
+      "meaning": "元気の良い、陽気な",
+      "pos": "形"
+    },
+    {
+      "id": 684,
+      "word": "imperial",
+      "meaning": "皇帝の、帝国の",
+      "pos": "形"
+    },
+    {
+      "id": 685,
+      "word": "informal",
+      "meaning": "くだけた、非公式の",
+      "pos": "形"
+    },
+    {
+      "id": 686,
+      "word": "secondhand",
+      "meaning": "中古の、中古で",
+      "pos": "形"
+    },
+    {
+      "id": 687,
+      "word": "homeless",
+      "meaning": "家のない、ホームレス",
+      "pos": "形"
+    },
+    {
+      "id": 688,
+      "word": "responsible",
+      "meaning": "責任のある",
+      "pos": "形"
+    },
+    {
+      "id": 689,
+      "word": "former",
+      "meaning": "前の、先の",
+      "pos": "形"
+    },
+    {
+      "id": 690,
+      "word": "widespread",
+      "meaning": "広く行き渡った、普及した",
+      "pos": "形"
+    },
+    {
+      "id": 691,
+      "word": "beneficial",
+      "meaning": "有益な、ためになる",
+      "pos": "形"
+    },
+    {
+      "id": 692,
+      "word": "historical",
+      "meaning": "歴史の、歴史に関する",
+      "pos": "形"
+    },
+    {
+      "id": 693,
+      "word": "permanently",
+      "meaning": "永久に",
+      "pos": "副"
+    },
+    {
+      "id": 694,
+      "word": "slightly",
+      "meaning": "わずかに",
+      "pos": "副"
+    },
+    {
+      "id": 695,
+      "word": "specially",
+      "meaning": "特別に、特に",
+      "pos": "副"
+    },
+    {
+      "id": 696,
+      "word": "silently",
+      "meaning": "黙って、静かに",
+      "pos": "副"
+    },
+    {
+      "id": 697,
+      "word": "definitely",
+      "meaning": "間違いなく",
+      "pos": "副"
+    },
+    {
+      "id": 698,
+      "word": "separately",
+      "meaning": "離れて、別々に",
+      "pos": "副"
+    },
+    {
+      "id": 699,
+      "word": "steadily",
+      "meaning": "着実に",
+      "pos": "副"
+    },
+    {
+      "id": 700,
+      "word": "importantly",
+      "meaning": "重要なことには",
+      "pos": "副"
+    },
+    {
+      "id": 701,
+      "word": "refuse",
+      "meaning": "を拒絶する、を断る",
+      "pos": "動"
+    },
+    {
+      "id": 702,
+      "word": "establish",
+      "meaning": "を設立する、を確立する",
+      "pos": "動"
+    },
+    {
+      "id": 703,
+      "word": "oppose",
+      "meaning": "に反対する、を対抗させる",
+      "pos": "動"
+    },
+    {
+      "id": 704,
+      "word": "ban",
+      "meaning": "を禁止する、禁止",
+      "pos": "動"
+    },
+    {
+      "id": 705,
+      "word": "alter",
+      "meaning": "を変える、を改める、変わる",
+      "pos": "動"
+    },
+    {
+      "id": 706,
+      "word": "confirm",
+      "meaning": "を確かめる、を確認する",
+      "pos": "動"
+    },
+    {
+      "id": 707,
+      "word": "defeat",
+      "meaning": "を負かす、敗北",
+      "pos": "動"
+    },
+    {
+      "id": 708,
+      "word": "detect",
+      "meaning": "を検出する、を感知する",
+      "pos": "動"
+    },
+    {
+      "id": 709,
+      "word": "absorb",
+      "meaning": "夢中になる、(液体・音・光など)を吸収する",
+      "pos": "動"
+    },
+    {
+      "id": 710,
+      "word": "install",
+      "meaning": "(機器など)を設置する、(ソフトなど)をインストールする、インストール",
+      "pos": "動"
+    },
+    {
+      "id": 711,
+      "word": "educate",
+      "meaning": "を教育する",
+      "pos": "動"
+    },
+    {
+      "id": 712,
+      "word": "stock",
+      "meaning": "(商品)を常に置いている、に蓄える、在庫品、蓄え、株式",
+      "pos": "動"
+    },
+    {
+      "id": 713,
+      "word": "settle",
+      "meaning": "定住する、(問題・紛争など)を解決する",
+      "pos": "動"
+    },
+    {
+      "id": 714,
+      "word": "inspire",
+      "meaning": "を奮い立たせる",
+      "pos": "動"
+    },
+    {
+      "id": 715,
+      "word": "launch",
+      "meaning": "を発射する、を開始する、を売り出す、発射、開始",
+      "pos": "動"
+    },
+    {
+      "id": 716,
+      "word": "define",
+      "meaning": "を定義する、を明確に示す",
+      "pos": "動"
+    },
+    {
+      "id": 717,
+      "word": "insult",
+      "meaning": "を侮辱する、侮辱",
+      "pos": "動"
+    },
+    {
+      "id": 718,
+      "word": "deny",
+      "meaning": "を否定する",
+      "pos": "動"
+    },
+    {
+      "id": 719,
+      "word": "compose",
+      "meaning": "(音楽・芸術など)を創作する、構成される",
+      "pos": "動"
+    },
+    {
+      "id": 720,
+      "word": "dump",
+      "meaning": "(ゴミなど)を捨てる、ゴミ捨て場、ゴミの山",
+      "pos": "動"
+    },
+    {
+      "id": 721,
+      "word": "expire",
+      "meaning": "(期限が)切れる",
+      "pos": "動"
+    },
+    {
+      "id": 722,
+      "word": "ease",
+      "meaning": "を和らげる、たやすさ",
+      "pos": "動"
+    },
+    {
+      "id": 723,
+      "word": "rebuild",
+      "meaning": "を改築する、を再建する",
+      "pos": "動"
+    },
+    {
+      "id": 724,
+      "word": "shorten",
+      "meaning": "を短くする",
+      "pos": "動"
+    },
+    {
+      "id": 725,
+      "word": "birth",
+      "meaning": "出生、誕生",
+      "pos": "名"
+    },
+    {
+      "id": 726,
+      "word": "loan",
+      "meaning": "借金、ローン",
+      "pos": "名"
+    },
+    {
+      "id": 727,
+      "word": "historian",
+      "meaning": "歴史学者",
+      "pos": "名"
+    },
+    {
+      "id": 728,
+      "word": "soil",
+      "meaning": "土、土壌",
+      "pos": "名"
+    },
+    {
+      "id": 729,
+      "word": "background",
+      "meaning": "経歴、背景",
+      "pos": "名"
+    },
+    {
+      "id": 730,
+      "word": "volcano",
+      "meaning": "火山",
+      "pos": "名"
+    },
+    {
+      "id": 731,
+      "word": "engineering",
+      "meaning": "工学",
+      "pos": "名"
+    },
+    {
+      "id": 732,
+      "word": "prescription",
+      "meaning": "処方箋",
+      "pos": "名"
+    },
+    {
+      "id": 733,
+      "word": "secretary",
+      "meaning": "秘書",
+      "pos": "名"
+    },
+    {
+      "id": 734,
+      "word": "attraction",
+      "meaning": "人を引きつけるもの、魅力",
+      "pos": "名"
+    },
+    {
+      "id": 735,
+      "word": "reward",
+      "meaning": "報酬、に報いる",
+      "pos": "名"
+    },
+    {
+      "id": 736,
+      "word": "checkup",
+      "meaning": "健康診断、検査、点検",
+      "pos": "名"
+    },
+    {
+      "id": 737,
+      "word": "database",
+      "meaning": "データベース",
+      "pos": "名"
+    },
+    {
+      "id": 738,
+      "word": "bomb",
+      "meaning": "爆弾",
+      "pos": "名"
+    },
+    {
+      "id": 739,
+      "word": "coal",
+      "meaning": "石炭",
+      "pos": "名"
+    },
+    {
+      "id": 740,
+      "word": "nonfiction",
+      "meaning": "ノンフィクション(作品)",
+      "pos": "名"
+    },
+    {
+      "id": 741,
+      "word": "wire",
+      "meaning": "電信線、針金",
+      "pos": "名"
+    },
+    {
+      "id": 742,
+      "word": "blog",
+      "meaning": "ブログ",
+      "pos": "名"
+    },
+    {
+      "id": 743,
+      "word": "lung",
+      "meaning": "肺",
+      "pos": "名"
+    },
+    {
+      "id": 744,
+      "word": "pump",
+      "meaning": "ポンプ、をポンプを使って送り込む、(を)くみ出す",
+      "pos": "名"
+    },
+    {
+      "id": 745,
+      "word": "fingerprint",
+      "meaning": "指紋",
+      "pos": "名"
+    },
+    {
+      "id": 746,
+      "word": "poetry",
+      "meaning": "(文学の一形式としての)詩",
+      "pos": "名"
+    },
+    {
+      "id": 747,
+      "word": "scar",
+      "meaning": "傷跡",
+      "pos": "名"
+    },
+    {
+      "id": 748,
+      "word": "stain",
+      "meaning": "しみ、汚れ",
+      "pos": "名"
+    },
+    {
+      "id": 749,
+      "word": "aluminum",
+      "meaning": "アルミニウム",
+      "pos": "名"
+    },
+    {
+      "id": 750,
+      "word": "freeway",
+      "meaning": "高速道路、(無料の)幹線道路",
+      "pos": "名"
+    },
+    {
+      "id": 751,
+      "word": "influenza",
+      "meaning": "インフルエンザ",
+      "pos": "名"
+    },
+    {
+      "id": 752,
+      "word": "suburb",
+      "meaning": "郊外",
+      "pos": "名"
+    },
+    {
+      "id": 753,
+      "word": "affection",
+      "meaning": "愛情、愛着",
+      "pos": "名"
+    },
+    {
+      "id": 754,
+      "word": "artwork",
+      "meaning": "芸術[工芸]作品",
+      "pos": "名"
+    },
+    {
+      "id": 755,
+      "word": "massage",
+      "meaning": "マッサージ",
+      "pos": "名"
+    },
+    {
+      "id": 756,
+      "word": "tip",
+      "meaning": "秘訣、ヒント、コツ",
+      "pos": "名"
+    },
+    {
+      "id": 757,
+      "word": "foundation",
+      "meaning": "基礎、団体、設立、根拠",
+      "pos": "名"
+    },
+    {
+      "id": 758,
+      "word": "suggestion",
+      "meaning": "提案",
+      "pos": "名"
+    },
+    {
+      "id": 759,
+      "word": "resource",
+      "meaning": "資源、資金、(いざというときの)手段",
+      "pos": "名"
+    },
+    {
+      "id": 760,
+      "word": "permission",
+      "meaning": "許可",
+      "pos": "名"
+    },
+    {
+      "id": 761,
+      "word": "budget",
+      "meaning": "予算、経費",
+      "pos": "名"
+    },
+    {
+      "id": 762,
+      "word": "management",
+      "meaning": "経営、管理",
+      "pos": "名"
+    },
+    {
+      "id": 763,
+      "word": "candidate",
+      "meaning": "候補者、志願者",
+      "pos": "名"
+    },
+    {
+      "id": 764,
+      "word": "geography",
+      "meaning": "地理学、地理",
+      "pos": "名"
+    },
+    {
+      "id": 765,
+      "word": "option",
+      "meaning": "選択権、選択の自由、選択肢",
+      "pos": "名"
+    },
+    {
+      "id": 766,
+      "word": "possibility",
+      "meaning": "可能性",
+      "pos": "名"
+    },
+    {
+      "id": 767,
+      "word": "employment",
+      "meaning": "雇用、勤務",
+      "pos": "名"
+    },
+    {
+      "id": 768,
+      "word": "supporter",
+      "meaning": "支持者、後援者",
+      "pos": "名"
+    },
+    {
+      "id": 769,
+      "word": "consequence",
+      "meaning": "結果、結論",
+      "pos": "名"
+    },
+    {
+      "id": 770,
+      "word": "criminal",
+      "meaning": "犯罪者、犯人、犯罪の",
+      "pos": "名"
+    },
+    {
+      "id": 771,
+      "word": "warmth",
+      "meaning": "暖かさ、温かさ、温情",
+      "pos": "名"
+    },
+    {
+      "id": 772,
+      "word": "automobile",
+      "meaning": "自動車",
+      "pos": "名"
+    },
+    {
+      "id": 773,
+      "word": "documentary",
+      "meaning": "ドキュメンタリー(番組・映画)実録、実録の",
+      "pos": "名"
+    },
+    {
+      "id": 774,
+      "word": "studio",
+      "meaning": "スタジオ、アトリエ",
+      "pos": "名"
+    },
+    {
+      "id": 775,
+      "word": "weapon",
+      "meaning": "武器、兵器",
+      "pos": "名"
+    },
+    {
+      "id": 776,
+      "word": "ideal",
+      "meaning": "理想的な、理想",
+      "pos": "形"
+    },
+    {
+      "id": 777,
+      "word": "extinct",
+      "meaning": "絶滅した、廃止された",
+      "pos": "形"
+    },
+    {
+      "id": 778,
+      "word": "creative",
+      "meaning": "創造的な、創造力のある",
+      "pos": "形"
+    },
+    {
+      "id": 779,
+      "word": "relevant",
+      "meaning": "関連した",
+      "pos": "形"
+    },
+    {
+      "id": 780,
+      "word": "initial",
+      "meaning": "最初の",
+      "pos": "形"
+    },
+    {
+      "id": 781,
+      "word": "reasonable",
+      "meaning": "(値段が)手ごろな、道理をわきまえた、筋の通った",
+      "pos": "形"
+    },
+    {
+      "id": 782,
+      "word": "appropriate",
+      "meaning": "適切な",
+      "pos": "形"
+    },
+    {
+      "id": 783,
+      "word": "obvious",
+      "meaning": "明らかな",
+      "pos": "形"
+    },
+    {
+      "id": 784,
+      "word": "permanent",
+      "meaning": "永続的な",
+      "pos": "形"
+    },
+    {
+      "id": 785,
+      "word": "challenging",
+      "meaning": "やりがいのある",
+      "pos": "形"
+    },
+    {
+      "id": 786,
+      "word": "complicated",
+      "meaning": "複雑な、ややこしい",
+      "pos": "形"
+    },
+    {
+      "id": 787,
+      "word": "dramatic",
+      "meaning": "劇的な、演劇の",
+      "pos": "形"
+    },
+    {
+      "id": 788,
+      "word": "innocent",
+      "meaning": "無罪の、無邪気な",
+      "pos": "形"
+    },
+    {
+      "id": 789,
+      "word": "reliable",
+      "meaning": "信頼できる",
+      "pos": "形"
+    },
+    {
+      "id": 790,
+      "word": "stable",
+      "meaning": "安定した",
+      "pos": "形"
+    },
+    {
+      "id": 791,
+      "word": "unnecessary",
+      "meaning": "不要な",
+      "pos": "形"
+    },
+    {
+      "id": 792,
+      "word": "rapid",
+      "meaning": "最速な",
+      "pos": "形"
+    },
+    {
+      "id": 793,
+      "word": "terribly",
+      "meaning": "ひどく、とても",
+      "pos": "副"
+    },
+    {
+      "id": 794,
+      "word": "effectively",
+      "meaning": "効果的に、有効に",
+      "pos": "副"
+    },
+    {
+      "id": 795,
+      "word": "basically",
+      "meaning": "基本的には",
+      "pos": "副"
+    },
+    {
+      "id": 796,
+      "word": "constantly",
+      "meaning": "いつでも、絶えず",
+      "pos": "副"
+    },
+    {
+      "id": 797,
+      "word": "negatively",
+      "meaning": "否定的に、消極的に",
+      "pos": "副"
+    },
+    {
+      "id": 798,
+      "word": "independently",
+      "meaning": "独立して、自主的に",
+      "pos": "副"
+    },
+    {
+      "id": 799,
+      "word": "truly",
+      "meaning": "本当に、実に",
+      "pos": "副"
+    },
+    {
+      "id": 800,
+      "word": "economically",
+      "meaning": "経済的に",
+      "pos": "副"
+    },
+    {
+      "id": 801,
+      "word": "split",
+      "meaning": "を分ける、裂け目、ひび、分裂",
+      "pos": "動"
+    },
+    {
+      "id": 802,
+      "word": "bleed",
+      "meaning": "出血する",
+      "pos": "動"
+    },
+    {
+      "id": 803,
+      "word": "reuse",
+      "meaning": "を再利用する",
+      "pos": "動"
+    },
+    {
+      "id": 804,
+      "word": "rewrite",
+      "meaning": "を書き直す",
+      "pos": "動"
+    },
+    {
+      "id": 805,
+      "word": "restart",
+      "meaning": "を再開始する",
+      "pos": "動"
+    },
+    {
+      "id": 806,
+      "word": "astonish",
+      "meaning": "を驚かす",
+      "pos": "動"
+    },
+    {
+      "id": 807,
+      "word": "beg",
+      "meaning": "に懇願する",
+      "pos": "動"
+    },
+    {
+      "id": 808,
+      "word": "predict",
+      "meaning": "(を)予測する、(を)予言する",
+      "pos": "動"
+    },
+    {
+      "id": 809,
+      "word": "commute",
+      "meaning": "通勤[通学]する",
+      "pos": "動"
+    },
+    {
+      "id": 810,
+      "word": "resist",
+      "meaning": "を我慢する、に抵抗する",
+      "pos": "動"
+    },
+    {
+      "id": 811,
+      "word": "inherit",
+      "meaning": "を継ぐ、を相続する",
+      "pos": "動"
+    },
+    {
+      "id": 812,
+      "word": "sacrifice",
+      "meaning": "を犠牲にする、犠牲",
+      "pos": "動"
+    },
+    {
+      "id": 813,
+      "word": "imply",
+      "meaning": "をほのめかす、を暗に示す",
+      "pos": "動"
+    },
+    {
+      "id": 814,
+      "word": "tolerate",
+      "meaning": "を許容する、を我慢する、に耐える",
+      "pos": "動"
+    },
+    {
+      "id": 815,
+      "word": "yell",
+      "meaning": "どなる、叫ぶ",
+      "pos": "動"
+    },
+    {
+      "id": 816,
+      "word": "impose",
+      "meaning": "(義務や罰)を課す",
+      "pos": "動"
+    },
+    {
+      "id": 817,
+      "word": "guarantee",
+      "meaning": "を保証する、保証",
+      "pos": "動"
+    },
+    {
+      "id": 818,
+      "word": "substitute",
+      "meaning": "代わりする、を代わりに用いる、代わりとなる人",
+      "pos": "動"
+    },
+    {
+      "id": 819,
+      "word": "collapse",
+      "meaning": "崩壊する、崩壊",
+      "pos": "動"
+    },
+    {
+      "id": 820,
+      "word": "approve",
+      "meaning": "を承認する、良いと認める",
+      "pos": "動"
+    },
+    {
+      "id": 821,
+      "word": "interfere",
+      "meaning": "邪魔する、干渉する",
+      "pos": "動"
+    },
+    {
+      "id": 822,
+      "word": "compensate",
+      "meaning": "に埋め合わせをする",
+      "pos": "動"
+    },
+    {
+      "id": 823,
+      "word": "construct",
+      "meaning": "を建設する、を組み立てる",
+      "pos": "動"
+    },
+    {
+      "id": 824,
+      "word": "instruct",
+      "meaning": "に指示する",
+      "pos": "動"
+    },
+    {
+      "id": 825,
+      "word": "procedure",
+      "meaning": "手順、手続き",
+      "pos": "名"
+    },
+    {
+      "id": 826,
+      "word": "reputation",
+      "meaning": "評判、名声",
+      "pos": "名"
+    },
+    {
+      "id": 827,
+      "word": "species",
+      "meaning": "種(しゅ)",
+      "pos": "名"
+    },
+    {
+      "id": 828,
+      "word": "substance",
+      "meaning": "物質、実質",
+      "pos": "名"
+    },
+    {
+      "id": 829,
+      "word": "status",
+      "meaning": "地位、身分",
+      "pos": "名"
+    },
+    {
+      "id": 830,
+      "word": "desire",
+      "meaning": "願望、欲望、欲求、を強く望む",
+      "pos": "名"
+    },
+    {
+      "id": 831,
+      "word": "Buddhist",
+      "meaning": "仏教徒",
+      "pos": "名"
+    },
+    {
+      "id": 832,
+      "word": "biofuel",
+      "meaning": "バイオ燃料",
+      "pos": "名"
+    },
+    {
+      "id": 833,
+      "word": "room",
+      "meaning": "余地、場所、部屋",
+      "pos": "名"
+    },
+    {
+      "id": 834,
+      "word": "internship",
+      "meaning": "インターンシップ、実習訓練(期間)",
+      "pos": "名"
+    },
+    {
+      "id": 835,
+      "word": "shot",
+      "meaning": "(ワクチンなどの)注射、シュート、発砲",
+      "pos": "名"
+    },
+    {
+      "id": 836,
+      "word": "disagreement",
+      "meaning": "意見の相違、不一致",
+      "pos": "名"
+    },
+    {
+      "id": 837,
+      "word": "introduction",
+      "meaning": "序論、導入、紹介",
+      "pos": "名"
+    },
+    {
+      "id": 838,
+      "word": "efficiency",
+      "meaning": "効率、能率",
+      "pos": "名"
+    },
+    {
+      "id": 839,
+      "word": "complaint",
+      "meaning": "不平、苦情",
+      "pos": "名"
+    },
+    {
+      "id": 840,
+      "word": "trial",
+      "meaning": "裁判、試み",
+      "pos": "名"
+    },
+    {
+      "id": 841,
+      "word": "apology",
+      "meaning": "おわび、謝罪",
+      "pos": "名"
+    },
+    {
+      "id": 842,
+      "word": "rival",
+      "meaning": "競争相手、ライバル",
+      "pos": "名"
+    },
+    {
+      "id": 843,
+      "word": "defence",
+      "meaning": "防御(力)、守備(力)",
+      "pos": "名"
+    },
+    {
+      "id": 844,
+      "word": "equality",
+      "meaning": "平等",
+      "pos": "名"
+    },
+    {
+      "id": 845,
+      "word": "quantity",
+      "meaning": "量",
+      "pos": "名"
+    },
+    {
+      "id": 846,
+      "word": "reduction",
+      "meaning": "減少、短縮、削減",
+      "pos": "名"
+    },
+    {
+      "id": 847,
+      "word": "applicant",
+      "meaning": "出願者、願書者",
+      "pos": "名"
+    },
+    {
+      "id": 848,
+      "word": "workshop",
+      "meaning": "研修会、ワークショップ",
+      "pos": "名"
+    },
+    {
+      "id": 849,
+      "word": "disadvantage",
+      "meaning": "不利な立場、不利(な点)",
+      "pos": "名"
+    },
+    {
+      "id": 850,
+      "word": "literature",
+      "meaning": "文学、文献",
+      "pos": "名"
+    },
+    {
+      "id": 851,
+      "word": "creator",
+      "meaning": "創作者",
+      "pos": "名"
+    },
+    {
+      "id": 852,
+      "word": "confidence",
+      "meaning": "自信、信頼",
+      "pos": "名"
+    },
+    {
+      "id": 853,
+      "word": "cooperation",
+      "meaning": "協力、協調性",
+      "pos": "名"
+    },
+    {
+      "id": 854,
+      "word": "pioneer",
+      "meaning": "先駆者、開拓者",
+      "pos": "名"
+    },
+    {
+      "id": 855,
+      "word": "specialist",
+      "meaning": "専門家",
+      "pos": "名"
+    },
+    {
+      "id": 856,
+      "word": "vocabulary",
+      "meaning": "語彙",
+      "pos": "名"
+    },
+    {
+      "id": 857,
+      "word": "wage",
+      "meaning": "給料、賃金",
+      "pos": "名"
+    },
+    {
+      "id": 858,
+      "word": "definition",
+      "meaning": "定義",
+      "pos": "名"
+    },
+    {
+      "id": 859,
+      "word": "greenhouse",
+      "meaning": "温室",
+      "pos": "名"
+    },
+    {
+      "id": 860,
+      "word": "accuracy",
+      "meaning": "精度、正確さ",
+      "pos": "名"
+    },
+    {
+      "id": 861,
+      "word": "depression",
+      "meaning": "憂うつ、うつ病、不景気",
+      "pos": "名"
+    },
+    {
+      "id": 862,
+      "word": "inventor",
+      "meaning": "発明者、考案者",
+      "pos": "名"
+    },
+    {
+      "id": 863,
+      "word": "architect",
+      "meaning": "建築家、設計者",
+      "pos": "名"
+    },
+    {
+      "id": 864,
+      "word": "roof",
+      "meaning": "屋根",
+      "pos": "名"
+    },
+    {
+      "id": 865,
+      "word": "storage",
+      "meaning": "保管、貯蔵",
+      "pos": "名"
+    },
+    {
+      "id": 866,
+      "word": "dormitory",
+      "meaning": "寮、(学校の)寄宿舎",
+      "pos": "名"
+    },
+    {
+      "id": 867,
+      "word": "cave",
+      "meaning": "洞窟、洞穴",
+      "pos": "名"
+    },
+    {
+      "id": 868,
+      "word": "echo",
+      "meaning": "反響、こだま",
+      "pos": "名"
+    },
+    {
+      "id": 869,
+      "word": "representative",
+      "meaning": "代表者、代理人、代表する、代理をする",
+      "pos": "名"
+    },
+    {
+      "id": 870,
+      "word": "foreigner",
+      "meaning": "外国人",
+      "pos": "名"
+    },
+    {
+      "id": 871,
+      "word": "eyesight",
+      "meaning": "視力",
+      "pos": "名"
+    },
+    {
+      "id": 872,
+      "word": "reminder",
+      "meaning": "リマインダー、思い起こさせるもの",
+      "pos": "名"
+    },
+    {
+      "id": 873,
+      "word": "scholarship",
+      "meaning": "奨学金、学識",
+      "pos": "名"
+    },
+    {
+      "id": 874,
+      "word": "breeze",
+      "meaning": "よそ風",
+      "pos": "名"
+    },
+    {
+      "id": 875,
+      "word": "regional",
+      "meaning": "地方の、局地的な",
+      "pos": "形"
+    },
+    {
+      "id": 876,
+      "word": "vital",
+      "meaning": "極めて重要な、不可欠な",
+      "pos": "形"
+    },
+    {
+      "id": 877,
+      "word": "adequate",
+      "meaning": "十分な",
+      "pos": "形"
+    },
+    {
+      "id": 878,
+      "word": "formal",
+      "meaning": "正式の、(服装が)正装の",
+      "pos": "形"
+    },
+    {
+      "id": 879,
+      "word": "smooth",
+      "meaning": "円滑に動く、なめらかな",
+      "pos": "形"
+    },
+    {
+      "id": 880,
+      "word": "absolute",
+      "meaning": "完全な、絶対的な",
+      "pos": "形"
+    },
+    {
+      "id": 881,
+      "word": "entire",
+      "meaning": "全体の、完全な",
+      "pos": "形"
+    },
+    {
+      "id": 882,
+      "word": "capable",
+      "meaning": "有能な、できる",
+      "pos": "形"
+    },
+    {
+      "id": 883,
+      "word": "previous",
+      "meaning": "以前の、前の、先の",
+      "pos": "形"
+    },
+    {
+      "id": 884,
+      "word": "unclear",
+      "meaning": "不明確な",
+      "pos": "形"
+    },
+    {
+      "id": 885,
+      "word": "unsure",
+      "meaning": "確信がない、確かでない",
+      "pos": "形"
+    },
+    {
+      "id": 886,
+      "word": "unbelievable",
+      "meaning": "信じられない、驚くほど素晴らしい",
+      "pos": "形"
+    },
+    {
+      "id": 887,
+      "word": "uncomfortable",
+      "meaning": "心地の良くない",
+      "pos": "形"
+    },
+    {
+      "id": 888,
+      "word": "spare",
+      "meaning": "余分の、予備の",
+      "pos": "形"
+    },
+    {
+      "id": 889,
+      "word": "exclusive",
+      "meaning": "高級な、排他的な",
+      "pos": "形"
+    },
+    {
+      "id": 890,
+      "word": "rough",
+      "meaning": "大まかな、粗い、乱暴な",
+      "pos": "形"
+    },
+    {
+      "id": 891,
+      "word": "farther",
+      "meaning": "もっと遠い、もっと遠くに",
+      "pos": "形"
+    },
+    {
+      "id": 892,
+      "word": "ridiculous",
+      "meaning": "ばかげた",
+      "pos": "形"
+    },
+    {
+      "id": 893,
+      "word": "possibly",
+      "meaning": "もしかしたら、たぶん",
+      "pos": "副"
+    },
+    {
+      "id": 894,
+      "word": "purely",
+      "meaning": "全く、純粋に、罪じの気なく",
+      "pos": "副"
+    },
+    {
+      "id": 895,
+      "word": "otherwise",
+      "meaning": "そうでなければ",
+      "pos": "副"
+    },
+    {
+      "id": 896,
+      "word": "randomly",
+      "meaning": "無作為に",
+      "pos": "副"
+    },
+    {
+      "id": 897,
+      "word": "amazingly",
+      "meaning": "驚くほど、驚くべきことに",
+      "pos": "副"
+    },
+    {
+      "id": 898,
+      "word": "visually",
+      "meaning": "視覚的に、外見は",
+      "pos": "副"
+    },
+    {
+      "id": 899,
+      "word": "individually",
+      "meaning": "個々に、個別に",
+      "pos": "副"
+    },
+    {
+      "id": 900,
+      "word": "temporarily",
+      "meaning": "一時的に",
+      "pos": "副"
+    },
+    {
+      "id": 901,
+      "word": "reject",
+      "meaning": "を拒絶する、を断る",
+      "pos": "動"
+    },
+    {
+      "id": 902,
+      "word": "punish",
+      "meaning": "を罰する",
+      "pos": "動"
+    },
+    {
+      "id": 903,
+      "word": "ship",
+      "meaning": "を送る、を輸送する、船",
+      "pos": "動"
+    },
+    {
+      "id": 904,
+      "word": "stimulate",
+      "meaning": "を刺激する",
+      "pos": "動"
+    },
+    {
+      "id": 905,
+      "word": "differ",
+      "meaning": "違う",
+      "pos": "動"
+    },
+    {
+      "id": 906,
+      "word": "accompany",
+      "meaning": "に同行する、に伴って起こる",
+      "pos": "動"
+    },
+    {
+      "id": 907,
+      "word": "confess",
+      "meaning": "告白する、を告白する",
+      "pos": "動"
+    },
+    {
+      "id": 908,
+      "word": "reverse",
+      "meaning": "を逆にする、逆、逆の",
+      "pos": "動"
+    },
+    {
+      "id": 909,
+      "word": "admire",
+      "meaning": "を称賛する",
+      "pos": "動"
+    },
+    {
+      "id": 910,
+      "word": "conclude",
+      "meaning": "と結論を下す、を締結する",
+      "pos": "動"
+    },
+    {
+      "id": 911,
+      "word": "criticize",
+      "meaning": "を非難する、を批判する",
+      "pos": "動"
+    },
+    {
+      "id": 912,
+      "word": "protest",
+      "meaning": "(に)抗議する、抗議",
+      "pos": "動"
+    },
+    {
+      "id": 913,
+      "word": "encounter",
+      "meaning": "に遭遇する、に直面する、遭遇",
+      "pos": "動"
+    },
+    {
+      "id": 914,
+      "word": "breed",
+      "meaning": "を飼育する、を栽培する、を繁殖させる、品種",
+      "pos": "動"
+    },
+    {
+      "id": 915,
+      "word": "trace",
+      "meaning": "(の跡)をたどる、をなぞる、跡",
+      "pos": "動"
+    },
+    {
+      "id": 916,
+      "word": "seal",
+      "meaning": "に判をする、を密封する、印鑑、封印、目張り",
+      "pos": "動"
+    },
+    {
+      "id": 917,
+      "word": "delight",
+      "meaning": "を喜ばせる、大喜び、喜びを与えるもの",
+      "pos": "動"
+    },
+    {
+      "id": 918,
+      "word": "demonstrate",
+      "meaning": "を論証する、を実演する、デモをする",
+      "pos": "動"
+    },
+    {
+      "id": 919,
+      "word": "propose",
+      "meaning": "を提案する、結婚を申し込む",
+      "pos": "動"
+    },
+    {
+      "id": 920,
+      "word": "reflect",
+      "meaning": "を反射する、を反映する、熟考する",
+      "pos": "動"
+    },
+    {
+      "id": 921,
+      "word": "obey",
+      "meaning": "(命令・規則など)に従う",
+      "pos": "動"
+    },
+    {
+      "id": 922,
+      "word": "forbid",
+      "meaning": "を禁止する",
+      "pos": "動"
+    },
+    {
+      "id": 923,
+      "word": "fulfill",
+      "meaning": "を実現させる、を果たす",
+      "pos": "動"
+    },
+    {
+      "id": 924,
+      "word": "burst",
+      "meaning": "を破裂[爆発]させる、破壊[標準]する、爆発、破裂",
+      "pos": "動"
+    },
+    {
+      "id": 925,
+      "word": "sculpture",
+      "meaning": "彫刻(作品)",
+      "pos": "名"
+    },
+    {
+      "id": 926,
+      "word": "exception",
+      "meaning": "例外",
+      "pos": "名"
+    },
+    {
+      "id": 927,
+      "word": "luggage",
+      "meaning": "手荷物、旅行用スーツケース",
+      "pos": "名"
+    },
+    {
+      "id": 928,
+      "word": "altitude",
+      "meaning": "高度、海抜",
+      "pos": "名"
+    },
+    {
+      "id": 929,
+      "word": "handout",
+      "meaning": "配布資料",
+      "pos": "名"
+    },
+    {
+      "id": 930,
+      "word": "lens",
+      "meaning": "レンズ",
+      "pos": "名"
+    },
+    {
+      "id": 931,
+      "word": "masterpiece",
+      "meaning": "傑作、名作",
+      "pos": "名"
+    },
+    {
+      "id": 932,
+      "word": "stranger",
+      "meaning": "見知らぬ人、他人",
+      "pos": "名"
+    },
+    {
+      "id": 933,
+      "word": "illustration",
+      "meaning": "挿絵、説明図",
+      "pos": "名"
+    },
+    {
+      "id": 934,
+      "word": "accomplishment",
+      "meaning": "業績、成果",
+      "pos": "名"
+    },
+    {
+      "id": 935,
+      "word": "chest",
+      "meaning": "胸(部)",
+      "pos": "名"
+    },
+    {
+      "id": 936,
+      "word": "heartbeat",
+      "meaning": "心臓の鼓動",
+      "pos": "名"
+    },
+    {
+      "id": 937,
+      "word": "mask",
+      "meaning": "マスク、面",
+      "pos": "名"
+    },
+    {
+      "id": 938,
+      "word": "script",
+      "meaning": "台本",
+      "pos": "名"
+    },
+    {
+      "id": 939,
+      "word": "brightness",
+      "meaning": "明るさ、鮮やかさ",
+      "pos": "名"
+    },
+    {
+      "id": 940,
+      "word": "encouragement",
+      "meaning": "励ましとなるもの、賞問、促進",
+      "pos": "名"
+    },
+    {
+      "id": 941,
+      "word": "profile",
+      "meaning": "プロフィール、人物紹介、経歴",
+      "pos": "名"
+    },
+    {
+      "id": 942,
+      "word": "joy",
+      "meaning": "喜び、うれしさ",
+      "pos": "名"
+    },
+    {
+      "id": 943,
+      "word": "fiction",
+      "meaning": "(架空の)物語、フィクション",
+      "pos": "名"
+    },
+    {
+      "id": 944,
+      "word": "faith",
+      "meaning": "信頼、信用",
+      "pos": "名"
+    },
+    {
+      "id": 945,
+      "word": "duty",
+      "meaning": "義務、職務",
+      "pos": "名"
+    },
+    {
+      "id": 946,
+      "word": "proposal",
+      "meaning": "提案(書)、計画案",
+      "pos": "名"
+    },
+    {
+      "id": 947,
+      "word": "debt",
+      "meaning": "借金",
+      "pos": "名"
+    },
+    {
+      "id": 948,
+      "word": "barrier",
+      "meaning": "障壁、障害",
+      "pos": "名"
+    },
+    {
+      "id": 949,
+      "word": "cigarette",
+      "meaning": "巻きたばこ",
+      "pos": "名"
+    },
+    {
+      "id": 950,
+      "word": "ankle",
+      "meaning": "足首",
+      "pos": "名"
+    },
+    {
+      "id": 951,
+      "word": "jungle",
+      "meaning": "ジャングル",
+      "pos": "名"
+    },
+    {
+      "id": 952,
+      "word": "novelist",
+      "meaning": "小説家",
+      "pos": "名"
+    },
+    {
+      "id": 953,
+      "word": "emperor",
+      "meaning": "皇帝、天皇",
+      "pos": "名"
+    },
+    {
+      "id": 954,
+      "word": "critic",
+      "meaning": "批評家",
+      "pos": "名"
+    },
+    {
+      "id": 955,
+      "word": "repairperson",
+      "meaning": "修理工",
+      "pos": "名"
+    },
+    {
+      "id": 956,
+      "word": "warning",
+      "meaning": "警告、注意",
+      "pos": "名"
+    },
+    {
+      "id": 957,
+      "word": "revolution",
+      "meaning": "革命",
+      "pos": "名"
+    },
+    {
+      "id": 958,
+      "word": "unit",
+      "meaning": "単位、構成部品、ユニット",
+      "pos": "名"
+    },
+    {
+      "id": 959,
+      "word": "lane",
+      "meaning": "車線、路地、小道",
+      "pos": "名"
+    },
+    {
+      "id": 960,
+      "word": "border",
+      "meaning": "国境、境界線、の端を成す、国境を接する",
+      "pos": "名"
+    },
+    {
+      "id": 961,
+      "word": "mission",
+      "meaning": "使命、使節(団)",
+      "pos": "名"
+    },
+    {
+      "id": 962,
+      "word": "oxygen",
+      "meaning": "酸素",
+      "pos": "名"
+    },
+    {
+      "id": 963,
+      "word": "peak",
+      "meaning": "絶頂、頂点、山頂、頂点に達する",
+      "pos": "名"
+    },
+    {
+      "id": 964,
+      "word": "explosion",
+      "meaning": "爆発",
+      "pos": "名"
+    },
+    {
+      "id": 965,
+      "word": "portion",
+      "meaning": "分け前、一部分、を分配する",
+      "pos": "名"
+    },
+    {
+      "id": 966,
+      "word": "media",
+      "meaning": "マスメディア",
+      "pos": "名"
+    },
+    {
+      "id": 967,
+      "word": "property",
+      "meaning": "財産、不動産、特性",
+      "pos": "名"
+    },
+    {
+      "id": 968,
+      "word": "corporation",
+      "meaning": "大企業、株式会社",
+      "pos": "名"
+    },
+    {
+      "id": 969,
+      "word": "argument",
+      "meaning": "論争、議論、主張",
+      "pos": "名"
+    },
+    {
+      "id": 970,
+      "word": "victim",
+      "meaning": "犠牲者、被害者",
+      "pos": "名"
+    },
+    {
+      "id": 971,
+      "word": "wealth",
+      "meaning": "富、財産",
+      "pos": "名"
+    },
+    {
+      "id": 972,
+      "word": "psychology",
+      "meaning": "心理学",
+      "pos": "名"
+    },
+    {
+      "id": 973,
+      "word": "arctic",
+      "meaning": "北極地方、北極の",
+      "pos": "名"
+    },
+    {
+      "id": 974,
+      "word": "necessity",
+      "meaning": "必需品、必要性",
+      "pos": "名"
+    },
+    {
+      "id": 975,
+      "word": "royal",
+      "meaning": "王室の、国王[女王]の",
+      "pos": "形"
+    },
+    {
+      "id": 976,
+      "word": "precious",
+      "meaning": "貴重な、高価な",
+      "pos": "形"
+    },
+    {
+      "id": 977,
+      "word": "nonprofit",
+      "meaning": "非営利的な",
+      "pos": "形"
+    },
+    {
+      "id": 978,
+      "word": "messy",
+      "meaning": "散らかった、汚い",
+      "pos": "形"
+    },
+    {
+      "id": 979,
+      "word": "romantic",
+      "meaning": "恋愛の、ロマンチックな、空想的な",
+      "pos": "形"
+    },
+    {
+      "id": 980,
+      "word": "rooftop",
+      "meaning": "屋上[屋根]にある、屋上、屋根",
+      "pos": "形"
+    },
+    {
+      "id": 981,
+      "word": "embarrassed",
+      "meaning": "きまりの悪い、恥ずかしい",
+      "pos": "形"
+    },
+    {
+      "id": 982,
+      "word": "ugly",
+      "meaning": "醜い、見苦しい",
+      "pos": "形"
+    },
+    {
+      "id": 983,
+      "word": "unwanted",
+      "meaning": "不必要な、望まれていない",
+      "pos": "形"
+    },
+    {
+      "id": 984,
+      "word": "shiny",
+      "meaning": "光る、光沢のある",
+      "pos": "形"
+    },
+    {
+      "id": 985,
+      "word": "essential",
+      "meaning": "必要不可欠な、本質的な、不可欠なもの",
+      "pos": "形"
+    },
+    {
+      "id": 986,
+      "word": "annual",
+      "meaning": "1年間の、年1回の",
+      "pos": "形"
+    },
+    {
+      "id": 987,
+      "word": "jealous",
+      "meaning": "ねたんで、しっとして",
+      "pos": "形"
+    },
+    {
+      "id": 988,
+      "word": "sudden",
+      "meaning": "突然の",
+      "pos": "形"
+    },
+    {
+      "id": 989,
+      "word": "nuclear",
+      "meaning": "原子力利用の、各エネルギーの",
+      "pos": "形"
+    },
+    {
+      "id": 990,
+      "word": "superior",
+      "meaning": "優れた、上位の",
+      "pos": "形"
+    },
+    {
+      "id": 991,
+      "word": "intelligent",
+      "meaning": "知能の高い、頭の良い",
+      "pos": "形"
+    },
+    {
+      "id": 992,
+      "word": "steady",
+      "meaning": "安定した、一定した",
+      "pos": "形"
+    },
+    {
+      "id": 993,
+      "word": "exceptionally",
+      "meaning": "加外れて、例外として",
+      "pos": "副"
+    },
+    {
+      "id": 994,
+      "word": "halfway",
+      "meaning": "中途で、半分だけ、中間の",
+      "pos": "副"
+    },
+    {
+      "id": 995,
+      "word": "objectively",
+      "meaning": "客観的に",
+      "pos": "副"
+    },
+    {
+      "id": 996,
+      "word": "fluently",
+      "meaning": "流ちょうに",
+      "pos": "副"
+    },
+    {
+      "id": 997,
+      "word": "innocently",
+      "meaning": "無邪気に、知らないふりをして",
+      "pos": "副"
+    },
+    {
+      "id": 998,
+      "word": "equally",
+      "meaning": "同程度に、等しく",
+      "pos": "副"
+    },
+    {
+      "id": 999,
+      "word": "technically",
+      "meaning": "技術的に、厳密に言えば、専門的に",
+      "pos": "副"
+    },
+    {
+      "id": 1000,
+      "word": "frankly",
+      "meaning": "率直に、率直に言って",
+      "pos": "副"
+    }
+  ]
+}

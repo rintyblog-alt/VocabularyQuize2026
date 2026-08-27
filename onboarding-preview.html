@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quick Chat Onboarding Preview</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,500,0,0" />
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Hiragino Sans','Noto Sans JP',sans-serif;background:#f3f4f6;}
+.ms{font-family:"Material Symbols Rounded";font-weight:500;font-style:normal;font-size:20px;line-height:1;display:inline-block;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;font-feature-settings:"liga";-webkit-font-smoothing:antialiased;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+@keyframes dotBounce{0%,80%,100%{transform:scale(0.6);opacity:0.4;}40%{transform:scale(1);opacity:1;}}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+@keyframes skeletonPulse{0%,100%{opacity:0.4;}50%{opacity:0.8;}}
+@keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-8px);}}
+@keyframes revealText{from{clip-path:inset(0 100% 0 0);opacity:0;}to{clip-path:inset(0 0% 0 0);opacity:1;}}
+</style>
+</head>
+<body>
+<script>
+(function(){
+function ic(n,s){return '<span class="ms" style="font-size:'+(s||20)+'px;vertical-align:middle;color:inherit;">'+n+'</span>';}
+
+var slides=[
+/* ═══════════════════════════════════════════════
+   SLIDE 1 — AI Chat Experience
+   ═══════════════════════════════════════════════ */
+{
+  render:function(){return '<div style="width:100%;position:relative;">'
+    +'<h2 style="font-size:18px;font-weight:700;color:#1a1a2e;text-align:center;margin-bottom:16px;">'+ic("smart_toy",22)+' VQ AI ONE MAX</h2>'
+    +'<div id="ob-s1-screen" style="background:white;border-radius:16px;overflow:hidden;transform-origin:center bottom;transition:transform 0.7s cubic-bezier(0.4,0,0.2,1);box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    /* Header */
+    +'<div style="padding:12px 16px;border-bottom:1px solid rgba(0,0,0,0.06);display:flex;align-items:center;gap:10px;">'
+      +'<div style="width:28px;height:28px;background:#10a37f;border-radius:3px;display:grid;place-items:center;color:#fff;">'+ic("smart_toy",16)+'</div>'
+      +'<div><div style="font-size:13px;font-weight:700;color:#1a1a2e;">VQ AI ONE MAX</div><div style="font-size:10px;color:#9ca3af;">Standard</div></div>'
+      +'<div style="margin-left:auto;padding:4px 12px;border:1px solid rgba(0,0,0,0.1);border-radius:20px;font-size:10px;color:#374151;display:flex;align-items:center;gap:4px;">vq-one max — standard <span style="font-size:9px;">▼</span></div>'
+    +'</div>'
+    /* Messages */
+    +'<div id="ob-s1-msgs" style="padding:16px;min-height:160px;display:flex;flex-direction:column;gap:10px;">'
+      +'<div style="text-align:center;padding:8px 0;font-size:16px;font-weight:800;color:#1a1a2e;margin-bottom:8px;">VQ AI ONE MAX</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:10px;">'
+        +[[ic("lightbulb",14)+" プリセット例",["日本史のプリセットを作って","英単語テストを10問出して","TOEIC対策の単語帳を作って"]],[ic("electric_bolt",14)+" できること",["学習データを分析して苦手を特定","復習スケジュールを自動で提案","プリセットの作成・編集をサポート"]],[ic("info",14)+" 注意点",["回答が不正確な場合があります","最新の情報は含まれない場合があります","学習記録の直接編集はできません"]]].map(function(col){return '<div><div style="color:#9ca3af;margin-bottom:6px;text-align:center;">'+col[0]+'</div>'+col[1].map(function(t){return '<div style="padding:5px 7px;background:#f8f7ff;border-radius:6px;margin-bottom:3px;color:#374151;">'+t+'</div>';}).join("")+'</div>';}).join("")
+      +'</div>'
+    +'</div>'
+    /* Input */
+    +'<div id="ob-s1-input" style="padding:10px 14px;border-top:1px solid rgba(0,0,0,0.06);display:flex;align-items:center;gap:8px;background:white;">'
+      +'<span style="color:#9ca3af;">'+ic("attach_file",18)+'</span>'
+      +'<div style="flex:1;font-size:13px;color:#1a1a2e;min-height:18px;"><span id="ob-s1-typed"></span><span id="ob-s1-cursor" style="display:inline-block;width:2px;height:14px;background:#5c4be8;margin-left:1px;vertical-align:middle;opacity:0;"></span></div>'
+      +'<div id="ob-s1-send" style="width:32px;height:32px;background:#1a1a2e;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;transition:transform 0.15s,background 0.15s;">'+ic("arrow_upward",16)+'</div>'
+    +'</div>'
+    +'</div></div>';},
+  onMount:function(){
+    var screen=document.getElementById("ob-s1-screen"),typed=document.getElementById("ob-s1-typed"),cursor=document.getElementById("ob-s1-cursor"),send=document.getElementById("ob-s1-send"),msgs=document.getElementById("ob-s1-msgs");
+    var MSG="photosynthesisってどういう意味？";
+    var AI="photosynthesisは「光合成」だよ！\n植物が光を使ってエネルギーを作る仕組みのこと。";
+    setTimeout(function(){cursor.style.opacity="1";cursor.style.animation="blink 0.8s infinite";screen.style.transform="scale(1.9) translateY(16%)";},700);
+    setTimeout(function(){var i=0;var t=setInterval(function(){if(i<MSG.length){typed.textContent+=MSG[i++];}else{clearInterval(t);
+      setTimeout(function(){send.style.transform="scale(0.8)";send.style.background="#5c4be8";
+        setTimeout(function(){send.style.transform="scale(1)";
+          setTimeout(function(){screen.style.transform="scale(1) translateY(0)";cursor.style.opacity="0";typed.textContent="";
+            setTimeout(function(){msgs.innerHTML="";
+              /* User msg — real UI: icon left, plain text right, no bubble */
+              var ub=document.createElement("div");ub.style.cssText="display:grid;grid-template-columns:36px 1fr;gap:10px;align-items:start;opacity:0;transition:all 0.3s;";
+              ub.innerHTML='<div style="width:36px;height:36px;border-radius:3px;background:#ab68ff;display:grid;place-items:center;color:#fff;">'+ic("person",18)+'</div><div style="font-size:13px;color:#374151;line-height:1.75;padding-top:6px;">'+MSG+'</div>';
+              msgs.appendChild(ub);setTimeout(function(){ub.style.opacity="1";},50);
+              /* Thinking dots */
+              setTimeout(function(){var tb=document.createElement("div");tb.style.cssText="display:grid;grid-template-columns:36px 1fr;gap:10px;align-items:start;opacity:0;transition:opacity 0.3s;";
+                tb.innerHTML='<div style="width:36px;height:36px;border-radius:3px;background:#10a37f;display:grid;place-items:center;color:#fff;">'+ic("smart_toy",18)+'</div><div style="display:flex;gap:4px;align-items:center;padding-top:10px;">'+[0,0.2,0.4].map(function(d){return '<span style="width:5px;height:5px;background:#10a37f;border-radius:50%;animation:dotBounce 1.2s infinite;animation-delay:'+d+'s;display:inline-block;"></span>';}).join("")+'</div>';
+                msgs.appendChild(tb);setTimeout(function(){tb.style.opacity="1";},50);
+                /* AI reply — real UI: icon left, plain text right, no bubble */
+                setTimeout(function(){tb.remove();var ab=document.createElement("div");ab.style.cssText="display:grid;grid-template-columns:36px 1fr;gap:10px;align-items:start;opacity:0;transition:opacity 0.3s;";
+                  ab.innerHTML='<div style="width:36px;height:36px;border-radius:3px;background:#10a37f;display:grid;place-items:center;color:#fff;">'+ic("smart_toy",18)+'</div><div style="font-size:13px;color:#374151;line-height:1.75;white-space:pre-wrap;padding-top:6px;"><span id="ob-s1-ai-t"></span><span id="ob-s1-ai-c" style="display:inline-block;width:2px;height:14px;background:#10a37f;margin-left:1px;vertical-align:middle;animation:blink 0.8s infinite;"></span></div>';
+                  msgs.appendChild(ab);setTimeout(function(){ab.style.opacity="1";},50);
+                  var at=document.getElementById("ob-s1-ai-t");var j=0;var last=performance.now();var wait=20+Math.random()*25;
+                  function tick(now){if(now-last>=wait){var chunk=AI.length>180?2:1;if(Math.random()<0.22)chunk++;j=Math.min(AI.length,j+chunk);if(at)at.textContent=AI.slice(0,j);last=now;wait=20+Math.random()*25;}if(j<AI.length){requestAnimationFrame(tick);}else{var cr=document.getElementById("ob-s1-ai-c");if(cr)cr.remove();}}
+                  requestAnimationFrame(tick);
+                },1200);
+              },600);
+            },500);
+          },400);
+        },200);
+      },300);
+    }},55);},1500);
+  }
+},
+
+/* ═══════════════════════════════════════════════
+   SLIDE 2 — Model Selection
+   ═══════════════════════════════════════════════ */
+{
+  render:function(){return '<div style="width:100%;"><h2 style="font-size:18px;font-weight:700;color:#1a1a2e;text-align:center;margin-bottom:8px;">'+ic("psychology",22)+' AIモデルを選べる</h2>'
+    +'<p style="font-size:12px;color:#6b7280;text-align:center;margin-bottom:20px;">用途に合わせてモードを使い分けよう</p>'
+    +'<div style="background:white;border-radius:16px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    +'<div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:16px;">'
+      +'<div id="ob-s2-selector" style="padding:10px 20px;border:1px solid rgba(92,75,232,0.3);border-radius:24px;font-size:14px;font-weight:600;color:#1a1a2e;display:flex;align-items:center;gap:8px;cursor:pointer;transition:all 0.3s;min-width:260px;justify-content:center;"><span id="ob-s2-current">vq-one max — standard</span><span id="ob-s2-arrow" style="font-size:10px;transition:transform 0.3s;">▼</span></div>'
+    +'</div>'
+    +'<div id="ob-s2-dropdown" style="background:white;border:1px solid rgba(0,0,0,0.08);border-radius:16px;overflow:hidden;max-height:0;opacity:0;transition:max-height 0.4s ease,opacity 0.3s;box-shadow:0 8px 24px rgba(0,0,0,0.12);">'
+      +'<div id="ob-s2-opt-s" style="padding:16px 20px;font-size:14px;color:#374151;cursor:pointer;transition:background 0.2s;border-bottom:1px solid rgba(0,0,0,0.04);">vq-one max — standard</div>'
+      +'<div id="ob-s2-opt-p" style="padding:16px 20px;font-size:14px;font-weight:600;color:#3b4fd8;cursor:pointer;transition:background 0.2s;">vq-one max — professor</div>'
+    +'</div>'
+    +'<div id="ob-s2-desc" style="margin-top:16px;opacity:0;transition:opacity 0.4s;display:flex;flex-direction:column;gap:8px;">'
+      +[{n:"standard",d:"日常の学習サポート・雑談",a:false},{n:"professor",d:"詳しい解説・深い分析・論文レベルの回答",a:true}].map(function(m){return '<div style="padding:12px 16px;background:'+(m.a?"rgba(92,75,232,0.08)":"rgba(0,0,0,0.02)")+';border:1px solid '+(m.a?"rgba(92,75,232,0.2)":"rgba(0,0,0,0.06)")+';border-radius:10px;display:flex;justify-content:space-between;align-items:center;"><div><div style="font-size:13px;font-weight:'+(m.a?700:500)+';color:'+(m.a?"#3b4fd8":"#374151")+';">vq-one max — '+m.n+'</div><div style="font-size:11px;color:#9ca3af;">'+m.d+'</div></div>'+(m.a?'<div style="font-size:11px;padding:3px 10px;background:#5c4be8;color:white;border-radius:20px;">選択中</div>':"")+'</div>';}).join("")
+    +'</div></div></div>';},
+  onMount:function(){
+    var dd=document.getElementById("ob-s2-dropdown"),ar=document.getElementById("ob-s2-arrow"),cu=document.getElementById("ob-s2-current"),os=document.getElementById("ob-s2-opt-s"),op=document.getElementById("ob-s2-opt-p"),sel=document.getElementById("ob-s2-selector"),desc=document.getElementById("ob-s2-desc");
+    setTimeout(function(){dd.style.maxHeight="200px";dd.style.opacity="1";ar.style.transform="rotate(180deg)";},600);
+    setTimeout(function(){os.style.background="rgba(0,0,0,0.04)";},1200);
+    setTimeout(function(){os.style.background="";op.style.background="rgba(92,75,232,0.08)";},1800);
+    setTimeout(function(){dd.style.maxHeight="0";dd.style.opacity="0";ar.style.transform="rotate(0deg)";cu.textContent="vq-one max — professor";sel.style.borderColor="rgba(92,75,232,0.5)";sel.style.color="#3b4fd8";setTimeout(function(){desc.style.opacity="1";},300);},2400);
+  }
+},
+
+/* ═══════════════════════════════════════════════
+   SLIDE 3 — Quick Board
+   ═══════════════════════════════════════════════ */
+{
+  render:function(){
+    var cmds=[["/plan","今日の学習プラン","1日3回"],["/goal","テスト目標設定","無料"],["/stats","プリセット統計","無料"],["/theme","テーマ切替","無料"],["/export","会話をエクスポート","無料"],["/board","Quick Board","無料"]];
+    return '<div style="width:100%;"><h2 style="font-size:18px;font-weight:700;color:#1a1a2e;text-align:center;margin-bottom:8px;">'+ic("dashboard",22)+' Quick Board</h2>'
+    +'<p style="font-size:12px;color:#6b7280;text-align:center;margin-bottom:16px;">声で話しかけるだけでビジュアルが自動生成</p>'
+    +'<div id="ob-s3-container" style="position:relative;overflow:hidden;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.3);transition:transform 0.7s cubic-bezier(0.4,0,0.2,1);">'
+    /* Phase 1: Slash menu */
+    +'<div id="ob-s3-slash" style="background:white;border-radius:16px;overflow:hidden;transition:opacity 0.3s;">'
+      +'<div style="padding:12px 16px;font-size:14px;font-weight:700;color:#1a1a2e;text-align:center;min-height:60px;">VQ AI ONE MAX</div>'
+      +'<div id="ob-s3-menu" style="background:#13102a;border-radius:12px 12px 0 0;overflow:hidden;max-height:0;opacity:0;transition:max-height 0.4s ease,opacity 0.3s;">'
+        +cmds.map(function(c,i){return '<div id="ob-s3-cmd-'+i+'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.04);transition:background 0.2s;"><div><div style="font-size:14px;font-weight:600;color:white;">'+c[0]+'</div><div style="font-size:11px;color:rgba(255,255,255,0.4);">'+c[1]+'</div></div><div style="padding:3px 10px;background:rgba(255,255,255,0.1);border-radius:20px;font-size:11px;color:rgba(255,255,255,0.5);">'+c[2]+'</div></div>';}).join("")
+      +'</div>'
+      +'<div style="padding:10px 14px;border-top:1px solid rgba(0,0,0,0.06);display:flex;align-items:center;gap:8px;background:white;"><span style="color:#9ca3af;">'+ic("attach_file",18)+'</span><span id="ob-s3-input" style="flex:1;font-size:14px;color:#1a1a2e;"></span><div style="width:32px;height:32px;background:#1a1a2e;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;">'+ic("arrow_upward",14)+'</div></div>'
+    +'</div>'
+    /* Phase 2: Board */
+    +'<div id="ob-s3-board" style="position:absolute;inset:0;background:white;border-radius:16px;display:grid;grid-template-columns:1fr 1.5fr;opacity:0;pointer-events:none;transition:opacity 0.4s;overflow:hidden;">'
+      /* Left chat */
+      +'<div style="border-right:1px solid rgba(0,0,0,0.06);padding:12px;display:flex;flex-direction:column;gap:8px;">'
+        +'<div style="font-size:13px;font-weight:700;color:#1a1a2e;padding-bottom:8px;border-bottom:1px solid rgba(0,0,0,0.06);display:flex;align-items:center;gap:6px;">'+ic("electric_bolt",16)+' Quick Board<div style="margin-left:auto;color:#9ca3af;cursor:pointer;">'+ic("close",16)+'</div></div>'
+        +'<div style="background:#f8f7ff;border-radius:10px;padding:8px 10px;font-size:11px;color:#374151;">'+ic("electric_bolt",13)+' Quick Boardへようこそ！</div>'
+        +'<div id="ob-s3-vmsg" style="display:flex;justify-content:flex-end;opacity:0;transition:opacity 0.3s;"><div style="background:#5c4be8;color:white;padding:7px 10px;border-radius:14px 14px 4px 14px;font-size:11px;max-width:85%;">世界の人口TOP5を表にまとめて</div></div>'
+        +'<div id="ob-s3-areply" style="font-size:11px;color:#374151;opacity:0;transition:opacity 0.3s;line-height:1.5;">世界の人口TOP5を表にするね！</div>'
+      +'</div>'
+      /* Right canvas */
+      +'<div style="padding:12px;position:relative;">'
+        +'<div style="display:flex;gap:6px;margin-bottom:10px;">'+["undo 戻す","delete クリア","download PNG保存"].map(function(t){var p=t.split(" ");return '<div style="padding:4px 10px;border-radius:8px;border:1px solid rgba(0,0,0,0.1);font-size:10px;color:#374151;background:white;display:flex;align-items:center;gap:3px;">'+ic(p[0],12)+' '+p[1]+'</div>';}).join("")+'</div>'
+        +'<div id="ob-s3-skel" style="display:flex;flex-direction:column;gap:8px;opacity:0;transition:opacity 0.3s;">'+[1,2,3].map(function(){return '<div style="height:16px;background:linear-gradient(90deg,rgba(92,75,232,0.1),rgba(92,75,232,0.2),rgba(92,75,232,0.1));border-radius:6px;animation:skeletonPulse 1.2s ease-in-out infinite;width:'+(60+Math.random()*40)+'%;"></div>';}).join("")+'<div style="height:80px;background:linear-gradient(90deg,rgba(92,75,232,0.1),rgba(92,75,232,0.2),rgba(92,75,232,0.1));border-radius:8px;animation:skeletonPulse 1.2s ease-in-out infinite;"></div></div>'
+        +'<div id="ob-s3-content" style="opacity:0;transition:opacity 0.4s;"><div style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:10px;">'+ic("public",14)+' 世界の人口TOP5</div><table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr><th style="background:#5c4be8;color:white;padding:6px 10px;text-align:left;">順位</th><th style="background:#5c4be8;color:white;padding:6px 10px;text-align:left;">国名</th><th style="background:#5c4be8;color:white;padding:6px 10px;text-align:left;">人口</th></tr></thead><tbody id="ob-s3-tbody"></tbody></table></div>'
+        +'<div id="ob-s3-mic" style="position:absolute;bottom:12px;left:12px;width:32px;height:32px;background:#f3f4f6;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;transform-origin:center;transition:transform 0.3s,background 0.3s,color 0.3s;box-shadow:0 2px 8px rgba(0,0,0,0.1);color:#374151;">'+ic("mic",18)+'</div>'
+      +'</div>'
+    +'</div>'
+    +'</div></div>';
+  },
+  onMount:function(){
+    var inp=document.getElementById("ob-s3-input"),menu=document.getElementById("ob-s3-menu"),slash=document.getElementById("ob-s3-slash"),board=document.getElementById("ob-s3-board"),mic=document.getElementById("ob-s3-mic"),skel=document.getElementById("ob-s3-skel"),content=document.getElementById("ob-s3-content"),vmsg=document.getElementById("ob-s3-vmsg"),areply=document.getElementById("ob-s3-areply"),tbody=document.getElementById("ob-s3-tbody"),ctn=document.getElementById("ob-s3-container");
+    setTimeout(function(){inp.textContent="/";},500);
+    setTimeout(function(){menu.style.maxHeight="400px";menu.style.opacity="1";},900);
+    setTimeout(function(){var c=document.getElementById("ob-s3-cmd-5");if(c)c.style.background="rgba(92,75,232,0.3)";},1600);
+    setTimeout(function(){slash.style.opacity="0";setTimeout(function(){board.style.opacity="1";board.style.pointerEvents="auto";},300);},2200);
+    setTimeout(function(){ctn.style.transform="scale(2.5) translate(25%,20%)";},3000);
+    setTimeout(function(){mic.style.transform="scale(0.8)";mic.style.background="#ef4444";mic.style.color="#fff";},3700);
+    setTimeout(function(){mic.style.transform="scale(1.1)";},3900);
+    setTimeout(function(){ctn.style.transform="scale(1) translate(0,0)";mic.style.background="#ef4444";mic.style.animation="float 2s infinite";},4100);
+    setTimeout(function(){vmsg.style.opacity="1";},4800);
+    setTimeout(function(){areply.style.opacity="1";},5400);
+    setTimeout(function(){skel.style.opacity="1";},5800);
+    setTimeout(function(){skel.style.opacity="0";setTimeout(function(){content.style.opacity="1";
+      [["1位","中国","約14.1億人"],["2位","インド","約14.0億人"],["3位","アメリカ","約3.3億人"],["4位","インドネシア","約2.7億人"],["5位","パキスタン","約2.3億人"]].forEach(function(row,i){setTimeout(function(){var tr=document.createElement("tr");tr.style.cssText="border-bottom:1px solid #f0f0f0;opacity:0;transition:opacity 0.3s;";tr.innerHTML=row.map(function(c){return '<td style="padding:5px 10px;color:#1a1a2e;">'+c+'</td>';}).join("");tbody.appendChild(tr);setTimeout(function(){tr.style.opacity="1";},50);},i*300);});
+    },300);},7000);
+  }
+},
+
+/* ═══════════════════════════════════════════════
+   SLIDE 4 — Deep Search
+   ═══════════════════════════════════════════════ */
+{
+  render:function(){return '<div style="width:100%;"><h2 style="font-size:18px;font-weight:700;color:#1a1a2e;text-align:center;margin-bottom:8px;">'+ic("travel_explore",22)+' Deep Search</h2>'
+    +'<p style="font-size:12px;color:#6b7280;text-align:center;margin-bottom:16px;">最新情報をネットから自動で検索して答える</p>'
+    +'<div id="ob-s4-screen" style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);transform-origin:center bottom;transition:transform 0.7s cubic-bezier(0.4,0,0.2,1);">'
+    +'<div style="padding:10px 14px;border-bottom:1px solid rgba(0,0,0,0.06);display:flex;align-items:center;gap:8px;"><div style="width:26px;height:26px;background:#10a37f;border-radius:3px;display:grid;place-items:center;color:#fff;">'+ic("smart_toy",14)+'</div><div style="font-size:12px;font-weight:700;color:#1a1a2e;">VQ AI ONE MAX</div><div id="ob-s4-bar" style="margin-left:auto;padding:4px 12px;background:rgba(92,75,232,0.1);border:1px solid rgba(92,75,232,0.3);border-radius:20px;font-size:10px;color:#5c4be8;display:flex;align-items:center;gap:4px;opacity:0;transition:opacity 0.4s;">'+ic("travel_explore",14)+' Deep Search <span style="padding:2px 6px;background:#5c4be8;color:white;border-radius:10px;font-size:9px;">無制限</span></div></div>'
+    +'<div id="ob-s4-msgs" style="padding:12px;min-height:140px;display:flex;flex-direction:column;gap:10px;"><div style="text-align:center;font-size:12px;color:#9ca3af;padding:20px 0;">何でも調べます。気になることを入力してください</div></div>'
+    +'<div style="padding:10px 14px;border-top:1px solid rgba(0,0,0,0.06);display:flex;align-items:center;gap:8px;background:white;"><span style="color:#9ca3af;">'+ic("attach_file",18)+'</span><div style="flex:1;font-size:13px;color:#1a1a2e;min-height:18px;"><span id="ob-s4-typed"></span><span id="ob-s4-cursor" style="display:inline-block;width:2px;height:14px;background:#5c4be8;margin-left:1px;vertical-align:middle;opacity:0;"></span></div><div style="width:32px;height:32px;background:#1a1a2e;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;">'+ic("arrow_upward",14)+'</div></div>'
+    +'</div></div>';},
+  onMount:function(){
+    var typed=document.getElementById("ob-s4-typed"),cursor=document.getElementById("ob-s4-cursor"),bar=document.getElementById("ob-s4-bar"),msgs=document.getElementById("ob-s4-msgs");
+    var CMD="/deep search",QUERY="京都でおすすめの観光地は？",AI="調べてみたよ！京都のおすすめ観光地は、金閣寺・伏見稲荷大社・嵐山・清水寺・二条城あたりが特に人気だよ。季節によっても楽しみ方が変わるね！";
+    setTimeout(function(){cursor.style.opacity="1";cursor.style.animation="blink 0.8s infinite";},400);
+    setTimeout(function(){var i=0;var t=setInterval(function(){if(i<CMD.length){typed.textContent+=CMD[i++];}else{clearInterval(t);
+      setTimeout(function(){typed.textContent="";cursor.style.opacity="0";bar.style.opacity="1";msgs.innerHTML='<div style="text-align:center;font-size:12px;color:#9ca3af;padding:8px 0;">何でも調べます。気になることを入力してください</div>';
+        setTimeout(function(){cursor.style.opacity="1";var j=0;var t2=setInterval(function(){if(j<QUERY.length){typed.textContent+=QUERY[j++];}else{clearInterval(t2);
+          setTimeout(function(){typed.textContent="";cursor.style.opacity="0";msgs.innerHTML="";
+            var ub=document.createElement("div");ub.style.cssText="display:grid;grid-template-columns:36px 1fr;gap:10px;align-items:start;direction:rtl;";ub.innerHTML='<div style="width:36px;height:36px;border-radius:3px;background:#ab68ff;display:grid;place-items:center;color:#fff;">'+ic("person",18)+'</div><div style="font-size:11px;color:#374151;line-height:1.75;padding-top:6px;direction:ltr;">'+QUERY+'</div>';msgs.appendChild(ub);
+            setTimeout(function(){var ab=document.createElement("div");ab.style.cssText="opacity:0;transition:opacity 0.3s;";
+              ab.innerHTML='<div style="background:#13102a;border-radius:12px;padding:10px 14px;font-size:11px;color:rgba(255,255,255,0.9);line-height:1.6;"><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'+ic("travel_explore",14)+'<span style="font-size:10px;font-weight:700;color:#a594f9;">Deep Search</span></div><span id="ob-s4-ai-t"></span><span id="ob-s4-ai-c" style="display:inline-block;width:2px;height:12px;background:#a594f9;margin-left:1px;vertical-align:middle;animation:blink 0.8s infinite;"></span></div>';
+              msgs.appendChild(ab);setTimeout(function(){ab.style.opacity="1";},50);
+              var at=document.getElementById("ob-s4-ai-t");var k=0;var last=performance.now();var wait=20+Math.random()*25;
+              function tick(now){if(now-last>=wait){var chunk=2;if(Math.random()<0.22)chunk++;k=Math.min(AI.length,k+chunk);if(at)at.textContent=AI.slice(0,k);last=now;wait=20+Math.random()*25;}if(k<AI.length){requestAnimationFrame(tick);}else{var cr=document.getElementById("ob-s4-ai-c");if(cr)cr.remove();}}
+              requestAnimationFrame(tick);
+            },800);
+          },500);
+        }},55);},1200);
+      },500);
+    }},60);},800);
+  }
+},
+
+/* ═══════════════════════════════════════════════
+   SLIDE 5 — Code Generation
+   ═══════════════════════════════════════════════ */
+{
+  render:function(){return '<div style="width:100%;"><h2 style="font-size:18px;font-weight:700;color:#1a1a2e;text-align:center;margin-bottom:8px;">'+ic("code",22)+' コード生成</h2>'
+    +'<p style="font-size:12px;color:#6b7280;text-align:center;margin-bottom:16px;">プログラミングのコードも書いてくれる</p>'
+    +'<div id="ob-s5c-screen" style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    /* Header */
+    +'<div style="padding:10px 14px;border-bottom:1px solid rgba(0,0,0,0.06);display:flex;align-items:center;gap:8px;"><div style="width:26px;height:26px;background:#10a37f;border-radius:3px;display:grid;place-items:center;color:#fff;">'+ic("smart_toy",14)+'</div><div style="font-size:12px;font-weight:700;color:#1a1a2e;">VQ AI ONE MAX</div></div>'
+    /* Messages */
+    +'<div id="ob-s5c-msgs" style="padding:12px;display:flex;flex-direction:column;gap:10px;"><div id="ob-s5c-ph" style="text-align:center;font-size:12px;color:#9ca3af;padding:12px 0;">何でも聞いてください</div></div>'
+    /* Code area (collapsed) */
+    +'<div id="ob-s5c-code-area" style="max-height:0;overflow:hidden;transition:max-height 0.5s cubic-bezier(0.4,0,0.2,1);">'
+      +'<div style="background:#1a1a2e;margin:0 12px 12px;border-radius:12px;overflow:hidden;">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.08);"><div style="display:flex;align-items:center;gap:6px;"><div style="width:10px;height:10px;background:#ef4444;border-radius:50%;"></div><div style="width:10px;height:10px;background:#eab308;border-radius:50%;"></div><div style="width:10px;height:10px;background:#22c55e;border-radius:50%;"></div><span style="font-size:11px;color:rgba(255,255,255,0.4);margin-left:8px;">python</span></div><div id="ob-s5c-copy" style="padding:3px 10px;background:rgba(255,255,255,0.1);border-radius:6px;font-size:10px;color:rgba(255,255,255,0.6);cursor:pointer;transition:all 0.2s;opacity:0;">'+ic("content_copy",12)+' コピー</div></div>'
+        +'<div style="padding:14px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;"><pre id="ob-s5c-code" style="margin:0;font-size:11px;line-height:1.7;color:rgba(255,255,255,0.9);white-space:pre-wrap;min-height:60px;"></pre></div>'
+      +'</div>'
+      +'<div id="ob-s5c-preview" style="margin:0 12px 12px;padding:8px 14px;background:rgba(92,75,232,0.1);border:1px solid rgba(92,75,232,0.2);border-radius:10px;font-size:12px;color:#5c4be8;cursor:pointer;display:flex;align-items:center;gap:6px;opacity:0;transition:opacity 0.4s;">'+ic("play_arrow",16)+' プレビューを実行</div>'
+    +'</div>'
+    /* Input */
+    +'<div style="padding:10px 14px;border-top:1px solid rgba(0,0,0,0.06);display:flex;align-items:center;gap:8px;background:white;"><span style="color:#9ca3af;">'+ic("attach_file",18)+'</span><div style="flex:1;font-size:13px;color:#1a1a2e;min-height:18px;"><span id="ob-s5c-typed"></span><span id="ob-s5c-cursor" style="display:inline-block;width:2px;height:14px;background:#5c4be8;margin-left:1px;vertical-align:middle;opacity:0;"></span></div><div id="ob-s5c-send" style="width:32px;height:32px;background:#1a1a2e;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;transition:transform 0.15s,background 0.15s;">'+ic("arrow_upward",14)+'</div></div>'
+    +'</div></div>';
+  },
+  onMount:function(){
+    var typed=document.getElementById("ob-s5c-typed"),cursor=document.getElementById("ob-s5c-cursor"),send=document.getElementById("ob-s5c-send"),msgs=document.getElementById("ob-s5c-msgs"),ph=document.getElementById("ob-s5c-ph"),codeArea=document.getElementById("ob-s5c-code-area"),codeEl=document.getElementById("ob-s5c-code"),copyBtn=document.getElementById("ob-s5c-copy"),previewBtn=document.getElementById("ob-s5c-preview");
+    var MSG="Pythonでバブルソートを書いて";
+    var SEGS=[
+      {t:"def ",c:"#c678dd"},{t:"bubble_sort",c:"#61afef"},{t:"(arr):",c:"#abb2bf"},
+      {t:"\n    n = ",c:"#abb2bf"},{t:"len",c:"#61afef"},{t:"(arr)",c:"#abb2bf"},
+      {t:"\n    ",c:"#abb2bf"},{t:"for ",c:"#c678dd"},{t:"i ",c:"#abb2bf"},{t:"in ",c:"#c678dd"},{t:"range",c:"#61afef"},{t:"(n):",c:"#abb2bf"},
+      {t:"\n        ",c:"#abb2bf"},{t:"for ",c:"#c678dd"},{t:"j ",c:"#abb2bf"},{t:"in ",c:"#c678dd"},{t:"range",c:"#61afef"},{t:"(0, n-i-1):",c:"#abb2bf"},
+      {t:"\n            ",c:"#abb2bf"},{t:"if ",c:"#c678dd"},{t:"arr[j] > arr[j+1]:",c:"#abb2bf"},
+      {t:"\n                arr[j], arr[j+1] = arr[j+1], arr[j]",c:"#abb2bf"},
+      {t:"\n    ",c:"#abb2bf"},{t:"return ",c:"#c678dd"},{t:"arr",c:"#abb2bf"}
+    ];
+    setTimeout(function(){cursor.style.opacity="1";cursor.style.animation="blink 0.8s infinite";},400);
+    setTimeout(function(){var i=0;var t=setInterval(function(){if(i<MSG.length){typed.textContent+=MSG[i++];}else{clearInterval(t);
+      setTimeout(function(){send.style.transform="scale(0.8)";send.style.background="#5c4be8";
+        setTimeout(function(){send.style.transform="scale(1)";typed.textContent="";cursor.style.opacity="0";ph.style.display="none";
+          /* User msg */
+          var ub=document.createElement("div");ub.style.cssText="display:grid;grid-template-columns:36px 1fr;gap:10px;align-items:start;opacity:0;transition:all 0.3s;";
+          ub.innerHTML='<div style="width:36px;height:36px;border-radius:3px;background:#ab68ff;display:grid;place-items:center;color:#fff;">'+ic("person",18)+'</div><div style="font-size:13px;color:#374151;line-height:1.75;padding-top:6px;">'+MSG+'</div>';
+          msgs.appendChild(ub);setTimeout(function(){ub.style.opacity="1";},50);
+          /* AI text */
+          setTimeout(function(){var ab=document.createElement("div");ab.style.cssText="display:grid;grid-template-columns:36px 1fr;gap:10px;align-items:start;opacity:0;transition:opacity 0.3s;";
+            ab.innerHTML='<div style="width:36px;height:36px;border-radius:3px;background:#10a37f;display:grid;place-items:center;color:#fff;">'+ic("smart_toy",18)+'</div><div style="font-size:13px;color:#374151;line-height:1.75;padding-top:6px;">Pythonでバブルソートを書くね！</div>';
+            msgs.appendChild(ab);setTimeout(function(){ab.style.opacity="1";},50);
+            /* Expand code */
+            setTimeout(function(){codeArea.style.maxHeight="350px";
+              setTimeout(function(){var si=0,ci=0;
+                function typeCode(){if(si>=SEGS.length){copyBtn.style.opacity="1";setTimeout(function(){previewBtn.style.opacity="1";setTimeout(function(){copyBtn.style.background="rgba(92,75,232,0.4)";copyBtn.style.color="white";setTimeout(function(){copyBtn.style.background="rgba(255,255,255,0.1)";copyBtn.style.color="rgba(255,255,255,0.6)";},1000);},500);},300);return;}
+                var seg=SEGS[si];if(ci<seg.t.length){var ch=seg.t[ci];if(ch==="\n"){codeEl.appendChild(document.createTextNode("\n"));}else{var spans=codeEl.querySelectorAll("span");var last=spans.length?spans[spans.length-1]:null;if(last&&last.style.color===seg.c&&last.textContent.indexOf("\n")===-1){last.textContent+=ch;}else{var sp=document.createElement("span");sp.style.color=seg.c;sp.textContent=ch;codeEl.appendChild(sp);}}ci++;setTimeout(typeCode,18);}else{si++;ci=0;setTimeout(typeCode,5);}}
+                typeCode();
+              },300);
+            },500);
+          },600);
+        },200);
+      },300);
+    }},55);},800);
+  }
+},
+
+/* ═══════════════════════════════════════════════
+   SLIDE 6 — Revolution
+   ═══════════════════════════════════════════════ */
+{
+  render:function(){return '<div id="ob-s5" style="width:100%;text-align:center;padding:20px 0;position:relative;min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;">'
+    +'<div id="ob-s5-particles" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;"></div>'
+    +'<div style="position:relative;z-index:1;">'
+      +'<div id="ob-s5-line1" style="font-size:13px;letter-spacing:0.3em;color:#9ca3af;text-transform:uppercase;opacity:0;margin-bottom:12px;">The Future of Learning</div>'
+      +'<div id="ob-s5-line2" style="font-size:32px;font-weight:900;color:#1a1a2e;line-height:1.2;opacity:0;position:relative;margin-bottom:8px;">私だけのAIを<br><span style="background:linear-gradient(135deg,#5c4be8,#a594f9,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">構築しよう！</span></div>'
+      +'<div id="ob-s5-line3" style="font-size:13px;color:#6b7280;opacity:0;line-height:1.7;">AIと共に学ぶ、新しい時代へ。<br>あなたの学習が、今日から変わる。</div>'
+    +'</div>'
+    +'<div id="ob-s5-btn" style="opacity:0;transform:translateY(20px);transition:all 0.6s ease;position:relative;z-index:1;"><button onclick="finishOnboarding()" style="padding:16px 48px;background:linear-gradient(135deg,#5c4be8,#7c3aed);color:white;border:none;border-radius:50px;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 8px 32px rgba(92,75,232,0.4);letter-spacing:0.05em;">'+ic("rocket_launch",18)+' はじめる</button></div>'
+    +'</div>';},
+  onMount:function(){
+    var line1=document.getElementById("ob-s5-line1"),line2=document.getElementById("ob-s5-line2"),line3=document.getElementById("ob-s5-line3"),btn=document.getElementById("ob-s5-btn"),particles=document.getElementById("ob-s5-particles");
+    /* Particles — start immediately */
+    for(var i=0;i<20;i++){var p=document.createElement("div");var sz=2+Math.random()*4;p.style.cssText="position:absolute;left:"+Math.random()*100+"%;top:"+Math.random()*100+"%;width:"+sz+"px;height:"+sz+"px;background:rgba("+(Math.random()>0.5?"92,75,232":"165,148,249")+","+(0.3+Math.random()*0.5)+");border-radius:50%;animation:float "+(2+Math.random()*3)+"s ease-in-out infinite;animation-delay:"+Math.random()*2+"s;";particles.appendChild(p);}
+    /* Sequenced reveals — all driven from onMount, no CSS animation attributes in HTML */
+    setTimeout(function(){line1.style.transition="opacity 0.6s ease";line1.style.opacity="1";},500);
+    setTimeout(function(){line2.style.transition="opacity 0.4s ease";line2.style.opacity="1";line2.style.animation="revealText 0.8s ease forwards";},1200);
+    setTimeout(function(){line3.style.transition="opacity 0.6s ease";line3.style.opacity="1";},2200);
+    setTimeout(function(){btn.style.opacity="1";btn.style.transform="translateY(0)";},2800);
+  }
+}
+];
+
+/* ═══ Overlay ═══ */
+var curSlide=0;
+var ov=document.createElement("div");
+ov.id="onboarding-overlay";
+ov.style.cssText="position:fixed;inset:0;background:rgba(255,255,255,0.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:inherit;";
+ov.innerHTML='<div id="vqObSlideContainer" style="width:100%;max-width:520px;padding:40px 24px;display:flex;flex-direction:column;align-items:center;gap:32px;"></div>'
+  +'<div id="vqObControls" style="display:flex;flex-direction:column;align-items:center;gap:20px;padding-bottom:40px;opacity:0;transition:opacity 0.4s;">'
+  +'<div id="vqObDots" style="display:flex;gap:8px;">'+slides.map(function(_,i){return '<div class="vq-ob-dot" data-i="'+i+'" style="width:'+(i===0?"24px":"8px")+';height:8px;border-radius:4px;background:'+(i===0?"#5c4be8":"#e5e7eb")+';transition:all 0.3s;cursor:pointer;"></div>';}).join("")+'</div>'
+  +'<button id="vqObNextBtn" type="button" style="padding:14px 48px;background:#5c4be8;color:white;border:none;border-radius:14px;font-size:15px;font-weight:600;cursor:pointer;min-width:200px;">次へ →</button>'
+  +'<button id="vqObSkipBtn" type="button" style="background:none;border:none;color:#9ca3af;font-size:13px;cursor:pointer;">スキップ</button>'
+  +'</div>';
+document.body.appendChild(ov);
+
+/* Animation durations per slide (ms) — controls appear after this */
+var SLIDE_ANIM_MS=[8000,3200,8500,6500,7000,0];
+
+function showControls(){var c=document.getElementById("vqObControls");if(c)c.style.opacity="1";}
+function hideControls(){var c=document.getElementById("vqObControls");if(c)c.style.opacity="0";}
+
+function renderSlide(idx){
+  var ct=document.getElementById("vqObSlideContainer");if(!ct)return;
+  hideControls();
+  ct.style.opacity="0";ct.style.transform="translateY(10px)";ct.style.transition="all 0.25s";
+  setTimeout(function(){
+    ct.innerHTML=slides[idx].render();
+    if(slides[idx].onMount)slides[idx].onMount();
+    ct.style.opacity="1";ct.style.transform="translateY(0)";
+    document.querySelectorAll(".vq-ob-dot").forEach(function(d,i){d.style.width=i===idx?"24px":"8px";d.style.background=i===idx?"#5c4be8":"#e5e7eb";});
+    /* Show controls after animation finishes (or immediately for slide 5) */
+    var delay=SLIDE_ANIM_MS[idx]||0;
+    if(idx===slides.length-1){delay=0;}/* Slide 5 has its own button */
+    if(delay>0){setTimeout(showControls,delay);}else if(idx<slides.length-1){showControls();}
+    var nb=document.getElementById("vqObNextBtn");
+    if(nb){
+      if(idx===slides.length-1){nb.style.display="none";}
+      else{nb.style.display="";nb.textContent="次へ →";}
+    }
+  },250);
+}
+
+window.finishOnboarding=function(){
+  var o=document.getElementById("onboarding-overlay");if(!o)return;
+  o.style.transition="opacity 1s ease,transform 1s ease";o.style.opacity="0";o.style.transform="scale(1.05)";
+  setTimeout(function(){o.remove();},1000);
+};
+
+document.getElementById("vqObNextBtn").onclick=function(){if(curSlide<slides.length-1){curSlide++;renderSlide(curSlide);}};
+document.getElementById("vqObSkipBtn").onclick=window.finishOnboarding;
+document.querySelectorAll(".vq-ob-dot").forEach(function(dot){dot.onclick=function(){var idx=parseInt(dot.getAttribute("data-i"));if(!isNaN(idx)){curSlide=idx;renderSlide(idx);}};});
+renderSlide(0);
+})();
+</script>
+</body>
+</html>

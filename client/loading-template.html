@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loading Animation — Liquid Fill</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Inter', sans-serif;
+  background: #f5f5f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ═══ Overlay ═══ */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: rgba(255,255,255,.85);
+  backdrop-filter: blur(12px);
+  opacity: 0;
+  animation: loadFadeIn .5s cubic-bezier(.22,1,.36,1) forwards;
+}
+.loading-overlay.is-done {
+  animation: loadFadeOut .4s cubic-bezier(.22,1,.36,1) forwards;
+}
+
+/* ═══ Orb ═══ */
+.loading-orb {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  position: relative;
+  overflow: hidden;
+  background: transparent;
+  box-shadow:
+    0 4px 24px rgba(59,130,246,.1),
+    inset 0 0 0 2px rgba(59,130,246,.12);
+  transform: scale(.6);
+  opacity: 0;
+  animation: orbAppear .6s .1s cubic-bezier(.22,1,.36,1) forwards;
+}
+
+/* Liquid fill */
+.loading-liquid {
+  position: absolute;
+  bottom: 0;
+  left: -10%;
+  width: 120%;
+  height: 0%;
+  background: linear-gradient(180deg, rgba(96,165,250,.4) 0%, rgba(59,130,246,.5) 100%);
+  border-radius: 0 0 50% 50%;
+  animation: liquidRise 2.8s .4s ease-in-out forwards;
+}
+
+/* Wave on top of liquid — subtle */
+.loading-liquid::before,
+.loading-liquid::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: -20%;
+  width: 140%;
+  height: 14px;
+  border-radius: 45%;
+}
+.loading-liquid::before {
+  background: rgba(59,130,246,.12);
+  animation: wave 2.5s ease-in-out infinite;
+}
+.loading-liquid::after {
+  background: rgba(37,99,235,.08);
+  animation: wave 3s .4s ease-in-out infinite reverse;
+}
+
+/* No fake shine — keep it natural */
+
+/* ═══ Text ═══ */
+.loading-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  letter-spacing: .01em;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: textAppear .5s .4s cubic-bezier(.22,1,.36,1) forwards;
+}
+.loading-sub {
+  font-size: 12px;
+  color: #9ca3af;
+  opacity: 0;
+  transform: translateY(4px);
+  animation: textAppear .5s .6s cubic-bezier(.22,1,.36,1) forwards;
+}
+
+/* ═══ Dots — bubble float ═══ */
+.loading-dots {
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  animation: textAppear .4s .7s ease forwards;
+}
+.loading-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(59,130,246,.4);
+  animation: dotBubble 1.6s ease-in-out infinite;
+}
+.loading-dots span:nth-child(2) { animation-delay: .2s; }
+.loading-dots span:nth-child(3) { animation-delay: .4s; }
+
+/* ═══ Keyframes ═══ */
+@keyframes loadFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes loadFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; pointer-events: none; }
+}
+@keyframes orbAppear {
+  from { transform: scale(.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes liquidRise {
+  0% { height: 0%; }
+  8% { height: 6%; }
+  20% { height: 18%; }
+  35% { height: 32%; }
+  50% { height: 48%; }
+  65% { height: 60%; }
+  78% { height: 74%; }
+  88% { height: 86%; }
+  95% { height: 96%; }
+  100% { height: 105%; }
+}
+@keyframes wave {
+  0%, 100% { transform: translateX(-3%) rotate(0deg); }
+  25% { transform: translateX(3%) rotate(1.5deg); }
+  50% { transform: translateX(-2%) rotate(-1deg); }
+  75% { transform: translateX(4%) rotate(2deg); }
+}
+@keyframes textAppear {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes dotBubble {
+  0%, 100% { transform: translateY(0) scale(1); opacity: .3; }
+  30% { transform: translateY(-10px) scale(1.15); opacity: .8; }
+  50% { transform: translateY(-12px) scale(1); opacity: .6; }
+  70% { transform: translateY(-4px) scale(.95); opacity: .4; }
+}
+
+/* ═══ Demo controls ═══ */
+.demo-btn {
+  padding: 12px 28px;
+  border: none;
+  border-radius: 12px;
+  background: #4f46e5;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s;
+}
+.demo-btn:hover { background: #4338ca; }
+.demo-info {
+  font-size: 13px;
+  color: #9ca3af;
+}
+</style>
+</head>
+<body>
+
+<button class="demo-btn" id="demoStart">ローディングを開始</button>
+<p class="demo-info">クリックすると3秒間ローディングが表示されます</p>
+
+<script>
+function showLoading(text, sub) {
+  const overlay = document.createElement("div");
+  overlay.className = "loading-overlay";
+  overlay.id = "loadingOverlay";
+  overlay.innerHTML = `
+    <div class="loading-orb">
+      <div class="loading-liquid"></div>
+    </div>
+    <div class="loading-text">${text || "準備しています"}</div>
+    <div class="loading-sub">${sub || "最新の情報を確認しています"}</div>
+    <div class="loading-dots"><span></span><span></span><span></span></div>
+  `;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function hideLoading(overlay) {
+  if (!overlay) return;
+  overlay.classList.add("is-done");
+  setTimeout(() => overlay.remove(), 450);
+}
+
+// Demo
+document.getElementById("demoStart").addEventListener("click", () => {
+  const ol = showLoading("準備しています", "最新の情報を確認しています");
+  setTimeout(() => hideLoading(ol), 3000);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,198 @@
+name = "vocabuquiz-api"
+main = "src/worker.js"
+compatibility_date = "2026-02-16"
+workers_dev = true
+[assets]
+directory = "../client"
+binding = "ASSETS"
+html_handling = "none"
+not_found_handling = "none"
+
+# ★ いま配っている版の id を Worker から読めるようにする（2026-08-18）。
+#   トップ（index.html・11.5MB）は 資産側が ETag を付けてくれないので、
+#   **この版 id を そのまま ETag に使う**。中身が変わるのは deploy のときだけ
+#   なので、これで「変わっていなければ 送り直さない」が成り立つ。
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
+[[durable_objects.bindings]]
+name = "RT_ROOMS"
+class_name = "RealtimeRoom"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "RoomDO"
+
+[ai]
+binding = "AI"
+
+[vars]
+# 優先モデル（OPENAI_API_KEY がある場合）
+MODEL_NORMAL = "gpt-5-mini"
+MODEL_REASON = "gpt-5.2"
+# VQ AI ONE MAX (chat) は Meta Llama 系を優先
+CHAT_PROVIDER = "workers_ai"
+CHAT_MODEL_PRIMARY = "@cf/meta/llama-4-scout-17b-16e-instruct"
+CHAT_MODEL_REASONING = "@cf/meta/llama-4-scout-17b-16e-instruct"
+CHAT_MAX_TOKENS_NORMAL = "8192"
+CHAT_MAX_TOKENS_REASONING = "8192"
+# 将来的に Meta 系の OpenAI-compatible endpoint を使う場合は secret / vars で切替
+# CHAT_API_BASE = "https://example.meta.endpoint/v1"
+# wrangler secret put CHAT_API_KEY
+# Workers AI フォールバックモデル（OPENAI_API_KEY が無い場合）
+AI_MODEL_NORMAL = "@cf/meta/llama-3.1-8b-instruct-fp8-fast"
+AI_MODEL_REASONING = "@cf/meta/llama-3.1-8b-instruct"
+SUPPORT_AI_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct"
+AI_MODEL_VISION = "@cf/meta/llama-3.2-11b-vision-instruct"
+SCAN_VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct"
+AI_MODEL_LLAVA = "@cf/llava-hf/llava-1.5-7b-hf"
+SCAN_TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+SCAN_VERIFY_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+PRESET_BUILD_MODEL = "@cf/moonshotai/kimi-k2.6"
+PRESET_BUILD_MODEL_FALLBACK = "@cf/zai-org/glm-4.7-flash"
+DATA_PACK_SCHEDULE_ENABLED = "0"
+PACK_SOURCE_URL = "https://rintyblog-alt.github.io/VocabularyQuize2026/"
+WEB_PUSH_VAPID_PUBLIC_KEY = "BM7iNBmLuUTpT5EEpt-e_uUmRWyGwfcfm-IjYCpWYDzn9TmKB3tdRdyYTWcHotz08agbVVXuWrCv7Xjw5AtERio"
+WEB_PUSH_SUBJECT = "mailto:notify@vocabuquiz.app"
+# SearXNG (Render.com) — Deep Search 用 Web 検索バックエンド
+SEARXNG_URL = "https://vocabuquiz-search.onrender.com"
+# Sede Pages Deploy — アカウント ID は秘密ではないのでここに置く
+CF_ACCOUNT_ID = "1655c547a7bf146d63095abdc576ea50"
+
+# CF_PAGES_API_TOKEN は **ここに書かない**。
+#   用途: Worker 実行時の runtime secret（env.CF_PAGES_API_TOKEN を
+#         worker.js の handleSedeDeploy と /api/sede/list-models が読む）。
+#         デプロイ認証ではないので、ローカル環境変数では代用できない。
+#   登録: npx wrangler secret put CF_PAGES_API_TOKEN
+#   ローカル検証: server/.dev.vars に書く（.gitignore 済み）
+# 2026-07-28: 以前ここへ平文で置いていたトークンは **失効させること**。
+# 未設定なら Sede のデプロイと models 一覧が 500 を返すだけで、他機能は動く。
+
+# ── 新規登録 メールアドレス確認（Gmail 所有確認）: 公開設定値のみ（秘密値は下の secret put で登録） ──
+TURNSTILE_SITE_KEY = ""                              # 公開サイトキー（未設定なら widget 非表示・登録は動作）。クライアントは config.public.js の turnstile.siteKey を参照
+EMAIL_FROM_NAME = "VocabuQuiz"
+EMAIL_FROM_ADDRESS = "verify@mail.vocabuquiz.app"
+APP_BASE_URL = "https://vocabuquiz.app"
+# ── プリセット AI（LUMI）の使用制限 ──────────────────────────────
+# 実測から決めた値（2026-08-12 の計測。無料枠の供給から逆算）。
+#   無料 … 1 日 10 本 / 週 40 本    有料 … 1 日 100 本 / 週 400 本
+# 0 は「まだ決めていない」＝ 画面に「上限は未設定」と出る。
+# ここを空にすると 無制限のように見えるので、**必ず値を入れておくこと。**
+LUMI_DAILY_LIMIT = "10"
+LUMI_WEEKLY_LIMIT = "40"
+LUMI_DAILY_LIMIT_FREE = "10"
+LUMI_WEEKLY_LIMIT_FREE = "40"
+LUMI_DAILY_LIMIT_PAID = "100"
+LUMI_WEEKLY_LIMIT_PAID = "400"
+# 管理者を 無制限にするか。既定は 0（＝管理者にも 上の上限を そのまま見せる）。
+# 1 にすると、管理者の画面だけ「無制限」に戻る。
+LUMI_ADMIN_UNLIMITED = "0"
+
+TERMS_VERSION = "2026-08-10"
+PRIVACY_VERSION = "2026-08-10"
+OTP_EXPIRES_SECONDS = "600"
+OTP_RESEND_COOLDOWN_SECONDS = "30"
+OTP_MAX_RESENDS = "3"
+OTP_MAX_FAILED_ATTEMPTS = "5"
+# 秘密値（コミット禁止・実値はコマンドで登録。RESEND/TURNSTILE 未設定時は安全側=メール送信不可/Turnstile検証スキップ）:
+#   npx wrangler secret put RESEND_API_KEY
+#   npx wrangler secret put TURNSTILE_SECRET_KEY
+#   npx wrangler secret put OTP_PEPPER
+#   npx wrangler secret put REGISTRATION_SESSION_SECRET
+
+# Web Push の秘密鍵は secret で設定
+# wrangler secret put WEB_PUSH_VAPID_PRIVATE_KEY
+
+# data_pack 管理APIのトークン（本番は wrangler secret put DATA_PACK_ADMIN_TOKEN 推奨）
+# DATA_PACK_ADMIN_TOKEN = "change-me"
+
+# ★ www.vocabuquiz.app を この Worker で配る（2026-08-18）。
+#   これまで 画面は GitHub Pages、API は Worker と 2 か所に分かれていた。
+#   そのため 画面を直すたびに GitHub へ push が要り、push のたびに
+#   繋がっていた自動ビルドが **この Worker を静的配信だけの版で上書きし、
+#   secret を全部消して API を落としていた**（今日 4 回起きた）。
+#   ここへ寄せると deploy 1 本で両方出る。push しないので鍵も消えない。
+#   さらに client/ を丸ごと配るので、**配り忘れ**（音のファイル等）が起きない。
+[[routes]]
+pattern = "www.vocabuquiz.app/*"
+zone_id = "d90ab7dd21d497b452a313a04edb26fd"
+
+# ★ www 無しも 同じ Worker で配る（2026-08-19）。
+#   これが無いと vocabuquiz.app は この Worker を通らず、
+#   ゾーンの元の配り先（GitHub Pages 時代の残り）へ行ってしまう。
+#   利用者は www 無しで開いていたので、**直したものが 1 つも届いていなかった**。
+#   丸一日 「直った」「変わっていない」を繰り返した原因がこれ。
+[[routes]]
+pattern = "vocabuquiz.app/*"
+zone_id = "d90ab7dd21d497b452a313a04edb26fd"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vocabuquiz_auth"
+database_id = "fe6346ac-dc7d-4a69-90a6-1919456716b2"
+remote = true
+
+# 例: data_pack 保存先KV
+# [[kv_namespaces]]
+# binding = "SEARCH_KV"
+# id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# preview_id = "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+
+# 例: 巨大packをR2で運用する場合（任意）
+# [[r2_buckets]]
+# binding = "PACK_R2"
+# bucket_name = "vocabuquiz-pack"
+# preview_bucket_name = "vocabuquiz-pack-preview"
+
+# 投稿へ添える画像の置き場所。
+# 画像は D1 へ入れない（1 件 2048 字の文字列しか持てず、行も肥大するため）。
+# ここへ実体を置き、投稿には /api/media/<key> の URL だけを持たせる。
+#
+# ★★ いまはコメントアウトしてある ★★
+# 理由: このアカウントは **R2 が未有効**で、バケットを作れない
+#       （API が 10042 Please enable R2 through the Cloudflare Dashboard を返す）。
+#       ここを有効にしたまま本番へ deploy すると、**同じ 10042 で失敗する**。
+#       実際、本番 vocabuquiz-api に現在デプロイされている bindings に
+#       r2_bucket は 1 つも無い（＝今まで一度も通っていない）。
+#
+# 戻す手順（R2 を有効化したあと）:
+#   1) ダッシュボードで R2 を有効化
+#   2) npx wrangler login をやり直し、権限一覧に r2 が出ることを確認
+#      （いまの資格情報には r2 の権限が無い）
+#   3) npx wrangler r2 bucket create vocabuquiz-media
+#      npx wrangler r2 bucket create vocabuquiz-media-preview
+#   4) 下の 4 行のコメントを外す
+#
+# R2 が無い間は D1（media_blobs）が肩代わりする。読み出しは
+# R2 →（無ければ）D1 の順に見るので、あとから R2 を足しても既存の分は消えない。
+# [[r2_buckets]]
+# binding = "MEDIA_R2"
+# bucket_name = "vocabuquiz-media"
+# preview_bucket_name = "vocabuquiz-media-preview"
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[migrations]]
+tag = "rt-room-v1"
+new_classes = ["RealtimeRoom"]
+
+[[migrations]]
+tag = "room-do-v1"
+new_classes = ["RoomDO"]
+
+# ── 写真・動画・ファイルの 3 つめの 置き場（2026-08-19）──────────────
+#   置き場は 上から順に 選ぶ:
+#     ① R2  … 10GB・転送量 0 円。**いちばん良い**が いま 未有効（下を見よ）
+#     ② D1  … 5GB のうち 3GB まで。いま ここだけを 使っている
+#     ③ KV  … 1GB。D1 が 一杯のときの 受け皿
+#   3 つとも 「追加料金なし の枠」の 内側で 止めてある（超えると 課金される契約なので）。
+#
+#   ★ KV の 中身を 書く仕組みは 前から src/worker.js に 在ったが、
+#     **一度も 繋がれていなかった**（名前空間が 無かった）。ここで 繋ぐ。
+#   ★ KV は 書き換えの 反映に 最大 60 秒 かかる。ただし 鍵は 毎回 新しく作る
+#     （使い回さない）ので、あげた直後に 読めない ということは 起きない。
+
+[[kv_namespaces]]
+binding = "MEDIA_KV"
+id = "26c8b32cf50c4d40b4428fe2b19cce8d"

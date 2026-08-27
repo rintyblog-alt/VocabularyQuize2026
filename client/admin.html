@@ -1,0 +1,1618 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>VocabuQuiz Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50:'#f0f5ff',100:'#dde8ff',200:'#c0d4ff',300:'#95b6ff',
+          400:'#6492ff',500:'#2b70ef',600:'#2250df',700:'#1a40b5',
+          800:'#13318d',900:'#0e266a',950:'#07194e'
+        }
+      },
+      fontFamily: {
+        sans: ['Inter','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','sans-serif']
+      }
+    }
+  }
+}
+</script>
+<style>
+  .text-body { color: #3d4b5f; }
+  body { font-size: 18px; line-height: 2.0; }
+  .lead { line-height: 1.6; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body class="bg-gray-50 font-sans text-body">
+
+<!-- ══ ログイン ══════════════════════════════════════════════════════ -->
+<div id="scLogin" class="min-h-screen flex items-center justify-center px-6" hidden>
+  <div class="w-full max-w-md bg-white rounded-xl border border-slate-200 p-6 shadow-sm leading-normal">
+    <h1 class="text-3xl font-bold text-slate-900 mb-1">VocabuQuiz Admin</h1>
+    <p class="text-sm text-slate-500 mb-6">管理者専用です。</p>
+    <div id="loginAlert" class="mb-4" hidden></div>
+    <form id="loginForm" class="space-y-4">
+      <div class="leading-normal">
+        <label for="loginEmail" class="block text-sm font-medium text-slate-700 mb-1.5">メールアドレス</label>
+        <input id="loginEmail" type="email" autocomplete="username" required
+               class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500/50 caret-primary-500">
+      </div>
+      <div class="leading-normal">
+        <label for="loginPass" class="block text-sm font-medium text-slate-700 mb-1.5">パスワード</label>
+        <input id="loginPass" type="password" autocomplete="current-password" required
+               class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500/50 caret-primary-500">
+      </div>
+      <button type="submit"
+              class="w-full inline-flex items-center justify-center gap-2 h-12 px-6 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">ログイン</button>
+    </form>
+    <div class="mt-6 pt-4 border-t border-slate-200">
+      <button id="btnShowBootstrap" type="button" class="text-sm text-slate-500 hover:text-slate-700 cursor-pointer">はじめての owner を設定する</button>
+      <form id="bootstrapForm" class="space-y-4 mt-4" hidden>
+        <div class="leading-normal">
+          <label for="bsEmail" class="block text-sm font-medium text-slate-700 mb-1.5">owner のメールアドレス</label>
+          <input id="bsEmail" type="email" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg">
+        </div>
+        <div class="leading-normal">
+          <label for="bsToken" class="block text-sm font-medium text-slate-700 mb-1.5">設定用トークン（設定済みの場合のみ）</label>
+          <input id="bsToken" type="password" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg">
+        </div>
+        <div class="leading-normal">
+          <label for="bsPass" class="block text-sm font-medium text-slate-700 mb-1.5">決めるパスワード（12 文字以上）</label>
+          <input id="bsPass" type="password" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg">
+        </div>
+        <button type="submit" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">設定する</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 二要素認証 ════════════════════════════════════════════════════ -->
+<div id="scTotp" class="min-h-screen flex items-center justify-center px-6" hidden>
+  <div class="w-full max-w-md bg-white rounded-xl border border-slate-200 p-6 shadow-sm leading-normal">
+    <h1 class="text-3xl font-bold text-slate-900 mb-1">二要素認証</h1>
+    <p class="text-sm text-slate-500 mb-6" id="totpLead">認証アプリのコードを入れてください。</p>
+    <div id="totpAlert" class="mb-4" hidden></div>
+    <div id="totpSetupBox" class="mb-5" hidden>
+      <div class="flex items-start gap-3 p-4 bg-primary-50 border border-primary-200 text-primary-800 rounded-lg mb-4 lead">
+        <span class="text-sm">認証アプリ（Google Authenticator・1Password・iPhone の「パスワード」など）に下の鍵を登録すると、6 桁のコードが出ます。スマホなら下のリンクを押すだけで渡せます。QR は出していません（外部の部品を読み込まないため）。<b>この画面を読み直すと登録し直しになるので、登録し終えるまで閉じないでください。</b></span>
+      </div>
+      <div class="leading-normal">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">鍵（Base32）</label>
+        <code id="totpSecret" class="block px-3 py-2 text-sm bg-gray-50 border border-slate-200 rounded-lg break-all"></code>
+      </div>
+      <div class="leading-normal mt-3">
+        <label class="block text-sm font-medium text-slate-700 mb-1.5">otpauth URL</label>
+        <code id="totpUrl" class="block px-3 py-2 text-xs bg-gray-50 border border-slate-200 rounded-lg break-all"></code>
+      </div>
+    </div>
+    <form id="totpForm" class="space-y-4">
+      <div class="leading-normal">
+        <label for="totpCode" class="block text-sm font-medium text-slate-700 mb-1.5">6 桁のコード</label>
+        <input id="totpCode" inputmode="numeric" maxlength="6" required
+               class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500/50 caret-primary-500">
+      </div>
+      <button type="submit" class="w-full inline-flex items-center justify-center gap-2 h-12 px-6 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">確認する</button>
+    </form>
+  </div>
+</div>
+
+<!-- ══ 本体 ══════════════════════════════════════════════════════════ -->
+<div id="scApp" class="flex h-screen" hidden>
+  <aside class="w-64 bg-white border-r border-slate-200 flex-shrink-0 flex flex-col h-screen">
+    <div class="px-5 py-5 leading-normal">
+      <div class="text-base font-bold text-slate-900">VocabuQuiz Admin</div>
+      <div class="text-xs text-slate-500 mt-0.5" id="navEnv"></div>
+    </div>
+    <nav aria-label="メインナビゲーション" class="flex-1 overflow-y-auto px-3 pb-4" id="navList"></nav>
+    <div class="mt-auto border-t border-slate-200 px-3 py-3 leading-normal">
+      <div class="px-2 pb-2">
+        <div class="text-sm font-medium text-slate-900" id="navWho"></div>
+        <div class="text-xs text-slate-500" id="navRole"></div>
+      </div>
+      <button id="btnLogout" type="button"
+              class="w-full inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">ログアウト</button>
+    </div>
+  </aside>
+
+  <main class="flex-1 overflow-y-auto">
+    <div class="max-w-7xl mx-auto px-8 py-12">
+      <div id="pageAlert" class="mb-6" hidden></div>
+      <h1 id="pageTitle" class="text-3xl font-bold text-slate-900 leading-normal"></h1>
+      <p id="pageLead" class="text-sm text-slate-500 mt-1 mb-8 lead"></p>
+      <div id="pageBody"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ══ 再認証 ════════════════════════════════════════════════════════ -->
+<div id="reauthWrap" class="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center px-6" hidden>
+  <div class="w-full max-w-md bg-white rounded-xl border border-slate-200 p-6 shadow-xl leading-normal" role="dialog" aria-modal="true" aria-labelledby="reauthTitle">
+    <h2 id="reauthTitle" class="text-xl font-bold text-slate-900 mb-1">もう一度ご本人確認</h2>
+    <p class="text-sm text-slate-500 mb-5 lead">この操作は取り消しの効きにくいものです。パスワードか認証アプリのコードを入れてください。</p>
+    <div id="reauthAlert" class="mb-4" hidden></div>
+    <form id="reauthForm" class="space-y-4">
+      <div class="leading-normal">
+        <label for="reauthPass" class="block text-sm font-medium text-slate-700 mb-1.5">パスワード</label>
+        <input id="reauthPass" type="password" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg">
+      </div>
+      <div class="leading-normal">
+        <label for="reauthCode" class="block text-sm font-medium text-slate-700 mb-1.5">または 6 桁のコード</label>
+        <input id="reauthCode" inputmode="numeric" maxlength="6" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg">
+      </div>
+      <div class="flex gap-3">
+        <button type="submit" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">確認する</button>
+        <button type="button" id="reauthCancel" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">やめる</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════
+   VocabuQuiz Admin — 画面（2026-08-18）
+
+   ★ ここでボタンを隠すのは **飾り**であって、権限制御ではない。
+     権限はすべてサーバ（/api/admin/*）で確かめている。
+     ここでの出し分けは「押せないものを見せない」ための親切にすぎない。
+   ★ 生成物の中身は、そもそも API から返ってこない。ここでも出さない。
+   ══════════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  var ME = null;
+  var REASONS = [];
+
+  /* ── 小道具 ─────────────────────────────────────────────────────── */
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s === undefined || s === null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function num(v) { var n = Number(v); return Number.isFinite(n) ? n : 0; }
+  function fmt(n) { return num(n).toLocaleString("ja-JP"); }
+  function bytes(b) {
+    b = num(b);
+    if (b < 1024) return b + " B";
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+    if (b < 1024 * 1024 * 1024) return (b / 1024 / 1024).toFixed(1) + " MB";
+    return (b / 1024 / 1024 / 1024).toFixed(2) + " GB";
+  }
+  function when(v) {
+    if (!v) return "—";
+    var d = typeof v === "number" ? new Date(v) : new Date(String(v));
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+  }
+  function alertBox(kind, text) {
+    var m = {
+      info: "bg-primary-50 border-primary-200 text-primary-800",
+      ok: "bg-emerald-50 border-emerald-200 text-emerald-800",
+      warn: "bg-amber-50 border-amber-200 text-amber-800",
+      err: "bg-red-50 border-red-200 text-red-800"
+    };
+    return '<div class="flex items-start gap-3 p-4 ' + m[kind] + ' border rounded-lg lead">'
+      + '<span class="text-sm">' + esc(text) + "</span></div>";
+  }
+  function show(el, html, kind) {
+    if (!html) { el.hidden = true; el.innerHTML = ""; return; }
+    el.innerHTML = alertBox(kind || "err", html);
+    el.hidden = false;
+  }
+  function badge(text, tone) {
+    var t = {
+      slate: "bg-slate-100 text-slate-700", green: "bg-emerald-100 text-emerald-800",
+      amber: "bg-amber-100 text-amber-800", red: "bg-red-100 text-red-800",
+      blue: "bg-primary-100 text-primary-800"
+    }[tone || "slate"];
+    return '<span class="' + t + ' px-3 py-1 rounded-full text-xs font-medium">' + esc(text) + "</span>";
+  }
+  function card(inner, cls) {
+    return '<div class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm ' + (cls || "") + '">' + inner + "</div>";
+  }
+  function h2(t) { return '<h2 class="text-xl font-bold text-slate-900 leading-normal mb-4">' + esc(t) + "</h2>"; }
+  function empty(t) { return '<div class="text-base text-slate-500 text-center py-16 lead">' + esc(t) + "</div>"; }
+  function table(headers, rows) {
+    if (!rows.length) return empty("表示するものがありません。");
+    return '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden">'
+      + '<div class="overflow-x-auto"><table class="w-full">'
+      + '<thead><tr class="border-b border-slate-200 bg-gray-50">'
+      + headers.map(function (h) {
+          return '<th scope="col" class="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap">' + esc(h) + "</th>";
+        }).join("")
+      + "</tr></thead><tbody>"
+      + rows.map(function (r) {
+          return '<tr class="hover:bg-gray-50 transition-colors border-b border-slate-100 last:border-0">'
+            + r.map(function (c) { return '<td class="py-3 px-4 text-sm align-top">' + c + "</td>"; }).join("")
+            + "</tr>";
+        }).join("")
+      + "</tbody></table></div></div>";
+  }
+
+  /* ── API ────────────────────────────────────────────────────────── */
+  var pendingRetry = null;
+  function api(path, opts) {
+    opts = opts || {};
+    var init = { method: opts.method || "GET", credentials: "same-origin", headers: {} };
+    if (init.method !== "GET") {
+      init.headers["Content-Type"] = "application/json";
+      /* 別サイトからは付けられないヘッダ。CSRF よけ。 */
+      init.headers["X-VQ-Admin"] = "1";
+      init.body = JSON.stringify(opts.body || {});
+    }
+    return fetch("/api/admin/" + path, init).then(function (r) {
+      return r.json().catch(function () { return { ok: false, code: "BAD_JSON" }; })
+        .then(function (j) { j.__status = r.status; return j; });
+    });
+  }
+  /* 壊す操作は、断られたら **再認証を出してからもう一度**。 */
+  function apiGuarded(path, opts) {
+    return api(path, opts).then(function (j) {
+      if (j && j.code === "REAUTH_REQUIRED") {
+        return askReauth().then(function (okd) {
+          if (!okd) return { ok: false, code: "CANCELLED", message: "やめました。" };
+          return api(path, opts);
+        });
+      }
+      return j;
+    });
+  }
+  function askReauth() {
+    return new Promise(function (resolve) {
+      pendingRetry = resolve;
+      $("reauthPass").value = ""; $("reauthCode").value = "";
+      $("reauthAlert").hidden = true;
+      $("reauthWrap").hidden = false;
+      $("reauthPass").focus();
+    });
+  }
+  $("reauthCancel").addEventListener("click", function () {
+    $("reauthWrap").hidden = true;
+    if (pendingRetry) { pendingRetry(false); pendingRetry = null; }
+  });
+  $("reauthForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    api("auth/reauth", { method: "POST", body: { password: $("reauthPass").value, code: $("reauthCode").value } })
+      .then(function (j) {
+        if (!j.ok) { show($("reauthAlert"), j.message || "確認できませんでした。"); return; }
+        $("reauthWrap").hidden = true;
+        if (pendingRetry) { pendingRetry(true); pendingRetry = null; }
+      });
+  });
+
+  /* ── 画面の一覧。**ここに載せたものは必ずナビから行ける。** ────── */
+  var PAGES = [
+    { key: "dashboard", path: "/admin", label: "ダッシュボード", perm: "metrics.view",
+      lead: "対処が要るものだけを上に出しています。" },
+    { key: "users", path: "/admin/users", label: "ユーザー管理", perm: "users.view",
+      lead: "メールアドレスは既定でマスクしています。展開すると監査ログに残ります。" },
+    { key: "admins", path: "/admin/admins", label: "管理者管理", perm: "admins.view",
+      lead: "owner は常に 1 人以上いる必要があります。" },
+    { key: "providers", path: "/admin/providers", label: "AI消費とレート制限", perm: "metrics.view",
+      lead: "実運用でいちばん見る画面です。上限値はこの画面から変えられます。" },
+    { key: "lumi", path: "/admin/lumi", label: "Lumi稼働率と利用制限", perm: "metrics.view",
+      lead: "制限の変更はデプロイなしで効きます（30 秒以内）。" },
+    { key: "flags", path: "/admin/flags", label: "機能フラグ", perm: "flags.view",
+      lead: "左サイドパネルはこの表から描かれます。off にすると URL 直打ちでも入れません。" },
+    { key: "quality", path: "/admin/quality", label: "生成品質", perm: "metrics.view",
+      lead: "エラーコードと件数だけです。生成物の中身は出しません。" },
+    { key: "storage", path: "/admin/storage", label: "ストレージ", perm: "metrics.view",
+      lead: "件数と容量だけです。ファイル名も中身も出しません。" },
+    { key: "content", path: "/admin/content", label: "コンテンツ管理", perm: "content.view",
+      lead: "中身の確認は、確認画面を挟んだうえで監査ログに残ります。" },
+    { key: "announcements", path: "/admin/announcements", label: "お知らせ", perm: "announcements.view",
+      lead: "公開すると、公式サイトのニュースと同じ置き場所へ入ります。" },
+    { key: "audit", path: "/admin/audit", label: "監査ログ", perm: "audit.view",
+      lead: "追記のみです。編集・削除の口はありません。" },
+    { key: "downtime", path: "/admin/downtime", label: "ダウンタイム", perm: "system.downtime",
+      lead: "オンにすると全員ログアウトし、ログインも登録もできなくなります。理由はそのまま利用者へ出ます。" }
+  ];
+
+  function can(p) { return !!ME && ME.permissions.indexOf(p) >= 0; }
+
+  function buildNav(active) {
+    $("navList").innerHTML = PAGES.map(function (p) {
+      var okp = can(p.perm);
+      var cls = p.key === active
+        ? "flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-primary-500 bg-primary-50 rounded-lg"
+        : "flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-body hover:bg-gray-50 rounded-lg transition-colors";
+      if (!okp) {
+        return '<span class="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-300" title="権限がありません">'
+          + esc(p.label) + "</span>";
+      }
+      return '<a href="' + p.path + '" data-page="' + p.key + '" class="' + cls + '"'
+        + (p.key === active ? ' aria-current="page"' : "") + ">" + esc(p.label) + "</a>";
+    }).join("");
+  }
+
+  /* ── 画面の描画 ─────────────────────────────────────────────────── */
+  var RENDER = {};
+
+  RENDER.dashboard = function () {
+    return api("dashboard").then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var d = j.data;
+      var out = "";
+      /* 1. 警告 */
+      if (d.warnings.length) {
+        out += '<div class="space-y-3 mb-10">' + d.warnings.map(function (w) {
+          return alertBox(w.level === "high" ? "err" : w.level === "warn" ? "warn" : "info", w.text);
+        }).join("") + "</div>";
+      } else {
+        out += '<div class="mb-10">' + alertBox("ok", "対処が必要なものはありません。") + "</div>";
+      }
+      /* 2. 今日の数値 */
+      var t = d.today;
+      function stat(label, v, unit) {
+        var body = v === null || v === undefined
+          ? '<span class="text-base text-slate-500">まだ記録がありません</span>'
+          : '<span class="text-3xl font-bold text-slate-900">' + fmt(v) + "</span>"
+            + '<span class="text-sm text-slate-500 ml-1">' + esc(unit || "") + "</span>";
+        return card('<div class="text-xs font-medium text-slate-500 uppercase tracking-wider">' + esc(label) + "</div>"
+          + '<div class="mt-2 leading-normal">' + body + "</div>");
+      }
+      out += h2("今日の数値（" + esc(d.date) + " JST）");
+      out += '<div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-10">'
+        + stat("アクティブユーザー", t.activeUsers, "人")
+        + stat("新規登録", t.newUsers, "人")
+        + stat("生成件数", t.generations, "件")
+        + stat("Lumi セッション", t.lumiSessions, "回") + "</div>";
+      /* 3. 提供元の残枠（いちばん目立つ位置） */
+      out += h2("提供元の残枠");
+      out += table(["提供元", "モデル", "今日のリクエスト", "1日の上限", "到達率", "エラー"],
+        d.providers.map(function (p) {
+          var pct = p.percent === null ? '<span class="text-slate-500">上限は未設定</span>'
+            : badge(p.percent + "%", p.percent >= 95 ? "red" : p.percent >= 80 ? "amber" : "green");
+          return ['<span class="text-slate-900 font-medium">' + esc(p.provider) + "</span>",
+                  '<span class="text-body">' + esc(p.model) + "</span>",
+                  fmt(p.requests), p.rpdLimit > 0 ? fmt(p.rpdLimit) : "—", pct, fmt(p.errors)];
+        }));
+      /* 4. 生成の成否 */
+      out += '<div class="mt-10">' + h2("生成の成否（直近 7 日・提供元別）")
+        + table(["提供元", "総数", "publishable", "未完成"],
+            d.quality.map(function (q) {
+              return [esc(q.provider), fmt(q.total), fmt(q.pub), fmt(q.un)];
+            })) + "</div>";
+      /* 5. 監査ログ */
+      out += '<div class="mt-10">' + h2("直近の監査ログ")
+        + table(["日時", "管理者", "操作", "対象", "理由"],
+            d.audit.map(function (a) {
+              return [when(a.created_at), esc(a.admin_email), esc(a.action),
+                      esc(a.target_type) + " " + esc(a.target_id), esc(a.reason || "—")];
+            })) + "</div>";
+      out += '<div class="mt-10"><button type="button" data-act="rollup" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">集計をやり直す</button></div>';
+      return out;
+    });
+  };
+
+  RENDER.users = function () {
+    var q = new URLSearchParams(location.search);
+    return Promise.all([
+      api("users?" + q.toString()),
+      api("reason-categories")
+    ]).then(function (r) {
+      var j = r[0];
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      if (r[1] && r[1].ok) REASONS = r[1].categories || [];
+      var d = j.data;
+      var out = card(
+        '<div class="flex flex-wrap items-end gap-4">'
+        + '<div class="leading-normal"><label for="uq" class="block text-sm font-medium text-slate-700 mb-1.5">検索（ID / メール / 名前）</label>'
+        + '<input id="uq" value="' + esc(q.get("q") || "") + '" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-64"></div>'
+        + '<div class="leading-normal"><label for="ust" class="block text-sm font-medium text-slate-700 mb-1.5">状態</label>'
+        + '<div class="relative"><select id="ust" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+        + ["", "active", "suspended", "banned", "deleted"].map(function (s) {
+            return '<option value="' + s + '"' + ((q.get("state") || "") === s ? " selected" : "") + ">"
+              + (s === "" ? "すべて" : s) + "</option>";
+          }).join("")
+        + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+        + '<div class="leading-normal"><label for="usort" class="block text-sm font-medium text-slate-700 mb-1.5">並び替え</label>'
+        + '<div class="relative"><select id="usort" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+        + [["created", "登録日"], ["login", "最終ログイン"], ["gen", "生成回数"], ["reports", "通報数"]].map(function (s) {
+            return '<option value="' + s[0] + '"' + ((q.get("sort") || "created") === s[0] ? " selected" : "") + ">" + s[1] + "</option>";
+          }).join("")
+        + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+        + '<button type="button" data-act="usearch" class="h-11 inline-flex items-center justify-center gap-2 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">絞り込む</button>'
+        + "</div>");
+      out += '<div class="mt-8">' + table(
+        ["ユーザーID", "表示名", "メール", "状態", "生成回数", "通報", "登録日", ""],
+        d.users.map(function (u) {
+          var tone = u.state === "active" ? "green" : u.state === "suspended" ? "amber" : "red";
+          return ['<span class="text-slate-900 font-medium">' + esc(u.userId) + "</span>",
+            esc(u.displayId || "—"),
+            '<span class="text-body">' + esc(u.emailMasked || "—") + "</span>",
+            badge(u.state, tone), fmt(u.genCount), fmt(u.reportCount), when(u.createdAt),
+            '<button type="button" data-act="udetail" data-id="' + esc(u.userId) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">詳細</button>'];
+        })) + "</div>";
+      out += '<p class="text-sm text-slate-500 mt-4 lead">' + fmt(d.total) + " 人中 " + d.users.length + " 人を表示</p>";
+      out += '<div id="userDetail" class="mt-10"></div>';
+      return out;
+    });
+  };
+
+  /* ダウンタイムの 印。**画面（vq-downtime.js）と 同じ 7 つ**。
+     ずれると 管理画面で 選んだ 印と、利用者に 出る 印が 食い違う。 */
+  var DTICON = {
+    wrench:   { 名: "点検・整備", d: '<path d="M14.7 6.3a4 4 0 0 0 5 5l-8.4 8.4a2.1 2.1 0 0 1-3-3Z"/><path d="M14.7 6.3 17 4l3 3-2.3 2.3"/>' },
+    bolt:     { 名: "障害",       d: '<path d="M13 2 4 14h6l-1 8 9-12h-6Z"/>' },
+    cloud:    { 名: "サーバ",     d: '<path d="M17.5 19a4.5 4.5 0 0 0 .5-9 6 6 0 0 0-11.6 1.5A3.8 3.8 0 0 0 7 19Z"/>' },
+    shield:   { 名: "安全",       d: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6Z"/><path d="m9 12 2 2 4-4"/>' },
+    sparkles: { 名: "更新",       d: '<path d="m12 3 1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9Z"/><path d="m18.6 15 .7 1.7 1.7.7-1.7.7-.7 1.7-.7-1.7-1.7-.7 1.7-.7Z"/>' },
+    clock:    { 名: "定期",       d: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>' },
+    alert:    { 名: "緊急",       d: '<path d="M12 3 2.5 20h19Z"/><path d="M12 10v4M12 17v.5"/>' }
+  };
+  function dtSvg(k, cls) {
+    var it = DTICON[k] || DTICON.wrench;
+    return '<svg class="' + (cls || "w-6 h-6") + '" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + it.d + "</svg>";
+  }
+
+  /* ══ お知らせに 添える 画像・動画（2026-08-20）════════════════════
+     ★ あげ先は /api/admin/upload。中身の 見分けも 上限も **本体と 同じ**
+       （admin.js は 本体から 差してもらった 口を 呼ぶだけ）。
+     ★ 持ち主は VocabuQuiz 公式。 */
+  var AN_MEDIA = [];
+  function anPaintMedia() {
+    var box = $("anMedia"); if (!box) return;
+    box.innerHTML = AN_MEDIA.map(function (m, i) {
+      var 中 = m.kind === "video"
+        ? '<video src="' + esc(m.url) + '" muted playsinline preload="metadata" class="w-full h-full object-cover"></video>'
+        : '<img src="' + esc(m.url) + '" alt="" class="w-full h-full object-cover">';
+      return '<div class="relative w-28 h-28 rounded-xl border border-slate-200 overflow-hidden bg-gray-50">'
+        + 中
+        + '<button type="button" data-act="androp" data-i="' + i + '" aria-label="外す"'
+        + ' class="absolute top-1 right-1 w-7 h-7 inline-flex items-center justify-center rounded-full bg-white/90 border border-slate-200 text-slate-700 cursor-pointer">'
+        + '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>'
+        + "</button>"
+        + '<span class="absolute bottom-0 left-0 right-0 text-[10px] text-white bg-black/50 px-1 py-0.5 truncate">'
+        + esc(m.kind === "video" ? "動画" : "画像") + "</span></div>";
+    }).join("");
+  }
+  function anUpload(files) {
+    var msg = $("anUpMsg");
+    var list = Array.prototype.slice.call(files || []);
+    if (!list.length) return;
+    if (AN_MEDIA.length + list.length > 8) {
+      if (msg) msg.textContent = "8 つまでです。";
+      list = list.slice(0, Math.max(0, 8 - AN_MEDIA.length));
+      if (!list.length) return;
+    }
+    var 済 = 0;
+    var 次 = function () {
+      if (!list.length) {
+        if (msg) msg.textContent = 済 ? (済 + " 件 あげました。") : "";
+        anPaintMedia();
+        return;
+      }
+      var f = list.shift();
+      if (msg) msg.textContent = "あげています… " + (f.name || "");
+      fetch("/api/admin/upload", {
+        method: "POST",
+        headers: {
+          "x-vq-admin": "1",
+          "content-type": f.type || "application/octet-stream",
+          "x-file-name": encodeURIComponent(f.name || "file")
+        },
+        body: f,
+        credentials: "same-origin"
+      }).then(function (r) { return r.json().catch(function () { return {}; }); })
+        .then(function (j) {
+          if (!j || !j.ok || !j.url) {
+            if (msg) msg.textContent = (j && j.message) || "あげられませんでした。";
+            anPaintMedia();
+            return;
+          }
+          AN_MEDIA.push({ kind: j.kind === "video" ? "video" : "image", url: j.url,
+                          name: String(f.name || ""), bytes: Number(j.bytes || 0) });
+          済++;
+          anPaintMedia();
+          次();
+        }).catch(function () {
+          if (msg) msg.textContent = "あげられませんでした。";
+        });
+    };
+    次();
+  }
+  document.addEventListener("change", function (e) {
+    if (!e.target || e.target.id !== "anFile") return;
+    anUpload(e.target.files);
+    try { e.target.value = ""; } catch (x) {}
+  });
+
+  function badgeName(b) {
+    return { official: "青と金の重ね（official）", gold: "ゴールド", blue: "ブルー" }[String(b || "")] || "なし";
+  }
+  function badgeLabel(b) {
+    var k = String(b || "");
+    if (!k) return '<span class="text-slate-500">なし</span>';
+    if (k === "official") return badge("青と金の重ね", "amber");
+    if (k === "gold") return badge("ゴールド", "amber");
+    if (k === "blue") return badge("ブルー", "blue");
+    return esc(k);
+  }
+
+  function renderUserDetail(uid, 知らせ, 種) {
+    var host = $("userDetail");
+    host.innerHTML = '<div class="text-base text-slate-500 py-8 lead">読み込んでいます…</div>';
+    api("users/" + encodeURIComponent(uid)).then(function (j) {
+      if (!j.ok) { host.innerHTML = alertBox("err", j.message || "読み込めませんでした。"); return; }
+      var d = j.data;
+      function row(k, v) {
+        return '<div class="flex justify-between gap-4 py-2 border-b border-slate-100 last:border-0">'
+          + '<span class="text-sm text-slate-500">' + esc(k) + "</span>"
+          + '<span class="text-sm text-slate-900 text-right">' + v + "</span></div>";
+      }
+      var meta = row("登録日", when(d.createdAt))
+        + row("最終ログイン", when(d.lastLoginAt))
+        + row("状態", badge(d.state, d.state === "active" ? "green" : d.state === "suspended" ? "amber" : "red"))
+        + row("認証方式", esc(d.authMethod))
+        + row("暗証番号", d.hasPin ? "設定あり" : "なし")
+        + row("メールアドレス", esc(d.emailMasked || "—")
+            + (d.hasEmail && can("users.reveal_email")
+              ? ' <button type="button" data-act="reveal" data-id="' + esc(d.userId) + '" class="ml-2 text-primary-500 hover:text-primary-700 text-sm cursor-pointer underline">展開</button>' : ""))
+        + row("BYOK", d.byokConfigured ? "設定あり（鍵は表示しません）" : "なし")
+        + row("公式マーク", badgeLabel(d.badge)
+            + (d.badge && d.badgeGrantedBy ? ' <span class="text-slate-500">（' + esc(d.badgeGrantedBy) + "）</span>" : ""));
+
+      var usage = d.generation
+        ? row("生成回数（累計）", fmt(d.generation.total)) + row("直近 24 時間", fmt(d.generation.daily))
+          + row("直近 7 日", fmt(d.generation.weekly))
+        : row("生成回数", '<span class="text-slate-500">まだ記録がありません</span>');
+      usage += row("Lumi セッション", d.lumi.sessions === null ? '<span class="text-slate-500">まだ記録がありません</span>' : fmt(d.lumi.sessions));
+      usage += row("公開プリセット", d.publicPresets === null ? "—" : fmt(d.publicPresets));
+      usage += row("通報された回数", fmt(d.reportedCount));
+      usage += row("ストレージ", d.storage ? fmt(d.storage.files) + " 個 / " + bytes(d.storage.bytes) : "—");
+      d.byFeature.forEach(function (f) { usage += row("機能別: " + f.feature, fmt(f.count)); });
+
+      /* ★ 公式マーク（2026-08-20）。
+         訴え「admin ダッシュボードから 公式マーク（青 または 金色）を
+         付与できるように。一般アカウントに。通常は 無だけど、
+         あとから こちら側が 付与できる形にも したい」
+         青と金の 重ね（official）は owner だけ。 */
+      var badgeBox = "";
+      if (can("users.badge")) {
+        badgeBox = card(h2("公式マーク")
+          + '<div class="flex items-start gap-3 p-4 bg-primary-50 border border-primary-200 text-primary-800 rounded-lg mb-5 lead"><span class="text-sm">名前の <b>左</b> に出ます。'
+          + "本体へ効くまで最大 60 秒かかります（本体は 60 秒ごとに読み直します）。</span></div>"
+          + '<div class="space-y-4 leading-normal">'
+          + '<div><label for="bgKind" class="block text-sm font-medium text-slate-700 mb-1.5">種類</label>'
+          + '<div class="relative"><select id="bgKind" class="w-full appearance-none pl-3 pr-10 py-2 text-base border border-slate-300 rounded-lg">'
+          + [["", "なし（既定）"], ["blue", "ブルー"], ["gold", "ゴールド"],
+             ["official", "青と金の重ね（official・owner のみ）"]].map(function (o) {
+              return '<option value="' + esc(o[0]) + '"' + (String(d.badge || "") === o[0] ? " selected" : "")
+                + (o[0] === "official" && ME.role !== "owner" ? " disabled" : "") + ">" + esc(o[1]) + "</option>";
+            }).join("")
+          + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+          + '<div><label for="bgNote" class="block text-sm font-medium text-slate-700 mb-1.5">覚え書き（任意）</label>'
+          + '<input id="bgNote" type="text" maxlength="200" value="' + esc(d.badgeNote || "") + '" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg"></div>'
+          + "</div>"
+          + '<div class="flex flex-wrap gap-3 mt-6">'
+          + '<button type="button" data-act="badge" data-id="' + esc(d.userId) + '" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">この内容にする</button>'
+          + "</div>");
+      }
+
+      var ops = "";
+      if (can("users.suspend") || can("users.ban") || can("users.delete")) {
+        ops = card(h2("操作")
+          + '<div class="flex items-start gap-3 p-4 bg-primary-50 border border-primary-200 text-primary-800 rounded-lg mb-5 lead"><span class="text-sm">一時停止も Ban も <b>取り消せます</b>。恒久削除だけは owner のみで、別の操作です。</span></div>'
+          + '<div class="space-y-4 leading-normal">'
+          + '<div><label for="opCat" class="block text-sm font-medium text-slate-700 mb-1.5">理由カテゴリ（必須）</label>'
+          + '<div class="relative"><select id="opCat" class="w-full appearance-none pl-3 pr-10 py-2 text-base border border-slate-300 rounded-lg">'
+          + '<option value="">選んでください</option>'
+          + REASONS.filter(function (r) { return num(r.active); }).map(function (r) {
+              return '<option value="' + esc(r.key) + '">' + esc(r.label) + "</option>"; }).join("")
+          + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+          + '<div><label for="opText" class="block text-sm font-medium text-slate-700 mb-1.5">理由（必須・自由記述）</label>'
+          + '<textarea id="opText" rows="3" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg"></textarea></div>'
+          + '<div><label for="opScope" class="block text-sm font-medium text-slate-700 mb-1.5">停止範囲（一時停止のとき必須）</label>'
+          + '<div class="relative"><select id="opScope" class="w-full appearance-none pl-3 pr-10 py-2 text-base border border-slate-300 rounded-lg">'
+          + '<option value="login_blocked">ログイン不可</option><option value="generation_blocked">生成のみ不可</option><option value="publish_blocked">公開のみ不可</option>'
+          + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+          + '<div><label for="opUntil" class="block text-sm font-medium text-slate-700 mb-1.5">期限（任意・未指定なら無期限）</label>'
+          + '<input id="opUntil" type="datetime-local" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg"></div>'
+          + '<div><label class="inline-flex items-center gap-2"><input id="opNotify" type="checkbox" class="w-4 h-4"><span class="text-sm text-slate-700">本人に通知する</span></label></div>'
+          + "</div>"
+          + '<div class="flex flex-wrap gap-3 mt-6">'
+          + (can("users.suspend") ? '<button type="button" data-act="op" data-op="suspend" data-id="' + esc(d.userId) + '" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">一時停止</button>' : "")
+          + (can("users.ban") ? '<button type="button" data-act="op" data-op="ban" data-id="' + esc(d.userId) + '" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-red-700 border border-red-200 rounded-lg hover:bg-red-50 cursor-pointer">Ban（恒久・取り消せます）</button>' : "")
+          + (can("users.ban") ? '<button type="button" data-act="op" data-op="unban" data-id="' + esc(d.userId) + '" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">解除</button>' : "")
+          + (can("users.delete") ? '<button type="button" data-act="op" data-op="delete" data-id="' + esc(d.userId) + '" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-red-700 border border-red-200 rounded-lg hover:bg-red-50 cursor-pointer">削除（論理・30 日は戻せます）</button>' : "")
+          + (can("users.delete") ? '<button type="button" data-act="op" data-op="restore" data-id="' + esc(d.userId) + '" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">復元</button>' : "")
+          + (ME.role === "owner" ? '<button type="button" data-act="op" data-op="purge" data-id="' + esc(d.userId) + '" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-red-700 border border-red-200 rounded-lg hover:bg-red-50 cursor-pointer">恒久削除（owner のみ）</button>' : "")
+          + "</div>");
+      }
+      host.innerHTML = '<div id="udAlert" class="mb-6" hidden></div>'
+        + h2("ユーザー " + esc(d.userId) + "（" + esc(d.displayId || "名前なし") + "）")
+        + '<div class="grid grid-cols-1 md:grid-cols-2 gap-6">'
+        + card(h2("基本") + meta) + card(h2("利用状況") + usage) + "</div>"
+        + (badgeBox ? '<div class="mt-6">' + badgeBox + "</div>" : "")
+        + '<div class="mt-6">' + ops + "</div>"
+        + '<p class="text-sm text-slate-500 mt-6 lead">生成物の中身（問題文・書類の内容・氏名・金額）は、この画面には出しません。</p>';
+      /* ★ 描き直すと #udAlert ごと 作り直されるので、知らせは **描いたあと**に 出す。 */
+      if (知らせ) show($("udAlert"), 知らせ, 種 || "ok");
+      host.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  RENDER.admins = function () {
+    return api("admins").then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var out = "";
+      /* 1 人だけだと、認証アプリを失くしたとき **自分では戻せない**。
+         これは仕様（自分で外せたら二要素認証の意味が無い）なので、
+         詰まないように先に伝える。 */
+      var 生きている = (j.admins || []).filter(function (a) { return a.status === "active"; }).length;
+      if (生きている < 2) {
+        out += '<div class="mb-8">' + alertBox("warn",
+          "管理者があなた 1 人です。認証アプリを失くすと、自分では二要素認証を戻せません（自分で外せる作りにすると二要素認証の意味が無くなるため）。もう 1 人 招待しておくことをおすすめします。") + "</div>";
+      }
+      out += h2("管理者") + table(
+        ["メール", "表示名", "ロール", "二要素", "最終ログイン", "状態", ""],
+        j.admins.map(function (a) {
+          var acts = "";
+          if (can("admins.role_change") && !a.isSelf) {
+            acts += '<button type="button" data-act="role" data-id="' + esc(a.adminId) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer mr-2">ロール変更</button>';
+          }
+          if (can("admins.revoke") && !a.isSelf && a.status === "active") {
+            acts += '<button type="button" data-act="revoke" data-id="' + esc(a.adminId) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-red-700 border border-red-200 rounded-lg hover:bg-red-50 cursor-pointer mr-2">削除</button>';
+          }
+          /* 認証アプリを失くした人を戻す。**自分には出さない**（自分では外せない決まり）。 */
+          if (can("admins.role_change") && !a.isSelf && a.status === "active" && a.totpEnabled) {
+            acts += '<button type="button" data-act="totpreset" data-id="' + esc(a.adminId) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer mr-2">二要素をリセット</button>';
+          }
+          if (ME.role === "owner" && !a.isSelf && a.status === "active") {
+            acts += '<button type="button" data-act="transfer" data-id="' + esc(a.adminId) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">owner を譲る</button>';
+          }
+          return [esc(a.email), esc(a.displayName) + (a.isSelf ? " " + badge("自分", "blue") : ""),
+            badge(a.role, a.role === "owner" ? "blue" : "slate"),
+            a.totpEnabled ? badge("あり", "green") : badge("なし", "amber"),
+            when(a.lastLoginAt), badge(a.status, a.status === "active" ? "green" : "slate"), acts || "—"];
+        }));
+
+      if (can("admins.invite")) {
+        out += '<div class="mt-10">' + card(h2("招待")
+          + '<div class="flex flex-wrap items-end gap-4">'
+          + '<div class="leading-normal"><label for="invEmail" class="block text-sm font-medium text-slate-700 mb-1.5">メールアドレス</label>'
+          + '<input id="invEmail" type="email" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-72"></div>'
+          + '<div class="leading-normal"><label for="invRole" class="block text-sm font-medium text-slate-700 mb-1.5">ロール</label>'
+          + '<div class="relative"><select id="invRole" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+          + ["viewer", "moderator", "admin"].concat(ME.role === "owner" ? ["owner"] : [])
+              .concat((j.customRoles || []).map(function (r) { return r.role_key; }))
+              .map(function (r) { return '<option value="' + esc(r) + '">' + esc(r) + "</option>"; }).join("")
+          + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+          + '<button type="button" data-act="invite" class="h-11 inline-flex items-center justify-center gap-2 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">招待する</button>'
+          + "</div>"
+          + '<div id="inviteOut" class="mt-4"></div>') + "</div>";
+        out += '<div class="mt-6">' + h2("未受諾の招待") + table(
+          ["メール", "ロール", "期限", "状態", ""],
+          (j.invites || []).filter(function (i) { return !i.accepted_at; }).map(function (i) {
+            return [esc(i.email), esc(i.role), when(i.expires_at),
+              i.revoked_at ? badge("取り消し済み", "slate") : badge("未受諾", "amber"),
+              i.revoked_at ? "—" : '<button type="button" data-act="invrevoke" data-id="' + esc(i.invite_id) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">取り消す</button>'];
+          })) + "</div>";
+      }
+
+      if (can("admins.role_change")) {
+        out += '<div class="mt-10">' + card(h2("カスタムロール")
+          + '<p class="text-sm text-slate-500 mb-4 lead">権限にチェックを入れて名前を付けます。</p>'
+          + '<div class="flex flex-wrap items-end gap-4 mb-4">'
+          + '<div class="leading-normal"><label for="crKey" class="block text-sm font-medium text-slate-700 mb-1.5">キー（英数字）</label>'
+          + '<input id="crKey" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-48"></div>'
+          + '<div class="leading-normal"><label for="crName" class="block text-sm font-medium text-slate-700 mb-1.5">表示名</label>'
+          + '<input id="crName" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-56"></div>'
+          + '<button type="button" data-act="crsave" class="h-11 inline-flex items-center justify-center gap-2 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">保存する</button></div>'
+          + '<div class="grid grid-cols-2 md:grid-cols-3 gap-2">'
+          + (ME.allPermissions || []).map(function (p) {
+              return '<label class="inline-flex items-center gap-2"><input type="checkbox" data-cr="' + esc(p) + '" class="w-4 h-4"><span class="text-sm text-body">' + esc(p) + "</span></label>";
+            }).join("")
+          + "</div>"
+          + ((j.customRoles || []).length
+            ? '<div class="mt-6">' + table(["キー", "表示名", "権限"], j.customRoles.map(function (r) {
+                return [esc(r.role_key), esc(r.display_name), esc(r.permissions)]; })) + "</div>" : "")) + "</div>";
+      }
+      out += '<div class="mt-10">' + h2("権限マトリクス") + renderMatrix() + "</div>";
+      return out;
+    });
+  };
+
+  function renderMatrix() {
+    var roles = Object.keys(ME.rolePermissions || {});
+    return table(["権限"].concat(roles), (ME.allPermissions || []).map(function (p) {
+      return ['<span class="text-slate-900">' + esc(p) + "</span>"].concat(roles.map(function (r) {
+        return ME.rolePermissions[r].indexOf(p) >= 0
+          ? '<span class="text-emerald-700 font-medium">できる</span>'
+          : '<span class="text-slate-400">—</span>';
+      }));
+    }));
+  }
+
+  RENDER.providers = function () {
+    return api("providers").then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var d = j.data;
+      var out = "";
+      /* ══ いま 本番が 実際に 動かしている 中身（2026-08-20）══════════
+         ★ 下の 上限表は **手で入れる**もので、本体の 設定を 変えても
+           ついてこない。実際に 食い違っていた
+           （表「Quick Chat の 主は Gemini」／ 本番は workers_ai）。
+         ★ ここは **本体から そのまま 読んだ値**。ズレたら 名指しで 出す。 */
+      if (d.ズレ && d.ズレ.length) {
+        out += '<div class="space-y-3 mb-6">'
+          + alertBox("warn", "上限表と 本番が " + d.ズレ.length + " か所 食い違っています。"
+              + "表は 手で入れる値なので、本番を 変えたら ここも 直してください。")
+          + d.ズレ.map(function (z) { return alertBox("info", z.文); }).join("")
+          + "</div>";
+      } else if (d.実際) {
+        out += '<div class="mb-6">' + alertBox("ok", "上限表と 本番は そろっています。") + "</div>";
+      }
+      if (d.実際) {
+        var R = d.実際, 行 = [];
+        var QC = R.QuickChat || {};
+        行.push(["Quick Chat", esc(QC.提供元 || "—"),
+                 esc((QC.モデル || []).join(" / ") || "—"),
+                 QC.提供元 === "gemini" ? fmt(QC.鍵の本数) + " 本"
+                   + (QC.生成の鍵を借りている ? "（生成の鍵を借用）" : "（専用 " + fmt(QC.専用の鍵) + " 本）")
+                   : "—"]);
+        var G = R.生成 || {};
+        Object.keys(G).forEach(function (k) {
+          行.push(["生成（LUMI）", esc(k), esc((G[k].モデル || []).join(" / ") || "—"),
+                   fmt(G[k].鍵の本数) + " 本"]);
+        });
+        var L = R.音声会話 || {};
+        行.push(["音声会話（Lumi）", "gemini", esc(L.モデル || "—"),
+                 fmt(L.鍵の本数) + " 本 ／ 1 人 1 日 " + fmt(L.一日の上限) + " 回"]);
+        out += h2("いま本番が動かしている中身（本体から直に読んだ値）")
+          + table(["どこ", "提供元", "モデル", "鍵"], 行)
+          + '<p class="text-sm text-slate-500 mt-2 lead">ここは 設定を 変えると すぐ 変わります。'
+          + '下の 上限表（RPM / TPM / RPD）は 提供元が 決める値なので、手で 合わせてください。</p>'
+          + '<div class="mt-10"></div>';
+      }
+      out += '<div class="space-y-3 mb-8">' + d.notes.map(function (n) {
+        return alertBox("info", n); }).join("") + "</div>";
+      out += h2("提供元ごとの上限と今日の消費");
+      out += table(["提供元", "モデル", "RPM", "TPM", "RPD", "鍵の本数", "今日", "到達率", "上限で止める", ""],
+        d.limits.map(function (l) {
+          var u = d.today[l.provider] || { requests: 0 };
+          var cap = l.rpd * Math.max(1, l.keys);
+          var pct = cap > 0 ? Math.round(u.requests / cap * 100) : null;
+          return [
+            '<span class="text-slate-900 font-medium">' + esc(l.provider) + "</span>",
+            '<span class="text-body">' + esc(l.model) + "</span>",
+            l.rpm ? fmt(l.rpm) : "—", l.tpm ? fmt(l.tpm) : "—", l.rpd ? fmt(l.rpd) : "—",
+            fmt(l.keys), fmt(u.requests),
+            pct === null ? '<span class="text-slate-500">上限は未設定</span>'
+              : badge(pct + "%", pct >= 95 ? "red" : pct >= 80 ? "amber" : "green"),
+            l.enforce ? badge("止める", "red") : badge("記録だけ", "slate"),
+            can("limits.edit")
+              ? '<button type="button" data-act="plimit" data-id="' + esc(l.key) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">上限を変える</button>' : "—"
+          ];
+        }));
+      out += '<div id="plimitBox" class="mt-6"></div>';
+      out += '<div class="mt-10">' + h2("直近 30 日") + table(
+        ["日付", "提供元", "リクエスト", "入力トークン", "出力トークン", "エラー", "上限当たり"],
+        (d.daily || []).slice(0, 100).map(function (r) {
+          return [esc(r.date_jst), esc(r.provider), fmt(r.requests), fmt(r.tokens_in),
+                  fmt(r.tokens_out), fmt(r.errors), fmt(r.rate_limited)];
+        })) + "</div>";
+      out += '<div class="mt-10">' + h2("上限到達の履歴") + table(
+        ["いつ", "提供元", "種別", "止まった時間"],
+        (d.hits || []).map(function (r) {
+          return [when(r.started_at), esc(r.provider), esc(r.kind), fmt(r.minutes) + " 分"];
+        })) + "</div>";
+      return out;
+    });
+  };
+
+  RENDER.lumi = function () {
+    return api("lumi").then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var d = j.data;
+      var out = "";
+      if (d.peak) {
+        out += card('<div class="text-xs font-medium text-slate-500 uppercase tracking-wider">' + esc(d.peak.measure) + "</div>"
+          + '<div class="mt-2 leading-normal"><span class="text-3xl font-bold text-slate-900">' + fmt(d.peak.value) + "</span>"
+          + '<span class="text-sm text-slate-500 ml-1">回</span></div>'
+          + '<p class="text-sm text-slate-500 mt-2 lead">' + esc(d.peak.note) + "</p>");
+      }
+      out += '<div class="mt-10">' + h2("日ごとの稼働") + table(
+        ["日付", "セッション", "合計秒", "音声入力", "音声出力", "ツール呼び出し", "切断", "p50", "p95"],
+        (d.daily || []).map(function (r) {
+          function v(x) { return num(x) ? fmt(x) : '<span class="text-slate-400">未計測</span>'; }
+          return [esc(r.date_jst), fmt(r.sessions), v(r.total_seconds), v(r.audio_tokens_in),
+                  v(r.audio_tokens_out), v(r.tool_calls), v(r.disconnects),
+                  v(r.latency_p50_ms), v(r.latency_p95_ms)];
+        })) + "</div>";
+      out += '<div class="mt-8">' + alertBox("warn",
+        "まだ記録していないもの: " + (d.unmeasured || []).join(" / ")) + "</div>";
+
+      out += '<div class="mt-10">' + h2("利用制限（変更はデプロイなしで効きます）");
+      out += '<div class="mb-6">' + alertBox("info",
+        "生成の日次・週次上限と Quick Mock の最大問題数は、保存すると 8 秒以内に本体へ効きます（env より優先されます）。ほかの項目はまだ本体が読んでいません（下の「本体への効き方」を参照）。") + "</div>";
+      out += '<div class="mb-8">' + h2("本体への効き方") + table(
+        ["項目", "本体に効くか"],
+        [["生成の日次・週次上限（free / byok）", '<span class="text-emerald-700 font-medium">効く</span>'],
+         ["Quick Mock の最大問題数", '<span class="text-emerald-700 font-medium">効く</span>'],
+         ["Lumi のセッション数・時間・同時数", '<span class="text-amber-700">まだ効かない（記録のみ）</span>'],
+         ["ストレージの容量・1ファイル上限", '<span class="text-amber-700">まだ効かない（記録のみ）</span>'],
+         ["資料アップロードの枚数・サイズ", '<span class="text-amber-700">まだ効かない（記録のみ）</span>'],
+         ["週次リセットの曜日・日次リセットの方式", '<span class="text-amber-700">まだ効かない（記録のみ）</span>']]) + "</div>";
+      var groups = {};
+      (d.limits || []).forEach(function (l) { (groups[l.group] = groups[l.group] || []).push(l); });
+      Object.keys(groups).forEach(function (g) {
+        out += '<h3 class="text-base font-bold text-slate-900 mt-8 mb-3 leading-normal">' + esc(g) + "</h3>";
+        out += table(["項目", "現在の値", "既定値", "単位", "対象", "最終変更者", "変更日時", ""],
+          groups[g].map(function (l) {
+            return [esc(l.label), '<span class="text-slate-900 font-medium">' + fmt(l.value) + "</span>",
+              fmt(l.defaultValue), esc(l.unit), esc(l.appliesTo), esc(l.updatedBy || "—"), when(l.updatedAt),
+              can("limits.edit")
+                ? '<div class="flex gap-2"><input type="number" data-lim="' + esc(l.key) + '" value="' + num(l.value) + '" class="w-24 px-2 py-1 text-sm border border-slate-300 rounded-lg">'
+                  + '<button type="button" data-act="limsave" data-id="' + esc(l.key) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">保存</button></div>'
+                : "—"];
+          }));
+      });
+      out += "</div>";
+      return out;
+    });
+  };
+
+  RENDER.flags = function () {
+    return api("flags").then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var out = alertBox("info", "左サイドパネルはこの表から描かれます。state を off にすると、パネルから消え、URL 直打ちでも入れません。");
+      out += '<div class="mt-8">' + table(
+        ["キー", "表示名", "state", "対象", "サイドパネル", "並び", "バッジ", "注意書き", "最終変更", ""],
+        j.flags.map(function (f) {
+          var tone = f.state === "on" ? "green" : f.state === "off" ? "red" : f.state === "beta" ? "amber" : "blue";
+          return [
+            '<code class="text-xs text-slate-900">' + esc(f.key) + "</code>",
+            esc(f.display_name), badge(f.state, tone),
+            esc(f.audience) + (f.audience === "percentage" ? " " + num(f.percentage) + "%" : ""),
+            num(f.visible_in_sidebar) ? "出す" : "出さない",
+            fmt(f.sidebar_order), esc(f.badge || "—"), esc(f.notice || "—"),
+            esc(f.updated_by || "—"),
+            can("flags.toggle")
+              ? '<button type="button" data-act="flagedit" data-id="' + esc(f.key) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">変える</button>' : "—"
+          ];
+        })) + "</div>";
+      out += '<div id="flagBox" class="mt-6"></div>';
+      window.__flags = j.flags;
+      return out;
+    });
+  };
+
+  RENDER.quality = function () {
+    return api("quality?days=30").then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var d = j.data;
+      function ratio(p, t) { return num(t) ? Math.round(num(p) / num(t) * 100) + "%" : "—"; }
+      var out = h2("提供元別（直近 " + d.days + " 日）— どちらの品質が高いか");
+      out += table(["提供元", "総数", "publishable", "修復で回復", "未完成のまま", "成功率"],
+        d.byProvider.map(function (r) {
+          return [esc(r.provider), fmt(r.total), fmt(r.publishable), fmt(r.repaired),
+                  fmt(r.unresolved), ratio(r.publishable, r.total)];
+        }));
+      out += '<div class="mt-10">' + h2("機能別") + table(
+        ["機能", "総数", "publishable", "修復で回復", "未完成のまま", "成功率"],
+        d.byFeature.map(function (r) {
+          return [esc(r.feature), fmt(r.total), fmt(r.publishable), fmt(r.repaired),
+                  fmt(r.unresolved), ratio(r.publishable, r.total)];
+        })) + "</div>";
+      out += '<div class="mt-10">' + h2("検証エラーの内訳（多い順）") + table(
+        ["エラーコード", "機能", "件数"],
+        d.errors.map(function (r) { return ['<code class="text-xs">' + esc(r.error_code) + "</code>", esc(r.feature), fmt(r.n)]; })) + "</div>";
+      out += '<div class="mt-10">' + h2("時系列") + table(
+        ["日付", "機能", "提供元", "総数", "publishable", "未完成"],
+        d.daily.slice(0, 120).map(function (r) {
+          return [esc(r.date_jst), esc(r.feature), esc(r.provider), fmt(r.total),
+                  fmt(r.publishable), fmt(r.unresolved)];
+        })) + "</div>";
+      out += '<p class="text-sm text-slate-500 mt-8 lead">生成物の中身はここには出ません。エラーコードと件数だけです。</p>';
+      return out;
+    });
+  };
+
+  RENDER.storage = function () {
+    return api("storage").then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var d = j.data;
+      if (!d.available) return alertBox("warn", d.reason);
+      var out = '<div class="grid grid-cols-2 md:grid-cols-3 gap-6">'
+        + card('<div class="text-xs font-medium text-slate-500 uppercase tracking-wider">合計</div>'
+            + '<div class="mt-2 leading-normal"><span class="text-3xl font-bold text-slate-900">' + bytes(d.total.bytes) + "</span></div>"
+            + '<div class="text-sm text-slate-500">' + fmt(d.total.files) + " 個</div>")
+        + card('<div class="text-xs font-medium text-slate-500 uppercase tracking-wider">棚卸し候補</div>'
+            + '<div class="mt-2 leading-normal"><span class="text-3xl font-bold text-slate-900">' + bytes(d.stale.bytes) + "</span></div>"
+            + '<div class="text-sm text-slate-500">' + fmt(d.stale.files) + " 個</div>")
+        + card('<div class="text-xs font-medium text-slate-500 uppercase tracking-wider">上限超え</div>'
+            + '<div class="mt-2 leading-normal"><span class="text-3xl font-bold text-slate-900">' + fmt(d.over.length) + "</span></div>"
+            + '<div class="text-sm text-slate-500">1 人 ' + fmt(d.capMb) + " MB まで</div>")
+        + "</div>";
+      out += '<div class="mt-6">' + alertBox("info", d.stale.note) + "</div>";
+      out += '<div class="mt-10">' + h2("種別ごと") + table(["種別", "個数", "容量"],
+        d.byType.map(function (r) { return [esc(r.kind), fmt(r.files), bytes(r.bytes)]; })) + "</div>";
+      out += '<div class="mt-10">' + h2("ユーザー別（上位 50）") + table(["ユーザーID", "個数", "容量", "上限超え"],
+        d.topUsers.map(function (r) {
+          var over = d.over.some(function (o) { return String(o.user_id) === String(r.user_id); });
+          return [esc(r.user_id), fmt(r.files), bytes(r.bytes), over ? badge("超過", "red") : "—"];
+        })) + "</div>";
+      out += '<p class="text-sm text-slate-500 mt-8 lead">ファイル名も中身も出しません。件数と容量だけです。</p>';
+      return out;
+    });
+  };
+
+  RENDER.content = function () {
+    return api("content").then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var d = j.data;
+      var out = h2("通報") + table(["いつ", "対象", "所有者", "理由", "状態", ""],
+        d.reports.map(function (r) {
+          var acts = can("content.hide") && r.state === "open"
+            ? '<button type="button" data-act="repres" data-id="' + esc(r.id) + '" data-op="resolve" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer mr-2">対応済みにする</button>'
+              + '<button type="button" data-act="repres" data-id="' + esc(r.id) + '" data-op="reject" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">却下</button>'
+            : "—";
+          return [when(r.created_at), esc(r.target_type) + " " + esc(r.target_id), esc(r.owner_id),
+                  esc(r.reason), badge(r.state, r.state === "open" ? "amber" : "slate"), acts];
+        }));
+      out += '<div class="mt-10">' + h2("公開プリセット") + table(
+        ["プリセットID", "作成者", "公開日", "通報数", "状態", ""],
+        d.presets.map(function (p) {
+          var acts = can("content.hide")
+            ? '<button type="button" data-act="hide" data-id="' + esc(p.presetId) + '" data-op="' + (p.hidden ? "unhide" : "hide") + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer mr-2">' + (p.hidden ? "戻す" : "非表示にする") + "</button>"
+              + '<button type="button" data-act="reveal2" data-id="' + esc(p.presetId) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">中身を確認</button>'
+            : "—";
+          return ['<code class="text-xs">' + esc(p.presetId) + "</code>", esc(p.ownerId), when(p.publishedAt),
+                  fmt(p.reports), p.hidden ? badge("非表示", "red") : badge("公開中", "green"), acts];
+        })) + "</div>";
+      out += '<div id="contentBox" class="mt-6"></div>';
+      out += '<p class="text-sm text-slate-500 mt-8 lead">タイトルや問題文は既定で出しません。通報対応で要るときだけ、確認画面を挟んで監査ログに残します。</p>';
+      return out;
+    });
+  };
+
+  /* ══ ダウンタイム（2026-08-20）════════════════════════════════════
+     訴え「ダッシュボードから ダウンタイムを 有効にできるように。
+     オンにしたら 登録者は 全員 ログアウト。ログインしても 登録しても
+     モーダルが 出て 何も 操作できない。理由・見出し・時間も 出す」 */
+  RENDER.downtime = function () {
+    return api("maintenance").then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var d = j.downtime || {};
+      var 入力 = function (v) {
+        if (!v) return "";
+        var t = new Date(Number(v));
+        var p = function (n) { return String(n).padStart(2, "0"); };
+        return t.getFullYear() + "-" + p(t.getMonth() + 1) + "-" + p(t.getDate())
+          + "T" + p(t.getHours()) + ":" + p(t.getMinutes());
+      };
+      var out = "";
+      if (d.enabled) {
+        out += '<div class="mb-8">' + alertBox("err",
+          "<b>いま ダウンタイム中です。</b>　利用者は 誰も 入れません。"
+          + "解除すると すぐに（最大 5 秒）戻ります。") + "</div>";
+      }
+      out += card(h2("いまの状態")
+        + '<div class="flex items-start gap-3 p-4 bg-primary-50 border border-primary-200 text-primary-800 rounded-lg mb-5 lead"><span class="text-sm">'
+        + "オンにすると <b>その場で 全員の ログインが 切れます</b>。"
+        + "ログイン・新規登録も できなくなり、どの画面でも このモーダルだけが 出ます。"
+        + "管理ダッシュボードは 止まりません（ここから 解除できます）。</span></div>"
+        + '<div class="space-y-2">'
+        + '<div class="flex justify-between gap-4 py-2 border-b border-slate-100"><span class="text-sm text-slate-500">状態</span>'
+        + '<span class="text-sm text-slate-900 text-right">' + (d.enabled ? badge("ダウンタイム中", "red") : badge("稼働中", "green")) + "</span></div>"
+        + '<div class="flex justify-between gap-4 py-2 border-b border-slate-100"><span class="text-sm text-slate-500">いま有効なログイン</span>'
+        + '<span class="text-sm text-slate-900 text-right">' + fmt(j["いま生きている合言葉"] || 0) + " 件</span></div>"
+        + '<div class="flex justify-between gap-4 py-2"><span class="text-sm text-slate-500">最終更新</span>'
+        + '<span class="text-sm text-slate-900 text-right">' + (d.updatedAt ? when(d.updatedAt) + "（" + esc(d.updatedBy || "") + "）" : "—") + "</span></div>"
+        + "</div>");
+
+      out += '<div class="mt-6">' + card(h2("内容")
+        + '<div class="space-y-4 leading-normal">'
+        + '<div><label for="dtTitle" class="block text-sm font-medium text-slate-700 mb-1.5">見出し（そのまま出ます）</label>'
+        + '<input id="dtTitle" maxlength="120" value="' + esc(d.title || "メンテナンス中") + '" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg"></div>'
+        + '<div><label for="dtReason" class="block text-sm font-medium text-slate-700 mb-1.5">理由（必須・そのまま出ます）</label>'
+        + '<textarea id="dtReason" rows="4" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg">' + esc(d.reason || "") + "</textarea></div>"
+        + '<div><span class="block text-sm font-medium text-slate-700 mb-1.5">アイコン</span>'
+        + '<div class="flex flex-wrap gap-3" id="dtIcons">'
+        + (j.icons || []).map(function (k) {
+            var on = (d.icon || "wrench") === k;
+            return '<button type="button" data-act="dticon" data-k="' + esc(k) + '"'
+              + ' class="inline-flex flex-col items-center justify-center gap-1 w-24 h-20 rounded-xl border cursor-pointer '
+              + (on ? "border-primary-500 bg-primary-50 text-primary-800" : "border-slate-200 bg-white text-slate-700 hover:bg-gray-50")
+              + '" aria-pressed="' + on + '">' + dtSvg(k)
+              + '<span class="text-xs font-medium">' + esc((DTICON[k] || {}).名 || k) + "</span></button>";
+          }).join("")
+        + '</div><input type="hidden" id="dtIcon" value="' + esc(d.icon || "wrench") + '"></div>'
+        + '<div class="flex flex-wrap items-end gap-4">'
+        + '<div class="leading-normal"><label for="dtFrom" class="block text-sm font-medium text-slate-700 mb-1.5">開始（任意）</label>'
+        + '<input id="dtFrom" type="datetime-local" value="' + 入力(d.startsAt) + '" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg"></div>'
+        + '<div class="leading-normal"><label for="dtTo" class="block text-sm font-medium text-slate-700 mb-1.5">終了（任意）</label>'
+        + '<input id="dtTo" type="datetime-local" value="' + 入力(d.endsAt) + '" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg"></div>'
+        + '<div class="leading-normal"><label class="inline-flex items-center gap-2 h-11"><input id="dtLogout" type="checkbox" class="w-4 h-4" checked>'
+        + '<span class="text-sm text-slate-700">オンにするとき 全員ログアウトする</span></label></div>'
+        + "</div>"
+        + '<p class="text-sm text-slate-500 lead">時間を 空にすると「いまから 解除するまで ずっと」になります。</p>'
+        + "</div>"
+        + '<div class="flex flex-wrap gap-3 mt-6">'
+        + '<button type="button" data-act="dtsave" data-op="on" class="inline-flex items-center justify-center gap-2 h-12 px-6 text-[1rem] font-medium bg-white text-red-700 border border-red-200 rounded-lg hover:bg-red-50 cursor-pointer">ダウンタイムを 開始する</button>'
+        + '<button type="button" data-act="dtsave" data-op="save" class="inline-flex items-center justify-center gap-2 h-12 px-6 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">内容だけ 保存</button>'
+        + (d.enabled ? '<button type="button" data-act="dtsave" data-op="off" class="inline-flex items-center justify-center gap-2 h-12 px-6 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">解除する</button>' : "")
+        + "</div>") + "</div>";
+
+      out += '<div class="mt-6">' + card(h2("利用者に出る見た目")
+        + '<div id="dtPreview"></div>') + "</div>";
+      out += '<div id="dtAlert" class="mt-6" hidden></div>';
+      setTimeout(dtPaintPreview, 0);
+      return out;
+    });
+  };
+  function dtPaintPreview() {
+    var box = $("dtPreview"); if (!box) return;
+    var t = $("dtTitle") ? $("dtTitle").value : "";
+    var r = $("dtReason") ? $("dtReason").value : "";
+    var k = $("dtIcon") ? $("dtIcon").value : "wrench";
+    var f = $("dtFrom") && $("dtFrom").value, e = $("dtTo") && $("dtTo").value;
+    var 時 = "";
+    if (f || e) {
+      var 直 = function (v) { if (!v) return ""; var d2 = new Date(v); return d2.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); };
+      時 = f && e ? (直(f) + " 〜 " + 直(e)) : f ? (直(f) + " から") : ("〜 " + 直(e));
+    }
+    box.innerHTML = '<div class="rounded-xl border border-slate-200 bg-gray-50 p-8 flex justify-center">'
+      + '<div class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 max-w-md w-full text-center">'
+      + '<div class="w-16 h-16 rounded-full bg-slate-100 text-slate-700 inline-flex items-center justify-center mb-4">' + dtSvg(k, "w-8 h-8") + "</div>"
+      + '<h3 class="text-xl font-bold text-slate-900 leading-normal mb-2">' + esc(t || "メンテナンス中") + "</h3>"
+      + (時 ? '<p class="text-sm text-slate-500 mb-3">' + esc(時) + "</p>" : "")
+      + '<p class="text-base text-body leading-relaxed" style="white-space:pre-wrap">' + esc(r || "（理由を書くと、ここに出ます）") + "</p>"
+      + "</div></div>";
+  }
+
+  RENDER.announcements = function () {
+    return api("announcements").then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var out = card(h2("新しいお知らせ")
+        + '<div class="space-y-4 leading-normal">'
+        + '<div><label for="anTitle" class="block text-sm font-medium text-slate-700 mb-1.5">タイトル</label>'
+        + '<input id="anTitle" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg"></div>'
+        + '<div><label for="anBody" class="block text-sm font-medium text-slate-700 mb-1.5">本文（Markdown）</label>'
+        + '<textarea id="anBody" rows="6" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg font-mono"></textarea></div>'
+        + '<div class="flex flex-wrap items-end gap-4">'
+        + '<div class="leading-normal"><label for="anCh" class="block text-sm font-medium text-slate-700 mb-1.5">配信先</label>'
+        + '<div class="relative"><select id="anCh" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+        + '<option value="both">両方</option><option value="site">公式サイト</option><option value="app_banner">アプリ内バナー</option>'
+        + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+        + '<div class="leading-normal"><label for="anCat" class="block text-sm font-medium text-slate-700 mb-1.5">カテゴリ</label>'
+        + '<div class="relative"><select id="anCat" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+        + '<option value="release">リリース</option><option value="maintenance">メンテナンス</option><option value="incident">障害</option><option value="feature">新機能</option>'
+        + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+        + '<div class="leading-normal"><label for="anPub" class="block text-sm font-medium text-slate-700 mb-1.5">公開日時（予約）</label>'
+        + '<input id="anPub" type="datetime-local" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg"></div>'
+        + '<div class="leading-normal"><label for="anExp" class="block text-sm font-medium text-slate-700 mb-1.5">掲載終了</label>'
+        + '<input id="anExp" type="datetime-local" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg"></div>'
+        + "</div>"
+        /* ★ 通知にも 送る（2026-08-20・訴え「通知の方にも」）。
+           いままでは News と Feed だけだった。 */
+        + '<div class="flex items-start gap-3 p-4 bg-primary-50 border border-primary-200 text-primary-800 rounded-lg lead"><span class="text-sm">'
+        + "配信すると <b>公式サイトのニュース</b> と <b>Feed</b> へ入ります。"
+        + "下の印を付けると <b>アプリの通知</b> にも届きます（1 人 1 通）。</span></div>"
+        + '<div><label class="inline-flex items-center gap-2"><input id="anNotify" type="checkbox" class="w-4 h-4">'
+        + '<span class="text-sm text-slate-700">アプリの通知にも送る（登録している人 全員）</span></label></div>'
+        /* ★ 画像・動画（2026-08-20・訴え「画像や 動画は アップできないの？」） */
+        + '<div><span class="block text-sm font-medium text-slate-700 mb-1.5">画像・動画（最大 8 つ）</span>'
+        + '<input id="anFile" type="file" accept="image/*,video/mp4,video/webm" multiple style="display:none">'
+        + '<div class="flex flex-wrap gap-3 mb-3" id="anMedia"></div>'
+        + '<button type="button" data-act="anpick" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">画像・動画を選ぶ</button>'
+        + '<span id="anUpMsg" class="ml-3 text-sm text-slate-500"></span>'
+        + '<p class="text-sm text-slate-500 mt-2 lead">画像は 5MB まで、動画は置き場に入る大きさまで。ニュース・Feed・通知のどれでも同じものが出ます。</p></div>'
+        + "</div>"
+        + '<div class="flex flex-wrap gap-3 mt-6">'
+        + '<button type="button" data-act="anpreview" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">プレビュー</button>'
+        + '<button type="button" data-act="ansave" data-op="draft" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">下書き保存</button>'
+        + (can("announcements.publish")
+          ? '<button type="button" data-act="ansave" data-op="published" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">配信する</button>' : "")
+        + "</div>"
+        + '<div id="anPreview" class="mt-6"></div>');
+      out += '<div class="mt-10">' + h2("一覧") + table(
+        ["タイトル", "カテゴリ", "配信先", "状態", "公開日時", ""],
+        (j.announcements || []).map(function (a) {
+          return [esc(a.title), esc(a.category), esc(a.channel),
+            badge(a.status, a.status === "published" ? "green" : a.status === "archived" ? "slate" : "amber"),
+            when(a.published_at),
+            can("announcements.publish")
+              ? '<button type="button" data-act="anarchive" data-id="' + esc(a.id) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">アーカイブ</button>' : "—"];
+        })) + "</div>";
+      return out;
+    });
+  };
+
+  RENDER.audit = function () {
+    var q = new URLSearchParams(location.search);
+    return api("audit?" + q.toString()).then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var out = card('<div class="flex flex-wrap items-end gap-4">'
+        + '<div class="leading-normal"><label for="auAdm" class="block text-sm font-medium text-slate-700 mb-1.5">管理者</label>'
+        + '<div class="relative"><select id="auAdm" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+        + '<option value="">すべて</option>'
+        + (j.admins || []).map(function (a) {
+            return '<option value="' + esc(a.admin_id) + '"' + (q.get("adminId") === a.admin_id ? " selected" : "") + ">" + esc(a.admin_email) + "</option>"; }).join("")
+        + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+        + '<div class="leading-normal"><label for="auAct" class="block text-sm font-medium text-slate-700 mb-1.5">操作</label>'
+        + '<div class="relative"><select id="auAct" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+        + '<option value="">すべて</option>'
+        + (j.actions || []).map(function (a) {
+            return '<option value="' + esc(a.action) + '"' + (q.get("action") === a.action ? " selected" : "") + ">" + esc(a.action) + "</option>"; }).join("")
+        + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+        + '<div class="leading-normal"><label for="auFrom" class="block text-sm font-medium text-slate-700 mb-1.5">開始日</label>'
+        + '<input id="auFrom" type="date" value="' + esc(q.get("from") || "") + '" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg"></div>'
+        + '<div class="leading-normal"><label for="auTo" class="block text-sm font-medium text-slate-700 mb-1.5">終了日</label>'
+        + '<input id="auTo" type="date" value="' + esc(q.get("to") || "") + '" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg"></div>'
+        + '<button type="button" data-act="ausearch" class="h-11 inline-flex items-center justify-center gap-2 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">絞り込む</button>'
+        + '<a href="/api/admin/audit.csv?' + esc(q.toString()) + '" class="h-11 inline-flex items-center justify-center gap-2 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">CSV を落とす</a>'
+        + "</div>");
+      out += '<div class="mt-8">' + table(
+        ["日時", "管理者", "操作", "対象", "理由", "IP", "変更前", "変更後"],
+        (j.rows || []).map(function (r) {
+          return [when(r.created_at), esc(r.admin_email), '<code class="text-xs">' + esc(r.action) + "</code>",
+            esc(r.target_type) + " " + esc(r.target_id), esc(r.reason || "—"), esc(r.ip || "—"),
+            '<code class="text-xs text-slate-500 break-all">' + esc(r.before || "—") + "</code>",
+            '<code class="text-xs text-slate-500 break-all">' + esc(r.after || "—") + "</code>"];
+        })) + "</div>";
+      out += '<p class="text-sm text-slate-500 mt-6 lead">この表は追記のみです。編集・削除の口はサーバにも画面にもありません。</p>';
+      return out;
+    });
+  };
+
+  /* ── ルーティング ───────────────────────────────────────────────── */
+  function pageFor(path) {
+    var p = String(path || "/admin").replace(/\/+$/, "") || "/admin";
+    for (var i = PAGES.length - 1; i >= 0; i--) if (PAGES[i].path === p) return PAGES[i];
+    return PAGES[0];
+  }
+  function go(path, replace) {
+    if (replace) history.replaceState({}, "", path); else history.pushState({}, "", path);
+    draw();
+  }
+  function draw() {
+    var p = pageFor(location.pathname);
+    buildNav(p.key);
+    $("pageTitle").textContent = p.label;
+    $("pageLead").textContent = p.lead;
+    $("pageAlert").hidden = true;
+    $("pageBody").innerHTML = '<div class="text-base text-slate-500 text-center py-16 lead">読み込んでいます…</div>';
+    if (!can(p.perm)) {
+      $("pageBody").innerHTML = alertBox("warn", "この画面を見る権限がありません（必要: " + p.perm + "）。");
+      return;
+    }
+    RENDER[p.key]().then(function (html) { $("pageBody").innerHTML = html; })
+      .catch(function (e) { $("pageBody").innerHTML = alertBox("err", "読み込みに失敗しました。" + e.message); });
+  }
+  window.addEventListener("popstate", draw);
+  /* ダウンタイムの 下書きを 変えたら 見本も すぐ 変える。 */
+  document.addEventListener("input", function (e) {
+    var id = e.target && e.target.id;
+    if (id === "dtTitle" || id === "dtReason" || id === "dtFrom" || id === "dtTo") {
+      try { dtPaintPreview(); } catch (x) {}
+    }
+  });
+
+  /* ── 押したとき ─────────────────────────────────────────────────── */
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest ? e.target.closest("a[data-page]") : null;
+    if (a) { e.preventDefault(); go(a.getAttribute("href")); return; }
+    var t = e.target.closest ? e.target.closest("[data-act]") : null;
+    if (!t) return;
+    var act = t.getAttribute("data-act");
+    var id = t.getAttribute("data-id");
+    var op = t.getAttribute("data-op");
+
+    if (act === "rollup") {
+      show($("pageAlert"), "集計しています…", "info");
+      api("rollup", { method: "POST", body: { days: 30 } }).then(function (j) {
+        if (!j.ok) { show($("pageAlert"), j.message || "できませんでした。"); return; }
+        show($("pageAlert"), "集計しました。", "ok"); draw();
+      });
+    }
+    if (act === "usearch") {
+      var q = new URLSearchParams();
+      if ($("uq").value) q.set("q", $("uq").value);
+      if ($("ust").value) q.set("state", $("ust").value);
+      q.set("sort", $("usort").value);
+      go("/admin/users?" + q.toString());
+    }
+    if (act === "udetail") renderUserDetail(id);
+    if (act === "reveal") {
+      var why = prompt("メールアドレスを展開する理由を書いてください（監査ログに残ります）");
+      if (why === null) return;
+      apiGuarded("users/" + encodeURIComponent(id) + "/reveal-email", { method: "POST", body: { reason: why } })
+        .then(function (j) {
+          if (!j.ok) { show($("udAlert"), j.message || "できませんでした。"); return; }
+          show($("udAlert"), "メールアドレス: " + j.email + "（この展開は監査ログに残りました）", "warn");
+        });
+    }
+    if (act === "op") {
+      var needReason = op === "suspend" || op === "ban" || op === "delete";
+      var cat = $("opCat") ? $("opCat").value : "";
+      var txt = $("opText") ? $("opText").value.trim() : "";
+      if (needReason && (!cat || !txt)) {
+        show($("udAlert"), "理由カテゴリと理由の記述は必須です。");
+        return;
+      }
+      var until = $("opUntil") && $("opUntil").value
+        ? new Date($("opUntil").value).toISOString() : "";
+      var body = {
+        reasonCategory: cat, reasonText: txt,
+        scope: $("opScope") ? $("opScope").value : "",
+        until: until, notify: $("opNotify") ? $("opNotify").checked : false
+      };
+      if (op === "purge" && !confirm("恒久削除は取り消せません。本当に実行しますか？")) return;
+      apiGuarded("users/" + encodeURIComponent(id) + "/" + op, { method: "POST", body: body })
+        .then(function (j) {
+          if (!j.ok) { show($("udAlert"), j.message || "できませんでした。"); return; }
+          show($("udAlert"), "状態を " + j.state + " にしました。"
+            + (j.reversible ? "この操作は取り消せます。" : ""), "ok");
+          renderUserDetail(id);
+        });
+    }
+    if (act === "dticon") {
+      var k9 = t.getAttribute("data-k") || "wrench";
+      if ($("dtIcon")) $("dtIcon").value = k9;
+      document.querySelectorAll('[data-act="dticon"]').forEach(function (b9) {
+        var on = b9.getAttribute("data-k") === k9;
+        b9.setAttribute("aria-pressed", String(on));
+        b9.className = "inline-flex flex-col items-center justify-center gap-1 w-24 h-20 rounded-xl border cursor-pointer "
+          + (on ? "border-primary-500 bg-primary-50 text-primary-800" : "border-slate-200 bg-white text-slate-700 hover:bg-gray-50");
+      });
+      dtPaintPreview();
+      return;
+    }
+    if (act === "dtsave") {
+      var op9 = t.getAttribute("data-op");
+      var 入 = {
+        enabled: op9 === "on" ? true : op9 === "off" ? false : undefined,
+        title: $("dtTitle") ? $("dtTitle").value : "",
+        reason: $("dtReason") ? $("dtReason").value : "",
+        icon: $("dtIcon") ? $("dtIcon").value : "wrench",
+        startsAt: $("dtFrom") && $("dtFrom").value ? new Date($("dtFrom").value).toISOString() : "",
+        endsAt: $("dtTo") && $("dtTo").value ? new Date($("dtTo").value).toISOString() : "",
+        logoutAll: $("dtLogout") ? $("dtLogout").checked : true
+      };
+      if (入.enabled === undefined) 入.enabled = false;          /* 「内容だけ 保存」は 止めない */
+      if (op9 === "on" && !confirm("いま 全員を ログアウトして、サービスを 止めます。よろしいですか？")) return;
+      apiGuarded("maintenance", { method: "POST", body: 入 }).then(function (j) {
+        if (!j.ok) { show($("dtAlert"), j.message || "できませんでした。"); return; }
+        var 文 = j.enabled
+          ? ("ダウンタイムを 開始しました。" + fmt(j["切った合言葉"] || 0) + " 件の ログインを 切りました。最大 " + (j["反映まで秒"] || 5) + " 秒で 全体へ 効きます。")
+          : (op9 === "off" ? "ダウンタイムを 解除しました。最大 " + (j["反映まで秒"] || 5) + " 秒で 戻ります。" : "内容を 保存しました（止めていません）。");
+        go("/admin/downtime");
+        setTimeout(function () { show($("dtAlert"), 文, "ok"); }, 400);
+      });
+      return;
+    }
+    if (act === "badge") {
+      apiGuarded("users/" + encodeURIComponent(id) + "/badge", { method: "POST", body: {
+        badge: $("bgKind") ? $("bgKind").value : "",
+        note: $("bgNote") ? $("bgNote").value : ""
+      } }).then(function (j) {
+        if (!j.ok) { show($("udAlert"), j.message || "できませんでした。"); return; }
+        renderUserDetail(id, j.badge
+          ? "公式マークを「" + badgeName(j.badge) + "」にしました。本体へ効くまで最大 " + (j.appliesWithinSeconds || 60) + " 秒かかります。"
+          : "公式マークを外しました。本体へ効くまで最大 " + (j.appliesWithinSeconds || 60) + " 秒かかります。", "ok");
+      });
+    }
+    if (act === "invite") {
+      apiGuarded("admins/invite", { method: "POST", body: { email: $("invEmail").value, role: $("invRole").value } })
+        .then(function (j) {
+          if (!j.ok) { $("inviteOut").innerHTML = alertBox("err", j.message || "できませんでした。"); return; }
+          $("inviteOut").innerHTML = alertBox("ok",
+            "招待しました。次の URL を本人へ渡してください（この 1 回しか出ません）: " + j.acceptUrl);
+        });
+    }
+    if (act === "invrevoke") {
+      apiGuarded("admins/invites/" + encodeURIComponent(id) + "/revoke", { method: "POST", body: {} })
+        .then(function (j) { if (j.ok) draw(); else show($("pageAlert"), j.message); });
+    }
+    if (act === "role") {
+      var nr = prompt("新しいロール（owner / admin / moderator / viewer / カスタムロールのキー）");
+      if (!nr) return;
+      apiGuarded("admins/" + encodeURIComponent(id) + "/role", { method: "POST", body: { role: nr, reason: "画面から変更" } })
+        .then(function (j) { if (j.ok) draw(); else show($("pageAlert"), j.message); });
+    }
+    if (act === "revoke") {
+      if (!confirm("この管理者を削除します。よろしいですか？")) return;
+      apiGuarded("admins/" + encodeURIComponent(id) + "/revoke", { method: "POST", body: { reason: "画面から削除" } })
+        .then(function (j) { if (j.ok) draw(); else show($("pageAlert"), j.message); });
+    }
+    if (act === "totpreset") {
+      if (!confirm("この管理者の二要素認証を解除します。次のログインで登録し直してもらう必要があり、いま入っている端末はすべてログアウトされます。よろしいですか？")) return;
+      var tcat = prompt("理由カテゴリ（例: other）", "other");
+      if (!tcat) return;
+      var ttxt = prompt("理由（必須・監査ログに残ります）");
+      if (!ttxt) return;
+      apiGuarded("admins/" + encodeURIComponent(id) + "/totp/reset", { method: "POST", body: {
+        reasonCategory: tcat, reasonText: ttxt } })
+        .then(function (j) {
+          if (!j.ok) { show($("pageAlert"), j.message); return; }
+          show($("pageAlert"), "解除しました。" + (j.note || ""), "ok");
+          draw();
+        });
+    }
+    if (act === "transfer") {
+      if (!confirm("owner を譲ります。あなたは admin に降格します。よろしいですか？")) return;
+      apiGuarded("admins/transfer-owner", { method: "POST", body: { toAdminId: id, reason: "画面から譲渡" } })
+        .then(function (j) { if (j.ok) location.reload(); else show($("pageAlert"), j.message); });
+    }
+    if (act === "crsave") {
+      var perms = Array.prototype.slice.call(document.querySelectorAll("[data-cr]:checked"))
+        .map(function (c) { return c.getAttribute("data-cr"); });
+      apiGuarded("roles", { method: "POST", body: { roleKey: $("crKey").value, displayName: $("crName").value, permissions: perms } })
+        .then(function (j) { if (j.ok) draw(); else show($("pageAlert"), j.message); });
+    }
+    if (act === "plimit") {
+      var l = null;
+      api("providers").then(function (j) {
+        l = (j.data.limits || []).filter(function (x) { return x.key === id; })[0];
+        if (!l) return;
+        $("plimitBox").innerHTML = card(h2("上限を変える: " + esc(l.provider) + " / " + esc(l.model))
+          + '<div class="flex flex-wrap items-end gap-4">'
+          + ["rpm", "tpm", "rpd", "keys"].map(function (k) {
+              return '<div class="leading-normal"><label class="block text-sm font-medium text-slate-700 mb-1.5">' + k.toUpperCase() + "</label>"
+                + '<input id="pl_' + k + '" type="number" value="' + num(l[k]) + '" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-32"></div>';
+            }).join("")
+          + '<div class="leading-normal"><label class="inline-flex items-center gap-2 h-11"><input id="pl_enforce" type="checkbox" ' + (l.enforce ? "checked" : "") + ' class="w-4 h-4"><span class="text-sm text-slate-700">この上限で実際に止める</span></label></div>'
+          + '<button type="button" data-act="plsave" data-id="' + esc(id) + '" class="h-11 inline-flex items-center justify-center gap-2 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">保存する</button>'
+          + "</div>"
+          + '<div class="mt-4">' + alertBox("warn", "「実際に止める」を入れると、今日の回数がこの上限に達した時点でその提供元を使わなくなります。上限値が実際と違うと生成が止まるので、まず数字が合っていることを確かめてから入れてください。") + "</div>"
+          + '<p class="text-sm text-slate-500 mt-4 lead">' + esc(l.note || "") + "</p>");
+      });
+    }
+    if (act === "plsave") {
+      apiGuarded("providers/limits", { method: "POST", body: {
+        key: id, rpm: $("pl_rpm").value, tpm: $("pl_tpm").value,
+        rpd: $("pl_rpd").value, keys: $("pl_keys").value,
+        enforce: $("pl_enforce").checked, reason: "画面から変更"
+      } }).then(function (j) { if (j.ok) draw(); else show($("pageAlert"), j.message); });
+    }
+    if (act === "limsave") {
+      var el = document.querySelector('[data-lim="' + id + '"]');
+      apiGuarded("limits", { method: "POST", body: { key: id, value: el ? el.value : 0, reason: "画面から変更" } })
+        .then(function (j) {
+          if (!j.ok) { show($("pageAlert"), j.message); return; }
+          show($("pageAlert"), "保存しました。30 秒以内にアプリへ反映されます。", "ok");
+          draw();
+        });
+    }
+    if (act === "flagedit") {
+      var f = (window.__flags || []).filter(function (x) { return x.key === id; })[0];
+      if (!f) return;
+      $("flagBox").innerHTML = card(h2("フラグ: " + esc(f.key))
+        + '<div class="flex flex-wrap items-end gap-4">'
+        + '<div class="leading-normal"><label for="fgState" class="block text-sm font-medium text-slate-700 mb-1.5">state</label>'
+        + '<div class="relative"><select id="fgState" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+        + ["on", "off", "beta", "internal"].map(function (s) {
+            return '<option value="' + s + '"' + (f.state === s ? " selected" : "") + ">" + s + "</option>"; }).join("")
+        + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+        + '<div class="leading-normal"><label for="fgAud" class="block text-sm font-medium text-slate-700 mb-1.5">対象</label>'
+        + '<div class="relative"><select id="fgAud" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+        + ["all", "allowlist", "percentage"].map(function (s) {
+            return '<option value="' + s + '"' + (f.audience === s ? " selected" : "") + ">" + s + "</option>"; }).join("")
+        + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+        + '<div class="leading-normal"><label for="fgPct" class="block text-sm font-medium text-slate-700 mb-1.5">割合(%)</label>'
+        + '<input id="fgPct" type="number" min="0" max="100" value="' + num(f.percentage) + '" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-24"></div>'
+        + '<div class="leading-normal"><label for="fgOrder" class="block text-sm font-medium text-slate-700 mb-1.5">並び順</label>'
+        + '<input id="fgOrder" type="number" value="' + num(f.sidebar_order) + '" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-24"></div>'
+        + '<div class="leading-normal"><label for="fgBadge" class="block text-sm font-medium text-slate-700 mb-1.5">バッジ</label>'
+        + '<input id="fgBadge" value="' + esc(f.badge || "") + '" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-24"></div>'
+        + '<div class="leading-normal"><label for="fgSec" class="block text-sm font-medium text-slate-700 mb-1.5">区画</label>'
+        + '<div class="relative"><select id="fgSec" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+        + [["main", "メイン"], ["tools", "ツール"], ["foot", "下段"], ["hidden", "出さない"]].map(function (x) {
+            return '<option value="' + x[0] + '"' + ((f.section || "main") === x[0] ? " selected" : "") + ">" + x[1] + "</option>"; }).join("")
+        + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+        + '<div class="leading-normal"><label for="fgPath" class="block text-sm font-medium text-slate-700 mb-1.5">行き先（tab: / fn: / action:）</label>'
+        + '<input id="fgPath" value="' + esc(f.path || "") + '" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-56"></div>'
+        + '<div class="leading-normal"><label class="inline-flex items-center gap-2 h-11"><input id="fgVis" type="checkbox" ' + (num(f.visible_in_sidebar) ? "checked" : "") + ' class="w-4 h-4"><span class="text-sm text-slate-700">サイドパネルに出す</span></label></div>'
+        + "</div>"
+        + '<div class="mt-4 leading-normal"><label for="fgNotice" class="block text-sm font-medium text-slate-700 mb-1.5">画面上部に出す注意書き</label>'
+        + '<input id="fgNotice" value="' + esc(f.notice || "") + '" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg"></div>'
+        + '<div class="mt-4 leading-normal"><label for="fgAllow" class="block text-sm font-medium text-slate-700 mb-1.5">allowlist（ユーザーID をカンマ区切り）</label>'
+        + '<input id="fgAllow" value="' + esc((function () { try { return JSON.parse(f.allowlist || "[]").join(","); } catch (e) { return ""; } })()) + '" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg"></div>'
+        + '<div class="mt-6"><button type="button" data-act="flagsave" data-id="' + esc(f.key) + '" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">保存する</button></div>');
+    }
+    if (act === "flagsave") {
+      var allow = $("fgAllow").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+      apiGuarded("flags/" + encodeURIComponent(id), { method: "POST", body: {
+        state: $("fgState").value, audience: $("fgAud").value, percentage: $("fgPct").value,
+        sidebarOrder: $("fgOrder").value, badge: $("fgBadge").value,
+        visibleInSidebar: $("fgVis").checked, notice: $("fgNotice").value,
+        section: $("fgSec").value, path: $("fgPath").value,
+        allowlist: allow, reason: "画面から変更"
+      } }).then(function (j) {
+        if (!j.ok) { show($("pageAlert"), j.message); return; }
+        show($("pageAlert"), "保存しました。30 秒以内にアプリのサイドパネルへ反映されます。", "ok");
+        draw();
+      });
+    }
+    if (act === "repres") {
+      apiGuarded("content/reports/" + encodeURIComponent(id) + "/" + op, { method: "POST", body: {} })
+        .then(function (j) { if (j.ok) draw(); else show($("pageAlert"), j.message); });
+    }
+    if (act === "hide") {
+      var hcat = prompt("理由カテゴリ（例: inappropriate）");
+      if (!hcat && op === "hide") return;
+      var htxt = op === "hide" ? prompt("理由（必須）") : "";
+      if (op === "hide" && !htxt) return;
+      apiGuarded("content/" + encodeURIComponent(id) + "/" + op, { method: "POST", body: {
+        targetType: "preset", reasonCategory: hcat || "", reasonText: htxt || ""
+      } }).then(function (j) { if (j.ok) draw(); else show($("pageAlert"), j.message); });
+    }
+    if (act === "reveal2") {
+      if (!confirm("中身を確認します。この閲覧は監査ログに残ります。よろしいですか？")) return;
+      var rw = prompt("確認する理由を書いてください");
+      if (rw === null) return;
+      apiGuarded("content/" + encodeURIComponent(id) + "/reveal", { method: "POST", body: { confirmed: true, reason: rw } })
+        .then(function (j) {
+          if (!j.ok) { show($("pageAlert"), j.message); return; }
+          $("contentBox").innerHTML = alertBox("warn",
+            "タイトル: " + j.title + " / 科目: " + j.subject + " — " + j.note);
+        });
+    }
+    if (act === "anpreview") {
+      $("anPreview").innerHTML = card('<div class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">プレビュー</div>'
+        + '<h3 class="text-xl font-bold text-slate-900 leading-normal">' + esc($("anTitle").value) + "</h3>"
+        + '<div class="mt-3 text-base text-body whitespace-pre-wrap">' + esc($("anBody").value) + "</div>");
+    }
+    if (act === "anpick") { if ($("anFile")) $("anFile").click(); return; }
+    if (act === "androp") {
+      AN_MEDIA.splice(Number(t.getAttribute("data-i")) || 0, 1);
+      anPaintMedia();
+      return;
+    }
+    if (act === "ansave") {
+      apiGuarded("announcements", { method: "POST", body: {
+        title: $("anTitle").value, bodyMd: $("anBody").value,
+        channel: $("anCh").value, category: $("anCat").value,
+        publishedAt: $("anPub").value ? new Date($("anPub").value).toISOString() : "",
+        expiresAt: $("anExp").value ? new Date($("anExp").value).toISOString() : "",
+        media: AN_MEDIA,
+        notify: $("anNotify") ? $("anNotify").checked : false,
+        status: op, reason: "画面から" + (op === "published" ? "配信" : "保存")
+      } }).then(function (j) {
+        if (!j.ok) { show($("pageAlert"), j.message); return; }
+        var 文 = op === "published"
+          ? ("配信しました。公式サイトのニュースと Feed に入ります。"
+             + (j["添えもの"] ? "　画像・動画 " + j["添えもの"] + " 件。" : "")
+             + (j["通知を入れた"] ? "　通知を " + fmt(j["通知を入れた"]) + " 人へ 送りました。" : ""))
+          : "下書きを保存しました。";
+        AN_MEDIA = [];
+        show($("pageAlert"), 文, "ok");
+        draw();
+      });
+    }
+    if (act === "anarchive") {
+      apiGuarded("announcements", { method: "POST", body: { id: id, status: "archived", reason: "画面からアーカイブ" } })
+        .then(function (j) { if (j.ok) draw(); else show($("pageAlert"), j.message); });
+    }
+    if (act === "ausearch") {
+      var aq = new URLSearchParams();
+      if ($("auAdm").value) aq.set("adminId", $("auAdm").value);
+      if ($("auAct").value) aq.set("action", $("auAct").value);
+      if ($("auFrom").value) aq.set("from", $("auFrom").value);
+      if ($("auTo").value) aq.set("to", $("auTo").value);
+      go("/admin/audit?" + aq.toString());
+    }
+  });
+
+  /* ── ログイン画面 ───────────────────────────────────────────────── */
+  $("loginForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    api("auth/login", { method: "POST", body: { email: $("loginEmail").value, password: $("loginPass").value } })
+      .then(function (j) {
+        if (!j.ok) { show($("loginAlert"), j.message || "ログインできませんでした。"); return; }
+        boot();
+      });
+  });
+  /* 押したら 中身を 写す。手で 打ち写すのは まちがえるし 遅い。 */
+  function 写す係(id, 名) {
+    var el = $(id); if (!el || el.__写す) return;
+    el.__写す = true;
+    var b = document.createElement("button");
+    b.type = "button";
+    b.textContent = 名;
+    b.className = "mt-1.5 inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer";
+    b.addEventListener("click", function () {
+      var t = el.textContent || "";
+      var 済 = function () { b.textContent = "コピーしました"; setTimeout(function () { b.textContent = 名; }, 1600); };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(t).then(済, function () { 手で写す(t, 済); });
+        } else 手で写す(t, 済);
+      } catch (e) { 手で写す(t, 済); }
+    });
+    el.parentNode.appendChild(b);
+  }
+  function 手で写す(t, 済) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = t; ta.style.cssText = "position:fixed;left:-9999px;";
+      document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); ta.remove(); 済();
+    } catch (e) {}
+  }
+  $("btnShowBootstrap").addEventListener("click", function () {
+    $("bootstrapForm").hidden = !$("bootstrapForm").hidden;
+  });
+  $("bootstrapForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    api("auth/bootstrap", { method: "POST", body: {
+      email: $("bsEmail").value, setupToken: $("bsToken").value, password: $("bsPass").value } })
+      .then(function (j) {
+        show($("loginAlert"), j.ok ? "設定しました。ログインしてください。" : (j.message || "できませんでした。"),
+          j.ok ? "ok" : "err");
+        if (j.ok) $("bootstrapForm").hidden = true;
+      });
+  });
+  $("totpForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var setup = !$("totpSetupBox").hidden;
+    api(setup ? "auth/totp/enable" : "auth/totp/verify", { method: "POST", body: { code: $("totpCode").value } })
+      .then(function (j) {
+        if (!j.ok) { show($("totpAlert"), j.message || "確認できませんでした。"); return; }
+        boot();
+      });
+  });
+  $("btnLogout").addEventListener("click", function () {
+    api("auth/logout", { method: "POST", body: {} }).then(function () { location.href = "/admin"; });
+  });
+
+  /* ── 起動 ───────────────────────────────────────────────────────── */
+  function screen(which) {
+    ["scLogin", "scTotp", "scApp"].forEach(function (k) { $(k).hidden = (k !== which); });
+  }
+  function boot() {
+    api("auth/me").then(function (j) {
+      if (!j.ok) { screen("scLogin"); return; }
+      ME = j.admin;
+      ME.allPermissions = j.allPermissions;
+      ME.rolePermissions = j.rolePermissions;
+      if (ME.needTotp && !ME.totpEnabled) {
+        screen("scTotp");
+        $("totpLead").textContent = "admin 以上は二要素認証が必須です。まず登録してください。";
+        api("auth/totp/setup", { method: "POST", body: {} }).then(function (s) {
+          if (!s.ok) { show($("totpAlert"), s.message || "できませんでした。"); return; }
+          $("totpSetupBox").hidden = false;
+          $("totpSecret").textContent = s.secret;
+          /* ★ 押せば 認証アプリへ 渡せるようにする（2026-08-20）。
+             字だけ 出しても、手で 打ち写すしか なかった。
+             otpauth: は 端末の 認証アプリが 受け取る 決まった形。 */
+          var a = document.createElement("a");
+          a.href = s.otpauth;
+          a.textContent = s.otpauth;
+          a.className = "block px-3 py-2 text-xs bg-gray-50 border border-slate-200 rounded-lg break-all text-primary-700 underline";
+          $("totpUrl").replaceWith(a);
+          a.id = "totpUrl";
+          写す係("totpSecret", "鍵をコピー");
+          写す係("totpUrl", "認証アプリ用のリンクをコピー");
+        });
+        return;
+      }
+      if (ME.needTotp && !ME.totpOk) {
+        screen("scTotp");
+        $("totpSetupBox").hidden = true;
+        $("totpLead").textContent = "認証アプリのコードを入れてください。";
+        return;
+      }
+      screen("scApp");
+      $("navWho").textContent = ME.email;
+      $("navRole").textContent = ME.role;
+      $("navEnv").textContent = location.hostname;
+      draw();
+    });
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

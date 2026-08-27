@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>プロフィール — VocabuQuiz</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50:'#f0f5ff',100:'#dde8ff',200:'#c0d4ff',300:'#95b6ff',
+          400:'#6492ff',500:'#2b70ef',600:'#2250df',700:'#1a40b5',
+          800:'#13318d',900:'#0e266a',950:'#07194e'
+        }
+      },
+      fontFamily: {
+        sans: ['Inter','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','sans-serif']
+      }
+    }
+  }
+}
+</script>
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Inter','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif; }
+  .text-body { color: #3d4b5f; }
+
+  /* Cover parallax-ish */
+  .profile-cover {
+    height: 240px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .profile-cover img {
+    width: 100%; height: 100%; object-fit: cover;
+    opacity: .85;
+  }
+  .profile-cover::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 50%, rgba(0,0,0,.25) 100%);
+  }
+
+  /* Avatar ring */
+  .profile-avatar-ring {
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    border: 5px solid #fff;
+    box-shadow: 0 4px 20px rgba(0,0,0,.1);
+    overflow: hidden;
+    position: relative;
+    z-index: 10;
+    margin-top: -70px;
+  }
+
+  /* Tab active */
+  .profile-tab { transition: all .15s ease; }
+  .profile-tab.active {
+    color: #2b70ef;
+    border-bottom: 3px solid #2b70ef;
+    font-weight: 600;
+  }
+  .profile-tab:not(.active):hover { color: #334155; background: #f8fafc; }
+
+  /* Stat card hover */
+  .stat-card { transition: transform .15s ease, box-shadow .15s ease; }
+  .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.06); }
+
+  /* Post action */
+  .post-action { transition: all .15s ease; }
+  .post-action:hover { background: #f3f4f6; }
+  .post-action.liked { color: #2b70ef; }
+  .post-action.liked.liked-pen { color: #16a34a; }
+  .post-action.saved { color: #d97706; }
+
+  /* Post images */
+  .post-images { display: grid; gap: 4px; border-radius: 12px; overflow: hidden; }
+  .post-images.img-2 { grid-template-columns: 1fr 1fr; }
+  .post-images img { width: 100%; height: 100%; object-fit: cover; min-height: 160px; }
+
+  /* Tab content */
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Online status */
+  .online-indicator {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 3px solid #fff;
+    position: absolute; bottom: 6px; right: 6px;
+    z-index: 11;
+  }
+  .online-indicator.online { background: #22c55e; }
+  .online-indicator.offline { background: #ef4444; }
+
+  /* Badge */
+  .profile-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 9999px;
+    font-size: 12px; font-weight: 500;
+  }
+
+  /* Activity item */
+  .activity-item {
+    position: relative;
+    padding-left: 28px;
+  }
+  .activity-item::before {
+    content: "";
+    position: absolute;
+    left: 9px; top: 24px; bottom: -12px;
+    width: 2px;
+    background: #e2e8f0;
+  }
+  .activity-item:last-child::before { display: none; }
+  .activity-dot {
+    position: absolute;
+    left: 0; top: 6px;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- ═══════════════════ TOP BAR ═══════════════════ -->
+<header class="fixed top-0 left-0 right-0 z-50 bg-white border-b border-slate-200 h-14">
+  <div class="max-w-[1100px] mx-auto h-full flex items-center px-4 gap-4">
+    <div class="relative w-72 flex-shrink-0">
+      <span class="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">search</span>
+      <input type="text" placeholder="検索..." class="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 transition">
+    </div>
+    <nav class="flex-1 flex items-center justify-center gap-1" aria-label="メインナビゲーション">
+      <a href="feed-template.html" class="flex items-center justify-center w-14 h-14 text-slate-500 hover:bg-gray-50 transition" title="ホーム">
+        <span class="material-icons-outlined text-[26px]">home</span>
+      </a>
+      <a href="#" class="flex items-center justify-center w-14 h-14 text-slate-500 hover:bg-gray-50 transition" title="トレンド">
+        <span class="material-icons-outlined text-[26px]">bolt</span>
+      </a>
+      <a href="#" class="flex items-center justify-center w-14 h-14 text-slate-500 hover:bg-gray-50 transition" title="フレンド">
+        <span class="material-icons-outlined text-[26px]">person_outline</span>
+      </a>
+      <a href="#" class="flex items-center justify-center w-14 h-14 text-primary-500 hover:bg-gray-50 transition" title="プリセット">
+        <span class="material-icons-outlined text-[26px]">assignment</span>
+      </a>
+    </nav>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <div class="w-9 h-9 rounded-full overflow-hidden border-2 border-primary-300 cursor-pointer">
+        <div class="w-full h-full bg-primary-100 flex items-center justify-center text-primary-600 font-semibold text-sm">T</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════ COVER ═══════════════════ -->
+<div class="pt-14">
+  <div class="profile-cover">
+    <img src="https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1200&h=400&fit=crop" alt="カバー画像">
+    <!-- Edit Cover -->
+    <button class="absolute bottom-4 right-4 z-10 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white/90 text-slate-700 rounded-lg hover:bg-white transition shadow-sm cursor-pointer">
+      <span class="material-icons-outlined text-[16px]">photo_camera</span>カバーを変更
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════ PROFILE INFO ═══════════════════ -->
+<div class="max-w-[1100px] mx-auto px-4">
+  <!-- Avatar row -->
+  <div class="flex items-end justify-between -mt-16 relative z-10">
+    <div class="relative flex-shrink-0">
+      <div class="profile-avatar-ring">
+        <div class="w-full h-full bg-primary-100 flex items-center justify-center text-primary-600 text-4xl font-bold">T</div>
+      </div>
+      <span class="online-indicator online"></span>
+      <button class="absolute bottom-2 right-2 z-20 w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm hover:bg-gray-50 transition cursor-pointer">
+        <span class="material-icons-outlined text-[16px] text-slate-600">photo_camera</span>
+      </button>
+    </div>
+    <!-- Action Buttons (aligned with avatar row) -->
+    <div class="flex items-center gap-2 mb-3">
+      <button class="h-10 px-5 inline-flex items-center justify-center gap-2 text-sm font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 transition cursor-pointer">
+        <span class="material-icons-outlined text-[18px]">edit</span>プロフィールを編集
+      </button>
+      <button class="w-10 h-10 inline-flex items-center justify-center border border-slate-200 rounded-lg hover:bg-gray-50 transition cursor-pointer" title="シェア">
+        <span class="material-icons-outlined text-[18px] text-slate-600">share</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Name + Meta (below avatar, not beside it) -->
+  <div class="mt-3">
+    <div class="flex items-center gap-3">
+      <h1 class="text-2xl font-bold text-slate-900">Tsubota</h1>
+      <span class="profile-badge bg-primary-50 text-primary-600 border border-primary-200">
+        <span class="material-icons-outlined text-[14px]">verified</span>PRO
+      </span>
+      <span class="profile-badge bg-emerald-50 text-emerald-600 border border-emerald-200">
+        <span class="material-icons-outlined text-[14px]">auto_awesome</span>Sede Ultra
+      </span>
+    </div>
+    <p class="text-sm text-slate-500 mt-0.5">@tsubota_dev</p>
+    <p class="text-sm text-body mt-2 max-w-lg">VocabuQuizで英語学習中。プリセット作成が好きです。TOEIC 920点。よろしくお願いします！</p>
+    <div class="flex items-center gap-4 mt-2 text-sm text-slate-500">
+      <span class="inline-flex items-center gap-1"><span class="material-icons-outlined text-[16px]">location_on</span>東京</span>
+      <span class="inline-flex items-center gap-1"><span class="material-icons-outlined text-[16px]">calendar_today</span>2024年1月に参加</span>
+      <span class="inline-flex items-center gap-1"><span class="material-icons-outlined text-[16px]">link</span><a href="#" class="text-primary-500 hover:underline">vocabuquiz.com</a></span>
+    </div>
+  </div>
+
+  <!-- Stats Row -->
+  <div class="grid grid-cols-4 gap-4 mt-5">
+    <div class="stat-card bg-white rounded-xl border border-slate-200 p-4 text-center shadow-sm cursor-pointer">
+      <div class="text-2xl font-bold text-slate-900">128</div>
+      <div class="text-xs text-slate-500 mt-0.5">投稿</div>
+    </div>
+    <div class="stat-card bg-white rounded-xl border border-slate-200 p-4 text-center shadow-sm cursor-pointer">
+      <div class="text-2xl font-bold text-slate-900">1,247</div>
+      <div class="text-xs text-slate-500 mt-0.5">フォロワー</div>
+    </div>
+    <div class="stat-card bg-white rounded-xl border border-slate-200 p-4 text-center shadow-sm cursor-pointer">
+      <div class="text-2xl font-bold text-slate-900">856</div>
+      <div class="text-xs text-slate-500 mt-0.5">フォロー中</div>
+    </div>
+    <div class="stat-card bg-white rounded-xl border border-slate-200 p-4 text-center shadow-sm cursor-pointer">
+      <div class="text-2xl font-bold text-slate-900">42</div>
+      <div class="text-xs text-slate-500 mt-0.5">プリセット</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex border-b border-slate-200 mt-6 gap-1">
+    <button class="profile-tab active px-5 py-3 text-sm text-slate-500 cursor-pointer" data-tab="posts">
+      <span class="inline-flex items-center gap-1.5"><span class="material-icons-outlined text-[18px]">grid_view</span>投稿</span>
+    </button>
+    <button class="profile-tab px-5 py-3 text-sm text-slate-500 cursor-pointer" data-tab="presets">
+      <span class="inline-flex items-center gap-1.5"><span class="material-icons-outlined text-[18px]">assignment</span>プリセット</span>
+    </button>
+    <button class="profile-tab px-5 py-3 text-sm text-slate-500 cursor-pointer" data-tab="activity">
+      <span class="inline-flex items-center gap-1.5"><span class="material-icons-outlined text-[18px]">timeline</span>アクティビティ</span>
+    </button>
+    <button class="profile-tab px-5 py-3 text-sm text-slate-500 cursor-pointer" data-tab="about">
+      <span class="inline-flex items-center gap-1.5"><span class="material-icons-outlined text-[18px]">info</span>詳細</span>
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════ TAB CONTENT ═══════════════════ -->
+<div class="max-w-[1100px] mx-auto px-4 py-6">
+
+  <!-- ── Posts Tab ── -->
+  <div class="tab-content active" id="tab-posts">
+    <div class="flex gap-6">
+      <!-- Left: Info sidebar -->
+      <div class="w-[320px] flex-shrink-0 space-y-4">
+        <!-- Intro Card -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+          <h3 class="text-sm font-semibold text-slate-900 mb-3">自己紹介</h3>
+          <div class="space-y-2.5">
+            <div class="flex items-center gap-2.5 text-sm text-body">
+              <span class="material-icons-outlined text-[18px] text-slate-400 flex-shrink-0">school</span>英語学習歴 5年
+            </div>
+            <div class="flex items-center gap-2.5 text-sm text-body">
+              <span class="material-icons-outlined text-[18px] text-slate-400 flex-shrink-0">workspace_premium</span>TOEIC 920点
+            </div>
+            <div class="flex items-center gap-2.5 text-sm text-body">
+              <span class="material-icons-outlined text-[18px] text-slate-400 flex-shrink-0">favorite</span>プリセット作成が好き
+            </div>
+            <div class="flex items-center gap-2.5 text-sm text-body">
+              <span class="material-icons-outlined text-[18px] text-slate-400 flex-shrink-0">groups</span>コミュニティ 3件に参加中
+            </div>
+          </div>
+        </div>
+
+        <!-- Achievement Card -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+          <h3 class="text-sm font-semibold text-slate-900 mb-3">実績</h3>
+          <div class="grid grid-cols-3 gap-3">
+            <div class="text-center">
+              <div class="w-12 h-12 mx-auto rounded-full bg-amber-50 flex items-center justify-center">
+                <span class="material-icons-outlined text-[24px] text-amber-500">emoji_events</span>
+              </div>
+              <div class="text-xs text-slate-600 mt-1">連続30日</div>
+            </div>
+            <div class="text-center">
+              <div class="w-12 h-12 mx-auto rounded-full bg-primary-50 flex items-center justify-center">
+                <span class="material-icons-outlined text-[24px] text-primary-500">auto_awesome</span>
+              </div>
+              <div class="text-xs text-slate-600 mt-1">1000語達成</div>
+            </div>
+            <div class="text-center">
+              <div class="w-12 h-12 mx-auto rounded-full bg-emerald-50 flex items-center justify-center">
+                <span class="material-icons-outlined text-[24px] text-emerald-500">share</span>
+              </div>
+              <div class="text-xs text-slate-600 mt-1">人気作者</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Followers preview -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-slate-900">フォロワー <span class="text-slate-400 font-normal">1,247</span></h3>
+            <a href="#" class="text-xs font-medium text-primary-500 hover:text-primary-700">すべて見る</a>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <a href="#" class="text-center group">
+              <img src="https://i.pravatar.cc/60?img=12" class="w-14 h-14 rounded-lg mx-auto object-cover" alt="">
+              <div class="text-xs text-slate-700 mt-1 truncate group-hover:text-primary-600">Yuki T.</div>
+            </a>
+            <a href="#" class="text-center group">
+              <img src="https://i.pravatar.cc/60?img=33" class="w-14 h-14 rounded-lg mx-auto object-cover" alt="">
+              <div class="text-xs text-slate-700 mt-1 truncate group-hover:text-primary-600">Hana S.</div>
+            </a>
+            <a href="#" class="text-center group">
+              <img src="https://i.pravatar.cc/60?img=5" class="w-14 h-14 rounded-lg mx-auto object-cover" alt="">
+              <div class="text-xs text-slate-700 mt-1 truncate group-hover:text-primary-600">Kenji M.</div>
+            </a>
+            <a href="#" class="text-center group">
+              <img src="https://i.pravatar.cc/60?img=22" class="w-14 h-14 rounded-lg mx-auto object-cover" alt="">
+              <div class="text-xs text-slate-700 mt-1 truncate group-hover:text-primary-600">Aoi Y.</div>
+            </a>
+            <a href="#" class="text-center group">
+              <img src="https://i.pravatar.cc/60?img=15" class="w-14 h-14 rounded-lg mx-auto object-cover" alt="">
+              <div class="text-xs text-slate-700 mt-1 truncate group-hover:text-primary-600">Rina I.</div>
+            </a>
+            <a href="#" class="text-center group">
+              <img src="https://i.pravatar.cc/60?img=41" class="w-14 h-14 rounded-lg mx-auto object-cover" alt="">
+              <div class="text-xs text-slate-700 mt-1 truncate group-hover:text-primary-600">Sho N.</div>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Posts feed -->
+      <div class="flex-1 min-w-0 space-y-4">
+        <!-- Post 1 -->
+        <article class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="flex items-center justify-between p-4 pb-2">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-primary-100 flex-shrink-0 flex items-center justify-center text-primary-600 font-semibold text-sm">T</div>
+              <div>
+                <div class="text-sm font-semibold text-slate-900">Tsubota</div>
+                <div class="text-xs text-slate-500">3時間前</div>
+              </div>
+            </div>
+            <button class="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-gray-100 transition cursor-pointer">
+              <span class="material-icons-outlined text-[20px] text-slate-400">more_horiz</span>
+            </button>
+          </div>
+          <div class="px-4 pb-3">
+            <p class="text-sm text-body leading-relaxed">今日はTOEICの模試をやりました！プリセットが本番にかなり近くて驚き。リスニングセクションが特に良かった。みんなも試してみて！</p>
+          </div>
+          <div class="px-4 pb-3">
+            <div class="post-images img-2">
+              <img src="https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=400&h=300&fit=crop" alt="">
+              <img src="https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=400&h=300&fit=crop" alt="">
+            </div>
+          </div>
+          <div class="px-4 pb-2 flex items-center justify-between text-xs text-slate-500">
+            <div class="flex items-center gap-1">
+              <span class="w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center"><span class="material-icons-outlined text-[12px] text-white">thumb_up</span></span>
+              <span class="ml-1">234</span>
+            </div>
+            <div>12件のコメント</div>
+          </div>
+          <div class="mx-4 py-1 border-t border-slate-100 flex">
+            <button class="post-action flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-slate-600 cursor-pointer" onclick="toggleLike(this)">
+              <span class="material-icons-outlined text-[20px]">thumb_up_off_alt</span>いいね
+            </button>
+            <button class="post-action flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-slate-600 cursor-pointer">
+              <span class="material-icons-outlined text-[20px]">chat_bubble_outline</span>コメント
+            </button>
+            <button class="post-action flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-slate-600 cursor-pointer" onclick="toggleSave(this)">
+              <span class="material-icons-outlined text-[20px]">bookmark_border</span>保存
+            </button>
+            <button class="post-action flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-slate-600 cursor-pointer">
+              <span class="material-icons-outlined text-[20px]">share</span>シェア
+            </button>
+          </div>
+        </article>
+
+        <!-- Post 2: Preset share -->
+        <article class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="flex items-center justify-between p-4 pb-2">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-primary-100 flex-shrink-0 flex items-center justify-center text-primary-600 font-semibold text-sm">T</div>
+              <div>
+                <div class="text-sm font-semibold text-slate-900">Tsubota</div>
+                <div class="text-xs text-slate-500">1日前</div>
+              </div>
+            </div>
+            <button class="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-gray-100 transition cursor-pointer">
+              <span class="material-icons-outlined text-[20px] text-slate-400">more_horiz</span>
+            </button>
+          </div>
+          <div class="px-4 pb-3">
+            <p class="text-sm text-body leading-relaxed">新しいプリセットを公開しました！TOEIC Part7 読解対策です。</p>
+          </div>
+          <div class="px-4 pb-3">
+            <div class="border border-slate-200 rounded-xl overflow-hidden hover:shadow-sm transition cursor-pointer">
+              <div class="bg-gradient-to-r from-primary-50 to-primary-100/50 p-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-12 h-12 rounded-lg bg-white border border-primary-200 flex items-center justify-center shadow-sm">
+                    <span class="material-icons-outlined text-[24px] text-primary-500">assignment</span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-semibold text-slate-900">TOEIC Part7 読解マスター</div>
+                    <div class="text-xs text-slate-500 mt-0.5">200語 ・ Tsubota</div>
+                  </div>
+                  <div class="flex items-center gap-1 text-xs text-primary-600 bg-white px-2.5 py-1 rounded-full border border-primary-200">
+                    <span class="material-icons-outlined text-[14px]">download</span>取得
+                  </div>
+                </div>
+              </div>
+              <div class="px-4 py-2.5 bg-white flex items-center gap-4 text-xs text-slate-500">
+                <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">edit</span>89</span>
+                <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">download</span>45</span>
+                <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">star</span>4.9</span>
+              </div>
+            </div>
+          </div>
+          <div class="px-4 pb-2 flex items-center justify-between text-xs text-slate-500">
+            <div class="flex items-center gap-1">
+              <span class="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center"><span class="material-icons-outlined text-[12px] text-white">edit</span></span>
+              <span class="ml-1">89</span>
+            </div>
+            <div>5件のコメント</div>
+          </div>
+          <div class="mx-4 py-1 border-t border-slate-100 flex">
+            <button class="post-action flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-slate-600 cursor-pointer" onclick="toggleLike(this,'edit')">
+              <span class="material-icons-outlined text-[20px]">edit</span>いいね
+            </button>
+            <button class="post-action flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-slate-600 cursor-pointer">
+              <span class="material-icons-outlined text-[20px]">chat_bubble_outline</span>コメント
+            </button>
+            <button class="post-action flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-slate-600 cursor-pointer" onclick="toggleSave(this)">
+              <span class="material-icons-outlined text-[20px]">bookmark_border</span>保存
+            </button>
+            <button class="post-action flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-slate-600 cursor-pointer">
+              <span class="material-icons-outlined text-[20px]">share</span>シェア
+            </button>
+          </div>
+        </article>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Presets Tab ── -->
+  <div class="tab-content" id="tab-presets">
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <!-- Preset Cards -->
+      <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition cursor-pointer group">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-11 h-11 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center">
+            <span class="material-icons-outlined text-[22px] text-primary-500">assignment</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold text-slate-900 truncate group-hover:text-primary-600 transition">TOEIC Part7 読解</div>
+            <div class="text-xs text-slate-500">200語</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">edit</span>89</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">download</span>45</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">star</span>4.9</span>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition cursor-pointer group">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-11 h-11 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center">
+            <span class="material-icons-outlined text-[22px] text-amber-500">assignment</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold text-slate-900 truncate group-hover:text-primary-600 transition">ビジネス英語 Email</div>
+            <div class="text-xs text-slate-500">150語</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">edit</span>342</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">download</span>128</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">star</span>4.7</span>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition cursor-pointer group">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-11 h-11 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+            <span class="material-icons-outlined text-[22px] text-emerald-500">assignment</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold text-slate-900 truncate group-hover:text-primary-600 transition">英検準1級 語彙</div>
+            <div class="text-xs text-slate-500">300語</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">edit</span>156</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">download</span>67</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">star</span>4.8</span>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition cursor-pointer group">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-11 h-11 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center">
+            <span class="material-icons-outlined text-[22px] text-red-400">assignment</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold text-slate-900 truncate group-hover:text-primary-600 transition">IELTS Writing</div>
+            <div class="text-xs text-slate-500">120語</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">edit</span>78</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">download</span>32</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">star</span>4.6</span>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition cursor-pointer group">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-11 h-11 rounded-lg bg-violet-50 border border-violet-100 flex items-center justify-center">
+            <span class="material-icons-outlined text-[22px] text-violet-500">assignment</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold text-slate-900 truncate group-hover:text-primary-600 transition">日常会話フレーズ</div>
+            <div class="text-xs text-slate-500">80語</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">edit</span>201</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">download</span>98</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">star</span>4.9</span>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition cursor-pointer group">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-11 h-11 rounded-lg bg-sky-50 border border-sky-100 flex items-center justify-center">
+            <span class="material-icons-outlined text-[22px] text-sky-500">assignment</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold text-slate-900 truncate group-hover:text-primary-600 transition">医療英語 入門</div>
+            <div class="text-xs text-slate-500">100語</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">edit</span>45</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">download</span>19</span>
+          <span class="flex items-center gap-1"><span class="material-icons-outlined text-[14px]">star</span>4.5</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Activity Tab ── -->
+  <div class="tab-content" id="tab-activity">
+    <div class="max-w-2xl mx-auto">
+      <div class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+        <h3 class="text-sm font-semibold text-slate-900 mb-6">最近のアクティビティ</h3>
+        <div class="space-y-5">
+          <div class="activity-item">
+            <div class="activity-dot bg-primary-100"><span class="material-icons-outlined text-[12px] text-primary-600">assignment</span></div>
+            <div>
+              <p class="text-sm text-slate-800"><span class="font-medium">新しいプリセットを公開</span> — TOEIC Part7 読解マスター</p>
+              <p class="text-xs text-slate-500 mt-0.5">3時間前</p>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot bg-emerald-100"><span class="material-icons-outlined text-[12px] text-emerald-600">emoji_events</span></div>
+            <div>
+              <p class="text-sm text-slate-800"><span class="font-medium">実績を獲得</span> — 連続30日ログイン</p>
+              <p class="text-xs text-slate-500 mt-0.5">1日前</p>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot bg-blue-100"><span class="material-icons-outlined text-[12px] text-blue-600">thumb_up</span></div>
+            <div>
+              <p class="text-sm text-slate-800"><span class="font-medium">Hana Suzuki</span> のプリセットにいいねしました</p>
+              <p class="text-xs text-slate-500 mt-0.5">2日前</p>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot bg-amber-100"><span class="material-icons-outlined text-[12px] text-amber-600">edit</span></div>
+            <div>
+              <p class="text-sm text-slate-800"><span class="font-medium">プリセットを更新</span> — ビジネス英語 Email（+20語追加）</p>
+              <p class="text-xs text-slate-500 mt-0.5">3日前</p>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot bg-violet-100"><span class="material-icons-outlined text-[12px] text-violet-600">person_add</span></div>
+            <div>
+              <p class="text-sm text-slate-800"><span class="font-medium">Kenji Mori</span> をフォローしました</p>
+              <p class="text-xs text-slate-500 mt-0.5">5日前</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── About Tab ── -->
+  <div class="tab-content" id="tab-about">
+    <div class="max-w-2xl mx-auto space-y-4">
+      <div class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+        <h3 class="text-sm font-semibold text-slate-900 mb-4">基本情報</h3>
+        <div class="space-y-4">
+          <div class="flex items-start gap-3">
+            <span class="material-icons-outlined text-[20px] text-slate-400 mt-0.5">person</span>
+            <div>
+              <div class="text-sm font-medium text-slate-800">表示名</div>
+              <div class="text-sm text-body">Tsubota</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="material-icons-outlined text-[20px] text-slate-400 mt-0.5">alternate_email</span>
+            <div>
+              <div class="text-sm font-medium text-slate-800">ユーザーネーム</div>
+              <div class="text-sm text-body">@tsubota_dev</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="material-icons-outlined text-[20px] text-slate-400 mt-0.5">location_on</span>
+            <div>
+              <div class="text-sm font-medium text-slate-800">場所</div>
+              <div class="text-sm text-body">東京, 日本</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="material-icons-outlined text-[20px] text-slate-400 mt-0.5">calendar_today</span>
+            <div>
+              <div class="text-sm font-medium text-slate-800">参加日</div>
+              <div class="text-sm text-body">2024年1月</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+        <h3 class="text-sm font-semibold text-slate-900 mb-4">学習情報</h3>
+        <div class="space-y-4">
+          <div class="flex items-start gap-3">
+            <span class="material-icons-outlined text-[20px] text-slate-400 mt-0.5">translate</span>
+            <div>
+              <div class="text-sm font-medium text-slate-800">学習言語</div>
+              <div class="text-sm text-body">英語 (メイン)、フランス語</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="material-icons-outlined text-[20px] text-slate-400 mt-0.5">school</span>
+            <div>
+              <div class="text-sm font-medium text-slate-800">目標</div>
+              <div class="text-sm text-body">TOEIC 950+、IELTS 7.5+</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="material-icons-outlined text-[20px] text-slate-400 mt-0.5">workspace_premium</span>
+            <div>
+              <div class="text-sm font-medium text-slate-800">プラン</div>
+              <div class="text-sm text-body inline-flex items-center gap-1">Sede Ultra <span class="material-icons-outlined text-[14px] text-emerald-500">verified</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ═══ Tab Switching ═══ */
+document.querySelectorAll(".profile-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".profile-tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("tab-" + tab.dataset.tab).classList.add("active");
+  });
+});
+
+/* ═══ Like Toggle ═══ */
+function toggleLike(btn, icon) {
+  const isLiked = btn.classList.toggle("liked");
+  const span = btn.querySelector(".material-icons-outlined");
+  if (icon === "edit") {
+    btn.classList.toggle("liked-pen", isLiked);
+    span.textContent = "edit";
+    btn.style.color = isLiked ? "#16a34a" : "";
+  } else {
+    span.textContent = isLiked ? "thumb_up" : "thumb_up_off_alt";
+    btn.style.color = isLiked ? "#2b70ef" : "";
+  }
+}
+
+/* ═══ Save Toggle ═══ */
+function toggleSave(btn) {
+  const isSaved = btn.classList.toggle("saved");
+  const span = btn.querySelector(".material-icons-outlined");
+  span.textContent = isSaved ? "bookmark" : "bookmark_border";
+  btn.style.color = isSaved ? "#d97706" : "";
+}
+</script>
+</body>
+</html>

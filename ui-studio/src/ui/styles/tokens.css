@@ -1,0 +1,351 @@
+/* ═══════════════════════════════════════════════════════════════
+   VocabuQuiz Design Tokens v2 "Bloom" — 唯一のスタイル基準
+   柔らかいラベンダー × 白。モバイルファーストの学習プロダクト。
+   すべてのUIはここで定義された変数のみを使用する。
+   コンポーネント側での色・角丸・影・時間のハードコードは禁止。
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Brand scale (Lavender) ───────────────────────────── */
+  --vq-lav-25:  #FCFBFE;
+  --vq-lav-50:  #F7F6FB;
+  --vq-lav-100: #F4F2FB;   /* primary subtle */
+  --vq-lav-150: #EEECF9;   /* selected */
+  --vq-lav-200: #EAE8F7;   /* primary soft */
+  --vq-lav-300: #D5D0EC;
+  --vq-lav-400: #A79FD1;
+  --vq-lav-500: #8A81C2;
+  --vq-lav-600: #756DB3;   /* brand core */
+  --vq-lav-650: #6961A8;   /* hover */
+  --vq-lav-700: #5F579E;   /* active */
+  --vq-lav-800: #4D4683;
+  --vq-lav-900: #3B3567;
+  --vq-lav-950: #262244;
+
+  /* ── Neutral scale (lavender-tinted gray) ─────────────── */
+  --vq-gray-0:   #FFFFFF;
+  --vq-gray-25:  #FCFBFE;
+  --vq-gray-50:  #F9F8FC;
+  --vq-gray-100: #F4F3F9;
+  --vq-gray-150: #EFEDF5;
+  --vq-gray-200: #E7E4EF;
+  --vq-gray-300: #D7D2E4;
+  --vq-gray-400: #BBB7C5;
+  --vq-gray-500: #9994A8;
+  --vq-gray-600: #7A7589;
+  --vq-gray-650: #686477;
+  --vq-gray-700: #5A5568;
+  --vq-gray-800: #454151;
+  --vq-gray-850: #353143;
+  --vq-gray-900: #2B2836;
+  --vq-gray-950: #211F29;
+
+  /* ═══ Semantic aliases — 実装は必ずこちらを参照する ═══ */
+
+  /* Background layers */
+  --vq-bg:            var(--vq-gray-25);
+  --vq-bg-subtle:     var(--vq-lav-50);
+  --vq-bg-elevated:   var(--vq-gray-0);
+  --vq-bg-canvas:     var(--vq-lav-50);
+
+  /* Surfaces */
+  --vq-surface:          var(--vq-gray-0);
+  --vq-surface-hover:    #F7F5FC;
+  --vq-surface-active:   #F1EEF8;
+  --vq-surface-selected: var(--vq-lav-150);
+  --vq-surface-disabled: var(--vq-gray-100);
+  --vq-surface-sunken:   var(--vq-lav-50);
+  --vq-surface-overlay:  rgba(38, 34, 68, 0.40);
+
+  /* Borders */
+  --vq-border:        var(--vq-gray-200);
+  --vq-border-subtle: var(--vq-gray-150);
+  --vq-border-strong: var(--vq-gray-300);
+  --vq-border-focus:  var(--vq-lav-600);
+
+  /* Text */
+  --vq-text:           var(--vq-gray-800);
+  --vq-text-secondary: var(--vq-gray-650);
+  --vq-text-tertiary:  var(--vq-gray-500);
+  --vq-text-disabled:  var(--vq-gray-400);
+  --vq-text-inverse:   #ffffff;
+  --vq-text-link:      var(--vq-lav-700);
+
+  /* Accent (brand action) */
+  --vq-accent:         var(--vq-lav-600);
+  --vq-accent-hover:   var(--vq-lav-650);
+  --vq-accent-active:  var(--vq-lav-700);
+  --vq-accent-subtle:  var(--vq-lav-200);
+  --vq-accent-subtle-hover: #E0DCF2;
+  --vq-accent-text:    var(--vq-lav-700);
+  --vq-accent-contrast:#ffffff;
+  /* 色付きベタ塗り（accent/正解/不正解 等）の上に載せる文字・アイコン色 */
+  --vq-solid-ink:      #ffffff;
+
+  /* Status */
+  --vq-success:        #70AD86;
+  --vq-success-strong: #3F7D58;
+  --vq-success-bg:     #E9F5ED;
+  --vq-success-text:   #3E7A56;
+  --vq-warning:        #E5A85F;
+  --vq-warning-bg:     #FFF3E5;
+  --vq-warning-text:   #925F1D;
+  --vq-danger:         #D67777;
+  --vq-danger-strong:  #B14F4F;
+  --vq-danger-strong-hover: #9E4444;
+  --vq-danger-hover:   #C96666;
+  --vq-danger-bg:      #FCEAEA;
+  --vq-danger-text:    #A94A4A;
+  --vq-info:           #708FC5;
+  --vq-info-bg:        #EAF0F9;
+  --vq-info-text:      #4A69A4;
+
+  /* Focus / selection */
+  --vq-focus-ring:     0 0 0 3px color-mix(in srgb, var(--vq-lav-600) 26%, transparent);
+  --vq-selection-bg:   #E4E0F4;
+
+  /* Domain colors */
+  --vq-quiz-correct:      #4E8F6B;
+  --vq-quiz-correct-bg:   #E9F5ED;
+  --vq-quiz-incorrect:    #C25B5B;
+  --vq-quiz-incorrect-bg: #FCEAEA;
+  --vq-quiz-unanswered:   #B6B1C2;
+  --vq-favorite:          #E6A753;
+  --vq-favorite-bg:       #FBF1E1;
+  --vq-ai:                #8175BD;
+  --vq-ai-text:           #695CA8;
+  --vq-ai-bg:             #EDEAF9;
+  --vq-qredit:            #9C6A1B;
+  --vq-qredit-fill:       #D69A4D;
+  --vq-qredit-bg:         #FAF0DF;
+  --vq-admin:             #6E6787;
+  --vq-admin-bg:          var(--vq-gray-150);
+  --vq-social:            #C95E85;
+
+  /* Charts (categorical, CVD-validated via dataviz six-checks / surface #fff) */
+  --vq-chart-1: #7a4fe8;
+  --vq-chart-2: #0b7fbd;
+  --vq-chart-3: #d43f75;
+  --vq-chart-4: #b26a00;
+  --vq-chart-5: #08967f;
+  --vq-chart-6: #3f63ea;
+  --vq-chart-grid: var(--vq-gray-150);
+
+  /* Illustration palette（フラットSVGイラスト用・両テーマで差し替わる） */
+  --vq-il-blob:  #EDEAF9;
+  --vq-il-a:     #A79FD1;
+  --vq-il-b:     #756DB3;
+  --vq-il-c:     #F2C08A;
+  --vq-il-d:     #F1B7C8;
+  --vq-il-e:     #A9C6EA;
+  --vq-il-paper: #FFFFFF;
+  --vq-il-ink:   #454151;
+  --vq-il-line:  #D7D2E4;
+
+  /* ── Typography ───────────────────────────────────────── */
+  --vq-font-sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Segoe UI", Roboto,
+    "Yu Gothic UI", "Meiryo", sans-serif;
+  /* 見出し用: 少し丸みのある親しみやすいスタック（可愛くしすぎない） */
+  --vq-font-display: ui-rounded, "Hiragino Maru Gothic ProN",
+    "Arial Rounded MT Bold", -apple-system, "Hiragino Sans",
+    "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif;
+  --vq-font-mono: "SF Mono", "SFMono-Regular", ui-monospace, "JetBrains Mono",
+    "Cascadia Code", Menlo, Consolas, monospace;
+
+  --vq-type-display:    800 clamp(29px, 4.4vw, 38px) / 1.32 var(--vq-font-display);
+  --vq-type-heading-xl: 750 25px / 1.4  var(--vq-font-display);
+  --vq-type-heading-lg: 700 20px / 1.45 var(--vq-font-display);
+  --vq-type-heading-md: 700 17px / 1.55 var(--vq-font-sans);
+  --vq-type-heading-sm: 650 14.5px / 1.5 var(--vq-font-sans);
+  --vq-type-body-lg:    400 16px / 1.85 var(--vq-font-sans);
+  --vq-type-body-md:    400 14.5px / 1.8 var(--vq-font-sans);
+  --vq-type-body-sm:    400 13px / 1.7  var(--vq-font-sans);
+  --vq-type-label:      600 13px / 1.4  var(--vq-font-sans);
+  --vq-type-caption:    500 11.5px / 1.5 var(--vq-font-sans);
+  --vq-type-code:       500 13px / 1.65 var(--vq-font-mono);
+
+  --vq-tracking-tight: -0.002em;
+  --vq-tracking-body:  0.01em;
+  --vq-tracking-wide:  0.06em;
+
+  /* ── Spacing scale ────────────────────────────────────── */
+  --vq-sp-0: 0px;   --vq-sp-1: 2px;  --vq-sp-2: 4px;  --vq-sp-3: 6px;
+  --vq-sp-4: 8px;   --vq-sp-5: 12px; --vq-sp-6: 16px; --vq-sp-7: 20px;
+  --vq-sp-8: 24px;  --vq-sp-9: 32px; --vq-sp-10: 40px; --vq-sp-11: 48px;
+  --vq-sp-12: 64px; --vq-sp-13: 80px;
+
+  /* ── Radius（全体的に柔らかく・ただしピル化しすぎない） ── */
+  --vq-r-none: 0px;
+  --vq-r-xs: 6px;
+  --vq-r-sm: 10px;
+  --vq-r-md: 14px;     /* buttons, inputs */
+  --vq-r-lg: 18px;     /* cards */
+  --vq-r-xl: 22px;     /* modals, large panels */
+  --vq-r-2xl: 28px;    /* bottom sheet 上端・特大パネル */
+  --vq-r-full: 999px;
+
+  /* ── Shadows（ラベンダーを帯びた極控えめな影） ─────────── */
+  --vq-shadow-none: none;
+  --vq-shadow-subtle: 0 1px 2px rgba(84, 72, 140, 0.05);
+  --vq-shadow-raised: 0 2px 4px rgba(84, 72, 140, 0.04), 0 6px 16px rgba(84, 72, 140, 0.07);
+  --vq-shadow-floating: 0 4px 12px rgba(84, 72, 140, 0.08), 0 16px 40px rgba(84, 72, 140, 0.12);
+  --vq-shadow-modal: 0 10px 24px rgba(60, 50, 110, 0.10), 0 32px 80px rgba(60, 50, 110, 0.18);
+  --vq-shadow-accent: 0 6px 16px color-mix(in srgb, var(--vq-accent) 24%, transparent);
+
+  /* ── Motion（軽く・柔らかく） ─────────────────────────── */
+  --vq-dur-instant: 0ms;
+  --vq-dur-fast: 120ms;
+  --vq-dur-normal: 200ms;
+  --vq-dur-slow: 300ms;
+  --vq-dur-deliberate: 420ms;
+  --vq-ease-standard: cubic-bezier(0.25, 0.65, 0.2, 1);
+  --vq-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --vq-ease-exit: cubic-bezier(0.45, 0, 0.7, 0.4);
+  --vq-ease-spring: cubic-bezier(0.32, 1.25, 0.4, 1);
+
+  /* ── Layout ───────────────────────────────────────────── */
+  --vq-sidebar-w: 264px;
+  --vq-topbar-h: 56px;
+  --vq-bottomnav-h: 62px;
+  --vq-content-max: 1120px;
+  --vq-tap-min: 44px;
+
+  /* density: comfortable(default) — モバイルでタップしやすい高さ */
+  --vq-control-h-sm: 32px;
+  --vq-control-h-md: 42px;
+  --vq-control-h-lg: 50px;
+  --vq-field-px: 14px;
+  --vq-card-p: 20px;
+
+  color-scheme: light;
+}
+
+/* ── Compact density ─────────────────────────────────────── */
+:root[data-density="compact"] {
+  --vq-control-h-sm: 28px;
+  --vq-control-h-md: 36px;
+  --vq-control-h-lg: 46px;
+  --vq-field-px: 11px;
+  --vq-card-p: 14px;
+  --vq-sp-6: 12px;
+  --vq-sp-8: 18px;
+  --vq-sp-9: 24px;
+}
+
+/* ── Dark theme（黒反転ではなく、柔らかいダークラベンダー） ── */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --vq-bg:            #17161D;
+  --vq-bg-subtle:     #1C1B24;
+  --vq-bg-elevated:   #211F29;
+  --vq-bg-canvas:     #131218;
+
+  --vq-surface:          #211F29;
+  --vq-surface-hover:    #272430;
+  --vq-surface-active:   #2D2A39;
+  --vq-surface-selected: #302B44;
+  --vq-surface-disabled: #1E1D25;
+  --vq-surface-sunken:   #1B1A22;
+  --vq-surface-overlay:  rgba(9, 8, 14, 0.62);
+
+  --vq-border:        #393543;
+  --vq-border-subtle: #2C2937;
+  --vq-border-strong: #4A4559;
+  --vq-border-focus:  #A59BE0;
+
+  --vq-text:           #F5F2FA;
+  --vq-text-secondary: #CBC5D5;
+  --vq-text-tertiary:  #928B9E;
+  --vq-text-disabled:  #655F73;
+  --vq-text-inverse:   #211F29;
+  --vq-text-link:      #B5ABEA;
+
+  --vq-accent:         #A59BE0;
+  --vq-accent-hover:   #B5ACE9;
+  --vq-accent-active:  #C2BBEF;
+  --vq-accent-subtle:  #2E2A45;
+  --vq-accent-subtle-hover: #39335A;
+  --vq-accent-text:    #BCB2F0;
+  --vq-accent-contrast:#232040;
+  --vq-solid-ink:      #17161D;
+
+  --vq-success:        #7FC69A;
+  --vq-success-strong: #7FC69A;
+  --vq-success-bg:     #20342A;
+  --vq-success-text:   #A8DDBE;
+  --vq-warning:        #E4B778;
+  --vq-warning-bg:     #372B17;
+  --vq-warning-text:   #ECCA97;
+  --vq-danger:         #E08D8D;
+  --vq-danger-strong:  #DE8484;
+  --vq-danger-strong-hover: #E9A0A0;
+  --vq-danger-hover:   #E9A0A0;
+  --vq-danger-bg:      #3B2225;
+  --vq-danger-text:    #F0A9A9;
+  --vq-info:           #8FA9DC;
+  --vq-info-bg:        #202A3D;
+  --vq-info-text:      #AFC4EA;
+
+  --vq-focus-ring:     0 0 0 3px color-mix(in srgb, #A59BE0 34%, transparent);
+  --vq-selection-bg:   #3A3260;
+
+  --vq-quiz-correct:      #7FC69A;
+  --vq-quiz-correct-bg:   #20342A;
+  --vq-quiz-incorrect:    #E08D8D;
+  --vq-quiz-incorrect-bg: #3B2225;
+  --vq-quiz-unanswered:   #6A6478;
+  --vq-favorite:          #E9B368;
+  --vq-favorite-bg:       #382C12;
+  --vq-ai:                #AA9DE6;
+  --vq-ai-text:           #C4BAF2;
+  --vq-ai-bg:             #2B2545;
+  --vq-qredit:            #DFAE63;
+  --vq-qredit-fill:       #DFAE63;
+  --vq-qredit-bg:         #362B15;
+  --vq-admin:             #A29BB5;
+  --vq-admin-bg:          #2B2837;
+  --vq-social:            #E289AE;
+
+  /* Charts (CVD-validated / surface #211F29) */
+  --vq-chart-1: #8b6ef5;
+  --vq-chart-2: #2f96c9;
+  --vq-chart-3: #e0628d;
+  --vq-chart-4: #c28316;
+  --vq-chart-5: #22a99e;
+  --vq-chart-6: #6389f4;
+  --vq-chart-grid: #2E2B38;
+
+  --vq-il-blob:  #2B2740;
+  --vq-il-a:     #6F66A6;
+  --vq-il-b:     #A59BE0;
+  --vq-il-c:     #C99555;
+  --vq-il-d:     #C97F97;
+  --vq-il-e:     #7292C1;
+  --vq-il-paper: #2A2735;
+  --vq-il-ink:   #E8E4F1;
+  --vq-il-line:  #4A4559;
+
+  --vq-shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --vq-shadow-raised: 0 2px 4px rgba(0, 0, 0, 0.32), 0 6px 16px rgba(0, 0, 0, 0.36);
+  --vq-shadow-floating: 0 4px 12px rgba(0, 0, 0, 0.42), 0 16px 40px rgba(0, 0, 0, 0.46);
+  --vq-shadow-modal: 0 10px 24px rgba(0, 0, 0, 0.46), 0 32px 80px rgba(0, 0, 0, 0.6);
+  --vq-shadow-accent: 0 6px 16px color-mix(in srgb, #A59BE0 26%, transparent);
+}
+
+/* ── 互換エイリアス（旧 cobalt 名 → 新ラベンダースケール）──
+   直接参照は非推奨。残存参照を壊さないためだけに残している。 */
+:root {
+  --vq-cobalt-50:  var(--vq-lav-100);
+  --vq-cobalt-100: var(--vq-lav-150);
+  --vq-cobalt-200: var(--vq-lav-200);
+  --vq-cobalt-300: var(--vq-lav-300);
+  --vq-cobalt-400: var(--vq-lav-400);
+  --vq-cobalt-500: var(--vq-lav-500);
+  --vq-cobalt-600: var(--vq-lav-600);
+  --vq-cobalt-700: var(--vq-lav-700);
+  --vq-cobalt-800: var(--vq-lav-800);
+  --vq-cobalt-900: var(--vq-lav-900);
+  --vq-cobalt-950: var(--vq-lav-950);
+}

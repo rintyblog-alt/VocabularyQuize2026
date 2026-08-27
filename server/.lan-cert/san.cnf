@@ -1,0 +1,15 @@
+[req]
+distinguished_name = dn
+x509_extensions = v3
+prompt = no
+[dn]
+CN = VocabuQuiz LAN Dev
+[v3]
+subjectAltName = @alt
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,digitalSignature,keyCertSign
+extendedKeyUsage = serverAuth
+[alt]
+IP.1 = 192.168.1.2
+IP.2 = 127.0.0.1
+DNS.1 = localhost

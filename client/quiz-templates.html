@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Quiz UI Templates - VocabuQuiz</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50:'#f0f5ff',100:'#dde8ff',200:'#c0d4ff',300:'#95b6ff',
+          400:'#6492ff',500:'#2b70ef',600:'#2250df',700:'#1a40b5',
+          800:'#13318d',900:'#0e266a',950:'#07194e'
+        }
+      },
+      fontFamily: {
+        sans: ['Inter','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','sans-serif']
+      }
+    }
+  }
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet" />
+<style>
+  .ms{font-family:"Material Symbols Rounded";font-size:24px;vertical-align:-4px;font-variation-settings:"FILL" 1;}
+  body{background:#f8fafc;min-height:100vh;}
+  .text-body{color:#3d4b5f;}
+
+  /* ═══ Animations ═══ */
+  @keyframes correctPulse {
+    0%{transform:scale(1);} 30%{transform:scale(1.05);} 60%{transform:scale(0.98);} 100%{transform:scale(1);}
+  }
+  @keyframes wrongShake {
+    0%,100%{transform:translateX(0);} 15%{transform:translateX(-8px);} 30%{transform:translateX(8px);} 45%{transform:translateX(-6px);} 60%{transform:translateX(6px);} 75%{transform:translateX(-3px);}
+  }
+  @keyframes slideUp { from{opacity:0;transform:translateY(20px);} to{opacity:1;transform:translateY(0);} }
+  @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+  @keyframes scoreCount { from{opacity:0;transform:scale(0.5);} to{opacity:1;transform:scale(1);} }
+  @keyframes confetti {
+    0%{transform:translateY(0) rotate(0deg);opacity:1;}
+    100%{transform:translateY(400px) rotate(720deg);opacity:0;}
+  }
+  @keyframes ringProgress {
+    from{stroke-dashoffset:283;} to{stroke-dashoffset:var(--ring-offset);}
+  }
+
+  .anim-correct { animation: correctPulse 0.4s ease; }
+  .anim-wrong { animation: wrongShake 0.5s ease; }
+  .anim-slide-up { animation: slideUp 0.4s ease both; }
+  .anim-fade { animation: fadeIn 0.3s ease both; }
+  .anim-score { animation: scoreCount 0.6s cubic-bezier(.17,.67,.29,1.27) both; }
+
+  /* Confetti */
+  .confetti-piece {
+    position:fixed;top:-20px;width:10px;height:10px;border-radius:2px;
+    animation: confetti 2s ease-out forwards;
+  }
+
+  /* Template selector */
+  .tmpl-nav { position:sticky;top:0;z-index:10;background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:12px 0; }
+  .tmpl-btn { padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid #e2e8f0;background:#fff;color:#64748b;transition:all .15s; }
+  .tmpl-btn:hover { border-color:#2b70ef;color:#2b70ef; }
+  .tmpl-btn.active { background:#2b70ef;color:#fff;border-color:#2b70ef; }
+</style>
+</head>
+<body class="font-sans">
+
+<!-- ═══ Template Selector ═══ -->
+<div class="tmpl-nav">
+  <div class="max-w-2xl mx-auto px-6 flex gap-2 flex-wrap">
+    <button class="tmpl-btn active" onclick="showTemplate('a')">A: カード型</button>
+    <button class="tmpl-btn" onclick="showTemplate('b')">B: フル画面型</button>
+    <button class="tmpl-btn" onclick="showTemplate('c')">C: ミニマル型</button>
+    <button class="tmpl-btn" onclick="showTemplate('result-a')">結果A: リング</button>
+    <button class="tmpl-btn" onclick="showTemplate('result-b')">結果B: カード</button>
+    <button class="tmpl-btn" onclick="showTemplate('result-c')">結果C: 詳細</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     TEMPLATE A: カード型クイズ
+     ═══════════════════════════════════════ -->
+<div id="tmpl-a" class="max-w-2xl mx-auto px-6 py-10">
+  <h2 class="text-lg font-bold text-slate-900 mb-6">Template A: カード型</h2>
+
+  <!-- Progress -->
+  <div class="flex items-center gap-3 mb-6">
+    <span class="text-xs font-semibold text-slate-500">3 / 10</span>
+    <div class="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+      <div class="h-full bg-primary-500 rounded-full transition-all duration-500" style="width:30%"></div>
+    </div>
+    <span class="text-xs font-semibold text-slate-500">00:42</span>
+  </div>
+
+  <!-- Question Card -->
+  <div id="qa-card-a" class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 mb-6">
+    <div class="text-xs font-semibold text-primary-500 mb-2">英語 → 日本語</div>
+    <div class="text-3xl font-bold text-slate-900 mb-1 leading-tight">ephemeral</div>
+    <div class="text-sm text-body mt-2">形容詞</div>
+  </div>
+
+  <!-- 4 Choices -->
+  <div class="grid grid-cols-2 gap-3" id="choices-a">
+    <button onclick="answerA(this,false)" class="choice-a bg-white rounded-xl border border-slate-200 p-4 text-left hover:border-primary-300 hover:bg-primary-50/30 transition-all cursor-pointer">
+      <span class="text-sm font-medium text-slate-900">永遠の</span>
+    </button>
+    <button onclick="answerA(this,true)" class="choice-a bg-white rounded-xl border border-slate-200 p-4 text-left hover:border-primary-300 hover:bg-primary-50/30 transition-all cursor-pointer">
+      <span class="text-sm font-medium text-slate-900">はかない、短命の</span>
+    </button>
+    <button onclick="answerA(this,false)" class="choice-a bg-white rounded-xl border border-slate-200 p-4 text-left hover:border-primary-300 hover:bg-primary-50/30 transition-all cursor-pointer">
+      <span class="text-sm font-medium text-slate-900">壮大な</span>
+    </button>
+    <button onclick="answerA(this,false)" class="choice-a bg-white rounded-xl border border-slate-200 p-4 text-left hover:border-primary-300 hover:bg-primary-50/30 transition-all cursor-pointer">
+      <span class="text-sm font-medium text-slate-900">具体的な</span>
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     TEMPLATE B: フル画面型クイズ
+     ═══════════════════════════════════════ -->
+<div id="tmpl-b" class="hidden min-h-screen flex flex-col">
+  <h2 class="text-lg font-bold text-slate-900 px-6 pt-6 mb-4">Template B: フル画面型</h2>
+
+  <!-- Top bar -->
+  <div class="px-6 flex items-center gap-4 mb-2">
+    <button class="w-10 h-10 rounded-lg border border-slate-200 inline-flex items-center justify-center"><span class="ms text-slate-500" style="font-size:20px">close</span></button>
+    <div class="flex-1">
+      <div class="flex justify-between text-xs font-semibold text-slate-500 mb-1">
+        <span>問題 5 / 10</span><span>正答率 80%</span>
+      </div>
+      <div class="h-1.5 bg-slate-100 rounded-full"><div class="h-full bg-emerald-500 rounded-full" style="width:50%"></div></div>
+    </div>
+    <span class="text-sm font-bold text-slate-900 tabular-nums">01:23</span>
+  </div>
+
+  <!-- Question area -->
+  <div class="flex-1 flex flex-col items-center justify-center px-6 py-8">
+    <div class="text-xs font-semibold text-primary-500 tracking-wide mb-3">QUESTION 5</div>
+    <div id="qa-card-b" class="text-4xl font-extrabold text-slate-900 text-center mb-2 leading-tight">ubiquitous</div>
+    <div class="text-sm text-body mb-10">至る所にある</div>
+
+    <!-- Choices vertical -->
+    <div class="w-full max-w-md flex flex-col gap-3" id="choices-b">
+      <button onclick="answerB(this,false)" class="choice-b w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 bg-white hover:border-primary-300 transition-all text-left">
+        <span class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm font-bold inline-flex items-center justify-center flex-shrink-0">A</span>
+        <span class="text-sm font-medium text-slate-900">珍しい</span>
+      </button>
+      <button onclick="answerB(this,false)" class="choice-b w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 bg-white hover:border-primary-300 transition-all text-left">
+        <span class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm font-bold inline-flex items-center justify-center flex-shrink-0">B</span>
+        <span class="text-sm font-medium text-slate-900">美しい</span>
+      </button>
+      <button onclick="answerB(this,true)" class="choice-b w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 bg-white hover:border-primary-300 transition-all text-left">
+        <span class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm font-bold inline-flex items-center justify-center flex-shrink-0">C</span>
+        <span class="text-sm font-medium text-slate-900">至る所にある</span>
+      </button>
+      <button onclick="answerB(this,false)" class="choice-b w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 bg-white hover:border-primary-300 transition-all text-left">
+        <span class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm font-bold inline-flex items-center justify-center flex-shrink-0">D</span>
+        <span class="text-sm font-medium text-slate-900">曖昧な</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     TEMPLATE C: ミニマル型クイズ
+     ═══════════════════════════════════════ -->
+<div id="tmpl-c" class="hidden max-w-lg mx-auto px-6 py-10">
+  <h2 class="text-lg font-bold text-slate-900 mb-6">Template C: ミニマル型</h2>
+
+  <div class="flex items-center justify-between mb-8">
+    <span class="text-sm font-semibold text-slate-400">7 / 10</span>
+    <div class="flex gap-1">
+      <div class="w-6 h-1.5 rounded-full bg-emerald-400"></div>
+      <div class="w-6 h-1.5 rounded-full bg-emerald-400"></div>
+      <div class="w-6 h-1.5 rounded-full bg-red-400"></div>
+      <div class="w-6 h-1.5 rounded-full bg-emerald-400"></div>
+      <div class="w-6 h-1.5 rounded-full bg-emerald-400"></div>
+      <div class="w-6 h-1.5 rounded-full bg-red-400"></div>
+      <div class="w-6 h-1.5 rounded-full bg-emerald-400"></div>
+      <div class="w-6 h-1.5 rounded-full bg-slate-200"></div>
+      <div class="w-6 h-1.5 rounded-full bg-slate-200"></div>
+      <div class="w-6 h-1.5 rounded-full bg-slate-200"></div>
+    </div>
+  </div>
+
+  <div id="qa-card-c" class="text-center mb-10">
+    <div class="text-5xl font-black text-slate-900 mb-3">serendipity</div>
+    <div class="text-base text-body">noun</div>
+  </div>
+
+  <div class="flex flex-col gap-2" id="choices-c">
+    <button onclick="answerC(this,false)" class="choice-c w-full py-4 px-5 rounded-lg text-left text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all">悲しみ</button>
+    <button onclick="answerC(this,true)" class="choice-c w-full py-4 px-5 rounded-lg text-left text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all">思いがけない幸運</button>
+    <button onclick="answerC(this,false)" class="choice-c w-full py-4 px-5 rounded-lg text-left text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all">平穏</button>
+    <button onclick="answerC(this,false)" class="choice-c w-full py-4 px-5 rounded-lg text-left text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all">困難</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     RESULT A: リング型スコア
+     ═══════════════════════════════════════ -->
+<div id="tmpl-result-a" class="hidden max-w-md mx-auto px-6 py-10 text-center">
+  <h2 class="text-lg font-bold text-slate-900 mb-8">結果A: リング型スコア</h2>
+
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+    <div class="text-sm font-semibold text-slate-500 mb-6">クイズ完了！</div>
+
+    <!-- Ring -->
+    <div class="relative w-44 h-44 mx-auto mb-6">
+      <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="45" fill="none" stroke="#e2e8f0" stroke-width="8"/>
+        <circle cx="50" cy="50" r="45" fill="none" stroke="#2b70ef" stroke-width="8" stroke-linecap="round"
+          stroke-dasharray="283" style="--ring-offset:57;stroke-dashoffset:57;animation:ringProgress 1s ease-out 0.3s both;"/>
+      </svg>
+      <div class="absolute inset-0 flex flex-col items-center justify-center">
+        <span class="text-4xl font-black text-slate-900 anim-score" style="animation-delay:.5s">80<span class="text-xl">%</span></span>
+        <span class="text-xs text-slate-500">8 / 10 正解</span>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-3 gap-4 mb-6">
+      <div class="text-center">
+        <div class="text-2xl font-bold text-emerald-500">8</div>
+        <div class="text-xs text-slate-500">正解</div>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-red-500">2</div>
+        <div class="text-xs text-slate-500">不正解</div>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-slate-900">1:45</div>
+        <div class="text-xs text-slate-500">タイム</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex gap-3">
+      <button class="flex-1 inline-flex items-center justify-center gap-2 h-12 px-6 text-sm font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50">
+        <span class="ms" style="font-size:18px">list_alt</span> 詳細
+      </button>
+      <button class="flex-1 inline-flex items-center justify-center gap-2 h-12 px-6 text-sm font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700">
+        <span class="ms" style="font-size:18px">replay</span> もう一度
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     RESULT B: カード型レビュー
+     ═══════════════════════════════════════ -->
+<div id="tmpl-result-b" class="hidden max-w-md mx-auto px-6 py-10">
+  <h2 class="text-lg font-bold text-slate-900 mb-6">結果B: カード型レビュー</h2>
+
+  <div class="text-center mb-8 anim-slide-up">
+    <div class="w-16 h-16 rounded-full bg-emerald-50 inline-flex items-center justify-center mb-3">
+      <span class="ms text-emerald-500" style="font-size:32px">emoji_events</span>
+    </div>
+    <div class="text-2xl font-extrabold text-slate-900">Great Job!</div>
+    <div class="text-sm text-body mt-1">8 / 10 正解 — 80%</div>
+  </div>
+
+  <!-- Mistakes review -->
+  <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">間違えた問題</div>
+  <div class="flex flex-col gap-3 mb-6">
+    <div class="bg-white rounded-xl border border-red-100 p-4 anim-slide-up" style="animation-delay:.1s">
+      <div class="flex items-start gap-3">
+        <span class="ms text-red-400" style="font-size:20px">close</span>
+        <div class="flex-1">
+          <div class="text-sm font-semibold text-slate-900">ambiguous</div>
+          <div class="text-xs text-red-500 mt-0.5">あなたの回答: 明確な</div>
+          <div class="text-xs text-emerald-600 mt-0.5">正解: 曖昧な</div>
+        </div>
+      </div>
+    </div>
+    <div class="bg-white rounded-xl border border-red-100 p-4 anim-slide-up" style="animation-delay:.2s">
+      <div class="flex items-start gap-3">
+        <span class="ms text-red-400" style="font-size:20px">close</span>
+        <div class="flex-1">
+          <div class="text-sm font-semibold text-slate-900">benevolent</div>
+          <div class="text-xs text-red-500 mt-0.5">あなたの回答: 悪意のある</div>
+          <div class="text-xs text-emerald-600 mt-0.5">正解: 慈悲深い</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex gap-3">
+    <button class="flex-1 inline-flex items-center justify-center gap-2 h-11 text-sm font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50">
+      <span class="ms" style="font-size:18px">home</span> ホーム
+    </button>
+    <button class="flex-1 inline-flex items-center justify-center gap-2 h-11 text-sm font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700">
+      <span class="ms" style="font-size:18px">replay</span> 間違えだけ
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     RESULT C: 詳細統計
+     ═══════════════════════════════════════ -->
+<div id="tmpl-result-c" class="hidden max-w-lg mx-auto px-6 py-10">
+  <h2 class="text-lg font-bold text-slate-900 mb-6">結果C: 詳細統計</h2>
+
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <!-- Header -->
+    <div class="bg-gradient-to-br from-primary-500 to-primary-700 p-8 text-center text-white">
+      <div class="text-6xl font-black anim-score">80<span class="text-2xl">%</span></div>
+      <div class="text-sm opacity-80 mt-2">英単語 Chapter 3 — 10問</div>
+    </div>
+
+    <!-- Stats grid -->
+    <div class="grid grid-cols-4 border-b border-slate-100">
+      <div class="p-4 text-center border-r border-slate-100">
+        <div class="text-lg font-bold text-emerald-500">8</div>
+        <div class="text-[10px] text-slate-500">正解</div>
+      </div>
+      <div class="p-4 text-center border-r border-slate-100">
+        <div class="text-lg font-bold text-red-500">2</div>
+        <div class="text-[10px] text-slate-500">不正解</div>
+      </div>
+      <div class="p-4 text-center border-r border-slate-100">
+        <div class="text-lg font-bold text-amber-500">0</div>
+        <div class="text-[10px] text-slate-500">スキップ</div>
+      </div>
+      <div class="p-4 text-center">
+        <div class="text-lg font-bold text-slate-900">1:45</div>
+        <div class="text-[10px] text-slate-500">タイム</div>
+      </div>
+    </div>
+
+    <!-- Answer list -->
+    <div class="max-h-64 overflow-y-auto">
+      <div class="flex items-center gap-3 px-4 py-3 border-b border-slate-50 hover:bg-gray-50">
+        <span class="ms text-emerald-500" style="font-size:18px">check_circle</span>
+        <span class="text-sm font-medium text-slate-900 flex-1">ephemeral</span>
+        <span class="text-xs text-slate-500">はかない</span>
+        <span class="text-xs text-emerald-500 font-semibold">0.8s</span>
+      </div>
+      <div class="flex items-center gap-3 px-4 py-3 border-b border-slate-50 hover:bg-gray-50">
+        <span class="ms text-emerald-500" style="font-size:18px">check_circle</span>
+        <span class="text-sm font-medium text-slate-900 flex-1">ubiquitous</span>
+        <span class="text-xs text-slate-500">至る所にある</span>
+        <span class="text-xs text-emerald-500 font-semibold">1.2s</span>
+      </div>
+      <div class="flex items-center gap-3 px-4 py-3 border-b border-slate-50 bg-red-50/50">
+        <span class="ms text-red-400" style="font-size:18px">cancel</span>
+        <span class="text-sm font-medium text-slate-900 flex-1">ambiguous</span>
+        <span class="text-xs text-red-500">明確な → 曖昧な</span>
+        <span class="text-xs text-red-500 font-semibold">3.1s</span>
+      </div>
+      <div class="flex items-center gap-3 px-4 py-3 border-b border-slate-50 hover:bg-gray-50">
+        <span class="ms text-emerald-500" style="font-size:18px">check_circle</span>
+        <span class="text-sm font-medium text-slate-900 flex-1">serendipity</span>
+        <span class="text-xs text-slate-500">幸運</span>
+        <span class="text-xs text-emerald-500 font-semibold">1.5s</span>
+      </div>
+      <div class="flex items-center gap-3 px-4 py-3 border-b border-slate-50 bg-red-50/50">
+        <span class="ms text-red-400" style="font-size:18px">cancel</span>
+        <span class="text-sm font-medium text-slate-900 flex-1">benevolent</span>
+        <span class="text-xs text-red-500">悪意ある → 慈悲深い</span>
+        <span class="text-xs text-red-500 font-semibold">4.2s</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="p-4 flex gap-3 border-t border-slate-100">
+      <button class="flex-1 inline-flex items-center justify-center gap-2 h-11 text-sm font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50">
+        <span class="ms" style="font-size:18px">share</span> 共有
+      </button>
+      <button class="flex-1 inline-flex items-center justify-center gap-2 h-11 text-sm font-medium bg-red-50 text-red-600 border border-red-100 rounded-lg hover:bg-red-100">
+        <span class="ms" style="font-size:18px">replay</span> 間違えだけ
+      </button>
+      <button class="flex-1 inline-flex items-center justify-center gap-2 h-11 text-sm font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700">
+        <span class="ms" style="font-size:18px">arrow_forward</span> 次へ
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══ Template switching ═══ */
+function showTemplate(id) {
+  document.querySelectorAll('[id^="tmpl-"]').forEach(el => el.classList.add('hidden'));
+  const el = document.getElementById('tmpl-' + id);
+  if (el) { el.classList.remove('hidden'); el.style.display = ''; }
+  document.querySelectorAll('.tmpl-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+/* ═══ Confetti ═══ */
+function spawnConfetti() {
+  const colors = ['#2b70ef','#22c55e','#f59e0b','#ef4444','#8b5cf6','#ec4899'];
+  for (let i = 0; i < 30; i++) {
+    const el = document.createElement('div');
+    el.className = 'confetti-piece';
+    el.style.left = Math.random() * 100 + 'vw';
+    el.style.background = colors[Math.floor(Math.random() * colors.length)];
+    el.style.animationDelay = Math.random() * 0.5 + 's';
+    el.style.animationDuration = (1.5 + Math.random()) + 's';
+    el.style.width = (6 + Math.random() * 8) + 'px';
+    el.style.height = (6 + Math.random() * 8) + 'px';
+    el.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2500);
+  }
+}
+
+/* ═══ Template A: answer ═══ */
+function answerA(btn, correct) {
+  const card = document.getElementById('qa-card-a');
+  document.querySelectorAll('.choice-a').forEach(b => { b.disabled = true; b.style.pointerEvents = 'none'; });
+  if (correct) {
+    btn.classList.add('!border-emerald-400', '!bg-emerald-50');
+    btn.innerHTML = '<span class="ms text-emerald-500" style="font-size:18px">check_circle</span> ' + btn.querySelector('span').textContent;
+    card.classList.add('anim-correct', '!border-emerald-300');
+    spawnConfetti();
+  } else {
+    btn.classList.add('!border-red-400', '!bg-red-50');
+    btn.innerHTML = '<span class="ms text-red-500" style="font-size:18px">cancel</span> ' + btn.querySelector('span').textContent;
+    card.classList.add('anim-wrong', '!border-red-300');
+    // Show correct
+    document.querySelectorAll('.choice-a').forEach(b => {
+      if (b.onclick && b.onclick.toString().includes('true')) {
+        b.classList.add('!border-emerald-400', '!bg-emerald-50');
+      }
+    });
+  }
+  setTimeout(() => resetA(), 1500);
+}
+function resetA() {
+  const card = document.getElementById('qa-card-a');
+  card.className = 'bg-white rounded-xl border border-slate-200 shadow-sm p-8 mb-6';
+  document.querySelectorAll('.choice-a').forEach(b => {
+    b.disabled = false; b.style.pointerEvents = '';
+    b.className = 'choice-a bg-white rounded-xl border border-slate-200 p-4 text-left hover:border-primary-300 hover:bg-primary-50/30 transition-all cursor-pointer';
+  });
+}
+
+/* ═══ Template B: answer ═══ */
+function answerB(btn, correct) {
+  const card = document.getElementById('qa-card-b');
+  document.querySelectorAll('.choice-b').forEach(b => { b.disabled = true; });
+  const badge = btn.querySelector('span:first-child');
+  if (correct) {
+    btn.classList.add('!border-emerald-400', '!bg-emerald-50');
+    badge.classList.add('!bg-emerald-500', '!text-white');
+    card.classList.add('anim-correct');
+    spawnConfetti();
+  } else {
+    btn.classList.add('!border-red-400', '!bg-red-50');
+    badge.classList.add('!bg-red-500', '!text-white');
+    card.classList.add('anim-wrong');
+  }
+  setTimeout(() => resetB(), 1500);
+}
+function resetB() {
+  document.getElementById('qa-card-b').className = 'text-4xl font-extrabold text-slate-900 text-center mb-2 leading-tight';
+  document.querySelectorAll('.choice-b').forEach(b => {
+    b.disabled = false;
+    b.className = 'choice-b w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 bg-white hover:border-primary-300 transition-all text-left';
+    b.querySelector('span:first-child').className = 'w-8 h-8 rounded-full bg-slate-100 text-slate-500 text-sm font-bold inline-flex items-center justify-center flex-shrink-0';
+  });
+}
+
+/* ═══ Template C: answer ═══ */
+function answerC(btn, correct) {
+  const card = document.getElementById('qa-card-c');
+  document.querySelectorAll('.choice-c').forEach(b => { b.disabled = true; });
+  if (correct) {
+    btn.classList.add('!border-emerald-400', '!bg-emerald-50', '!text-emerald-700');
+    card.classList.add('anim-correct');
+    spawnConfetti();
+  } else {
+    btn.classList.add('!border-red-400', '!bg-red-50', '!text-red-700');
+    card.classList.add('anim-wrong');
+  }
+  setTimeout(() => resetC(), 1500);
+}
+function resetC() {
+  document.getElementById('qa-card-c').className = 'text-center mb-10';
+  document.querySelectorAll('.choice-c').forEach(b => {
+    b.disabled = false;
+    b.className = 'choice-c w-full py-4 px-5 rounded-lg text-left text-sm font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all';
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,912 @@
+/* ══════════════════════════════════════════════════════════════════
+   VocabuQuiz V3 広告 — Scene 1 / 2 / 3 の見た目（実装 C）
+   接頭辞: s1- / s2- / s3-。共通トークンは ad.css の --vq-*。
+   連続値（transform / opacity / filter）は scenes-a.js が inline で書く。
+
+   方針:
+   ・面は深いインディゴ。彩度の高いベタ塗りは置かない（最も安く見える）
+   ・面には「上辺 1px の高光り・内側の落ち込み・接地影」を必ず作る
+   ・模様は敷かない。使うのは 1px の線画を 9% まで沈めたものだけ
+   ・離散状態の収束は cubic-bezier(0.16, 1, 0.3, 1) の 0.55 秒
+   ══════════════════════════════════════════════════════════════════ */
+
+/* 長い尾のイージング（CSS transition 用）。ease-out の短いやつは使わない。 */
+:root { --s-out: cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* キネティックタイポの初期値。JS が inline で上書きするまでは伏せておく。 */
+.scene-s1 .vqad-kin,
+.scene-s2 .vqad-kin,
+.scene-s3 .vqad-kin { opacity: 0; }
+
+/* ────────────────────────────────────────────────────────────────
+   Scene 1 — Opening
+   ──────────────────────────────────────────────────────────────── */
+
+/* 字幕カード: 画面中央上。極小キャップスを 0.4em で開き、上下にヘアライン。
+   左上の小さな文字は「開発中の表示」に見えてしまう。中央に据えると題字になる。 */
+.s1-kicker {
+  position: absolute;
+  top: clamp(30px, 9vh, 84px);
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: max-content;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  opacity: 0;
+  will-change: opacity;
+}
+.s1-hair {
+  display: block;
+  width: 100%;
+  height: 1px;
+  transform-origin: 50% 50%;
+  background: linear-gradient(
+    90deg,
+    rgba(170, 188, 255, 0),
+    rgba(188, 204, 255, 0.42) 20%,
+    rgba(188, 204, 255, 0.42) 80%,
+    rgba(170, 188, 255, 0)
+  );
+}
+.s1-kick-t {
+  font-size: clamp(9px, 0.85vw, 11px);
+  font-weight: 600;
+  letter-spacing: 0.4em;
+  text-indent: 0.4em; /* 字間の分だけ光学的に中央へ戻す */
+  color: rgba(214, 222, 255, 0.7);
+  white-space: nowrap;
+  will-change: transform, filter;
+}
+
+/* コピーは中央よりやや下。センタリングは left/right で行い、
+   transform は 1 文字ずつの span（.vqad-kin）に任せる。 */
+.s1-copy {
+  left: 0;
+  right: 0;
+  bottom: auto;
+  top: 52%;
+  transform: none;
+  font-size: clamp(23px, 3.6vw, 46px);
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  visibility: hidden;
+}
+
+/* コピーの下を 1 度だけ通り抜ける細い光 */
+.s1-sweep {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 62%;
+  width: min(680px, 68vw);
+  height: 1px;
+  opacity: 0;
+  visibility: hidden;
+}
+.s1-sweep i {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(150, 190, 255, 0),
+    rgba(232, 242, 255, 1) 50%,
+    rgba(150, 190, 255, 0)
+  );
+  box-shadow: 0 0 16px rgba(165, 208, 255, 0.95), 0 0 44px rgba(120, 180, 255, 0.42);
+  will-change: transform;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Scene 2 — プリセットライブラリ
+   ──────────────────────────────────────────────────────────────── */
+/* 構図: S1・S3 と同じ「中央のパネル + 下部中央のコピー」を続けると
+   映像ではなくスライドの連続に見える。S2 だけは非対称に組む。
+   パネルは右へ寄せ（padding-left の半分だけ中心がずれる）、コピーは左端に置く。
+   カメラ（main.js）が s2 で右→左へ振るので、寄りの向きとも噛み合う。 */
+.s2-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 1300px;
+  padding-bottom: 9vh; /* 下のコピーと重ならないよう少し持ち上げる */
+  padding-left: 12vw;  /* → パネルの中心が右へ 6vw ずれる */
+}
+
+.s2-panel {
+  position: relative;
+  overflow: hidden;
+  width: min(880px, 86vw);
+  padding: 26px 30px 30px;
+  opacity: 0;
+  will-change: transform, opacity, filter;
+}
+/* パネル上端の高光り（.vqad-glass の inset とは別に、中央だけ強く光らせる） */
+.s2-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 22%;
+  right: 22%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(196, 212, 255, 0.55), transparent);
+}
+
+.s2-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.s2-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: rgba(240, 243, 255, 0.92);
+}
+.s2-title::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  margin-right: 12px;
+  vertical-align: 1px;
+  background: linear-gradient(135deg, var(--vq-cyan), var(--vq-blue));
+  box-shadow: 0 0 12px rgba(100, 224, 255, 0.55);
+}
+
+/* ── タブ ── */
+.s2-tabs {
+  position: relative;
+  display: flex;
+  gap: 30px;
+  margin-top: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(150, 160, 255, 0.1);
+}
+.s2-tab {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: rgba(190, 199, 238, 0.4);
+  transition: color 0.55s var(--s-out), text-shadow 0.55s var(--s-out);
+}
+.s2-tab.is-on {
+  color: #f0f3ff;
+  text-shadow: 0 0 16px rgba(120, 180, 255, 0.5);
+}
+/* 下線は 2px の光る線（幅 1px を scaleX で伸ばす。位置は JS が長い尾で動かす） */
+.s2-ink {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 1px;
+  height: 2px;
+  border-radius: 2px;
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, rgba(100, 224, 255, 0.55), #a8dcff 45%, #64e0ff 100%);
+  box-shadow:
+    0 0 3px rgba(206, 236, 255, 0.9),
+    0 0 14px rgba(100, 200, 255, 0.7),
+    0 0 32px rgba(79, 141, 255, 0.3);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+/* ── カードグリッド 3×2 ── */
+.s2-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 22px;
+}
+.s2-card {
+  position: relative;
+  border-radius: 13px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(23, 27, 54, 0.72), rgba(11, 13, 30, 0.78));
+  border: 1px solid rgba(150, 160, 255, 0.13);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),   /* 上辺の高光り */
+    0 18px 34px -24px rgba(0, 0, 0, 0.95);     /* 接地影 */
+  opacity: 0;
+  will-change: transform, opacity, filter;
+}
+
+/* 表紙: 深いインディゴの面 + 教科 1 色の淡い光（左上から斜めに）。
+   ベタ塗りの色面や縞・ドット・幾何模様は置かない。 */
+.s2-cover {
+  position: relative;
+  height: 64px;
+  overflow: hidden;
+  background:
+    linear-gradient(200deg, rgba(var(--s2-acc), 0.2), rgba(var(--s2-acc), 0.035) 58%, rgba(var(--s2-acc), 0) 100%),
+    linear-gradient(180deg, #171c3a, #0f1229);
+  box-shadow: inset 0 1px 0 rgba(var(--s2-acc), 0.3);
+  border-bottom: 1px solid rgba(150, 160, 255, 0.09);
+}
+/* 教科イニシャルの大型タイポを 1 文字だけ。表紙の高さいっぱいに置き、
+   右下へはみ出させて切る（トリミングされた大型タイポは高級な定石）。
+   模様と違って一目で教科が判り、6 枚に確かな個体差が出る。 */
+.s2-glyph {
+  position: absolute;
+  right: -0.18em;
+  bottom: -0.3em;
+  font-size: 96px; /* = 表紙の高さ × 1.5。字面が表紙の高さをほぼ埋める */
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.125); /* background-clip 非対応時の保険 */
+  /* 上が明るく下へ落ちる。単色べた 1 枚より面が起きる。 */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.155), rgba(255, 255, 255, 0.055));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  user-select: none;
+  pointer-events: none;
+}
+/* ラテン 1 文字はキャップハイトしか無く、和文と同じ位置だと痩せて見える。
+   少し大きく、右の食い込みを浅くして字形を残す。 */
+.s2-glyph.is-lat {
+  right: -0.16em;
+  bottom: -0.21em; /* ベースラインを表紙の下端に置く（下は切らず、右だけ食い込ませる） */
+  font-size: 86px;
+}
+
+.s2-card-body { padding: 15px 15px 17px; }
+.s2-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #eef1ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s2-meta {
+  margin-top: 9px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: rgba(190, 199, 238, 0.44);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* バッジ: 塗りをやめ、1px の枠 + 極小キャップスだけにする */
+.s2-badge {
+  display: inline-flex;
+  margin-top: 14px;
+  padding: 4px 9px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  transition: color 0.55s var(--s-out), border-color 0.55s var(--s-out);
+}
+.s2-badge span { display: none; }
+.s2-mode-0 .s2-badge .s2-b0,
+.s2-mode-1 .s2-badge .s2-b1,
+.s2-mode-2 .s2-badge .s2-b2 { display: inline; }
+.s2-mode-0 .s2-badge { color: rgba(206, 199, 255, 0.88); border-color: rgba(150, 142, 232, 0.42); }
+.s2-mode-1 .s2-badge { color: rgba(186, 211, 255, 0.88); border-color: rgba(79, 141, 255, 0.4); }
+.s2-mode-2 .s2-badge { color: rgba(240, 215, 168, 0.88); border-color: rgba(224, 178, 104, 0.4); }
+
+/* ── 形式チップ（2 枚だけがパネルの手前を近景として速く抜ける）──
+      ぼかしは JS が 4.0〜5.2px を inline で入れる。ここでは「焦点外でも
+      物体として読める」だけの実体を持たせる: 縁の高光り・外周のごく淡い発光・
+      不透明に近い面。半透明で淡いままだと、強くぼかした瞬間に汚れに見える。 */
+.s2-chipband {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.s2-chip {
+  position: absolute;
+  left: 0;
+  padding: 9px 20px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(34, 39, 74, 0.94), rgba(15, 17, 38, 0.96));
+  border: 1px solid rgba(168, 182, 255, 0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    0 24px 46px -20px rgba(0, 0, 0, 0.95),
+    0 0 46px rgba(88, 120, 220, 0.2);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: rgba(234, 239, 255, 0.94);
+  white-space: nowrap;
+  visibility: hidden;
+  will-change: transform, opacity;
+}
+
+/* コピーは左端に落とす（パネルは右寄せ）。transform は kin span 側で使うので none。 */
+.s2-copy {
+  z-index: 4;
+  visibility: hidden;
+  left: clamp(48px, 10vw, 200px);
+  right: auto;
+  transform: none;
+  margin-inline: 0;
+  width: max-content;
+  max-width: 62vw;
+  text-align: left;
+  white-space: normal;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Scene 3 — Quick Mock
+   ──────────────────────────────────────────────────────────────── */
+
+/* ── 資料の断片（角の折れ目・罫線の濃淡・傾き差で「紙」にする）── */
+.s3-frags {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+.s3-frag {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 172px;
+  height: 218px;
+  border-radius: 7px;
+  padding: 13px 12px 12px;
+  /* 紙色は .s3-fill が塗る。ここは「万一その 1 枚が落ちても黒板にならない」ための
+     最終防衛線として、必ず不透明な単色を持たせる。 */
+  background-color: #f7f8fd;
+  color: #2a3040;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 22px 40px -22px rgba(0, 0, 0, 0.7),
+    0 0 34px rgba(120, 150, 255, 0.12);
+  opacity: 0;
+  will-change: transform, opacity, filter;
+}
+/* 奥行き 3 段。倍率とぼかしは JS（S3_DEPTH）が持つので、ここは影だけを分ける。
+   近い断片は接地影を大きく、遠い断片は薄く。これで大きさの差が距離に見える。 */
+.s3-frag.is-near {
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 34px 60px -24px rgba(0, 0, 0, 0.8),
+    0 0 52px rgba(120, 150, 255, 0.16);
+}
+.s3-frag.is-far {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 14px 28px -20px rgba(0, 0, 0, 0.6),
+    0 0 22px rgba(120, 150, 255, 0.09);
+}
+/* 紙色レイヤー（全カード共通・必ず 1 枚）。罫もここで持つ。 */
+.s3-fill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 15px, rgba(84, 96, 134, 0.05) 15px 16px),
+    linear-gradient(168deg, #fdfdff, #e9ecf7);
+}
+/* 折れ目（角が手前へ折り返っている） */
+.s3-fold {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  width: 22px;
+  height: 22px;
+  border-top-right-radius: 7px;
+  background: linear-gradient(45deg, rgba(255, 255, 255, 0) 0 50%, #dee2ee 50% 100%);
+  filter: drop-shadow(-1px 1px 1px rgba(40, 48, 70, 0.16));
+}
+
+/* ── 断片の版面（s3-paper と同じ組版言語の縮小版）────────────────── */
+.s3-fpage {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.s3-fhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+.s3-ftitle {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  white-space: nowrap;
+}
+.s3-fname {
+  font-size: 6px;
+  letter-spacing: 0.08em;
+  color: #8b93ab;
+  white-space: nowrap;
+}
+.s3-fname i {
+  display: inline-block;
+  width: 26px;
+  margin-left: 3px;
+  border-bottom: 1px solid #b6bccd;
+}
+.s3-fh1 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 1px;
+}
+.s3-fnum {
+  display: inline-block;
+  padding: 1px 4px;
+  border: 1px solid #2a3040;
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+.s3-fnumt {
+  font-size: 6px;
+  color: #4a5268;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.s3-fq {
+  font-size: 6.2px;
+  line-height: 1.72;
+  letter-spacing: 0.02em;
+  color: #333a4c;
+}
+.s3-fch {
+  display: flex;
+  gap: 7px;
+  padding-left: 4px;
+  margin-top: 1px;
+  font-size: 6.5px;
+}
+.s3-fch span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.s3-fch i {
+  display: inline-block;
+  width: 16px;
+  border-bottom: 1px solid #9aa2b8;
+}
+.s3-fans {
+  position: relative;
+  margin-top: auto;
+  height: 40px;
+  border: 1px solid #444c60;
+  border-radius: 2px;
+}
+.s3-fans span {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  font-size: 5.5px;
+  letter-spacing: 0.14em;
+  color: #8b93ab;
+}
+
+/* ── ステッパー: 極細の線 1 本 + 4px の点 6 つ。番号は出さない。
+      番号付きの丸を並べるとウィザード UI に見え、広告の空気が壊れる。 ── */
+.s3-stepper {
+  position: absolute;
+  top: clamp(30px, 13vh, 100px);
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: min(720px, 88vw);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.s3-track {
+  position: absolute;
+  top: 1.5px;
+  left: 44px;   /* = ステップ幅の半分。最初と最後の点の中心を結ぶ */
+  right: 44px;
+  height: 1px;
+  background: rgba(150, 160, 255, 0.15);
+}
+.s3-trackfill {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, var(--vq-cyan), var(--vq-violet) 58%, var(--vq-pink));
+  box-shadow: 0 0 8px rgba(120, 200, 255, 0.5);
+  will-change: transform;
+}
+.s3-steps {
+  display: flex;
+  justify-content: space-between;
+}
+.s3-step {
+  width: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.s3-pt {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(168, 178, 232, 0.38);
+  transition:
+    transform 0.55s var(--s-out),
+    background-color 0.55s var(--s-out),
+    box-shadow 0.55s var(--s-out);
+}
+.s3-step.is-lit .s3-pt {
+  background: #e6f4ff;
+  transform: scale(1.8);
+  box-shadow: 0 0 10px rgba(140, 215, 255, 0.95), 0 0 26px rgba(110, 175, 255, 0.5);
+}
+/* 最後の「完成」だけピンクで締める */
+.s3-step:last-child.is-lit .s3-pt {
+  background: #ffdcec;
+  box-shadow: 0 0 10px rgba(255, 130, 190, 0.9), 0 0 28px rgba(255, 45, 146, 0.45);
+}
+.s3-lab {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
+  color: rgba(190, 199, 238, 0.32);
+  white-space: nowrap;
+  transition: color 0.55s var(--s-out), text-shadow 0.55s var(--s-out);
+}
+.s3-step.is-lit .s3-lab {
+  color: rgba(238, 242, 255, 0.9);
+  text-shadow: 0 0 14px rgba(140, 180, 255, 0.45);
+}
+
+/* ── 白い試験用紙（平らに見せない。接地影・上辺の高光り・紙面のグラデ）── */
+.s3-paperwrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 1200px;
+  padding: 13vh 0 11vh;
+}
+.s3-paper {
+  position: relative;
+  overflow: hidden;
+  width: min(520px, 88vw);
+  padding: 30px 34px 32px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #fdfdff 0%, #f2f4fa 62%, #eaedf6 100%);
+  color: #2a3040;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+  box-shadow:
+    inset 0 1px 0 #ffffff,                     /* 上辺 1px の白ハイライト */
+    inset 0 -1px 0 rgba(40, 48, 70, 0.08),
+    0 2px 0 #e9ecf5,                           /* 紙の厚み（下に数枚重なっている） */
+    0 4px 0 rgba(206, 212, 228, 0.85),
+    0 6px 0 rgba(168, 176, 199, 0.5),
+    0 40px 80px -30px rgba(0, 0, 0, 0.85),     /* 大きく柔らかい接地影 */
+    0 0 70px rgba(120, 150, 255, 0.1);
+  opacity: 0;
+  will-change: transform, opacity, filter;
+}
+/* 答案用紙の罫。組み上がる前の白紙が「ただの白い板」に見えないようにする。
+   模様ではなく紙の構造なので、5% の 1px だけ。 */
+.s3-paper::before {
+  content: "";
+  position: absolute;
+  inset: 30px 34px;
+  background: repeating-linear-gradient(
+    180deg,
+    transparent 0 25px,
+    rgba(84, 96, 134, 0.05) 25px 26px
+  );
+  pointer-events: none;
+}
+
+/* 行 = 完成形（real）の上に骨組み（skel）を重ね、クラスで切り替える */
+.s3-row {
+  position: relative;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.55s var(--s-out), transform 0.55s var(--s-out);
+}
+.s3-row.is-in { opacity: 1; transform: none; }
+.s3-row + .s3-row { margin-top: 15px; }
+.s3-row .s3-real { opacity: 0; transition: opacity 0.5s var(--s-out); }
+.s3-row.is-real .s3-real { opacity: 1; }
+.s3-skel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.35s var(--s-out);
+}
+.s3-row.is-skel .s3-skel { opacity: 1; }
+/* 骨組みバー: 光走査（装飾ループ。状態は持たない） */
+.s3-skelbar {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(100deg, #e6e8f1 40%, #f9faff 50%, #e6e8f1 60%);
+  background-size: 220% 100%;
+  animation: s3-sheen 1.1s linear infinite;
+}
+@keyframes s3-sheen {
+  from { background-position: 120% 0; }
+  to   { background-position: -120% 0; }
+}
+
+/* 紙面の中身 */
+.s3-p-titlerow .s3-real {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.s3-p-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+}
+.s3-p-name {
+  font-size: 10px;
+  color: #8b93ab;
+  letter-spacing: 0.1em;
+}
+.s3-p-name i {
+  display: inline-block;
+  width: 84px;
+  margin-left: 6px;
+  border-bottom: 1px solid #b6bccd;
+}
+.s3-p-h1row .s3-real {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.s3-p-h1 {
+  display: inline-block;
+  padding: 2px 11px;
+  border: 1.5px solid #2a3040;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+.s3-p-h1t {
+  font-size: 11px;
+  color: #4a5268;
+  letter-spacing: 0.04em;
+}
+.s3-p-q .s3-real {
+  font-size: 11.5px;
+  line-height: 1.75;
+  letter-spacing: 0.03em;
+}
+.s3-p-choicerow .s3-real {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  padding-left: 14px;
+}
+.s3-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.s3-choice i {
+  display: inline-block;
+  width: 44px;
+  border-bottom: 1px solid #9aa2b8;
+}
+.s3-p-ansrow { min-height: 58px; }
+.s3-p-ansrow .s3-real {
+  position: absolute;
+  inset: 0;
+  border: 1.2px solid #444c60;
+  border-radius: 4px;
+}
+.s3-anslab {
+  position: absolute;
+  top: 5px;
+  left: 9px;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: #8b93ab;
+}
+
+/* ── スマホ枠（紙のミニチュア + 画面グレア 1 本）── */
+.s3-phone {
+  position: absolute;
+  right: clamp(16px, 7vw, 120px);
+  top: calc(50% - 118px);
+  width: 116px;
+  height: 232px;
+  border-radius: 22px;
+  border: 1px solid rgba(190, 200, 255, 0.42);
+  background: linear-gradient(180deg, rgba(20, 24, 48, 0.7), rgba(9, 11, 24, 0.72));
+  padding: 12px 9px 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 26px 50px -22px rgba(0, 0, 0, 0.9),
+    0 0 34px rgba(79, 141, 255, 0.18);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.s3-ph-notch {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  margin-left: -14px;
+  width: 28px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(190, 200, 255, 0.32);
+}
+.s3-ph-scr {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #f2f4fb, #e4e8f3);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+/* ガラスのグレア: 斜めに 1 本だけ。これがあるだけで「画面」になる。 */
+.s3-ph-glare {
+  position: absolute;
+  top: -25%;
+  left: -34%;
+  width: 62%;
+  height: 160%;
+  transform: rotate(17deg);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.9) 46%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  pointer-events: none;
+}
+.s3-m-bar { height: 4px; border-radius: 2px; background: #c3c9de; }
+.s3-m-title { width: 64%; background: #9aa3c0; }
+.s3-m-h {
+  align-self: flex-start;
+  padding: 1px 6px;
+  border: 1px solid #2a3040;
+  font-size: 7px;
+  font-weight: 700;
+  color: #2a3040;
+  letter-spacing: 0.1em;
+}
+.s3-m-ans {
+  margin-top: auto;
+  height: 30px;
+  border: 1px solid #444c60;
+  border-radius: 3px;
+}
+
+.s3-copy {
+  visibility: hidden;
+  left: 0;
+  right: 0;
+  transform: none;
+  margin-inline: auto;
+  width: max-content;
+  max-width: 92vw;
+  white-space: normal;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   reduced motion（フェードのみに簡略化。opacity は JS が書き続ける）
+   ──────────────────────────────────────────────────────────────── */
+html.vqad-rm .s1-kicker,
+html.vqad-rm .s1-kick-t,
+html.vqad-rm .s1-hair,
+html.vqad-rm .s1-copy,
+html.vqad-rm .s2-panel,
+html.vqad-rm .s2-card,
+html.vqad-rm .s2-copy,
+html.vqad-rm .s3-stepper,
+html.vqad-rm .s3-paper,
+html.vqad-rm .s3-phone,
+html.vqad-rm .s3-copy,
+html.vqad-rm .scene-s1 .vqad-kin,
+html.vqad-rm .scene-s2 .vqad-kin,
+html.vqad-rm .scene-s3 .vqad-kin {
+  transform: none !important;
+  filter: none !important;
+}
+html.vqad-rm .s2-chipband,
+html.vqad-rm .s2-ink,
+html.vqad-rm .s1-sweep,
+html.vqad-rm .s3-frags {
+  display: none;
+}
+html.vqad-rm .s3-skelbar { animation: none; }
+html.vqad-rm .s3-row { transition: opacity 0.4s ease; transform: none; }
+html.vqad-rm .s3-step.is-lit .s3-pt { transform: none !important; }
+
+/* ────────────────────────────────────────────────────────────────
+   画面が低いとき（パネルが縦に溢れてコピーへ被るのを防ぐ）
+   ──────────────────────────────────────────────────────────────── */
+@media (max-height: 820px) {
+  .s2-panel { width: min(780px, 84vw); padding: 20px 24px 24px; }
+  .s2-cover { height: 54px; }
+  .s2-glyph { font-size: 78px; }
+  .s2-glyph.is-lat { font-size: 75px; }
+  .s2-grid { gap: 13px; margin-top: 18px; }
+  .s2-card-body { padding: 12px 12px 14px; }
+  .s2-name { font-size: 13.5px; }
+  .s2-meta { margin-top: 7px; font-size: 10px; }
+  .s2-badge { margin-top: 11px; }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   モバイル（崩壊させない。パネルは縮小・グリッドは 2 列）
+   ──────────────────────────────────────────────────────────────── */
+/* カメラ（main.js）が最大 1.16 倍まで寄せ、横に 34px ほど振る。
+   小画面ではその分だけ内側に余白を残さないと端が切れる。 */
+@media (max-width: 700px) {
+  .s1-kick-t { letter-spacing: 0.32em; text-indent: 0.32em; }
+  .s1-copy {
+    width: 86vw;
+    margin-inline: auto;
+    font-size: clamp(17px, 4.9vw, 26px);
+    letter-spacing: 0.03em;
+  }
+
+  /* 小画面では非対称の余地が無い。パネルは中央へ戻し、コピーだけ左揃えで残す。 */
+  .s2-wrap { padding-left: 0; }
+  .s2-panel { width: 72vw; padding: 14px 12px 16px; }
+  .s2-grid { grid-template-columns: repeat(2, 1fr); gap: 11px; }
+  .s2-card:nth-child(n + 5) { display: none; } /* 小画面は 4 枚に絞る */
+  .s2-cover { height: 46px; }
+  .s2-glyph { font-size: 66px; }
+  .s2-glyph.is-lat { font-size: 64px; }
+  .s2-tabs { gap: 18px; }
+  .s2-tab { font-size: 11px; }
+  .s2-name { font-size: 13px; }
+  .s2-meta { display: none; }
+  .s2-chip { font-size: 11px; padding: 7px 15px; }
+  .s2-copy {
+    left: 6vw;
+    max-width: 84vw;
+    font-size: clamp(16px, 4.6vw, 22px);
+    letter-spacing: 0.03em;
+  }
+
+  .s3-stepper { width: 94vw; }
+  .s3-step { width: 46px; }
+  .s3-track { left: 23px; right: 23px; }
+  .s3-lab { font-size: 8px; letter-spacing: 0.08em; text-indent: 0.08em; }
+  .s3-paper { width: 82vw; padding: 20px 18px 22px; }
+  .s3-paper::before { inset: 20px 18px; }
+  .s3-p-title { font-size: 14px; }
+  .s3-copy { max-width: 84vw; font-size: clamp(16px, 4.6vw, 22px); letter-spacing: 0.03em; }
+  .s3-phone { display: none; } /* 紙と重なるため小画面では出さない */
+}

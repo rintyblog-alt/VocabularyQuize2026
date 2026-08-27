@@ -1,0 +1,28 @@
+# ════════════════════════════════════════════════════════════════════
+# VocabuQuiz Worker — ローカル開発用シークレット雛形（.dev.vars.example）
+#
+# 使い方:
+#   cp .dev.vars.example .dev.vars
+#   .dev.vars に実値を記入（.dev.vars は .gitignore 済みでコミットしない）
+#   `wrangler dev` が .dev.vars を自動読込します。
+#
+# 本番は wrangler secret put で登録（.dev.vars は本番に反映されません）:
+#   npx wrangler secret put RESEND_API_KEY
+#   npx wrangler secret put TURNSTILE_SECRET_KEY
+#   npx wrangler secret put OTP_PEPPER
+#   npx wrangler secret put REGISTRATION_SESSION_SECRET
+#
+# ※ このファイルには「変数名」だけを書き、実値は書かないこと。
+# ════════════════════════════════════════════════════════════════════
+
+# Resend（確認メール送信）。未設定だとメール送信不可（"送信しました"を偽装しない）
+RESEND_API_KEY=
+
+# Cloudflare Turnstile（Bot対策）シークレット。未設定だとサーバ側検証をスキップ（dev）。設定後は強制
+TURNSTILE_SECRET_KEY=
+
+# 確認コード ダイジェスト用の pepper（HMAC鍵）。十分に長いランダム文字列
+OTP_PEPPER=
+
+# 登録セッション署名用シークレット（HMAC鍵）。十分に長いランダム文字列
+REGISTRATION_SESSION_SECRET=

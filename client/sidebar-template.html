@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sidebar — VocabuQuiz</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50:'#f0f5ff',100:'#dde8ff',200:'#c0d4ff',300:'#95b6ff',
+          400:'#6492ff',500:'#2b70ef',600:'#2250df',700:'#1a40b5',
+          800:'#13318d',900:'#0e266a',950:'#07194e'
+        }
+      },
+      fontFamily: {
+        sans: ['Inter','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP','sans-serif']
+      }
+    }
+  }
+}
+</script>
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Inter','Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;
+    background: #f1f5f9;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 40px;
+    gap: 40px;
+  }
+
+  /* ═══ Sidebar Shell ═══ */
+  .sidebar {
+    width: 260px;
+    height: 100vh;
+    max-height: 720px;
+    background: #fff;
+    border-right: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .sidebar.is-collapsed {
+    width: 64px;
+  }
+
+  /* ═══ Header ═══ */
+  .sb-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 16px 12px;
+    flex-shrink: 0;
+  }
+  .sb-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sb-logo-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .sb-logo-icon .material-icons-outlined {
+    font-size: 20px;
+    color: #fff;
+  }
+  .sb-logo-text {
+    font-size: 17px;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -.02em;
+  }
+  .sb-toggle {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .15s;
+    flex-shrink: 0;
+  }
+  .sb-toggle:hover {
+    background: #f1f5f9;
+    color: #475569;
+  }
+
+  /* ═══ Search ═══ */
+  .sb-search {
+    margin: 0 12px 8px;
+    position: relative;
+  }
+  .sb-search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    font-size: 18px;
+    pointer-events: none;
+  }
+  .sb-search input {
+    width: 100%;
+    height: 38px;
+    padding: 0 12px 0 36px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    font-size: 13px;
+    color: #334155;
+    outline: none;
+    transition: all .15s;
+  }
+  .sb-search input:focus {
+    border-color: #2b70ef;
+    box-shadow: 0 0 0 3px rgba(43,112,239,.1);
+    background: #fff;
+  }
+  .sb-search input::placeholder {
+    color: #94a3b8;
+  }
+
+  /* ═══ Navigation ═══ */
+  .sb-nav {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px;
+  }
+  .sb-nav::-webkit-scrollbar { width: 4px; }
+  .sb-nav::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 2px; }
+
+  .sb-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 12px;
+    height: 42px;
+    border-radius: 10px;
+    color: #475569;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .15s;
+    text-decoration: none;
+    position: relative;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+  }
+  .sb-nav-item:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+  .sb-nav-item.is-active {
+    background: #f0f5ff;
+    color: #2b70ef;
+    font-weight: 600;
+  }
+  .sb-nav-item.is-active .material-icons-outlined {
+    color: #2b70ef;
+  }
+  .sb-nav-item .material-icons-outlined {
+    font-size: 20px;
+    color: #64748b;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+  }
+  .sb-nav-item:hover .material-icons-outlined {
+    color: #475569;
+  }
+  .sb-nav-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sb-nav-badge {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 6px;
+    background: #fee2e2;
+    color: #dc2626;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* ═══ Footer ═══ */
+  .sb-footer {
+    margin-top: auto;
+    border-top: 1px solid #f1f5f9;
+    padding: 8px;
+    flex-shrink: 0;
+  }
+  .sb-footer-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  /* ═══ Qredit ═══ */
+  .sb-qredit {
+    margin: 0 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #eff6ff 0%, #f0f5ff 100%);
+    border: 1px solid #dbeafe;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .sb-qredit:hover {
+    background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
+    border-color: #bfdbfe;
+  }
+  .sb-qredit-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #2b70ef, #6366f1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .sb-qredit-icon .material-icons-outlined {
+    font-size: 18px;
+    color: #fff;
+  }
+  .sb-qredit-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .sb-qredit-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .sb-qredit-value {
+    font-size: 16px;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -.02em;
+  }
+  .sb-qredit-value span {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+  }
+  .sidebar.is-collapsed .sb-qredit {
+    margin: 0 6px;
+    padding: 8px;
+    justify-content: center;
+  }
+  .sidebar.is-collapsed .sb-qredit-info {
+    display: none;
+  }
+
+  /* ═══ User ═══ */
+  .sb-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background .15s;
+    margin: 4px 8px 8px;
+    position: relative;
+  }
+  .sb-user:hover {
+    background: #f1f5f9;
+  }
+  .sb-user-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #dbeafe;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #2b70ef;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .sb-user-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .sb-user-online {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #22c55e;
+    border: 2px solid #fff;
+    position: absolute;
+    bottom: -1px;
+    right: -1px;
+  }
+  .sb-user-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .sb-user-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sb-user-email {
+    font-size: 11px;
+    color: #94a3b8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sb-user-more {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    border-radius: 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity .15s;
+  }
+  .sb-user:hover .sb-user-more {
+    opacity: 1;
+  }
+  .sb-user-more:hover {
+    background: #e2e8f0;
+    color: #475569;
+  }
+
+  /* ═══ Collapsed State ═══ */
+  .sidebar.is-collapsed .sb-logo-text,
+  .sidebar.is-collapsed .sb-search,
+  .sidebar.is-collapsed .sb-nav-label,
+  .sidebar.is-collapsed .sb-nav-badge,
+  .sidebar.is-collapsed .sb-user-info,
+  .sidebar.is-collapsed .sb-user-more {
+    display: none;
+  }
+  .sidebar.is-collapsed .sb-header {
+    justify-content: center;
+    padding: 16px 8px 12px;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .sidebar.is-collapsed .sb-logo {
+    justify-content: center;
+  }
+  .sidebar.is-collapsed .sb-nav {
+    padding: 4px 6px;
+  }
+  .sidebar.is-collapsed .sb-nav-item {
+    justify-content: center;
+    padding: 0;
+    height: 42px;
+    width: 42px;
+    margin: 0 auto;
+    gap: 0;
+  }
+  .sidebar.is-collapsed .sb-nav-item .material-icons-outlined {
+    font-size: 22px;
+  }
+  .sidebar.is-collapsed .sb-footer {
+    padding: 8px 6px;
+  }
+  .sidebar.is-collapsed .sb-footer .sb-nav-item {
+    justify-content: center;
+    padding: 0;
+    height: 42px;
+    width: 42px;
+    margin: 0 auto;
+  }
+  .sidebar.is-collapsed .sb-user {
+    justify-content: center;
+    padding: 8px;
+    margin: 4px 6px 8px;
+  }
+
+  /* ═══ Tooltip (collapsed) ═══ */
+  .sidebar.is-collapsed .sb-nav-item {
+    position: relative;
+  }
+  .sidebar.is-collapsed .sb-nav-item::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: #1e293b;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s;
+    z-index: 100;
+  }
+  .sidebar.is-collapsed .sb-nav-item:hover::after {
+    opacity: 1;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ Expanded Sidebar ═══ -->
+<aside class="sidebar" id="sidebarExpanded">
+  <!-- Header -->
+  <div class="sb-header">
+    <div class="sb-logo">
+      <div class="sb-logo-icon">
+        <span class="material-icons-outlined">auto_awesome</span>
+      </div>
+      <span class="sb-logo-text">VocabuQuiz</span>
+    </div>
+    <button class="sb-toggle" onclick="toggleSidebar('sidebarExpanded')" title="折りたたむ">
+      <span class="material-icons-outlined" style="font-size:20px;">menu</span>
+    </button>
+  </div>
+
+  <!-- Search -->
+  <div class="sb-search">
+    <span class="material-icons-outlined sb-search-icon">search</span>
+    <input type="text" placeholder="検索...">
+  </div>
+
+  <!-- Nav -->
+  <nav class="sb-nav" aria-label="メインナビゲーション">
+    <button class="sb-nav-item" data-tooltip="ホーム">
+      <span class="material-icons-outlined">home</span>
+      <span class="sb-nav-label">ホーム</span>
+    </button>
+    <button class="sb-nav-item" data-tooltip="ダッシュボード">
+      <span class="material-icons-outlined">dashboard</span>
+      <span class="sb-nav-label">ダッシュボード</span>
+    </button>
+    <button class="sb-nav-item" data-tooltip="プリセット">
+      <span class="material-icons-outlined">assignment</span>
+      <span class="sb-nav-label">プリセット</span>
+    </button>
+    <button class="sb-nav-item is-active" data-tooltip="Feed">
+      <span class="material-icons-outlined">dynamic_feed</span>
+      <span class="sb-nav-label">Feed</span>
+    </button>
+    <button class="sb-nav-item" data-tooltip="Quick Chat">
+      <span class="material-icons-outlined">chat</span>
+      <span class="sb-nav-label">Quick Chat</span>
+    </button>
+  </nav>
+
+  <!-- Footer -->
+  <div class="sb-footer">
+    <div class="sb-footer-items">
+      <button class="sb-nav-item" data-tooltip="通知">
+        <span class="material-icons-outlined">notifications</span>
+        <span class="sb-nav-label">通知</span>
+        <span class="sb-nav-badge">12</span>
+      </button>
+      <button class="sb-nav-item" data-tooltip="サポート">
+        <span class="material-icons-outlined">help_outline</span>
+        <span class="sb-nav-label">サポート</span>
+      </button>
+      <button class="sb-nav-item" data-tooltip="設定">
+        <span class="material-icons-outlined">settings</span>
+        <span class="sb-nav-label">設定</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Qredit -->
+  <div class="sb-qredit" title="Qredit残高">
+    <div class="sb-qredit-icon">
+      <span class="material-icons-outlined">toll</span>
+    </div>
+    <div class="sb-qredit-info">
+      <div class="sb-qredit-label">Qredit</div>
+      <div class="sb-qredit-value">1,250 <span>Q</span></div>
+    </div>
+  </div>
+
+  <!-- User -->
+  <div class="sb-user">
+    <div class="sb-user-avatar">
+      <img src="https://i.pravatar.cc/72?img=32" alt="">
+      <span class="sb-user-online"></span>
+    </div>
+    <div class="sb-user-info">
+      <div class="sb-user-name">Tsubota</div>
+      <div class="sb-user-email">tsubota@vocabuquiz.com</div>
+    </div>
+    <button class="sb-user-more">
+      <span class="material-icons-outlined" style="font-size:18px;">more_vert</span>
+    </button>
+  </div>
+</aside>
+
+<!-- ═══ Collapsed Sidebar ═══ -->
+<aside class="sidebar is-collapsed" id="sidebarCollapsed">
+  <div class="sb-header">
+    <div class="sb-logo">
+      <div class="sb-logo-icon">
+        <span class="material-icons-outlined">auto_awesome</span>
+      </div>
+    </div>
+    <button class="sb-toggle" onclick="toggleSidebar('sidebarCollapsed')" title="展開する">
+      <span class="material-icons-outlined" style="font-size:20px;">menu</span>
+    </button>
+  </div>
+
+  <nav class="sb-nav" aria-label="メインナビゲーション">
+    <button class="sb-nav-item" data-tooltip="ホーム">
+      <span class="material-icons-outlined">home</span>
+    </button>
+    <button class="sb-nav-item" data-tooltip="ダッシュボード">
+      <span class="material-icons-outlined">dashboard</span>
+    </button>
+    <button class="sb-nav-item" data-tooltip="プリセット">
+      <span class="material-icons-outlined">assignment</span>
+    </button>
+    <button class="sb-nav-item is-active" data-tooltip="Feed">
+      <span class="material-icons-outlined">dynamic_feed</span>
+    </button>
+    <button class="sb-nav-item" data-tooltip="Quick Chat">
+      <span class="material-icons-outlined">chat</span>
+    </button>
+  </nav>
+
+  <div class="sb-footer">
+    <div class="sb-footer-items">
+      <button class="sb-nav-item" data-tooltip="通知">
+        <span class="material-icons-outlined">notifications</span>
+      </button>
+      <button class="sb-nav-item" data-tooltip="サポート">
+        <span class="material-icons-outlined">help_outline</span>
+      </button>
+      <button class="sb-nav-item" data-tooltip="設定">
+        <span class="material-icons-outlined">settings</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="sb-qredit" title="Qredit残高">
+    <div class="sb-qredit-icon">
+      <span class="material-icons-outlined">toll</span>
+    </div>
+    <div class="sb-qredit-info">
+      <div class="sb-qredit-label">Qredit</div>
+      <div class="sb-qredit-value">1,250 <span>Q</span></div>
+    </div>
+  </div>
+
+  <div class="sb-user">
+    <div class="sb-user-avatar">
+      <img src="https://i.pravatar.cc/72?img=32" alt="">
+      <span class="sb-user-online"></span>
+    </div>
+  </div>
+</aside>
+
+<script>
+function toggleSidebar(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('is-collapsed');
+}
+
+/* Nav active state */
+document.querySelectorAll('.sb-nav-item').forEach(item => {
+  item.addEventListener('click', function() {
+    const nav = this.closest('.sb-nav, .sb-footer-items');
+    if (!nav) return;
+    this.closest('.sidebar').querySelectorAll('.sb-nav-item').forEach(i => i.classList.remove('is-active'));
+    this.classList.add('is-active');
+  });
+});
+</script>
+</body>
+</html>

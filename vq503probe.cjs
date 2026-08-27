@@ -1,0 +1,23 @@
+const { chromium } = require("playwright");
+const HIDE = `#vqbFlow,#mob-tut-overlay,#mobBarTutorial,#firstLaunchOverlay,#vqOnboardingOverlay{display:none !important;}`;
+(async () => {
+  const b = await chromium.launch();
+  const pg = await (await b.newContext()).newPage();
+  const bad = [];
+  pg.on("response", (r) => { if (r.status() >= 400) bad.push(r.status() + " " + r.request().method() + " " + r.url().slice(0, 160)); });
+  await pg.goto("http://127.0.0.1:8791/?vqdev=1", { waitUntil: "domcontentloaded" });
+  await pg.addStyleTag({ content: HIDE });
+  await pg.waitForFunction(() => document.getElementById("authLoginSubmitBtn"), { timeout: 20000 });
+  await pg.evaluate(() => { const s=(el,v)=>{const p=el.tagName==="SELECT"?HTMLSelectElement:HTMLInputElement;
+    Object.getOwnPropertyDescriptor(p.prototype,"value").set.call(el,v);
+    el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));};
+    s(document.getElementById("authLoginGrade"),"H3");s(document.getElementById("authLoginNickname"),"tester");
+    s(document.getElementById("authLoginPassword"),"Abcd1234");document.getElementById("authLoginSubmitBtn").click(); });
+  await pg.waitForFunction(() => document.body.getAttribute("data-ui-v2") === "1", { timeout: 30000 });
+  await pg.waitForTimeout(6000);
+  const by = {};
+  bad.forEach((x) => { const k = x.replace(/\?.*$/, "").replace(/\/[0-9a-f-]{8,}/g, "/:id"); by[k] = (by[k]||0)+1; });
+  console.log("4xx/5xx 応答:", bad.length, "件");
+  Object.keys(by).sort((a,b)=>by[b]-by[a]).forEach((k)=>console.log("  " + String(by[k]).padStart(4) + " 回  " + k));
+  await b.close();
+})().catch(e=>{console.error(e);process.exit(1)});

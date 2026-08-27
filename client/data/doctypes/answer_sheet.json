@@ -1,0 +1,43 @@
+{
+  "id": "answer_sheet",
+  "kind": "docs",
+  "displayName": "解答用紙",
+  "aliases": ["答案用紙", "解答欄", "答案"],
+  "parent": "exam_paper",
+  "requiredFields": [
+    { "key": "examName", "label": "試験名", "dataType": "text", "fillPolicy": "llm_allowed" },
+    { "key": "subject", "label": "科目", "dataType": "text", "fillPolicy": "llm_allowed" },
+    { "key": "クラス", "label": "クラス", "dataType": "text", "fillPolicy": "user_input",
+      "hint": "受ける人が書く欄です" },
+    { "key": "出席番号", "label": "出席番号", "dataType": "text", "fillPolicy": "user_input",
+      "hint": "受ける人が書く欄です" },
+    { "key": "氏名", "label": "氏名", "dataType": "text", "fillPolicy": "user_input",
+      "hint": "受ける人が書く欄です" },
+    { "key": "得点", "label": "得点", "dataType": "number", "fillPolicy": "user_input",
+      "hint": "採点する人が書く欄です" },
+    { "key": "answers", "label": "解答欄", "dataType": "text", "fillPolicy": "derived",
+      "note": "問題の並びと 1 対 1。番号は試験全体の通し番号" }
+  ],
+  "optionalFields": [
+    { "key": "points", "label": "配点表示", "dataType": "text", "fillPolicy": "derived" }
+  ],
+  "regions": [
+    { "id": "title", "label": "", "showLabel": false, "fields": ["examName"], "headingType": "heading1" },
+    { "id": "identity", "label": "", "showLabel": false, "fields": ["クラス", "出席番号", "氏名"] },
+    { "id": "answer", "label": "解答欄", "fields": ["answers"], "kind": "answer", "lines": 1,
+      "headingType": "heading2" },
+    { "id": "score", "label": "", "showLabel": false, "fields": ["得点"] }
+  ],
+  "calculations": [],
+  "validations": [
+    { "rule": "answerSpacePerQuestion", "severity": "error" },
+    { "rule": "noFabricatedName", "severity": "error" }
+  ],
+  "printSpec": {
+    "paper": "A4", "orientation": "portrait",
+    "margins": { "top": 20, "right": 18, "bottom": 20, "left": 18 },
+    "pageNumber": true
+  },
+  "source": { "kind": "manual", "ref": "手書き（exam_paper と対）", "checkedAt": "2026-08-17" },
+  "status": "approved"
+}

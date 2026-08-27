@@ -1,0 +1,57 @@
+# ══════════════════════════════════════════════════════════════════
+#  VocabuQuiz .gitignore
+#  方針: 秘密情報・生成物・巨大なバックアップを追跡しない。
+#  秘密値は wrangler secret / .dev.vars（未追跡）だけに置く。
+# ══════════════════════════════════════════════════════════════════
+
+# ── 依存 ──
+node_modules/
+
+# ── バックアップ（過去の秘密値がそのまま残っているため必ず除外） ──
+_backup_*/
+_wip_*/
+_bk_*/
+client/_backup_*/
+server/backup_before_email_verify/
+*.backup-*.html
+index.vqa-wip-*.html
+client/index.vqa-wip-*.html
+client/v2/dist/index.beforeV2.bak.html
+
+# ── 秘密情報（絶対に追跡しない） ──
+.env
+.env.*
+*.secret*
+server/.dev.vars
+server/.dev.vars.*
+**/.dev.vars
+config.public.js
+client/config.public.js
+# Claude Code のローカル設定。過去の許可コマンドに実トークンが残ることがある。
+.claude/settings.local.json
+
+# ── ローカル実行の生成物（wrangler.toml のコピーと D1 の実体を含む） ──
+server/.local-run/
+server/.wrangler/
+.wrangler/
+server/app.db
+server/app.db-*
+*.sqlite
+*.sqlite3
+
+# ── ダウンロードした実行バイナリ ──
+.tmp_uv/
+
+# ── 計測・出力・一時ファイル ──
+exports/
+test-results/
+artifacts/
+tmp_*
+*.log
+playwright-report/
+
+# ── OS / エディタ ──
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

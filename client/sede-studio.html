@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sede Studio — AI Canvas</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#f8fafc;--surface:#fff;--surface2:#f1f5f9;
+  --text:#1e293b;--text-sub:#64748b;--text-muted:#94a3b8;--text-faint:#cbd5e1;
+  --border:rgba(0,0,0,.07);--border-strong:rgba(0,0,0,.12);
+  --accent:#6366f1;--accent-hover:#4f46e5;--accent-light:rgba(99,102,241,.08);--accent-glow:rgba(99,102,241,.25);
+  --success:#22c55e;--danger:#ef4444;--warning:#f59e0b;
+  --radius:12px;--radius-sm:8px;--radius-lg:16px;
+  --shadow:0 2px 8px rgba(0,0,0,.06);
+  --font:'Inter','Hiragino Sans','Noto Sans JP',system-ui,-apple-system,sans-serif;
+  --mono:'Fira Code','SF Mono',Consolas,monospace;
+  /* Studio-specific */
+  --axis-x:#ef4444;
+  --axis-y:#22c55e;
+  --axis-z:#3b82f6;
+  --scene-bg:#0f172a;
+  --scene-grid:rgba(255,255,255,.05);
+}
+body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased;}
+.ms{font-family:'Material Symbols Rounded';font-size:20px;vertical-align:-4px;font-variation-settings:'FILL' 1;}
+
+/* ═══ Studio Layout ═══ */
+.studio{display:grid;grid-template-rows:44px 1fr 220px;height:100vh;}
+
+/* ═══ Topbar ═══ */
+.topbar{display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--border);background:var(--surface);}
+.topbar-logo{display:flex;align-items:center;gap:8px;padding-right:12px;border-right:1px solid var(--border);}
+.topbar-logo-icon{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#8b5cf6);display:flex;align-items:center;justify-content:center;}
+.topbar-logo-icon .ms{font-size:15px;color:#fff;}
+.topbar-logo-text{font-size:14px;font-weight:800;letter-spacing:-.02em;}
+.topbar-logo-sub{font-size:10px;color:var(--text-muted);font-weight:500;}
+.topbar-canopy-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(139,92,246,.1));border:1px solid rgba(16,185,129,.25);color:#047857;font-size:11px;font-weight:700;letter-spacing:.01em;}
+.topbar-canopy-badge .ms{font-size:14px;color:#047857;}
+.topbar-canopy-badge-text{font-family:var(--font);}
+.topbar-canopy-badge-dot{width:6px;height:6px;border-radius:50%;background:#f59e0b;margin-left:2px;box-shadow:0 0 8px rgba(245,158,11,.5);animation:canopy-pulse 2s ease-in-out infinite;}
+.topbar-canopy-badge-dot.is-active{background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,.6);animation:none;}
+.topbar-canopy-badge-dot.is-offline{background:#94a3b8;box-shadow:none;animation:none;}
+@keyframes canopy-pulse{0%,100%{opacity:.4;}50%{opacity:1;}}
+.topbar-tools{display:flex;gap:2px;background:rgba(0,0,0,.04);border-radius:var(--radius-sm);padding:2px;}
+.topbar-tool{width:32px;height:28px;border:0;background:none;color:var(--text-sub);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;transition:all .12s;position:relative;}
+.topbar-tool:hover{background:rgba(0,0,0,.04);color:var(--text);}
+.topbar-tool.is-active{background:var(--surface);color:var(--accent);box-shadow:0 1px 2px rgba(0,0,0,.08);}
+.topbar-tool .ms{font-size:16px;}
+.topbar-tool::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);padding:4px 8px;border-radius:5px;background:#1e293b;color:#fff;font-size:10px;font-weight:500;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;z-index:100;}
+.topbar-tool:hover::after{opacity:1;}
+.topbar-spacer{flex:1;}
+.topbar-workspace-name{font-size:12px;font-weight:600;color:var(--text);padding:4px 10px;border-radius:6px;background:rgba(0,0,0,.04);border:1px solid transparent;cursor:text;min-width:160px;max-width:260px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.topbar-workspace-name:hover{border-color:var(--border);}
+.topbar-btn{height:28px;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .12s;font-family:var(--font);}
+.topbar-btn:hover{background:rgba(0,0,0,.03);border-color:var(--border-strong);}
+.topbar-btn.is-primary{background:linear-gradient(135deg,var(--accent),#8b5cf6);color:#fff;border-color:transparent;box-shadow:0 2px 8px rgba(99,102,241,.2);}
+.topbar-btn.is-primary:hover{box-shadow:0 4px 14px rgba(99,102,241,.35);transform:translateY(-1px);}
+.topbar-btn .ms{font-size:14px;}
+.topbar-btn.is-play{background:var(--success);color:#fff;border-color:transparent;}
+.topbar-btn.is-play:hover{background:#16a34a;}
+
+/* ═══ Main grid (Hierarchy | Scene | Inspector) ═══ */
+.main{display:grid;grid-template-columns:240px 1fr 280px;min-height:0;}
+
+/* ═══ Hierarchy (left) ═══ */
+.hierarchy{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;}
+.pane-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);}
+.pane-title{font-size:11px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.06em;}
+.pane-action-btn{width:22px;height:22px;border:0;background:none;color:var(--text-muted);cursor:pointer;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;transition:all .1s;}
+.pane-action-btn:hover{background:rgba(0,0,0,.05);color:var(--text);}
+.pane-action-btn .ms{font-size:14px;}
+.hierarchy-tree{flex:1;overflow-y:auto;padding:6px 4px;}
+.hier-group{margin-bottom:4px;}
+.hier-group-header{display:flex;align-items:center;gap:4px;padding:4px 8px;font-size:11px;font-weight:700;color:var(--text-sub);cursor:pointer;border-radius:4px;user-select:none;}
+.hier-group-header:hover{background:rgba(0,0,0,.03);}
+.hier-group-header .ms{font-size:14px;transition:transform .12s;}
+.hier-group.is-collapsed .hier-group-header .ms{transform:rotate(-90deg);}
+.hier-group.is-collapsed .hier-group-body{display:none;}
+.hier-group-body{padding-left:8px;}
+.hier-item{display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:12px;color:var(--text-sub);cursor:pointer;border-radius:5px;margin:1px 0;}
+.hier-item:hover{background:rgba(0,0,0,.03);color:var(--text);}
+.hier-item.is-selected{background:var(--accent-light);color:var(--accent);font-weight:600;}
+.hier-item .ms{font-size:14px;flex-shrink:0;}
+.hier-item-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.hier-item-visible{width:18px;height:18px;border:0;background:none;color:var(--text-muted);cursor:pointer;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;opacity:.6;}
+.hier-item:hover .hier-item-visible{opacity:1;}
+.hier-item-visible .ms{font-size:13px;}
+.hier-empty{padding:20px 12px;font-size:11px;color:var(--text-muted);text-align:center;font-style:italic;}
+
+/* ═══ Scene (center) ═══ */
+.scene{background:var(--scene-bg);position:relative;overflow:hidden;display:flex;flex-direction:column;min-width:0;min-height:0;}
+.scene-toolbar{display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.05);background:rgba(0,0,0,.2);backdrop-filter:blur(8px);}
+.scene-mode-group{display:flex;gap:1px;background:rgba(255,255,255,.05);border-radius:6px;padding:2px;}
+.scene-mode-btn{width:30px;height:26px;border:0;background:none;color:rgba(255,255,255,.5);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:5px;transition:all .12s;position:relative;}
+.scene-mode-btn:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.8);}
+.scene-mode-btn.is-active{background:var(--accent);color:#fff;}
+.scene-mode-btn .ms{font-size:15px;}
+.scene-mode-btn::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);padding:4px 8px;border-radius:5px;background:#000;color:#fff;font-size:10px;font-weight:500;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;z-index:100;font-family:var(--font);}
+.scene-mode-btn:hover::after{opacity:1;}
+.scene-coords{display:flex;align-items:center;gap:10px;margin-left:12px;font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.5);}
+.scene-axis-chip{display:inline-flex;align-items:center;gap:4px;}
+.scene-axis-chip-dot{width:8px;height:8px;border-radius:50%;}
+.scene-axis-chip-dot.x{background:var(--axis-x);}
+.scene-axis-chip-dot.y{background:var(--axis-y);}
+.scene-axis-chip-dot.z{background:var(--axis-z);}
+.scene-zoom{display:flex;align-items:center;gap:4px;margin-left:auto;font-size:11px;color:rgba(255,255,255,.6);}
+.scene-zoom-btn{width:22px;height:22px;border:0;background:rgba(255,255,255,.05);color:#fff;cursor:pointer;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;}
+.scene-zoom-btn:hover{background:rgba(255,255,255,.1);}
+.scene-zoom-btn .ms{font-size:13px;}
+.scene-zoom-value{min-width:40px;text-align:center;font-family:var(--mono);}
+
+/* Viewport */
+.viewport{flex:1;position:relative;overflow:hidden;background:
+  linear-gradient(var(--scene-grid) 1px,transparent 1px),
+  linear-gradient(90deg,var(--scene-grid) 1px,transparent 1px),
+  radial-gradient(ellipse at center,#1e293b 0%,#0f172a 100%);
+  background-size:40px 40px,40px 40px,100% 100%;
+  cursor:default;
+}
+.viewport-axis-indicator{position:absolute;top:12px;right:12px;width:70px;height:70px;pointer-events:none;opacity:.9;}
+
+/* Widget (placed object) */
+.widget{position:absolute;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:var(--surface);box-shadow:0 4px 20px rgba(0,0,0,.35);overflow:hidden;transition:box-shadow .15s,transform .12s;}
+.widget:hover{box-shadow:0 6px 28px rgba(0,0,0,.45);}
+.widget.is-selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-glow),0 6px 28px rgba(0,0,0,.5);}
+.widget-header{display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;background:rgba(0,0,0,.04);border-bottom:1px solid var(--border);cursor:move;user-select:none;}
+.widget-title{flex:1;font-size:10px;font-weight:600;color:var(--text-sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.widget-close{width:18px;height:18px;border:0;background:none;color:var(--text-muted);cursor:pointer;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;}
+.widget-close:hover{background:rgba(239,68,68,.12);color:var(--danger);}
+.widget-close .ms{font-size:13px;}
+.widget-body{width:100%;height:calc(100% - 26px);}
+.widget-body iframe{width:100%;height:100%;border:0;background:#fff;}
+
+/* Resize handles */
+.widget-handle{position:absolute;background:var(--accent);opacity:0;transition:opacity .1s;}
+.widget.is-selected .widget-handle{opacity:1;}
+.widget-handle.br{right:-4px;bottom:-4px;width:10px;height:10px;border-radius:50%;cursor:nwse-resize;}
+.widget-handle.rotate{top:-26px;left:calc(50% - 10px);width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid var(--accent);cursor:grab;display:flex;align-items:center;justify-content:center;}
+.widget-handle.rotate .ms{font-size:10px;color:var(--accent);}
+.widget-handle.rotate:active{cursor:grabbing;}
+
+/* Empty scene prompt */
+.scene-empty{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:rgba(255,255,255,.4);pointer-events:none;}
+.scene-empty .ms{font-size:48px;margin-bottom:12px;opacity:.6;}
+.scene-empty-title{font-size:14px;font-weight:600;margin-bottom:4px;}
+.scene-empty-sub{font-size:11px;}
+
+/* ═══ Inspector (right) ═══ */
+.inspector{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;min-height:0;}
+.inspector-body{flex:1;overflow-y:auto;padding:4px 0;}
+.inspector-empty{padding:28px 16px;text-align:center;color:var(--text-muted);font-size:11px;}
+.inspector-empty .ms{font-size:36px;opacity:.4;margin-bottom:6px;display:block;}
+.insp-section{padding:10px 14px;border-bottom:1px solid var(--border);}
+.insp-section-title{font-size:10px;font-weight:700;color:var(--text-sub);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+.insp-row{display:grid;grid-template-columns:64px 1fr;align-items:center;gap:6px;margin-bottom:4px;}
+.insp-label{font-size:11px;color:var(--text-sub);font-weight:500;}
+.insp-input{height:26px;padding:0 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:11px;font-family:var(--mono);width:100%;transition:border-color .1s;}
+.insp-input:focus{outline:none;border-color:var(--accent);}
+.insp-vec3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;}
+.insp-vec-cell{position:relative;}
+.insp-vec-cell::before{content:attr(data-axis);position:absolute;left:6px;top:50%;transform:translateY(-50%);font-size:9px;font-weight:700;font-family:var(--mono);pointer-events:none;}
+.insp-vec-cell.x::before{color:var(--axis-x);}
+.insp-vec-cell.y::before{color:var(--axis-y);}
+.insp-vec-cell.z::before{color:var(--axis-z);}
+.insp-vec-cell input{padding-left:16px;font-size:11px;height:26px;}
+.insp-text{font-size:11px;color:var(--text-sub);padding:4px 0;}
+.insp-text strong{color:var(--text);}
+
+/* ═══ Assets (bottom) ═══ */
+.assets{background:var(--surface);border-top:1px solid var(--border);display:flex;flex-direction:column;min-height:0;}
+.assets-header{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);}
+.assets-tabs{display:flex;gap:2px;}
+.assets-tab{padding:5px 12px;font-size:11px;font-weight:600;color:var(--text-sub);cursor:pointer;border-radius:5px;border:0;background:none;transition:all .1s;display:inline-flex;align-items:center;gap:4px;font-family:var(--font);}
+.assets-tab:hover{background:rgba(0,0,0,.04);color:var(--text);}
+.assets-tab.is-active{background:var(--accent-light);color:var(--accent);}
+.assets-tab .ms{font-size:13px;}
+.assets-search{flex:1;max-width:220px;margin-left:auto;position:relative;}
+.assets-search input{width:100%;height:26px;padding:0 10px 0 28px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text);font-size:11px;font-family:var(--font);}
+.assets-search input:focus{outline:none;border-color:var(--accent);}
+.assets-search .ms{position:absolute;left:7px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--text-muted);}
+.assets-btn{height:26px;padding:0 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text-sub);font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .1s;font-family:var(--font);}
+.assets-btn:hover{background:rgba(0,0,0,.03);color:var(--text);}
+.assets-btn.is-primary{background:var(--accent);color:#fff;border-color:transparent;}
+.assets-btn.is-primary:hover{background:var(--accent-hover);}
+.assets-btn .ms{font-size:13px;}
+.assets-grid{flex:1;padding:10px 14px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:10px;align-content:start;}
+.asset-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);cursor:grab;transition:all .12s;position:relative;}
+.asset-card:hover{border-color:rgba(99,102,241,.3);box-shadow:0 4px 14px rgba(99,102,241,.1);transform:translateY(-2px);}
+.asset-card:active{cursor:grabbing;transform:translateY(0);}
+.asset-icon{width:56px;height:56px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(139,92,246,.04));}
+.asset-icon .ms{font-size:26px;color:var(--accent);}
+.asset-icon.c1 .ms{color:#3b82f6;}
+.asset-icon.c2 .ms{color:#8b5cf6;}
+.asset-icon.c3 .ms{color:#ec4899;}
+.asset-icon.c4 .ms{color:#22c55e;}
+.asset-icon.c5 .ms{color:#f97316;}
+.asset-name{font-size:10px;font-weight:600;color:var(--text);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;}
+.asset-meta{font-size:9px;color:var(--text-muted);}
+.asset-empty{grid-column:1/-1;padding:30px 12px;text-align:center;color:var(--text-muted);font-size:11px;}
+.asset-empty .ms{font-size:32px;opacity:.4;margin-bottom:6px;display:block;}
+.asset-empty-hint{margin-top:6px;font-size:10px;}
+
+/* Context menu */
+.ctx-menu{position:fixed;z-index:1000;min-width:160px;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-sm);box-shadow:0 8px 24px rgba(0,0,0,.12);padding:4px;display:none;}
+.ctx-menu.is-open{display:block;}
+.ctx-menu-item{display:flex;align-items:center;gap:8px;padding:7px 12px;border:0;background:none;color:var(--text);font-size:12px;font-weight:500;cursor:pointer;border-radius:5px;text-align:left;width:100%;font-family:var(--font);}
+.ctx-menu-item:hover{background:rgba(0,0,0,.04);}
+.ctx-menu-item.is-danger{color:var(--danger);}
+.ctx-menu-item.is-danger:hover{background:rgba(239,68,68,.06);}
+.ctx-menu-item .ms{font-size:15px;}
+.ctx-menu-sep{height:1px;background:var(--border);margin:3px 4px;}
+
+/* AI Prompt modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:500;}
+.modal-overlay.is-open{display:flex;}
+.modal{width:min(520px,90vw);background:var(--surface);border-radius:var(--radius-lg);box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden;}
+.modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.modal-title{font-size:14px;font-weight:700;letter-spacing:-.01em;}
+.modal-close{width:28px;height:28px;border:0;background:none;color:var(--text-muted);cursor:pointer;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;}
+.modal-close:hover{background:rgba(0,0,0,.04);color:var(--text);}
+.modal-body{padding:20px;}
+.modal-label{font-size:11px;font-weight:600;color:var(--text-sub);margin-bottom:6px;display:block;}
+.modal-textarea{width:100%;min-height:100px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);font-size:13px;font-family:var(--font);resize:vertical;line-height:1.5;}
+.modal-textarea:focus{outline:none;border-color:var(--accent);}
+.modal-footer{padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;}
+.modal-btn{height:32px;padding:0 16px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:var(--font);}
+.modal-btn:hover{background:rgba(0,0,0,.03);}
+.modal-btn.is-primary{background:linear-gradient(135deg,var(--accent),#8b5cf6);color:#fff;border-color:transparent;box-shadow:0 2px 8px rgba(99,102,241,.25);}
+.modal-btn.is-primary:hover{box-shadow:0 4px 14px rgba(99,102,241,.4);}
+
+.modal-title-wrap{display:flex;flex-direction:column;gap:3px;}
+.modal-powered{font-size:10px;color:var(--text-sub);display:inline-flex;align-items:center;gap:4px;}
+.modal-powered strong{color:#047857;font-weight:700;}
+.modal-canopy-info{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:var(--radius-sm);margin-bottom:14px;font-size:11px;line-height:1.55;}
+.modal-canopy-info .ms{font-size:16px;flex-shrink:0;margin-top:1px;}
+.modal-canopy-info strong{color:#78350f;}
+.modal-canopy-info-sub{color:var(--text-sub);font-size:10.5px;}
+.modal-hints{margin-top:10px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);}
+.modal-hint-title{font-size:10px;font-weight:700;color:var(--text-sub);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+.modal-hint-list{display:flex;flex-wrap:wrap;gap:6px;}
+.modal-hint{font-size:10px;color:#047857;background:rgba(16,185,129,.08);padding:3px 7px;border-radius:4px;border:1px solid rgba(16,185,129,.15);font-weight:600;}
+.modal-cost{flex:1;font-size:11px;color:var(--text-sub);}
+.modal-cost strong{color:var(--text);font-family:var(--mono);}
+
+/* Locked overlay */
+.locked-overlay{position:fixed;inset:0;background:rgba(15,23,42,.88);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:600;}
+.locked-overlay.is-open{display:flex;}
+.locked-card{width:min(480px,90vw);background:var(--surface);border-radius:var(--radius-lg);padding:32px 28px;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center;}
+.locked-icon{width:72px;height:72px;margin:0 auto 16px;border-radius:20px;background:linear-gradient(135deg,rgba(16,185,129,.15),rgba(139,92,246,.12));display:flex;align-items:center;justify-content:center;}
+.locked-icon .ms{font-size:40px;color:#047857;}
+.locked-title{font-size:18px;font-weight:800;letter-spacing:-.01em;margin-bottom:6px;}
+.locked-sub{font-size:12px;color:var(--text-sub);line-height:1.6;margin-bottom:20px;}
+.locked-requirements{display:flex;flex-direction:column;gap:8px;margin-bottom:22px;text-align:left;}
+.locked-req{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface2);}
+.locked-req .ms{font-size:18px;flex-shrink:0;margin-top:1px;}
+.locked-req strong{font-size:12px;font-weight:700;}
+.locked-req-sub{font-size:10.5px;color:var(--text-sub);margin-top:2px;}
+.locked-actions{display:flex;gap:8px;justify-content:center;}
+</style>
+</head>
+<body>
+<div class="studio" id="studio">
+
+  <!-- ═══ Topbar ═══ -->
+  <div class="topbar">
+    <div class="topbar-logo">
+      <div class="topbar-logo-icon"><span class="ms">view_in_ar</span></div>
+      <div>
+        <div class="topbar-logo-text">Sede Studio</div>
+        <div class="topbar-logo-sub">AI Canvas · Canopy 5.0</div>
+      </div>
+    </div>
+    <div class="topbar-canopy-badge" title="Sede Studio は Canopy (Opus 4.7) 専用">
+      <span class="ms">forest</span>
+      <span class="topbar-canopy-badge-text">Canopy 5.0</span>
+      <span class="topbar-canopy-badge-dot" id="canopyStatusDot"></span>
+    </div>
+    <div class="topbar-tools" role="group" aria-label="変換モード">
+      <button class="topbar-tool is-active" data-tool="select" data-tip="選択 (Q)"><span class="ms">near_me</span></button>
+      <button class="topbar-tool" data-tool="move" data-tip="移動 (W)"><span class="ms">open_with</span></button>
+      <button class="topbar-tool" data-tool="rotate" data-tip="回転 (E)"><span class="ms">refresh</span></button>
+      <button class="topbar-tool" data-tool="scale" data-tip="スケール (R)"><span class="ms">zoom_out_map</span></button>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-workspace-name" contenteditable="true" id="workspaceName">My Workspace</div>
+    <div class="topbar-spacer"></div>
+    <button class="topbar-btn" id="saveBtn"><span class="ms">save</span>保存</button>
+    <button class="topbar-btn is-play" id="playBtn"><span class="ms">play_arrow</span>再生</button>
+    <button class="topbar-btn is-primary" id="publishBtn"><span class="ms">rocket_launch</span>公開</button>
+  </div>
+
+  <!-- ═══ Main (Hierarchy / Scene / Inspector) ═══ -->
+  <div class="main">
+
+    <!-- Hierarchy -->
+    <div class="hierarchy">
+      <div class="pane-header">
+        <div class="pane-title">Hierarchy</div>
+        <button class="pane-action-btn" id="addObjectBtn" title="追加"><span class="ms">add</span></button>
+      </div>
+      <div class="hierarchy-tree" id="hierarchyTree">
+        <div class="hier-group">
+          <div class="hier-group-header" data-group="scene"><span class="ms">keyboard_arrow_down</span>Scene</div>
+          <div class="hier-group-body" id="hierItems">
+            <div class="hier-empty">まだ何もありません<br><br>下の Assets からドラッグ<br>または [+] で AI 生成</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene (center) -->
+    <div class="scene">
+      <div class="scene-toolbar">
+        <div class="scene-mode-group" role="group" aria-label="視点">
+          <button class="scene-mode-btn is-active" data-view="2d" data-tip="2D ビュー"><span class="ms">crop_din</span></button>
+          <button class="scene-mode-btn" data-view="3d" data-tip="3D ビュー"><span class="ms">deployed_code</span></button>
+        </div>
+        <div class="scene-coords">
+          <div class="scene-axis-chip"><span class="scene-axis-chip-dot x"></span>X</div>
+          <div class="scene-axis-chip"><span class="scene-axis-chip-dot y"></span>Y</div>
+          <div class="scene-axis-chip"><span class="scene-axis-chip-dot z"></span>Z</div>
+        </div>
+        <div class="scene-zoom">
+          <button class="scene-zoom-btn" id="zoomOutBtn"><span class="ms">remove</span></button>
+          <span class="scene-zoom-value" id="zoomValue">100%</span>
+          <button class="scene-zoom-btn" id="zoomInBtn"><span class="ms">add</span></button>
+          <button class="scene-zoom-btn" id="zoomFitBtn" title="フィット"><span class="ms">fit_screen</span></button>
+        </div>
+      </div>
+      <div class="viewport" id="viewport">
+        <!-- Placed widgets go here -->
+        <div class="scene-empty" id="sceneEmpty">
+          <span class="ms">add_box</span>
+          <div class="scene-empty-title">Canvas が空です</div>
+          <div class="scene-empty-sub">Assets から drop するか [+] で AI 生成</div>
+        </div>
+        <svg class="viewport-axis-indicator" viewBox="0 0 70 70" xmlns="http://www.w3.org/2000/svg">
+          <line x1="35" y1="35" x2="60" y2="35" stroke="#ef4444" stroke-width="2"/>
+          <line x1="35" y1="35" x2="35" y2="10" stroke="#22c55e" stroke-width="2"/>
+          <line x1="35" y1="35" x2="18" y2="52" stroke="#3b82f6" stroke-width="2"/>
+          <text x="63" y="39" fill="#ef4444" font-size="10" font-family="monospace" font-weight="700">X</text>
+          <text x="30" y="8" fill="#22c55e" font-size="10" font-family="monospace" font-weight="700">Y</text>
+          <text x="8" y="56" fill="#3b82f6" font-size="10" font-family="monospace" font-weight="700">Z</text>
+          <circle cx="35" cy="35" r="2.5" fill="#fff"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Inspector -->
+    <div class="inspector">
+      <div class="pane-header">
+        <div class="pane-title">Inspector</div>
+      </div>
+      <div class="inspector-body" id="inspectorBody">
+        <div class="inspector-empty">
+          <span class="ms">tune</span>
+          オブジェクトを選択すると<br>ここにプロパティが表示されます
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══ Assets (bottom) ═══ -->
+  <div class="assets">
+    <div class="assets-header">
+      <div class="assets-tabs">
+        <button class="assets-tab is-active" data-tab="apps"><span class="ms">grid_view</span>Apps</button>
+        <button class="assets-tab" data-tab="3d"><span class="ms">deployed_code</span>3D Objects</button>
+        <button class="assets-tab" data-tab="games"><span class="ms">sports_esports</span>Games</button>
+        <button class="assets-tab" data-tab="materials"><span class="ms">palette</span>Materials</button>
+        <button class="assets-tab" data-tab="scripts"><span class="ms">code</span>Scripts</button>
+      </div>
+      <div class="assets-search">
+        <span class="ms">search</span>
+        <input type="text" placeholder="検索..." id="assetSearch">
+      </div>
+      <button class="assets-btn" id="newFolderBtn"><span class="ms">create_new_folder</span>新規フォルダー</button>
+      <button class="assets-btn is-primary" id="aiGenerateBtn"><span class="ms">auto_awesome</span>AI 生成</button>
+    </div>
+    <div class="assets-grid" id="assetsGrid">
+      <div class="asset-empty">
+        <span class="ms">inventory_2</span>
+        アセットがありません
+        <div class="asset-empty-hint">[AI 生成] ボタンで新しいオブジェクトを作成</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Context Menu -->
+<div class="ctx-menu" id="ctxMenu">
+  <button class="ctx-menu-item" data-ctx="duplicate"><span class="ms">content_copy</span>複製</button>
+  <button class="ctx-menu-item" data-ctx="bring-front"><span class="ms">flip_to_front</span>最前面へ</button>
+  <button class="ctx-menu-item" data-ctx="send-back"><span class="ms">flip_to_back</span>最背面へ</button>
+  <div class="ctx-menu-sep"></div>
+  <button class="ctx-menu-item is-danger" data-ctx="delete"><span class="ms">delete</span>削除</button>
+</div>
+
+<!-- AI Generate Modal -->
+<div class="modal-overlay" id="aiModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title-wrap">
+        <div class="modal-title">AI で新規アセット生成</div>
+        <div class="modal-powered">
+          <span class="ms" style="font-size:13px;color:#047857">forest</span>
+          Powered by <strong>Canopy 5.0</strong> · Claude Opus 4.7 · 1M context
+        </div>
+      </div>
+      <button class="modal-close" id="modalClose"><span class="ms">close</span></button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-canopy-info" id="canopyInfoBox">
+        <span class="ms" style="color:#d97706">info</span>
+        <div>
+          <strong>Sede Studio は Canopy (Ultra プラン) 専用です。</strong><br>
+          <span class="modal-canopy-info-sub">構造化出力と 1M コンテキストを活用してアプリを main + 再利用アセット5-10個に自動分解します。</span>
+        </div>
+      </div>
+      <label class="modal-label">何を作る?</label>
+      <textarea class="modal-textarea" id="aiPrompt" placeholder="例:&#10;• シンプルな RPGゲーム (プレイヤー/敵/HPバー/インベントリで分解)&#10;• 3D 太陽系 (太陽/惑星/軌道を個別アセット化)&#10;• 音楽プレーヤー (再生ボタン/歌詞/プレイリストで分解)"></textarea>
+      <div class="modal-hints">
+        <div class="modal-hint-title">Canopy が得意なこと:</div>
+        <div class="modal-hint-list">
+          <span class="modal-hint">✓ 複雑なシステムの自動分解</span>
+          <span class="modal-hint">✓ 再利用可能なアセット抽出</span>
+          <span class="modal-hint">✓ 12万行級コードも丸ごと理解</span>
+          <span class="modal-hint">✓ 日本語ネイティブ</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div class="modal-cost">
+        予想コスト: <strong>~$0.14</strong> (Opus 4.7 × 8K tokens)
+      </div>
+      <button class="modal-btn" id="modalCancel">キャンセル</button>
+      <button class="modal-btn is-primary" id="modalGenerate"><span class="ms">auto_awesome</span>Canopy で生成</button>
+    </div>
+  </div>
+</div>
+
+<!-- Canopy Locked Overlay (non-Ultra users) -->
+<div class="locked-overlay" id="lockedOverlay">
+  <div class="locked-card">
+    <div class="locked-icon"><span class="ms">forest</span></div>
+    <div class="locked-title">Sede Studio は Canopy 専用</div>
+    <div class="locked-sub">
+      Studio の自動アセット分解機能は Opus 4.7 の 1M コンテキストと<br>
+      構造化出力能力に依存しています。
+    </div>
+    <div class="locked-requirements">
+      <div class="locked-req">
+        <span class="ms" style="color:#22c55e">check_circle</span>
+        <div>
+          <strong>Ultra プラン</strong>
+          <div class="locked-req-sub">Canopy 5.0 (Opus 4.7) が使えます</div>
+        </div>
+      </div>
+      <div class="locked-req">
+        <span class="ms" style="color:#64748b">schedule</span>
+        <div>
+          <strong>2026-04-25 公開予定</strong>
+          <div class="locked-req-sub">現在 Canopy 起動準備中</div>
+        </div>
+      </div>
+    </div>
+    <div class="locked-actions">
+      <button class="modal-btn" id="lockedBack">戻る</button>
+      <button class="modal-btn is-primary" id="lockedUpgrade"><span class="ms">rocket_launch</span>Ultra プランへ</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══ Sede Studio — Canopy専用 ═══ */
+const state = {
+  tool: "select",           /* select | move | rotate | scale */
+  view: "2d",               /* 2d | 3d */
+  zoom: 100,
+  selectedId: null,
+  widgets: [],              /* Scene 内の配置済オブジェクト */
+  assets: [],               /* Assets フォルダー内のオブジェクト */
+  currentAssetTab: "apps",
+  canopyStatus: "offline",  /* offline | preparing | active */
+  userHasCanopy: false      /* Ultra プラン or admin */
+};
+
+/* ═══ Canopy プラン検証 ═══ */
+async function checkCanopyAccess(){
+  /* admin (Rinty) or Ultra プラン のみ Studio 使用可 */
+  try {
+    /* 親ウィンドウに authState があれば参照 */
+    const isRinto = !!(window.parent && window.parent._sedeIsRintoDev) || !!window._sedeIsRintoDev;
+    if (isRinto) { state.userHasCanopy = true; return true; }
+    /* Ultra プラン API チェック */
+    const res = await fetch("/api/sede/canopy-access", { credentials: "include" }).catch(() => null);
+    if (res && res.ok) {
+      const data = await res.json();
+      state.userHasCanopy = !!data.hasAccess;
+      return state.userHasCanopy;
+    }
+  } catch(e){ console.warn("[Studio] canopy check", e); }
+  return false;
+}
+
+async function checkCanopyServerStatus(){
+  /* Cloudflare AI Gateway で Opus 4.7 が稼働中か */
+  try {
+    const res = await fetch("/api/sede/debug-haiku");
+    if (res && res.ok) {
+      const data = await res.json();
+      const opus = data.attempts?.find(a => a.model === "anthropic/claude-opus-4.7");
+      if (opus?.ok) { state.canopyStatus = "active"; return "active"; }
+      if (opus?.error?.includes?.("Insufficient balance")) { state.canopyStatus = "preparing"; return "preparing"; }
+    }
+  } catch(e){}
+  state.canopyStatus = "offline";
+  return "offline";
+}
+
+function updateCanopyStatusUI(){
+  const dot = document.getElementById("canopyStatusDot");
+  if (!dot) return;
+  dot.classList.remove("is-active","is-offline");
+  if (state.canopyStatus === "active") dot.classList.add("is-active");
+  else if (state.canopyStatus === "offline") dot.classList.add("is-offline");
+}
+
+/* サンプルアセット (Phase 1 ダミー) */
+const SAMPLE_ASSETS = [
+  { id:"a1", tab:"apps",   name:"Todo App",   icon:"checklist", color:"c1", html:"<!DOCTYPE html><html><body style='font-family:Inter;padding:20px'><h2>Todo</h2><input placeholder='追加'><ul><li>買い物</li></ul></body></html>" },
+  { id:"a2", tab:"apps",   name:"Calculator", icon:"calculate", color:"c2", html:"<!DOCTYPE html><html><body style='font-family:Inter;padding:20px;text-align:center'><h2>計算機</h2><input style='font-size:24px;padding:10px;width:200px' value='0'></body></html>" },
+  { id:"a3", tab:"apps",   name:"Calendar",   icon:"calendar_month", color:"c3", html:"<!DOCTYPE html><html><body style='font-family:Inter;padding:20px'><h2>📅 Calendar</h2><p>2026年4月</p></body></html>" },
+  { id:"a4", tab:"games",  name:"Pong",       icon:"sports_esports", color:"c4", html:"<!DOCTYPE html><html><body style='background:#000;color:#fff;text-align:center;padding-top:50px'><h2>🏓 Pong</h2></body></html>" },
+  { id:"a5", tab:"3d",     name:"Cube",       icon:"deployed_code", color:"c2", html:"<!DOCTYPE html><html><body style='margin:0;background:#1e293b;display:flex;align-items:center;justify-content:center;height:100vh'><div style='width:80px;height:80px;background:linear-gradient(135deg,#6366f1,#8b5cf6);transform:rotateX(30deg) rotateY(45deg);border-radius:8px'></div></body></html>" },
+  { id:"a6", tab:"3d",     name:"Sphere",     icon:"circle", color:"c1", html:"<!DOCTYPE html><html><body style='margin:0;background:#1e293b;display:flex;align-items:center;justify-content:center;height:100vh'><div style='width:80px;height:80px;background:radial-gradient(circle at 30% 30%,#a78bfa,#4c1d95);border-radius:50%'></div></body></html>" }
+];
+state.assets = SAMPLE_ASSETS.slice();
+
+/* ═══ DOM Refs ═══ */
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+const viewport = $("#viewport");
+const sceneEmpty = $("#sceneEmpty");
+const hierItems = $("#hierItems");
+const inspectorBody = $("#inspectorBody");
+const assetsGrid = $("#assetsGrid");
+const ctxMenu = $("#ctxMenu");
+const aiModal = $("#aiModal");
+
+/* ═══ Tool switching ═══ */
+$$(".topbar-tool").forEach(btn => {
+  btn.addEventListener("click", () => {
+    $$(".topbar-tool").forEach(b => b.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    state.tool = btn.dataset.tool;
+  });
+});
+document.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, textarea, [contenteditable]")) return;
+  const key = e.key.toLowerCase();
+  const map = { q:"select", w:"move", e:"rotate", r:"scale" };
+  if (map[key]) {
+    const t = map[key];
+    $$(".topbar-tool").forEach(b => b.classList.toggle("is-active", b.dataset.tool === t));
+    state.tool = t;
+  }
+  if (e.key === "Delete" || e.key === "Backspace") {
+    if (state.selectedId && !e.target.matches("input, textarea, [contenteditable]")) {
+      e.preventDefault();
+      deleteWidget(state.selectedId);
+    }
+  }
+});
+
+/* ═══ View switching (2D/3D) ═══ */
+$$(".scene-mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    $$(".scene-mode-btn").forEach(b => b.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    state.view = btn.dataset.view;
+  });
+});
+
+/* ═══ Zoom ═══ */
+$("#zoomInBtn").addEventListener("click", () => setZoom(Math.min(400, state.zoom + 25)));
+$("#zoomOutBtn").addEventListener("click", () => setZoom(Math.max(25, state.zoom - 25)));
+$("#zoomFitBtn").addEventListener("click", () => setZoom(100));
+function setZoom(z){ state.zoom = z; $("#zoomValue").textContent = z + "%"; }
+
+/* ═══ Assets tabs ═══ */
+$$(".assets-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    $$(".assets-tab").forEach(t => t.classList.remove("is-active"));
+    tab.classList.add("is-active");
+    state.currentAssetTab = tab.dataset.tab;
+    renderAssets();
+  });
+});
+
+/* ═══ Render Assets ═══ */
+function renderAssets(){
+  const filtered = state.assets.filter(a => a.tab === state.currentAssetTab);
+  const q = ($("#assetSearch").value || "").toLowerCase();
+  const shown = q ? filtered.filter(a => a.name.toLowerCase().includes(q)) : filtered;
+  if (!shown.length) {
+    assetsGrid.innerHTML = '<div class="asset-empty"><span class="ms">inventory_2</span>アセットがありません<div class="asset-empty-hint">[AI 生成] で作成 or 他のタブを確認</div></div>';
+    return;
+  }
+  assetsGrid.innerHTML = shown.map(a => `
+    <div class="asset-card" draggable="true" data-asset-id="${a.id}">
+      <div class="asset-icon ${a.color || 'c1'}"><span class="ms">${a.icon}</span></div>
+      <div class="asset-name">${escapeHtml(a.name)}</div>
+      <div class="asset-meta">${a.tab.toUpperCase()}</div>
+    </div>
+  `).join("");
+}
+$("#assetSearch").addEventListener("input", renderAssets);
+renderAssets();
+
+/* ═══ Drag & Drop (Asset → Scene) ═══ */
+assetsGrid.addEventListener("dragstart", (e) => {
+  const card = e.target.closest(".asset-card");
+  if (!card) return;
+  e.dataTransfer.setData("text/sede-asset", card.dataset.assetId);
+  e.dataTransfer.effectAllowed = "copy";
+});
+viewport.addEventListener("dragover", (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+viewport.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const assetId = e.dataTransfer.getData("text/sede-asset");
+  if (!assetId) return;
+  const asset = state.assets.find(a => a.id === assetId);
+  if (!asset) return;
+  const rect = viewport.getBoundingClientRect();
+  const x = e.clientX - rect.left - 150;
+  const y = e.clientY - rect.top - 100;
+  addWidget(asset, x, y);
+});
+
+/* ═══ Add widget to scene ═══ */
+function addWidget(asset, x, y){
+  const id = "w_" + Date.now() + "_" + Math.random().toString(36).slice(2,8);
+  const widget = {
+    id,
+    assetId: asset.id,
+    name: asset.name,
+    icon: asset.icon,
+    color: asset.color,
+    html: asset.html,
+    x: Math.max(0, x || 60),
+    y: Math.max(0, y || 60),
+    w: 320,
+    h: 240,
+    rotation: 0,
+    scale: 1,
+    visible: true
+  };
+  state.widgets.push(widget);
+  renderScene();
+  renderHierarchy();
+  selectWidget(id);
+}
+
+/* ═══ Render Scene ═══ */
+function renderScene(){
+  /* remove old widgets (keep empty + axis) */
+  [...viewport.querySelectorAll(".widget")].forEach(el => el.remove());
+  if (!state.widgets.length) { sceneEmpty.style.display = ""; return; }
+  sceneEmpty.style.display = "none";
+  state.widgets.forEach(w => {
+    const el = document.createElement("div");
+    el.className = "widget" + (state.selectedId === w.id ? " is-selected" : "");
+    el.dataset.widgetId = w.id;
+    el.style.left = w.x + "px";
+    el.style.top = w.y + "px";
+    el.style.width = w.w + "px";
+    el.style.height = w.h + "px";
+    el.style.transform = `rotate(${w.rotation}deg) scale(${w.scale})`;
+    el.style.display = w.visible ? "" : "none";
+    el.innerHTML = `
+      <div class="widget-header" data-drag-target>
+        <span class="ms" style="font-size:12px;color:var(--text-muted)">${w.icon}</span>
+        <div class="widget-title">${escapeHtml(w.name)}</div>
+        <button class="widget-close" data-widget-action="delete"><span class="ms">close</span></button>
+      </div>
+      <div class="widget-body"><iframe srcdoc="${escapeAttr(w.html)}" sandbox="allow-scripts allow-same-origin"></iframe></div>
+      <div class="widget-handle br" data-resize></div>
+      <div class="widget-handle rotate" data-rotate><span class="ms">refresh</span></div>
+    `;
+    viewport.appendChild(el);
+  });
+}
+
+/* ═══ Widget interactions (drag/resize/select/delete) ═══ */
+viewport.addEventListener("mousedown", (e) => {
+  const widgetEl = e.target.closest(".widget");
+  if (!widgetEl) { selectWidget(null); return; }
+  const id = widgetEl.dataset.widgetId;
+  const w = state.widgets.find(x => x.id === id);
+  if (!w) return;
+
+  /* Delete button */
+  if (e.target.closest("[data-widget-action=delete]")) {
+    deleteWidget(id);
+    return;
+  }
+
+  selectWidget(id);
+
+  /* Resize */
+  if (e.target.closest("[data-resize]")) {
+    const startX = e.clientX, startY = e.clientY, startW = w.w, startH = w.h;
+    const onMove = (ev) => {
+      w.w = Math.max(120, startW + (ev.clientX - startX));
+      w.h = Math.max(80, startH + (ev.clientY - startY));
+      renderScene(); renderInspector();
+    };
+    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return;
+  }
+
+  /* Rotate */
+  if (e.target.closest("[data-rotate]")) {
+    const rect = widgetEl.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    const startRot = w.rotation;
+    const startAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
+    const onMove = (ev) => {
+      const cur = Math.atan2(ev.clientY - cy, ev.clientX - cx);
+      w.rotation = startRot + (cur - startAngle) * 180 / Math.PI;
+      renderScene(); renderInspector();
+    };
+    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return;
+  }
+
+  /* Drag (header) */
+  if (e.target.closest("[data-drag-target]")) {
+    const startX = e.clientX, startY = e.clientY, startLX = w.x, startLY = w.y;
+    const onMove = (ev) => {
+      w.x = startLX + (ev.clientX - startX);
+      w.y = startLY + (ev.clientY - startY);
+      renderScene(); renderInspector();
+    };
+    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+});
+
+/* Right-click context menu */
+viewport.addEventListener("contextmenu", (e) => {
+  const widgetEl = e.target.closest(".widget");
+  if (!widgetEl) return;
+  e.preventDefault();
+  selectWidget(widgetEl.dataset.widgetId);
+  ctxMenu.style.left = e.clientX + "px";
+  ctxMenu.style.top = e.clientY + "px";
+  ctxMenu.classList.add("is-open");
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#ctxMenu")) ctxMenu.classList.remove("is-open");
+});
+ctxMenu.addEventListener("click", (e) => {
+  const item = e.target.closest("[data-ctx]");
+  if (!item || !state.selectedId) return;
+  const id = state.selectedId;
+  const w = state.widgets.find(x => x.id === id);
+  if (!w) return;
+  const action = item.dataset.ctx;
+  if (action === "duplicate") {
+    addWidget({...w, id: "dup"}, w.x + 30, w.y + 30);
+  } else if (action === "bring-front") {
+    state.widgets = state.widgets.filter(x => x.id !== id).concat(w);
+    renderScene(); renderHierarchy();
+  } else if (action === "send-back") {
+    state.widgets = [w].concat(state.widgets.filter(x => x.id !== id));
+    renderScene(); renderHierarchy();
+  } else if (action === "delete") {
+    deleteWidget(id);
+  }
+  ctxMenu.classList.remove("is-open");
+});
+
+/* ═══ Select widget ═══ */
+function selectWidget(id){
+  state.selectedId = id;
+  renderScene();
+  renderHierarchy();
+  renderInspector();
+}
+
+/* ═══ Delete widget ═══ */
+function deleteWidget(id){
+  state.widgets = state.widgets.filter(w => w.id !== id);
+  if (state.selectedId === id) state.selectedId = null;
+  renderScene(); renderHierarchy(); renderInspector();
+}
+
+/* ═══ Render Hierarchy ═══ */
+function renderHierarchy(){
+  if (!state.widgets.length) {
+    hierItems.innerHTML = '<div class="hier-empty">まだ何もありません<br><br>下の Assets からドラッグ<br>または [+] で AI 生成</div>';
+    return;
+  }
+  hierItems.innerHTML = state.widgets.map(w => `
+    <div class="hier-item${state.selectedId === w.id ? ' is-selected' : ''}" data-widget-id="${w.id}">
+      <span class="ms">${w.icon}</span>
+      <div class="hier-item-name">${escapeHtml(w.name)}</div>
+      <button class="hier-item-visible" data-visible-toggle="${w.id}"><span class="ms">${w.visible ? 'visibility' : 'visibility_off'}</span></button>
+    </div>
+  `).join("");
+}
+hierItems.addEventListener("click", (e) => {
+  const toggle = e.target.closest("[data-visible-toggle]");
+  if (toggle) {
+    const id = toggle.dataset.visibleToggle;
+    const w = state.widgets.find(x => x.id === id);
+    if (w) { w.visible = !w.visible; renderScene(); renderHierarchy(); }
+    e.stopPropagation();
+    return;
+  }
+  const item = e.target.closest(".hier-item");
+  if (item) selectWidget(item.dataset.widgetId);
+});
+
+/* Hierarchy group collapse */
+$$(".hier-group-header").forEach(h => {
+  h.addEventListener("click", (e) => {
+    if (e.target.closest("button")) return;
+    h.parentElement.classList.toggle("is-collapsed");
+  });
+});
+
+/* ═══ Render Inspector ═══ */
+function renderInspector(){
+  if (!state.selectedId) {
+    inspectorBody.innerHTML = '<div class="inspector-empty"><span class="ms">tune</span>オブジェクトを選択すると<br>ここにプロパティが表示されます</div>';
+    return;
+  }
+  const w = state.widgets.find(x => x.id === state.selectedId);
+  if (!w) return;
+  inspectorBody.innerHTML = `
+    <div class="insp-section">
+      <div class="insp-section-title">Object</div>
+      <div class="insp-row">
+        <div class="insp-label">Name</div>
+        <input class="insp-input" data-field="name" value="${escapeAttr(w.name)}">
+      </div>
+      <div class="insp-text">ID: <strong style="font-family:var(--mono);font-size:10px">${w.id.slice(0,16)}</strong></div>
+    </div>
+    <div class="insp-section">
+      <div class="insp-section-title">Transform — Position</div>
+      <div class="insp-vec3">
+        <div class="insp-vec-cell x" data-axis="X"><input class="insp-input" data-field="x" type="number" value="${Math.round(w.x)}"></div>
+        <div class="insp-vec-cell y" data-axis="Y"><input class="insp-input" data-field="y" type="number" value="${Math.round(w.y)}"></div>
+        <div class="insp-vec-cell z" data-axis="Z"><input class="insp-input" data-field="z" type="number" value="0" disabled></div>
+      </div>
+    </div>
+    <div class="insp-section">
+      <div class="insp-section-title">Rotation</div>
+      <div class="insp-vec3">
+        <div class="insp-vec-cell x" data-axis="X"><input class="insp-input" type="number" value="0" disabled></div>
+        <div class="insp-vec-cell y" data-axis="Y"><input class="insp-input" type="number" value="0" disabled></div>
+        <div class="insp-vec-cell z" data-axis="Z"><input class="insp-input" data-field="rotation" type="number" value="${Math.round(w.rotation)}" step="5"></div>
+      </div>
+    </div>
+    <div class="insp-section">
+      <div class="insp-section-title">Size</div>
+      <div class="insp-vec3" style="grid-template-columns:1fr 1fr;">
+        <div class="insp-vec-cell" style="padding-left:0"><label class="insp-label" style="font-size:9px">Width</label><input class="insp-input" data-field="w" type="number" value="${Math.round(w.w)}" style="padding-left:8px"></div>
+        <div class="insp-vec-cell" style="padding-left:0"><label class="insp-label" style="font-size:9px">Height</label><input class="insp-input" data-field="h" type="number" value="${Math.round(w.h)}" style="padding-left:8px"></div>
+      </div>
+    </div>
+    <div class="insp-section">
+      <div class="insp-section-title">Scale</div>
+      <div class="insp-row">
+        <div class="insp-label">Uniform</div>
+        <input class="insp-input" data-field="scale" type="number" value="${w.scale}" step="0.1" min="0.1" max="5">
+      </div>
+    </div>
+  `;
+  inspectorBody.querySelectorAll("[data-field]").forEach(inp => {
+    inp.addEventListener("input", (e) => {
+      const field = e.target.dataset.field;
+      const val = e.target.type === "number" ? parseFloat(e.target.value) || 0 : e.target.value;
+      w[field] = val;
+      renderScene();
+      renderHierarchy();
+    });
+  });
+}
+
+/* ═══ AI Generate Modal ═══ */
+function openAiModalOrLocked(){
+  if (!state.userHasCanopy) {
+    $("#lockedOverlay").classList.add("is-open");
+    return;
+  }
+  if (state.canopyStatus !== "active") {
+    toast("Canopy 起動準備中 (Gateway 残高待ち)", "error");
+    return;
+  }
+  aiModal.classList.add("is-open");
+  $("#aiPrompt").focus();
+}
+$("#aiGenerateBtn").addEventListener("click", openAiModalOrLocked);
+$("#addObjectBtn").addEventListener("click", openAiModalOrLocked);
+$("#modalClose").addEventListener("click", () => aiModal.classList.remove("is-open"));
+$("#modalCancel").addEventListener("click", () => aiModal.classList.remove("is-open"));
+$("#lockedBack").addEventListener("click", () => $("#lockedOverlay").classList.remove("is-open"));
+$("#lockedUpgrade").addEventListener("click", () => {
+  /* 親ウィンドウが Sede なら Upgrade モーダル呼び出し */
+  try { if (window.parent && window.parent._sedeOpenUpgrade) window.parent._sedeOpenUpgrade(); } catch(e){}
+  toast("Ultra プランアップグレード画面 (Phase 2)");
+});
+$("#modalGenerate").addEventListener("click", async () => {
+  const prompt = $("#aiPrompt").value.trim();
+  if (!prompt) return;
+  if (state.canopyStatus !== "active") {
+    toast("Canopy オフライン", "error");
+    return;
+  }
+  const btn = $("#modalGenerate");
+  btn.disabled = true;
+  const origText = btn.innerHTML;
+  btn.innerHTML = '<span class="ms">sync</span>Canopy 生成中...';
+
+  try {
+    /* Canopy API 経由で構造化生成 */
+    const res = await fetch("/api/sede/studio/generate", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        mode: "canopy",
+        format: "structured"
+      })
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+
+    /* main → Scene に配置 */
+    if (data.main) {
+      const mainAsset = {
+        id: "gen_main_" + Date.now(),
+        tab: data.main.type === "game" ? "games" : data.main.type === "3d" ? "3d" : "apps",
+        name: data.main.name || prompt.slice(0, 20),
+        icon: data.main.icon || "auto_awesome",
+        color: "c1",
+        html: data.main.html,
+        description: data.main.description
+      };
+      state.assets.push(mainAsset);
+      addWidget(mainAsset, 60, 60);
+    }
+
+    /* 各 asset を対応タブに追加 */
+    if (Array.isArray(data.assets)) {
+      data.assets.forEach((a, i) => {
+        const asset = {
+          id: "gen_" + Date.now() + "_" + i,
+          tab: a.type === "game" ? "games"
+             : a.type === "3d" ? "3d"
+             : a.type === "script" ? "scripts"
+             : a.type === "material" ? "materials"
+             : "apps",
+          name: a.name || "Asset " + i,
+          icon: a.icon || "auto_awesome",
+          color: a.color || "c" + (1 + (i % 5)),
+          html: a.html,
+          description: a.description
+        };
+        state.assets.push(asset);
+      });
+    }
+
+    renderAssets();
+    $("#aiPrompt").value = "";
+    aiModal.classList.remove("is-open");
+    toast(`Canopy 生成完了 · main + ${data.assets?.length || 0}アセット`);
+  } catch(err) {
+    console.error("[Studio] generate error", err);
+    toast("生成エラー: " + (err.message || err), "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
+});
+
+/* ═══ Save / Load (localStorage) ═══ */
+$("#saveBtn").addEventListener("click", () => {
+  const snapshot = {
+    name: $("#workspaceName").textContent,
+    widgets: state.widgets,
+    assets: state.assets.filter(a => a.id.startsWith("gen_")),  /* ユーザー生成アセットのみ保存 */
+    savedAt: Date.now()
+  };
+  try {
+    localStorage.setItem("sede-studio.workspace.v1", JSON.stringify(snapshot));
+    toast("保存しました ✓");
+  } catch(e) {
+    toast("保存エラー: " + e.message, "error");
+  }
+});
+$("#playBtn").addEventListener("click", () => {
+  toast("再生モード (Phase 2 実装予定)");
+});
+$("#publishBtn").addEventListener("click", () => {
+  toast("公開機能 (Phase 2 実装予定)");
+});
+
+/* Try restore */
+try {
+  const saved = JSON.parse(localStorage.getItem("sede-studio.workspace.v1") || "null");
+  if (saved) {
+    $("#workspaceName").textContent = saved.name || "My Workspace";
+    state.widgets = saved.widgets || [];
+    if (saved.assets) saved.assets.forEach(a => { if (!state.assets.find(x => x.id === a.id)) state.assets.push(a); });
+    renderScene(); renderHierarchy(); renderAssets();
+  }
+} catch(e) { console.warn("restore", e); }
+
+/* ═══ Toast ═══ */
+function toast(msg, type = "ok"){
+  const t = document.createElement("div");
+  t.textContent = msg;
+  t.style.cssText = `position:fixed;bottom:240px;left:50%;transform:translateX(-50%);padding:10px 18px;border-radius:8px;background:${type === "error" ? "#ef4444" : "#1e293b"};color:#fff;font-size:12px;font-weight:600;z-index:2000;box-shadow:0 8px 24px rgba(0,0,0,.2);`;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+
+/* ═══ Utils ═══ */
+function escapeHtml(s){ return String(s || "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+function escapeAttr(s){ return String(s || "").replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+/* ═══ 起動時: Canopy アクセス検証 + サーバー状態確認 ═══ */
+(async function initStudio(){
+  const [hasAccess, status] = await Promise.all([
+    checkCanopyAccess(),
+    checkCanopyServerStatus()
+  ]);
+  updateCanopyStatusUI();
+  console.log("[Sede Studio] Canopy access:", hasAccess, "status:", status);
+
+  /* アクセスなければロック表示 */
+  if (!hasAccess) {
+    setTimeout(() => { $("#lockedOverlay").classList.add("is-open"); }, 400);
+  } else if (status === "preparing") {
+    /* admin だがサーバー未起動 */
+    setTimeout(() => toast("Canopy 起動準備中: 2026-04-25 に AI Gateway 入金予定", "error"), 500);
+  } else if (status === "offline") {
+    setTimeout(() => toast("Canopy オフライン (Opus 4.7 が呼び出し不可)", "error"), 500);
+  } else {
+    setTimeout(() => toast("Canopy 5.0 接続完了 ✓"), 500);
+  }
+})();
+
+console.log("[Sede Studio] loaded. State:", state);
+</script>
+</body>
+</html>

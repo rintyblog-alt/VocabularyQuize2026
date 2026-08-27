@@ -1,0 +1,152 @@
+# ══════════════════════════════════════════════════════════════════
+#  wrangler.local.toml — ローカル検証専用（本番 wrangler.toml とは別物）
+#  ・D1 は remote 指定なし → miniflare のローカル SQLite。本番D1に一切触れない。
+#  ・assets は single-page-application 配信 → http://127.0.0.1:8788/ でアプリが開く。
+#  ・cron / [ai] は無効化（ローカル起動の摩擦回避。AI機能検証時のみ手動で復活）。
+#  ・secret（RESEND / TURNSTILE / OTP_PEPPER / REGISTRATION_SESSION_SECRET）は
+#    起動スクリプトが用意する .dev.vars から注入（本番 secret は使わない）。
+#  ・本番へは絶対に deploy しないこと（このファイルは dev 専用）。
+# ══════════════════════════════════════════════════════════════════
+
+name = "vocabuquiz-api-local"
+main = "/Users/user/Downloads/word-practice-v26-menu-terms-report-emailjs/server/src/worker.js"
+compatibility_date = "2026-02-16"
+workers_dev = false
+[assets]
+directory = "/Users/user/Downloads/word-practice-v26-menu-terms-report-emailjs/client"
+binding = "ASSETS"
+html_handling = "none"
+not_found_handling = "single-page-application"   # ← / と全ルートを index.html に解決（ローカルでSPAを開ける）
+# ★ /admin だけは **アセットより先に Worker を通す**（2026-08-18・実測）。
+#   これが無いと、ブラウザの画面遷移（Sec-Fetch-Mode: navigate）のとき
+#   アセット層の single-page-application フォールバックが先に効いて、
+#   /admin を開いても **アプリ本体の index.html** が返ってしまう。
+#   curl では再現しない（navigate を送らないため）。
+# ★ **/api/* も必ず入れること**（2026-08-18・実測でここを踏んだ）。
+#   run_worker_first を「リスト」で書くと、**載っていない道は全部アセット優先**に
+#   なる。/admin だけ書いたら /api/flags/effective が index.html を返し、
+#   API が丸ごと壊れた。載せ忘れ = その API が死ぬ、という書き方なので注意。
+run_worker_first = ["/admin", "/admin/*", "/site", "/site/*", "/sitemap.xml", "/api/*", "/ws/*", "/s/*", "/manifest.json"]
+
+[[durable_objects.bindings]]
+name = "RT_ROOMS"
+class_name = "RealtimeRoom"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "RoomDO"
+
+# [ai] は local dev で Cloudflare 認証が要るため既定で除外（認証フロー検証には不要）。
+#   AI機能もローカルで試したい場合はこの下に [ai] / binding="AI" を足し `wrangler login` 済みにする。
+
+[vars]
+# 管理ダッシュボード（/admin）: ローカル検証でも最初の owner を作れるようにする。
+# ローカルの D1 は毎回まっさらなので、ここで作られた owner に
+# /admin の「はじめての owner を設定する」からパスワードを決める。
+ADMIN_BOOTSTRAP_EMAIL = "matsushiri20pc@gmail.com"
+# 優先モデル（OPENAI_API_KEY がある場合）
+MODEL_NORMAL = "gpt-5-mini"
+MODEL_REASON = "gpt-5.2"
+# VQ AI ONE MAX (chat) は Meta Llama 系を優先
+CHAT_PROVIDER = "workers_ai"
+CHAT_MODEL_PRIMARY = "@cf/meta/llama-4-scout-17b-16e-instruct"
+CHAT_MODEL_REASONING = "@cf/meta/llama-4-scout-17b-16e-instruct"
+CHAT_MAX_TOKENS_NORMAL = "8192"
+CHAT_MAX_TOKENS_REASONING = "8192"
+# 将来的に Meta 系の OpenAI-compatible endpoint を使う場合は secret / vars で切替
+# CHAT_API_BASE = "https://example.meta.endpoint/v1"
+# wrangler secret put CHAT_API_KEY
+# Workers AI フォールバックモデル（OPENAI_API_KEY が無い場合）
+AI_MODEL_NORMAL = "@cf/meta/llama-3.1-8b-instruct-fp8-fast"
+AI_MODEL_REASONING = "@cf/meta/llama-3.1-8b-instruct"
+SUPPORT_AI_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct"
+AI_MODEL_VISION = "@cf/meta/llama-3.2-11b-vision-instruct"
+SCAN_VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct"
+AI_MODEL_LLAVA = "@cf/llava-hf/llava-1.5-7b-hf"
+SCAN_TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+SCAN_VERIFY_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+PRESET_BUILD_MODEL = "@cf/moonshotai/kimi-k2.6"
+PRESET_BUILD_MODEL_FALLBACK = "@cf/zai-org/glm-4.7-flash"
+DATA_PACK_SCHEDULE_ENABLED = "0"
+PACK_SOURCE_URL = "https://rintyblog-alt.github.io/VocabularyQuize2026/"
+WEB_PUSH_VAPID_PUBLIC_KEY = "BM7iNBmLuUTpT5EEpt-e_uUmRWyGwfcfm-IjYCpWYDzn9TmKB3tdRdyYTWcHotz08agbVVXuWrCv7Xjw5AtERio"
+WEB_PUSH_SUBJECT = "mailto:notify@vocabuquiz.app"
+# SearXNG (Render.com) — Deep Search 用 Web 検索バックエンド
+SEARXNG_URL = "https://vocabuquiz-search.onrender.com"
+# Sede Pages Deploy
+CF_ACCOUNT_ID = "1655c547a7bf146d63095abdc576ea50"
+# CF_PAGES_API_TOKEN はローカルでも書かない。必要なら server/.dev.vars へ（.gitignore 済み）。
+
+# ── 新規登録 メールアドレス確認（Gmail 所有確認）: 公開設定値のみ（秘密値は下の secret put で登録） ──
+TURNSTILE_SITE_KEY = ""                              # 公開サイトキー（未設定なら widget 非表示・登録は動作）。クライアントは config.public.js の turnstile.siteKey を参照
+EMAIL_FROM_NAME = "VocabuQuiz"
+EMAIL_FROM_ADDRESS = "verify@mail.vocabuquiz.app"
+APP_BASE_URL = "https://vocabuquiz.app"
+TERMS_VERSION = "2026-08-10"
+PRIVACY_VERSION = "2026-08-10"
+OTP_EXPIRES_SECONDS = "600"
+OTP_RESEND_COOLDOWN_SECONDS = "30"
+OTP_MAX_RESENDS = "3"
+OTP_MAX_FAILED_ATTEMPTS = "5"
+# 秘密値（コミット禁止・実値はコマンドで登録。RESEND/TURNSTILE 未設定時は安全側=メール送信不可/Turnstile検証スキップ）:
+#   npx wrangler secret put RESEND_API_KEY
+#   npx wrangler secret put TURNSTILE_SECRET_KEY
+#   npx wrangler secret put OTP_PEPPER
+#   npx wrangler secret put REGISTRATION_SESSION_SECRET
+
+# Web Push の秘密鍵は secret で設定
+# wrangler secret put WEB_PUSH_VAPID_PRIVATE_KEY
+
+# data_pack 管理APIのトークン（本番は wrangler secret put DATA_PACK_ADMIN_TOKEN 推奨）
+# DATA_PACK_ADMIN_TOKEN = "change-me"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vocabuquiz_auth"
+database_id = "fe6346ac-dc7d-4a69-90a6-1919456716b2"
+# remote = true   ← ローカルは指定しない（miniflare のローカル SQLite = 本番D1に触れない）
+
+# 例: data_pack 保存先KV
+# [[kv_namespaces]]
+# binding = "SEARCH_KV"
+# id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# preview_id = "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+
+# 例: 巨大packをR2で運用する場合（任意）
+# [[r2_buckets]]
+# binding = "PACK_R2"
+# bucket_name = "vocabuquiz-pack"
+# preview_bucket_name = "vocabuquiz-pack-preview"
+
+# 投稿へ添える画像の置き場所（ローカル検証用）。
+# wrangler dev はディスク上の疑似 R2 を使うので、実バケットは要らない。
+[[r2_buckets]]
+binding = "MEDIA_R2"
+bucket_name = "vocabuquiz-media"
+preview_bucket_name = "vocabuquiz-media-preview"
+
+# [triggers] cron はローカルでは無効化（毎10分ジョブを回さない）
+
+[[migrations]]
+tag = "rt-room-v1"
+new_classes = ["RealtimeRoom"]
+
+[[migrations]]
+tag = "room-do-v1"
+new_classes = ["RoomDO"]
+
+# ── 写真・動画・ファイルの 3 つめの 置き場（2026-08-19）──────────────
+#   置き場は 上から順に 選ぶ:
+#     ① R2  … 10GB・転送量 0 円。**いちばん良い**が いま 未有効（下を見よ）
+#     ② D1  … 5GB のうち 3GB まで。いま ここだけを 使っている
+#     ③ KV  … 1GB。D1 が 一杯のときの 受け皿
+#   3 つとも 「追加料金なし の枠」の 内側で 止めてある（超えると 課金される契約なので）。
+#
+#   ★ KV の 中身を 書く仕組みは 前から src/worker.js に 在ったが、
+#     **一度も 繋がれていなかった**（名前空間が 無かった）。ここで 繋ぐ。
+#   ★ KV は 書き換えの 反映に 最大 60 秒 かかる。ただし 鍵は 毎回 新しく作る
+#     （使い回さない）ので、あげた直後に 読めない ということは 起きない。
+
+[[kv_namespaces]]
+binding = "MEDIA_KV"
+id = "e51cb0e3707e417482508710cf1fec09"

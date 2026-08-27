@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sede — Build by Conversation</title>
+<style>
+/* ═══ リセット・ベース ═══ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: #ffffff;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ═══ メインキャンバス（9:16 TikTok） ═══ */
+.ad-canvas {
+  width: 100vw;
+  height: 100vh;
+  max-width: 1080px;
+  max-height: 1920px;
+  position: relative;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+/* ═══ シーン共通 ═══ */
+.scene {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+.scene.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ═══ タイポグラフィ ═══ */
+.hero-text {
+  font-size: clamp(28px, 6vw, 48px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.3;
+  text-align: center;
+  color: #1a1a1a;
+}
+.sub-text {
+  font-size: clamp(14px, 3vw, 20px);
+  font-weight: 400;
+  color: #888;
+  text-align: center;
+  margin-top: 12px;
+}
+.accent { color: #2b70ef; }
+.gradient-text {
+  background: linear-gradient(135deg, #2b70ef, #7c3aed, #ec4899);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ═══ Scene 1: タイピング ═══ */
+.typing-container {
+  width: 85%;
+  max-width: 420px;
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 16px;
+  padding: 24px;
+  position: relative;
+  transform: scale(0.95);
+  transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.scene.active .typing-container { transform: scale(1); }
+.typing-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #aaa;
+}
+.typing-dot { width: 8px; height: 8px; border-radius: 50%; }
+.typing-dot:nth-child(1) { background: #ff5f57; }
+.typing-dot:nth-child(2) { background: #ffbd2e; }
+.typing-dot:nth-child(3) { background: #28ca42; }
+.typing-line {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: clamp(11px, 2.5vw, 14px);
+  color: #666;
+  line-height: 1.8;
+  min-height: 200px;
+}
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: #2b70ef;
+  animation: blink 0.8s infinite;
+  vertical-align: text-bottom;
+  margin-left: 1px;
+}
+@keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+
+/* ═══ Scene 2: 崩壊 ═══ */
+.shatter-text {
+  font-size: clamp(32px, 7vw, 56px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* ═══ Scene 3: Sede UI（実物再現） ═══ */
+.sede-ui-frame {
+  width: 92%;
+  max-width: 460px;
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
+  overflow: hidden;
+  transform: scale(0.9);
+  transition: transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.scene.active .sede-ui-frame { transform: scale(1); }
+.sede-ui-topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+}
+.sede-ui-topbar-dot { width: 10px; height: 10px; background: #2b70ef; border-radius: 50%; }
+.sede-ui-chat {
+  padding: 18px;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sede-ui-msg {
+  max-width: 85%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.4s ease;
+}
+.sede-ui-msg.show { opacity: 1; transform: translateY(0); }
+.sede-ui-msg.user {
+  align-self: flex-end;
+  background: #2b70ef;
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.sede-ui-msg.ai {
+  align-self: flex-start;
+  background: #f5f5f5;
+  color: #333;
+  border-bottom-left-radius: 4px;
+}
+.sede-ui-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid #f0f0f0;
+}
+.sede-ui-input-field {
+  flex: 1;
+  border: 1px solid #e5e5e5;
+  border-radius: 20px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #333;
+  background: #fafafa;
+  outline: none;
+}
+.sede-ui-send {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #2b70ef;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sede-ui-send svg { width: 16px; height: 16px; fill: white; }
+
+/* ═══ Scene 4: 並列生成 ═══ */
+.parallel-bars {
+  width: 80%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.parallel-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.parallel-bar-label {
+  font-size: 14px;
+  font-weight: 700;
+  width: 50px;
+  color: #555;
+}
+.parallel-bar-track {
+  flex: 1;
+  height: 6px;
+  background: #f0f0f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.parallel-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+.parallel-bar-fill.css { background: linear-gradient(90deg, #2b70ef, #60a5fa); }
+.parallel-bar-fill.html { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+.parallel-bar-fill.js { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.parallel-count {
+  font-size: clamp(40px, 10vw, 72px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  margin-top: 24px;
+}
+.parallel-count-label {
+  font-size: 16px;
+  color: #888;
+  margin-top: 4px;
+}
+
+/* ═══ Scene 5: Fix デモ ═══ */
+.fix-demo {
+  width: 92%;
+  max-width: 460px;
+}
+.fix-right-panel {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+  overflow: hidden;
+}
+.fix-right-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.fix-right-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fix-right-timer {
+  font-size: 13px;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+}
+.fix-right-body {
+  padding: 20px;
+  min-height: 180px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #444;
+}
+.fix-code-block {
+  background: #f8f8f8;
+  border-radius: 10px;
+  padding: 14px;
+  margin: 10px 0;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #333;
+  overflow: hidden;
+}
+
+/* ═══ Scene 6: 共同作成（伏線） ═══ */
+.collab-visual {
+  width: 80%;
+  max-width: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+}
+.collab-circle {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+}
+.collab-you { background: #f0f0f0; }
+.collab-ai { background: #2b70ef; color: white; font-size: 24px; font-weight: 700; }
+.collab-bridge {
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, #ddd, #2b70ef);
+  position: relative;
+}
+.collab-pulse {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #2b70ef;
+  border-radius: 50%;
+  top: -3px;
+  animation: pulseBridge 1.5s infinite;
+}
+@keyframes pulseBridge { 0% { left: 0; } 100% { left: calc(100% - 8px); } }
+
+/* ═══ Scene 7: 差別化 ═══ */
+.compare-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 85%;
+  max-width: 400px;
+}
+.compare-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.5s ease;
+}
+.compare-item.dim {
+  background: #f8f8f8;
+  color: #bbb;
+}
+.compare-item.highlight {
+  background: linear-gradient(135deg, #2b70ef08, #7c3aed08);
+  border: 1.5px solid #2b70ef30;
+  color: #1a1a1a;
+}
+.compare-tag {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 500;
+  margin-left: auto;
+}
+.compare-tag.old { background: #f0f0f0; color: #aaa; }
+.compare-tag.new { background: #2b70ef; color: white; }
+
+/* ═══ Scene 8: ファイナル ═══ */
+.final-logo {
+  font-size: clamp(48px, 12vw, 80px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.scene.active .final-logo {
+  opacity: 1;
+  transform: scale(1);
+}
+.final-tagline {
+  font-size: clamp(14px, 3vw, 18px);
+  color: #888;
+  margin-top: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.final-dates {
+  margin-top: 40px;
+  text-align: center;
+}
+.final-date-row {
+  font-size: 15px;
+  font-weight: 600;
+  color: #555;
+  margin: 6px 0;
+}
+.final-date-row span { color: #2b70ef; }
+.final-notes {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  font-size: 9px;
+  color: #ccc;
+  line-height: 1.6;
+  max-width: 280px;
+}
+
+/* ═══ 常時アニメーション: 背景パーティクル ═══ */
+.bg-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.bg-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #2b70ef;
+  border-radius: 50%;
+  opacity: 0.08;
+  animation: floatParticle linear infinite;
+}
+@keyframes floatParticle {
+  0% { transform: translateY(100vh) scale(0); opacity: 0; }
+  10% { opacity: 0.08; }
+  90% { opacity: 0.08; }
+  100% { transform: translateY(-20px) scale(1); opacity: 0; }
+}
+
+/* ═══ プログレスバー（下部） ═══ */
+.ad-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #f0f0f0;
+  z-index: 100;
+}
+.ad-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2b70ef, #7c3aed);
+  width: 0%;
+  transition: width 0.1s linear;
+}
+
+/* ═══ z-index ═══ */
+.scene { z-index: 1; }
+.ad-progress { z-index: 100; }
+</style>
+</head>
+<body>
+
+<div class="ad-canvas" id="adCanvas">
+  <!-- 背景パーティクル（常時アニメーション） -->
+  <div class="bg-particles" id="bgParticles"></div>
+
+  <!-- Scene 1: タイピング（コードを書く時代） -->
+  <div class="scene active" id="scene1">
+    <div class="typing-container">
+      <div class="typing-header">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <span style="margin-left:8px;">code.js</span>
+      </div>
+      <div class="typing-line" id="typingLine"></div>
+    </div>
+    <p class="sub-text" style="margin-top:32px;opacity:0;" id="scene1Sub">あなたはまだ、コードを書いていますか？</p>
+  </div>
+
+  <!-- Scene 2: テキスト崩壊 → 新時代 -->
+  <div class="scene" id="scene2">
+    <div class="shatter-text">
+      コードを書く時代は<br><span class="gradient-text">終わった。</span>
+    </div>
+  </div>
+
+  <!-- Scene 3: Sede UI（話す→作る） -->
+  <div class="scene" id="scene3">
+    <p class="sub-text" style="margin-bottom:20px;">言葉だけで、アプリが生まれる</p>
+    <div class="sede-ui-frame">
+      <div class="sede-ui-topbar">
+        <div class="sede-ui-topbar-dot"></div>
+        Sede · Kimi K2.6
+      </div>
+      <div class="sede-ui-chat" id="sedeChat">
+        <!-- 動的に追加 -->
+      </div>
+      <div class="sede-ui-input">
+        <div class="sede-ui-input-field" id="sedeInputDemo">コードについて質問する...</div>
+        <div class="sede-ui-send"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scene 4: 並列生成 -->
+  <div class="scene" id="scene4">
+    <p class="hero-text" style="margin-bottom:32px;">3<span class="accent">並列</span>生成</p>
+    <div class="parallel-bars">
+      <div class="parallel-bar-row">
+        <span class="parallel-bar-label">CSS</span>
+        <div class="parallel-bar-track"><div class="parallel-bar-fill css" id="barCss"></div></div>
+      </div>
+      <div class="parallel-bar-row">
+        <span class="parallel-bar-label">HTML</span>
+        <div class="parallel-bar-track"><div class="parallel-bar-fill html" id="barHtml"></div></div>
+      </div>
+      <div class="parallel-bar-row">
+        <span class="parallel-bar-label">JS</span>
+        <div class="parallel-bar-track"><div class="parallel-bar-fill js" id="barJs"></div></div>
+      </div>
+    </div>
+    <div class="parallel-count gradient-text" id="lineCount">0</div>
+    <div class="parallel-count-label">行のコードを生成中</div>
+  </div>
+
+  <!-- Scene 5: Fix デモ -->
+  <div class="scene" id="scene5">
+    <p class="sub-text" style="margin-bottom:16px;">修正も、一言で</p>
+    <div class="fix-demo">
+      <div class="fix-right-panel">
+        <div class="fix-right-header">
+          <div class="fix-right-title">
+            <span style="color:#2b70ef;">●</span>
+            <span id="fixTitle">ダークモード修正</span>
+          </div>
+          <div class="fix-right-timer" id="fixTimer">0:42</div>
+        </div>
+        <div class="fix-right-body" id="fixBody">
+          <!-- 動的に追加 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scene 6: 共同作成（伏線） -->
+  <div class="scene" id="scene6">
+    <div class="collab-visual">
+      <div class="collab-circle collab-you">👤</div>
+      <div class="collab-bridge">
+        <div class="collab-pulse"></div>
+      </div>
+      <div class="collab-circle collab-ai">AI</div>
+    </div>
+    <p class="hero-text" style="margin-top:32px;">AIと、<span class="gradient-text">共同作成</span>する</p>
+    <p class="sub-text">話して、見せて、一緒に作る</p>
+  </div>
+
+  <!-- Scene 7: 差別化 -->
+  <div class="scene" id="scene7">
+    <p class="sub-text" style="margin-bottom:24px;">なぜ Sede なのか</p>
+    <div class="compare-list">
+      <div class="compare-item dim" id="cmp1">
+        Claude Code
+        <span class="compare-tag old">テキスト入力</span>
+      </div>
+      <div class="compare-item dim" id="cmp2">
+        Codex
+        <span class="compare-tag old">テキスト入力</span>
+      </div>
+      <div class="compare-item highlight" id="cmp3">
+        Sede
+        <span class="compare-tag new">話す + 見せる + 作る</span>
+      </div>
+    </div>
+    <p class="hero-text" style="margin-top:32px;font-size:clamp(20px,5vw,32px);">
+      軽い。安い。<span class="accent">速い。</span>
+    </p>
+  </div>
+
+  <!-- Scene 8: ファイナル -->
+  <div class="scene" id="scene8">
+    <div class="final-logo gradient-text">Sede</div>
+    <div class="final-tagline">Build by Conversation</div>
+    <div class="final-dates">
+      <div class="final-date-row">Pre-release <span>4/11 — 4/22</span></div>
+      <div class="final-date-row">Launch <span>4/25 0:00</span></div>
+    </div>
+    <div class="final-notes">
+      ※ 生成されるコードの品質はAIモデルに依存します<br>
+      ※ 生成速度はサーバー負荷により変動する場合があります<br>
+      ※ リアルタイム共同作成機能は今後のアップデートで提供予定です<br>
+      ※ 無料プランには月間使用量の制限があります<br>
+      ※ 一部機能はベータ版として提供されます
+    </div>
+  </div>
+
+  <!-- プログレスバー -->
+  <div class="ad-progress"><div class="ad-progress-fill" id="adProgress"></div></div>
+</div>
+
+<script>
+/* ═══ Sede 広告 アニメーションエンジン ═══ */
+
+const AD_DURATION = 55; /* 秒 */
+const scenes = [
+  { id: "scene1", start: 0, end: 8 },
+  { id: "scene2", start: 8, end: 12 },
+  { id: "scene3", start: 12, end: 22 },
+  { id: "scene4", start: 22, end: 30 },
+  { id: "scene5", start: 30, end: 38 },
+  { id: "scene6", start: 38, end: 44 },
+  { id: "scene7", start: 44, end: 50 },
+  { id: "scene8", start: 50, end: 55 }
+];
+
+let startTime = 0;
+let currentScene = "";
+
+/* ── 背景パーティクル（常時アニメーション） ── */
+function initParticles() {
+  const container = document.getElementById("bgParticles");
+  for (let i = 0; i < 20; i++) {
+    const p = document.createElement("div");
+    p.className = "bg-particle";
+    p.style.left = Math.random() * 100 + "%";
+    p.style.animationDuration = (8 + Math.random() * 12) + "s";
+    p.style.animationDelay = Math.random() * 10 + "s";
+    p.style.width = p.style.height = (2 + Math.random() * 4) + "px";
+    container.appendChild(p);
+  }
+}
+
+/* ── タイピングアニメーション ── */
+const codeLines = [
+  'function createApp() {',
+  '  const root = document.getElementById("root");',
+  '  const state = { tasks: [], filter: "all" };',
+  '  ',
+  '  function render() {',
+  '    root.innerHTML = state.tasks',
+  '      .filter(t => state.filter === "all"',
+  '        || t.status === state.filter)',
+  '      .map(t => `<div class="task">${t.name}</div>`)',
+  '      .join("");',
+  '  }',
+  '  // ...'
+];
+let typeLineIdx = 0, typeCharIdx = 0;
+function typeCode() {
+  const el = document.getElementById("typingLine");
+  if (!el || typeLineIdx >= codeLines.length) return;
+  const line = codeLines[typeLineIdx];
+  if (typeCharIdx <= line.length) {
+    let display = "";
+    for (let i = 0; i <= typeLineIdx; i++) {
+      if (i < typeLineIdx) display += codeLines[i] + "\n";
+      else display += line.slice(0, typeCharIdx);
+    }
+    el.innerHTML = display.replace(/</g, "&lt;").replace(/\n/g, "<br>") + '<span class="typing-cursor"></span>';
+    typeCharIdx++;
+    setTimeout(typeCode, 20 + Math.random() * 30);
+  } else {
+    typeLineIdx++;
+    typeCharIdx = 0;
+    setTimeout(typeCode, 100);
+  }
+}
+
+/* ── Sede UIチャットアニメーション ── */
+const chatMessages = [
+  { type: "user", text: "Todoアプリを作って", delay: 0 },
+  { type: "ai", text: "了解！タスク管理アプリを作りますね。3並列で生成を開始します...", delay: 800 },
+  { type: "ai", text: "✅ HTML完成 (280行)", delay: 2000 },
+  { type: "ai", text: "🚀 CSS + JS を並列生成中...", delay: 3000 }
+];
+function animateChat(startAt) {
+  const chat = document.getElementById("sedeChat");
+  if (!chat) return;
+  chatMessages.forEach((msg, i) => {
+    setTimeout(() => {
+      const div = document.createElement("div");
+      div.className = "sede-ui-msg " + msg.type;
+      div.textContent = msg.text;
+      chat.appendChild(div);
+      requestAnimationFrame(() => div.classList.add("show"));
+    }, msg.delay + (startAt || 0));
+  });
+}
+
+/* ── 並列バー アニメーション ── */
+function animateBars(elapsed) {
+  const t = Math.min(1, elapsed / 7); /* 7秒で100% */
+  const css = document.getElementById("barCss");
+  const html = document.getElementById("barHtml");
+  const js = document.getElementById("barJs");
+  const count = document.getElementById("lineCount");
+  if (css) css.style.width = Math.min(100, t * 120) + "%"; /* CSSが先に完了 */
+  if (html) html.style.width = Math.min(100, t * 100) + "%";
+  if (js) js.style.width = Math.min(100, t * 90) + "%";
+  if (count) count.textContent = Math.floor(t * 5000).toLocaleString();
+}
+
+/* ── Fix デモ アニメーション ── */
+const fixSteps = [
+  { delay: 0, html: 'タスク名の <code>.task-name</code> 要素を探しています...' },
+  { delay: 1500, html: '<div class="fix-code-block">&lt;span class="task-name"&gt;<br>  ${task.title}<br>&lt;/span&gt;</div>' },
+  { delay: 3000, html: 'ここに <code>dblclick</code> イベントを追加して、<code>input</code> に切り替えるロジックを実装しますね。' },
+  { delay: 5000, html: '✅ 修正完了。プレビューで確認してください。' }
+];
+function animateFix(startAt) {
+  const body = document.getElementById("fixBody");
+  if (!body) return;
+  fixSteps.forEach(step => {
+    setTimeout(() => {
+      const div = document.createElement("div");
+      div.style.cssText = "margin-bottom:12px;font-size:14px;line-height:1.7;opacity:0;transform:translateY(6px);transition:all 0.4s ease;";
+      div.innerHTML = step.html;
+      body.appendChild(div);
+      requestAnimationFrame(() => { div.style.opacity = "1"; div.style.transform = "translateY(0)"; });
+    }, step.delay + (startAt || 0));
+  });
+}
+
+/* ── メインループ ── */
+function tick() {
+  const elapsed = (Date.now() - startTime) / 1000;
+  const progress = Math.min(1, elapsed / AD_DURATION);
+
+  /* プログレスバー */
+  const progressBar = document.getElementById("adProgress");
+  if (progressBar) progressBar.style.width = (progress * 100) + "%";
+
+  /* シーン切り替え */
+  scenes.forEach(s => {
+    const el = document.getElementById(s.id);
+    if (!el) return;
+    if (elapsed >= s.start && elapsed < s.end) {
+      if (!el.classList.contains("active")) {
+        el.classList.add("active");
+        onSceneEnter(s.id, elapsed - s.start);
+      }
+      onSceneTick(s.id, elapsed - s.start);
+    } else {
+      el.classList.remove("active");
+    }
+  });
+
+  /* ループ */
+  if (elapsed < AD_DURATION) {
+    requestAnimationFrame(tick);
+  } else {
+    /* リプレイ */
+    setTimeout(() => {
+      resetAll();
+      startTime = Date.now();
+      requestAnimationFrame(tick);
+    }, 2000);
+  }
+}
+
+function onSceneEnter(id, localT) {
+  if (id === "scene1") {
+    typeLineIdx = 0; typeCharIdx = 0;
+    const el = document.getElementById("typingLine");
+    if (el) el.innerHTML = "";
+    typeCode();
+    setTimeout(() => {
+      const sub = document.getElementById("scene1Sub");
+      if (sub) sub.style.opacity = "1";
+    }, 4000);
+  }
+  if (id === "scene3") animateChat(200);
+  if (id === "scene5") animateFix(200);
+}
+
+function onSceneTick(id, localT) {
+  if (id === "scene4") animateBars(localT);
+  /* Scene 5: タイマー更新 */
+  if (id === "scene5") {
+    const timer = document.getElementById("fixTimer");
+    const sec = Math.floor(localT);
+    if (timer) timer.textContent = "0:" + (sec < 10 ? "0" : "") + sec;
+  }
+}
+
+function resetAll() {
+  document.querySelectorAll(".scene").forEach(s => s.classList.remove("active"));
+  const chat = document.getElementById("sedeChat");
+  if (chat) chat.innerHTML = "";
+  const fixBody = document.getElementById("fixBody");
+  if (fixBody) fixBody.innerHTML = "";
+  const sub = document.getElementById("scene1Sub");
+  if (sub) sub.style.opacity = "0";
+  ["barCss","barHtml","barJs"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.width = "0%";
+  });
+}
+
+/* ── 起動 ── */
+initParticles();
+startTime = Date.now();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

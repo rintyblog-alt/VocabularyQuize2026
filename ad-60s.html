@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>VocabuQuiz — 90s Ad</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,500,0,0"/>
+<style>
+:root{
+  --purple:#5c4be8;--purple-light:#a594f9;--green:#22c55e;
+  --dark:#07060f;--white:#ffffff;--gray:#9ca3af;
+  --ease:cubic-bezier(.16,1,.3,1);--ease-out:cubic-bezier(.33,1,.68,1);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:1280px;height:720px;overflow:hidden;background:var(--dark);font-family:'DM Sans','Noto Sans JP',sans-serif;-webkit-font-smoothing:antialiased;}
+.ms{font-family:"Material Symbols Rounded";font-weight:500;font-style:normal;display:inline-block;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;direction:ltr;font-feature-settings:"liga";-webkit-font-smoothing:antialiased;}
+#stage{position:relative;width:1280px;height:720px;overflow:hidden;}
+canvas#particles{position:absolute;inset:0;z-index:0;pointer-events:none;}
+.sc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;z-index:1;will-change:opacity;}
+#progress{position:fixed;bottom:0;left:0;height:3px;background:linear-gradient(90deg,var(--purple),var(--purple-light));width:0;z-index:999;transition:none;}
+/* Keyframes */
+@keyframes fadeUp{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideL{from{opacity:0;transform:translateX(50px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideR{from{opacity:0;transform:translateX(-50px)}to{opacity:1;transform:translateX(0)}}
+@keyframes scaleIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+@keyframes dotB{0%,80%,100%{transform:scale(.55);opacity:.35}40%{transform:scale(1);opacity:1}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes skPulse{0%,100%{opacity:.35}50%{opacity:.75}}
+@keyframes breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes glow{0%,100%{filter:brightness(1) drop-shadow(0 0 0 transparent)}50%{filter:brightness(1.15) drop-shadow(0 0 12px rgba(92,75,232,.4))}}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@keyframes correctPop{0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
+@keyframes revealChar{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes typeBar{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes floatUp{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-60px)}}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="particles" width="1280" height="720"></canvas>
+</div>
+<div id="progress"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ══════════════════════════════════════
+   CONFIG
+   ══════════════════════════════════════ */
+var BPM=128,BEAT=60000/BPM,BAR=BEAT*4,TOTAL_MS=BAR*40+2000;
+var ic=function(n,s){return '<span class="ms" style="font-size:'+(s||20)+'px;vertical-align:middle;">'+n+'</span>';};
+
+/* ══════════════════════════════════════
+   BGM
+   ══════════════════════════════════════ */
+var audio;
+try{audio=new Audio("/bgm.mp3");audio.loop=true;audio.volume=0.7;audio.play().catch(function(){});}catch(e){}
+
+/* ══════════════════════════════════════
+   PARTICLE SYSTEM (Canvas — always moving)
+   ══════════════════════════════════════ */
+var cvs=document.getElementById("particles"),ctx=cvs.getContext("2d");
+var pts=[];for(var _i=0;_i<70;_i++){pts.push({x:Math.random()*1280,y:Math.random()*720,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*1.8+.4,a:Math.random()*.25+.05});}
+var particleColor=[92,75,232];
+function drawParticles(){
+  ctx.clearRect(0,0,1280,720);
+  for(var i=0;i<pts.length;i++){
+    var p=pts[i];p.x+=p.vx;p.y+=p.vy;
+    if(p.x<-10)p.x=1290;if(p.x>1290)p.x=-10;if(p.y<-10)p.y=730;if(p.y>730)p.y=-10;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.283);
+    ctx.fillStyle="rgba("+particleColor[0]+","+particleColor[1]+","+particleColor[2]+","+p.a+")";
+    ctx.fill();
+  }
+}
+function setParticleColor(r,g,b){particleColor=[r,g,b];}
+
+/* ══════════════════════════════════════
+   HELPERS
+   ══════════════════════════════════════ */
+var stage=document.getElementById("stage"),progBar=document.getElementById("progress");
+function ce(id){var d=document.createElement("div");d.className="sc";d.id=id;stage.appendChild(d);return d;}
+function typeText(el,text,spd,cb){var i=0;(function t(){if(!el)return;if(i<text.length){el.textContent+=text[i++];setTimeout(t,spd+(Math.random()*18|0));}else if(cb)cb();})();}
+function countTo(el,target,final,dur){var s=performance.now();dur=dur||1600;(function f(now){var p=Math.min((now-s)/dur,1);p=1-Math.pow(1-p,3);el.textContent=Math.floor(p*target).toLocaleString();if(p<1)requestAnimationFrame(f);else el.textContent=final;})(performance.now());}
+
+/* ══════════════════════════════════════
+   CROSSFADE
+   ══════════════════════════════════════ */
+var activeScenes=[];
+function showScene(id,dur){
+  dur=dur||600;var el=document.getElementById(id);if(!el)return;
+  el.style.transition="opacity "+dur+"ms var(--ease)";el.style.opacity="1";activeScenes.push(id);
+}
+function hideScene(id,dur){
+  dur=dur||600;var el=document.getElementById(id);if(!el)return;
+  el.style.transition="opacity "+dur+"ms var(--ease-out)";el.style.opacity="0";
+  activeScenes=activeScenes.filter(function(s){return s!==id;});
+}
+function crossfade(from,to,dur){dur=dur||600;hideScene(from,dur);showScene(to,dur);}
+
+/* ══════════════════════════════════════
+   BUILD ALL SCENES
+   ══════════════════════════════════════ */
+
+/* ── S1: Opening ── */
+var s1=ce("s1");
+s1.style.background="transparent";
+s1.innerHTML='<div style="text-align:center;position:relative;z-index:2;"><div id="s1-logo" style="font-size:56px;font-weight:800;color:#fff;letter-spacing:-1.5px;opacity:0;transform:translateY(24px);transition:all 1.2s var(--ease);text-shadow:0 0 60px rgba(92,75,232,.4);">Vocab<span style="color:var(--purple-light);">u</span>Quiz</div><div id="s1-sub" style="font-size:17px;font-weight:300;color:rgba(255,255,255,.4);margin-top:18px;letter-spacing:8px;text-transform:uppercase;opacity:0;transition:opacity 1.2s .8s;">The Future of Learning</div></div>';
+
+/* ── S2: Catchcopy ── */
+var s2=ce("s2");
+s2.style.background="var(--white)";
+s2.innerHTML='<div style="padding-left:140px;"><div id="s2-l1" class="s2-line" style="font-size:76px;font-weight:800;color:var(--dark);opacity:0;transform:translateX(-50px);transition:all .65s var(--ease);">覚える。</div><div id="s2-l2" class="s2-line" style="font-size:76px;font-weight:800;color:var(--purple);opacity:0;transform:translateX(-50px);transition:all .65s .18s var(--ease);">理解する。</div><div id="s2-l3" class="s2-line" style="font-size:76px;font-weight:800;color:var(--dark);opacity:0;transform:translateX(-50px);transition:all .65s .36s var(--ease);">超える。</div></div>';
+
+/* ── S3: Quiz ── */
+var s3=ce("s3");
+s3.style.background="var(--dark)";
+s3.innerHTML='<div style="display:flex;align-items:center;gap:64px;padding:0 90px;width:100%;"><div style="flex:1;"><div id="s3-label" style="font-size:12px;font-weight:700;color:var(--purple-light);letter-spacing:3px;margin-bottom:14px;opacity:0;">EXAM MODE</div><div id="s3-title" style="font-size:46px;font-weight:800;color:#fff;line-height:1.25;opacity:0;">学習が、<br><span style="color:var(--purple-light);">ゲーム</span>になる。</div></div><div id="s3-card" style="width:440px;background:#fff;border-radius:22px;box-shadow:0 24px 80px rgba(92,75,232,.2);padding:34px;opacity:0;transform:scale(.88) perspective(800px) rotateY(-8deg);transition:all .8s var(--ease);"><div style="text-align:center;margin-bottom:28px;"><div style="font-size:11px;color:var(--gray);margin-bottom:6px;">Q. 次の英単語の意味は？</div><div id="s3-word" style="font-size:34px;font-weight:700;color:var(--dark);letter-spacing:.5px;animation:breathe 3s ease-in-out infinite;">photosynthesis</div></div><div id="s3-opts" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div><div id="s3-res" style="text-align:center;margin-top:18px;font-size:14px;font-weight:700;opacity:0;transition:opacity .4s;color:var(--green);display:flex;align-items:center;justify-content:center;gap:6px;">'+ic("check_circle",20)+' 正解！</div></div></div>';
+
+/* ── S4: AI Chat ── */
+var s4=ce("s4");
+s4.style.background="var(--white)";
+s4.innerHTML='<div style="display:flex;align-items:center;gap:64px;padding:0 90px;width:100%;"><div id="s4-ui" style="width:500px;background:#fff;border-radius:22px;box-shadow:0 24px 80px rgba(0,0,0,.1);overflow:hidden;opacity:0;transform:translateY(24px);transition:all .8s var(--ease);"><div style="padding:16px 22px;border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:12px;"><div style="width:34px;height:34px;background:var(--green);border-radius:8px;display:grid;place-items:center;color:#fff;">'+ic("smart_toy",18)+'</div><div><div style="font-size:15px;font-weight:700;color:var(--dark);">VQ AI ONE MAX</div><div style="font-size:10px;color:var(--gray);">Standard</div></div><div style="margin-left:auto;padding:5px 14px;border:1px solid rgba(0,0,0,.08);border-radius:22px;font-size:10px;color:#374151;display:flex;align-items:center;gap:5px;">vq-one max — standard <span style="font-size:9px;">'+ic("expand_more",12)+'</span></div></div><div id="s4-msgs" style="padding:18px 22px;min-height:220px;display:flex;flex-direction:column;gap:14px;"></div><div style="padding:14px 22px;border-top:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:10px;"><span style="color:var(--gray);">'+ic("attach_file",18)+'</span><div style="flex:1;font-size:13px;color:var(--dark);min-height:20px;"><span id="s4-typed"></span><span id="s4-cur" style="display:inline-block;width:2px;height:15px;background:var(--purple);vertical-align:middle;opacity:0;"></span></div><div id="s4-send" style="width:36px;height:36px;background:var(--dark);border-radius:50%;display:grid;place-items:center;color:#fff;transition:all .15s;">'+ic("arrow_upward",16)+'</div></div></div><div style="flex:1;text-align:right;"><div id="s4-txt" style="font-size:46px;font-weight:800;color:var(--dark);line-height:1.25;opacity:0;">AIが、<br><span style="color:var(--purple);">隣にいる。</span></div></div></div>';
+
+/* ── S5: Quick Board ── */
+var s5=ce("s5");
+s5.style.background="#f8f7ff";
+s5.innerHTML='<div style="display:flex;align-items:center;gap:64px;padding:0 90px;width:100%;"><div style="flex:1;"><div id="s5-title" style="font-size:46px;font-weight:800;color:var(--dark);line-height:1.25;opacity:0;">声が、<br><span style="color:var(--purple);">図になる。</span></div></div><div id="s5-wrap" style="width:540px;opacity:0;transform:scale(.88);transition:all .8s var(--ease);"><div id="s5-slash" style="background:#13102a;border-radius:16px;overflow:hidden;max-height:0;opacity:0;transition:all .5s var(--ease);margin-bottom:12px;"></div><div id="s5-board" style="background:#fff;border-radius:22px;box-shadow:0 24px 80px rgba(92,75,232,.15);overflow:hidden;display:grid;grid-template-columns:1fr 1.5fr;min-height:290px;"><div style="border-right:1px solid rgba(0,0,0,.06);padding:16px;display:flex;flex-direction:column;gap:10px;"><div style="font-size:13px;font-weight:700;color:var(--dark);padding-bottom:10px;border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:6px;">'+ic("electric_bolt",16)+' Quick Board</div><div style="background:#f8f7ff;border-radius:10px;padding:8px 12px;font-size:11px;color:#374151;">'+ic("electric_bolt",13)+' Quick Boardへようこそ！</div><div id="s5-vmsg" style="display:flex;justify-content:flex-end;opacity:0;transition:opacity .4s;"><div style="background:var(--purple);color:#fff;padding:8px 12px;border-radius:14px 14px 4px 14px;font-size:11px;">世界の人口TOP5を表にして</div></div></div><div style="padding:16px;position:relative;"><div style="display:flex;gap:6px;margin-bottom:12px;">'+["undo 戻す","delete クリア","download PNG"].map(function(t){var p=t.split(" ");return '<div style="padding:4px 10px;border-radius:8px;border:1px solid rgba(0,0,0,.08);font-size:9px;color:#374151;display:flex;align-items:center;gap:3px;">'+ic(p[0],11)+p[1]+'</div>';}).join("")+'</div><div id="s5-skel" style="display:flex;flex-direction:column;gap:7px;opacity:0;transition:opacity .4s;">'+[1,2,3].map(function(){return '<div style="height:14px;background:linear-gradient(90deg,rgba(92,75,232,.06),rgba(92,75,232,.16),rgba(92,75,232,.06));border-radius:5px;animation:skPulse 1.2s ease-in-out infinite;width:'+(50+Math.random()*45)+'%;"></div>';}).join("")+'</div><div id="s5-tbl" style="opacity:0;transition:opacity .5s;"><table style="width:100%;border-collapse:collapse;font-size:10px;"><thead><tr><th style="background:var(--purple);color:#fff;padding:6px 10px;text-align:left;">順位</th><th style="background:var(--purple);color:#fff;padding:6px 10px;text-align:left;">国名</th><th style="background:var(--purple);color:#fff;padding:6px 10px;text-align:left;">人口</th></tr></thead><tbody id="s5-tb"></tbody></table></div><div id="s5-mic" style="position:absolute;bottom:12px;left:16px;width:32px;height:32px;background:#f3f4f6;border-radius:50%;display:grid;place-items:center;color:#374151;transition:all .3s;box-shadow:0 2px 10px rgba(0,0,0,.08);">'+ic("mic",16)+'</div></div></div></div></div>';
+
+/* ── S6: Deep Search ── */
+var s6=ce("s6");
+s6.style.background="var(--dark)";
+s6.innerHTML='<div style="display:flex;align-items:center;gap:64px;padding:0 90px;width:100%;"><div id="s6-ui" style="width:500px;background:#13102a;border-radius:22px;box-shadow:0 24px 80px rgba(92,75,232,.25);overflow:hidden;opacity:0;transform:translateY(24px);transition:all .8s var(--ease);"><div style="padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:12px;"><div style="width:34px;height:34px;background:var(--green);border-radius:8px;display:grid;place-items:center;color:#fff;">'+ic("smart_toy",18)+'</div><div style="font-size:15px;font-weight:700;color:#fff;">VQ AI ONE MAX</div><div id="s6-badge" style="margin-left:auto;padding:5px 14px;background:rgba(92,75,232,.15);border:1px solid rgba(92,75,232,.35);border-radius:22px;font-size:10px;color:var(--purple-light);display:flex;align-items:center;gap:5px;opacity:0;transition:all .5s;">'+ic("travel_explore",14)+' Deep Search <span style="padding:2px 8px;background:var(--purple);color:#fff;border-radius:12px;font-size:9px;">無制限</span></div></div><div id="s6-msgs" style="padding:18px 22px;min-height:220px;display:flex;flex-direction:column;gap:14px;"></div></div><div style="flex:1;text-align:right;"><div id="s6-txt" style="font-size:46px;font-weight:800;color:#fff;line-height:1.25;opacity:0;">世界が、<br><span style="background:linear-gradient(135deg,var(--purple-light),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">答えになる。</span></div></div></div>';
+
+/* ── S7: Code ── */
+var s7=ce("s7");
+s7.style.background="#0d1117";
+s7.innerHTML='<div style="display:flex;align-items:center;gap:64px;padding:0 90px;width:100%;"><div style="flex:1;"><div id="s7-title" style="font-size:46px;font-weight:800;color:#fff;line-height:1.25;opacity:0;">コードも、<br><span style="color:var(--purple-light);">書ける。</span></div></div><div id="s7-editor" style="width:540px;background:#161b22;border-radius:18px;box-shadow:0 24px 80px rgba(0,0,0,.5);overflow:hidden;opacity:0;transform:scale(.88);transition:all .8s var(--ease);"><div style="padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:8px;"><span style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></span><span style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></span><span style="width:11px;height:11px;border-radius:50%;background:#28c840;"></span><span style="margin-left:auto;font-size:11px;color:rgba(255,255,255,.25);">Python</span><span id="s7-copy" style="font-size:10px;color:rgba(255,255,255,.2);padding:3px 10px;border:1px solid rgba(255,255,255,.08);border-radius:8px;opacity:0;transition:all .4s;">'+ic("content_copy",12)+' コピー</span></div><pre id="s7-code" style="padding:22px;font-family:\'DM Sans\',monospace;font-size:13px;line-height:1.75;color:#e6edf3;min-height:240px;overflow:hidden;"><code id="s7-c"></code><span id="s7-cursor" style="display:inline-block;width:8px;height:16px;background:var(--purple-light);vertical-align:middle;opacity:0;animation:blink .7s infinite;"></span></pre></div></div>';
+
+/* ── S8: Preset Publish ── */
+var s8=ce("s8");
+s8.style.background="var(--white)";
+s8.innerHTML='<div style="display:flex;align-items:center;gap:64px;padding:0 90px;width:100%;position:relative;"><div id="s8-ui" style="width:500px;background:#fff;border-radius:22px;box-shadow:0 24px 80px rgba(0,0,0,.1);padding:30px;opacity:0;transform:translateY(24px);transition:all .8s var(--ease);position:relative;"><div style="font-size:18px;font-weight:700;color:var(--dark);margin-bottom:22px;display:flex;align-items:center;gap:10px;">'+ic("menu_book",22)+' 新規プリセット</div><div id="s8-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px;"></div><div id="s8-btn" style="background:var(--purple);color:#fff;border-radius:14px;padding:16px;font-size:16px;font-weight:700;text-align:center;cursor:pointer;transition:all .3s;display:flex;align-items:center;justify-content:center;gap:8px;">'+ic("public",20)+' 公開する</div></div><div style="flex:1;position:relative;"><div id="s8-toast" style="position:absolute;top:-40px;right:0;background:var(--green);color:#fff;padding:14px 24px;border-radius:14px;font-size:14px;font-weight:600;opacity:0;transform:translateY(-12px);transition:all .5s var(--ease);display:flex;align-items:center;gap:8px;box-shadow:0 8px 30px rgba(34,197,94,.3);">'+ic("check_circle",18)+' 公開しました！</div><div id="s8-notifs" style="display:flex;flex-direction:column;gap:10px;margin-top:40px;"></div><div id="s8-txt" style="font-size:46px;font-weight:800;color:var(--dark);line-height:1.25;opacity:0;margin-top:40px;">知識を、<br><span style="color:var(--purple);">世界に届ける。</span></div></div></div>';
+
+/* ── S9: Feed ── */
+var s9=ce("s9");
+s9.style.background="var(--dark)";
+s9.innerHTML='<div style="display:flex;align-items:center;gap:64px;padding:0 90px;width:100%;"><div style="flex:1;"><div id="s9-title" style="font-size:46px;font-weight:800;color:#fff;line-height:1.25;opacity:0;">学ぶを、<br><span style="color:var(--purple-light);">シェアする。</span></div></div><div id="s9-phone" style="width:360px;height:520px;background:#fff;border-radius:28px;box-shadow:0 24px 80px rgba(92,75,232,.25);overflow:hidden;opacity:0;transform:translateY(30px);transition:all .8s var(--ease);"><div style="padding:16px 22px;border-bottom:1px solid rgba(0,0,0,.06);font-size:16px;font-weight:700;color:var(--dark);display:flex;align-items:center;gap:8px;">'+ic("dynamic_feed",20)+' Feed</div><div style="overflow:hidden;height:460px;"><div id="s9-scroll" style="display:flex;flex-direction:column;"></div></div></div></div>';
+
+/* ── S10: Numbers ── */
+var s10=ce("s10");
+s10.style.background="var(--white)";
+s10.innerHTML='<div style="text-align:center;"><div style="display:flex;align-items:center;justify-content:center;gap:50px;margin-bottom:48px;"><div id="s10-a" style="opacity:0;"><div id="s10-n1" style="font-size:68px;font-weight:800;color:var(--dark);letter-spacing:-3px;">0</div><div style="font-size:15px;color:var(--gray);font-weight:500;margin-top:6px;">ユーザー</div></div><div style="width:1px;height:90px;background:linear-gradient(to bottom,transparent,rgba(0,0,0,.12),transparent);"></div><div id="s10-b" style="opacity:0;"><div id="s10-n2" style="font-size:68px;font-weight:800;color:var(--purple);letter-spacing:-3px;">0</div><div style="font-size:15px;color:var(--gray);font-weight:500;margin-top:6px;">問題数</div></div><div style="width:1px;height:90px;background:linear-gradient(to bottom,transparent,rgba(0,0,0,.12),transparent);"></div><div id="s10-c" style="opacity:0;"><div id="s10-n3" style="font-size:68px;font-weight:800;color:var(--dark);letter-spacing:-3px;">0</div><div style="font-size:15px;color:var(--gray);font-weight:500;margin-top:6px;">プリセット</div></div></div><div id="s10-txt" style="font-size:30px;font-weight:700;color:var(--dark);opacity:0;">選ばれている理由がある。</div></div>';
+
+/* ── S11: Ending ── */
+var s11=ce("s11");
+s11.innerHTML='<div style="text-align:center;position:relative;z-index:2;"><div id="s11-tag" style="font-size:40px;font-weight:800;line-height:1.5;margin-bottom:36px;min-height:70px;"></div><div id="s11-logo" style="font-size:60px;font-weight:800;color:#fff;letter-spacing:-2px;opacity:0;transition:all 1.2s var(--ease);text-shadow:0 0 80px rgba(92,75,232,.5);">Vocab<span style="color:var(--purple-light);">u</span>Quiz</div><div id="s11-url" style="font-size:17px;font-weight:400;color:rgba(255,255,255,.35);margin-top:20px;letter-spacing:3px;opacity:0;transition:opacity 1s .5s;"></div></div>';
+
+/* ══════════════════════════════════════
+   SCENE RUNNERS
+   ══════════════════════════════════════ */
+
+function runS1(){
+  showScene("s1");setParticleColor(92,75,232);
+  var logo=document.getElementById("s1-logo"),sub=document.getElementById("s1-sub");
+  at(900,function(){logo.style.opacity="1";logo.style.transform="translateY(0)";});
+  at(1800,function(){sub.style.opacity="1";});
+}
+
+function runS2(){
+  crossfade("s1","s2");setParticleColor(0,0,0);
+  at(200,function(){["s2-l1","s2-l2","s2-l3"].forEach(function(id){var e=document.getElementById(id);if(e){e.style.opacity="1";e.style.transform="translateX(0)";}});});
+}
+
+function runS3(){
+  crossfade("s2","s3");setParticleColor(92,75,232);
+  var card=document.getElementById("s3-card"),opts=document.getElementById("s3-opts"),res=document.getElementById("s3-res"),lb=document.getElementById("s3-label"),ti=document.getElementById("s3-title");
+  var choices=["光合成","蒸発","発酵","浸透"];
+  at(300,function(){lb.style.opacity="1";lb.style.animation="fadeUp .5s ease both";});
+  at(600,function(){ti.style.opacity="1";ti.style.animation="fadeUp .6s ease both";});
+  at(400,function(){card.style.opacity="1";card.style.transform="scale(1) perspective(800px) rotateY(0)";});
+  at(1200,function(){
+    choices.forEach(function(o,i){at(i*160,function(){
+      var b=document.createElement("div");b.id="s3-o"+i;
+      b.style.cssText="padding:15px;border-radius:12px;border:2px solid rgba(0,0,0,.07);text-align:center;font-size:15px;font-weight:600;color:var(--dark);opacity:0;transform:translateY(10px);transition:all .35s var(--ease);";
+      b.textContent=o;opts.appendChild(b);at(60,function(){b.style.opacity="1";b.style.transform="translateY(0)";});
+    });});
+  });
+  at(4000,function(){var w=document.getElementById("s3-o2");if(w){w.style.borderColor="#ef4444";w.style.color="#ef4444";w.style.opacity=".35";}});
+  at(4800,function(){var c=document.getElementById("s3-o0");if(c){c.style.borderColor="var(--green)";c.style.background="#f0fdf4";c.style.color="var(--green)";c.style.animation="correctPop .5s ease";}});
+  at(5200,function(){res.style.opacity="1";});
+}
+
+function runS4(){
+  crossfade("s3","s4");setParticleColor(0,0,0);
+  var ui=document.getElementById("s4-ui"),msgs=document.getElementById("s4-msgs"),typed=document.getElementById("s4-typed"),cur=document.getElementById("s4-cur"),send=document.getElementById("s4-send"),txt=document.getElementById("s4-txt");
+  var MSG="英語の効率的な勉強法を教えて";
+  var AI="英語を伸ばすなら、まずインプットとアウトプットのバランスが大事だよ。\n\n1. 毎日15分のリスニング\n2. 覚えた単語をEXAMモードで復習\n3. 間違えた問題は翌日にもう一回\n\nこれだけで確実に伸びるよ！";
+  at(200,function(){ui.style.opacity="1";ui.style.transform="translateY(0)";});
+  at(800,function(){cur.style.opacity="1";cur.style.animation="typeBar .7s infinite";});
+  at(1200,function(){typeText(typed,MSG,40,function(){
+    at(250,function(){send.style.transform="scale(.82)";send.style.background="var(--purple)";});
+    at(450,function(){send.style.transform="scale(1)";cur.style.opacity="0";typed.textContent="";
+      var um=document.createElement("div");um.style.cssText="display:flex;justify-content:flex-end;animation:fadeUp .35s ease both;";
+      um.innerHTML='<div style="background:var(--purple);color:#fff;padding:11px 16px;border-radius:18px 18px 4px 18px;font-size:13px;max-width:78%;">'+MSG+'</div>';
+      msgs.appendChild(um);
+      at(500,function(){
+        var dots=document.createElement("div");dots.id="s4-dots";dots.style.cssText="display:flex;gap:4px;align-items:center;padding:10px 0;animation:fadeIn .3s ease both;";
+        dots.innerHTML=[0,.2,.4].map(function(d){return '<span style="width:6px;height:6px;background:var(--green);border-radius:50%;display:inline-block;animation:dotB 1.2s infinite;animation-delay:'+d+'s;"></span>';}).join("");
+        msgs.appendChild(dots);
+        at(1400,function(){
+          dots.remove();
+          var am=document.createElement("div");am.style.cssText="display:flex;gap:12px;align-items:start;animation:fadeUp .35s ease both;";
+          am.innerHTML='<div style="width:30px;height:30px;flex-shrink:0;background:var(--green);border-radius:8px;display:grid;place-items:center;color:#fff;">'+ic("smart_toy",16)+'</div><div style="font-size:13px;color:#374151;line-height:1.75;white-space:pre-wrap;"><span id="s4-ait"></span><span id="s4-aic" style="display:inline-block;width:2px;height:15px;background:var(--green);vertical-align:middle;animation:typeBar .7s infinite;"></span></div>';
+          msgs.appendChild(am);
+          typeText(document.getElementById("s4-ait"),AI,16,function(){var c=document.getElementById("s4-aic");if(c)c.style.display="none";});
+        });
+      });
+    });
+  });});
+  at(3200,function(){txt.style.opacity="1";txt.style.animation="fadeUp .7s ease both";});
+}
+
+function runS5(){
+  crossfade("s4","s5");setParticleColor(92,75,232);
+  var wrap=document.getElementById("s5-wrap"),title=document.getElementById("s5-title"),slash=document.getElementById("s5-slash"),mic=document.getElementById("s5-mic"),vmsg=document.getElementById("s5-vmsg"),skel=document.getElementById("s5-skel"),tbl=document.getElementById("s5-tbl"),tb=document.getElementById("s5-tb");
+  /* Slash menu */
+  var cmds=[["/deep search","外部検索","無制限"],["/translate","翻訳","無制限"],["/plan","学習プラン","1日3回"],["/theme","テーマ切替","無料"],["/export","エクスポート","無料"],["/board","Quick Board","無料"]];
+  slash.innerHTML=cmds.map(function(c,i){return '<div id="s5-cmd-'+i+'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.04);transition:background .2s;"><div><div style="font-size:13px;font-weight:600;color:#fff;">'+c[0]+'</div><div style="font-size:10px;color:rgba(255,255,255,.35);">'+c[1]+'</div></div><div style="padding:3px 10px;background:rgba(255,255,255,.08);border-radius:20px;font-size:10px;color:rgba(255,255,255,.45);">'+c[2]+'</div></div>';}).join("");
+  at(200,function(){wrap.style.opacity="1";wrap.style.transform="scale(1)";});
+  at(600,function(){title.style.opacity="1";title.style.animation="fadeUp .7s ease both";});
+  at(800,function(){slash.style.maxHeight="400px";slash.style.opacity="1";});
+  at(1800,function(){var c=document.getElementById("s5-cmd-5");if(c)c.style.background="rgba(92,75,232,.25)";});
+  at(2400,function(){slash.style.maxHeight="0";slash.style.opacity="0";});
+  at(3000,function(){mic.style.background="#ef4444";mic.style.color="#fff";mic.style.transform="scale(1.12)";mic.style.boxShadow="0 0 20px rgba(239,68,68,.4)";});
+  at(3400,function(){mic.style.transform="scale(1)";});
+  at(3600,function(){vmsg.style.opacity="1";});
+  at(4200,function(){skel.style.opacity="1";});
+  at(5800,function(){skel.style.opacity="0";at(250,function(){tbl.style.opacity="1";
+    [["1位","中国","14.1億"],["2位","インド","14.0億"],["3位","アメリカ","3.3億"],["4位","インドネシア","2.7億"],["5位","パキスタン","2.3億"]].forEach(function(r,i){at(i*220,function(){
+      var tr=document.createElement("tr");tr.style.cssText="border-bottom:1px solid #f0f0f0;opacity:0;transition:opacity .3s;";
+      tr.innerHTML=r.map(function(c){return '<td style="padding:5px 10px;color:var(--dark);font-size:10px;">'+c+'</td>';}).join("");
+      tb.appendChild(tr);at(40,function(){tr.style.opacity="1";});
+    });});
+  });});
+}
+
+function runS6(){
+  crossfade("s5","s6");setParticleColor(92,75,232);
+  var ui=document.getElementById("s6-ui"),badge=document.getElementById("s6-badge"),msgs=document.getElementById("s6-msgs"),txt=document.getElementById("s6-txt");
+  at(200,function(){ui.style.opacity="1";ui.style.transform="translateY(0)";});
+  at(600,function(){badge.style.opacity="1";badge.style.animation="glow 2s infinite";});
+  at(1000,function(){
+    var um=document.createElement("div");um.style.cssText="display:flex;justify-content:flex-end;animation:fadeUp .35s ease both;";
+    um.innerHTML='<div style="background:var(--purple);color:#fff;padding:11px 16px;border-radius:18px 18px 4px 18px;font-size:13px;">京都でおすすめの観光地は？</div>';
+    msgs.appendChild(um);
+  });
+  at(1800,function(){
+    var dots=document.createElement("div");dots.id="s6-dots";dots.style.cssText="display:flex;gap:8px;align-items:center;padding:10px 0;animation:fadeIn .3s both;";
+    dots.innerHTML='<div style="animation:spin 2s linear infinite;color:var(--purple-light);line-height:1;">'+ic("travel_explore",24)+'</div><span style="font-size:12px;color:rgba(255,255,255,.35);">Deep Searchで検索しています...</span>';
+    msgs.appendChild(dots);
+  });
+  at(4000,function(){
+    var d=document.getElementById("s6-dots");if(d)d.remove();
+    var reply=document.createElement("div");reply.style.cssText="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:18px;animation:fadeUp .5s ease both;";
+    reply.innerHTML='<div style="font-size:13px;color:#e2e8f0;line-height:1.75;margin-bottom:14px;">京都のおすすめ観光地だね！\n\n🏛 <b>伏見稲荷大社</b> — 千本鳥居で有名\n🌸 <b>嵐山</b> — 竹林と渡月橋が美しい\n🏯 <b>金閣寺</b> — 定番中の定番だよ</div><div style="display:flex;gap:8px;flex-wrap:wrap;">'+["wikipedia.org","travel.co.jp","jalan.net"].map(function(s){return '<div style="padding:4px 12px;background:rgba(129,140,248,.12);border:1px solid rgba(129,140,248,.2);border-radius:22px;font-size:10px;color:#818cf8;display:flex;align-items:center;gap:4px;">'+ic("language",11)+s+'</div>';}).join("")+'</div>';
+    msgs.appendChild(reply);
+  });
+  at(5500,function(){txt.style.opacity="1";txt.style.animation="fadeUp .7s ease both";});
+}
+
+function runS7(){
+  crossfade("s6","s7");setParticleColor(92,75,232);
+  var editor=document.getElementById("s7-editor"),code=document.getElementById("s7-c"),title=document.getElementById("s7-title"),cursor=document.getElementById("s7-cursor"),copy=document.getElementById("s7-copy");
+  var lines=['<span style="color:#ff7b72">def</span> <span style="color:#d2a8ff">bubble_sort</span>(arr):','    n = <span style="color:#ff7b72">len</span>(arr)','    <span style="color:#ff7b72">for</span> i <span style="color:#ff7b72">in</span> <span style="color:#ff7b72">range</span>(n):','        <span style="color:#ff7b72">for</span> j <span style="color:#ff7b72">in</span> <span style="color:#ff7b72">range</span>(n - i - <span style="color:#79c0ff">1</span>):','            <span style="color:#ff7b72">if</span> arr[j] > arr[j + <span style="color:#79c0ff">1</span>]:','                arr[j], arr[j+<span style="color:#79c0ff">1</span>] = arr[j+<span style="color:#79c0ff">1</span>], arr[j]','    <span style="color:#ff7b72">return</span> arr'];
+  at(200,function(){editor.style.opacity="1";editor.style.transform="scale(1)";});
+  at(600,function(){title.style.opacity="1";title.style.animation="fadeUp .7s ease both";});
+  at(800,function(){cursor.style.opacity="1";});
+  at(1000,function(){
+    var i=0;(function addLine(){if(i<lines.length){code.innerHTML+=(i>0?"<br>":"")+lines[i];i++;setTimeout(addLine,280);}else{cursor.style.opacity="0";at(400,function(){copy.style.opacity="1";at(800,function(){copy.innerHTML=ic("check",12)+' コピーした！';copy.style.color="var(--green)";copy.style.borderColor="rgba(34,197,94,.3)";});});}})();
+  });
+}
+
+function runS8(){
+  crossfade("s7","s8");setParticleColor(0,0,0);
+  var ui=document.getElementById("s8-ui"),list=document.getElementById("s8-list"),btn=document.getElementById("s8-btn"),toast=document.getElementById("s8-toast"),notifs=document.getElementById("s8-notifs"),txt=document.getElementById("s8-txt");
+  var words=[{w:"photosynthesis",m:"光合成"},{w:"persevere",m:"忍耐強く続ける"},{w:"eloquent",m:"雄弁な"}];
+  at(200,function(){ui.style.opacity="1";ui.style.transform="translateY(0)";});
+  at(600,function(){words.forEach(function(w,i){at(i*280,function(){
+    var row=document.createElement("div");row.style.cssText="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#f8f7ff;border-radius:12px;border:1px solid rgba(92,75,232,.08);font-size:13px;opacity:0;transition:all .35s var(--ease);";
+    row.innerHTML='<span style="font-weight:600;color:var(--dark);">'+w.w+'</span><span style="color:var(--purple);font-weight:500;">'+w.m+'</span>';
+    list.appendChild(row);at(50,function(){row.style.opacity="1";});
+  });});});
+  at(3200,function(){btn.style.transform="scale(.94)";btn.style.boxShadow="0 0 40px rgba(92,75,232,.5)";});
+  at(3600,function(){btn.style.transform="scale(1.03)";at(200,function(){btn.style.transform="scale(1)";});toast.style.opacity="1";toast.style.transform="translateY(0)";});
+  at(4200,function(){
+    [{av:"👦",name:"taro_study",act:"保存しました"},{av:"👧",name:"hana2026",act:"学習中"},{av:"🧑",name:"ken_english",act:"★お気に入り"}].forEach(function(u,i){at(i*450,function(){
+      var n=document.createElement("div");n.style.cssText="display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.06);font-size:12px;color:#374151;opacity:0;transform:translateX(30px);transition:all .5s var(--ease);";
+      n.innerHTML='<span style="font-size:22px;">'+u.av+'</span><span style="font-weight:600;">'+u.name+'</span><span style="color:var(--gray);">'+u.act+'</span>';
+      notifs.appendChild(n);at(60,function(){n.style.opacity="1";n.style.transform="translateX(0)";});
+    });});
+  });
+  at(5800,function(){txt.style.opacity="1";txt.style.animation="fadeUp .7s ease both";});
+}
+
+function runS9(){
+  crossfade("s8","s9");setParticleColor(92,75,232);
+  var phone=document.getElementById("s9-phone"),scroll=document.getElementById("s9-scroll"),title=document.getElementById("s9-title");
+  var cards=[
+    {av:"var(--purple)",name:"taro_study",text:"英検2級対策プリセットを公開しました！",badge:ic("menu_book",12)+" 120問 ★4.8",likes:"234",cmt:"12"},
+    {av:"#ef4444",name:"hana2026",text:"7日連続達成! 継続は力なり",badge:ic("local_fire_department",12)+" 7日連続",likes:"42",cmt:"8"},
+    {av:"var(--green)",name:"study_master",text:"TOEIC 900点突破しました！VocabuQuizのおかげ！",badge:ic("emoji_events",12)+" 900点",likes:"128",cmt:"34"},
+    {av:"#f59e0b",name:"english_pro",text:"医学英語の専門プリセットを公開しました",badge:ic("medical_services",12)+" 80問",likes:"56",cmt:"12"}
+  ];
+  cards.forEach(function(c){
+    var d=document.createElement("div");d.style.cssText="padding:18px 22px;border-bottom:1px solid rgba(0,0,0,.06);";
+    d.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><div style="width:36px;height:36px;background:'+c.av+';border-radius:50%;"></div><div style="font-size:13px;font-weight:600;color:var(--dark);">'+c.name+'</div><div style="margin-left:auto;font-size:10px;color:var(--gray);">3分前</div></div><div style="font-size:13px;color:#374151;line-height:1.65;margin-bottom:10px;">'+c.text+'</div><div style="display:inline-flex;padding:4px 12px;background:#f8f7ff;border-radius:10px;font-size:11px;color:var(--purple);font-weight:600;margin-bottom:12px;align-items:center;gap:4px;">'+c.badge+'</div><div style="display:flex;gap:24px;font-size:12px;color:var(--gray);">'+[ic("favorite",14)+" "+c.likes,ic("chat_bubble_outline",14)+" "+c.cmt,ic("bookmark_border",14)].map(function(a){return '<div style="display:flex;align-items:center;gap:4px;">'+a+'</div>';}).join("")+'</div>';
+    scroll.appendChild(d);
+  });
+  at(200,function(){phone.style.opacity="1";phone.style.transform="translateY(0)";});
+  at(700,function(){title.style.opacity="1";title.style.animation="fadeUp .7s ease both";});
+  at(1600,function(){scroll.style.transition="transform 4s linear";scroll.style.transform="translateY(-340px)";});
+}
+
+function runS10(){
+  crossfade("s9","s10");setParticleColor(0,0,0);
+  at(300,function(){var e=document.getElementById("s10-a");e.style.opacity="1";e.style.animation="fadeUp .5s ease both";countTo(document.getElementById("s10-n1"),10000,"10,000+",1500);});
+  at(600,function(){var e=document.getElementById("s10-b");e.style.opacity="1";e.style.animation="fadeUp .5s ease both";countTo(document.getElementById("s10-n2"),1000000,"1,000,000+",1800);});
+  at(900,function(){var e=document.getElementById("s10-c");e.style.opacity="1";e.style.animation="fadeUp .5s ease both";countTo(document.getElementById("s10-n3"),5000,"5,000+",1400);});
+  at(2200,function(){var e=document.getElementById("s10-txt");e.style.opacity="1";e.style.animation="fadeUp .6s ease both";});
+}
+
+function runS11(){
+  crossfade("s10","s11");setParticleColor(92,75,232);
+  var tag=document.getElementById("s11-tag"),logo=document.getElementById("s11-logo"),url=document.getElementById("s11-url");
+  var chars="革命は、始まっている。".split("");
+  chars.forEach(function(c,i){at(i*130,function(){
+    var span=document.createElement("span");span.style.cssText="display:inline-block;opacity:0;animation:revealChar .45s ease both;background:linear-gradient(135deg,var(--purple-light),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;";
+    span.textContent=c;tag.appendChild(span);
+  });});
+  at(2000,function(){logo.style.opacity="1";logo.style.transform="scale(1)";});
+  at(2800,function(){url.style.opacity="1";typeText(url,"vocabuquiz.app",55);});
+}
+
+/* ══════════════════════════════════════
+   TIMELINE + MAIN LOOP
+   ══════════════════════════════════════ */
+var timeline=[
+  {t:0,fn:runS1},{t:BAR*2,fn:runS2},{t:BAR*4,fn:runS3},{t:BAR*8,fn:runS4},
+  {t:BAR*12,fn:runS5},{t:BAR*16,fn:runS6},{t:BAR*20,fn:runS7},{t:BAR*24,fn:runS8},
+  {t:BAR*28,fn:runS9},{t:BAR*32,fn:runS10},{t:BAR*36,fn:runS11}
+];
+var fired={},startTime=0,_timers=[];
+
+function at(ms,fn){var id=setTimeout(fn,ms);_timers.push(id);}
+
+function tick(now){
+  var elapsed=now-startTime;
+  progBar.style.width=(elapsed/TOTAL_MS*100)+"%";
+  /* Beat pulse on progress bar */
+  var beatP=(elapsed%BEAT)/BEAT;
+  var pulse=Math.sin(beatP*Math.PI)*.6;
+  progBar.style.boxShadow="0 0 "+(pulse*10)+"px var(--purple)";
+  drawParticles();
+  timeline.forEach(function(ev,i){
+    if(elapsed>=ev.t&&!fired[i]){fired[i]=true;ev.fn();}
+  });
+  if(elapsed>=TOTAL_MS){
+    _timers.forEach(clearTimeout);_timers=[];fired={};
+    document.querySelectorAll(".sc").forEach(function(s){s.style.opacity="0";});
+    if(audio)try{audio.currentTime=0;audio.play().catch(function(){});}catch(e){}
+    startTime=performance.now();
+    /* Rebuild dynamic content */
+    ["s3-opts","s4-msgs","s5-tb","s6-msgs","s7-c","s8-list","s8-notifs","s9-scroll"].forEach(function(id){var e=document.getElementById(id);if(e)e.innerHTML="";});
+    ["s3-res","s5-vmsg","s5-skel","s5-tbl","s6-badge","s8-toast"].forEach(function(id){var e=document.getElementById(id);if(e)e.style.opacity="0";});
+    document.getElementById("s11-tag").innerHTML="";
+  }
+  requestAnimationFrame(tick);
+}
+
+startTime=performance.now();
+requestAnimationFrame(tick);
+
+})();
+</script>
+</body>
+</html>

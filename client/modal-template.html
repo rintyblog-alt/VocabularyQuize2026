@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modal Template</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f5f5f5;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 40px;
+}
+
+/* ═══ Overlay ═══ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.18);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  opacity: 0;
+  animation: modalOverlayIn .25s ease forwards;
+  padding: 24px;
+}
+.modal-overlay.is-closing {
+  animation: modalOverlayOut .2s ease forwards;
+}
+@keyframes modalOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modalOverlayOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* ═══ Card ═══ */
+.modal-card {
+  background: #fff;
+  border-radius: 18px;
+  border: none;
+  box-shadow: 0 12px 48px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.03);
+  width: 100%;
+  max-width: 460px;
+  overflow: hidden;
+  transform: scale(.95) translateY(10px);
+  opacity: 0;
+  animation: modalCardIn .35s .05s cubic-bezier(.22,1,.36,1) forwards;
+}
+.modal-overlay.is-closing .modal-card {
+  animation: modalCardOut .22s ease forwards;
+}
+@keyframes modalCardIn {
+  from { transform: scale(.95) translateY(10px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+@keyframes modalCardOut {
+  from { transform: scale(1) translateY(0); opacity: 1; }
+  to { transform: scale(.97) translateY(6px); opacity: 0; }
+}
+
+/* ═══ Card body ═══ */
+.modal-body {
+  padding: 28px 28px 20px;
+}
+
+/* Type A: Icon left + text right (warning/confirm) */
+.modal-body-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.modal-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.modal-icon.is-warning { background: #fef2f2; }
+.modal-icon.is-warning svg { color: #dc2626; }
+.modal-icon.is-success { background: #ecfdf5; }
+.modal-icon.is-success svg { color: #16a34a; }
+.modal-icon.is-info { background: #eff6ff; }
+.modal-icon.is-info svg { color: #2563eb; }
+.modal-icon.is-purple { background: #f3e8ff; }
+.modal-icon.is-purple svg { color: #7c3aed; }
+.modal-icon.is-amber { background: #fffbeb; }
+.modal-icon.is-amber svg { color: #d97706; }
+
+/* Type B: Centered (success/info) */
+.modal-body-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+.modal-body-center .modal-icon {
+  width: 52px;
+  height: 52px;
+  margin-bottom: 8px;
+}
+
+.modal-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1.3;
+}
+.modal-desc {
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.6;
+  margin-top: 6px;
+}
+
+/* ═══ Footer ═══ */
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 28px 24px;
+  background: #fafafa;
+  border-top: 1px solid #f0f0f0;
+}
+.modal-footer.is-center {
+  justify-content: center;
+}
+.modal-footer.is-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.modal-footer.is-full {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+/* ═══ Buttons ═══ */
+.modal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all .15s ease;
+  border: none;
+  min-height: 44px;
+}
+.modal-btn-secondary {
+  background: #fff;
+  color: #1a1a1a;
+  border: 1px solid #e0e0e0;
+}
+.modal-btn-secondary:hover {
+  background: #f7f7f7;
+  border-color: #d0d0d0;
+}
+.modal-btn-danger {
+  background: #dc2626;
+  color: #fff;
+}
+.modal-btn-danger:hover {
+  background: #b91c1c;
+}
+.modal-btn-primary {
+  background: #6366f1;
+  color: #fff;
+}
+.modal-btn-primary:hover {
+  background: #4f46e5;
+}
+.modal-btn-primary-full {
+  background: #6366f1;
+  color: #fff;
+  width: 100%;
+}
+.modal-btn-primary-full:hover {
+  background: #4f46e5;
+}
+
+/* ═══ Input ═══ */
+.modal-input {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-family: inherit;
+  color: #1a1a1a;
+  background: #f8fafc;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.modal-input:focus {
+  border-color: #a5b4fc;
+  box-shadow: 0 0 0 3px rgba(99,102,241,.1);
+  background: #fff;
+}
+
+/* ═══ Spinner ═══ */
+.modal-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: modalSpin .7s linear infinite;
+  margin-bottom: 4px;
+}
+@keyframes modalSpin { to { transform: rotate(360deg); } }
+
+/* ═══ Demo buttons ═══ */
+.demo-btn {
+  padding: 12px 24px;
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  background: #fff;
+  color: #1a1a1a;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .12s;
+}
+.demo-btn:hover { background: #f0f0f0; }
+</style>
+</head>
+<body>
+
+<button class="demo-btn" onclick="showModal('warning')">Warning (row)</button>
+<button class="demo-btn" onclick="showModal('success')">Success (center)</button>
+<button class="demo-btn" onclick="showModal('confirm')">Confirm (split)</button>
+<button class="demo-btn" onclick="showModal('delete')">Delete (danger)</button>
+<button class="demo-btn" onclick="showModal('info')">Info</button>
+<button class="demo-btn" onclick="showModal('upgrade')">Upgrade</button>
+<button class="demo-btn" onclick="showModal('input')">Input</button>
+<button class="demo-btn" onclick="showModal('loading')">Loading</button>
+
+<script>
+const ICONS = {
+  warning: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  check: `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  info: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  trash: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>`,
+  star: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  edit: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+  loader: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" opacity=".3"/><path d="M12 2v4" style="animation:modalSpin 1s linear infinite;transform-origin:12px 12px"/></svg>`
+};
+
+function showModal(type) {
+  document.querySelector('.modal-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  let html = '';
+
+  if (type === 'warning') {
+    html = `<div class="modal-card">
+      <div class="modal-body"><div class="modal-body-row">
+        <div class="modal-icon is-warning">${ICONS.warning}</div>
+        <div>
+          <div class="modal-title">アカウントを無効にしますか？</div>
+          <div class="modal-desc">すべてのデータが完全に削除されます。この操作は元に戻せません。</div>
+        </div>
+      </div></div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-secondary" onclick="closeModal()">キャンセル</button>
+        <button class="modal-btn modal-btn-danger" onclick="closeModal()">無効にする</button>
+      </div>
+    </div>`;
+  }
+
+  else if (type === 'success') {
+    html = `<div class="modal-card">
+      <div class="modal-body"><div class="modal-body-center">
+        <div class="modal-icon is-success">${ICONS.check}</div>
+        <div class="modal-title">保存しました</div>
+        <div class="modal-desc">プリセットが正常に保存されました。ライブラリからいつでもアクセスできます。</div>
+      </div></div>
+      <div class="modal-footer is-full">
+        <button class="modal-btn modal-btn-primary-full" onclick="closeModal()">OK</button>
+      </div>
+    </div>`;
+  }
+
+  else if (type === 'confirm') {
+    html = `<div class="modal-card">
+      <div class="modal-body"><div class="modal-body-center">
+        <div class="modal-icon is-success">${ICONS.check}</div>
+        <div class="modal-title">公開しますか？</div>
+        <div class="modal-desc">このプリセットを公開すると、すべてのユーザーが検索・利用できるようになります。公開後もいつでも非公開に戻せます。</div>
+      </div></div>
+      <div class="modal-footer is-split">
+        <button class="modal-btn modal-btn-secondary" onclick="closeModal()">キャンセル</button>
+        <button class="modal-btn modal-btn-primary" onclick="closeModal()">公開する</button>
+      </div>
+    </div>`;
+  }
+
+  else if (type === 'delete') {
+    html = `<div class="modal-card">
+      <div class="modal-body"><div class="modal-body-row">
+        <div class="modal-icon is-warning">${ICONS.trash}</div>
+        <div>
+          <div class="modal-title">プリセットを削除しますか？</div>
+          <div class="modal-desc">「英単語テスト対策」を削除します。学習履歴も削除されます。この操作は取り消せません。</div>
+        </div>
+      </div></div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-secondary" onclick="closeModal()">キャンセル</button>
+        <button class="modal-btn modal-btn-danger" onclick="closeModal()">削除する</button>
+      </div>
+    </div>`;
+  }
+
+  else if (type === 'info') {
+    html = `<div class="modal-card">
+      <div class="modal-body"><div class="modal-body-row">
+        <div class="modal-icon is-info">${ICONS.info}</div>
+        <div>
+          <div class="modal-title">アップデートがあります</div>
+          <div class="modal-desc">新しいバージョンが利用可能です。ページを再読み込みすると最新版が適用されます。</div>
+        </div>
+      </div></div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-secondary" onclick="closeModal()">あとで</button>
+        <button class="modal-btn modal-btn-primary" onclick="closeModal()">再読み込み</button>
+      </div>
+    </div>`;
+  }
+
+  else if (type === 'upgrade') {
+    html = `<div class="modal-card">
+      <div class="modal-body"><div class="modal-body-center">
+        <div class="modal-icon is-purple">${ICONS.star}</div>
+        <div class="modal-title">PRE にアップグレード</div>
+        <div class="modal-desc">AI機能の制限解除、高性能モデル、画像生成など、すべての機能が使い放題になります。</div>
+      </div></div>
+      <div class="modal-footer is-split">
+        <button class="modal-btn modal-btn-secondary" onclick="closeModal()">あとで</button>
+        <button class="modal-btn modal-btn-primary" onclick="closeModal()">プランを見る</button>
+      </div>
+    </div>`;
+  }
+
+  else if (type === 'input') {
+    html = `<div class="modal-card">
+      <div class="modal-body"><div class="modal-body-row">
+        <div class="modal-icon is-info">${ICONS.edit}</div>
+        <div style="flex:1;min-width:0;">
+          <div class="modal-title">名前を変更</div>
+          <div class="modal-desc">プリセットの名前を入力してください。</div>
+          <input type="text" class="modal-input" value="英単語テスト対策" placeholder="プリセット名を入力" />
+        </div>
+      </div></div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-secondary" onclick="closeModal()">キャンセル</button>
+        <button class="modal-btn modal-btn-primary" onclick="closeModal()">変更する</button>
+      </div>
+    </div>`;
+  }
+
+  else if (type === 'loading') {
+    html = `<div class="modal-card">
+      <div class="modal-body"><div class="modal-body-center">
+        <div class="modal-spinner"></div>
+        <div class="modal-title">処理しています...</div>
+        <div class="modal-desc">しばらくお待ちください。</div>
+      </div></div>
+    </div>`;
+    setTimeout(() => closeModal(), 2500);
+  }
+
+  overlay.innerHTML = html;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+  document.body.appendChild(overlay);
+}
+
+function closeModal() {
+  const overlay = document.querySelector('.modal-overlay');
+  if (!overlay) return;
+  overlay.classList.add('is-closing');
+  setTimeout(() => overlay.remove(), 220);
+}
+
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+</script>
+</body>
+</html>
