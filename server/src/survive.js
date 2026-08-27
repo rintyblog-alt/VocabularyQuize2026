@@ -197,25 +197,31 @@ async function handleQuestions(request, env) {
   const seed = (N(body.seed, 1) >>> 0) || 1;
   let pairs = null;
 
-  /* プリセットが 指定されて いれば そこから */
+  /* プリセットが 指定されて いれば そこから。
+     ★ **自分の もの しか 読ませない。**
+       前は user_id で 絞らずに 引いていた（しかも 列名が 違って 常に 失敗）。
+       あのまま 動いて いたら、鍵を 当てれば 他人の 単語帳を 読めた。 */
   const presetId = S(body.presetId, 80);
   if (presetId && env.DB) {
-    try {
-      const row = await env.DB.prepare(
-        "SELECT payload FROM account_blobs WHERE key = ?1 LIMIT 1"
-      ).bind("preset:" + presetId).first().catch(() => null);
-      if (row && row.payload) {
-        const d = JSON.parse(String(row.payload));
-        const words = (d && (d.words || d.items || d.rows)) || [];
-        const got = [];
-        for (const w of words) {
-          const a = S(w.term || w.word || w.q || w.front, 60);
-          const b = S(w.meaning || w.answer || w.a || w.back, 60);
-          if (a && b) got.push([a, b]);
+    const me = await userFromRequest(request, env);
+    if (me) {
+      try {
+        const rows = (await env.DB.prepare(
+          "SELECT chunk FROM account_blobs WHERE user_id = ?1 AND key = ?2 ORDER BY part ASC LIMIT 64"
+        ).bind(me.uid, "preset:" + presetId).all().catch(() => ({ results: [] }))).results || [];
+        if (rows.length) {
+          const d = JSON.parse(rows.map((r) => String(r.chunk || "")).join(""));
+          const words = (d && (d.words || d.items || d.rows)) || [];
+          const got = [];
+          for (const w of words) {
+            const a = S(w.term || w.word || w.q || w.front, 60);
+            const b = S(w.meaning || w.answer || w.a || w.back, 60);
+            if (a && b) got.push([a, b]);
+          }
+          if (got.length >= 8) pairs = got;
         }
-        if (got.length >= 8) pairs = got;
-      }
-    } catch (e) { /* 使えなければ 次へ */ }
+      } catch (e) { /* 使えなければ 控えへ */ }
+    }
   }
 
   if (!pairs) pairs = FALLBACK_WORDS;
@@ -339,10 +345,25 @@ function roomCode(seed) {
   return s;
 }
 
+/* 部屋を 立て続けに 作られない ように する。
+   ★ Worker の isolate は いつ 消えても おかしくない ので、これは
+     「完全な 見張り」では ない。**それでも 素直な 連打は 止まる。**
+     本気の 妨害は Durable Object 側の 人数上限が 受け止める。 */
+const _roomHits = new Map();
+function tooManyRooms(uid) {
+  const now = Date.now();
+  const a = (_roomHits.get(uid) || []).filter((t) => now - t < 10 * 60 * 1000);
+  a.push(now);
+  _roomHits.set(uid, a);
+  if (_roomHits.size > 5000) _roomHits.clear();   /* 溜め込まない */
+  return a.length > 12;
+}
+
 async function handleRoomCreate(request, env) {
   const me = await userFromRequest(request, env);
   if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
   if (!env.SURVIVE_ROOMS) return bad("NOT_CONFIGURED", "対戦の 部屋が 使えません。", 500);
+  if (tooManyRooms(me.uid)) return bad("TOO_MANY", "部屋を 作りすぎです。少し 待ってください。", 429);
   const b = (await readJson(request, 4096)) || {};
   const id = roomCode((Date.now() ^ (me.uid * 2654435761)) >>> 0);
   const stub = env.SURVIVE_ROOMS.get(env.SURVIVE_ROOMS.idFromName(id));
