@@ -54,6 +54,7 @@ export class LobbyScreen {
     /* かぶりもの（見た目だけ。速さには 一切 効かない） */
     this.hat = "none";
     this.hatColor = 0;
+    this.recScope = "all";   /* 記録の 範囲: all / week / friends */
 
     this._restore();
     this.el = this._build();
@@ -65,6 +66,7 @@ export class LobbyScreen {
       if (typeof raw.course === "number") this.courseIndex = Math.max(0, Math.min(COURSES.length - 1, raw.course));
       if (raw.mode) this.mode = raw.mode;
       if (typeof raw.color === "number") this.me.colorIndex = raw.color % BEAN_COLORS.length;
+      if (raw.recScope === "week" || raw.recScope === "friends" || raw.recScope === "all") this.recScope = raw.recScope;
       if (raw.hat) this.hat = String(raw.hat);
       if (typeof raw.hatColor === "number") this.hatColor = raw.hatColor % HAT_COLORS.length;
       if (raw.qz && typeof raw.qz === "object") {
@@ -84,7 +86,7 @@ export class LobbyScreen {
       localStorage.setItem(PICK_KEY, JSON.stringify({
         course: this.courseIndex, mode: this.mode, color: this.me.colorIndex,
         volume: this.volume, music: this.musicOn, invert: this.invertY, qz: this.qz,
-        hat: this.hat, hatColor: this.hatColor
+        hat: this.hat, hatColor: this.hatColor, recScope: this.recScope
       }));
     } catch (e) {}
   }
@@ -97,39 +99,98 @@ export class LobbyScreen {
     el.textContent = "";
     let best = 0;
     try { best = Number(localStorage.getItem("vq.survive.best.v1:" + c.id) || 0) || 0; } catch (e) {}
-    el.appendChild(h("span", { class: "vs-lb-rec-lab", text: "自己ベスト" }));
-    el.appendChild(h("strong", { class: "vs-lb-rec-v vs-mono", text: best > 0 ? fmtTime(best) : "—" }));
-    const top = this._lbCache[c.id];
-    if (top === undefined) {
-      el.appendChild(h("span", { class: "vs-lb-rec-lab", text: "みんなの 記録" }));
-      el.appendChild(h("span", { class: "vs-lb-rec-v", text: "…" }));
-      this._loadBoard(c.id);
-    } else if (top && top.length) {
-      el.appendChild(h("span", { class: "vs-lb-rec-lab", text: "1 位" }));
-      el.appendChild(h("strong", { class: "vs-lb-rec-v vs-mono", text: fmtTime(top[0].bestMs / 1000) }));
-      el.appendChild(h("span", { class: "vs-lb-rec-who", text: top[0].name }));
-      if (top.length > 1) {
-        el.appendChild(h("span", { class: "vs-lb-rec-lab", text: "2 位" }));
-        el.appendChild(h("span", { class: "vs-lb-rec-v vs-mono", text: fmtTime(top[1].bestMs / 1000) }));
-      }
-    } else {
-      el.appendChild(h("span", { class: "vs-lb-rec-lab", text: "みんなの 記録" }));
-      el.appendChild(h("span", { class: "vs-lb-rec-v", text: "まだ ありません" }));
+
+    /* 自己ベストは **手元に ある**ので 通信を 待たずに すぐ 出す。 */
+    const 頭 = h("div", { class: "vs-lb-rec-top" },
+      h("span", { class: "vs-lb-rec-lab", text: "自己ベスト" }),
+      h("strong", { class: "vs-lb-rec-v vs-mono", text: best > 0 ? fmtTime(best) : "—" }));
+    /* どの 範囲の 順位を 見るか */
+    const タブ = h("div", { class: "vs-lb-rec-tabs", role: "tablist", "aria-label": "記録の 範囲" });
+    for (const [k, lab] of [["all", "全体"], ["week", "今週"], ["friends", "友だち"]]) {
+      タブ.appendChild(h("button", {
+        class: "vs-lb-rec-tab", type: "button", role: "tab", "data-sc": k,
+        "aria-selected": this.recScope === k ? "true" : "false",
+        onclick: () => { this.recScope = k; this._save(); this._renderRecord(c); }
+      }, lab));
     }
+    頭.appendChild(タブ);
+    el.appendChild(頭);
+
+    const key = c.id + "|" + this.recScope;
+    const box = this._lbCache[key];
+    const 表 = h("div", { class: "vs-lb-rec-board" });
+    if (box === undefined) {
+      表.appendChild(h("p", { class: "vs-lb-note", text: "読み込み中…" }));
+      this._loadBoard(c.id, this.recScope);
+    } else if (box === null) {
+      表.appendChild(h("p", { class: "vs-lb-note", text: "読み込み中…" }));
+    } else if (box.err) {
+      表.appendChild(h("p", { class: "vs-lb-note", text: box.err }));
+    } else if (!box.rows.length) {
+      表.appendChild(h("p", { class: "vs-lb-note",
+        text: this.recScope === "week" ? "今週は まだ 誰も 走っていません。"
+          : this.recScope === "friends" ? "友だちの 記録は まだ ありません。"
+          : "まだ 誰も 走っていません。" }));
+    } else {
+      for (const r of box.rows.slice(0, 5)) 表.appendChild(this._recRow(r, box.meId));
+    }
+    /* ★ **自分が 何位かを 必ず 出す。**
+       上位 5 人だけ だと、ほとんどの 人は 自分が どこに いるか 分からない。 */
+    if (box && box.me && !(box.rows || []).some((r) => r.id === box.me.id)) {
+      表.appendChild(h("div", { class: "vs-lb-rec-gap", text: "⋯" }));
+      表.appendChild(this._recRow(box.me, box.meId));
+    }
+    el.appendChild(表);
   }
 
-  async _loadBoard(id) {
-    this._lbCache[id] = null;   /* 二重に 取りに 行かない */
+  _recRow(r, meId) {
+    return h("div", {
+      class: "vs-lb-rec-row",
+      "data-me": String(r.id) === String(meId) ? "1" : "0"
+    },
+      h("span", { class: "vs-lb-rec-no vs-mono", text: String(r.rank) }),
+      h("span", { class: "vs-lb-rec-who", text: r.name || "—" }),
+      h("span", { class: "vs-lb-rec-v vs-mono", text: fmtTime(r.bestMs / 1000) }));
+  }
+
+  async _loadBoard(id, scope) {
+    const key = id + "|" + scope;
+    this._lbCache[key] = null;   /* 二重に 取りに 行かない */
     try {
       const base = String(window.VQ_API_BASE || "").replace(/\/+$/, "");
-      const ctrl = new AbortController();
-      const to = setTimeout(() => ctrl.abort(), 5000);
-      const r = await fetch(base + "/api/survive/leaderboard/" + encodeURIComponent(id), { signal: ctrl.signal });
-      clearTimeout(to);
-      const d = await r.json();
-      this._lbCache[id] = (d && d.rows) || [];
-    } catch (e) { this._lbCache[id] = []; }
-    if (COURSES[this.courseIndex] && COURSES[this.courseIndex].id === id) this._renderRecord(COURSES[this.courseIndex]);
+      const tk = (typeof window._authGetToken === "function") ? String(window._authGetToken() || "") : "";
+      /* 友だちの 中での 順位は 札が 無いと 出せない。断りを 先に 出す。 */
+      if (scope === "friends" && !tk) {
+        this._lbCache[key] = { err: "ログインすると 友だちの 中での 順位が 出ます。", rows: [], me: null };
+      } else {
+        const q = scope === "week" ? "?period=week" : scope === "friends" ? "?scope=friends" : "";
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 5000);
+        const r = await fetch(base + "/api/survive/leaderboard/" + encodeURIComponent(id) + q, {
+          headers: tk ? { Authorization: "Bearer " + tk } : {}, signal: ctrl.signal
+        });
+        clearTimeout(to);
+        const d = await r.json();
+        this._lbCache[key] = {
+          rows: (d && d.rows) || [], me: (d && d.me) || null,
+          meId: d && d.me ? d.me.id : "", splits: (d && d.splits) || []
+        };
+        /* サーバが 覚えている 区間の 記録を 手元へ 写す
+           （端末を 変えても 「どこで 遅れたか」が 出る ように）。
+           ★ 手元に 何か あれば 触らない。手元の ほうが 新しい ことが ある。 */
+        if (d && Array.isArray(d.splits) && d.splits.length) {
+          try {
+            if (!localStorage.getItem("vq.survive.splits.v1:" + id)) {
+              localStorage.setItem("vq.survive.splits.v1:" + id,
+                JSON.stringify(d.splits.map((v) => Math.round(v) / 1000)));
+            }
+          } catch (e) {}
+        }
+      }
+    } catch (e) { this._lbCache[key] = { rows: [], me: null, err: "記録を 読めませんでした。" }; }
+    if (COURSES[this.courseIndex] && COURSES[this.courseIndex].id === id && this.recScope === scope) {
+      this._renderRecord(COURSES[this.courseIndex]);
+    }
   }
 
   /** あそび方を 出す（ロビーの ? から。試合の 最初にも 出る） */
@@ -899,6 +960,19 @@ export const LOBBY_CSS = `
 .vs-lb-roomid{ margin-top:9px; display:flex; align-items:center; justify-content:space-between;
   padding:8px 11px; border-radius:10px; background:rgba(255,255,255,.06); font-size:13px; }
 .vs-lb-roomlab{ font-size:10.5px; color:rgba(243,245,255,.5); }
+.vs-lb-rec-top{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+.vs-lb-rec-tabs{ display:flex; gap:3px; margin-left:auto; }
+.vs-lb-rec-tab{ padding:3px 9px; border-radius:999px; border:1px solid ${PALETTE.line};
+  background:transparent; color:rgba(243,245,255,.62); font:inherit; font-size:11px; cursor:pointer; }
+.vs-lb-rec-tab[aria-selected="true"]{ border-color:${PALETTE.mint}; color:#fff;
+  background:rgba(90,230,190,.14); font-weight:700; }
+.vs-lb-rec-board{ display:flex; flex-direction:column; gap:2px; }
+.vs-lb-rec-row{ display:flex; align-items:baseline; gap:8px; padding:3px 7px; border-radius:7px;
+  font-size:12px; color:rgba(243,245,255,.82); }
+.vs-lb-rec-row[data-me="1"]{ background:rgba(90,230,190,.14); color:#fff; font-weight:700; }
+.vs-lb-rec-no{ flex:0 0 auto; width:20px; text-align:right; color:rgba(243,245,255,.5); }
+.vs-lb-rec-row[data-me="1"] .vs-lb-rec-no{ color:${PALETTE.mint}; }
+.vs-lb-rec-gap{ font-size:11px; color:rgba(243,245,255,.35); padding-left:9px; line-height:1; }
 .vs-lb-hatbox{ margin:8px 0 2px; border:1px solid ${PALETTE.line}; border-radius:12px;
   background:rgba(255,255,255,.03); }
 .vs-lb-hatbox summary{ list-style:none; cursor:pointer; padding:8px 11px; font-size:12px;

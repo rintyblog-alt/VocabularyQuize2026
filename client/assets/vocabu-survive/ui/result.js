@@ -26,12 +26,14 @@ export class ResultPanel {
     this.statsEl = h("div", { class: "vs-res-stats" });
     this.listEl = h("ol", { class: "vs-res-list" });
     this.bestEl = h("div", { class: "vs-res-best vs-hide" });
+    this.splitEl = h("div", { class: "vs-res-spwrap vs-hide" });
 
     return h("div", { class: "vs-res" },
       h("div", { class: "vs-res-card" },
         h("div", { class: "vs-res-head" }, this.titleEl, this.subEl),
         this.bestEl,
         this.statsEl,
+        this.splitEl,
         h("div", { class: "vs-res-listwrap" }, this.listEl),
         h("div", { class: "vs-res-btns" },
           h("button", { class: "vs-btn is-mint", type: "button", onclick: () => this.onAgain() }, "もう一度"),
@@ -89,6 +91,44 @@ export class ResultPanel {
       this.bestEl.classList.add("vs-hide");
     }
 
+    /* ── 区間の 記録 ────────────────────────────────────────────────
+       ★ 「どこで 遅れたか」が 分かるのが 記録の 値打ち。
+         合計だけ 出しても 次に 何を 直せば よいか 分からない。
+       ★ 前の ベストが 無い ときは **差を 出さない**（0 と 比べると 全部 大きく 遅れて 見える）。 */
+    this.splitEl.textContent = "";
+    const sp = d.splits || [], bs = d.bestSplits || [];
+    if (sp.length) {
+      this.splitEl.classList.remove("vs-hide");
+      this.splitEl.appendChild(h("div", { class: "vs-res-splab", text: "区間" }));
+      const row = h("div", { class: "vs-res-splits" });
+      let 前 = 0, 前B = 0;
+      for (let i = 0; i < sp.length; i++) {
+        const 区間 = sp[i] - 前; 前 = sp[i];
+        let 差 = null;
+        if (bs.length > i) { 差 = 区間 - (bs[i] - 前B); 前B = bs[i]; }
+        const c = h("div", { class: "vs-res-sp" },
+          h("span", { class: "vs-res-spn", text: "中間 " + (i + 1) }),
+          h("span", { class: "vs-res-spt vs-mono", text: 区間.toFixed(1) + "s" }));
+        if (差 !== null) {
+          c.appendChild(h("span", {
+            class: "vs-res-spd vs-mono",
+            "data-good": 差 <= 0 ? "1" : "0",
+            text: (差 < 0 ? "-" : "+") + Math.abs(差).toFixed(1)
+          }));
+        }
+        row.appendChild(c);
+      }
+      /* ゴールまでの 最後の 区間も 出す（ここで 落ちる 人が いちばん 多い） */
+      if (d.finished && d.time > 前) {
+        row.appendChild(h("div", { class: "vs-res-sp" },
+          h("span", { class: "vs-res-spn", text: "ゴールまで" }),
+          h("span", { class: "vs-res-spt vs-mono", text: (d.time - 前).toFixed(1) + "s" })));
+      }
+      this.splitEl.appendChild(row);
+    } else {
+      this.splitEl.classList.add("vs-hide");
+    }
+
     this.listEl.textContent = "";
     for (const r of (d.standings || [])) {
       const dot = h("i", { class: "vs-res-dot" });
@@ -116,6 +156,18 @@ function fmt(s) {
 }
 
 export const RESULT_CSS = `
+.vs-res-spwrap{ margin:10px 0 2px; }
+.vs-res-splab{ font-size:11px; font-weight:800; letter-spacing:.05em;
+  color:rgba(243,245,255,.42); margin:0 0 5px; }
+.vs-res-splits{ display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; }
+.vs-res-sp{ flex:0 0 auto; min-width:74px; padding:6px 9px; border-radius:10px;
+  border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.04);
+  display:flex; flex-direction:column; gap:1px; }
+.vs-res-spn{ font-size:10px; color:rgba(243,245,255,.5); }
+.vs-res-spt{ font-size:14px; font-weight:800; color:#f3f5ff; }
+.vs-res-spd{ font-size:11px; font-weight:800; color:#ff8a97; }
+.vs-res-spd[data-good="1"]{ color:#5ae6be; }
+
 .vs-res{ position:absolute; inset:0; z-index:9; display:none;
   align-items:center; justify-content:center;
   background:rgba(6,8,22,.72); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);

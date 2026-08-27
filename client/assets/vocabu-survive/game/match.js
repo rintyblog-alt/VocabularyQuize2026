@@ -37,6 +37,7 @@ import { fetchQuestions, localQuestions } from "../data/questions.js";
 import { settingsFor, measure } from "../boot/caps.js";
 
 const BEST_KEY = "vq.survive.best.v1";
+const SPLIT_KEY = "vq.survive.splits.v1";   /* コースごとの 自己ベストの 区間 */
 
 export class MatchScreen {
   constructor(opt) {
@@ -123,6 +124,7 @@ export class MatchScreen {
     this.sim = new Sim(this.course, { timeLimit: 制限, countdown: 3.2, mode });
     this.visuals.clear();
     this.bots.length = 0;
+    this._splits = [];
     const me = new Player({
       id: "me", name: cfg.myName || "あなた", colorIndex: cfg.myColor || 0, isLocal: true,
       hat: cfg.myHat || "none", hatColor: cfg.myHatColor | 0
@@ -432,7 +434,14 @@ export class MatchScreen {
       if (e.t === "go") this.hud.big("GO!", "go");
       else if (e.t === "gate-ask" && e.p === this.local) this._openQuiz(e.gate);
       else if (e.t === "checkpoint" && e.p === this.local) {
-        this.hud.toast("中間地点 " + e.index, "good");
+        /* 区間の 記録。**通った 順に 1 回だけ** 入れる（戻されて 通り直しても 増やさない）。 */
+        if (!this._splits) this._splits = [];
+        if (this._splits.length < e.index) this._splits.push(Math.round(this.sim.raceTime * 100) / 100);
+        /* 自己ベストの 区間と くらべて その場で 出す（あとで 結果でも 出す） */
+        const 差 = this._splitDiff(this._splits.length - 1);
+        /* ★ 速く なった ときだけ 「よい」色。遅い ときに 緑を 出すと 嘘に なる。 */
+        this.hud.toast("中間地点 " + e.index + (差 ? "　" + 差 : ""),
+          !差 || 差[0] === "-" ? "good" : "bad");
         if (this.fx) this.fx.confetti(e.p.x, e.p.y, e.p.z, 16, [this.course.palette.spring, this.course.palette.gold]);
       }
       else if (e.t === "respawn" && e.p === this.local) {
@@ -565,6 +574,23 @@ export class MatchScreen {
     }
   }
 
+  /* ── 区間の 記録 ─────────────────────────────────────────────────
+     ★ 自己ベストの 区間は **手元にも 置く**。
+       通信が 遅い ときに 「差」が 出ない のは、遊びの 手応えを 一番 損なう。 */
+  _bestSplits() {
+    try {
+      const v = JSON.parse(localStorage.getItem(SPLIT_KEY + ":" + this.course.id) || "[]");
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+  }
+  _splitDiff(i) {
+    const b = this._bestSplits();
+    if (!(b.length > i) || !this._splits || this._splits.length <= i) return "";
+    const d = this._splits[i] - b[i];
+    if (Math.abs(d) < 0.01) return "±0.0";
+    return (d < 0 ? "-" : "+") + Math.abs(d).toFixed(1);
+  }
+
   /* ── 結果 ───────────────────────────────────────────────────────── */
   _hudState() {
     const s = this.sim;
@@ -587,7 +613,17 @@ export class MatchScreen {
     let best = 0;
     try { best = Number(localStorage.getItem(key) || 0) || 0; } catch (e) {}
     const newBest = p.finished && (!best || p.finishTime < best);
-    if (newBest) { try { localStorage.setItem(key, String(p.finishTime)); } catch (e) {} }
+    const 前の区間 = this._bestSplits();
+    if (newBest) {
+      try {
+        localStorage.setItem(key, String(p.finishTime));
+        /* 区間も 一緒に 覚える。**ベストを 更新した ときだけ**。
+           更新して いないのに 上書きすると 「一番 速かった 走り」で なくなる。 */
+        if (this._splits && this._splits.length) {
+          localStorage.setItem(SPLIT_KEY + ":" + this.course.id, JSON.stringify(this._splits));
+        }
+      } catch (e) {}
+    }
     const acc = (p.quizCorrect + p.quizWrong) > 0 ? p.quizCorrect / (p.quizCorrect + p.quizWrong) : 0;
     const xp = Math.round(
       (p.finished ? 120 : 40) +
@@ -608,13 +644,16 @@ export class MatchScreen {
         eliminated: !!p.eliminated, mode: this.sim.mode,
         teams: this.sim.mode === MODE.TEAM ? this.sim.teamScores() : null,
         myTeam: p.team,
-        standings: rows, courseName: this.course.name
+        standings: rows, courseName: this.course.name,
+        splits: (this._splits || []).slice(),
+        bestSplits: 前の区間
       });
       if (this.net && this.net.sendResult) {
         this.net.sendResult({ finished: p.finished, time: p.finishTime, rank: p.rank, xp });
       }
       this._saveStats({ courseId: this.course.id, rank: p.rank, time: p.finishTime,
-        finished: p.finished, correct: p.quizCorrect, wrong: p.quizWrong, xp });
+        finished: p.finished, correct: p.quizCorrect, wrong: p.quizWrong, xp,
+        splits: (this._splits || []).slice(0, 16) });
     }, p.finished ? 1400 : 500);
   }
 

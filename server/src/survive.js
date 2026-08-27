@@ -124,11 +124,57 @@ const TABLES = [
      ended_at INTEGER NOT NULL DEFAULT 0,
      result_json TEXT NOT NULL DEFAULT ''
    )`,
+  /* 週ごとの 上位。1 人 1 コース 1 週に つき 1 行（その 週の 自己ベスト）。
+     走った 全部を 残すと 際限なく 増える。主キーで 上書きに すれば
+     行数は 「遊んだ 人 × 遊んだ コース × 遊んだ 週」で 頭打ちに なる。
+     week は 月曜 始まりの 週（例 2026-W35）。 */
+  `CREATE TABLE IF NOT EXISTS survive_weekly (
+     user_id INTEGER NOT NULL,
+     course_id TEXT NOT NULL,
+     week TEXT NOT NULL,
+     best_ms INTEGER NOT NULL DEFAULT 0,
+     runs INTEGER NOT NULL DEFAULT 0,
+     updated_at INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (user_id, course_id, week)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_survive_weekly ON survive_weekly (course_id, week, best_ms)`,
   `CREATE INDEX IF NOT EXISTS idx_survive_rec_course ON survive_records (course_id, best_ms)`,
   `CREATE INDEX IF NOT EXISTS idx_survive_stats_xp ON survive_stats (xp DESC)`
 ];
 
 let _tablesReady = 0;
+/* 月曜 始まりの 週の 名前（2026-W35 の 形）。
+   ★ 「日曜 始まり」と 混ぜると 週の 変わり目で 上位が 入れ替わって 見える。
+     ここで **1 か所に 決めて** 全部 これを 使う。 */
+function 週の名(ms) {
+  const d = new Date(ms);
+  /* UTC で 揃える。端末の 時計に 合わせると 人ごとに 週が ずれる。 */
+  const t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const dt = new Date(t);
+  const 曜 = (dt.getUTCDay() + 6) % 7;          /* 月=0 … 日=6 */
+  dt.setUTCDate(dt.getUTCDate() - 曜 + 3);      /* その週の 木曜へ */
+  const 年 = dt.getUTCFullYear();
+  const 元日 = new Date(Date.UTC(年, 0, 4));
+  const 差 = Math.round((dt - 元日) / 86400000);
+  const 週 = 1 + Math.floor((差 + ((元日.getUTCDay() + 6) % 7)) / 7);
+  return 年 + "-W" + (週 < 10 ? "0" + 週 : String(週));
+}
+
+/* 後から 足した 列。**無ければ 足す**（既に 動いている 表を 作り直さない）。
+   ★ 失敗しても 黙って 進む。ここで 例外を 投げると 全部の API が 500 に なる
+     （ensureCols で 一度 やらかしている）。 */
+let _colsReady = 0;
+async function ensureCols(env) {
+  const now = Date.now();
+  if (now - _colsReady < 300000) return;
+  _colsReady = now;
+  for (const q of [
+    "ALTER TABLE survive_records ADD COLUMN splits_json TEXT NOT NULL DEFAULT ''"
+  ]) {
+    try { await env.DB.prepare(q).run(); } catch (e) { /* もう ある */ }
+  }
+}
+
 async function ensureTables(env) {
   /* ★ 30 秒 覚える。毎回 5 本 走らせると 全部の API が 遅くなる。
      （過去に ensureCols で 全 API が 500 に なった 事故が ある） */
@@ -442,6 +488,7 @@ async function handleResult(request, env) {
   if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
   if (me.blocked) return bad("ACCOUNT_BLOCKED", "この アカウントは いま 使えません。", 403);
   if (!(await ensureTables(env))) return json({ ok: true, saved: false });
+  await ensureCols(env);
   const b = await readJson(request, 8 * 1024);
   if (!b) return bad("BAD_REQUEST", "本文が 読めません。");
   const courseId = S(b.courseId, 24);
@@ -450,6 +497,19 @@ async function handleResult(request, env) {
   const rank = CL(b.rank, 0, 64);
   const correct = CL(b.correct, 0, 200);
   const wrong = CL(b.wrong, 0, 200);
+  /* 区間の 記録（中間地点を 通った 時刻・秒）。
+     ★ **順に 増えていて、ゴール時間を 超えない** ものだけ 受ける。
+       画面から 来る 値なので、そのまま 信じて 表に 入れない。 */
+  let splits = [];
+  if (Array.isArray(b.splits)) {
+    let 前 = 0, よい = true;
+    for (const v of b.splits.slice(0, 16)) {
+      const t = Math.round(CL(v, 0, 3600) * 1000);
+      if (!(t > 前) || t > timeMs + 50) { よい = false; break; }
+      前 = t; splits.push(t);
+    }
+    if (!よい) splits = [];
+  }
   /* ★ XP は **サーバで 決める**。画面から 来た 値は 使わない。 */
   const xp = Math.round(
     (finished ? 120 : 40) + Math.max(0, 8 - rank) * 24 + correct * 18 +
@@ -473,12 +533,26 @@ async function handleResult(request, env) {
       ).bind(me.uid, courseId).first().catch(() => null);
       const prevBest = N(prev && prev.best_ms, 0);
       const best = finished && timeMs > 0 ? (prevBest > 0 ? Math.min(prevBest, timeMs) : timeMs) : prevBest;
+      /* 区間は **自己ベストを 更新した ときだけ** 入れ替える。
+         そうしないと「一番 速かった 走りの 区間」で なくなる。 */
+      const 更新 = finished && timeMs > 0 && (prevBest === 0 || timeMs < prevBest);
+      const sj = (更新 && splits.length) ? JSON.stringify(splits) : "";
       await env.DB.prepare(`
-        INSERT INTO survive_records (user_id, course_id, best_ms, runs, finishes, updated_at)
-        VALUES (?1, ?2, ?3, 1, ?4, ?5)
+        INSERT INTO survive_records (user_id, course_id, best_ms, runs, finishes, splits_json, updated_at)
+        VALUES (?1, ?2, ?3, 1, ?4, ?6, ?5)
         ON CONFLICT(user_id, course_id) DO UPDATE SET
-          best_ms = ?3, runs = runs + 1, finishes = finishes + ?4, updated_at = ?5
-      `).bind(me.uid, courseId, best, finished ? 1 : 0, now).run();
+          best_ms = ?3, runs = runs + 1, finishes = finishes + ?4, updated_at = ?5,
+          splits_json = CASE WHEN ?6 <> '' THEN ?6 ELSE splits_json END
+      `).bind(me.uid, courseId, best, finished ? 1 : 0, now, sj).run();
+      /* 今週の 自己ベスト */
+      if (finished && timeMs > 0) {
+        await env.DB.prepare(`
+          INSERT INTO survive_weekly (user_id, course_id, week, best_ms, runs, updated_at)
+          VALUES (?1, ?2, ?3, ?4, 1, ?5)
+          ON CONFLICT(user_id, course_id, week) DO UPDATE SET
+            best_ms = MIN(best_ms, ?4), runs = runs + 1, updated_at = ?5
+        `).bind(me.uid, courseId, 週の名(now), timeMs, now).run();
+      }
     }
   } catch (e) {
     console.error("[survive] 成績を 残せません:", String(e && e.message || e));
@@ -513,13 +587,101 @@ async function handleStats(request, env) {
 /** コースごとの 上位（誰でも 見られる） */
 async function handleLeaderboard(request, env, courseId) {
   if (!(await ensureTables(env))) return json({ ok: true, rows: [] });
-  const rows = (await env.DB.prepare(`
-    SELECT r.user_id AS id, u.nickname AS name, r.best_ms AS bestMs
-      FROM survive_records r JOIN users u ON u.id = r.user_id
-     WHERE r.course_id = ?1 AND r.best_ms > 0
-     ORDER BY r.best_ms ASC LIMIT 20
-  `).bind(S(courseId, 24)).all().catch(() => ({ results: [] }))).results || [];
-  return json({ ok: true, rows: rows.map((r, i) => ({ rank: i + 1, id: String(r.id), name: S(r.name, 40), bestMs: N(r.bestMs) })) });
+  await ensureCols(env);
+  const cid = S(courseId, 24);
+  let period = "all", scope = "all";
+  try {
+    const u = new URL(request.url);
+    const p = S(u.searchParams.get("period"), 8);
+    const sc = S(u.searchParams.get("scope"), 8);
+    if (p === "week") period = "week";
+    if (sc === "friends") scope = "friends";
+  } catch (e) { /* 既定のまま */ }
+
+  /* 札が あれば 自分の 順位も 返す（無くても 上位は 見せる）。 */
+  const me = await userFromRequest(request, env);
+  if (me && me.blocked) return bad("ACCOUNT_BLOCKED", "この アカウントは いま 使えません。", 403);
+  let 相手 = null;
+  if (scope === "friends") {
+    if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
+    相手 = new Set([String(me.uid)]);
+    for (const id of await 相互フォロー(env, me.uid)) 相手.add(String(id));
+  }
+
+  const week = 週の名(Date.now());
+  const 全部 = period === "week"
+    ? (await env.DB.prepare(`
+        SELECT w.user_id AS id, u.nickname AS name, w.best_ms AS bestMs
+          FROM survive_weekly w JOIN users u ON u.id = w.user_id
+         WHERE w.course_id = ?1 AND w.week = ?2 AND w.best_ms > 0
+         ORDER BY w.best_ms ASC LIMIT 200
+      `).bind(cid, week).all().catch(() => ({ results: [] })))
+    : (await env.DB.prepare(`
+        SELECT r.user_id AS id, u.nickname AS name, r.best_ms AS bestMs
+          FROM survive_records r JOIN users u ON u.id = r.user_id
+         WHERE r.course_id = ?1 AND r.best_ms > 0
+         ORDER BY r.best_ms ASC LIMIT 200
+      `).bind(cid).all().catch(() => ({ results: [] })));
+  let 並び = (全部.results || []).map((r) => ({ id: String(r.id), name: S(r.name, 40), bestMs: N(r.bestMs) }));
+  if (相手) 並び = 並び.filter((r) => 相手.has(r.id));
+  並び = 並び.map((r, i) => ({ rank: i + 1, id: r.id, name: r.name, bestMs: r.bestMs }));
+
+  /* ★ **自分の 順位を 必ず 返す。**
+     上位 20 だけ 返すと、ほとんどの 人は 自分が どこに いるか 分からない。
+     「20 位までに 入っていないと 何も 見えない」は 記録として 役に 立たない。 */
+  let 私 = null;
+  if (me) {
+    私 = 並び.filter((r) => r.id === String(me.uid))[0] || null;
+    if (!私) {
+      const row = period === "week"
+        ? await env.DB.prepare(
+            "SELECT best_ms FROM survive_weekly WHERE user_id = ?1 AND course_id = ?2 AND week = ?3 LIMIT 1"
+          ).bind(me.uid, cid, week).first().catch(() => null)
+        : await env.DB.prepare(
+            "SELECT best_ms FROM survive_records WHERE user_id = ?1 AND course_id = ?2 LIMIT 1"
+          ).bind(me.uid, cid).first().catch(() => null);
+      const b = N(row && row.best_ms, 0);
+      /* 200 位より 下でも 「何位か」は 数えて 返す（数えるだけなら 安い）。 */
+      if (b > 0) {
+        const c = period === "week"
+          ? await env.DB.prepare(
+              "SELECT COUNT(1) AS n FROM survive_weekly WHERE course_id = ?1 AND week = ?2 AND best_ms > 0 AND best_ms < ?3"
+            ).bind(cid, week, b).first().catch(() => null)
+          : await env.DB.prepare(
+              "SELECT COUNT(1) AS n FROM survive_records WHERE course_id = ?1 AND best_ms > 0 AND best_ms < ?2"
+            ).bind(cid, b).first().catch(() => null);
+        私 = { rank: N(c && c.n, 0) + 1, id: String(me.uid), name: me.nickname || "あなた", bestMs: b, 圏外: true };
+      }
+    }
+  }
+
+  /* 区間の 記録（自分の いちばん 速かった 走り） */
+  let splits = [];
+  if (me) {
+    const r = await env.DB.prepare(
+      "SELECT splits_json FROM survive_records WHERE user_id = ?1 AND course_id = ?2 LIMIT 1"
+    ).bind(me.uid, cid).first().catch(() => null);
+    try { const v = JSON.parse(String((r && r.splits_json) || "[]")); if (Array.isArray(v)) splits = v.slice(0, 16).map((x) => N(x, 0)); } catch (e) {}
+  }
+
+  return json({ ok: true, period, scope, week, rows: 並び.slice(0, 20), me: 私, splits, total: 並び.length });
+}
+
+/* 相互に フォローして いる 人の 番号。友だちの 一覧と 同じ 決まりに 揃える。 */
+async function 相互フォロー(env, uid) {
+  const out = [];
+  try {
+    const rs = await env.DB.prepare(`
+      SELECT a.followee_id AS id FROM user_follows a
+        JOIN user_follows b
+          ON b.follower_id = a.followee_id AND b.followee_id = a.follower_id
+         AND b.deleted_at = 0 AND b.approved_at > 0
+       WHERE a.follower_id = ?1 AND a.deleted_at = 0 AND a.approved_at > 0
+       LIMIT 200
+    `).bind(uid).all();
+    for (const r of (rs?.results || [])) out.push(N(r.id, 0));
+  } catch (e) { /* 表が 無ければ 友だち 0 人 */ }
+  return out.filter(Boolean);
 }
 
 /* ══ ⑤ 部屋 ═══════════════════════════════════════════════════════════ */

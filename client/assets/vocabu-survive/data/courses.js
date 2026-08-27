@@ -53,7 +53,7 @@ C.push({
     G(4.4),
     P(22, 11),
     GATE(14),
-    PW(22, 12),
+    { t: "checkpoint", w: 12, pad: 22 },   /* 元は PW(22, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -75,7 +75,7 @@ C.push({
     G(4.0),
     BR(18, 3.0),
     GATE(13),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -98,7 +98,7 @@ C.push({
     G(5.0),
     P(16, 12),
     GATE(13),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -121,7 +121,7 @@ C.push({
     { t: "gap", len: 12, obs: [o("turntable", 6, { r: 4.8, speed: 0.7 })] },
     P(14, 12),
     GATE(13),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -142,7 +142,7 @@ C.push({
     RAMP(18, 5, 11),
     PW(12, 11),
     G(4.4),
-    PW(14, 12),
+    { t: "checkpoint", w: 12, pad: 14 },   /* 元は PW(14, 12)。**形は 1mm も 変えない** */
     RAMP(16, -6, 12),
     GATE(13),
     PW(20, 12),
@@ -170,7 +170,7 @@ C.push({
     P(16, 11, [o("spinner", 8, { len: 9, speed: -1.7, height: 0.6 })]),
     PW(18, 12, [o("spinner", 9, { len: 11, speed: 1.9, arms: 2, phase: 0.5 })]),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -194,7 +194,7 @@ C.push({
     P(12, 11),
     STONE(5, 4.4, 2.6, 1.0),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -216,7 +216,7 @@ C.push({
     P(12, 11),
     CONV(18, 8, 5.0, -1),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -239,7 +239,7 @@ C.push({
     G(4.6),
     PW(18, 12, [o("hammer", 9, { period: 1.6, swing: 1.2, axis: "z" })]),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -260,7 +260,7 @@ C.push({
     G(4.4),
     P(16, 10, [o("fan", 8, { dz: 8, dir: { x: 0, z: 1 }, strength: 13, range: 14, width: 10 })]),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -300,7 +300,7 @@ C.push({
       o("blinker", 21, { w: 4.8, d: 4.8, period: 3.4, duty: 0.72, phase: 0.48 })] },
     P(14, 11),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -328,7 +328,7 @@ C.push({
       o("faller", 24, { w: 4.4, d: 4.4, delay: 0.5 })] },
     P(14, 11),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -352,7 +352,7 @@ C.push({
       obs: [o("bumper", 7, { r: 1.3, dx: -2.4 }), o("bumper", 16, { r: 1.3, dx: 2.4 })] },
     P(12, 11),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -374,7 +374,7 @@ C.push({
                                o("mover", 11, { w: 5, d: 5, ax: 5, period: 4, phase: 0.5 })] },
     PW(20, 13, [o("bumper", 10, { r: 1.8, power: 1.4 })]),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -396,7 +396,7 @@ C.push({
     G(4.4),
     PW(18, 11, [o("timedgate", 9, { w: 5, h: 4, period: 2.2, duty: 0.34 })]),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -423,7 +423,7 @@ C.push({
     RAMP(14, -4, 12),
     ICE(16, 9),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -462,7 +462,7 @@ C.push({
       o("blinker", 21.2, { w: 4.6, d: 4.6, period: 3.4, duty: 0.85, phase: 0.33 }),
       o("blinker", 26.6, { w: 4.6, d: 4.6, period: 3.4, duty: 0.85, phase: 0.44 }),
       o("stones", 4, { dx: 10, count: 7, gap: 4.4, spread: 1.4, r: 1.4, bob: 0.7 })] },
-    PW(18, 18),
+    { t: "checkpoint", w: 18, pad: 18 },   /* 元は PW(18, 18)。**形は 1mm も 変えない** */
     GATE(12, 9),
     PW(20, 14),
     FIN()
@@ -488,7 +488,7 @@ C.push({
     { t: "gap", len: 24, obs: [o("narrow", 12, { w: 1.4, d: 22, wave: 4.0 })] },
     P(12, 11),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -510,7 +510,7 @@ C.push({
                 o("mover", 16, { w: 4.5, d: 4.5, ax: 5.5, period: 3.8, phase: 0.5, dy: 0.55 })]),
     P(14, 12),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -532,7 +532,7 @@ C.push({
     G(4.4),
     PW(18, 11, [o("spinner", 9, { len: 11, speed: 1.8, arms: 3 })]),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -560,7 +560,7 @@ C.push({
                                o("hammer", 7.5, { period: 1.8, swing: 1.2 })] },
     P(12, 11),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -595,7 +595,7 @@ C.push({
     })() },
     P(14, 11),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -619,7 +619,7 @@ C.push({
                  o("spinner", 12, { len: 8, speed: 1.5, height: 0.7 })]),
     ICE(16, 8),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -649,7 +649,7 @@ C.push({
     G(4.6),
     PW(18, 12, [o("hazard", 9, { w: 11, d: 5 }), o("mover", 9, { w: 5, d: 5, ax: 4, period: 3.2, dy: 0.6 })]),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -674,7 +674,7 @@ C.push({
     G(8.0),
     P(14, 11),
     GATE(12),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -704,7 +704,7 @@ C.push({
                 o("hazard", 14, { w: 11, d: 5 }),
                 o("mover", 14, { w: 5, d: 5, ax: 4.5, period: 3.0, dy: 0.6 })]),
     GATE(11),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -727,7 +727,7 @@ C.push({
                 o("mover", 16, { w: 4.6, d: 4.6, ax: 5, period: 3.2, phase: 0.5, dy: 0.6 })]),
     ICE(18, 7, [o("spinner", 9, { len: 9, speed: 1.9, height: 0.7 })]),
     GATE(11),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -759,7 +759,7 @@ C.push({
       o("mover", 24, { w: 4.2, d: 4.2, ax: 5, period: 3.4, phase: 0.8 })] },
     P(14, 11),
     GATE(11),
-    PW(20, 12),
+    { t: "checkpoint", w: 12, pad: 20 },   /* 元は PW(20, 12)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -800,7 +800,7 @@ C.push({
        片側 3m の 逃げ道を 作る（実測で ここで 12 回 落ちていた）。 */
     PW(18, 15, [o("hazard", 9, { w: 9, d: 5 }), o("mover", 9, { w: 5.4, d: 5, ax: 4, period: 3.0, dy: 0.6 })]),
     GATE(11),
-    PW(22, 13),
+    { t: "checkpoint", w: 13, pad: 22 },   /* 元は PW(22, 13)。**形は 1mm も 変えない** */
     FIN()
   ]
 });
@@ -839,7 +839,7 @@ C.push({
     { t: "gap", len: 26, obs: [o("mover", 6, { w: 4.2, d: 4.2, ax: 6, period: 3.2 }),
                                o("mover", 13, { w: 4.2, d: 4.2, ax: 6, period: 3.2, phase: 0.5 }),
                                o("mover", 20, { w: 4.2, d: 4.2, ax: 6, period: 3.2, phase: 0.25 })] },
-    PW(16, 12),
+    { t: "checkpoint", w: 12, pad: 16 },   /* 元は PW(16, 12)。**形は 1mm も 変えない** */
     CP(14),
     BR(24, 2.8, [o("fan", 8, { dx: -9, dir: { x: 1, z: 0 }, strength: 18, range: 13, width: 9, cycle: 2.6, duty: 0.5 }),
                  o("fan", 18, { dx: 9, dir: { x: -1, z: 0 }, strength: 18, range: 13, width: 9, cycle: 2.6, duty: 0.5, phase: 0.5 })]),
