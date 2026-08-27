@@ -32,7 +32,10 @@ export const BOT_LEVELS = {
 
 /* 走り跳びで 届く 距離（vqsurviveplay.cjs の 実測 5.88m）。
    余裕を 見て 5.2m までを 狙う。 */
-const JUMP_REACH = 5.2;
+/* 走り跳びの 飛距離は 実測 5.88m（縁から）。
+   探すのは **足元から** なので、乗っている 台の 半径ぶん 先まで 見る。
+   届くかどうかは 下の 「要る速さ」で 別に 見るので、広く 探して よい。 */
+const JUMP_REACH = 6.6;
 const JUMP_UP = 1.7;        /* 跳んで 上がれる 段差 */
 const PLAN_EVERY = 3;       /* 何 歩に 1 回 探し直すか */
 
@@ -97,6 +100,57 @@ export class Bot {
        効かせるのは **どちらかの 端が 1.5m 以内**の ときだけ。 */
     if (左 >= 2.0 && 右 >= 2.0) return 0;
     return (右 - 左) * 0.5;
+  }
+
+  /**
+   * その 向き dist 先が **壁で ふさがって いる**か。
+   *
+   * 床の 切れ目（edgeDistance）とは 別。回る 棒の 芯の 柱・
+   * 押し出す 壁の 箱・門の 柱 などは 「床は ある が 通れない」。
+   * これを 見ていなかったので、道の 真ん中に 立つ 柱の 前で
+   * 永久に 足踏みしていた（c06 / c21 で 実測）。
+   */
+  blocked(dirx, dirz, dist) { return this.blockedTop(dirx, dirz, dist) !== null; }
+
+  /**
+   * ふさいでいる ものの **上面の 高さ**を 返す（無ければ null）。
+   * 高さが 分かれば 「跳んで 乗る」か 「回り込む」かを 選べる。
+   * これが 無かった ので、床から 1m の ローラーの 前で
+   * 左右に よけ続けて 一歩も 進めなかった（c16 で 実測）。
+   */
+  blockedTop(dirx, dirz, dist) {
+    const p = this.p, w = this.course.world;
+    const px = p.x + dirx * dist, pz = p.z + dirz * dist;
+    const cy = p.y + TUNE.radius + TUNE.half;
+    w.near(px, pz, 2.6, this._near);
+    let top = null;
+    for (const s of this._near) {
+      if (!s.enabled || !s.solid) continue;
+      const t2 = topOf(s, px, pz, TUNE.radius);
+      if (t2 !== null && t2 - p.y <= TUNE.stepUp) continue;   /* 段は 自動で 上る */
+      if (!testSolid(s, px, cy, pz, TUNE.radius + 0.12, TUNE.half)) continue;
+      const h = (t2 === null) ? 1e9 : t2;
+      if (top === null || h > top) top = h;
+    }
+    return top;
+  }
+
+  /** ふさがって いたら 左右へ 振って 空いている 向きを 返す。無ければ null。 */
+  steerAround(dirx, dirz) {
+    const 距離 = 1.7;
+    if (!this.blocked(dirx, dirz, 距離)) return null;
+    const 角 = [0.34, -0.34, 0.68, -0.68, 1.05, -1.05, 1.45, -1.45];
+    /* 前に 選んだ 向きを 少し ひいきする（左右に 迷って 止まらない ため） */
+    if (this._steerSign) 角.sort((a, b) => (Math.sign(a) === this._steerSign ? -1 : 1) - (Math.sign(b) === this._steerSign ? -1 : 1));
+    for (const a of 角) {
+      const c = Math.cos(a), s2 = Math.sin(a);
+      const nx = dirx * c - dirz * s2, nz = dirx * s2 + dirz * c;
+      if (!this.blocked(nx, nz, 距離)) {
+        this._steerSign = Math.sign(a) || 1;
+        return { x: nx, z: nz };
+      }
+    }
+    return null;
   }
 
   /** 目の前の 危険が **跳べば 越えられる 高さ**か。越えられるなら 上面を 返す。 */
@@ -196,12 +250,44 @@ export class Bot {
     return 1e9;
   }
 
-  /** 前に 進める 着地点を 探す。無ければ null。 */
-  findLanding(dirx, dirz, prog) {
+  /** 近くの 「時間で 動く 仕掛け」を 集める。落ちる 板は 除く（時間の 関数では ない）。 */
+  _movers() {
     const p = this.p, C = this.course;
+    const out = [];
+    for (const o of C.obstacles) {
+      if (!o.moving) continue;
+      if (o.kind === "faller") continue;     /* 状態を 持つので 進めては いけない */
+      const dx = o.x - p.x, dz = o.z - p.z;
+      if (dx * dx + dz * dz > 26 * 26) continue;
+      out.push(o);
+    }
+    return out;
+  }
+
+  /**
+   * 前に 進める 着地点を 探す。無ければ null。
+   *
+   * ★ **着く ころの 姿**で 探す。
+   *   消える 板・動く 板は 「いま ある」ことに 意味が ない。
+   *   跳んでいる 0.5 秒の 間に 消える 板を 狙うと 必ず 落ちる。
+   */
+  findLanding(dirx, dirz, prog, tNow, 縁まで) {
+    const p = this.p, C = this.course;
+    /* ★ **いま 立っている 台の 上**は 候補に しない。
+       前は 自分の 足場の 前の へりを 「行き先」に 選び、
+       そこまで 走って そのまま 落ちていた（c07 の とび石で 実測）。
+       縁より 手前は 跳ぶ 意味が 無い。 */
+    const 最短 = (縁まで !== undefined && 縁まで < 1e8) ? Math.max(1.2, 縁まで + 0.6) : 1.2;
     const rx = -dirz, rz = dirx;     /* 右向き */
     let best = null, bestScore = -1e9;
-    for (let d = 1.2; d <= JUMP_REACH; d += 0.5) {
+    const movers = (tNow !== undefined) ? this._movers() : [];
+    const v = clamp(p.speed + 2.0, 5.0, TUNE.maxSpeed);
+    for (let d = 最短; d <= JUMP_REACH; d += 0.5) {
+      if (movers.length) {
+        /* 跳んで 着くまでの 見込み時間 */
+        const tau = d / v + 0.18;
+        for (const o of movers) o.update(tNow + tau);
+      }
       for (let k = 0; k < 11; k++) {
         const lat = [0, 1.2, -1.2, 2.4, -2.4, 3.6, -3.6, 4.8, -4.8, 6.0, -6.0][k];
         const x = p.x + dirx * d + rx * lat;
@@ -224,6 +310,8 @@ export class Bot {
         if (score > bestScore) { bestScore = score; best = { x, z, y: g, d, lat, gain: np - prog }; }
       }
     }
+    /* 必ず 元の 時刻へ 戻す。戻さないと 当たり判定が ずれる。 */
+    if (movers.length) for (const o of movers) o.update(tNow);
     return best;
   }
 
@@ -276,28 +364,51 @@ export class Bot {
     this.target = null;
 
     /* ── 危ない ものが 通り過ぎるのを 待つ ── */
-    if (this.waitFor > 0) {
-      this.waitFor -= STEP;
-      /* ★ 下がらない。その場で 止まる。
-         下がると 距離が 変わって 見え方も 変わり、揺れの もとに なる。 */
+    /* ── 危ない ものを 待つ／跳んで 越す ────────────────────────────
+       ★ 「跳んで 越す」は **この 分岐の 中**で 判断する。
+         前は 下の ほうに 書いていたが、待ちの 分岐が先に return するので
+         **一度も 実行されて いなかった**（c06 で 60 秒 待ち続けた）。 */
+    const 危ない = (this.waitFor > 0) || (L.care > 0.3 && this.threatAhead(dirx, dirz, t));
+    if (危ない) {
+      if (this.waitFor > 0) this.waitFor -= STEP;
+      else this.waitFor = 0.10 * L.wait;
+      this.waitTotal = (this.waitTotal || 0) + STEP;
+      /* 低い 棒なら 跳んで 越す（跳びの 高さ 2.0m > 棒の 上 1.22m）。
+         3 本 腕の 速い 棒は 待っても なかなか 空かない。 */
+      if (p.grounded && this.waitTotal > 0.40 && this.lowThreatTop(dirx, dirz) !== null) {
+        inp.jump = true; this.jumpHold = 16; inp.jumpDown = true;
+        inp.mx = dirx * L.speed; inp.mz = dirz * L.speed;
+        this.waitFor = 0; this.waitTotal = 0;
+        this.reason = "跳んで越す";
+        return inp;
+      }
+      /* ずっと 空かない なら 横へ ずれて 見る（腕の 短い 所を 狙う） */
+      if (this.waitTotal > 2.4) {
+        const rx2 = -dirz, rz2 = dirx;
+        const sgn = this.sideBias >= 0 ? 1 : -1;
+        inp.mx = rx2 * sgn * 0.8; inp.mz = rz2 * sgn * 0.8;
+        if (this.waitTotal > 4.0) { this.sideBias = -this.sideBias; this.waitTotal = 2.0; }
+        this.reason = "横へ";
+        return inp;
+      }
       inp.mx = 0; inp.mz = 0;
       inp.jumpDown = false;
       this.reason = "待つ";
       return inp;
     }
-    if (L.care > 0.3 && this.threatAhead(dirx, dirz, t)) {
-      this.waitFor = 0.10 * L.wait;
-      inp.mx = 0; inp.mz = 0;
-      this.reason = "危ない";
-      return inp;
-    }
+    this.waitTotal = 0;
 
     /* ── 前に 床が **切れ目なく** 続いているか ──────────────────────
        ★ 1 点だけ 見ては いけない。4m 先に とび石が あると
          「床が ある」と 見えて、その 手前の 隙間に そのまま 落ちる。
          実際 c07（とび石）で 78 回 落ちていた（2026-08-28 実測）。
          **縁までの 距離**を 測って、止まれる 余裕が あるかで 決める。 */
-    const 止まれる距離 = 1.1 + p.speed * 0.17;
+    /* ★ 滑る 床（氷）では 止まるのに 何倍も かかる。
+       ふつうの 摩擦 32 に 対して 氷は 0.06×32 ≒ 2。
+       同じ 距離で 判断すると 必ず 落ちる。 */
+    const 滑り = (p.groundFriction === undefined || p.groundFriction >= 1) ? 1
+      : clamp(1 / Math.max(0.05, p.groundFriction), 1, 7);
+    const 止まれる距離 = (1.1 + p.speed * 0.17) * 滑り;
     const 縁まで = this.edgeDistance(dirx, dirz, 7.0);
 
     if (縁まで > 止まれる距離) {
@@ -309,15 +420,31 @@ export class Bot {
         ? (this._center = this.centering(dirx, dirz, Math.min(3.0, 1.4 + p.speed * 0.16)))
         : (this._center || 0);
       const c2 = clamp(寄せ * 0.55, -0.9, 0.9);
-      inp.mx = (dirx + rx * (wob * 0.16 * this.sideBias + c2)) * L.speed;
-      inp.mz = (dirz + rz * (wob * 0.16 * this.sideBias + c2)) * L.speed;
+      let ax = dirx + rx * (wob * 0.16 * this.sideBias + c2);
+      let az = dirz + rz * (wob * 0.16 * this.sideBias + c2);
+      /* 前を ふさぐ ものが あるか（2 コマに 1 回 見る） */
+      if (this._tick % 2 === 1) {
+        this._blockTop = this.blockedTop(dirx, dirz, 1.7);
+        this._steer = (this._blockTop !== null) ? this.steerAround(dirx, dirz) : null;
+      }
       inp.jumpDown = false;
+      if (this._blockTop !== null && this._blockTop - p.y <= 1.65) {
+        /* 跳べば 乗れる 高さ（跳びの 高さ 2.0m）。まっすぐ 行って 跳ぶ。 */
+        if (p.grounded) { inp.jump = true; this.jumpHold = 16; inp.jumpDown = true; }
+        ax = dirx; az = dirz;
+        this.reason = "乗り越す";
+      } else if (this._steer) {
+        ax = this._steer.x; az = this._steer.z; this.reason = "よける";
+      } else {
+        this.reason = "走る";
+      }
+      inp.mx = ax * L.speed;
+      inp.mz = az * L.speed;
       this.noWay = 0;
-      this.reason = "走る";
     } else {
       /* 跳ぶ／よける／待つ */
       const landing = (this._tick % PLAN_EVERY === 0 || !this._lastLanding)
-        ? this.findLanding(dirx, dirz, prog) : this._lastLanding;
+        ? this.findLanding(dirx, dirz, prog, t, 縁まで) : this._lastLanding;
       this._lastLanding = landing;
       if (landing) {
         this.target = landing;
@@ -339,12 +466,18 @@ export class Bot {
         /* 跳ぶのは **縁の すぐ 手前**。1 コマ ぶんの 余裕。 */
         const 跳ぶ距離 = 0.5 + p.speed * 0.055;
 
+        /* ★ いま 立っている 足場が **崩れる／消える** なら 減速しない。
+           落ちる 板は 0.36 秒で 落ちる。止まって 狙いを 定めている 間に
+           足元が 無くなる（c22 で 159 回 落ちた）。 */
+        const gs = p.groundSolid, go = gs && gs.owner;
+        /* ★ 「小さい 足場も 急ぐ」も 試したが、動く 板の 上でも 減速しなく なり
+           行き過ぎて 落ちる ように なった（通過 18→17）。崩れる ものだけに 絞る。 */
+        const 急ぐ = !!(go && (go.kind === "faller" || go.kind === "blinker"));
+
         /* ★ 速すぎても 落ちる。狙いを 飛び越して しまう。
-           必要な 速さの 1.25 倍を 超えていたら **手を 離して 減速**する
-           （摩擦 32m/s² なので すぐ 落ちる）。
-           実際 c07 で 8.2m/s のまま 跳んで、2.5m 先の 石を 越えて
-           その 先の 谷へ 落ちていた。 */
-        const 速すぎ = 要る速さ > 0 && p.speed > 要る速さ * 1.30 && 縁 > 0.7;
+           必要な 速さの 1.3 倍を 超えていたら **手を 離して 減速**する
+           （摩擦 32m/s² なので すぐ 落ちる）。 */
+        const 速すぎ = !急ぐ && 要る速さ > 0 && p.speed > 要る速さ * 1.30 && 縁 > 0.7;
         if (速すぎ) {
           inp.mx = 0; inp.mz = 0;
           inp.jumpDown = false;
@@ -352,7 +485,7 @@ export class Bot {
           return inp;
         }
 
-        if (縁 <= 跳ぶ距離 && 足りる) {
+        if ((縁 <= 跳ぶ距離 || (急ぐ && 縁 <= 跳ぶ距離 + 0.8)) && 足りる) {
           inp.jump = true;
           /* 押し続ける 長さで 高さが 決まる。近いほど 短く。 */
           this.jumpHold = Math.round(clamp(縁から着地まで * 2.8 + 上り * 6, 4, 16));
@@ -384,18 +517,6 @@ export class Bot {
         }
         inp.jumpDown = false;
         this.reason = "行き先なし";
-      }
-    }
-
-    /* ── 低い 危険は 跳んで 越える ──────────────────────────────
-       回る 棒は 高さ 0.9m。跳べば 頭の 上を 通せる（跳びの 高さ 2.0m）。
-       待つだけだと 3 本 腕の 速い 棒は いつまでも 空かない。 */
-    if (this.reason === "危ない" || (this.waitFor > 0 && this.stuck > 0.7)) {
-      if (p.grounded && this.lowThreatTop(dirx, dirz) !== null) {
-        inp.jump = true; this.jumpHold = 16; inp.jumpDown = true;
-        inp.mx = dirx * L.speed; inp.mz = dirz * L.speed;
-        this.waitFor = 0;
-        this.reason = "跳んで越す";
       }
     }
 

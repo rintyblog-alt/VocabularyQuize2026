@@ -274,20 +274,22 @@ C.push({
   sections: [
     START(18, 16),
     PW(16, 13),
-    { t: "gap", len: 22, obs: [
-      o("blinker", 4, { w: 4, d: 4, period: 3.0, phase: 0.0 }),
-      o("blinker", 9, { w: 4, d: 4, period: 3.0, phase: 0.33, dx: -3 }),
-      o("blinker", 14, { w: 4, d: 4, period: 3.0, phase: 0.66, dx: 3 }),
-      o("blinker", 19, { w: 4, d: 4, period: 3.0, phase: 0.15 })] },
+    /* ★ 横へ 3m ずらすと 前後 5m と 合わせて 7.8m に なり **跳べない**
+       （走り跳びの 実測 5.88m）。横は 2m まで、前後は 4.4m に した。 */
+    { t: "gap", len: 20, obs: [
+      o("blinker", 4, { w: 4.4, d: 4.4, period: 3.0, phase: 0.0 }),
+      o("blinker", 8.4, { w: 4.4, d: 4.4, period: 3.0, phase: 0.33, dx: -2 }),
+      o("blinker", 12.8, { w: 4.4, d: 4.4, period: 3.0, phase: 0.66, dx: 2 }),
+      o("blinker", 17.2, { w: 4.4, d: 4.4, period: 3.0, phase: 0.15 })] },
     P(12, 11),
     GATE(12),
     CP(),
-    { t: "gap", len: 26, obs: [
-      o("blinker", 4.5, { w: 3.4, d: 3.4, period: 2.4, phase: 0.0, dx: -3.5 }),
-      o("blinker", 9, { w: 3.4, d: 3.4, period: 2.4, phase: 0.25, dx: 3.5 }),
-      o("blinker", 13.5, { w: 3.4, d: 3.4, period: 2.4, phase: 0.5, dx: -3.5 }),
-      o("blinker", 18, { w: 3.4, d: 3.4, period: 2.4, phase: 0.75, dx: 3.5 }),
-      o("blinker", 22.5, { w: 4.2, d: 4.2, period: 2.4, phase: 0.1 })] },
+    { t: "gap", len: 24, obs: [
+      o("blinker", 4.2, { w: 3.8, d: 3.8, period: 2.4, phase: 0.0, dx: -2.2 }),
+      o("blinker", 8.4, { w: 3.8, d: 3.8, period: 2.4, phase: 0.25, dx: 2.2 }),
+      o("blinker", 12.6, { w: 3.8, d: 3.8, period: 2.4, phase: 0.5, dx: -2.2 }),
+      o("blinker", 16.8, { w: 3.8, d: 3.8, period: 2.4, phase: 0.75, dx: 2.2 }),
+      o("blinker", 21, { w: 4.4, d: 4.4, period: 2.4, phase: 0.1 })] },
     P(14, 11),
     GATE(12),
     PW(20, 12),

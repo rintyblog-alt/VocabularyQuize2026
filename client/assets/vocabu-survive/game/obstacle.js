@@ -374,11 +374,14 @@ export class Roller extends Obstacle {
     this.r = o.r || 1.1;
     this.speed = o.speed === undefined ? 2.6 : o.speed;
     this.axis = o.axis || "x";
-    this.s = this._solid({ type: SOLID.BOX, x: this.x, y: this.y + this.r, z: this.z,
+    /* ★ 半分 埋める。前は 床から 2r（＝2m）せり上がっていて、
+       跳びの 高さ 2.0m と ちょうど 同じ＝**越えられない 壁**だった。
+       いまは 上面が 床から r（1m）。走って 乗れる。 */
+    this.s = this._solid({ type: SOLID.BOX, x: this.x, y: this.y + this.r * 0.35, z: this.z,
       hx: this.axis === "x" ? this.len / 2 : this.r,
-      hy: this.r,
+      hy: this.r * 0.65,
       hz: this.axis === "x" ? this.r : this.len / 2,
-      conveyor: { x: this.axis === "x" ? 0 : 0, z: 0 } });
+      conveyor: { x: 0, z: 0 } });
     this.spin = 0;
     /* 転がる 向きへ 押す */
     this.s.conveyor = this.axis === "x"
@@ -612,13 +615,18 @@ export class NarrowPath extends Obstacle {
     this.wave = o.wave || 0;
     this.moving = false;
     this.parts = [];
-    const n = Math.max(1, Math.round(this.d / 3.5));
+    /* ★ 継ぎ目を 細かく する。
+       前は 3.5m ごと だったので、くねりが 大きい とき
+       隣どうしの 横ずれが 2.5m に なり、幅 1.8m の 板の 間に
+       **穴が 空いて いた**（c18 で 11 回 落ちた）。
+       1.6m ごとに すれば 横ずれは 1.2m 以下に なり 必ず 重なる。 */
+    const n = Math.max(2, Math.round(this.d / 1.6));
     for (let i = 0; i < n; i++) {
       const u = (i + 0.5) / n;
       const px = this.x + Math.sin(u * Math.PI * 2) * this.wave;
       const pz = this.z + (u - 0.5) * this.d;
       const s = this._solid({ type: SOLID.BOX, x: px, y: this.y, z: pz,
-        hx: this.w / 2, hy: 0.3, hz: (this.d / n) / 2 + 0.1 });
+        hx: this.w / 2, hy: 0.3, hz: (this.d / n) / 2 + 0.25 });
       this.parts.push(s);
     }
   }
