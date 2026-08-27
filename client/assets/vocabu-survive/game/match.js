@@ -306,6 +306,13 @@ export class MatchScreen {
     for (const b of this.bots) {
       this.inputs.set(b.p.id, this.sim.phase === PHASE.RUNNING
         ? b.decide(this.sim.time) : { mx: 0, mz: 0 });
+      /* ★ どうしても 抜けられない 相手は 中間地点へ 戻す。
+         同じ 所で 止まったままの 相手が いると「壊れている」ように 見える。
+         人には しない（自分で 何とかする ほうが 面白い）。 */
+      if (b.hopeless && !b.p.finished) {
+        b.p.respawnAt(this.course.respawnPoint(b.p.checkpoint, b.p.slot || 0));
+        b.noProgress = 0; b.hopeless = false; b.stuck = 0; b.lastProgress = -1;
+      }
     }
     if (this.net && this.net.applyRemoteInputs) this.net.applyRemoteInputs(this.inputs, this.sim);
   }

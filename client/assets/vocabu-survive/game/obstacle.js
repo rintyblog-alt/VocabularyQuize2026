@@ -281,6 +281,12 @@ export class FallingPlatform extends Obstacle {
     this.shake = 0;
   }
   touched() { if (this.state === 0) { this.state = 1; this.tick = 0; } }
+  /** あと 何秒 乗っていられるか。 */
+  remainOn() {
+    if (this.state === 0) return 99;
+    if (this.state === 1) return Math.max(0, this.delay - this.tick);
+    return 0;
+  }
   update(t) {
     const dt = 1 / 60;
     if (this.state === 1) {
@@ -326,6 +332,13 @@ export class BlinkPlatform extends Obstacle {
     this.fade = this.on ? Math.min(1, (this.duty - u) * 6) : 0;
     this.s.enabled = this.on;
   }
+  /** あと 何秒 乗っていられるか。消えていれば 0。 */
+  remainOn(t) {
+    const u = (((t / this.period) + this.phase) % 1 + 1) % 1;
+    if (u >= this.duty) return 0;
+    return (this.duty - u) * this.period;
+  }
+
   draw(R) {
     const s = this.s;
     const u = this.on ? 1 : 0.16;

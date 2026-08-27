@@ -59,6 +59,11 @@ export class Bot {
     this._near = [];
     this._tick = 0;
     this.reason = "";          /* いま 何を しているか（検査で 読む） */
+    /* ★ どうしても 抜けられない ときの 保険。
+       1 人で 遊ぶ ときの 相手が 同じ 所で 止まったままだと
+       「壊れている」ように 見える。長く 進まなければ 中間地点へ 戻す。 */
+    this.noProgress = 0;
+    this.hopeless = false;
   }
 
   /* その (x,z) の 足場の 高さ。fromY より 上がりすぎている ものは 見ない。 */
@@ -340,6 +345,10 @@ export class Bot {
     if (自分で止まっている) this.stuck = 0;
     else if (this.lastProgress >= 0 && Math.abs(prog - this.lastProgress) < 0.015) this.stuck += STEP;
     else this.stuck = 0;
+    /* 待っている ぶんも 含めて、本当に 一歩も 進んでいない 時間 */
+    if (this.lastProgress >= 0 && prog <= this.lastProgress + 0.02) this.noProgress += STEP;
+    else this.noProgress = 0;
+    this.hopeless = this.noProgress > 12;
     this.lastProgress = prog;
 
     /* ── 空の 上に いる ── */
@@ -446,6 +455,11 @@ export class Bot {
       {
         const gs0 = p.groundSolid, go0 = gs0 && gs0.owner;
         this._urgent = !!(go0 && (go0.kind === "faller" || go0.kind === "blinker"));
+        /* ★ あと 何秒 乗っていられるかを 聞く。
+           消える／落ちる 板は 「縁まで 歩いてから 跳ぶ」では 間に合わない。
+           残りが 短ければ **その場から 跳ぶ**。 */
+        this._remain = this._urgent && go0.remainOn
+          ? (go0.kind === "blinker" ? go0.remainOn(t) : go0.remainOn()) : 99;
       }
       const landing = (this._tick % PLAN_EVERY === 0 || !this._lastLanding)
         ? this.findLanding(dirx, dirz, prog, t, 縁まで) : this._lastLanding;
@@ -489,6 +503,10 @@ export class Bot {
           return inp;
         }
 
+        /* 残り時間が 短ければ 縁まで 待たずに 跳ぶ */
+        /* ★ 「残り時間が 短ければ 縁を 待たずに 跳ぶ」も 試したが、
+           通過が 23→20 に 落ちた（半端な 位置から 跳んで 届かない）。
+           縁まで 走って から 跳ぶ ほうが 結局 速い。 */
         if ((縁 <= 跳ぶ距離 || (急ぐ && 縁 <= 跳ぶ距離 + 0.8)) && 足りる) {
           inp.jump = true;
           /* 押し続ける 長さで 高さが 決まる。近いほど 短く。 */
