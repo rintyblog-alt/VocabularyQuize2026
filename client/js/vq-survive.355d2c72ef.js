@@ -359,7 +359,7 @@ void main() {
 .vs-hud-tn{ font-size:10.5px; font-weight:800; letter-spacing:.06em; color:#ff5d6e; }
 .vs-hud-tn.is-b{ color:#4d9dff; }
 .vs-hud-tv{ font-size:17px; font-weight:900; }
-.vs-hud-td{ color:rgba(243,245,255,.35); font-size:11px; }
+.vs-hud-td{ color:rgba(243,245,255,.62); font-size:11px; }
 .vs-hud-team[data-lead="a"] .vs-hud-tv:first-of-type{ color:#ff5d6e; }
 .vs-hud-team[data-lead="b"] .vs-hud-tv:last-of-type{ color:#4d9dff; }
 .vs-hud-row[data-team="a"]{ border-left:3px solid #ff5d6e; }
@@ -459,7 +459,9 @@ void main() {
 .vs-lb-grid{ flex:1; display:grid; grid-template-columns: 264px minmax(0,1fr) 300px; gap:12px; min-height:0; }
 .vs-card{ background:${v.panel}; border:1px solid ${v.line}; border-radius:18px;
   padding:14px; overflow:auto; min-height:0; }
-.vs-lb-lab{ font-size:10.5px; font-weight:800; letter-spacing:.10em; color:rgba(243,245,255,.48);
+/* \u2605 \u660E\u6697\u306E \u5DEE\u304C 4.49:1 \u3067 **\u308F\u305A\u304B\u306B \u8DB3\u308A\u306A\u304B\u3063\u305F**\uFF08\u8981 4.5:1\uFF09\u3002
+   10.5px \u306E \u5C0F\u3055\u306A \u6587\u5B57\u306A\u306E\u3067\u3001\u3046\u3059\u3044\u3068 \u672C\u5F53\u306B \u8AAD\u3081\u306A\u3044\u3002 */
+.vs-lb-lab{ font-size:10.5px; font-weight:800; letter-spacing:.10em; color:rgba(243,245,255,.60);
   margin:14px 0 7px; }
 .vs-lb-lab:first-child{ margin-top:0; }
 .vs-lb-merow{ display:flex; align-items:center; gap:11px; }
@@ -487,7 +489,7 @@ void main() {
 .vs-lb-pv-meta{ display:flex; gap:12px; margin-top:8px; font-size:11px; color:rgba(255,255,255,.78); }
 .vs-lb-record{ display:flex; align-items:baseline; gap:7px; flex-wrap:wrap;
   padding:0 2px 10px; font-size:12px; color:rgba(243,245,255,.62); }
-.vs-lb-rec-lab{ font-size:10.5px; font-weight:800; letter-spacing:.06em; color:rgba(243,245,255,.42); }
+.vs-lb-rec-lab{ font-size:10.5px; font-weight:800; letter-spacing:.06em; color:rgba(243,245,255,.60); }
 .vs-lb-rec-v{ font-size:13px; color:${v.amber}; font-weight:800; }
 .vs-lb-rec-who{ font-size:11px; color:rgba(243,245,255,.5); }
 .vs-lb-tiers{ display:flex; gap:5px; flex-wrap:wrap; margin-bottom:9px; }
@@ -500,7 +502,7 @@ void main() {
 .vs-lb-cc[aria-selected="true"]{ border-color:${v.amber}; background:rgba(255,176,32,.12); }
 .vs-lb-cc-sw{ width:8px; flex:0 0 auto; }
 .vs-lb-cc-body{ padding:8px 10px; display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
-.vs-lb-cc-no{ font-size:10px; color:rgba(243,245,255,.42); font-weight:800; }
+.vs-lb-cc-no{ font-size:10px; color:rgba(243,245,255,.60); font-weight:800; }
 .vs-lb-cc-nm{ font-size:13px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .vs-lb-cc-diff{ display:flex; gap:2px; margin-top:3px; }
 .vs-lb-cc-d{ width:8px; height:3px; border-radius:2px; background:rgba(255,255,255,.14); }
@@ -513,7 +515,8 @@ void main() {
 .vs-lb-mode[aria-checked="true"]{ border-color:${v.mint}; background:rgba(55,224,176,.12); }
 .vs-lb-mode[disabled]{ opacity:.4; }
 .vs-lb-mode-l{ font-size:13px; font-weight:800; }
-.vs-lb-mode-d{ font-size:10.5px; color:rgba(243,245,255,.52); }
+/* 4.39:1 \u2192 \u660E\u308B\u304F \u3059\u308B\uFF08\u904A\u3073\u65B9\u306E \u8AAC\u660E\u3002\u3053\u3053\u304C \u8AAD\u3081\u306A\u3044\u3068 \u4F55\u306E \u904A\u3073\u304B \u5206\u304B\u3089\u306A\u3044\uFF09 */
+.vs-lb-mode-d{ font-size:10.5px; color:rgba(243,245,255,.66); }
 .vs-lb-bots{ display:flex; gap:5px; flex-wrap:wrap; }
 .vs-lb-bot{ height:30px; padding:0 12px; border-radius:9px; font-size:12px; font-weight:700;
   background:rgba(255,255,255,.06); border:1px solid ${v.line}; color:rgba(243,245,255,.7); }
@@ -531,7 +534,7 @@ void main() {
 .vs-lb-code{ flex:1; min-width:0; height:34px; padding:0 10px; border-radius:9px;
   background:rgba(255,255,255,.07); border:1px solid ${v.line}; color:${v.ink};
   font-size:13px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
-.vs-lb-code::placeholder{ letter-spacing:.02em; font-weight:400; color:rgba(243,245,255,.34); }
+.vs-lb-code::placeholder{ letter-spacing:.02em; font-weight:400; color:rgba(243,245,255,.55); }
 .vs-lb-roomid{ margin-top:9px; display:flex; align-items:center; justify-content:space-between;
   padding:8px 11px; border-radius:10px; background:rgba(255,255,255,.06); font-size:13px; }
 .vs-lb-roomlab{ font-size:10.5px; color:rgba(243,245,255,.5); }
@@ -575,7 +578,7 @@ void main() {
 .vs-lb-qz-nm, .vs-lb-hat-nm{ color:${v.mint}; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .vs-lb-qz-body{ padding:0 8px 8px; }
 .vs-lb-qz-list{ max-height:210px; overflow-y:auto; display:flex; flex-direction:column; gap:3px; }
-.vs-lb-qz-h{ font-size:11px; font-weight:800; letter-spacing:.04em; color:rgba(243,245,255,.42);
+.vs-lb-qz-h{ font-size:11px; font-weight:800; letter-spacing:.04em; color:rgba(243,245,255,.60);
   padding:8px 4px 2px; }
 .vs-lb-qz-it{ display:flex; align-items:baseline; gap:8px; width:100%; text-align:left;
   padding:7px 10px; border-radius:9px; border:1px solid transparent; background:transparent;
@@ -584,7 +587,8 @@ void main() {
 .vs-lb-qz-it[aria-checked="true"]{ border-color:${v.mint}; background:rgba(90,230,190,.12); }
 .vs-lb-qz-it:disabled{ opacity:.4; cursor:default; }
 .vs-lb-qz-l{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.vs-lb-qz-s{ flex:0 0 auto; font-size:11px; color:rgba(243,245,255,.5); }
+/* 3.94:1 \u2192 \u660E\u308B\u304F \u3059\u308B\uFF08\u300C20 \u8A9E\u300D\u300C\u5BFE\u6226\u3067\u306F \u4F7F\u3048\u307E\u305B\u3093\u300D\u306E \u6DFB\u3048\u66F8\u304D\uFF09 */
+.vs-lb-qz-s{ flex:0 0 auto; font-size:11px; color:rgba(243,245,255,.68); }
 .vs-lb-settings{ margin-top:14px; border-top:1px solid ${v.line}; padding-top:10px; }
 .vs-lb-settings summary{ font-size:12px; font-weight:800; color:rgba(243,245,255,.62);
   cursor:pointer; list-style:none; padding:4px 0; }
@@ -595,7 +599,9 @@ void main() {
 .vs-lb-quality{ display:flex; gap:4px; flex-wrap:wrap; }
 .vs-lb-q{ height:28px; padding:0 10px; border-radius:8px; font-size:11.5px; font-weight:700;
   background:rgba(255,255,255,.06); border:1px solid ${v.line}; color:rgba(243,245,255,.7); }
-.vs-lb-q[aria-checked="true"]{ background:${v.violet}; color:#fff; border-color:transparent; }
+/* \u2605 \u767D\u6587\u5B57 \xD7 \u660E\u308B\u3044 \u7D2B\u306F 3.03:1 \u3057\u304B \u306A\u304B\u3063\u305F\u3002
+   **\u6587\u5B57\u3092 \u6FC3\u304F \u3059\u308B**\uFF08\u80CC\u666F\u306E \u8272\u306F \u9078\u3070\u308C\u3066\u3044\u308B \u5370\u306A\u306E\u3067 \u5909\u3048\u306A\u3044\uFF09\u3002 */
+.vs-lb-q[aria-checked="true"]{ background:${v.violet}; color:#11132a; border-color:transparent; }
 .vs-lb-range{ width:100%; accent-color:${v.mint}; }
 .vs-lb-togglerow{ display:flex; gap:5px; margin-top:9px; flex-wrap:wrap; }
 .vs-lb-toggle{ height:28px; padding:0 11px; border-radius:8px; font-size:11.5px; font-weight:700;
@@ -758,7 +764,7 @@ void main() {
 
 .vs-res-spwrap{ margin:10px 0 2px; }
 .vs-res-splab{ font-size:11px; font-weight:800; letter-spacing:.05em;
-  color:rgba(243,245,255,.42); margin:0 0 5px; }
+  color:rgba(243,245,255,.60); margin:0 0 5px; }
 .vs-res-splits{ display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; }
 .vs-res-sp{ flex:0 0 auto; min-width:74px; padding:6px 9px; border-radius:10px;
   border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.04);
@@ -796,7 +802,7 @@ void main() {
   border-radius:13px; padding:10px 8px; text-align:center; display:flex; flex-direction:column; gap:2px; }
 .vs-res-sl{ font-size:10.5px; color:rgba(243,245,255,.55); font-weight:700; letter-spacing:.05em; }
 .vs-res-sv{ font-size:19px; font-weight:900; }
-.vs-res-ss{ font-size:10px; color:rgba(243,245,255,.45); }
+.vs-res-ss{ font-size:10px; color:rgba(243,245,255,.62); }
 .vs-res-listwrap{ max-height:210px; overflow:auto; margin-bottom:16px;
   border-radius:13px; border:1px solid rgba(255,255,255,.10); }
 .vs-res-list{ list-style:none; }

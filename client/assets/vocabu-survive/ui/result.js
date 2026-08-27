@@ -220,7 +220,7 @@ export const RESULT_CSS = `
 
 .vs-res-spwrap{ margin:10px 0 2px; }
 .vs-res-splab{ font-size:11px; font-weight:800; letter-spacing:.05em;
-  color:rgba(243,245,255,.42); margin:0 0 5px; }
+  color:rgba(243,245,255,.60); margin:0 0 5px; }
 .vs-res-splits{ display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; }
 .vs-res-sp{ flex:0 0 auto; min-width:74px; padding:6px 9px; border-radius:10px;
   border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.04);
@@ -258,7 +258,7 @@ export const RESULT_CSS = `
   border-radius:13px; padding:10px 8px; text-align:center; display:flex; flex-direction:column; gap:2px; }
 .vs-res-sl{ font-size:10.5px; color:rgba(243,245,255,.55); font-weight:700; letter-spacing:.05em; }
 .vs-res-sv{ font-size:19px; font-weight:900; }
-.vs-res-ss{ font-size:10px; color:rgba(243,245,255,.45); }
+.vs-res-ss{ font-size:10px; color:rgba(243,245,255,.62); }
 .vs-res-listwrap{ max-height:210px; overflow:auto; margin-bottom:16px;
   border-radius:13px; border:1px solid rgba(255,255,255,.10); }
 .vs-res-list{ list-style:none; }

@@ -956,7 +956,9 @@ export const LOBBY_CSS = `
 .vs-lb-grid{ flex:1; display:grid; grid-template-columns: 264px minmax(0,1fr) 300px; gap:12px; min-height:0; }
 .vs-card{ background:${PALETTE.panel}; border:1px solid ${PALETTE.line}; border-radius:18px;
   padding:14px; overflow:auto; min-height:0; }
-.vs-lb-lab{ font-size:10.5px; font-weight:800; letter-spacing:.10em; color:rgba(243,245,255,.48);
+/* ★ 明暗の 差が 4.49:1 で **わずかに 足りなかった**（要 4.5:1）。
+   10.5px の 小さな 文字なので、うすいと 本当に 読めない。 */
+.vs-lb-lab{ font-size:10.5px; font-weight:800; letter-spacing:.10em; color:rgba(243,245,255,.60);
   margin:14px 0 7px; }
 .vs-lb-lab:first-child{ margin-top:0; }
 .vs-lb-merow{ display:flex; align-items:center; gap:11px; }
@@ -984,7 +986,7 @@ export const LOBBY_CSS = `
 .vs-lb-pv-meta{ display:flex; gap:12px; margin-top:8px; font-size:11px; color:rgba(255,255,255,.78); }
 .vs-lb-record{ display:flex; align-items:baseline; gap:7px; flex-wrap:wrap;
   padding:0 2px 10px; font-size:12px; color:rgba(243,245,255,.62); }
-.vs-lb-rec-lab{ font-size:10.5px; font-weight:800; letter-spacing:.06em; color:rgba(243,245,255,.42); }
+.vs-lb-rec-lab{ font-size:10.5px; font-weight:800; letter-spacing:.06em; color:rgba(243,245,255,.60); }
 .vs-lb-rec-v{ font-size:13px; color:${PALETTE.amber}; font-weight:800; }
 .vs-lb-rec-who{ font-size:11px; color:rgba(243,245,255,.5); }
 .vs-lb-tiers{ display:flex; gap:5px; flex-wrap:wrap; margin-bottom:9px; }
@@ -997,7 +999,7 @@ export const LOBBY_CSS = `
 .vs-lb-cc[aria-selected="true"]{ border-color:${PALETTE.amber}; background:rgba(255,176,32,.12); }
 .vs-lb-cc-sw{ width:8px; flex:0 0 auto; }
 .vs-lb-cc-body{ padding:8px 10px; display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
-.vs-lb-cc-no{ font-size:10px; color:rgba(243,245,255,.42); font-weight:800; }
+.vs-lb-cc-no{ font-size:10px; color:rgba(243,245,255,.60); font-weight:800; }
 .vs-lb-cc-nm{ font-size:13px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .vs-lb-cc-diff{ display:flex; gap:2px; margin-top:3px; }
 .vs-lb-cc-d{ width:8px; height:3px; border-radius:2px; background:rgba(255,255,255,.14); }
@@ -1010,7 +1012,8 @@ export const LOBBY_CSS = `
 .vs-lb-mode[aria-checked="true"]{ border-color:${PALETTE.mint}; background:rgba(55,224,176,.12); }
 .vs-lb-mode[disabled]{ opacity:.4; }
 .vs-lb-mode-l{ font-size:13px; font-weight:800; }
-.vs-lb-mode-d{ font-size:10.5px; color:rgba(243,245,255,.52); }
+/* 4.39:1 → 明るく する（遊び方の 説明。ここが 読めないと 何の 遊びか 分からない） */
+.vs-lb-mode-d{ font-size:10.5px; color:rgba(243,245,255,.66); }
 .vs-lb-bots{ display:flex; gap:5px; flex-wrap:wrap; }
 .vs-lb-bot{ height:30px; padding:0 12px; border-radius:9px; font-size:12px; font-weight:700;
   background:rgba(255,255,255,.06); border:1px solid ${PALETTE.line}; color:rgba(243,245,255,.7); }
@@ -1028,7 +1031,7 @@ export const LOBBY_CSS = `
 .vs-lb-code{ flex:1; min-width:0; height:34px; padding:0 10px; border-radius:9px;
   background:rgba(255,255,255,.07); border:1px solid ${PALETTE.line}; color:${PALETTE.ink};
   font-size:13px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
-.vs-lb-code::placeholder{ letter-spacing:.02em; font-weight:400; color:rgba(243,245,255,.34); }
+.vs-lb-code::placeholder{ letter-spacing:.02em; font-weight:400; color:rgba(243,245,255,.55); }
 .vs-lb-roomid{ margin-top:9px; display:flex; align-items:center; justify-content:space-between;
   padding:8px 11px; border-radius:10px; background:rgba(255,255,255,.06); font-size:13px; }
 .vs-lb-roomlab{ font-size:10.5px; color:rgba(243,245,255,.5); }
@@ -1072,7 +1075,7 @@ export const LOBBY_CSS = `
 .vs-lb-qz-nm, .vs-lb-hat-nm{ color:${PALETTE.mint}; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .vs-lb-qz-body{ padding:0 8px 8px; }
 .vs-lb-qz-list{ max-height:210px; overflow-y:auto; display:flex; flex-direction:column; gap:3px; }
-.vs-lb-qz-h{ font-size:11px; font-weight:800; letter-spacing:.04em; color:rgba(243,245,255,.42);
+.vs-lb-qz-h{ font-size:11px; font-weight:800; letter-spacing:.04em; color:rgba(243,245,255,.60);
   padding:8px 4px 2px; }
 .vs-lb-qz-it{ display:flex; align-items:baseline; gap:8px; width:100%; text-align:left;
   padding:7px 10px; border-radius:9px; border:1px solid transparent; background:transparent;
@@ -1081,7 +1084,8 @@ export const LOBBY_CSS = `
 .vs-lb-qz-it[aria-checked="true"]{ border-color:${PALETTE.mint}; background:rgba(90,230,190,.12); }
 .vs-lb-qz-it:disabled{ opacity:.4; cursor:default; }
 .vs-lb-qz-l{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.vs-lb-qz-s{ flex:0 0 auto; font-size:11px; color:rgba(243,245,255,.5); }
+/* 3.94:1 → 明るく する（「20 語」「対戦では 使えません」の 添え書き） */
+.vs-lb-qz-s{ flex:0 0 auto; font-size:11px; color:rgba(243,245,255,.68); }
 .vs-lb-settings{ margin-top:14px; border-top:1px solid ${PALETTE.line}; padding-top:10px; }
 .vs-lb-settings summary{ font-size:12px; font-weight:800; color:rgba(243,245,255,.62);
   cursor:pointer; list-style:none; padding:4px 0; }
@@ -1092,7 +1096,9 @@ export const LOBBY_CSS = `
 .vs-lb-quality{ display:flex; gap:4px; flex-wrap:wrap; }
 .vs-lb-q{ height:28px; padding:0 10px; border-radius:8px; font-size:11.5px; font-weight:700;
   background:rgba(255,255,255,.06); border:1px solid ${PALETTE.line}; color:rgba(243,245,255,.7); }
-.vs-lb-q[aria-checked="true"]{ background:${PALETTE.violet}; color:#fff; border-color:transparent; }
+/* ★ 白文字 × 明るい 紫は 3.03:1 しか なかった。
+   **文字を 濃く する**（背景の 色は 選ばれている 印なので 変えない）。 */
+.vs-lb-q[aria-checked="true"]{ background:${PALETTE.violet}; color:#11132a; border-color:transparent; }
 .vs-lb-range{ width:100%; accent-color:${PALETTE.mint}; }
 .vs-lb-togglerow{ display:flex; gap:5px; margin-top:9px; flex-wrap:wrap; }
 .vs-lb-toggle{ height:28px; padding:0 11px; border-radius:8px; font-size:11.5px; font-weight:700;

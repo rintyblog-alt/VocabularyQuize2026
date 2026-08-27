@@ -311,7 +311,7 @@ export const HUD_CSS = `
 .vs-hud-tn{ font-size:10.5px; font-weight:800; letter-spacing:.06em; color:#ff5d6e; }
 .vs-hud-tn.is-b{ color:#4d9dff; }
 .vs-hud-tv{ font-size:17px; font-weight:900; }
-.vs-hud-td{ color:rgba(243,245,255,.35); font-size:11px; }
+.vs-hud-td{ color:rgba(243,245,255,.62); font-size:11px; }
 .vs-hud-team[data-lead="a"] .vs-hud-tv:first-of-type{ color:#ff5d6e; }
 .vs-hud-team[data-lead="b"] .vs-hud-tv:last-of-type{ color:#4d9dff; }
 .vs-hud-row[data-team="a"]{ border-left:3px solid #ff5d6e; }
