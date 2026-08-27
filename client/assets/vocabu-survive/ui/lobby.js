@@ -1102,14 +1102,28 @@ export const LOBBY_CSS = `
 .vs-lb-actions{ display:flex; flex-direction:column; gap:8px; margin-top:16px; }
 .vs-lb-actions .vs-btn{ width:100%; }
 
+/* ★ 並べ枠の 中の 箱は 既定で **中身より 小さく ならない**（min-width:auto）。
+   そのままだと 360px の 端末で 箱が 枠から 6px はみ出して 右端が 切れる。
+   ここを 0 に して はじめて 縮む。 */
+.vs-lb-grid > *{ min-width: 0; }
+
 @media (max-width: 1080px){
   .vs-lb-grid{ grid-template-columns: 1fr 300px; }
-  .vs-lb-me{ display:none; }
+  /* ★ ここで まるごと 消していた。
+     消すと **色も かぶりものも 友だちも スマホから 触れなく なる**（実機の 幅で 気づいた）。
+     幅が 足りないのは 横に 並べる ときだけ なので、下へ 回して 残す。 */
+  .vs-lb-me{ grid-column: 1 / -1; }
+  /* 名前と 状態は 本体の 画面にも 出ている ので、狭い ときは 省く */
+  .vs-lb-me .vs-lb-merow{ display:none; }
 }
 @media (max-width: 780px){
-  .vs-lb-grid{ grid-template-columns: 1fr; grid-template-rows:auto auto; overflow:auto; }
+  .vs-lb-grid{ grid-template-columns: 1fr; overflow:auto; }
   .vs-lb-right{ order:-1; }
+  .vs-lb-me{ order:1; }
   .vs-lb-courses{ grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }
   .vs-lb-preview{ min-height:130px; }
+  /* 狭い ときは 中の 縦スクロールを やめて、画面ごと 流す。
+     箱の 中を 別々に 動かすと 「下に まだ ある」ことに 気づけない。 */
+  .vs-lb-right, .vs-lb-course, .vs-lb-me{ overflow:visible; max-height:none; }
 }
 `;

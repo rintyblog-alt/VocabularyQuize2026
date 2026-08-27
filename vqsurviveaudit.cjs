@@ -240,6 +240,44 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     ok("戻っても 板が 潰れていない", 生きてる.cw > 100, 生きてる.cw);
     ok("戻っても 進みが 消えていない", 生きてる.pr >= 前進 - 1, { 前: 前進, 後: 生きてる.pr });
 
+    節("⑦-b スマホの 幅で 触れるか");
+    /* ★ 以前は 1080px 以下で 左の 箱を まるごと 消して いた。
+       消すと **色も かぶりものも 友だちも スマホから 触れなく なる**。 */
+    for (const [w, h] of [[390, 844], [360, 640]]) {
+      await pg.setViewportSize({ width: w, height: h });
+      await pg.evaluate(() => { const app = window.VocabuSurvive.__app;
+        const m = app.shell.get("match"); if (m && m.quiz && m.quiz.close) m.quiz.close();
+        return app.goLobby(); });
+      await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "lobby",
+        null, { timeout: 20000, polling: 250 });
+      await 待つ(700);
+      const t = await pg.evaluate(() => {
+        const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+        const rb = r.querySelector(".vs-root").getBoundingClientRect();
+        const 触れる = (sel) => {
+          const e = r.querySelector(sel); if (!e) return false;
+          const b = e.getBoundingClientRect();
+          return b.width > 8 && b.height > 8 && getComputedStyle(e).display !== "none";
+        };
+        let はみ = 0;
+        for (const e of r.querySelectorAll(".vs-lobby *")) {
+          const b = e.getBoundingClientRect();
+          if (b.width > 0 && (b.right > rb.right + 2 || b.left < rb.left - 2)) はみ++;
+        }
+        return { 色: 触れる(".vs-lb-colors"), 帽: 触れる(".vs-lb-hatbox"),
+          問: 触れる(".vs-lb-qz"), 記: 触れる(".vs-lb-rec-tabs"),
+          遊: r.querySelectorAll(".vs-lb-mode").length, はみ };
+      });
+      ok(w + "×" + h + " 色を 選べる", t.色, t);
+      ok(w + "×" + h + " かぶりものを 選べる", t.帽, t);
+      ok(w + "×" + h + " 門の 問題を 選べる", t.問, t);
+      ok(w + "×" + h + " 記録の 範囲を 選べる", t.記, t);
+      ok(w + "×" + h + " 遊び方が 6 つ 出る", t.遊 === 6, t.遊);
+      ok(w + "×" + h + " **横に はみ出さない**", t.はみ === 0, t);
+    }
+    await pg.setViewportSize({ width: 1280, height: 800 });
+    await 待つ(500);
+
     節("⑧ 例外");
     const 無視 = /favicon|net::ERR_|Failed to load resource|firebase|config\.public|\/api\/|AudioContext|play\(\) failed/i;
     const 実害 = errs.filter((e) => !無視.test(e));
