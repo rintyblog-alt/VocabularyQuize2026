@@ -140,6 +140,7 @@ export class MatchScreen {
     this.visuals.clear();
     this.bots.length = 0;
     this._splits = [];
+    this._missed = [];      /* 間違えた 単語（結果で 出す） */
 
     /* ── ゴースト（自己ベストと 並んで 走る）──────────────────────
        ★ **対戦では 出さない。** 相手が いる ところに 半透明の 自分が
@@ -565,6 +566,7 @@ export class MatchScreen {
     const q = this.questions[this.qIndex % Math.max(1, this.questions.length)] || null;
     this.qIndex++;
     if (!q) { this.sim.answerGate(this.local, gate, true); return; }
+    this._lastQ = q;
     this.quiz.ask(q, gate.limit);
   }
   _answer(i, correct) {
@@ -577,6 +579,22 @@ export class MatchScreen {
        あとで 食い違ったら サーバの 返事で 直す。 */
     this.sim.answerGate(this.local, g, i < 0 ? null : correct);
     if (this.net) this.net.sendAnswer(g.index, i);
+    /* ★ **間違えた 単語を 覚えておく。**
+       走り終わって「3 問 間違えた」と 数だけ 出しても、
+       何を 間違えたのか 分からないと 学びに ならない。
+       ここは 学ぶ ための 遊びなので、単語まで 出す。 */
+    if (!correct && this._lastQ) {
+      const q = this._lastQ;
+      if (!this._missed) this._missed = [];
+      if (!this._missed.some((x) => x.q === q.prompt)) {
+        this._missed.push({
+          q: String(q.prompt || ""),
+          a: String((q.choices && q.choices[q.answer]) || ""),
+          /* 何を えらんだか。時間切れ（-1）は 空。 */
+          y: i >= 0 && q.choices ? String(q.choices[i] || "") : ""
+        });
+      }
+    }
     this.hud.toast(correct ? "正解！ 少し 速くなる" : "不正解… 少し 遅くなる", correct ? "good" : "bad");
   }
 
@@ -746,6 +764,7 @@ export class MatchScreen {
         standings: rows, courseName: this.course.name,
         splits: (this._splits || []).slice(),
         bestSplits: this._prevSplits || [],
+        missed: (this._missed || []).slice(0, 12),
         cup: this._cupResult(rows)
       });
       if (this.net && this.net.sendResult) {

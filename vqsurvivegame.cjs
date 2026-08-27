@@ -299,6 +299,75 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     ok("全員の 一覧が 出る", rs.rows >= 4, rs.rows);
     ok("もう一度 / ロビー / 戻る の 3 つ", rs.btns === 3, rs.btnText);
     ok("勝ち抜き以外では「次の ラウンドへ」は 隠れている", rs.btnAll === 4 && rs.btns === 3, [rs.btnAll, rs.btns]);
+
+    節("⑦-a 実際に 間違えると 覚える");
+    /* 見た目だけ 作っても 意味が ない。**本当の 門で 間違えて** 溜まるか。 */
+    const 溜 = await pg.evaluate(async () => {
+      const m = window.VocabuSurvive.__app.shell.get("match");
+      if (m.result && m.result.hide) m.result.hide();
+      m._missed = [];
+      m._done = false;
+      const q = m.questions[0];
+      const 誤 = q.answer === 0 ? 1 : 0;
+      /* 門を 開けて、わざと 違う ものを 押す */
+      m.pendingGate = m.course.gates[0];
+      m._lastQ = q;
+      m._answer(誤, false);
+      await new Promise((x) => setTimeout(x, 200));
+      /* 同じ 問題を もう一度 間違えても 増えない（だぶらせない） */
+      m.pendingGate = m.course.gates[0];
+      m._lastQ = q;
+      m._answer(誤, false);
+      await new Promise((x) => setTimeout(x, 200));
+      /* 正解は 溜めない */
+      const q2 = m.questions[1];
+      m.pendingGate = m.course.gates[0];
+      m._lastQ = q2;
+      m._answer(q2.answer, true);
+      await new Promise((x) => setTimeout(x, 200));
+      return { 数: m._missed.length, 中: m._missed.slice(0, 2),
+        問: q.prompt, 答: q.choices[q.answer], 押: q.choices[誤] };
+    });
+    ok("**間違えると 溜まる**", 溜.数 === 1, 溜);
+    ok("同じ 問題は だぶらない", 溜.数 === 1, 溜.数);
+    ok("正解は 溜めない", 溜.数 === 1, 溜);
+    ok("問題文が 入る", 溜.中[0] && 溜.中[0].q === 溜.問, 溜);
+    ok("正しい 答えが 入る", 溜.中[0] && 溜.中[0].a === 溜.答, 溜);
+    ok("押した ものが 入る", 溜.中[0] && 溜.中[0].y === 溜.押, 溜);
+
+    節("⑦-b 間違えた 単語が 出る");
+    /* ★ 数だけ 出しても 学びに ならない。**何を 間違えたのか**を 出す。 */
+    const 誤 = await pg.evaluate(() => {
+      const m = window.VocabuSurvive.__app.shell.get("match");
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      m.result.show({
+        rank: 2, total: 4, finished: true, time: 40, correct: 1, wrong: 2, respawns: 0,
+        xp: 100, best: 0, newBest: false, mode: "race", standings: [], courseName: "検査",
+        splits: [], bestSplits: [],
+        missed: [{ q: "enormous", a: "巨大な", y: "小さな" }, { q: "adequate", a: "十分な", y: "" }]
+      });
+      const el = r.querySelector(".vs-res-miss");
+      return {
+        出: !!el && !el.classList.contains("vs-hide"),
+        見: (el && el.querySelector(".vs-res-splab") || {}).textContent,
+        行: Array.from(r.querySelectorAll(".vs-res-miss1")).map((e) => e.textContent)
+      };
+    });
+    ok("間違えた 単語の 欄が 出る", 誤.出, 誤);
+    ok("何個 か 出る", /2 個/.test(String(誤.見)), 誤.見);
+    ok("**単語と 正しい 答えが 出る**", 誤.行[0] && /enormous/.test(誤.行[0]) && /巨大な/.test(誤.行[0]), 誤.行);
+    ok("えらんだ ものも 出る", /小さな/.test(誤.行[0]), 誤.行[0]);
+    ok("時間切れは えらんだ ものを 出さない", 誤.行[1] && !/えらんだ/.test(誤.行[1]), 誤.行[1]);
+    const 無 = await pg.evaluate(() => {
+      const m = window.VocabuSurvive.__app.shell.get("match");
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      m.result.show({ rank: 1, total: 4, finished: true, time: 40, correct: 3, wrong: 0, respawns: 0,
+        xp: 100, best: 0, newBest: false, mode: "race", standings: [], courseName: "検査",
+        splits: [], bestSplits: [], missed: [] });
+      const el = r.querySelector(".vs-res-miss");
+      return !el || el.classList.contains("vs-hide");
+    });
+    ok("全問 正解なら 出さない", 無 === true, 無);
     if (絵) await pg.screenshot({ path: OUT + "/survive-result.png" });
 
     節("⑨ 例外");

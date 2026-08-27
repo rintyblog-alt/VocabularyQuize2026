@@ -29,6 +29,9 @@ export class ResultPanel {
     this.bestEl = h("div", { class: "vs-res-best vs-hide" });
     this.splitEl = h("div", { class: "vs-res-spwrap vs-hide" });
     this.cupEl = h("div", { class: "vs-res-cup vs-hide" });
+    /* ★ 間違えた 単語。**数だけでは 学びに ならない。**
+       ここは 学ぶ ための 遊びなので、何を 間違えたのかを 出す。 */
+    this.missEl = h("div", { class: "vs-res-miss vs-hide" });
 
     return h("div", { class: "vs-res" },
       h("div", { class: "vs-res-card" },
@@ -36,6 +39,7 @@ export class ResultPanel {
         this.bestEl,
         this.cupEl,
         this.statsEl,
+        this.missEl,
         this.splitEl,
         h("div", { class: "vs-res-listwrap" }, this.listEl),
         h("div", { class: "vs-res-btns" },
@@ -140,6 +144,25 @@ export class ResultPanel {
       if (this.againBtn) this.againBtn.classList.toggle("vs-hide", !!this._next);
     }
 
+    /* ── 間違えた 単語 ───────────────────────────────────────────── */
+    this.missEl.textContent = "";
+    const ms = d.missed || [];
+    if (ms.length) {
+      this.missEl.classList.remove("vs-hide");
+      this.missEl.appendChild(h("div", { class: "vs-res-splab", text: "間違えた 単語 " + ms.length + " 個" }));
+      const box = h("div", { class: "vs-res-misses" });
+      for (const m of ms) {
+        box.appendChild(h("div", { class: "vs-res-miss1" },
+          h("span", { class: "vs-res-mq", text: m.q }),
+          h("span", { class: "vs-res-marrow", text: "→" }),
+          h("span", { class: "vs-res-ma", text: m.a }),
+          m.y ? h("span", { class: "vs-res-my", text: "（えらんだ: " + m.y + "）" }) : null));
+      }
+      this.missEl.appendChild(box);
+    } else {
+      this.missEl.classList.add("vs-hide");
+    }
+
     /* ── 区間の 記録 ────────────────────────────────────────────────
        ★ 「どこで 遅れたか」が 分かるのが 記録の 値打ち。
          合計だけ 出しても 次に 何を 直せば よいか 分からない。
@@ -205,6 +228,15 @@ function fmt(s) {
 }
 
 export const RESULT_CSS = `
+.vs-res-miss{ margin:8px 0 2px; padding:9px 11px; border-radius:12px;
+  border:1px solid rgba(255,138,151,.28); background:rgba(255,138,151,.07); }
+.vs-res-misses{ display:flex; flex-direction:column; gap:3px; max-height:120px; overflow-y:auto; }
+.vs-res-miss1{ display:flex; align-items:baseline; gap:6px; font-size:12.5px; flex-wrap:wrap; }
+.vs-res-mq{ font-weight:800; color:#f3f5ff; }
+.vs-res-marrow{ color:rgba(243,245,255,.5); }
+.vs-res-ma{ color:#5ae6be; font-weight:700; }
+.vs-res-my{ font-size:11px; color:rgba(255,138,151,.9); }
+
 .vs-res-cup{ margin:8px 0 4px; padding:10px 12px; border-radius:12px;
   border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.04); }
 .vs-res-cupbar{ display:flex; gap:6px; margin-bottom:8px; }
