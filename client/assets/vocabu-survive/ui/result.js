@@ -15,6 +15,7 @@ const MEDAL = ["🥇", "🥈", "🥉"];
 export class ResultPanel {
   constructor(opt) {
     this.onAgain = (opt && opt.onAgain) || (() => {});
+    this.onNext = (opt && opt.onNext) || (() => {});
     this.onLobby = (opt && opt.onLobby) || (() => {});
     this.onExit = (opt && opt.onExit) || (() => {});
     this.el = this._build();
@@ -27,16 +28,22 @@ export class ResultPanel {
     this.listEl = h("ol", { class: "vs-res-list" });
     this.bestEl = h("div", { class: "vs-res-best vs-hide" });
     this.splitEl = h("div", { class: "vs-res-spwrap vs-hide" });
+    this.cupEl = h("div", { class: "vs-res-cup vs-hide" });
 
     return h("div", { class: "vs-res" },
       h("div", { class: "vs-res-card" },
         h("div", { class: "vs-res-head" }, this.titleEl, this.subEl),
         this.bestEl,
+        this.cupEl,
         this.statsEl,
         this.splitEl,
         h("div", { class: "vs-res-listwrap" }, this.listEl),
         h("div", { class: "vs-res-btns" },
-          h("button", { class: "vs-btn is-mint", type: "button", onclick: () => this.onAgain() }, "もう一度"),
+          this.nextBtn = h("button", {
+            class: "vs-btn is-mint vs-hide", type: "button",
+            onclick: () => { const n = this._next; this.hide(); if (n) this.onNext(n); }
+          }, "次の ラウンドへ"),
+          this.againBtn = h("button", { class: "vs-btn is-mint", type: "button", onclick: () => this.onAgain() }, "もう一度"),
           h("button", { class: "vs-btn is-ghost", type: "button", onclick: () => this.onLobby() }, "ロビーへ"),
           h("button", { class: "vs-btn is-ghost", type: "button", onclick: () => this.onExit() }, "VocabuQuiz へ戻る"))));
   }
@@ -89,6 +96,48 @@ export class ResultPanel {
       this.bestEl.textContent = "自己ベスト 更新！  " + fmt(d.time);
     } else {
       this.bestEl.classList.add("vs-hide");
+    }
+
+    /* ── 勝ち抜き ────────────────────────────────────────────────────
+       ★ 「残ったか 落ちたか」を **順位より 先に** 出す。
+         勝ち抜きで 知りたいのは 何位かでは なく 「次が あるか」。 */
+    this._next = null;
+    this.cupEl.textContent = "";
+    const cup = d.cup;
+    if (cup) {
+      this.cupEl.classList.remove("vs-hide");
+      const 見出し = cup.last
+        ? (cup.meAlive ? "🏆 優勝！" : "ここまで")
+        : (cup.meAlive ? "勝ち残り！" : "ここで 敗退");
+      this.titleEl.textContent = 見出し;
+      this.titleEl.setAttribute("data-rank", cup.meAlive ? "1" : "0");
+      this.subEl.textContent = "ラウンド " + cup.round + " / " + cup.rounds +
+        "　" + d.courseName + "　" + cup.total + "人 → " + cup.keep + "人";
+
+      this.cupEl.appendChild(h("div", { class: "vs-res-cupbar" },
+        ...Array.from({ length: cup.rounds }, (_, i) => h("span", {
+          class: "vs-res-cupdot",
+          "data-st": i + 1 < cup.round ? "done" : (i + 1 === cup.round ? "now" : "next"),
+          text: String(i + 1)
+        }))));
+      const 名 = (list) => list.map((r) => r.name).join("・") || "—";
+      this.cupEl.appendChild(h("div", { class: "vs-res-cuprow" },
+        h("span", { class: "vs-res-cuplab", text: cup.last ? "最後まで 残った" : "次へ 進む" }),
+        h("span", { class: "vs-res-cupv", text: 名(cup.survivors) })));
+      if (cup.out.length) {
+        this.cupEl.appendChild(h("div", { class: "vs-res-cuprow", "data-out": "1" },
+          h("span", { class: "vs-res-cuplab", text: "ここで 敗退" }),
+          h("span", { class: "vs-res-cupv", text: 名(cup.out) })));
+      }
+      this._next = cup.next || null;
+    } else {
+      this.cupEl.classList.add("vs-hide");
+    }
+    if (this.nextBtn) {
+      this.nextBtn.classList.toggle("vs-hide", !this._next);
+      /* 次が ある ときは 「もう一度」を 引っ込める。
+         押すと 勝ち抜きが 1 本目から やり直しに なって 分かりにくい。 */
+      if (this.againBtn) this.againBtn.classList.toggle("vs-hide", !!this._next);
     }
 
     /* ── 区間の 記録 ────────────────────────────────────────────────
@@ -156,6 +205,19 @@ function fmt(s) {
 }
 
 export const RESULT_CSS = `
+.vs-res-cup{ margin:8px 0 4px; padding:10px 12px; border-radius:12px;
+  border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.04); }
+.vs-res-cupbar{ display:flex; gap:6px; margin-bottom:8px; }
+.vs-res-cupdot{ width:24px; height:24px; border-radius:50%; display:inline-flex;
+  align-items:center; justify-content:center; font-size:12px; font-weight:800;
+  border:1px solid rgba(255,255,255,.16); color:rgba(243,245,255,.5); }
+.vs-res-cupdot[data-st="done"]{ background:rgba(90,230,190,.22); color:#5ae6be; border-color:#5ae6be; }
+.vs-res-cupdot[data-st="now"]{ background:#5ae6be; color:#0b1020; border-color:#5ae6be; }
+.vs-res-cuprow{ display:flex; gap:8px; align-items:baseline; font-size:12px; padding:2px 0; }
+.vs-res-cuplab{ flex:0 0 auto; width:86px; color:rgba(243,245,255,.5); }
+.vs-res-cupv{ flex:1 1 auto; color:#f3f5ff; }
+.vs-res-cuprow[data-out="1"] .vs-res-cupv{ color:rgba(255,138,151,.9); }
+
 .vs-res-spwrap{ margin:10px 0 2px; }
 .vs-res-splab{ font-size:11px; font-weight:800; letter-spacing:.05em;
   color:rgba(243,245,255,.42); margin:0 0 5px; }

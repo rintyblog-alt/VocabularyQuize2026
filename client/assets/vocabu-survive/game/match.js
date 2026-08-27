@@ -25,7 +25,7 @@ import { BeanVisual, registerBeanMeshes, BEAN_HEIGHT, hatByKey, HAT_COLORS } fro
 import { buildCourse } from "./course.js";
 import { Player, FixedStepper, STEP, TUNE } from "./player.js";
 import { Bot } from "./bot.js";
-import { Sim, PHASE, MODE, TEAMS } from "./sim.js";
+import { Sim, PHASE, MODE, TEAMS, cupKeep } from "./sim.js";
 import { GATE_STATE } from "./gate.js";
 import { Input } from "./input.js";
 import { TouchPad, TOUCH_CSS } from "../ui/touch.js";
@@ -55,6 +55,8 @@ export class MatchScreen {
     this.quiz = new QuizPanel((i, correct) => this._answer(i, correct));
     this.result = new ResultPanel({
       onAgain: () => { this.result.hide(); this.onAgain(this.cfg); },
+      /* 勝ち抜きの 次の 本。cfg は 結果の 画面が 組み立てて 持っている。 */
+      onNext: (next) => { this.result.hide(); this.onAgain(next); },
       onLobby: () => { this.result.hide(); this.onQuit(); },
       onExit: () => { this.result.hide(); this.app.backToQuiz(); }
     });
@@ -121,7 +123,15 @@ export class MatchScreen {
     /* 遊び方。クイズラッシュだけ 制限時間が 短い（100 秒で 何問 通せるか）。 */
     const mode = cfg.mode || MODE.RACE;
     const 制限 = cfg.timeLimit || (mode === MODE.QUIZRUSH ? 100 : 300);
-    this.sim = new Sim(this.course, { timeLimit: 制限, countdown: 3.2, mode });
+    /* ★ 勝ち抜きの **1 本の 中身は レースそのもの**。
+       Sim には race として 渡す。走りの 決まりを 変えると
+       レースの 出来を 落として まで 遊び方を 増やす ことに なる（要件 18）。
+       「下から 落ちていく」のは Sim の 外側（この 画面と 結果）で 決める。 */
+    this.sim = new Sim(this.course, {
+      timeLimit: 制限, countdown: 3.2,
+      mode: mode === MODE.CUP ? MODE.RACE : mode
+    });
+    this.cup = cfg.cup || null;
     this.visuals.clear();
     this.bots.length = 0;
     this._splits = [];
@@ -145,17 +155,24 @@ export class MatchScreen {
       });
       this.sim.add(p);
     }
+    /* ★ 勝ち抜きで 2 本目 以降は **同じ 顔ぶれ**を 連れて くる。
+       毎回 作り直すと 名前も 色も 変わって、誰が 残ったのか 分からなく なる。 */
+    const 引き継ぎ = (cfg.cup && Array.isArray(cfg.cup.bots)) ? cfg.cup.bots : null;
     for (let i = 0; i < botCount; i++) {
-      const ci = (i + 1 + (cfg.myColor || 0)) % BEAN_COLORS.length;
+      const 元 = 引き継ぎ ? 引き継ぎ[i] : null;
+      const ci = 元 ? 元.colorIndex : (i + 1 + (cfg.myColor || 0)) % BEAN_COLORS.length;
       /* ボットにも かぶりものを 配る（全員 素頭だと 誰が 誰か 分かりにくい）。
          種は 番号から 決める ので、同じ 面子なら いつも 同じ 見た目に なる。 */
       const p = new Player({
-        id: "bot" + i, name: BOT_NAMES[i % BOT_NAMES.length], colorIndex: ci,
-        hat: BOT_HATS[i % BOT_HATS.length], hatColor: (i * 5 + 3) % HAT_COLORS.length
+        id: 元 ? 元.id : "bot" + i,
+        name: 元 ? 元.name : BOT_NAMES[i % BOT_NAMES.length], colorIndex: ci,
+        hat: 元 ? 元.hat : BOT_HATS[i % BOT_HATS.length],
+        hatColor: 元 ? 元.hatColor : (i * 5 + 3) % HAT_COLORS.length
       });
       this.sim.add(p);
       this.bots.push(new Bot(p, this.course, {
-        level: cfg.botLevel || pickBotLevel(def.difficulty, i), seed: 7000 + i * 131,
+        level: 元 ? 元.level : (cfg.botLevel || pickBotLevel(def.difficulty, i)),
+        seed: 元 ? 元.seed : 7000 + i * 131,
         /* 走る 線を 均等に 分ける（団子に ならない ように） */
         lane: botCount > 1 ? (i / (botCount - 1)) * 2 - 1 : 0
       }));
@@ -646,7 +663,8 @@ export class MatchScreen {
         myTeam: p.team,
         standings: rows, courseName: this.course.name,
         splits: (this._splits || []).slice(),
-        bestSplits: 前の区間
+        bestSplits: 前の区間,
+        cup: this._cupResult(rows)
       });
       if (this.net && this.net.sendResult) {
         this.net.sendResult({ finished: p.finished, time: p.finishTime, rank: p.rank, xp });
@@ -655,6 +673,53 @@ export class MatchScreen {
         finished: p.finished, correct: p.quizCorrect, wrong: p.quizWrong, xp,
         splits: (this._splits || []).slice(0, 16) });
     }, p.finished ? 1400 : 500);
+  }
+
+  /* ── 勝ち抜き ────────────────────────────────────────────────────
+     1 本 終わるたびに 「誰が 残るか」を ここで 決める。
+     ★ **順位が そのまま 残る 順**。進みや タイムで 別の 並びを 作らない
+       （画面に 出ている 順位と 違うと 「なぜ 落ちたか」が 分からなく なる）。 */
+  _cupResult(rows) {
+    const c = this.cup;
+    if (!c) return null;
+    const 全 = rows.length;
+    const 残す = cupKeep(全, c.round, c.rounds);
+    const 並び = rows.slice().sort((a, b) => a.rank - b.rank);
+    const 残る = 並び.slice(0, 残す);
+    const 落ちる = 並び.slice(残す);
+    const 私 = 並び.filter((r) => r.me)[0] || null;
+    const 私は残る = !!(私 && 残る.some((r) => r.me));
+    const 最終 = c.round >= c.rounds || 残す <= 1;
+
+    /* 次の 本の 顔ぶれ（ボットの 素性は そのまま 連れて いく） */
+    const bots = [];
+    for (const r of 残る) {
+      if (r.me) continue;
+      const b = this.bots.filter((x) => x.p.id === r.id)[0];
+      const p = this.sim.players.filter((x) => x.id === r.id)[0];
+      if (!p) continue;
+      bots.push({
+        id: p.id, name: p.name, colorIndex: p.colorIndex, hat: p.hat, hatColor: p.hatColor,
+        level: b ? b.levelKey : "normal", seed: b ? b.seed : 7000
+      });
+    }
+    return {
+      round: c.round, rounds: c.rounds, keep: 残す, total: 全,
+      survivors: 残る.map((r) => ({ id: r.id, name: r.name, colorIndex: r.colorIndex, rank: r.rank })),
+      out: 落ちる.map((r) => ({ id: r.id, name: r.name, colorIndex: r.colorIndex, rank: r.rank })),
+      meAlive: 私は残る, last: 最終,
+      /* 次の 本を 始める ための 一式（結果の 画面から そのまま 渡す） */
+      next: (私は残る && !最終) ? {
+        courseId: c.courses[c.round] || c.courses[c.courses.length - 1],
+        mode: MODE.CUP,
+        bots: bots.length,
+        myName: this.cfg.myName, myColor: this.cfg.myColor,
+        myHat: this.cfg.myHat, myHatColor: this.cfg.myHatColor,
+        presetKind: this.cfg.presetKind, presetId: this.cfg.presetId, presetOwner: this.cfg.presetOwner,
+        seed: (this.cfg.seed || 1) + c.round * 977,
+        cup: { round: c.round + 1, rounds: c.rounds, courses: c.courses, bots }
+      } : null
+    };
   }
 
   _saveStats(row) {

@@ -275,14 +275,23 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
         title: r.querySelector(".vs-res-title") ? r.querySelector(".vs-res-title").textContent : "",
         stats: r.querySelectorAll(".vs-res-stat").length,
         rows: r.querySelectorAll(".vs-res-row").length,
-        btns: r.querySelectorAll(".vs-res-btns .vs-btn").length
+        /* ★ **見えている ものだけ** 数える。
+           勝ち抜きの「次の ラウンドへ」は 同じ 場所に あるが、
+           勝ち抜き以外では 隠れている（隠れている ものを 数えると
+           「押せる ボタンが 4 つ ある」と 読み違える）。 */
+        btns: Array.from(r.querySelectorAll(".vs-res-btns .vs-btn"))
+          .filter((b) => !b.classList.contains("vs-hide")).length,
+        btnAll: r.querySelectorAll(".vs-res-btns .vs-btn").length,
+        btnText: Array.from(r.querySelectorAll(".vs-res-btns .vs-btn"))
+          .filter((b) => !b.classList.contains("vs-hide")).map((b) => b.textContent)
       };
     });
     ok("結果が 出る", rs.on === true, rs);
     ok("順位が 出る", /位/.test(rs.title), rs.title);
     ok("成績が 4 つ 出る（時間/クイズ/戻り/XP）", rs.stats === 4, rs.stats);
     ok("全員の 一覧が 出る", rs.rows >= 4, rs.rows);
-    ok("もう一度 / ロビー / 戻る の 3 つ", rs.btns === 3, rs.btns);
+    ok("もう一度 / ロビー / 戻る の 3 つ", rs.btns === 3, rs.btnText);
+    ok("勝ち抜き以外では「次の ラウンドへ」は 隠れている", rs.btnAll === 4 && rs.btns === 3, [rs.btnAll, rs.btns]);
     if (絵) await pg.screenshot({ path: OUT + "/survive-result.png" });
 
     節("⑨ 例外");

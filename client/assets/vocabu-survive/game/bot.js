@@ -45,7 +45,11 @@ export class Bot {
     this.p = player;
     this.course = course;
     this.level = BOT_LEVELS[opt.level] || BOT_LEVELS.normal;
-    this.rnd = mulberry32(((opt.seed || 1) >>> 0) || 1);
+    /* ★ 腕の **名前**も 覚えておく。勝ち抜きで 次の 本へ 連れて いく ときに
+       同じ 腕で 走らせる ため（形だけ 渡すと 腕が 標準へ 戻る）。 */
+    this.levelKey = BOT_LEVELS[opt.level] ? opt.level : "normal";
+    this.seed = ((opt.seed || 1) >>> 0) || 1;
+    this.rnd = mulberry32(this.seed);
     this.input = { mx: 0, mz: 0, jump: false, jumpDown: false, dive: false };
     this.wobblePhase = this.rnd() * 6.28;
     this.sideBias = (this.rnd() - 0.5) * 2;

@@ -16,6 +16,7 @@ import { h, svg } from "./shell.js";
 import { listLocalPresets, listSharedPresets } from "../data/questions.js";
 import { PALETTE, BEAN_COLORS, beanByIndex } from "./theme.js";
 import { COURSES, tierOf, TIERS } from "../data/courses.js";
+import { CUP_ROUNDS } from "../game/sim.js";
 import { themeOf } from "../game/theme3d.js";
 import { HATS, HAT_COLORS } from "../game/bean.js";
 import { SurviveNet, createRoom, roomInfo } from "../net/client.js";
@@ -27,7 +28,13 @@ const MODES = [
   { key: "timeattack", label: "タイムアタック", desc: "1 人で 記録に 挑む", ready: true },
   { key: "survival", label: "サバイバル", desc: "落ちたら 脱落。最後まで 残った 人が 勝ち", ready: true },
   { key: "quizrush", label: "クイズラッシュ", desc: "100 秒で 門を 多く 通った 人が 勝ち", ready: true },
-  { key: "team", label: "チーム戦", desc: "2 組に 分かれて 組の 合計で 勝ち", ready: true }
+  { key: "team", label: "チーム戦", desc: "2 組に 分かれて 組の 合計で 勝ち", ready: true },
+  /* ★ 勝ち抜きは **ひとり用だけ**。
+     対戦で やるには 部屋が ラウンドを またいで 顔ぶれを 覚え、
+     全員の 端末が 同じ 「誰が 落ちたか」を 持つ 必要が ある。
+     いまの 部屋は 1 試合で 終わる 作りなので、
+     そこを 無理に 通すと レースの 通信まで 危うく する（要件 18）。 */
+  { key: "cup", label: "勝ち抜き", desc: "3 本 走って 下から 落ちる（ひとり用）", ready: true, solo: true }
 ];
 
 const PICK_KEY = "vq.survive.pick.v1";
@@ -562,13 +569,38 @@ export class LobbyScreen {
       this.netNote.textContent = "始めます…";
       return;
     }
+    /* 勝ち抜きは 3 本。**同じ 難しさの 中から** 選ぶ
+       （急に 難しく なると 「腕でなく 運」に なる）。
+       選び方は 種から 決めるので、同じ コースなら いつも 同じ 3 本。 */
+    let cup = null;
+    if (this.mode === "cup") {
+      const t = tierOf(this.courseIndex);
+      const 候補 = [];
+      for (let i = t.from; i <= t.to && i < COURSES.length; i++) 候補.push(COURSES[i].id);
+      const courses = [c.id];
+      let 種 = ((this.courseIndex + 1) * 2654435761) >>> 0;
+      let 守 = 0;
+      while (courses.length < CUP_ROUNDS && 守++ < 200) {
+        種 = (種 * 1664525 + 1013904223) >>> 0;
+        const id = 候補[種 % Math.max(1, 候補.length)];
+        if (id && courses.indexOf(id) < 0) courses.push(id);
+      }
+      /* 難しさの 段に コースが 足りない ときは 同じ ものを 使う */
+      while (courses.length < CUP_ROUNDS) courses.push(c.id);
+      cup = { round: 1, rounds: CUP_ROUNDS, courses, bots: null };
+    }
+
     this.onPlay({
       courseId: c.id,
       mode: this.mode,
+      cup,
       presetKind: this.qz.kind || "",
       presetId: this.qz.id || "",
       presetOwner: this.qz.owner || 0,
-      bots: this.mode === "timeattack" ? 0 : this.botCount,
+      /* 勝ち抜きは 落とし合う 遊びなので **相手が 要る**。
+         0 人で 始めると 1 本目で いきなり 優勝に なって 何も 起きない。 */
+      bots: this.mode === "timeattack" ? 0
+        : (this.mode === "cup" ? Math.max(3, this.botCount) : this.botCount),
       myName: this.me.name,
       myColor: this.me.colorIndex,
       myHat: this.hat,
@@ -698,8 +730,17 @@ export class LobbyScreen {
     for (const b of this.tierRow.children) {
       b.setAttribute("aria-selected", b.getAttribute("data-tier") === tier.key ? "true" : "false");
     }
+    /* ★ ひとり用の 遊び方は 部屋の 中では 押せなく する。
+       押せてしまうと 「始めたのに 自分だけ 別の 遊び」に なる。 */
+    if (this.net && this.roomId) {
+      const now = MODES.filter((x) => x.key === this.mode)[0];
+      if (now && now.solo) { this.mode = "race"; this._save(); }
+    }
     for (const b of this.modeRow.children) {
-      b.setAttribute("aria-checked", b.getAttribute("data-mode") === this.mode ? "true" : "false");
+      const k = b.getAttribute("data-mode");
+      b.setAttribute("aria-checked", k === this.mode ? "true" : "false");
+      const m = MODES.filter((x) => x.key === k)[0];
+      b.disabled = !!(m && m.solo && this.net && this.roomId);
     }
     for (const b of this.botRow.children) {
       b.setAttribute("aria-pressed", Number(b.getAttribute("data-n")) === this.botCount ? "true" : "false");

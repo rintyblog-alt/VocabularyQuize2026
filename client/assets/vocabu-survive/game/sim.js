@@ -29,8 +29,21 @@ export const MODE = {
   TIMEATTACK: "timeattack", /* 1 人で 記録に 挑む（中身は レースと 同じ） */
   SURVIVAL: "survival",     /* 落ちたら 脱落。最後まで 残った 人が 勝ち */
   QUIZRUSH: "quizrush",     /* 制限時間内に 門を 多く 通った 人が 勝ち */
-  TEAM: "team"              /* 2 組に 分かれて、組の 合計で 勝ち負けを 決める */
+  TEAM: "team",             /* 2 組に 分かれて、組の 合計で 勝ち負けを 決める */
+  /* ★ 勝ち抜き。**1 試合の 中身は レースと 同じ**。
+     違うのは 「3 本 走って、下から 落ちていく」という 外側の 決まりだけ。
+     ここに 特別な 走りの 決まりを 入れない（レースの 出来を 落とさない・要件 18）。 */
+  CUP: "cup"
 };
+
+/* 勝ち抜きの 決まり。次の ラウンドへ 残る 人数。
+   ★ **最後の 1 本 まで 2 人 以上 残す。** 途中で 1 人に なると
+     「走る 相手が いない 決勝」に なって 拍子抜けする。 */
+export const CUP_ROUNDS = 3;
+export function cupKeep(n, round, rounds) {
+  if (round >= rounds) return 1;
+  return Math.max(2, Math.ceil(n * 0.6));
+}
 
 /* 組（チーム）。色は 走る人の 色とは 別に 持つ（人の 色は 好きに 選べる ままに する）。 */
 export const TEAMS = [
