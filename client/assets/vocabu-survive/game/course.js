@@ -396,6 +396,16 @@ export class Course {
 
   draw(R, t) {
     const P = this.palette;
+    /* ★ 遠くに 広がる 地面。1 回の 描きで 出せる。
+       これが 無いと コースが **宙に 浮いて** 見え、
+       落ちた ときも 「どこへ 落ちたのか」が 分からない。
+       カメラの 下へ 付いてくる ので どこまでも 続いて 見える。 */
+    if (P.far) {
+      const cx = R._camPos ? R._camPos[0] : 0, cz = R._camPos ? R._camPos[2] : 0;
+      const y = (this.def.farY === undefined ? -26 : this.def.farY);
+      m4.compose(_m, cx, y, cz, 0, 900, 1, 900);
+      R.draw(M.slab, _m, P.far, 0, 0.02, 0, 0, 900);
+    }
     /* 床 */
     for (const f of this.floors) {
       let c = f.alt ? P.floorAlt : P.floor;
