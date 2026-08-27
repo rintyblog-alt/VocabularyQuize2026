@@ -120,7 +120,14 @@ export class Renderer {
   resize() {
     const gl = this.gl, c = this.canvas;
     const s = this.settings;
-    const cssW = Math.max(1, c.clientWidth || 1), cssH = Math.max(1, c.clientHeight || 1);
+    const cssW = c.clientWidth | 0, cssH = c.clientHeight | 0;
+    /* ★ 隠れている ときは **触らない**。
+       clientWidth が 0 の ときに 作り直すと 1×1 に 縮み、
+       戻ってきた とき 1 フレーム 潰れた 絵が 出る。
+       （タブを 切り替える・引き出しを 開く たびに 起きる） */
+    if (cssW < 2 || cssH < 2) {
+      return { w: this._sized.w || c.width, h: this._sized.h || c.height, cssW: cssW || 1, cssH: cssH || 1 };
+    }
     let ratio = Math.min(s.dpr, s.pixelRatio * s.dpr);
     let w = Math.round(cssW * ratio), h = Math.round(cssH * ratio);
     /* 画素の 上限。大きい画面ほど 効く。 */

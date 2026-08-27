@@ -1,0 +1,208 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   遊んでいる 間に 出る もの。
+
+   要件どおり: 時計・順位・人・コース名・中間地点
+   ＋ 合図（3・2・1・GO）と、門の 前の 予告。
+
+   決めごと:
+     ・**毎フレーム 文字を 書き換えない。** 変わった ときだけ 書く。
+       60Hz で textContent を 触ると それだけで 描きが 詰まる。
+     ・順位表は 8 行 固定。作り直さず 中身だけ 差し替える。
+   ══════════════════════════════════════════════════════════════════════════ */
+import { h } from "./shell.js";
+import { PALETTE, beanByIndex } from "./theme.js";
+
+export class HUD {
+  constructor() {
+    this._last = Object.create(null);
+    this.rows = [];
+    this.el = this._build();
+  }
+
+  _build() {
+    this.timeEl = h("span", { class: "vs-hud-time vs-mono", text: "0:00" });
+    this.rankNum = h("span", { class: "vs-hud-rank-n vs-mono", text: "–" });
+    this.rankOf = h("span", { class: "vs-hud-rank-of", text: "/ –" });
+    this.courseEl = h("span", { class: "vs-hud-course", text: "" });
+    this.cpEl = h("span", { class: "vs-hud-cp", text: "" });
+    this.progFill = h("i", { class: "vs-hud-progfill" });
+    this.progMe = h("i", { class: "vs-hud-progme" });
+
+    this.list = h("ol", { class: "vs-hud-list", "aria-label": "順位" });
+    for (let i = 0; i < 8; i++) {
+      const dot = h("i", { class: "vs-hud-dot" });
+      const nm = h("span", { class: "vs-hud-nm" });
+      const pc = h("span", { class: "vs-hud-pc vs-mono" });
+      const li = h("li", { class: "vs-hud-row" }, h("span", { class: "vs-hud-no vs-mono" }), dot, nm, pc);
+      li.style.display = "none";
+      this.rows.push({ li, dot, nm, pc, no: li.firstChild });
+      this.list.appendChild(li);
+    }
+
+    this.bigEl = h("div", { class: "vs-hud-big", "aria-live": "assertive" });
+    this.toastEl = h("div", { class: "vs-hud-toast" });
+
+    return h("div", { class: "vs-hud" },
+      h("div", { class: "vs-hud-top" },
+        h("div", { class: "vs-hud-left" },
+          h("div", { class: "vs-hud-timebox" }, this.timeEl),
+          h("div", { class: "vs-hud-meta" }, this.courseEl, this.cpEl)),
+        h("div", { class: "vs-hud-rank" }, this.rankNum, this.rankOf)),
+      h("div", { class: "vs-hud-prog" }, this.progFill, this.progMe),
+      this.list,
+      this.bigEl,
+      this.toastEl
+    );
+  }
+
+  setCourse(name, tier) {
+    if (this._last.course === name) return;
+    this._last.course = name;
+    this.courseEl.textContent = name;
+  }
+
+  /** 秒 → 0:00.0 */
+  _fmt(s) {
+    const m = Math.floor(s / 60);
+    const r = s - m * 60;
+    return m + ":" + (r < 10 ? "0" : "") + r.toFixed(1);
+  }
+
+  update(state) {
+    /* 時計 */
+    const t = this._fmt(Math.max(0, state.time));
+    if (t !== this._last.t) { this._last.t = t; this.timeEl.textContent = t; }
+
+    /* 順位 */
+    const r = state.rank ? String(state.rank) : "–";
+    if (r !== this._last.r) { this._last.r = r; this.rankNum.textContent = r; }
+    const of = "/ " + state.total;
+    if (of !== this._last.of) { this._last.of = of; this.rankOf.textContent = of; }
+
+    /* 中間地点 */
+    const cp = state.checkpoints > 0 ? ("中間 " + state.checkpoint + " / " + state.checkpoints) : "";
+    if (cp !== this._last.cp) { this._last.cp = cp; this.cpEl.textContent = cp; }
+
+    /* 進み */
+    const pct = Math.round(state.pct * 1000) / 10;
+    if (pct !== this._last.pct) {
+      this._last.pct = pct;
+      this.progFill.style.width = pct + "%";
+      this.progMe.style.left = pct + "%";
+    }
+
+    /* 一覧 */
+    const rows = state.standings || [];
+    for (let i = 0; i < this.rows.length; i++) {
+      const R = this.rows[i], d = rows[i];
+      if (!d) { if (R.li.style.display !== "none") R.li.style.display = "none"; continue; }
+      if (R.li.style.display === "none") R.li.style.display = "";
+      const key = d.rank + "|" + d.name + "|" + Math.round(d.pct * 100) + "|" + (d.finished ? 1 : 0);
+      if (R._key === key) continue;
+      R._key = key;
+      R.no.textContent = String(d.rank);
+      R.nm.textContent = d.name;
+      R.pc.textContent = d.finished ? "GOAL" : (Math.round(d.pct * 100) + "%");
+      R.dot.style.background = beanByIndex(d.colorIndex).hex;
+      R.li.setAttribute("data-me", d.me ? "1" : "0");
+      R.li.setAttribute("data-fin", d.finished ? "1" : "0");
+    }
+  }
+
+  /** 真ん中の 大きな 文字（3 / 2 / 1 / GO! / ゴール!） */
+  big(text, kind) {
+    this.bigEl.textContent = text || "";
+    this.bigEl.setAttribute("data-kind", kind || "");
+    if (text) {
+      this.bigEl.setAttribute("data-on", "1");
+      /* 動きを 出し直す（同じ 文字が 続いても） */
+      this.bigEl.style.animation = "none";
+      void this.bigEl.offsetWidth;
+      this.bigEl.style.animation = "";
+    } else this.bigEl.removeAttribute("data-on");
+  }
+
+  toast(text, kind) {
+    const el = h("div", { class: "vs-toast", "data-kind": kind || "", text });
+    this.toastEl.appendChild(el);
+    setTimeout(() => { try { el.remove(); } catch (e) {} }, 2200);
+  }
+}
+
+export const HUD_CSS = `
+.vs-hud{ position:absolute; inset:0; pointer-events:none; z-index:4;
+  padding: calc(12px + var(--vs-safe-t)) calc(14px + var(--vs-safe-r)) calc(12px + var(--vs-safe-b)) calc(14px + var(--vs-safe-l)); }
+.vs-hud-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.vs-hud-left{ display:flex; flex-direction:column; gap:5px; }
+.vs-hud-timebox{
+  display:inline-flex; align-items:center; height:38px; padding:0 14px; border-radius:12px;
+  background:rgba(8,11,28,.52); border:1px solid rgba(255,255,255,.14);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+}
+.vs-hud-time{ font-size:20px; font-weight:800; letter-spacing:.01em; }
+.vs-hud-meta{ display:flex; gap:10px; font-size:11.5px; color:rgba(243,245,255,.72); padding-left:3px;
+  text-shadow:0 1px 6px rgba(4,6,20,.9); }
+.vs-hud-course{ font-weight:700; }
+.vs-hud-rank{ display:flex; align-items:baseline; gap:4px;
+  background:rgba(8,11,28,.52); border:1px solid rgba(255,255,255,.14);
+  border-radius:12px; padding:4px 14px 6px;
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+.vs-hud-rank-n{ font-size:30px; font-weight:900; line-height:1; color:${PALETTE.amber}; }
+.vs-hud-rank-of{ font-size:12px; color:rgba(243,245,255,.6); }
+.vs-hud-prog{ position:relative; margin-top:10px; height:5px; border-radius:999px;
+  background:rgba(255,255,255,.16); overflow:visible; max-width:520px; }
+.vs-hud-progfill{ position:absolute; left:0; top:0; height:100%; width:0%; border-radius:999px;
+  background:linear-gradient(90deg,${PALETTE.mint},${PALETTE.blue}); transition:width .18s linear; }
+.vs-hud-progme{ position:absolute; top:50%; width:11px; height:11px; margin:-5.5px 0 0 -5.5px;
+  border-radius:50%; background:#fff; box-shadow:0 0 0 2px rgba(8,11,28,.6); transition:left .18s linear; }
+
+.vs-hud-list{ position:absolute; right:calc(14px + var(--vs-safe-r)); top:calc(96px + var(--vs-safe-t));
+  list-style:none; display:flex; flex-direction:column; gap:3px; min-width:172px; }
+.vs-hud-row{ display:flex; align-items:center; gap:7px; height:26px; padding:0 9px;
+  border-radius:8px; background:rgba(8,11,28,.44); border:1px solid rgba(255,255,255,.08);
+  font-size:12px; color:rgba(243,245,255,.86); }
+.vs-hud-row[data-me="1"]{ background:rgba(255,176,32,.20); border-color:rgba(255,176,32,.44); font-weight:800; }
+.vs-hud-row[data-fin="1"]{ opacity:.72; }
+.vs-hud-no{ width:14px; text-align:right; color:rgba(243,245,255,.55); font-size:11px; }
+.vs-hud-dot{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
+.vs-hud-nm{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vs-hud-pc{ font-size:11px; color:rgba(243,245,255,.62); }
+
+.vs-hud-big{
+  position:absolute; left:50%; top:38%; transform:translate(-50%,-50%);
+  font-size:clamp(48px,13vw,132px); font-weight:900; letter-spacing:-.03em;
+  color:#fff; text-shadow:0 6px 0 rgba(6,8,24,.35), 0 16px 46px rgba(0,0,0,.5);
+  opacity:0; pointer-events:none;
+}
+.vs-hud-big[data-on="1"]{ animation: vsBig .9s cubic-bezier(.2,1.1,.3,1) both; }
+.vs-hud-big[data-kind="go"]{ color:${PALETTE.mint}; }
+.vs-hud-big[data-kind="goal"]{ color:${PALETTE.amber}; font-size:clamp(34px,8vw,88px); }
+@keyframes vsBig{
+  0%{ opacity:0; transform:translate(-50%,-50%) scale(1.8); }
+  30%{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+  75%{ opacity:1; }
+  100%{ opacity:0; transform:translate(-50%,-50%) scale(.92); }
+}
+.vs-hud-toast{ position:absolute; left:50%; bottom:calc(96px + var(--vs-safe-b)); transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center; gap:6px; }
+.vs-toast{
+  padding:7px 16px; border-radius:999px; font-size:13px; font-weight:700;
+  background:rgba(8,11,28,.72); border:1px solid rgba(255,255,255,.16); color:#fff;
+  animation: vsToast 2.2s ease both;
+}
+.vs-toast[data-kind="good"]{ background:rgba(48,180,120,.86); border-color:rgba(255,255,255,.3); }
+.vs-toast[data-kind="bad"]{ background:rgba(200,60,70,.86); border-color:rgba(255,255,255,.3); }
+@keyframes vsToast{ 0%{opacity:0;transform:translateY(10px)} 12%{opacity:1;transform:none}
+  80%{opacity:1} 100%{opacity:0;transform:translateY(-8px)} }
+
+@media (max-width: 640px){
+  .vs-hud-list{ min-width:132px; top:calc(84px + var(--vs-safe-t)); }
+  .vs-hud-row{ height:22px; font-size:11px; }
+  .vs-hud-rank-n{ font-size:24px; }
+  .vs-hud-time{ font-size:17px; }
+}
+@media (max-height: 460px){
+  .vs-hud-list{ top:calc(66px + var(--vs-safe-t)); }
+  .vs-hud-big{ top:32%; }
+}
+`;

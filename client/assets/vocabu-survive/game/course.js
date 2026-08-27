@@ -301,9 +301,9 @@ export class Course {
         /* 木・柱 */
         const hh = 3 + rnd() * 7;
         this.decor.push({ m: M.cyl, x: p.x + side * off, y: y + hh / 2, z, ry: 0,
-          sx: 0.7 + rnd() * 0.5, sy: hh, sz: 0.7 + rnd() * 0.5, c: P.prop, e: 0, rim: 0.2 });
+          sx: 0.7 + rnd() * 0.5, sy: hh, sz: 0.7 + rnd() * 0.5, c: P.trunk, e: 0, rim: 0.2 });
         this.decor.push({ m: M.ball, x: p.x + side * off, y: y + hh + 1.2, z, ry: rnd() * TAU,
-          sx: 3 + rnd() * 2, sy: 2.6 + rnd() * 1.6, sz: 3 + rnd() * 2, c: P.floorAlt, e: 0, rim: 0.24 });
+          sx: 3 + rnd() * 2, sy: 2.6 + rnd() * 1.6, sz: 3 + rnd() * 2, c: P.leaf, e: 0, rim: 0.24 });
       } else if (kind < 0.7) {
         /* 岩 */
         const s = 1.4 + rnd() * 3.4;

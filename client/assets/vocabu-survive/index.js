@@ -20,6 +20,7 @@ class App {
   constructor() {
     this.shell = null;
     this.container = null;
+    this.audio = null;
     this.settings = null;
     this.caps = null;
     this.opened = false;
@@ -59,15 +60,33 @@ class App {
   }
 
   async _loadRest(loading) {
+    /* ★ ここは **本当に やっている 仕事**を 順に 出す。
+       束は 1 本なので 「読み込み中」は もう 終わっている。
+       嘘の 進み具合を 出すくらいなら 出さない ほうが よい。 */
     const steps = [
-      ["音を 用意しています", () => import("./audio/audio.js")],
+      ["音を 用意しています", async () => {
+        const m = await import("./audio/audio.js");
+        this.audio = new m.Audio3();
+        /* さわった ときに 開ける（iPhone は それまで 鳴らせない） */
+        const open = () => { try { this.audio.unlock(); } catch (e) {} };
+        this._audioOpen = open;
+        window.addEventListener("pointerdown", open, { once: true, capture: true });
+        window.addEventListener("keydown", open, { once: true, capture: true });
+        return m;
+      }],
       ["コースを 読み込んでいます", () => import("./data/courses.js")],
       ["ロビーを 用意しています", () => import("./ui/lobby.js")],
       ["通信の 準備をしています", () => import("./net/client.js")],
-      ["試合の 仕組みを 読み込んでいます", () => import("./game/match.js")]
+      ["試合の 仕組みを 読み込んでいます", () => import("./game/match.js")],
+      ["問題を 先に 取っています", async () => {
+        const q = await import("./data/questions.js");
+        /* 通信が 遅くても ここで 待たない。控えは すでに 手元に ある。 */
+        try { q.fetchQuestions({ count: 8, seed: 1 }).then((r) => { this._warmQuestions = r; }).catch(() => {}); } catch (e) {}
+        return q;
+      }]
     ];
     const mods = {};
-    const keys = ["audio", "courses", "lobby", "net", "match"];
+    const keys = ["audio", "courses", "lobby", "net", "match", "questions"];
     for (let i = 0; i < steps.length; i++) {
       const [label, fn] = steps[i];
       loading.setProgress(i / steps.length, label);
@@ -117,6 +136,7 @@ class App {
 
   async goLobby() {
     if (!this.shell) return;
+    if (this.audio) { try { this.audio.startMusic("calm"); } catch (e) {} }
     if (this.shell.get("lobby")) { this.screenName = "lobby"; await this.shell.show("lobby"); }
     else { this.screenName = "loading"; await this.shell.show("loading"); }
   }
@@ -124,6 +144,7 @@ class App {
   async startMatch(cfg) {
     if (!this.shell || !this.shell.get("match")) { await this.goLobby(); return; }
     this.screenName = "match";
+    if (this.audio) { try { this.audio.unlock(); this.audio.startMusic("run"); } catch (e) {} }
     await this.shell.show("match", cfg);
   }
 
@@ -141,6 +162,14 @@ class App {
     if (!this.opened) return;
     this.opened = false;
     this.screenName = "";
+    if (this.audio) { try { this.audio.destroy(); } catch (e) {} this.audio = null; }
+    if (this._audioOpen) {
+      try {
+        window.removeEventListener("pointerdown", this._audioOpen, true);
+        window.removeEventListener("keydown", this._audioOpen, true);
+      } catch (e) {}
+      this._audioOpen = null;
+    }
     if (this.shell) { try { this.shell.destroy(); } catch (e) {} this.shell = null; }
     this.container = null;
     this._loadPromise = null;
