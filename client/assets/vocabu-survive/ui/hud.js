@@ -113,6 +113,16 @@ export class HUD {
     /* ゴーストとの 差。**時間**で 出す（「あと 何 m」より 分かりやすい）。 */
     this.ghostEl = h("div", { class: "vs-hud-ghost vs-hide vs-mono" });
 
+    /* ── 観戦の 帯（脱落した あと）──────────────────────────────────
+       ★ **「結果を 見る」を 必ず 出す。** 見たくない 人を 閉じ込めない。 */
+    this.specName = h("b", { class: "vs-spec-nm" });
+    this.specPrev = h("button", { class: "vs-spec-b", type: "button", "aria-label": "前の 人" }, "◀");
+    this.specNext = h("button", { class: "vs-spec-b", type: "button", "aria-label": "次の 人" }, "▶");
+    this.specEnd = h("button", { class: "vs-spec-e", type: "button" }, "結果を 見る");
+    this.specEl = h("div", { class: "vs-spec vs-hide", role: "status" },
+      h("span", { class: "vs-spec-l", text: "観戦中" }),
+      this.specPrev, this.specName, this.specNext, this.specEnd);
+
     return h("div", { class: "vs-hud" },
       h("div", { class: "vs-hud-top" },
         h("div", { class: "vs-hud-left" },
@@ -121,6 +131,7 @@ export class HUD {
         h("div", { class: "vs-hud-rank" }, this.rankNum, this.rankOf)),
       h("div", { class: "vs-hud-prog" }, this.progFill, this.progMe),
       this.ghostEl,
+      this.specEl,
       this.teamEl,
       this.list,
       this.bigEl,
@@ -225,6 +236,18 @@ export class HUD {
     } else this.bigEl.removeAttribute("data-on");
   }
 
+  /** 観戦の 帯を 出す。name だけ 渡すと 名前の 入れ替えに なる。 */
+  spectate(name, onStep, onEnd) {
+    this.specName.textContent = String(name || "");
+    if (onStep) {
+      this.specPrev.onclick = () => onStep(-1);
+      this.specNext.onclick = () => onStep(1);
+    }
+    if (onEnd) this.specEnd.onclick = () => onEnd();
+    this.specEl.classList.remove("vs-hide");
+  }
+  spectateOff() { this.specEl.classList.add("vs-hide"); }
+
   toast(text, kind) {
     const el = h("div", { class: "vs-toast", "data-kind": kind || "", text });
     this.toastEl.appendChild(el);
@@ -233,6 +256,21 @@ export class HUD {
 }
 
 export const HUD_CSS = `
+.vs-spec{ align-self:flex-start; width:max-content; max-width:96%;
+  margin:6px 0 0; padding:5px 8px 5px 12px; border-radius:999px;
+  display:flex; align-items:center; gap:8px; font-size:13px;
+  background:rgba(12,16,28,.72); color:#f3f5ff; border:1px solid rgba(255,255,255,.14); }
+.vs-spec-l{ color:rgba(243,245,255,.55); font-size:12px; }
+.vs-spec-nm{ min-width:5em; text-align:center; font-weight:800; }
+.vs-spec-b{ width:26px; height:26px; border-radius:50%; border:1px solid rgba(255,255,255,.18);
+  background:transparent; color:#f3f5ff; font:inherit; font-size:11px; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; padding:0; }
+.vs-spec-b:hover{ background:rgba(255,255,255,.10); }
+.vs-spec-e{ height:26px; padding:0 12px; border-radius:999px; border:1px solid rgba(255,255,255,.18);
+  background:rgba(255,255,255,.08); color:#f3f5ff; font:inherit; font-size:12px;
+  font-weight:700; cursor:pointer; }
+.vs-spec-e:hover{ background:rgba(255,255,255,.16); }
+
 /* ★ **幅を 中身に 合わせる。** 親が 縦積みの 箱なので、
    放っておくと 横いっぱいに 伸びて 画面を 横切る 帯に なる（実写で 気づいた）。 */
 .vs-hud-ghost{ align-self:flex-start; width:max-content; max-width:60%;

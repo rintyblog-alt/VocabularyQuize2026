@@ -277,6 +277,9 @@ export class MatchScreen {
     this.stepper.acc = 0;
     this._lastCount = -1;
     this._done = false;
+    this._saved = false;          /* 記録を 残したか（脱落と ゴールで 二重に 残さない） */
+    this.spectate = null;         /* 観戦中に 見ている 人 */
+    this._newBest = false; this._prevBest = 0; this._prevSplits = []; this._xp = 0;
     return this;
   }
 
@@ -376,10 +379,14 @@ export class MatchScreen {
       });
     }
 
-    /* ④ カメラ */
-    const meV = this.visuals.get(this.local.id);
-    const target = meV && meV.draw ? meV.draw : this.local;
-    this.cam.update(dt, [target.x, target.y, target.z], this.local.speed, sz.w / Math.max(1, sz.h));
+    /* ④ カメラ。観戦中は **見ている 人**を 追う。 */
+    this._spectateTick();
+    const camP = this.spectate
+      ? (this.sim.players.filter((q) => q.id === this.spectate.id)[0] || this.local)
+      : this.local;
+    const meV = this.visuals.get(camP.id);
+    const target = meV && meV.draw ? meV.draw : camP;
+    this.cam.update(dt, [target.x, target.y, target.z], camP.speed, sz.w / Math.max(1, sz.h));
 
     /* ⑤ 描く */
     const R = this.renderer;
@@ -531,8 +538,11 @@ export class MatchScreen {
           this._finish();
         } else this.hud.toast(e.p.name + " が ゴール（" + e.rank + "位）");
       } else if (e.t === "eliminated") {
-        /* サバイバル: 落ちたら 脱落 */
-        if (e.p === this.local) { this.hud.big("脱落…", "goal"); this._finish(); }
+        /* サバイバル: 落ちたら 脱落。
+           ★ **すぐ 結果を 出さない。** 出すと 誰が 勝ったのか 分からないまま
+             終わって しまう（落ちた 瞬間に 幕が 下りる）。
+             まだ 走っている 人が いれば 観戦に 入る。 */
+        if (e.p === this.local) { this.hud.big("脱落…", "goal"); this._eliminatedSelf(); }
         else this.hud.toast(e.p.name + " が 脱落（残り " + e.left + " 人）", "bad");
         if (this.fx) this.fx.hit(e.p.x, e.p.y + 0.8, e.p.z, 1.2, this.course.palette.danger);
       } else if (e.t === "lastone") {
@@ -674,39 +684,48 @@ export class MatchScreen {
     };
   }
 
+  /* ── 観戦 ────────────────────────────────────────────────────────
+     脱落した あと、まだ 走っている 人を 見る。
+     ★ 記録は **落ちた その 場で** 残す（見ている 途中で 抜けても 消えない）。 */
+  _eliminatedSelf() {
+    this._saveSelf();
+    const 残り = this.sim.players.filter((q) => !q.finished && q !== this.local);
+    if (!残り.length) { this._finish(); return; }
+    this.spectate = { id: 残り[0].id };
+    this.hud.spectate(残り[0].name, (d) => this._spectateStep(d), () => this._finish());
+  }
+  _spectateAlive() {
+    return this.sim.players.filter((q) => !q.finished && q !== this.local);
+  }
+  _spectateStep(d) {
+    const list = this._spectateAlive();
+    if (!list.length) { this._finish(); return; }
+    let i = list.findIndex((q) => q.id === (this.spectate && this.spectate.id));
+    if (i < 0) i = 0;
+    i = (i + (d > 0 ? 1 : -1) + list.length) % list.length;
+    this.spectate = { id: list[i].id };
+    this.hud.spectate(list[i].name, null, null);
+  }
+  /** 見ている 人が 居なく なったら 結果へ。毎コマ 呼ぶ。 */
+  _spectateTick() {
+    if (!this.spectate) return;
+    const list = this._spectateAlive();
+    if (!list.length) { this._finish(); return; }
+    if (!list.some((q) => q.id === this.spectate.id)) {
+      this.spectate = { id: list[0].id };
+      this.hud.spectate(list[0].name, null, null);
+    }
+  }
+
   _finish() {
     if (this._done) return;
     this._done = true;
     const p = this.local;
-    const key = BEST_KEY + ":" + this.course.id;
-    let best = 0;
-    try { best = Number(localStorage.getItem(key) || 0) || 0; } catch (e) {}
-    const newBest = p.finished && (!best || p.finishTime < best);
-    const 前の区間 = this._bestSplits();
-    if (newBest) {
-      try {
-        localStorage.setItem(key, String(p.finishTime));
-        /* 区間も 一緒に 覚える。**ベストを 更新した ときだけ**。
-           更新して いないのに 上書きすると 「一番 速かった 走り」で なくなる。 */
-        if (this._splits && this._splits.length) {
-          localStorage.setItem(SPLIT_KEY + ":" + this.course.id, JSON.stringify(this._splits));
-        }
-        /* ★ 走りの 記録も 覚える。**自己ベストの ときだけ。**
-           毎回 上書きすると 「一番 速かった 走り」で なくなる。
-           置き場は IndexedDB（localStorage は もう いっぱい）。 */
-        if (!this.online && this.ghostRec.length >= 4) {
-          saveGhost(this.course.id, this.ghostRec.a.slice(), p.finishTime * 1000).catch(() => {});
-        }
-      } catch (e) {}
-    }
-    const acc = (p.quizCorrect + p.quizWrong) > 0 ? p.quizCorrect / (p.quizCorrect + p.quizWrong) : 0;
-    const xp = Math.round(
-      (p.finished ? 120 : 40) +
-      Math.max(0, 8 - p.rank) * 24 +
-      p.quizCorrect * 18 +
-      Math.round(acc * 60) +
-      this.course.difficulty * 12
-    );
+    /* 記録は もう 残して いる ことが ある（脱落した その 場で 残す）。
+       _saveSelf は 2 回目 以降 何も しない。 */
+    this._saveSelf();
+    this.spectate = null;
+    if (this.hud.spectateOff) this.hud.spectateOff();
     const rows = this.sim.standings().map((r) => Object.assign({}, r, { me: r.id === this.local.id }));
     if (this.app && this.app.audio) {
       try { this.app.audio.stopMusic(); this.app.audio.results(p.rank === 1); } catch (e) {}
@@ -715,21 +734,19 @@ export class MatchScreen {
       this.result.show({
         rank: p.rank, total: this.sim.players.length, finished: p.finished,
         time: p.finishTime, correct: p.quizCorrect, wrong: p.quizWrong,
-        respawns: p.respawns, xp, best: newBest ? p.finishTime : best, newBest,
+        respawns: p.respawns, xp: this._xp || 0,
+        best: this._newBest ? p.finishTime : (this._prevBest || 0), newBest: !!this._newBest,
         eliminated: !!p.eliminated, mode: this.sim.mode,
         teams: this.sim.mode === MODE.TEAM ? this.sim.teamScores() : null,
         myTeam: p.team,
         standings: rows, courseName: this.course.name,
         splits: (this._splits || []).slice(),
-        bestSplits: 前の区間,
+        bestSplits: this._prevSplits || [],
         cup: this._cupResult(rows)
       });
       if (this.net && this.net.sendResult) {
-        this.net.sendResult({ finished: p.finished, time: p.finishTime, rank: p.rank, xp });
+        this.net.sendResult({ finished: p.finished, time: p.finishTime, rank: p.rank, xp: this._xp || 0 });
       }
-      this._saveStats({ courseId: this.course.id, rank: p.rank, time: p.finishTime,
-        finished: p.finished, correct: p.quizCorrect, wrong: p.quizWrong, xp,
-        splits: (this._splits || []).slice(0, 16) });
     }, p.finished ? 1400 : 500);
   }
 
@@ -778,6 +795,42 @@ export class MatchScreen {
         cup: { round: c.round + 1, rounds: c.rounds, courses: c.courses, bots }
       } : null
     };
+  }
+
+  /** 自分の 記録（自己ベスト・区間・ゴースト・サーバ）。**1 回だけ**。 */
+  _saveSelf() {
+    if (this._saved) return;
+    this._saved = true;
+    const p = this.local;
+    const key = BEST_KEY + ":" + this.course.id;
+    let best = 0;
+    try { best = Number(localStorage.getItem(key) || 0) || 0; } catch (e) {}
+    const newBest = p.finished && !p.eliminated && (!best || p.finishTime < best);
+    /* ★ **上書きする 前に** 前の 区間を 取っておく。
+       あとで 読むと 「いま 出した 走り」と 比べる ことに なって 差が 全部 0 に なる。 */
+    this._prevSplits = this._bestSplits();
+    if (newBest) {
+      try {
+        localStorage.setItem(key, String(p.finishTime));
+        if (this._splits && this._splits.length) {
+          localStorage.setItem(SPLIT_KEY + ":" + this.course.id, JSON.stringify(this._splits));
+        }
+        if (!this.online && this.ghostRec.length >= 4) {
+          saveGhost(this.course.id, this.ghostRec.a.slice(), p.finishTime * 1000).catch(() => {});
+        }
+      } catch (e) {}
+    }
+    this._newBest = newBest;
+    this._prevBest = best;
+    const acc = (p.quizCorrect + p.quizWrong) > 0 ? p.quizCorrect / (p.quizCorrect + p.quizWrong) : 0;
+    this._xp = Math.round(
+      (p.finished && !p.eliminated ? 120 : 40) +
+      Math.max(0, 8 - p.rank) * 24 + p.quizCorrect * 18 +
+      Math.round(acc * 60) + this.course.difficulty * 12
+    );
+    this._saveStats({ courseId: this.course.id, rank: p.rank, time: p.finishTime,
+      finished: p.finished && !p.eliminated, correct: p.quizCorrect, wrong: p.quizWrong, xp: this._xp,
+      splits: (this._splits || []).slice(0, 16) });
   }
 
   _saveStats(row) {
