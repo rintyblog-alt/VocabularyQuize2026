@@ -290,11 +290,14 @@ C.push({
     GATE(12),
     CP(),
     { t: "gap", len: 24, obs: [
-      o("blinker", 4.2, { w: 4.0, d: 4.0, period: 3.4, duty: 0.72, phase: 0.0, dx: -2.2 }),
-      o("blinker", 8.4, { w: 4.0, d: 4.0, period: 3.4, duty: 0.72, phase: 0.12, dx: 2.2 }),
-      o("blinker", 12.6, { w: 4.0, d: 4.0, period: 3.4, duty: 0.72, phase: 0.24, dx: -2.2 }),
-      o("blinker", 16.8, { w: 4.0, d: 4.0, period: 3.4, duty: 0.72, phase: 0.36, dx: 2.2 }),
-      o("blinker", 21, { w: 4.6, d: 4.6, period: 3.4, duty: 0.72, phase: 0.48 })] },
+      /* ★ 横 ±2.2・前後 4.2 だと 中心どうし 6.08m。
+         毎回 46 度 曲がる ことに なり、曲がる ぶん 速さが 落ちて 届かない。
+         横を ±1.3 に して 曲がりを 浅くする（実測で 62 回 落ちていた）。 */
+      o("blinker", 4.2, { w: 4.4, d: 4.4, period: 3.4, duty: 0.72, phase: 0.0, dx: -1.3 }),
+      o("blinker", 8.4, { w: 4.4, d: 4.4, period: 3.4, duty: 0.72, phase: 0.12, dx: 1.3 }),
+      o("blinker", 12.6, { w: 4.4, d: 4.4, period: 3.4, duty: 0.72, phase: 0.24, dx: -1.3 }),
+      o("blinker", 16.8, { w: 4.4, d: 4.4, period: 3.4, duty: 0.72, phase: 0.36, dx: 1.3 }),
+      o("blinker", 21, { w: 4.8, d: 4.8, period: 3.4, duty: 0.72, phase: 0.48 })] },
     P(14, 11),
     GATE(12),
     PW(20, 12),
@@ -317,11 +320,11 @@ C.push({
     GATE(12),
     CP(),
     { t: "gap", len: 28, obs: [
-      o("faller", 3.5, { w: 3.4, d: 3.4, delay: 0.42, dx: -3 }),
-      o("faller", 7.5, { w: 3.4, d: 3.4, delay: 0.42, dx: 3 }),
-      o("faller", 11.5, { w: 3.4, d: 3.4, delay: 0.42, dx: -3 }),
-      o("faller", 15.5, { w: 3.4, d: 3.4, delay: 0.42, dx: 3 }),
-      o("faller", 19.5, { w: 3.4, d: 3.4, delay: 0.42 }),
+      o("faller", 3.5, { w: 3.4, d: 3.4, delay: 0.66, dx: -3 }),
+      o("faller", 7.5, { w: 3.4, d: 3.4, delay: 0.66, dx: 3 }),
+      o("faller", 11.5, { w: 3.4, d: 3.4, delay: 0.66, dx: -3 }),
+      o("faller", 15.5, { w: 3.4, d: 3.4, delay: 0.66, dx: 3 }),
+      o("faller", 19.5, { w: 3.4, d: 3.4, delay: 0.66 }),
       o("faller", 24, { w: 4.4, d: 4.4, delay: 0.5 })] },
     P(14, 11),
     GATE(12),
@@ -448,10 +451,13 @@ C.push({
     CP(14),
     { t: "gap", len: 32, obs: [
       o("narrow", 16, { dx: -10, w: 1.5, d: 30, wave: 2.2 }),
-      o("blinker", 6, { w: 4, d: 4, period: 3.4, duty: 0.72, phase: 0.0 }),
-      o("blinker", 13, { w: 4, d: 4, period: 3.4, duty: 0.72, phase: 0.12 }),
-      o("blinker", 20, { w: 4, d: 4, period: 3.4, duty: 0.72, phase: 0.24 }),
-      o("blinker", 27, { w: 4, d: 4, period: 3.4, duty: 0.72, phase: 0.36 }),
+      /* ★ 中心どうし 7m は 遠い（跳べるのは 縁から 5.88m）。
+         5.4m ずつに して 1 枚 増やす。 */
+      o("blinker", 5, { w: 4.6, d: 4.6, period: 3.4, duty: 0.72, phase: 0.0 }),
+      o("blinker", 10.4, { w: 4.6, d: 4.6, period: 3.4, duty: 0.72, phase: 0.11 }),
+      o("blinker", 15.8, { w: 4.6, d: 4.6, period: 3.4, duty: 0.72, phase: 0.22 }),
+      o("blinker", 21.2, { w: 4.6, d: 4.6, period: 3.4, duty: 0.72, phase: 0.33 }),
+      o("blinker", 26.6, { w: 4.6, d: 4.6, period: 3.4, duty: 0.72, phase: 0.44 }),
       o("stones", 4, { dx: 10, count: 7, gap: 4.4, spread: 1.4, r: 1.4, bob: 0.7 })] },
     PW(18, 18),
     GATE(12, 9),
@@ -471,8 +477,10 @@ C.push({
     P(10, 10),
     GATE(12),
     CP(),
-    { t: "gap", len: 30, obs: [o("narrow", 15, { w: 1.5, d: 28, wave: 3.4 }),
-                               o("spinner", 15, { len: 8, speed: 0.9, height: 0.7 })] },
+    /* ★ 幅 1.5m の 道の 上に 回る 棒を 置くと、避ける 場所が どこにも 無い。
+       弾かれたら 必ず 落ちる（実測で 9 回）。棒は **広い 台の 上**へ 移す。 */
+    PW(14, 12, [o("spinner", 7, { len: 10, speed: 0.9, height: 0.7 })]),
+    { t: "gap", len: 26, obs: [o("narrow", 13, { w: 1.7, d: 24, wave: 3.0 })] },
     P(10, 10),
     { t: "gap", len: 24, obs: [o("narrow", 12, { w: 1.4, d: 22, wave: 4.0 })] },
     P(12, 11),
@@ -566,7 +574,7 @@ C.push({
       /* ★ 横 -3.4 → +3.4 は 6.8m の 移動。前後 3.6 と 合わせて 7.7m に なり
          **跳べない**（実測 5.88m）。振り幅を 半分に する。 */
       for (let i = 0; i < 9; i++) {
-        a.push(o("faller", 3.4 + i * 3.6, { w: 3.4, d: 3.4, delay: 0.48,
+        a.push(o("faller", 3.4 + i * 3.6, { w: 3.4, d: 3.4, delay: 0.66,
           dx: [0, -1.7, 1.7, 0, -1.7, 1.7, 0, -1.7, 1.7][i] }));
       }
       return a;
@@ -577,7 +585,7 @@ C.push({
     { t: "gap", len: 36, obs: (() => {
       const a = [];
       for (let i = 0; i < 10; i++) {
-        a.push(o("faller", 3.2 + i * 3.4, { w: 3.2, d: 3.2, delay: 0.44, back: 4.4,
+        a.push(o("faller", 3.2 + i * 3.4, { w: 3.2, d: 3.2, delay: 0.66, back: 4.4,
           dx: Math.sin(i * 0.9) * 2.6 }));
       }
       return a;
@@ -769,7 +777,7 @@ C.push({
     PW(16, 11, [o("roller", 8, { len: 11, r: 1.1, push: 4.0 })]),
     ICE(16, 8),
     { t: "gap", len: 18, obs: [o("blinker", 5, { w: 3.8, d: 3.8, period: 3.4, duty: 0.72, phase: 0.0 }),
-                               o("faller", 11, { w: 3.8, d: 3.8, delay: 0.48 }),
+                               o("faller", 11, { w: 3.8, d: 3.8, delay: 0.66 }),
                                o("mover", 16, { w: 4, d: 4, ax: 5, period: 3.2 })] },
     GATE(11),
     CP(),
@@ -806,10 +814,10 @@ C.push({
     CP(14),
     /* ★ 前後 5m ＋ 横 3.4m は 6.05m。跳べる 5.88m を 超えていた。
        前後 4.4m・横 1.6m に して 4.7m に する。 */
-    { t: "gap", len: 22, obs: [o("faller", 4, { w: 3.8, d: 3.8, delay: 0.48 }),
-                               o("faller", 8.4, { w: 3.8, d: 3.8, delay: 0.48, dx: -1.6 }),
-                               o("faller", 12.8, { w: 3.8, d: 3.8, delay: 0.48, dx: 1.6 }),
-                               o("faller", 17.2, { w: 3.8, d: 3.8, delay: 0.48 })] },
+    { t: "gap", len: 22, obs: [o("faller", 4, { w: 3.8, d: 3.8, delay: 0.66 }),
+                               o("faller", 8.4, { w: 3.8, d: 3.8, delay: 0.66, dx: -1.6 }),
+                               o("faller", 12.8, { w: 3.8, d: 3.8, delay: 0.66, dx: 1.6 }),
+                               o("faller", 17.2, { w: 3.8, d: 3.8, delay: 0.66 })] },
     PW(14, 12),
     GATE(11, 8),
     TURN(18, 11, 12),

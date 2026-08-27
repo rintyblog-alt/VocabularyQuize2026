@@ -317,6 +317,12 @@ export class Bot {
            熱い 床が 道を ふさぐ コース（c19）では、
            「前へ 1.2m 以上 進む 所」だけに 絞ると 逃げ道が 消える。 */
         if (np <= prog + 0.8) continue;
+        /* ★ **そもそも 届かない 所は 候補に しない。**
+           縁から の 距離 ÷ 滞空 0.66 秒 が 最高速を 超えるなら 無理。
+           前は 候補に 残っていて、逃げの 判断が それを 掴んで
+           同じ 場所で 42 回 落ちていた（c17 で 実測）。 */
+        const 縁から = Math.max(0, d - (縁まで < 1e8 ? 縁まで : 0));
+        if (縁から > 1.2 && 縁から / 0.66 > TUNE.maxSpeed * 1.08) continue;
         /* ★ **一番 近い** 着地点を 選ぶ。
            「前へ 進む ほど 良い」に すると、手前の 石を 飛び越して
            その 先の 石を 狙い、間の 谷に 落ちる（実際 c07 で そうなった）。
@@ -545,20 +551,32 @@ export class Bot {
         /* ★ 「残り時間が 短ければ 縁を 待たずに 跳ぶ」も 試したが、
            通過が 23→20 に 落ちた（半端な 位置から 跳んで 届かない）。
            縁まで 走って から 跳ぶ ほうが 結局 速い。 */
+        /* 崩れる 足場に 乗ったら 助走の 予定は 捨てる（下がる 場所が 無い） */
+        if (急ぐ) this.runup = 0;
+
         if ((縁 <= 跳ぶ距離 || (急ぐ && 縁 <= 跳ぶ距離 + 0.8)) && 足りる) {
           inp.jump = true;
           /* 押し続ける 長さで 高さが 決まる。近いほど 短く。 */
           this.jumpHold = Math.round(clamp(縁から着地まで * 2.8 + 上り * 6, 4, 16));
           this.runup = 0;
           this.reason = "跳ぶ";
-        } else if (縁 <= 跳ぶ距離 && !足りる) {
-          /* 速さが 足りない。下がって 走り直す。 */
+        } else if (縁 <= 跳ぶ距離 && !足りる && !急ぐ) {
+          /* 速さが 足りない。下がって 走り直す。
+             ★ ただし **崩れる／消える 足場では やらない**。
+               下がっている 間に 足元が 無くなる（c12 で 12 回 落ちた）。 */
           if (this.runup <= 0) this.runup = 0.55;
           this.reason = "助走";
-        } else if (this.runup > 0) {
+        } else if (this.runup > 0 && !急ぐ) {
           this.runup -= STEP;
           inp.mx = -ux * 0.95; inp.mz = -uz * 0.95;
           this.reason = "助走";
+        } else if (急ぐ && 縁 <= 跳ぶ距離 + 0.4) {
+          /* ★ 崩れる 足場の 縁で 速さが 足りない。
+             それでも **跳ぶ**。歩いて 縁を 越えたら 確実に 落ちる。
+             届かなくても 跳んだ ほうが まだ 望みが ある
+             （実測で ここが 「縁へ」に なって 6 回 落ちていた）。 */
+          inp.jump = true; this.jumpHold = 16; inp.jumpDown = true;
+          this.reason = "苦しいが跳ぶ";
         } else {
           this.reason = "縁へ";
         }
@@ -578,10 +596,19 @@ export class Bot {
         const az = 逃げ ? (逃げ.z - p.z) : dirz * 4;
         const al = Math.hypot(ax, az) || 1;
         inp.mx = (ax / al) * L.speed; inp.mz = (az / al) * L.speed;
-        if (p.grounded) { inp.jump = true; this.jumpHold = 16; }
+        /* ★ **届くと 分かった ときだけ 跳ぶ。**
+           前は 見つけたら すぐ 跳んでいたので、遠すぎる 所へ 跳んで
+           同じ 場所で 43 回 落ちていた（c17 で 実測）。
+           届かない なら 走って 近づく。そのうち ふつうの 判断が 引き継ぐ。 */
+        const 要る = al <= 2.6 ? 0 : (al / 0.66);
+        if (p.grounded && p.speed >= 要る * 0.94) {
+          inp.jump = true; this.jumpHold = 16;
+          this.reason = "先を読んで跳ぶ";
+        } else {
+          this.reason = "先へ 近づく";
+        }
         inp.jumpDown = this.jumpHold > 0;
         if (this.jumpHold > 0) this.jumpHold--;
-        this.reason = 逃げ ? "先を読んで跳ぶ" : "とにかく跳ぶ";
       } else {
         /* 行き先が 無い。**跳ばない。** 待てば 板が 戻ってくる。
            ただし ずっと 戻ってこない ことも あるので、

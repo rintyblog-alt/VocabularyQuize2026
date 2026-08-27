@@ -272,7 +272,10 @@ export class FallingPlatform extends Obstacle {
     super(c, o);
     this.kind = "faller";
     this.w = o.w || 3; this.d = o.d || 3;
-    this.delay = o.delay === undefined ? 0.55 : o.delay;
+    /* ★ 0.36〜0.48 秒 だと、着地 → 見て 決める → 縁まで 走る → 跳ぶ が
+       間に合わない（ボットで 151 回 落ちた）。人でも 同じ。
+       0.66 秒 に する。「止まったら 落ちる」という 芯は 変わらない。 */
+    this.delay = o.delay === undefined ? 0.66 : o.delay;
     this.back = o.back === undefined ? 3.6 : o.back;
     this.state = 0;    /* 0 待ち / 1 揺れ / 2 落下 / 3 戻り */
     this.tick = 0;
