@@ -16,6 +16,8 @@ import { h, svg } from "./shell.js";
 import { PALETTE, BEAN_COLORS, beanByIndex } from "./theme.js";
 import { COURSES, tierOf, TIERS } from "../data/courses.js";
 import { themeOf } from "../game/theme3d.js";
+import { SurviveNet, createRoom, roomInfo } from "../net/client.js";
+import { buildCourse } from "../game/course.js";
 
 const MODES = [
   { key: "race", label: "レース", desc: "先に ゴールした 人が 勝ち", ready: true },
@@ -41,6 +43,7 @@ export class LobbyScreen {
     this.friends = [];
     this.me = { id: "me", name: "あなた", colorIndex: 0, ready: false, online: true };
     this.roomId = "";
+    this.isHost = false;
     this.net = null;
 
     this._restore();
@@ -125,6 +128,19 @@ export class LobbyScreen {
       class: "vs-btn vs-lb-start", type: "button",
       onclick: () => this._start()
     }, "スタート");
+    /* みんなで あそぶ */
+    this.codeInput = h("input", {
+      class: "vs-lb-code", type: "text", inputmode: "latin", maxlength: "6",
+      placeholder: "あいことば", "aria-label": "あいことば", autocomplete: "off", spellcheck: "false"
+    });
+    this.makeBtn = h("button", { class: "vs-btn is-sm is-ghost", type: "button", onclick: () => this._makeRoom() }, "部屋を 作る");
+    this.joinBtn = h("button", { class: "vs-btn is-sm is-ghost", type: "button", onclick: () => this._joinRoom() }, "入る");
+    this.leaveBtn = h("button", { class: "vs-btn is-sm is-ghost vs-hide", type: "button", onclick: () => this._leaveRoom() }, "部屋を 出る");
+    this.netNote = h("p", { class: "vs-lb-note" });
+    this.onlineEl = h("div", { class: "vs-lb-online" },
+      h("div", { class: "vs-lb-onrow" }, this.makeBtn, this.codeInput, this.joinBtn),
+      this.leaveBtn, this.netNote);
+
     this.botRow = h("div", { class: "vs-lb-bots" });
     this.botCount = 3;
     for (const n of [0, 1, 3, 5, 7]) {
@@ -156,6 +172,7 @@ export class LobbyScreen {
           h("div", { class: "vs-lb-lab", text: "人数（相手が いなければ ボット）" }), this.botRow,
           h("div", { class: "vs-lb-lab", text: "いま 集まっている 人" }), this.partyEl,
           this.roomEl,
+          h("div", { class: "vs-lb-lab", text: "みんなで あそぶ" }), this.onlineEl,
           h("div", { class: "vs-lb-actions" }, this.readyBtn, this.startBtn))));
   }
 
@@ -195,6 +212,24 @@ export class LobbyScreen {
   }
   _start() {
     const c = COURSES[this.courseIndex];
+    if (this.net && this.roomId) {
+      if (!this.isHost) { this.netNote.textContent = "部屋主だけが 始められます。"; return; }
+      /* コースの 長さは サーバの 検算に 使う。ここで 一度 組み立てて 測る。 */
+      let len = 0;
+      try {
+        if (!this._lenCache) this._lenCache = {};
+        if (this._lenCache[c.id] === undefined) {
+          /* 一度 組み立てて 長さを 測る（数 ms）。結果は 覚える。 */
+          this._lenCache[c.id] = Math.round(buildCourse(c).length);
+        }
+        len = this._lenCache[c.id] || 0;
+      } catch (e) { len = 0; }
+      this.net.setCourse(c.id);
+      this.net.setMode(this.mode);
+      this.net.start(len);
+      this.netNote.textContent = "始めます…";
+      return;
+    }
     this.onPlay({
       courseId: c.id,
       mode: this.mode,
@@ -204,6 +239,92 @@ export class LobbyScreen {
       players: this.party.filter((p) => p.id !== this.me.id),
       seed: (Date.now() / 1000) | 0
     });
+  }
+
+  /* ── みんなで あそぶ ─────────────────────────────────────────── */
+  _netHandlers() {
+    return {
+      onRoom: (room) => {
+        if (!room) return;
+        this.roomId = room.roomId || this.roomId;
+        this.isHost = String(room.hostId) === String(this.net && this.net.you);
+        this.party = (room.players || []).map((p) => ({
+          id: p.id, name: p.name, colorIndex: p.colorIndex,
+          ready: p.ready, online: p.online
+        }));
+        /* 自分の 行は 自分の ものへ 揃える */
+        const mine = this.party.find((p) => p.id === (this.net && this.net.you));
+        if (mine) { this.me.id = mine.id; this.me.colorIndex = mine.colorIndex; this.me.ready = mine.ready; this.ready = mine.ready; }
+        const idx = COURSES.findIndex((c) => c.id === room.courseId);
+        if (idx >= 0 && !this.isHost) this.courseIndex = idx;
+        if (room.mode && !this.isHost) this.mode = room.mode;
+        this.netNote.textContent = this.isHost
+          ? "あなたが 部屋主です。全員が 準備 OK に なったら スタート。"
+          : "部屋主が 始めるのを 待っています。";
+        this._render();
+      },
+      onGo: (m) => {
+        /* サーバの 合図で 全員 同時に 始める */
+        const idx = COURSES.findIndex((c) => c.id === m.courseId);
+        this.onPlay({
+          courseId: m.courseId || COURSES[Math.max(0, idx)].id,
+          mode: m.mode || this.mode,
+          bots: 0,
+          myName: this.me.name, myColor: this.me.colorIndex,
+          players: (m.room && m.room.players ? m.room.players : []).filter((p) => p.id !== this.net.you),
+          seed: m.seed || 1,
+          net: this.net,
+          startAt: m.startAt
+        });
+      },
+      onState: (st) => {
+        if (st.error) this.netNote.textContent = "通信: " + st.error;
+        else if (!st.connected && this.roomId) this.netNote.textContent = "つながりが 切れました。入り直しています…";
+      }
+    };
+  }
+
+  async _makeRoom() {
+    this.netNote.textContent = "部屋を 作っています…";
+    try {
+      const c = COURSES[this.courseIndex];
+      const d = await createRoom({ courseId: c.id, mode: this.mode, max: 8 });
+      this.roomId = d.roomId;
+      this._connect(d.wsUrl);
+      this.codeInput.value = d.roomId;
+    } catch (e) {
+      this.netNote.textContent = "作れませんでした: " + String(e && e.message || e);
+    }
+  }
+
+  async _joinRoom() {
+    const code = String(this.codeInput.value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    if (code.length < 4) { this.netNote.textContent = "あいことばを 入れてください。"; return; }
+    this.netNote.textContent = "入っています…";
+    try {
+      const d = await roomInfo(code);
+      this.roomId = code;
+      this._connect(d.wsUrl);
+    } catch (e) {
+      this.netNote.textContent = "入れませんでした: " + String(e && e.message || e);
+    }
+  }
+
+  _connect(wsUrl) {
+    if (this.net) { try { this.net.close(); } catch (e) {} }
+    const tk = (typeof window._authGetToken === "function") ? String(window._authGetToken() || "") : "";
+    this.net = new SurviveNet(this._netHandlers());
+    this.net.connect(wsUrl, tk);
+    this.leaveBtn.classList.remove("vs-hide");
+    this._render();
+  }
+
+  _leaveRoom() {
+    if (this.net) { try { this.net.close(); } catch (e) {} }
+    this.net = null; this.roomId = ""; this.isHost = false; this.party = [];
+    this.leaveBtn.classList.add("vs-hide");
+    this.netNote.textContent = "";
+    this._render();
   }
 
   _render() {
@@ -412,6 +533,12 @@ export const LOBBY_CSS = `
 .vs-lb-pdot{ width:9px; height:9px; border-radius:50%; }
 .vs-lb-pnm{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .vs-lb-pst{ font-size:10.5px; color:rgba(243,245,255,.5); }
+.vs-lb-online{ display:flex; flex-direction:column; gap:7px; }
+.vs-lb-onrow{ display:flex; gap:6px; align-items:center; }
+.vs-lb-code{ flex:1; min-width:0; height:34px; padding:0 10px; border-radius:9px;
+  background:rgba(255,255,255,.07); border:1px solid ${PALETTE.line}; color:${PALETTE.ink};
+  font-size:13px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
+.vs-lb-code::placeholder{ letter-spacing:.02em; font-weight:400; color:rgba(243,245,255,.34); }
 .vs-lb-roomid{ margin-top:9px; display:flex; align-items:center; justify-content:space-between;
   padding:8px 11px; border-radius:10px; background:rgba(255,255,255,.06); font-size:13px; }
 .vs-lb-roomlab{ font-size:10.5px; color:rgba(243,245,255,.5); }

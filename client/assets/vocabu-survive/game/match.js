@@ -32,7 +32,7 @@ import { HUD, HUD_CSS } from "../ui/hud.js";
 import { QuizPanel, QUIZ_CSS } from "../ui/quiz.js";
 import { ResultPanel, RESULT_CSS } from "../ui/result.js";
 import { COURSE_BY_ID, COURSES } from "../data/courses.js";
-import { fetchQuestions } from "../data/questions.js";
+import { fetchQuestions, localQuestions } from "../data/questions.js";
 import { settingsFor, measure } from "../boot/caps.js";
 
 const BEST_KEY = "vq.survive.best.v1";
@@ -120,8 +120,11 @@ export class MatchScreen {
 
     const others = Array.isArray(cfg.players) ? cfg.players : [];
     const botCount = cfg.bots === undefined ? 3 : cfg.bots;
+    this.net = cfg.net || null;
+    this.online = !!this.net;
     for (const o of others) {
-      const p = new Player({ id: o.id, name: o.name, colorIndex: o.colorIndex });
+      /* 通信の 相手は こちらでは 動かさない（位置は 送られてくる） */
+      const p = new Player({ id: o.id, name: o.name, colorIndex: o.colorIndex, remote: this.online });
       this.sim.add(p);
     }
     for (let i = 0; i < botCount; i++) {
@@ -148,14 +151,26 @@ export class MatchScreen {
     this.cam.height = 1.5;
     this.cam.snap([me.x, me.y, me.z], 0);
 
-    /* 問題を 先に 取る（門の 数ぶん ＋ 予備） */
+    /* ── 問題 ──────────────────────────────────────────────────────
+       ★ **待たない。** 控えを すぐ 入れて 始め、サーバの ぶんは
+         届いてから 差し替える。
+         前は ここで await していたので、通信が 悪いと
+         合図の 前に 最大 4.5 秒 何も 起きなかった（実測で 検査が 落ちた）。 */
     this.qIndex = 0;
-    this.questions = await fetchQuestions({
-      count: this.course.gates.length + 2,
-      presetId: cfg.presetId || "",
-      seed: (cfg.seed || 1) * 977 + 13,
-      difficulty: def.difficulty
-    });
+    const seed = (cfg.seed || 1) * 977 + 13;
+    const need = this.course.gates.length + 2;
+    if (this.net && this.net.questions && this.net.questions.length >= need) {
+      /* 対戦中は **サーバが 配った 問題**（全員 同じ）。答えは 隠されている。 */
+      this.questions = this.net.questions.slice();
+    } else {
+      this.questions = localQuestions(need, seed);
+      fetchQuestions({
+        count: need, presetId: cfg.presetId || "", seed, difficulty: def.difficulty
+      }).then((qs) => {
+        /* まだ 1 問も 出していない ときだけ 差し替える */
+        if (this.qIndex === 0 && qs && qs.length >= need) this.questions = qs;
+      }).catch(() => {});
+    }
 
     /* 操作 */
     this.input.attach();
@@ -206,10 +221,13 @@ export class MatchScreen {
     for (let i = 0; i < n; i++) {
       this._collectInputs();
       this._savePrev();
+      this._applyRemote();
       const evs = this.sim.step(this.inputs);
       this._onEvents(evs);
     }
     if (n > 0) this._syncVisual(false);
+    /* 自分の 位置を 送る（中で 20Hz に 間引く） */
+    if (this.net) this.net.tick(dt, this.local);
 
     /* ③ 見た目の 補間 */
     const a = this.stepper.alpha;
@@ -223,7 +241,8 @@ export class MatchScreen {
         yaw: lerpAngle(vis.prev.yaw, vis.cur.yaw, a)
       };
       vis.v.update(dt, {
-        speed: p.speed, grounded: p.grounded, vy: p.vy, yaw: p.yaw,
+        speed: p.remote ? (p.__spd || 0) : p.speed,
+        grounded: p.grounded, vy: p.vy, yaw: p.yaw,
         stunned: p.stunned
       });
     }
@@ -250,6 +269,26 @@ export class MatchScreen {
     this.hud.update(this._hudState());
     this._drawPlates(sz);
     this._countdown();
+  }
+
+  /** 通信の 相手の 位置を 反映する（補間ずみ） */
+  _applyRemote() {
+    if (!this.net) return;
+    for (const p of this.sim.players) {
+      if (!p.remote) continue;
+      const s = this.net.sample(p.id, this._rbuf || (this._rbuf = {}));
+      if (!s) continue;
+      p.x = s.x; p.y = s.y; p.z = s.z; p.yaw = s.yaw;
+      p.grounded = !!s.g; p.stunned = s.st ? 0.2 : 0;
+      p.progress = s.pr; p.checkpoint = s.cp;
+      p.rank = s.rank || p.rank;
+      if (s.fin && !p.finished) { p.finished = true; }
+      /* 速さは 見た目の 足の 動きに 使うので おおよそで 出す */
+      const d = this._lastRemote && this._lastRemote[p.id];
+      if (d) p.__spd = Math.hypot(s.x - d.x, s.z - d.z) * 60;
+      if (!this._lastRemote) this._lastRemote = {};
+      this._lastRemote[p.id] = { x: s.x, z: s.z };
+    }
   }
 
   _collectInputs() {
@@ -291,8 +330,13 @@ export class MatchScreen {
       else if (e.t === "respawn" && e.p === this.local) { this.hud.toast("戻されました", "bad"); this.cam.hit(0.5); }
       else if (e.t === "hit" && e.p === this.local) this.cam.hit(clamp((e.power || 6) / 12, 0.3, 1));
       else if (e.t === "finish") {
-        if (e.p === this.local) { this.hud.big("ゴール!", "goal"); this._finish(); }
-        else this.hud.toast(e.p.name + " が ゴール（" + e.rank + "位）");
+        if (e.p === this.local) {
+          this.hud.big("ゴール!", "goal");
+          /* ★ サーバへ 先に 知らせる。結果画面は そのあと 出す。
+             （ここを else if に すると 結果画面が 出なくなる） */
+          if (this.net) this.net.sendFinish();
+          this._finish();
+        } else this.hud.toast(e.p.name + " が ゴール（" + e.rank + "位）");
       } else if (e.t === "timeup") this._finish();
       else if (e.t === "allfinished") this._finish();
       if (this.app && this.app.audio) this.app.audio.onEvent(e, this.local);
@@ -312,9 +356,41 @@ export class MatchScreen {
     const g = this.pendingGate;
     this.pendingGate = null;
     if (!g) return;
+    /* ★ 対戦中は **正誤を サーバが 決める**。
+       画面の 判定を そのまま 使うと、答えを 書き換えれば 全問 正解に できる。
+       ただし 幕は すぐ 開ける（返事を 待つと 走りが 止まる）。
+       あとで 食い違ったら サーバの 返事で 直す。 */
     this.sim.answerGate(this.local, g, i < 0 ? null : correct);
-    if (this.net && this.net.sendAnswer) this.net.sendAnswer(g.index, i, correct);
+    if (this.net) this.net.sendAnswer(g.index, i);
     this.hud.toast(correct ? "正解！ 少し 速くなる" : "不正解… 少し 遅くなる", correct ? "good" : "bad");
+  }
+
+  /** サーバの 答え合わせ。食い違ったら 直す。 */
+  _netGate(m) {
+    if (!m || m.g === undefined) return;
+    if (m.id && m.id !== (this.net && this.net.you)) return;   /* ほかの 人の 分 */
+    const g = this.course.gates[m.g];
+    if (!g) return;
+    const st = this.sim.gateStateOf(this.local, g);
+    if (!st) return;
+    const 実際 = !!m.c;
+    if (st.correct === 実際) return;
+    /* 直す */
+    st.correct = 実際;
+    if (実際) { this.local.quizCorrect++; this.local.quizWrong = Math.max(0, this.local.quizWrong - 1); this.local.boost = 3.0; this.local.penalty = 0; }
+    else { this.local.quizWrong++; this.local.quizCorrect = Math.max(0, this.local.quizCorrect - 1); this.local.penalty = 2.6; this.local.boost = 0; }
+    this.hud.toast(実際 ? "サーバの 判定: 正解" : "サーバの 判定: 不正解", 実際 ? "good" : "bad");
+  }
+
+  /** サーバから 「その 位置は あり得ない」と 言われた */
+  _netFix(m) {
+    if (!m) return;
+    const p = this.local;
+    p.x = m.x; p.y = m.y; p.z = m.z;
+    p.vx = p.vy = p.vz = 0;
+    p.progress = m.pr;
+    this._syncVisual(true);
+    this.hud.toast("位置を 直しました", "bad");
   }
 
   /* ── 合図 ───────────────────────────────────────────────────────── */

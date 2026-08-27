@@ -133,7 +133,11 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     ok("問題を 用意できた", m1.questions >= 3, m1.questions);
 
     節("④ 合図 → 走る");
-    await 待つ(3600);
+    /* ★ 決め打ちの 待ちに しない。合図が 終わるまで 待つ。 */
+    await pg.waitForFunction(() => {
+      const ms = window.VocabuSurvive.__app.shell.get("match");
+      return ms && ms.sim && ms.sim.phase === "running";
+    }, null, { timeout: 20000 }).catch(() => {});
     const ph = await pg.evaluate(() => window.VocabuSurvive.__app.shell.get("match").sim.phase);
     ok("合図が 終わって 走れる", ph === "running", ph);
     /* ★ 板の 大きさは **描き始めてから** 見る。

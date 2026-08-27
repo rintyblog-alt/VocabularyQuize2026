@@ -8,6 +8,14 @@
      flagBlockResponse  … off の機能は **URL 直打ちでも** 通さない
      userStatusBlock    … Ban / 一時停止を **実際に効かせる**
    ══════════════════════════════════════════════════════════════════════ */
+/* ══ VocabuSurvive（2026-08-28）════════════════════════════════════════
+   中身は src/survive.js。**ここへは 入口だけ**（admin.js と 同じ 決まり）。
+     handleSurviveRequest … /api/survive/* と /ws/survive/* を 丸ごと 引き受ける
+     SurviveRoom          … 1 試合 = 1 部屋（Durable Object）
+   ══════════════════════════════════════════════════════════════════════ */
+import { handleSurviveRequest, isSurvivePath, SurviveRoom } from "./survive.js";
+export { SurviveRoom };
+
 import {
   handleAdminRequest, isAdminPath, effectiveFlags,
   flagBlockResponse, userStatusBlock,
@@ -62765,6 +62773,18 @@ export default {
       stage = "admin";
       const adminRes = await handleAdminRequest(request, env, ctx);
       if (adminRes) return adminRes;
+    }
+
+    /* ══ VocabuSurvive（2026-08-28）════════════════════════════════════
+       /api/survive/* と /ws/survive/* は survive.js が 丸ごと 引き受ける。
+       ★ WebSocket の 昇格が 混ざるので、後ろの CORS 加工へは 通さない。 */
+    if (isSurvivePath(path)) {
+      stage = "survive";
+      const r = await handleSurviveRequest(request, env, ctx);
+      if (r) {
+        if (r.status === 101) return r;
+        return applyCorsToResponse(r, corsPolicy, request);
+      }
     }
 
     /* ══ ダウンタイム（2026-08-20）════════════════════════════════════

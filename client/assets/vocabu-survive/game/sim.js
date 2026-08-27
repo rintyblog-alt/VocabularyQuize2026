@@ -98,6 +98,9 @@ export class Sim {
     C.update(this.time);
 
     for (const p of this.players) {
+      /* ★ 通信で 位置が 来る 人は ここでは 動かさない。
+         こちらでも 動かすと、届いた 位置と ぶつかって 震える。 */
+      if (p.remote) { p.progress = C.progressOf(p.x, p.z); continue; }
       if (p.finished) { p.step({ mx: 0, mz: 0 }, C.world); continue; }
       const inp = (inputs && inputs.get(p.id)) || { mx: 0, mz: 0 };
 

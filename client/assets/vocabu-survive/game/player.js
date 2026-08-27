@@ -50,6 +50,9 @@ export class Player {
     this.name = opt.name || "";
     this.colorIndex = opt.colorIndex || 0;
     this.isLocal = !!opt.isLocal;
+    /* ★ 通信で 位置が 送られてくる 人。**こちらでは 動かさない。**
+       動かすと 2 つの 答えが ぶつかって ガタつく。 */
+    this.remote = !!opt.remote;
 
     this.x = 0; this.y = 0; this.z = 0;
     this.vx = 0; this.vy = 0; this.vz = 0;

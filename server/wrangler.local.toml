@@ -36,6 +36,11 @@ class_name = "RealtimeRoom"
 name = "ROOMS"
 class_name = "RoomDO"
 
+# VocabuSurvive の 対戦の 部屋（2026-08-28）
+[[durable_objects.bindings]]
+name = "SURVIVE_ROOMS"
+class_name = "SurviveRoom"
+
 # [ai] は local dev で Cloudflare 認証が要るため既定で除外（認証フロー検証には不要）。
 #   AI機能もローカルで試したい場合はこの下に [ai] / binding="AI" を足し `wrangler login` 済みにする。
 
@@ -134,6 +139,10 @@ new_classes = ["RealtimeRoom"]
 [[migrations]]
 tag = "room-do-v1"
 new_classes = ["RoomDO"]
+
+[[migrations]]
+tag = "survive-room-v1"
+new_classes = ["SurviveRoom"]
 
 # ── 写真・動画・ファイルの 3 つめの 置き場（2026-08-19）──────────────
 #   置き場は 上から順に 選ぶ:

@@ -23,6 +23,11 @@ class_name = "RealtimeRoom"
 name = "ROOMS"
 class_name = "RoomDO"
 
+# ★ VocabuSurvive の 対戦の 部屋（2026-08-28）。1 試合 = 1 個。
+[[durable_objects.bindings]]
+name = "SURVIVE_ROOMS"
+class_name = "SurviveRoom"
+
 [ai]
 binding = "AI"
 
@@ -180,6 +185,10 @@ new_classes = ["RealtimeRoom"]
 [[migrations]]
 tag = "room-do-v1"
 new_classes = ["RoomDO"]
+
+[[migrations]]
+tag = "survive-room-v1"
+new_classes = ["SurviveRoom"]
 
 # ── 写真・動画・ファイルの 3 つめの 置き場（2026-08-19）──────────────
 #   置き場は 上から順に 選ぶ:
