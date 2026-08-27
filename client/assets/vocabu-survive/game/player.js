@@ -49,6 +49,10 @@ export class Player {
     this.id = opt.id || ("p" + (_pid++));
     this.name = opt.name || "";
     this.colorIndex = opt.colorIndex || 0;
+    /* かぶりもの（見た目だけ）。**当たりにも 速さにも 一切 効かせない。**
+       効かせると 「その 帽子は 有利」に なり、選ぶ 楽しみが 損に なる。 */
+    this.hat = opt.hat || "none";
+    this.hatColor = opt.hatColor | 0;
     this.isLocal = !!opt.isLocal;
     /* ★ 通信で 位置が 送られてくる 人。**こちらでは 動かさない。**
        動かすと 2 つの 答えが ぶつかって ガタつく。 */

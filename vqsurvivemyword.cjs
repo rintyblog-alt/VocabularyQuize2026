@@ -181,12 +181,13 @@ const 印 = "MYW" + Date.now().toString(36).slice(-4);
 
     節("⑥ 対戦では 選べない");
     await pg.evaluate(() => {
-      const s = window.VocabuSurvive.__app.shell;
-      const m = s.get("match");
+      /* ★ shell.show を 直に 呼ぶと state().screen が 変わらない。goLobby を 通す。 */
+      const app = window.VocabuSurvive.__app;
+      const m = app.shell.get("match");
       if (m && m.quiz && m.quiz.close) m.quiz.close();
-      return s.show("lobby");
+      return app.goLobby();
     });
-    await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "lobby", null, { timeout: 20000 }).catch(() => {});
+    await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "lobby", null, { timeout: 20000, polling: 250 });
     await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
       r.querySelector(".vs-lb-onrow .vs-btn").click();   /* 部屋を 作る */

@@ -707,6 +707,7 @@ export class SurviveRoom {
       phase: r.phase, max: r.max, seed: r.seed, startAt: r.startAt,
       players: Object.values(r.players).map((p) => ({
         id: String(p.uid), name: p.name, colorIndex: p.color,
+        hat: p.hat || "none", hatColor: p.hatColor | 0,
         ready: !!p.ready, online: !!p.online, rank: p.rank | 0,
         progress: Math.round(p.pr * 10) / 10, finished: !!p.fin,
         finishTime: p.finTime || 0, correct: p.qc | 0, wrong: p.qw | 0
@@ -763,7 +764,7 @@ export class SurviveRoom {
       const n = Object.keys(r.players).length;
       if (n >= r.max) { this._send(ws, { t: "err", code: "FULL", msg: "部屋が いっぱいです。" }); try { ws.close(1000); } catch (e) {} return; }
       p = {
-        uid, name, color: n % 8, ready: false, online: true,
+        uid, name, color: n % 8, hat: "none", hatColor: 0, ready: false, online: true,
         x: 0, y: 0, z: 0, yaw: 0, g: 1, pr: 0, cp: 0, fin: false, finTime: 0,
         rank: 0, qc: 0, qw: 0, seq: 0, lastAt: Date.now(), gates: {}
       };
@@ -819,6 +820,12 @@ export class SurviveRoom {
       /* 同じ 色は 取れない */
       for (const q of Object.values(r.players)) if (q.uid !== uid && q.color === c) return;
       p.color = c; this._all({ t: "room", room: this._publicRoom() }); this._save(); return;
+    }
+    /* かぶりもの。**見た目だけ**なので だぶっても かまわない（色とは 違う）。 */
+    if (t === "hat") {
+      p.hat = S(m.v, 16) || "none";
+      p.hatColor = CL(m.c, 0, 15);
+      this._all({ t: "room", room: this._publicRoom() }); this._save(); return;
     }
     if (t === "course" && uid === r.hostId && r.phase === "lobby") {
       r.courseId = S(m.id, 24) || r.courseId;

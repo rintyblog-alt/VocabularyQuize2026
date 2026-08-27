@@ -21,7 +21,7 @@ import { ThirdPersonCamera } from "../engine/camera.js";
 import { m4, v3, clamp, lerp, damp } from "../engine/math.js";
 import { registerCourseMeshes, M } from "./meshes.js";
 import { Particles } from "../engine/particles.js";
-import { BeanVisual, registerBeanMeshes, BEAN_HEIGHT } from "./bean.js";
+import { BeanVisual, registerBeanMeshes, BEAN_HEIGHT, hatByKey, HAT_COLORS } from "./bean.js";
 import { buildCourse } from "./course.js";
 import { Player, FixedStepper, STEP, TUNE } from "./player.js";
 import { Bot } from "./bot.js";
@@ -123,7 +123,10 @@ export class MatchScreen {
     this.sim = new Sim(this.course, { timeLimit: 制限, countdown: 3.2, mode });
     this.visuals.clear();
     this.bots.length = 0;
-    const me = new Player({ id: "me", name: cfg.myName || "あなた", colorIndex: cfg.myColor || 0, isLocal: true });
+    const me = new Player({
+      id: "me", name: cfg.myName || "あなた", colorIndex: cfg.myColor || 0, isLocal: true,
+      hat: cfg.myHat || "none", hatColor: cfg.myHatColor | 0
+    });
     this.local = me;
     this.sim.add(me);
     this.sim.localId = me.id;
@@ -134,12 +137,20 @@ export class MatchScreen {
     this.online = !!this.net;
     for (const o of others) {
       /* 通信の 相手は こちらでは 動かさない（位置は 送られてくる） */
-      const p = new Player({ id: o.id, name: o.name, colorIndex: o.colorIndex, remote: this.online });
+      const p = new Player({
+        id: o.id, name: o.name, colorIndex: o.colorIndex, remote: this.online,
+        hat: o.hat || "none", hatColor: o.hatColor | 0
+      });
       this.sim.add(p);
     }
     for (let i = 0; i < botCount; i++) {
       const ci = (i + 1 + (cfg.myColor || 0)) % BEAN_COLORS.length;
-      const p = new Player({ id: "bot" + i, name: BOT_NAMES[i % BOT_NAMES.length], colorIndex: ci });
+      /* ボットにも かぶりものを 配る（全員 素頭だと 誰が 誰か 分かりにくい）。
+         種は 番号から 決める ので、同じ 面子なら いつも 同じ 見た目に なる。 */
+      const p = new Player({
+        id: "bot" + i, name: BOT_NAMES[i % BOT_NAMES.length], colorIndex: ci,
+        hat: BOT_HATS[i % BOT_HATS.length], hatColor: (i * 5 + 3) % HAT_COLORS.length
+      });
       this.sim.add(p);
       this.bots.push(new Bot(p, this.course, {
         level: cfg.botLevel || pickBotLevel(def.difficulty, i), seed: 7000 + i * 131,
@@ -148,8 +159,12 @@ export class MatchScreen {
       }));
     }
     for (const p of this.sim.players) {
+      const bv = new BeanVisual(beanByIndex(p.colorIndex).rgb);
+      bv.hat = hatByKey(p.hat);
+      const hc = HAT_COLORS[(p.hatColor | 0) % HAT_COLORS.length] || HAT_COLORS[0];
+      bv.hatColor = [hc.rgb[0], hc.rgb[1], hc.rgb[2], 1];
       this.visuals.set(p.id, {
-        v: new BeanVisual(beanByIndex(p.colorIndex).rgb),
+        v: bv,
         prev: { x: 0, y: 0, z: 0, yaw: 0 }, cur: { x: 0, y: 0, z: 0, yaw: 0 }
       });
     }
@@ -655,6 +670,8 @@ function lerpAngle(a, b, t) {
   return a + d * t;
 }
 
+/* ボットの かぶりもの。ばらけさせる ため 順に 配る。 */
+const BOT_HATS = ["cap", "horn", "antenna", "ribbon", "party", "crown", "phones", "leafhat"];
 const BOT_NAMES = ["ミント", "コーラル", "サン", "グレープ", "アクア", "ピーチ", "ベリー"];
 function pickBotLevel(difficulty, i) {
   const d = difficulty || 1;

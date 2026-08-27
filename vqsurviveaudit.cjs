@@ -97,7 +97,7 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "lobby", null, { timeout: 20000 });
     const lb = await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
-      return { note: (r.querySelector(".vs-lb-note") || {}).textContent || "",
+      return { note: (r.querySelector(".vs-lb-friendnote") || {}).textContent || "",
                start: !!r.querySelector(".vs-lb-start"),
                startDisabled: r.querySelector(".vs-lb-start").disabled };
     });

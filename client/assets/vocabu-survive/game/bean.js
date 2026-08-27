@@ -23,7 +23,13 @@ export const BEAN_MESHES = {
   limb:  "vs_bean_limb",
   foot:  "vs_bean_foot",
   stem:  "vs_bean_stem",
-  leaf:  "vs_bean_leaf"
+  leaf:  "vs_bean_leaf",
+  /* かぶりもの用。**同じ 形を 使い回す**（種類ごとに 形を 増やすと
+     並べ描きの まとまりが 割れて 描き回数が 増える）。 */
+  cone:  "vs_bean_cone",
+  disc:  "vs_bean_disc",
+  ring:  "vs_bean_ring",
+  bar:   "vs_bean_bar"
 };
 
 /** 形を まとめて 登録する。renderer に 1 回だけ 呼ぶ。 */
@@ -39,6 +45,98 @@ export function registerBeanMeshes(renderer) {
   R.addMesh(BEAN_MESHES.foot,  [MESH.roundedBox(3, 0.34), MESH.roundedBox(1, 0.30)]);
   R.addMesh(BEAN_MESHES.stem,  [MESH.cylinder(8, 0.5, 0.62, 1, false)]);
   R.addMesh(BEAN_MESHES.leaf,  [MESH.sphere(12, 8, 0.5), MESH.sphere(6, 4, 0.5)]);
+  R.addMesh(BEAN_MESHES.cone,  [MESH.cone(12, 0.5, 1), MESH.cone(7, 0.5, 1)]);
+  R.addMesh(BEAN_MESHES.disc,  [MESH.cylinder(14, 0.5, 0.5, 1, true), MESH.cylinder(8, 0.5, 0.5, 1, true)]);
+  R.addMesh(BEAN_MESHES.ring,  [MESH.torus(16, 8, 0.5, 0.14), MESH.torus(10, 5, 0.5, 0.14)]);
+  R.addMesh(BEAN_MESHES.bar,   [MESH.roundedBox(2, 0.28), MESH.roundedBox(1, 0.24)]);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   かぶりもの（見た目だけ。速さにも 当たりにも 関わらせない）
+
+   ★ **形は 増やさない。** 上で 登録した 6 つ（頭・帯・茎・葉・円錐・円盤・輪・棒）
+     を 置き方と 大きさだけ 変えて 組む。
+     種類ごとに 新しい 形を 足すと、並べ描きの まとまりが 割れて
+     描き回数が 8 人ぶん 増える（実測で 26 回 → 40 回 近くに なる）。
+
+   置く 場所は **頭の てっぺんからの 相対**。頭は 顔の 向き（hy）で 回るので、
+   かぶりものも 同じ 向きに 合わせる。
+   各 部品: [形, 前後, 上下, 左右, 傾き, 幅, 高さ, 奥行, 色]
+     色: 0 = 選んだ 色 / 1 = 濃い ほう / 2 = 白 / 3 = 黒
+   ══════════════════════════════════════════════════════════════════════════ */
+const K = BEAN_MESHES;
+export const HATS = [
+  { key: "none", name: "なし", parts: [] },
+  { key: "cap", name: "キャップ", parts: [
+    [K.head, 0, 0.10, 0, 0, 0.80, 0.46, 0.80, 0],
+    [K.disc, 0.44, 0.02, 0, 0, 0.62, 0.07, 0.72, 0]
+  ] },
+  { key: "tophat", name: "シルクハット", parts: [
+    [K.disc, 0, 0.05, 0, 0, 1.02, 0.07, 1.02, 3],
+    [K.disc, 0, 0.32, 0, 0, 0.62, 0.52, 0.62, 3],
+    [K.disc, 0, 0.20, 0, 0, 0.66, 0.10, 0.66, 0]
+  ] },
+  { key: "crown", name: "王冠", parts: [
+    [K.disc, 0, 0.10, 0, 0, 0.70, 0.18, 0.70, 0],
+    [K.cone, 0, 0.30, 0, 0, 0.20, 0.28, 0.20, 0],
+    [K.cone, 0.22, 0.27, 0, 0, 0.18, 0.22, 0.18, 0],
+    [K.cone, -0.22, 0.27, 0, 0, 0.18, 0.22, 0.18, 0]
+  ] },
+  { key: "horn", name: "つの", parts: [
+    [K.cone, 0.06, 0.20, 0.26, 0.42, 0.19, 0.40, 0.19, 0],
+    [K.cone, 0.06, 0.20, -0.26, -0.42, 0.19, 0.40, 0.19, 0]
+  ] },
+  { key: "antenna", name: "アンテナ", parts: [
+    [K.stem, 0, 0.26, 0, 0, 0.045, 0.44, 0.045, 3],
+    [K.eye, 0, 0.52, 0, 0, 0.20, 0.20, 0.20, 0]
+  ] },
+  { key: "ribbon", name: "リボン", parts: [
+    [K.leaf, 0.02, 0.14, 0.22, 0.6, 0.30, 0.13, 0.20, 0],
+    [K.leaf, 0.02, 0.14, -0.22, -0.6, 0.30, 0.13, 0.20, 0],
+    [K.eye, 0.02, 0.14, 0, 0, 0.13, 0.13, 0.13, 1]
+  ] },
+  { key: "phones", name: "ヘッドホン", parts: [
+    [K.ring, 0, 0.05, 0, 0, 0.92, 0.92, 0.30, 3],
+    [K.bar, 0, -0.14, 0.42, 0, 0.16, 0.30, 0.26, 0],
+    [K.bar, 0, -0.14, -0.42, 0, 0.16, 0.30, 0.26, 0]
+  ] },
+  { key: "halo", name: "わ", parts: [
+    [K.ring, 0, 0.44, 0, 0, 0.62, 0.62, 0.12, 0]
+  ] },
+  { key: "donut", name: "ドーナツ", parts: [
+    [K.ring, 0, 0.10, 0, 0, 0.86, 0.86, 0.34, 0],
+    [K.eye, 0.20, 0.20, 0.12, 0, 0.10, 0.06, 0.10, 2],
+    [K.eye, -0.16, 0.20, -0.14, 0, 0.09, 0.06, 0.09, 2]
+  ] },
+  { key: "party", name: "とんがり", parts: [
+    [K.cone, 0, 0.34, 0, 0, 0.44, 0.62, 0.44, 0],
+    [K.eye, 0, 0.66, 0, 0, 0.16, 0.16, 0.16, 2]
+  ] },
+  { key: "leafhat", name: "おおきな葉", parts: [
+    [K.leaf, 0.16, 0.14, 0, 0.25, 0.62, 0.10, 0.44, 0],
+    [K.stem, -0.16, 0.18, 0, -0.4, 0.05, 0.30, 0.05, 1]
+  ] }
+];
+
+/* かぶりものの 色（12 種）。速さには 関わらない。 */
+export const HAT_COLORS = [
+  { name: "しろ", hex: "#f4f6ff", rgb: [0.96, 0.97, 1.00] },
+  { name: "くろ", hex: "#20232e", rgb: [0.13, 0.14, 0.18] },
+  { name: "あか", hex: "#ff5d6e", rgb: [1.00, 0.36, 0.43] },
+  { name: "だいだい", hex: "#ff9f43", rgb: [1.00, 0.62, 0.26] },
+  { name: "きいろ", hex: "#ffd84d", rgb: [1.00, 0.85, 0.30] },
+  { name: "みどり", hex: "#4fd88a", rgb: [0.31, 0.85, 0.54] },
+  { name: "みずいろ", hex: "#57d3ff", rgb: [0.34, 0.83, 1.00] },
+  { name: "あお", hex: "#4d9dff", rgb: [0.30, 0.62, 1.00] },
+  { name: "むらさき", hex: "#a97cff", rgb: [0.66, 0.49, 1.00] },
+  { name: "ももいろ", hex: "#ff8ccb", rgb: [1.00, 0.55, 0.80] },
+  { name: "ちゃいろ", hex: "#a97b57", rgb: [0.66, 0.48, 0.34] },
+  { name: "きん", hex: "#f0c24a", rgb: [0.94, 0.76, 0.29] }
+];
+
+export function hatByKey(key) {
+  for (const h of HATS) if (h.key === key) return h;
+  return HATS[0];
 }
 
 /* 使い回す 行列（毎フレーム 8 人 × 12 部品 = 96 個 作らない） */
@@ -67,6 +165,9 @@ export class BeanVisual {
     this.emote = "";      /* "hit" | "cheer" | "stumble" | "" */
     this.emoteT = 0;
     this.hidden = false;
+    /* かぶりもの（見た目だけ）。当たりにも 速さにも 関わらせない。 */
+    this.hat = HATS[0];
+    this.hatColor = [1, 1, 1, 1];
   }
 
   /**
@@ -162,6 +263,22 @@ export class BeanVisual {
         0.2, hy, side * (0.72 + sway),
         0.24 * s, 0.075 * s, 0.15 * s);
       R.draw(BEAN_MESHES.leaf, _m, LEAF, 0, 0.30, 0, 0, s);
+    }
+
+    /* ── かぶりもの ──
+       ★ 芽の **あと**に 描く。芽より 先に 置くと 葉に 隠れる。
+         頭の てっぺんから 積む ので、頭が 傾いても 一緒に 傾く。 */
+    if (this.hat && this.hat.parts.length) {
+      const topY = headY + 0.30 * s * sq;
+      for (const q of this.hat.parts) {
+        /* q = [形, 前, 上, 横, 傾き, 幅, 高, 奥, 色] */
+        const px = x + sy * q[1] * s + cy * q[3] * s;
+        const pz = z + cy * q[1] * s - sy * q[3] * s;
+        const col = q[8] === 1 ? this.dark : q[8] === 2 ? WHITE : q[8] === 3 ? DARK : this.hatColor;
+        m4.composeXYZ(_m, px, topY + q[2] * s * sq, pz, this.tilt * 0.7, hy, tiltZ * 0.6 + q[4],
+          q[5] * s * wide, q[6] * s * sq, q[7] * s * wide);
+        R.draw(q[0], _m, col, q[8] === 2 ? 0.08 : 0, 0.26, 0, 0, s);
+      }
     }
 
     /* ── 腕 ── */

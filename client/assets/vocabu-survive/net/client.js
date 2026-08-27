@@ -195,6 +195,7 @@ export class SurviveNet {
   setColor(v) { this.send({ t: C2S.COLOR, v: v | 0 }); }
   setCourse(id) { this.send({ t: C2S.COURSE, id: String(id) }); }
   setMode(v) { this.send({ t: C2S.MODE, v: String(v) }); }
+  setHat(key, colorIndex) { this.send({ t: C2S.HAT, v: String(key || "none"), c: colorIndex | 0 }); }
   setPreset(q) {
     this.send({
       t: C2S.PRESET,

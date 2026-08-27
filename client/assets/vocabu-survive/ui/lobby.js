@@ -17,6 +17,7 @@ import { listLocalPresets, listSharedPresets } from "../data/questions.js";
 import { PALETTE, BEAN_COLORS, beanByIndex } from "./theme.js";
 import { COURSES, tierOf, TIERS } from "../data/courses.js";
 import { themeOf } from "../game/theme3d.js";
+import { HATS, HAT_COLORS } from "../game/bean.js";
 import { SurviveNet, createRoom, roomInfo } from "../net/client.js";
 import { buildCourse } from "../game/course.js";
 import { HelpCard } from "./hud.js";
@@ -50,6 +51,9 @@ export class LobbyScreen {
     this.net = null;
     /* 門に 出る 問題の 出どころ。kind: "" = 内蔵 / mine / public / official */
     this.qz = { kind: "", id: "", owner: 0, name: "内蔵の 単語" };
+    /* かぶりもの（見た目だけ。速さには 一切 効かない） */
+    this.hat = "none";
+    this.hatColor = 0;
 
     this._restore();
     this.el = this._build();
@@ -61,6 +65,8 @@ export class LobbyScreen {
       if (typeof raw.course === "number") this.courseIndex = Math.max(0, Math.min(COURSES.length - 1, raw.course));
       if (raw.mode) this.mode = raw.mode;
       if (typeof raw.color === "number") this.me.colorIndex = raw.color % BEAN_COLORS.length;
+      if (raw.hat) this.hat = String(raw.hat);
+      if (typeof raw.hatColor === "number") this.hatColor = raw.hatColor % HAT_COLORS.length;
       if (raw.qz && typeof raw.qz === "object") {
         this.qz = {
           kind: String(raw.qz.kind || ""), id: String(raw.qz.id || ""),
@@ -77,7 +83,8 @@ export class LobbyScreen {
     try {
       localStorage.setItem(PICK_KEY, JSON.stringify({
         course: this.courseIndex, mode: this.mode, color: this.me.colorIndex,
-        volume: this.volume, music: this.musicOn, invert: this.invertY, qz: this.qz
+        volume: this.volume, music: this.musicOn, invert: this.invertY, qz: this.qz,
+        hat: this.hat, hatColor: this.hatColor
       }));
     } catch (e) {}
   }
@@ -173,8 +180,43 @@ export class LobbyScreen {
       this.colorRow.appendChild(b);
     }
 
+    /* ── かぶりもの（要件 ③ 見た目）───────────────────────────────
+       ★ **速さにも 当たりにも 効かせない。**
+         効かせると 「この 帽子が 強い」に なり、見た目を 選ぶ 楽しみが 消える。
+       ★ 色は 走る人の 色とは 別。走る人の 色は 対戦で だぶらせない が、
+         かぶりものは だぶっても かまわない（誰が 誰かは 体の 色で 分かる）。 */
+    this.hatRow = h("div", { class: "vs-lb-hats", role: "radiogroup", "aria-label": "かぶりもの" });
+    for (const ht of HATS) {
+      this.hatRow.appendChild(h("button", {
+        class: "vs-lb-hat", type: "button", role: "radio", "data-hat": ht.key,
+        "aria-label": ht.name, title: ht.name,
+        onclick: () => this._setHat(ht.key)
+      }, ht.name));
+    }
+    this.hatColorRow = h("div", { class: "vs-lb-hatcolors", role: "radiogroup", "aria-label": "かぶりものの 色" });
+    for (let i = 0; i < HAT_COLORS.length; i++) {
+      const c = HAT_COLORS[i];
+      const b = h("button", {
+        class: "vs-lb-hatc", type: "button", role: "radio",
+        "aria-label": c.name, title: c.name, "data-hc": String(i),
+        onclick: () => this._setHatColor(i)
+      });
+      b.style.background = c.hex;
+      this.hatColorRow.appendChild(b);
+    }
+    /* ★ 名札の 印は **別に する**。門の 問題と 同じ 印に すると、
+       画面の 中で どちらを 指しているのか 分からなく なる（検査でも 取り違えた）。 */
+    this.hatName = h("b", { class: "vs-lb-hat-nm", text: "なし" });
+    this.hatEl = h("details", { class: "vs-lb-hatbox" },
+      h("summary", null, h("span", { text: "かぶりもの: " }), this.hatName),
+      h("div", { class: "vs-lb-qz-body" }, this.hatRow,
+        h("div", { class: "vs-lb-lab", text: "色" }), this.hatColorRow,
+        h("p", { class: "vs-lb-note", text: "見た目だけです。速さは 変わりません。" })));
+
     this.friendsEl = h("div", { class: "vs-lb-friends" });
-    this.friendsNote = h("p", { class: "vs-lb-note", text: "読み込み中…" });
+    /* ★ 印を 1 つ 足す。案内文は 画面に いくつも あるので、
+       「いちばん 最初の .vs-lb-note」で 友だちの 欄を 指すのは もう 効かない。 */
+    this.friendsNote = h("p", { class: "vs-lb-note vs-lb-friendnote", text: "読み込み中…" });
 
     /* コース */
     this.tierRow = h("div", { class: "vs-lb-tiers", role: "tablist", "aria-label": "難しさ" });
@@ -302,6 +344,7 @@ export class LobbyScreen {
             h("div", null, this.nameEl, h("div", { class: "vs-lb-st" },
               h("i", { class: "vs-lb-dot" }), h("span", { text: "オンライン" })))),
           h("div", { class: "vs-lb-lab", text: "色" }), this.colorRow,
+          this.hatEl,
           h("div", { class: "vs-lb-lab", text: "友だち" }),
           this.friendsNote, this.friendsEl),
         /* 中 */
@@ -413,6 +456,15 @@ export class LobbyScreen {
     this._renderQuiz();
   }
 
+  _setHat(key) {
+    this.hat = String(key || "none"); this._save(); this._render();
+    if (this.net && this.net.setHat) this.net.setHat(this.hat, this.hatColor);
+  }
+  _setHatColor(i) {
+    this.hatColor = i % HAT_COLORS.length; this._save(); this._render();
+    if (this.net && this.net.setHat) this.net.setHat(this.hat, this.hatColor);
+  }
+
   _setColor(i) { this.me.colorIndex = i; this._save(); this._render(); if (this.net && this.net.setColor) this.net.setColor(i); }
   _toggleReady() {
     this.ready = !this.ready;
@@ -458,6 +510,8 @@ export class LobbyScreen {
       bots: this.mode === "timeattack" ? 0 : this.botCount,
       myName: this.me.name,
       myColor: this.me.colorIndex,
+      myHat: this.hat,
+      myHatColor: this.hatColor,
       players: this.party.filter((p) => p.id !== this.me.id),
       seed: (Date.now() / 1000) | 0
     });
@@ -472,6 +526,7 @@ export class LobbyScreen {
         this.isHost = String(room.hostId) === String(this.net && this.net.you);
         this.party = (room.players || []).map((p) => ({
           id: p.id, name: p.name, colorIndex: p.colorIndex,
+          hat: p.hat || "none", hatColor: p.hatColor | 0,
           ready: p.ready, online: p.online
         }));
         /* 自分の 行は 自分の ものへ 揃える */
@@ -480,6 +535,12 @@ export class LobbyScreen {
         const idx = COURSES.findIndex((c) => c.id === room.courseId);
         if (idx >= 0 && !this.isHost) this.courseIndex = idx;
         if (room.mode && !this.isHost) this.mode = room.mode;
+        /* ★ 入った ばかりの 自分は サーバ側では "なし" に なっている。
+             一度だけ 自分の かぶりものを 知らせる（毎回 送ると 部屋の 知らせが 往復する）。 */
+        if (mine && !this._hatSent && (this.hat !== "none" || this.hatColor !== 0)) {
+          this._hatSent = true;
+          if (this.net && this.net.setHat) this.net.setHat(this.hat, this.hatColor);
+        }
         this.netNote.textContent = this.isHost
           ? "あなたが 部屋主です。全員が 準備 OK に なったら スタート。"
           : "部屋主が 始めるのを 待っています。";
@@ -493,6 +554,7 @@ export class LobbyScreen {
           mode: m.mode || this.mode,
           bots: 0,
           myName: this.me.name, myColor: this.me.colorIndex,
+          myHat: this.hat, myHatColor: this.hatColor,
           players: (m.room && m.room.players ? m.room.players : []).filter((p) => p.id !== this.net.you),
           seed: m.seed || 1,
           net: this.net,
@@ -543,7 +605,7 @@ export class LobbyScreen {
 
   _leaveRoom() {
     if (this.net) { try { this.net.close(); } catch (e) {} }
-    this.net = null; this.roomId = ""; this.isHost = false; this.party = [];
+    this.net = null; this.roomId = ""; this.isHost = false; this.party = []; this._hatSent = false;
     this.leaveBtn.classList.add("vs-hide");
     this.netNote.textContent = "";
     this._render();
@@ -625,6 +687,16 @@ export class LobbyScreen {
     this.invertBtn.setAttribute("aria-pressed", this.invertY ? "true" : "false");
 
     if (this.qzList) this._renderQuiz();
+    if (this.hatRow) {
+      for (const b of this.hatRow.children) {
+        b.setAttribute("aria-checked", b.getAttribute("data-hat") === this.hat ? "true" : "false");
+      }
+      for (const b of this.hatColorRow.children) {
+        b.setAttribute("aria-checked", Number(b.getAttribute("data-hc")) === this.hatColor ? "true" : "false");
+      }
+      const ht = HATS.filter((x) => x.key === this.hat)[0];
+      this.hatName.textContent = ht ? ht.name : "なし";
+    }
 
     this.roomEl.textContent = "";
     if (this.roomId) {
@@ -827,6 +899,23 @@ export const LOBBY_CSS = `
 .vs-lb-roomid{ margin-top:9px; display:flex; align-items:center; justify-content:space-between;
   padding:8px 11px; border-radius:10px; background:rgba(255,255,255,.06); font-size:13px; }
 .vs-lb-roomlab{ font-size:10.5px; color:rgba(243,245,255,.5); }
+.vs-lb-hatbox{ margin:8px 0 2px; border:1px solid ${PALETTE.line}; border-radius:12px;
+  background:rgba(255,255,255,.03); }
+.vs-lb-hatbox summary{ list-style:none; cursor:pointer; padding:8px 11px; font-size:12px;
+  color:rgba(243,245,255,.7); display:flex; align-items:center; gap:4px; }
+.vs-lb-hatbox summary::-webkit-details-marker{ display:none; }
+.vs-lb-hatbox summary::after{ content:"▸"; margin-left:auto; opacity:.5; }
+.vs-lb-hatbox[open] summary::after{ content:"▾"; }
+.vs-lb-hats{ display:flex; flex-wrap:wrap; gap:4px; }
+.vs-lb-hat{ padding:5px 9px; border-radius:999px; border:1px solid ${PALETTE.line};
+  background:transparent; color:rgba(243,245,255,.8); font:inherit; font-size:12px; cursor:pointer; }
+.vs-lb-hat:hover{ background:rgba(255,255,255,.06); }
+.vs-lb-hat[aria-checked="true"]{ border-color:${PALETTE.mint}; background:rgba(90,230,190,.14);
+  color:#fff; font-weight:700; }
+.vs-lb-hatcolors{ display:flex; flex-wrap:wrap; gap:5px; }
+.vs-lb-hatc{ width:22px; height:22px; border-radius:50%; border:2px solid transparent;
+  cursor:pointer; padding:0; }
+.vs-lb-hatc[aria-checked="true"]{ border-color:#fff; box-shadow:0 0 0 2px rgba(0,0,0,.45); }
 .vs-lb-qz{ margin:0 0 4px; border:1px solid ${PALETTE.line}; border-radius:12px;
   background:rgba(255,255,255,.03); }
 .vs-lb-qz summary{ list-style:none; cursor:pointer; padding:9px 12px; font-size:13px;
@@ -834,7 +923,7 @@ export const LOBBY_CSS = `
 .vs-lb-qz summary::-webkit-details-marker{ display:none; }
 .vs-lb-qz summary::after{ content:"▸"; margin-left:auto; opacity:.5; }
 .vs-lb-qz[open] summary::after{ content:"▾"; }
-.vs-lb-qz-nm{ color:${PALETTE.mint}; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vs-lb-qz-nm, .vs-lb-hat-nm{ color:${PALETTE.mint}; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .vs-lb-qz-body{ padding:0 8px 8px; }
 .vs-lb-qz-list{ max-height:210px; overflow-y:auto; display:flex; flex-direction:column; gap:3px; }
 .vs-lb-qz-h{ font-size:11px; font-weight:800; letter-spacing:.04em; color:rgba(243,245,255,.42);
