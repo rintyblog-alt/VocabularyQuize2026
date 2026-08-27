@@ -443,6 +443,10 @@ export class Bot {
       this.noWay = 0;
     } else {
       /* 跳ぶ／よける／待つ */
+      {
+        const gs0 = p.groundSolid, go0 = gs0 && gs0.owner;
+        this._urgent = !!(go0 && (go0.kind === "faller" || go0.kind === "blinker"));
+      }
       const landing = (this._tick % PLAN_EVERY === 0 || !this._lastLanding)
         ? this.findLanding(dirx, dirz, prog, t, 縁まで) : this._lastLanding;
       this._lastLanding = landing;
@@ -504,6 +508,24 @@ export class Bot {
         }
         inp.jumpDown = this.jumpHold > 0;
         if (this.jumpHold > 0) this.jumpHold--;
+      } else if (this._urgent) {
+        /* ★ いま 立っている 板が **消える／落ちる**のに 行き先が 無い。
+           待っても 足元が 無くなる だけ なので、
+           **少し あとの 時刻**で もう一度 探して、あれば 跳ぶ。
+           それでも 無ければ 中心線の 先へ 跳ぶ（何も しないより まし）。 */
+        let 逃げ = null;
+        for (const 先 of [0.35, 0.7, 1.1]) {
+          逃げ = this.findLanding(dirx, dirz, prog, t + 先, 縁まで);
+          if (逃げ) break;
+        }
+        const ax = 逃げ ? (逃げ.x - p.x) : dirx * 4;
+        const az = 逃げ ? (逃げ.z - p.z) : dirz * 4;
+        const al = Math.hypot(ax, az) || 1;
+        inp.mx = (ax / al) * L.speed; inp.mz = (az / al) * L.speed;
+        if (p.grounded) { inp.jump = true; this.jumpHold = 16; }
+        inp.jumpDown = this.jumpHold > 0;
+        if (this.jumpHold > 0) this.jumpHold--;
+        this.reason = 逃げ ? "先を読んで跳ぶ" : "とにかく跳ぶ";
       } else {
         /* 行き先が 無い。**跳ばない。** 待てば 板が 戻ってくる。
            ただし ずっと 戻ってこない ことも あるので、

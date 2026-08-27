@@ -45,8 +45,8 @@ const 越えられる段差 = 2.4;
 
   const list = だけ ? COURSES.filter((c) => c.id === だけ) : COURSES;
   console.log("隙間と 段差を 測る（走らせない）\n");
-  console.log("  ID   名前                    長さ  最大隙間  最大段差  危ない所");
-  console.log("  ──── ─────────────────────── ───── ──────── ──────── ────────");
+  console.log("  ID   名前                    長さ  最大隙間  最大段差  板→板   危ない所");
+  console.log("  ──── ─────────────────────── ───── ──────── ──────── ──────── ────────");
 
   for (const def of list) {
     const c = buildCourse(def);
@@ -130,7 +130,42 @@ const 越えられる段差 = 2.4;
     };
     const 許す隙間 = 射出が手前にある(隙間場所) ? 20 : 越えられる隙間;
 
+    /* ── ② 足場から 足場への 距離 ──────────────────────────────
+       ★ 中心線の 断面だけ 見ると 見落とす。
+         とび石・消える板・落ちる板が 道幅の 中で 左右に 振れていると、
+         断面には いつも 何か あるのに **板から 板へは 届かない**。
+         実際 c22 で 隣の 板まで 7.7m あった（跳べるのは 5.88m）。 */
+    const 点 = [];
+    for (const o of c.obstacles) {
+      if (o.kind === "stones") { for (const st of o.stones) 点.push({ x: st.x, z: st.z, r: o.r, k: "石" }); }
+      else if (o.kind === "blinker") 点.push({ x: o.x, z: o.z, r: Math.min(o.w, o.d) / 2, k: "消" });
+      else if (o.kind === "faller") 点.push({ x: o.x, z: o.z, r: Math.min(o.w, o.d) / 2, k: "落" });
+      else if (o.kind === "mover") 点.push({ x: o.x, z: o.z, r: Math.min(o.w, o.d) / 2 + (o.ax || 0), k: "動" });
+    }
+    点.sort((a, b) => b.z - a.z);   /* 進む 向き（-Z）へ 並べる */
+    /* ★ 「並び順の 隣」では なく **一番 近い 先の 板**を 見る。
+       c17 の ように 3 本の 道が 並んでいる ときは、
+       違う 道の 板どうしを 比べて しまう（横に 10m 離れている）。
+       「この 板から 一番 近い 先の 板」が 届かない ときだけ 数える。 */
+    let 最遠 = 0, 最遠場所 = 0, 最遠札 = "";
+    for (let i = 0; i < 点.length; i++) {
+      const a = 点[i];
+      let 近 = Infinity, 相手 = null;
+      for (let j = 0; j < 点.length; j++) {
+        const b = 点[j];
+        if (b.z >= a.z - 0.5) continue;              /* 先に ある ものだけ */
+        if (a.z - b.z > 14) continue;                /* ひとつながりで ない */
+        /* 横に 6m 以上 離れて いれば **別の 道**（c17 の 三又）。比べない。 */
+        if (Math.abs(a.x - b.x) > 6) continue;
+        const d = Math.hypot(a.x - b.x, a.z - b.z) - (a.r + b.r) * 0.55;
+        if (d < 近) { 近 = d; 相手 = b; }
+      }
+      if (!相手) continue;                            /* 先に 板が 無い＝床へ 出る */
+      if (近 > 最遠) { 最遠 = 近; 最遠場所 = Math.abs(a.z); 最遠札 = a.k + "→" + 相手.k; }
+    }
+
     const 危 = [];
+    if (最遠 > 越えられる隙間) 危.push("板から板 " + 最遠.toFixed(1) + "m " + 最遠札 + " @" + Math.round(最遠場所) + "m");
     if (最大隙間 > 許す隙間) 危.push("隙間 " + 最大隙間.toFixed(1) + "m @" + Math.round(隙間場所) + "m");
     if (最大段差 > 越えられる段差) 危.push("段差 " + 最大段差.toFixed(1) + "m @" + Math.round(段差場所) + "m");
 
@@ -138,12 +173,15 @@ const 越えられる段差 = 2.4;
       + String(Math.round(c.length)).padStart(5) + "m"
       + (最大隙間.toFixed(1) + "m").padStart(9)
       + (最大段差.toFixed(1) + "m").padStart(9)
+      + (最遠.toFixed(1) + "m").padStart(9)
       + "  " + (危.length ? "⚠ " + 危.join(" / ") : "—"));
 
     ok(def.id + " 隙間が 跳べる 範囲", 最大隙間 <= 許す隙間,
       { 隙間: 最大隙間.toFixed(1), 場所: Math.round(隙間場所) + "m", 許す: 許す隙間 });
     ok(def.id + " 段差が 跳べる 範囲（≦" + 越えられる段差 + "m）", 最大段差 <= 越えられる段差,
       { 段差: 最大段差.toFixed(1), 場所: Math.round(段差場所) + "m" });
+    ok(def.id + " 板から 板へ 届く（≦" + 越えられる隙間 + "m）", 最遠 <= 越えられる隙間,
+      { 距離: 最遠.toFixed(1), 何: 最遠札, 場所: Math.round(最遠場所) + "m" });
   }
 
   console.log("\n────────────────────────────────");
