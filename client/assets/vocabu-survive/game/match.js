@@ -101,7 +101,9 @@ export class MatchScreen {
   async enter(cfg) {
     this.cfg = cfg = cfg || {};
     const courseId = cfg.courseId || "c01";
-    const def = COURSE_BY_ID[courseId] || COURSES[0];
+    /* ★ 自分で 作った コースは 一覧に 無い ので、**定義を そのまま** 受ける。
+       id だけ 見て いた ので、作った コースを 走ると 1 本目に なっていた。 */
+    const def = cfg.courseDef || COURSE_BY_ID[courseId] || COURSES[0];
 
     if (!this.renderer) {
       try {

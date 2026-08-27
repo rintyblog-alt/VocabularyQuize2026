@@ -93,10 +93,13 @@ class App {
         /* 通信が 遅くても ここで 待たない。控えは すでに 手元に ある。 */
         try { q.fetchQuestions({ count: 8, seed: 1 }).then((r) => { this._warmQuestions = r; }).catch(() => {}); } catch (e) {}
         return q;
-      }]
+      }],
+      /* ★ 編集の 画面は **最後**に 読む。使わない 人の ほうが 多いので、
+         ここで つまずいても ロビーと 試合は もう 動いている。 */
+      ["コースの 作り方を 用意しています", () => import("./ui/editor.js")]
     ];
     const mods = {};
-    const keys = ["audio", "courses", "lobby", "net", "match", "questions"];
+    const keys = ["audio", "courses", "lobby", "net", "match", "questions", "editor"];
     for (let i = 0; i < steps.length; i++) {
       const [label, fn] = steps[i];
       loading.setProgress(i / steps.length, label);
@@ -132,6 +135,18 @@ class App {
       });
       this.shell.register("lobby", lobby);
     }
+    if (mods.editor && mods.editor.EditorScreen) {
+      addCss(this.shell.root, mods.editor.EDITOR_CSS || "");
+      const ed = new mods.editor.EditorScreen({
+        app: this,
+        onPlay: (def) => this.startMatch({
+          courseId: def.id, courseDef: def, mode: "timeattack", bots: 0,
+          myName: "あなた", seed: 1
+        }),
+        onExit: () => this.goLobby()
+      });
+      this.shell.register("editor", ed);
+    }
     if (mods.match && mods.match.MatchScreen) {
       addCss(this.shell.root, mods.match.MATCH_CSS || "");
       const match = new mods.match.MatchScreen({
@@ -155,6 +170,13 @@ class App {
     await this.goLobby();
     const lb = this.shell && this.shell.get("lobby");
     if (lb && lb.joinByCode) { try { await lb.joinByCode(code); } catch (e) { console.error(LOG, e); } }
+  }
+
+  /** コースを 作る 画面へ。 */
+  async goEditor(arg) {
+    if (!this.shell || !this.shell.get("editor")) return;
+    this.screenName = "editor";
+    await this.shell.show("editor", arg);
   }
 
   async goLobby() {

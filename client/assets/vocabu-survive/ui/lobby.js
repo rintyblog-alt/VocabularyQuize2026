@@ -18,6 +18,7 @@ import { PALETTE, BEAN_COLORS, beanByIndex } from "./theme.js";
 import { COURSES, tierOf, TIERS } from "../data/courses.js";
 import { CUP_ROUNDS } from "../game/sim.js";
 import { clearGhost } from "../data/ghost.js";
+import { listMyCourses, getMyCourse, toDef } from "../data/mycourse.js";
 import { themeOf } from "../game/theme3d.js";
 import { HATS, HAT_COLORS } from "../game/bean.js";
 import { SurviveNet, createRoom, roomInfo } from "../net/client.js";
@@ -349,6 +350,14 @@ export class LobbyScreen {
       class: "vs-btn vs-lb-start", type: "button",
       onclick: () => this._start()
     }, "スタート");
+    /* 自分で 作った コース。作る 画面へ 行く 口と、走る ための 一覧。
+       ★ 名前は **editBtn**。makeBtn は もう「部屋を 作る」で 使われて いて、
+         同じ 名前に すると 後から 作った ほうに 上書きされて 消える。 */
+    this.editBtn = h("button", {
+      class: "vs-btn is-sm is-ghost", type: "button",
+      onclick: () => { if (this.app && this.app.goEditor) this.app.goEditor(); }
+    }, "コースを 作る");
+    this.mineEl = h("div", { class: "vs-lb-mine", "aria-label": "自分で 作った コース" });
     /* みんなで あそぶ */
     this.codeInput = h("input", {
       class: "vs-lb-code", type: "text", inputmode: "latin", maxlength: "6",
@@ -455,6 +464,8 @@ export class LobbyScreen {
           h("div", { class: "vs-lb-lab", text: "人数（相手が いなければ ボット）" }), this.botRow,
           h("div", { class: "vs-lb-lab", text: "いま 集まっている 人" }), this.partyEl,
           this.roomEl,
+          h("div", { class: "vs-lb-lab", text: "自分の コース" }),
+          h("div", { class: "vs-lb-minerow" }, this.editBtn), this.mineEl,
           h("div", { class: "vs-lb-lab", text: "みんなで あそぶ" }), this.onlineEl,
           this.settingsEl,
           h("div", { class: "vs-lb-actions" }, this.readyBtn, this.startBtn))));
@@ -539,6 +550,49 @@ export class LobbyScreen {
     }
     try { this.qzEl.open = false; } catch (e) {}
     this._render();
+  }
+
+  /** 自分で 作った コースの 一覧。**対戦では 使えない**（相手が 持っていない）。 */
+  async _loadMine() {
+    let list = [];
+    try { list = await listMyCourses(); } catch (e) { list = []; }
+    this._mine = list;
+    this._renderMine();
+  }
+  _renderMine() {
+    if (!this.mineEl) return;
+    const 対戦中 = !!(this.net && this.roomId);
+    this.mineEl.textContent = "";
+    const list = this._mine || [];
+    if (!list.length) {
+      this.mineEl.appendChild(h("p", { class: "vs-lb-note", text: "まだ ありません。「コースを 作る」から。" }));
+      return;
+    }
+    for (const c of list.slice(0, 12)) {
+      this.mineEl.appendChild(h("button", {
+        class: "vs-lb-mineb", type: "button", disabled: 対戦中,
+        title: 対戦中 ? "対戦では 使えません（相手が 持っていません）" : c.name,
+        onclick: async () => {
+          if (対戦中) return;
+          const got = await getMyCourse(c.id);
+          if (!got) return;
+          this.onPlay({
+            courseId: got.id, courseDef: toDef(got),
+            mode: this.mode === "cup" ? "race" : this.mode,
+            bots: this.mode === "timeattack" ? 0 : this.botCount,
+            myName: this.me.name, myColor: this.me.colorIndex,
+            myHat: this.hat, myHatColor: this.hatColor,
+            presetKind: this.qz.kind || "", presetId: this.qz.id || "", presetOwner: this.qz.owner || 0,
+            players: [], seed: 1
+          });
+        }
+      }, h("span", { class: "vs-lb-mineb-n", text: c.name }),
+         h("span", { class: "vs-lb-mineb-m", text: (c.sections || []).length + " 区画" })));
+    }
+    if (対戦中) {
+      this.mineEl.appendChild(h("p", { class: "vs-lb-note",
+        text: "対戦では 使えません（相手が その コースを 持っていません）。" }));
+    }
   }
 
   async _loadPresets() {
@@ -819,6 +873,7 @@ export class LobbyScreen {
     this.invertBtn.setAttribute("aria-pressed", this.invertY ? "true" : "false");
 
     if (this.qzList) this._renderQuiz();
+    if (this.mineEl) this._renderMine();
     if (this.hatRow) {
       for (const b of this.hatRow.children) {
         b.setAttribute("aria-checked", b.getAttribute("data-hat") === this.hat ? "true" : "false");
@@ -854,6 +909,7 @@ export class LobbyScreen {
     this._render();
     this._loadFriends();
     this._loadPresets();
+    this._loadMine();
   }
   exit() {}
   resize() {}
@@ -1048,6 +1104,16 @@ export const LOBBY_CSS = `
 .vs-lb-rec-no{ flex:0 0 auto; width:20px; text-align:right; color:rgba(243,245,255,.5); }
 .vs-lb-rec-row[data-me="1"] .vs-lb-rec-no{ color:${PALETTE.mint}; }
 .vs-lb-rec-gap{ font-size:11px; color:rgba(243,245,255,.35); padding-left:9px; line-height:1; }
+.vs-lb-minerow{ display:flex; gap:6px; margin-bottom:5px; }
+.vs-lb-mine{ display:flex; flex-direction:column; gap:3px; max-height:150px; overflow-y:auto; }
+.vs-lb-mineb{ display:flex; align-items:baseline; gap:8px; width:100%; text-align:left;
+  padding:6px 9px; border-radius:9px; border:1px solid ${PALETTE.line};
+  background:rgba(255,255,255,.03); color:rgba(243,245,255,.9);
+  font:inherit; font-size:12.5px; cursor:pointer; }
+.vs-lb-mineb:hover:not(:disabled){ background:rgba(255,255,255,.08); }
+.vs-lb-mineb:disabled{ opacity:.42; cursor:default; }
+.vs-lb-mineb-n{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vs-lb-mineb-m{ flex:0 0 auto; font-size:10.5px; color:rgba(243,245,255,.62); }
 .vs-lb-hatbox{ margin:8px 0 2px; border:1px solid ${PALETTE.line}; border-radius:12px;
   background:rgba(255,255,255,.03); }
 .vs-lb-hatbox summary{ list-style:none; cursor:pointer; padding:8px 11px; font-size:12px;
