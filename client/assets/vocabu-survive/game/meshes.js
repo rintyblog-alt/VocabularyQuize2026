@@ -18,7 +18,10 @@ export const M = {
   frame: "vs_frame",   /* 額縁。クイズの 門 */
   blade: "vs_blade",   /* 羽根（薄い 箱）。扇風機・回転棒 */
   flag: "vs_flag",     /* 旗。中間地点・ゴール */
-  post: "vs_post"      /* 細い 柱 */
+  post: "vs_post",     /* 細い 柱 */
+  /* ★ 粒 用の 小さな 球。ふつうの 球（352 面）を 使っていたら
+     面の 数が 3 万 → 6 万に なった。粒は 小さいので 20 面で 足りる。 */
+  dot: "vs_dot"
 };
 
 /** renderer へ 1 回だけ 登録する。 */
@@ -34,4 +37,5 @@ export function registerCourseMeshes(R) {
   R.addMesh(M.blade, [MESH.roundedBox(2, 0.06), MESH.roundedBox(1, 0.06)]);
   R.addMesh(M.flag, [MESH.roundedBox(2, 0.08), MESH.roundedBox(1, 0.08)]);
   R.addMesh(M.post, [MESH.cylinder(10, 0.5, 0.5, 1, true), MESH.cylinder(6, 0.5, 0.5, 1, true)]);
+  R.addMesh(M.dot, [MESH.sphere(6, 4, 0.5), MESH.sphere(5, 3, 0.5), MESH.sphere(4, 3, 0.5)]);
 }

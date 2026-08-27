@@ -19,7 +19,8 @@ import { PALETTE, BEAN_COLORS, beanByIndex } from "../ui/theme.js";
 import { Renderer } from "../engine/renderer.js";
 import { ThirdPersonCamera } from "../engine/camera.js";
 import { m4, v3, clamp, lerp, damp } from "../engine/math.js";
-import { registerCourseMeshes } from "./meshes.js";
+import { registerCourseMeshes, M } from "./meshes.js";
+import { Particles } from "../engine/particles.js";
 import { BeanVisual, registerBeanMeshes, BEAN_HEIGHT } from "./bean.js";
 import { buildCourse } from "./course.js";
 import { Player, FixedStepper, STEP, TUNE } from "./player.js";
@@ -83,6 +84,9 @@ export class MatchScreen {
     this._tmpV = v3.create();
     this._mat = m4.create();
     this.net = null;              /* 通信（あれば） */
+    /* 粒。段で 数を 変える（低い 端末では 4 分の 1）。 */
+    this.fx = null;
+    this._dustAcc = 0;
   }
 
   /* ── 出入り ─────────────────────────────────────────────────────── */
@@ -96,6 +100,7 @@ export class MatchScreen {
         this.renderer = new Renderer(this.canvas, this.settings);
         registerCourseMeshes(this.renderer);
         registerBeanMeshes(this.renderer);
+        this.fx = new Particles(Math.round(260 * (this.settings.particles || 1)));
       } catch (e) {
         console.error("[VocabuSurvive] 描けません", e);
         this._fatal(String(e && e.message || e));
@@ -260,6 +265,24 @@ export class MatchScreen {
     /* ⑤ 描く */
     const R = this.renderer;
     R.shadowCenter[0] = target.x; R.shadowCenter[1] = target.y; R.shadowCenter[2] = target.z;
+    /* 走っている 間の 土ぼこり（自分と、近くの 人だけ） */
+    if (this.fx && this.sim.phase === PHASE.RUNNING) {
+      this._dustAcc += dt;
+      if (this._dustAcc > 0.055) {
+        this._dustAcc = 0;
+        for (const p of this.sim.players) {
+          if (!p.grounded || p.speed < 3.2) continue;
+          const vis = this.visuals.get(p.id);
+          const d = vis && vis.draw ? vis.draw : p;
+          if (Math.hypot(d.x - this.cam.pos[0], d.z - this.cam.pos[2]) > 34) continue;
+          const sp = p.speed / TUNE.maxSpeed;
+          this.fx.dust(d.x, d.y, d.z, p.vx / (p.speed || 1), p.vz / (p.speed || 1),
+            sp * (this.settings.particles || 1), this.course.palette.floorAlt);
+        }
+      }
+      this.fx.update(dt);
+    } else if (this.fx) this.fx.update(dt);
+
     R.begin(this.cam);
     this.course.draw(R, this.sim.time);
     for (const p of this.sim.players) {
@@ -267,6 +290,7 @@ export class MatchScreen {
       if (!vis || !vis.draw) continue;
       vis.v.draw(R, vis.draw.x, vis.draw.y, vis.draw.z, vis.draw.yaw, 1);
     }
+    if (this.fx) this.fx.draw(R, { ball: M.dot, slab: M.slab, ring: M.ring });
     R.end(dt);
 
     /* ⑥ 画面の もの */
@@ -338,15 +362,27 @@ export class MatchScreen {
     for (const e of evs) {
       if (e.t === "go") this.hud.big("GO!", "go");
       else if (e.t === "gate-ask" && e.p === this.local) this._openQuiz(e.gate);
-      else if (e.t === "checkpoint" && e.p === this.local) this.hud.toast("中間地点 " + e.index, "good");
+      else if (e.t === "checkpoint" && e.p === this.local) {
+        this.hud.toast("中間地点 " + e.index, "good");
+        if (this.fx) this.fx.confetti(e.p.x, e.p.y, e.p.z, 16, [this.course.palette.spring, this.course.palette.gold]);
+      }
       else if (e.t === "respawn" && e.p === this.local) { this.hud.toast("戻されました", "bad"); this.cam.hit(0.5); }
-      else if (e.t === "hit" && e.p === this.local) this.cam.hit(clamp((e.power || 6) / 12, 0.3, 1));
+      else if (e.t === "hit") {
+        if (e.p === this.local) this.cam.hit(clamp((e.power || 6) / 12, 0.3, 1));
+        if (this.fx) this.fx.hit(e.p.x, e.p.y + 0.8, e.p.z, clamp((e.power || 6) / 9, 0.4, 1.4), this.course.palette.hot);
+      }
+      else if (e.t === "bounce" && this.fx) this.fx.boost(e.p.x, e.p.y, e.p.z, this.course.palette.spring);
+      else if (e.t === "respawn" && this.fx) this.fx.hit(e.p.x, e.p.y + 0.6, e.p.z, 0.7, this.course.palette.accent);
       else if (e.t === "finish") {
         if (e.p === this.local) {
           this.hud.big("ゴール!", "goal");
           /* ★ サーバへ 先に 知らせる。結果画面は そのあと 出す。
              （ここを else if に すると 結果画面が 出なくなる） */
           if (this.net) this.net.sendFinish();
+          if (this.fx) {
+            const P = this.course.palette;
+            this.fx.confetti(e.p.x, e.p.y, e.p.z, 90, [P.gold, P.spring, P.accent, P.hot, [1, 1, 1]]);
+          }
           this._finish();
         } else this.hud.toast(e.p.name + " が ゴール（" + e.rank + "位）");
       } else if (e.t === "timeup") this._finish();
