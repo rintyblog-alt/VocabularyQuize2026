@@ -6,10 +6,10 @@
 |---|---|
 | beta | 8 |
 | coming_soon | 7 |
-| production | 110 |
-| **合計** | **125** |
+| production | 143 |
+| **合計** | **158** |
 
-## 本番と判定した形式（110）
+## 本番と判定した形式（143）
 
 | 表示名 | 内部ID | Engine | 分類 | 空 | 見本 | 検証 | 解ける | 編集 | 表示 | 採点 | 結果 | Insight | 判定 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -120,6 +120,39 @@
 | 逆引きカード | `flashcard_reverse` | flashcard | 暗記・復習 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
 | 高速カード | `flashcard_speed` | flashcard | 暗記・復習 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
 | 覚えた／まだ | `flashcard_selfmark` | flashcard | 暗記・復習 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 理由を選ぶ | `choice_reason` | single_choice | 選択式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 定義を選ぶ | `choice_definition` | single_choice | 選択式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 用語を選ぶ | `choice_term` | single_choice | 選択式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 順序を選ぶ | `choice_order` | single_choice | 選択式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 計算して選ぶ | `choice_calc` | single_choice | 選択式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 図表から選ぶ | `choice_graph_read` | single_choice | 選択式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 単位付き | `unit_input` | text_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 記号 | `symbol_input` | text_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 年号 | `year_input` | text_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 人名 | `person_input` | text_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 地名 | `place_input` | text_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 対義語 | `antonym_input` | text_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 類義語 | `synonym_input` | text_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 慣用句 | `idiom_input` | text_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 用語穴埋め | `fill_blank_term` | fill_blank | 穴埋め式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 数値穴埋め | `fill_blank_number` | fill_blank | 穴埋め式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 大きさ順 | `reorder_size` | reorder | 並べ替え・操作 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 用語と定義 | `matching_term_def` | matching | マッチング・分類 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 原因と結果 | `matching_cause_effect` | matching | マッチング・分類 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 公式と用途 | `matching_formula` | matching | マッチング・分類 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 3群に分類 | `classification_three` | classification | マッチング・分類 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 時代で分類 | `classification_era` | classification | マッチング・分類 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| グラフ比較 | `chart_compare` | chart_read | 画像・図表 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 推移 | `chart_trend` | chart_read | 画像・図表 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 四捨五入 | `numeric_round` | numeric_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 単位をそろえる | `numeric_unit` | numeric_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 図の説明 | `describe_diagram` | free_text | 記述・思考 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 言い換え | `paraphrase` | free_text | 記述・思考 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 用語説明 | `define_term` | free_text | 記述・思考 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 日本語添削 | `japanese_proofread` | error_correction | 記述・思考 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 長文読解 | `passage_set` | composite | 複合大問 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 例文カード | `flashcard_example` | flashcard | 暗記・復習 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
+| 説明カード | `flashcard_image_word` | flashcard | 暗記・復習 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
 | 複合大問 | `composite` | composite | 複合大問 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
 | 数値入力 | `numeric` | numeric_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
 | 数式入力 | `formula` | text_input | 文字入力式 | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | **合格** |
