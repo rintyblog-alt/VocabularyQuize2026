@@ -90,6 +90,11 @@ export class LobbyScreen {
     } catch (e) { this.volume = 0.7; this.musicOn = true; this.invertY = false; }
     try { this.quality = localStorage.getItem("vq.survive.tier.v1") || "auto"; } catch (e) { this.quality = "auto"; }
     try { this.ghostOn = localStorage.getItem("vq.survive.ghost.on.v1") !== "0"; } catch (e) { this.ghostOn = true; }
+    try {
+      const v = localStorage.getItem("vq.survive.calm.v1");
+      this.calmOn = v === "1" ? true : (v === "0" ? false
+        : !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches));
+    } catch (e) { this.calmOn = false; }
   }
   _save() {
     try {
@@ -227,6 +232,13 @@ export class LobbyScreen {
     this.musicOn = !!on;
     if (this.app && this.app.audio) this.app.audio.setMusic(this.musicOn);
     this._save(); this._render();
+  }
+  _setCalm(on) {
+    this.calmOn = !!on;
+    try { localStorage.setItem("vq.survive.calm.v1", on ? "1" : "0"); } catch (e) {}
+    /* 画質と 同じで **次の 試合から**。いま 動いている 場は 触らない。 */
+    if (this.app && this.app.setQuality) { try { this.app.setQuality(this.quality); } catch (e) {} }
+    this._render();
   }
   _setGhost(on) {
     this.ghostOn = !!on;
@@ -395,6 +407,11 @@ export class LobbyScreen {
       onclick: () => this._setInvert(!this.invertY)
     }, "上下を 逆に");
     /* ゴースト。自己ベストの 走りと 並んで 走る。 */
+    /* 動きを 減らす。酔いやすい 人 向け。**次の 試合から** 効く。 */
+    this.calmBtn = h("button", {
+      class: "vs-lb-toggle", type: "button", "aria-pressed": "false",
+      onclick: () => this._setCalm(!this.calmOn)
+    }, "画面の ゆれを 減らす");
     this.ghostBtn = h("button", {
       class: "vs-lb-toggle", type: "button", "aria-pressed": "true",
       onclick: () => this._setGhost(!this.ghostOn)
@@ -408,7 +425,7 @@ export class LobbyScreen {
       h("div", { class: "vs-lb-set-body" },
         h("div", { class: "vs-lb-lab", text: "画質" }), this.qualityRow,
         h("div", { class: "vs-lb-lab", text: "音の 大きさ" }), this.volInput,
-        h("div", { class: "vs-lb-togglerow" }, this.musicBtn, this.invertBtn, this.ghostBtn),
+        h("div", { class: "vs-lb-togglerow" }, this.musicBtn, this.invertBtn, this.ghostBtn, this.calmBtn),
         h("div", { class: "vs-lb-togglerow" }, this.ghostClearBtn),
         h("p", { class: "vs-lb-note", text: "画質は 次の 試合から 変わります。" }),
         h("p", { class: "vs-lb-note",
@@ -885,6 +902,7 @@ export class LobbyScreen {
       this.hatName.textContent = ht ? ht.name : "なし";
     }
     if (this.ghostBtn) this.ghostBtn.setAttribute("aria-pressed", this.ghostOn ? "true" : "false");
+    if (this.calmBtn) this.calmBtn.setAttribute("aria-pressed", this.calmOn ? "true" : "false");
 
     this.roomEl.textContent = "";
     if (this.roomId) {

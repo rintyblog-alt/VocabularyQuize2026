@@ -207,6 +207,8 @@ export class MatchScreen {
 
     /* カメラ */
     this.cam.raycast = (from, dir, max) => this.course.world.ray(from, dir, max);
+    /* 動きを 減らす 設定（OS か 手で 選んだ もの）。揺れを 止める。 */
+    this.cam.shakeScale = this.settings.shakeScale === undefined ? 1 : this.settings.shakeScale;
     this.cam.invertY = !!(this.app && this.app.invertY);
     this.cam.wantDistance = 8.4;
     this.cam.wantPitch = 0.34;

@@ -98,6 +98,8 @@ export function measure() {
 
   /* 動きを 減らす設定の 人は 1 段 落とす（揺れる仕掛けを 弱める） */
   if (reduceMotion && tier === "ultra") tier = "high";
+  /* ★ 段を 下げる だけでは 足りない。**ゆれと 粒**を 抑える。
+     酔いやすい 人に とっては 画質より こちらの ほうが 効く。 */
 
   _cache = {
     tier, webgl2: gl.webgl2, webgl1: gl.webgl1, mobile, ios, cores, memory, dpr,
@@ -125,7 +127,21 @@ export function settingsFor(tierOrAuto) {
   const p = PRESETS[t] || PRESETS.medium;
   /* 画面が 大きいほど 描く画素が 増える。上限を 掛けて 守る。 */
   const maxPixels = t === "low" ? 900000 : t === "medium" ? 1600000 : 2600000;
-  return Object.assign({}, p, { tier: t, autoTier: m.tier, maxPixels, dpr: m.dpr });
+  /* ★ 「動きを 減らす」は **OS の 設定 だけに 任せない。**
+     その 設定が ある ことを 知らない 人の ほうが 多い。
+     手で 選んだ ものが あれば そちらを 優先する（"1" 減らす / "0" 減らさない）。 */
+  let 減 = m.reduceMotion;
+  try {
+    const v = localStorage.getItem("vq.survive.calm.v1");
+    if (v === "1") 減 = true; else if (v === "0") 減 = false;
+  } catch (e) {}
+  return Object.assign({}, p, {
+    tier: t, autoTier: m.tier, maxPixels, dpr: m.dpr,
+    calm: 減,
+    /* 揺れの 強さ・粒の 数。減らす ときは 揺れ 0・粒 4 割。 */
+    shakeScale: 減 ? 0 : 1,
+    particles: (p.particles || 1) * (減 ? 0.4 : 1)
+  });
 }
 
 export function reset() { _cache = null; }

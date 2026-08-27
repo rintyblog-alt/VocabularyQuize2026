@@ -331,11 +331,47 @@ function 比(a, b) {
       ok(nm + " の 明暗が " + 要 + ":1 以上", c >= 要, { 色: v.c, 背: v.b, 比: c && c.toFixed(2), px: v.px });
     }
 
-    節("⑧ 動きを 減らす 設定");
+    節("⑧ 動きを 減らす");
     const src = fs.readFileSync("client/assets/vocabu-survive/boot/loading.js", "utf8")
       + fs.readFileSync("client/assets/vocabu-survive/ui/theme.js", "utf8")
+      + fs.readFileSync("client/assets/vocabu-survive/boot/caps.js", "utf8")
       + fs.readFileSync("client/assets/vocabu-survive/ui/hud.js", "utf8");
     ok("prefers-reduced-motion を 見ている", /prefers-reduced-motion/.test(src));
+    /* ★ **OS の 設定だけに 任せない。** その 設定が ある ことを 知らない 人が 多い。 */
+    const 切 = await pg.evaluate(() => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const d = r.querySelector(".vs-lb-settings"); if (d) d.open = true;
+      const b = Array.from(r.querySelectorAll(".vs-lb-toggle"))
+        .filter((e) => /ゆれを 減らす/.test(e.textContent))[0];
+      return { 有: !!b, 入: b ? b.getAttribute("aria-pressed") : null };
+    });
+    ok("設定に「画面の ゆれを 減らす」が ある", 切.有, 切);
+    const 効 = await pg.evaluate(async () => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const b = Array.from(r.querySelectorAll(".vs-lb-toggle"))
+        .filter((e) => /ゆれを 減らす/.test(e.textContent))[0];
+      b.click();
+      await new Promise((x) => setTimeout(x, 400));
+      const mod = await import("/assets/vocabu-survive/boot/caps.js");
+      mod.reset();
+      const s2 = mod.settingsFor("high");
+      return { 覚: localStorage.getItem("vq.survive.calm.v1"), 揺: s2.shakeScale, 粒: s2.particles, calm: s2.calm };
+    });
+    ok("押すと 覚える", 効.覚 === "1", 効);
+    ok("**揺れが 止まる**", 効.揺 === 0, 効);
+    ok("粒も 減る", 効.粒 < 1, 効);
+    const 戻 = await pg.evaluate(async () => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const b = Array.from(r.querySelectorAll(".vs-lb-toggle"))
+        .filter((e) => /ゆれを 減らす/.test(e.textContent))[0];
+      b.click();
+      await new Promise((x) => setTimeout(x, 400));
+      const mod = await import("/assets/vocabu-survive/boot/caps.js");
+      mod.reset();
+      const s2 = mod.settingsFor("high");
+      return { 覚: localStorage.getItem("vq.survive.calm.v1"), 揺: s2.shakeScale };
+    });
+    ok("もう一度 押すと 戻る", 戻.覚 === "0" && 戻.揺 === 1, 戻);
 
     節("⑨ 例外");
     ok("画面の 例外 0 件", errs.length === 0, errs.slice(0, 4));

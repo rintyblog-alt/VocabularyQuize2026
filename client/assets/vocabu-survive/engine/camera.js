@@ -40,6 +40,7 @@ export class ThirdPersonCamera {
 
     this.shake = 0;
     this._shakeT = 0;
+    this.shakeScale = 1;      /* 0 = 揺らさない */
     this._tmp = v3.create();
     /* 壁の 判定を 外から 差し込む。無ければ 何も しない。 */
     this.raycast = null;      /* (from, dir, maxDist) → 当たった距離 or -1 */
@@ -71,7 +72,13 @@ export class ThirdPersonCamera {
     this._place(0);
   }
 
-  hit(strength) { this.shake = Math.max(this.shake, strength); }
+  /* ★ ゆれの 強さ。0 に すると まったく 揺れない。
+     酔いやすい 人が いる ので、**必ず 切れる ように する**。 */
+  hit(strength) {
+    const k = this.shakeScale === undefined ? 1 : this.shakeScale;
+    if (k <= 0) return;
+    this.shake = Math.max(this.shake, strength * k);
+  }
 
   _place(dt) {
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
