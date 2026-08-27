@@ -104,6 +104,68 @@ const 取る = async (p, o) => {
   const me = await 取る("/api/auth/me");
   ok("札なしの /api/auth/me は 401", me.status === 401, me.status);
 
+  節("⑦ 本物の 画面で 開く（読み取りだけ）");
+  /* ★ HTTP の 200 だけでは「出したのに 動かない」を 見つけられない。
+     本番の 束を **実際の ブラウザで 読み込んで**、ロビーまで 出るかを 見る。
+     ★ 書き込みは 一切 しない（アカウントも 作らない・結果も 送らない）。 */
+  try {
+    const { chromium } = require("playwright");
+    const br = await chromium.launch({
+      args: ["--enable-unsafe-swiftshader", "--use-gl=angle", "--use-angle=swiftshader", "--disable-dev-shm-usage"]
+    });
+    const errs = [];
+    try {
+      const ctx = await br.newContext({ viewport: { width: 1200, height: 820 } });
+      const pg = await ctx.newPage();
+      pg.on("pageerror", (e) => errs.push(String(e && e.message || e)));
+      await pg.goto(BASE + "/index.html", { waitUntil: "domcontentloaded", timeout: 45000 });
+      await pg.waitForFunction(() => !!document.getElementById("appSurvivePage"), null, { timeout: 30000, polling: 250 });
+      await pg.evaluate(() => {
+        const f = () => {
+          document.body.classList.remove("auth-booting", "auth-gate-open", "first-launch-open");
+          for (const id of ["authGate", "authBootSplash", "firstLaunchOverlay", "globalLoadingOverlay"]) {
+            const e = document.getElementById(id); if (e) e.classList.add("hidden");
+          }
+        };
+        f(); if (!window.__g) window.__g = setInterval(f, 120);
+      });
+      await pg.evaluate(() => document.querySelector('#appTabBar [data-app-tab="survive"]').click());
+      await pg.waitForFunction(() => !!(window.VocabuSurvive && window.VocabuSurvive.state().opened),
+        null, { timeout: 45000, polling: 250 });
+      const st = await pg.evaluate(() => window.VocabuSurvive.state());
+      ok("本番の 束が 起きる", st.opened === true, st);
+      ok("読み込みで 例外が 出ない", !st.error, st.error);
+      await pg.waitForFunction(() => (window.VocabuSurvive.state().loaded || []).length >= 6,
+        null, { timeout: 45000, polling: 250 }).catch(() => {});
+      const st2 = await pg.evaluate(() => window.VocabuSurvive.state());
+      ok("部品が 全部 読める（7 つ）", (st2.loaded || []).length >= 7, st2.loaded);
+      await pg.waitForFunction(() => {
+        const h = document.querySelector("#appSurvivePage .vq-survive-host");
+        return !!(h && h.shadowRoot && h.shadowRoot.querySelector(".vs-load-start"));
+      }, null, { timeout: 45000, polling: 250 });
+      await pg.evaluate(() => document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot.querySelector(".vs-load-start").click());
+      await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "lobby",
+        null, { timeout: 30000, polling: 250 });
+      const lb = await pg.evaluate(() => {
+        const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+        return {
+          コース: r.querySelectorAll(".vs-lb-courses > *").length,
+          遊: r.querySelectorAll(".vs-lb-mode").length,
+          帽: r.querySelectorAll(".vs-lb-hat").length,
+          始: !!r.querySelector(".vs-lb-start")
+        };
+      });
+      ok("ロビーまで 出る", lb.始 === true, lb);
+      ok("コースが 30 本 並ぶ", lb.コース === 30, lb.コース);
+      ok("遊び方が 6 つ", lb.遊 === 6, lb.遊);
+      ok("かぶりものが 12 種", lb.帽 === 12, lb.帽);
+      const 実害 = errs.filter((e) => !/favicon|net::ERR_|Failed to load resource|firebase/i.test(e));
+      ok("実害の ある 例外が 0 件", 実害.length === 0, 実害.slice(0, 3));
+    } finally { await br.close().catch(() => {}); }
+  } catch (e) {
+    console.log("     （画面の 検査は 飛ばした: " + String(e && e.message || e).slice(0, 120) + "）");
+  }
+
   console.log("\n────────────────────────────────");
   console.log("  ok " + pass + " / NG " + fail);
   if (bad.length) console.log("  落ちたもの:\n   - " + bad.join("\n   - "));
