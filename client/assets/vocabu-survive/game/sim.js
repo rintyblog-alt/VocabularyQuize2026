@@ -178,10 +178,17 @@ export class Sim {
       p.progress = C.progressOf(p.x, p.z);
     }
 
-    /* ⑤ 順位 */
+    /* ⑤ 人どうしの 押し合い ──────────────────────────────────────
+       ★ これが 無いと **すり抜ける**。走る人が 重なって 1 人に 見える。
+         ぶつかり合うのは この 遊びの 面白さの 半分。
+         ただし 硬く すると 出発で 弾き飛ばされるので、
+         **やわらかく 押すだけ**（速さは 少しだけ 混ぜる）。 */
+    this._separate();
+
+    /* ⑥ 順位 */
     this._rank();
 
-    /* ⑥ おしまいの 条件 */
+    /* ⑦ おしまいの 条件 */
     if (this.raceTime >= this.timeLimit) {
       this.phase = PHASE.FINISHED;
       this.events.push({ t: "timeup" });
@@ -292,6 +299,43 @@ export class Sim {
     else { p.quizWrong++; p.penalty = correct === null ? 3.4 : 2.6; }
     if (p.id === this.localId) g.resolve(st.state);
     this.events.push({ t: "gate-answer", p, gate: g, correct });
+  }
+
+  /** 重なった 人どうしを やわらかく 離す。 */
+  _separate() {
+    const ps = this.players;
+    if (ps.length < 2) return;
+    const R = 0.42;               /* 押し合いの 半径（体より 少し 大きい） */
+    const 高さ = 1.4;
+    for (let i = 0; i < ps.length; i++) {
+      const a = ps[i];
+      if (a.finished) continue;
+      for (let j = i + 1; j < ps.length; j++) {
+        const b = ps[j];
+        if (b.finished) continue;
+        if (Math.abs(a.y - b.y) > 高さ) continue;     /* 上下に 離れて いる */
+        let dx = b.x - a.x, dz = b.z - a.z;
+        let d = Math.hypot(dx, dz);
+        if (d >= R * 2) continue;
+        if (d < 1e-4) { dx = (i - j) * 0.01 + 0.001; dz = 0.001; d = Math.hypot(dx, dz); }
+        const nx = dx / d, nz = dz / d;
+        const 押し = (R * 2 - d) * 0.5;
+        /* 通信で 来る 人は こちらでは 動かさない（サーバの 値が 正） */
+        const 動a = !a.remote, 動b = !b.remote;
+        if (動a && 動b) {
+          a.x -= nx * 押し; a.z -= nz * 押し;
+          b.x += nx * 押し; b.z += nz * 押し;
+        } else if (動a) { a.x -= nx * 押し * 2; a.z -= nz * 押し * 2; }
+        else if (動b) { b.x += nx * 押し * 2; b.z += nz * 押し * 2; }
+        /* 速さも 少しだけ 混ぜる（ぶつかった 感じが 出る） */
+        const va = a.vx * nx + a.vz * nz, vb = b.vx * nx + b.vz * nz;
+        if (va - vb > 0) {
+          const 移 = (va - vb) * 0.28;
+          if (動a) { a.vx -= nx * 移; a.vz -= nz * 移; }
+          if (動b) { b.vx += nx * 移; b.vz += nz * 移; }
+        }
+      }
+    }
   }
 
   _rank() {

@@ -49,6 +49,10 @@ export class Bot {
     this.input = { mx: 0, mz: 0, jump: false, jumpDown: false, dive: false };
     this.wobblePhase = this.rnd() * 6.28;
     this.sideBias = (this.rnd() - 0.5) * 2;
+    /* ★ 走る 線を 人ごとに ずらす。
+       全員 中心線を 追うと **団子に なって 1 人に 見える**（実写で 確認）。
+       道の 幅の 中で ±0.35 まで。狭い 道では 自動で 小さく なる。 */
+    this.lane = (opt.lane !== undefined ? opt.lane : (this.rnd() - 0.5) * 2) * 0.35;
     this.stuck = 0;
     this.lastProgress = -1;
     this.jumpHold = 0;
@@ -456,8 +460,11 @@ export class Bot {
         ? (this._center = this.centering(dirx, dirz, Math.min(3.0, 1.4 + p.speed * 0.16)))
         : (this._center || 0);
       const c2 = clamp(寄せ * 0.55, -0.9, 0.9);
-      let ax = dirx + rx * (wob * 0.16 * this.sideBias + c2);
-      let az = dirz + rz * (wob * 0.16 * this.sideBias + c2);
+      /* 道の 幅に 合わせて 自分の 線へ 寄せる */
+      const 幅ぶん = clamp(ahead.w * 0.5 - 1.2, 0, 4.5);
+      const lane = this.lane * 幅ぶん * 0.5;
+      let ax = dirx + rx * (wob * 0.16 * this.sideBias + c2 + lane * 0.22);
+      let az = dirz + rz * (wob * 0.16 * this.sideBias + c2 + lane * 0.22);
       /* 前を ふさぐ ものが あるか（2 コマに 1 回 見る） */
       if (this._tick % 2 === 1) {
         this._blockTop = this.blockedTop(dirx, dirz, 1.7);

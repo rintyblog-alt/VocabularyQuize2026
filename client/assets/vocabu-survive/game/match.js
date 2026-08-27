@@ -140,7 +140,9 @@ export class MatchScreen {
       const p = new Player({ id: "bot" + i, name: BOT_NAMES[i % BOT_NAMES.length], colorIndex: ci });
       this.sim.add(p);
       this.bots.push(new Bot(p, this.course, {
-        level: cfg.botLevel || pickBotLevel(def.difficulty, i), seed: 7000 + i * 131
+        level: cfg.botLevel || pickBotLevel(def.difficulty, i), seed: 7000 + i * 131,
+        /* 走る 線を 均等に 分ける（団子に ならない ように） */
+        lane: botCount > 1 ? (i / (botCount - 1)) * 2 - 1 : 0
       }));
     }
     for (const p of this.sim.players) {
