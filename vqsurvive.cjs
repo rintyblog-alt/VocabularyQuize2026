@@ -60,6 +60,12 @@ const tmp = path.join(require("os").tmpdir(), "vq-survive-" + process.pid + ".js
 try {
   execFileSync("npx", ["esbuild", 入口,
     "--bundle", "--minify", "--format=iife", "--target=es2020",
+    /* ★ charset は **既定（ascii）の まま**に する。
+       utf8 に すると 生の 大きさは 219→212KB に 減るが、
+       **圧縮後は 69.5→71.0KB と 逆に 増えた**（実測）。
+       流れるのは 圧縮後なので ascii の ほうが 得。
+       ただし 日本語は \uXXXX に なるので、検査で 探す ときは
+       同じ 変換を してから 探すこと。 */
     "--global-name=__VQSurviveBundle",
     "--legal-comments=none",
     "--outfile=" + tmp], { stdio: ["ignore", "pipe", "pipe"] });

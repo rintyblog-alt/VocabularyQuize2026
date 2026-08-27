@@ -142,7 +142,11 @@ new_classes = ["RoomDO"]
 
 [[migrations]]
 tag = "survive-room-v1"
-new_classes = ["SurviveRoom"]
+# ★ new_classes では なく new_sqlite_classes。
+#   この アカウントの Durable Object は 無料枠なので、
+#   新しい 種類は SQLite 版でしか 作れない（API が 10097 で 断る）。
+#   storage.get / put は SQLite 版でも そのまま 使える。
+new_sqlite_classes = ["SurviveRoom"]
 
 # ── 写真・動画・ファイルの 3 つめの 置き場（2026-08-19）──────────────
 #   置き場は 上から順に 選ぶ:
