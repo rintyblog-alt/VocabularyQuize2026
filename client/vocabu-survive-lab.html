@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VocabuSurvive — 実験台</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b1020;color:#e8ecf6;
+    font:14px/1.6 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif}
+  #wrap{position:fixed;inset:0}
+  canvas{display:block;width:100%;height:100%}
+  #hud{position:fixed;left:12px;top:12px;background:rgba(8,12,24,.72);padding:10px 14px;
+    border-radius:12px;font-variant-numeric:tabular-nums;white-space:pre;font-size:12px;
+    border:1px solid rgba(255,255,255,.12);pointer-events:none}
+  #err{position:fixed;left:12px;bottom:12px;right:12px;background:#3b0d12;color:#ffd9dd;
+    padding:10px 14px;border-radius:12px;display:none;white-space:pre-wrap;font-size:12px}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<div id="hud">起動中…</div>
+<div id="err"></div>
+<script type="module">
+import { settingsFor, measure } from "/assets/vocabu-survive/boot/caps.js";
+import { Renderer } from "/assets/vocabu-survive/engine/renderer.js";
+import { ThirdPersonCamera } from "/assets/vocabu-survive/engine/camera.js";
+import * as MESH from "/assets/vocabu-survive/engine/mesh.js";
+import { m4, mulberry32 } from "/assets/vocabu-survive/engine/math.js";
+
+const out = { ready:false, error:"", frames:0, stats:null, caps:null, fps:0, pixels:null };
+window.__lab = out;
+
+function fail(e){
+  out.error = String(e && e.stack || e);
+  const d = document.getElementById("err"); d.style.display="block"; d.textContent = out.error;
+  document.getElementById("hud").textContent = "失敗";
+}
+
+try {
+  const cv = document.getElementById("cv");
+  const forced = new URLSearchParams(location.search).get("tier") || "auto";
+  const st = settingsFor(forced);
+  out.caps = measure();
+  out.settings = st;
+  const r = new Renderer(cv, st);
+  window.__renderer = r;
+
+  r.addMesh("box",   [MESH.roundedBox(3,0.13), MESH.roundedBox(2,0.13), MESH.roundedBox(1,0.10)]);
+  r.addMesh("ball",  [MESH.sphere(20,14), MESH.sphere(12,8), MESH.sphere(8,6)]);
+  r.addMesh("pill",  [MESH.capsule(18,7,0.4,0.5), MESH.capsule(12,5,0.4,0.5), MESH.capsule(8,3,0.4,0.5)]);
+  r.addMesh("tube",  [MESH.cylinder(18), MESH.cylinder(10), MESH.cylinder(6)]);
+  r.addMesh("ring",  [MESH.torus(28,12), MESH.torus(16,8), MESH.torus(10,6)]);
+  r.addMesh("floor", [MESH.plane(1,1,1,1)]);
+  r.addMesh("gate",  [MESH.frame(5,4,0.42,0.42)]);
+
+  const cam = new ThirdPersonCamera();
+  cam.snap([0,0,0], 0);
+  cam.wantDistance = 16; cam.wantPitch = 0.42;
+
+  const rnd = mulberry32(12345);
+  const props = [];
+  const shapes = ["box","ball","pill","tube","ring"];
+  for (let i=0;i<420;i++){
+    props.push({
+      m: shapes[(rnd()*shapes.length)|0],
+      x: (rnd()-0.5)*120, z: (rnd()-0.5)*120, y: rnd()*3+0.6,
+      s: rnd()*1.6+0.5, ry: rnd()*6.28, spin: (rnd()-0.5)*1.6,
+      c: [0.35+rnd()*0.65, 0.35+rnd()*0.65, 0.35+rnd()*0.65, 1]
+    });
+  }
+
+  const mat = m4.create();
+  let last = performance.now(), acc = 0, fCount = 0, t = 0;
+
+  function frame(now){
+    const dt = Math.min(0.05, (now-last)/1000); last = now;
+    t += dt;
+    const sz = r.resize();
+    cam.update(dt, [Math.sin(t*0.25)*8, 0, Math.cos(t*0.25)*8], 5, sz.w/sz.h);
+    r.shadowCenter[0]=cam.look[0]; r.shadowCenter[1]=0; r.shadowCenter[2]=cam.look[2];
+    r.begin(cam);
+    /* 床 */
+    m4.compose(mat, 0,-0.02,0, 0, 300,1,300);
+    r.draw("floor", mat, [0.42,0.60,0.35,1], 0, 0.05, 0, 0, 300);
+    for (const p of props){
+      m4.compose(mat, p.x, p.y, p.z, p.ry + t*p.spin, p.s, p.s, p.s);
+      r.draw(p.m, mat, p.c, 0, 0.22, 0, 0, p.s);
+    }
+    m4.compose(mat, 0, 2, -14, 0, 1,1,1);
+    r.draw("gate", mat, [0.98,0.72,0.25,1], 0.18, 0.35, 0, 0, 3);
+    r.end(dt);
+    /* ★ 画素を 読むのは **この場**でしか できない。
+       preserveDrawingBuffer が false なので、フレームが 終わると
+       裏の 絵は 捨てられ、あとから 読むと 真っ黒に なる。 */
+    if (out.frames % 30 === 0) out.pixels = readNow();
+
+    out.frames++; fCount++; acc += dt;
+    if (acc >= 0.5){ out.fps = fCount/acc; fCount=0; acc=0; }
+    out.stats = Object.assign({}, r.stats);
+    if (out.frames === 3) out.ready = true;
+    document.getElementById("hud").textContent =
+      "段: " + st.tier + "  fps " + out.fps.toFixed(1) +
+      "\n描き " + r.stats.draws + " / 並び " + r.stats.instances +
+      " / 捨て " + r.stats.culled + "\n面 " + (r.stats.tris|0) +
+      "\n画素 " + sz.w + "x" + sz.h + "  GL" + (r.isGL2?2:1);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* 画面の 真ん中あたりの 色を 読む（本当に 描けているかの 確かめ） */
+  function readNow(){
+    const gl = r.gl;
+    const w = r.canvas.width, h = r.canvas.height;
+    const px = new Uint8Array(4 * 9);
+    const pts = [[0.5,0.5],[0.25,0.5],[0.75,0.5],[0.5,0.25],[0.5,0.75],
+                 [0.15,0.15],[0.85,0.15],[0.15,0.85],[0.85,0.85]];
+    const buf = new Uint8Array(4);
+    const outp = [];
+    for (const [u,v] of pts){
+      gl.readPixels((u*w)|0, (v*h)|0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+      outp.push([buf[0],buf[1],buf[2]]);
+    }
+    return outp;
+  }
+  window.__samplePixels = readNow;
+} catch(e) { fail(e); }
+window.addEventListener("error", (e)=>fail(e.error||e.message));
+window.addEventListener("unhandledrejection", (e)=>fail(e.reason));
+</script>
+</body>
+</html>
