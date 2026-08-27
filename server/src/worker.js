@@ -62780,6 +62780,12 @@ export default {
        ★ WebSocket の 昇格が 混ざるので、後ろの CORS 加工へは 通さない。 */
     if (isSurvivePath(path)) {
       stage = "survive";
+      /* ★ off に した 機能は **URL 直打ちでも** 入れない。
+         この 引き受けは 下の 「flag の 関所」より 先に あるので、
+         ここで 自分で 見ないと 素通りに なる。
+         （左パネルから 消すだけでは 止まらない、は この アプリの 決まり） */
+      const 止 = await flagBlockResponse(env, path, { userId: "", isAdmin: false }).catch(() => null);
+      if (止) return applyCorsToResponse(止, corsPolicy, request);
       const r = await handleSurviveRequest(request, env, ctx);
       if (r) {
         if (r.status === 101) return r;

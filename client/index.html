@@ -6033,7 +6033,7 @@ html.vq-css-wait body.auth-booting > *:not(#authBootSplash):not(.vqload-defs){vi
 <!-- ★ VocabuSurvive の 束の 置き場（2026-08-28）。
      **ここでは 読み込まない。** タブを 開いたときに 初めて 取りに行く。
      指紋つきの 名前なので vqrehash / vqsurvive が ここを 書き換える。 -->
-<script>window.__VQ_SURVIVE_SRC="/js/vq-survive.ff748cd36f.js";</script>
+<script>window.__VQ_SURVIVE_SRC="/js/vq-survive.ad0d272148.js";</script>
 <style>
 /* VocabuSurvive の 器（2026-08-28）。
    ★ 1.4MB の vq-ds.css へは 足さない。あそこを 直すと 名前が 変わり、
@@ -6052,11 +6052,15 @@ body[data-app-tab="survive"] #appSurvivePage{ display:block; }
 body[data-app-tab="survive"] #viewTitle .hero{ display:none; }
 /* 遊んでいる 間は 画面を 動かさない（指の 操作が 引っぱられる） */
 body[data-app-tab="survive"]{ overscroll-behavior:none; }
+/* 試合の 間だけ 下の 帯を しまう。横向きの スマホで 帯が 高さの 17% を
+   食い、跳ぶ ボタンが 切れていた。ロビーでは 出したまま。 */
+body.vq-survive-play #vqMobBar,
+body.vq-survive-play #appMobileBottomBar{ display:none !important; }
 @media (max-width: 879px){
   #appSurvivePage{ border-radius:0; }
 }
 </style>
-<script id="vq-core" src="/js/vq-core.27238bb9e4.js"></script>
+<script id="vq-core" src="/js/vq-core.e4290fd0fa.js"></script>
 <script type="module" src="/assets/survival/runtime.js"></script>
 <!-- ★ three.js の 先読みをやめた（2026-08-18）。
      Qredit のカードを 立体で見せるためだけの 118KB を、**見ない人にも**

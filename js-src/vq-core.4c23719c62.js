@@ -43117,13 +43117,33 @@ actionタイプ:
       let _appSurviveLoading = null;
       let _appSurviveFitBound = false;
 
+      /* スマホの 下の 帯（2 種類 ある）が 隠している ぶんを 測る。
+         ★ 決め打ちに しない。版によって 高さも 出る/出ないも 変わる。 */
+      function _appSurviveBottomCover(){
+        let cover = 0;
+        try{
+          const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight || 0;
+          for (const id of ["vqMobBar", "appMobileBottomBar"]){
+            const b = document.getElementById(id);
+            if (!b) continue;
+            const cs = getComputedStyle(b);
+            if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity || 1) < 0.05) continue;
+            const r = b.getBoundingClientRect();
+            if (r.height < 8 || r.bottom < vh - 8) continue;   /* 下端に 貼り付いて いない */
+            cover = Math.max(cover, vh - r.top);
+          }
+        }catch(e){}
+        return cover;
+      }
+
       function _appSurviveFit(){
         const el = document.getElementById("appSurvivePage");
         if (!el || document.body.dataset.appTab !== APP_TAB_KEY.SURVIVE) return;
         try{
           const top = el.getBoundingClientRect().top;
           const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight || 0;
-          const h = Math.max(320, Math.round(vh - top - 4));
+          const 下 = _appSurviveBottomCover();
+          const h = Math.max(320, Math.round(vh - top - 下 - 4));
           el.style.height = h + "px";
         }catch(e){}
       }
@@ -43184,6 +43204,16 @@ actionタイプ:
           window.addEventListener("orientationchange", () => setTimeout(_appSurviveFit, 220), { passive: true });
           /* 本体から 出るための 橋（結果画面の「VocabuQuiz へ戻る」）*/
           window.__vqSurviveExit = () => { try { _appSetTab(APP_TAB_KEY.HOME); } catch(e){} };
+          /* ★ 遊んでいる 間だけ 下の 帯を しまう（2026-08-28）。
+             横向きの スマホ（844×390）だと 帯が 高さの 17% を 食い、
+             跳ぶ ボタンが 切れていた。**試合の 間だけ**。ロビーでは 出す。 */
+          window.__vqSurviveImmersive = (on) => {
+            try {
+              document.body.classList.toggle("vq-survive-play", !!on);
+              _appSurviveFit();
+              setTimeout(_appSurviveFit, 60);
+            } catch(e){}
+          };
         }
         _appSurviveFit();
         setTimeout(_appSurviveFit, 60);
@@ -43210,6 +43240,7 @@ actionタイプ:
       }
 
       function _appSurviveClose(){
+        document.body.classList.remove("vq-survive-play");
         if (!window.VocabuSurvive) return;
         try { window.VocabuSurvive.close(); } catch(e){}
         const el = document.getElementById("appSurvivePage");

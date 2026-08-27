@@ -190,10 +190,19 @@ export const QUIZ_CSS = `
 .vs-quiz-feed{ margin-top:10px; min-height:18px; font-size:13px; font-weight:700; color:rgba(243,245,255,.7); }
 .vs-quiz-feed[data-kind="good"]{ color:${PALETTE.good}; }
 .vs-quiz-feed[data-kind="bad"]{ color:${PALETTE.danger}; }
+/* ★ スマホでも **2 列**。1 列に すると 札が 縦に 伸びて
+   跳ぶ ボタンまで 覆う（390px の 実機写真で 確認）。
+   走りながら 押せる ことが この 機能の 芯なので、
+   ボタンを 隠さない ほうを 優先する。 */
 @media (max-width: 560px){
-  .vs-quiz-grid{ grid-template-columns:1fr; gap:7px; }
-  .vs-quiz-opt{ min-height:50px; font-size:14px; }
-  .vs-quiz-card{ padding:12px 12px 13px; border-radius:16px; }
+  .vs-quiz-grid{ grid-template-columns:1fr 1fr; gap:6px; }
+  .vs-quiz-opt{ min-height:52px; font-size:13.5px; padding:8px 10px; gap:7px; }
+  .vs-quiz-key{ width:20px; height:20px; font-size:10px; }
+  .vs-quiz-card{ padding:11px 11px 12px; border-radius:16px; }
+  .vs-quiz-feed{ margin-top:8px; font-size:12px; }
+}
+@media (max-width: 380px){
+  .vs-quiz-opt{ min-height:46px; font-size:12.5px; }
 }
 @media (max-height: 460px){
   .vs-quiz-grid{ grid-template-columns:1fr 1fr; gap:6px; }

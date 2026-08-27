@@ -180,14 +180,19 @@ export class MatchScreen {
     this.hud.setCourse(def.name);
     this.hud.update(this._hudState());
 
+    /* 試合の 間は 本体の 下の 帯を しまう（横向きで 跳ぶ ボタンが 切れる） */
+    try { if (typeof window.__vqSurviveImmersive === "function") window.__vqSurviveImmersive(true); } catch (e) {}
+
     this.running = true;
     this._acc = 0;
     this.stepper.acc = 0;
     this._lastCount = -1;
+    this._done = false;
     return this;
   }
 
   exit() {
+    try { if (typeof window.__vqSurviveImmersive === "function") window.__vqSurviveImmersive(false); } catch (e) {}
     this.running = false;
     this.input.detach();
     this.quiz.detach();
@@ -543,10 +548,15 @@ export const MATCH_CSS = TOUCH_CSS + HUD_CSS + QUIZ_CSS + RESULT_CSS + `
   color:rgba(243,245,255,.8); font-size:15px; line-height:1;
 }
 .vs-pause:hover{ background:rgba(8,11,28,.82); }
-/* 指の 操作盤が 出ている ときは 左上へ 逃がす（跳ぶ ボタンと 重なる） */
+/* 指の 操作盤が 出ている ときは **上の 真ん中**へ 置く。
+   ★ 左下は 棒（押した 場所に 出る）、右下は 跳ぶ ボタン、
+     左上は 時計と コース名、右上は 順位と 一覧。
+     空いているのは 上の 真ん中だけ。
+     （左上・右上の どちらへ 逃がしても 重なった。390px の 実機写真で 確認） */
 .vs-touch[data-on="1"] ~ .vs-pause{
-  right:auto; bottom:auto;
-  left:calc(14px + var(--vs-safe-l)); top:calc(58px + var(--vs-safe-t));
+  left:50%; transform:translateX(-50%);
+  right:auto; bottom:auto; top:calc(10px + var(--vs-safe-t));
+  width:34px; height:34px; border-radius:11px;
 }
 .vs-fatal{
   position:absolute; inset:0; z-index:10; display:flex; flex-direction:column;
