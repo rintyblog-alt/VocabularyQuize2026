@@ -641,7 +641,20 @@ export class SurviveRoom {
     const s = m.s || {};
     const now = Date.now();
     const dt = Math.max(0.016, Math.min(1.5, (now - (p.lastPos || now)) / 1000));
+    const 初回 = !p.lastPos;
     p.lastPos = now;
+
+    /* ★ 最初の 1 通は そのまま 受ける。
+       出発の 並びは 人ごとに 横へ ずれている（最大 ±7m）ので、
+       0 を もとに 比べると **正しく 走っているのに 咎められる**。
+       実際 B（x=2 から 出発）が 1 通目で 弾かれた（2026-08-28 実測）。 */
+    if (初回) {
+      p.x = N(s.x, 0); p.y = N(s.y, 0); p.z = N(s.z, 0);
+      p.yaw = N(s.yaw, 0); p.g = s.g ? 1 : 0; p.st = s.st ? 1 : 0;
+      p.pr = Math.max(0, N(s.pr, 0)); p.cp = CL(s.cp, 0, 32);
+      p.rs = N(s.rs, 0); p.seq = N(m.seq, 0); p.dirty = true;
+      return;
+    }
 
     const nx = N(s.x, p.x), ny = N(s.y, p.y), nz = N(s.z, p.z);
     if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nz)) return;
@@ -712,6 +725,8 @@ export class SurviveRoom {
     for (const p of Object.values(r.players)) {
       p.pr = 0; p.cp = 0; p.fin = false; p.finTime = 0; p.rank = 0;
       p.qc = 0; p.qw = 0; p.gates = {}; p.cheat = 0; p.rs = 0;
+      /* 出発の 位置は これから 1 通目で 決まる */
+      p.lastPos = 0; p.x = 0; p.y = 0; p.z = 0;
     }
     await this._save();
     this._all({ t: "go", startAt: r.startAt, seed: r.seed, courseId: r.courseId,
