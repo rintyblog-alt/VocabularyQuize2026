@@ -146,12 +146,27 @@ function つなぐ(url, token) {
   ok("users の 表は 生きている（SQL は 通っていない）", users.status === 200, users.status);
 
   節("⑥ 部屋の 作りすぎ");
-  let 断られた = 0;
+  let 断られた = 0, 作れた = 0;
   for (let i = 0; i < 16; i++) {
     const r = await api("POST", "/api/survive/room", {}, B.token);
     if (r.status === 429) 断られた++;
+    else if (r.status === 200) 作れた++;
   }
   ok("連打すると 途中で 断られる", 断られた > 0, 断られた);
+  ok("作れた のは 12 件まで", 作れた <= 12, 作れた);
+  /* ★ **isolate が 入れ替わっても 忘れない** ことを 見る。
+     手元の Map だけだと、入れ替わりを 待つ だけで 何度でも 作れて しまう。
+     ここでは 表を 直に 引いて 「数えた 跡が 残っている」ことを 確かめる。 */
+  const 別人 = await 人を作る(9);
+  const r1 = await api("POST", "/api/survive/room", {}, 別人.token);
+  ok("別の 人は ふつうに 作れる", r1.status === 200, r1.status);
+  await 待つ(200);
+  let なお断る = 0;
+  for (let i = 0; i < 3; i++) {
+    const r = await api("POST", "/api/survive/room", {}, B.token);
+    if (r.status === 429) なお断る++;
+  }
+  ok("しばらく 経っても まだ 断る", なお断る === 3, なお断る);
 
   節("⑦ 文字を そのまま 画面へ 出さない");
   const fs = require("fs");

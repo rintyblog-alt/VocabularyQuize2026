@@ -123,6 +123,42 @@ const ok = (n, c, x) => {
   /* 同じ 仕掛けの 使い回しだけの コースが 無いか */
   const 芯 = new Set(総括.map((x) => x.def.core));
   ok("コースの 芯が 全部 違う", 芯.size === 総括.length, { 種類: 芯.size, 本数: 総括.length });
+
+  console.log("\n══ ⑨ 風景の 飾り ══");
+  {
+    const { THEME_NAMES } = await import(道("game/theme3d.js"));
+    const 見た = {};
+    let 最多 = 0, 最多id = "";
+    for (const def of COURSES) {
+      const c = buildCourse(def);
+      const 形 = {};
+      for (const d of c.decor) 形[d.m] = (形[d.m] || 0) + 1;
+      const t = def.theme;
+      if (!見た[t]) 見た[t] = new Set();
+      for (const k in 形) 見た[t].add(k);
+      if (c.decor.length > 最多) { 最多 = c.decor.length; 最多id = def.id; }
+      ok(def.id + " 飾りが ある", c.decor.length > 20, c.decor.length);
+    }
+    console.log("     いちばん 多い コース: " + 最多id + " / " + 最多 + " 個");
+    /* ★ **風景ごとに 使う 形が 違う**。同じだと 色しか 変わっていない。 */
+    const 組 = {};
+    for (const t in 見た) 組[t] = [...見た[t]].sort().join(",");
+    const 中身 = Object.values(組);
+    ok("風景ごとに 飾りの 形が 違う", new Set(中身).size >= 7,
+      Object.keys(組).map((t) => t + "=" + 組[t]));
+    ok("草原と 溶岩で 形が 違う", 組.meadow !== 組.lava, [組.meadow, 組.lava]);
+    ok("森と 氷で 形が 違う", 組.forest !== 組.ice, [組.forest, 組.ice]);
+    /* ★ 飾りが 増えすぎると 弱い 端末で 落ちる。 */
+    ok("いちばん 多い コースでも 800 個 以内", 最多 <= 800, 最多);
+    /* ★ **形は 増やしていない**（並べ描きの まとまりを 割らない） */
+    const { M } = await import(道("game/meshes.js"));
+    const 使える = new Set(Object.values(M));
+    const 外 = [];
+    for (const def of COURSES) {
+      for (const d of buildCourse(def).decor) if (!使える.has(d.m)) 外.push(d.m);
+    }
+    ok("飾りは 元から ある 形だけを 使う", 外.length === 0, [...new Set(外)]);
+  }
   const 風景 = {};
   for (const x of 総括) 風景[x.def.theme] = (風景[x.def.theme] || 0) + 1;
   console.log("  風景の 内訳: " + Object.entries(風景).map(([k, v]) => k + "×" + v).join(" / "));

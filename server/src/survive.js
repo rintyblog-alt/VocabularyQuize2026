@@ -137,6 +137,15 @@ const TABLES = [
      updated_at INTEGER NOT NULL DEFAULT 0,
      PRIMARY KEY (user_id, course_id, week)
    )`,
+  /* 部屋を 作った 記録。作りすぎの 見張りに 使う。
+     ★ **D1 に 置く。** isolate の 中の Map だけだと、
+       isolate が 入れ替わった 瞬間に 数え直しに なり、
+       入れ替わりを 待つ だけで 何度でも 作れて しまう。 */
+  `CREATE TABLE IF NOT EXISTS survive_room_hits (
+     user_id INTEGER NOT NULL,
+     created_at INTEGER NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_survive_room_hits ON survive_room_hits (user_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_survive_weekly ON survive_weekly (course_id, week, best_ms)`,
   `CREATE INDEX IF NOT EXISTS idx_survive_rec_course ON survive_records (course_id, best_ms)`,
   `CREATE INDEX IF NOT EXISTS idx_survive_stats_xp ON survive_stats (xp DESC)`
@@ -697,14 +706,44 @@ function roomCode(seed) {
    ★ Worker の isolate は いつ 消えても おかしくない ので、これは
      「完全な 見張り」では ない。**それでも 素直な 連打は 止まる。**
      本気の 妨害は Durable Object 側の 人数上限が 受け止める。 */
+const ROOM_WINDOW_MS = 10 * 60 * 1000;
+const ROOM_MAX = 12;
 const _roomHits = new Map();
-function tooManyRooms(uid) {
+let _roomPruned = 0;
+
+/* 手元の 数え（速い・ただし isolate が 消えると 忘れる）。
+   これは **おまけ**。本当の 判定は 下の 表で 行う。 */
+function tooManyRoomsFast(uid) {
   const now = Date.now();
-  const a = (_roomHits.get(uid) || []).filter((t) => now - t < 10 * 60 * 1000);
+  const a = (_roomHits.get(uid) || []).filter((t) => now - t < ROOM_WINDOW_MS);
   a.push(now);
   _roomHits.set(uid, a);
   if (_roomHits.size > 5000) _roomHits.clear();   /* 溜め込まない */
-  return a.length > 12;
+  return a.length > ROOM_MAX;
+}
+
+/* 表の 数え（isolate が 入れ替わっても 残る）。
+   ★ 数え → 足す の 順。先に 足すと 自分の 1 件で 上限が 1 つ 減る。
+   ★ 表が 使えない ときは **通す**。見張りの ために 遊びを 止めない。 */
+async function tooManyRoomsDurable(env, uid) {
+  if (!env || !env.DB) return false;
+  const now = Date.now();
+  try {
+    const r = await env.DB.prepare(
+      "SELECT COUNT(1) AS n FROM survive_room_hits WHERE user_id = ?1 AND created_at > ?2"
+    ).bind(uid, now - ROOM_WINDOW_MS).first();
+    const n = N(r && r.n, 0);
+    /* 古い 行は ときどき 捨てる（10 分に 1 回で 十分） */
+    if (now - _roomPruned > ROOM_WINDOW_MS) {
+      _roomPruned = now;
+      await env.DB.prepare("DELETE FROM survive_room_hits WHERE created_at < ?1")
+        .bind(now - ROOM_WINDOW_MS * 3).run().catch(() => {});
+    }
+    if (n >= ROOM_MAX) return true;
+    await env.DB.prepare("INSERT INTO survive_room_hits (user_id, created_at) VALUES (?1, ?2)")
+      .bind(uid, now).run();
+  } catch (e) { return false; }
+  return false;
 }
 
 async function handleRoomCreate(request, env) {
@@ -712,7 +751,10 @@ async function handleRoomCreate(request, env) {
   if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
   if (me.blocked) return bad("ACCOUNT_BLOCKED", "この アカウントは いま 使えません。", 403);
   if (!env.SURVIVE_ROOMS) return bad("NOT_CONFIGURED", "対戦の 部屋が 使えません。", 500);
-  if (tooManyRooms(me.uid)) return bad("TOO_MANY", "部屋を 作りすぎです。少し 待ってください。", 429);
+  await ensureTables(env);
+  if (tooManyRoomsFast(me.uid) || await tooManyRoomsDurable(env, me.uid)) {
+    return bad("TOO_MANY", "部屋を 作りすぎです。少し 待ってください。", 429);
+  }
   const b = (await readJson(request, 4096)) || {};
   const id = roomCode((Date.now() ^ (me.uid * 2654435761)) >>> 0);
   const stub = env.SURVIVE_ROOMS.get(env.SURVIVE_ROOMS.idFromName(id));

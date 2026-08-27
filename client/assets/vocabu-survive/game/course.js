@@ -43,6 +43,9 @@ export class Course {
     this.id = def.id;
     this.name = def.name;
     this.difficulty = def.difficulty || 1;
+    /* ★ this.theme は **色の 表**（中身）。飾りを 選ぶ ときに 使う
+       「風景の 名前」は 別に 覚えておく。混ぜると 必ず 草原の 木に なる。 */
+    this.themeName = String(def.theme || "meadow");
     this.theme = themeOf(def.theme);
     this.palette = this.theme;
     this.seed = hashSeed(def.id + "|" + (def.seed || ""));
@@ -284,10 +287,19 @@ export class Course {
     return { cx, y, z: z - len };
   }
 
-  /* ── 飾り（当たらない）──────────────────────────────────────────── */
+  /* ── 飾り（当たらない）──────────────────────────────────────────────
+     ★ 風景 10 種の 差が 「空と 床の 色」だけに なって いた。
+       同じ 木と 岩を どこでも 使い回して いたので、
+       溶岩の 谷にも 草原の 木が 生えて いた。
+
+     ★ **形は 増やさない。** 下の 10 個（箱・板・筒・球・輪・円すい・
+       額縁・羽根・旗・柱・点）を 組み合わせて 作る。
+       形を 足すと 並べ描きの まとまりが 割れて 描き回数が 増える。 */
   _decorate() {
     const rnd = mulberry32(this.seed ^ 0x9e37);
     const P = this.palette;
+    const 置く = (o) => this.decor.push(o);
+    const kit = DECOR_KIT[this.themeName] || DECOR_KIT.meadow;
     const n = Math.round(Math.abs(this.endZ) * 0.55);
     for (let i = 0; i < n; i++) {
       const side = rnd() < 0.5 ? -1 : 1;
@@ -295,28 +307,10 @@ export class Course {
       /* 中心線から どれくらい 離れているか を 見て 外側へ 置く */
       const p = this.pointAt(-z);
       const off = 10 + rnd() * 26;
-      const kind = rnd();
+      const x = p.x + side * off;
       const y = p.y - 1 - rnd() * 3;
-      if (kind < 0.4) {
-        /* 木・柱 */
-        const hh = 3 + rnd() * 7;
-        this.decor.push({ m: M.cyl, x: p.x + side * off, y: y + hh / 2, z, ry: 0,
-          sx: 0.7 + rnd() * 0.5, sy: hh, sz: 0.7 + rnd() * 0.5, c: P.trunk, e: 0, rim: 0.2 });
-        this.decor.push({ m: M.ball, x: p.x + side * off, y: y + hh + 1.2, z, ry: rnd() * TAU,
-          sx: 3 + rnd() * 2, sy: 2.6 + rnd() * 1.6, sz: 3 + rnd() * 2, c: P.leaf, e: 0, rim: 0.24 });
-      } else if (kind < 0.7) {
-        /* 岩 */
-        const s = 1.4 + rnd() * 3.4;
-        this.decor.push({ m: M.box, x: p.x + side * off, y: y + s / 3, z, ry: rnd() * TAU,
-          sx: s, sy: s * 0.7, sz: s, c: P.floorAlt, e: 0, rim: 0.2 });
-      } else {
-        /* 浮いている 立方体（背景の 動き） */
-        const s = 0.9 + rnd() * 2.4;
-        this.decor.push({ m: M.box, x: p.x + side * (off + rnd() * 20), y: p.y + 6 + rnd() * 16, z,
-          ry: rnd() * TAU, sx: s, sy: s, sz: s, c: P.accent, e: 0.06, rim: 0.3, float: 0.4 + rnd() });
-      }
+      kit(置く, { x, y, z, side, off, base: p.y, rnd, P, M, TAU });
     }
-    /* 出発と ゴールの 幟 */
   }
 
   /* ── 進み具合 ─────────────────────────────────────────────────────── */
@@ -443,6 +437,219 @@ export class Course {
     for (const o of this.obstacles) o.draw(R);
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   風景ごとの 飾り
+
+   受け取る もの: 置く(o) と { x, y, z, side, off, base, rnd, P, M, TAU }
+   o の 中身   : { m 形, x, y, z, ry 向き, sx sy sz 大きさ, c 色,
+                   e 光り, rim ふち, float 浮く速さ }
+   ★ どの 風景も **1 か所 あたり 1〜3 個**に する。
+     ここを 増やすと 遠くの 板だけで 何百個にも なり、
+     並べ描きの 数が 増えて 弱い 端末で 落ちる。
+   ══════════════════════════════════════════════════════════════════════════ */
+const DECOR_KIT = {
+  /* 草原 … まるい 木・岩・花 */
+  meadow(置く, a) {
+    const { x, y, z, rnd, P, M, TAU } = a;
+    const k = rnd();
+    if (k < 0.45) {
+      const hh = 3 + rnd() * 7;
+      置く({ m: M.cyl, x, y: y + hh / 2, z, ry: 0, sx: 0.7 + rnd() * 0.5, sy: hh, sz: 0.7 + rnd() * 0.5, c: P.trunk, e: 0, rim: 0.2 });
+      置く({ m: M.ball, x, y: y + hh + 1.2, z, ry: rnd() * TAU, sx: 3 + rnd() * 2, sy: 2.6 + rnd() * 1.6, sz: 3 + rnd() * 2, c: P.leaf, e: 0, rim: 0.24 });
+    } else if (k < 0.75) {
+      const s = 1.4 + rnd() * 3.4;
+      置く({ m: M.box, x, y: y + s / 3, z, ry: rnd() * TAU, sx: s, sy: s * 0.7, sz: s, c: P.floorAlt, e: 0, rim: 0.2 });
+    } else {
+      /* 花。細い 茎の 上に 小さな 玉 */
+      const hh = 0.8 + rnd() * 0.9;
+      置く({ m: M.post, x, y: y + hh / 2, z, ry: 0, sx: 0.14, sy: hh, sz: 0.14, c: P.leaf, e: 0, rim: 0.2 });
+      置く({ m: M.dot, x, y: y + hh + 0.2, z, ry: rnd() * TAU, sx: 0.6, sy: 0.5, sz: 0.6,
+        c: rnd() < 0.5 ? P.accent : P.spring, e: 0.05, rim: 0.3 });
+    }
+  },
+  /* 夕暮れ … 草原と 同じ 形だが、浮く 板を 混ぜて 空を 見せる */
+  sunset(置く, a) {
+    const { x, y, z, base, rnd, P, M, TAU } = a;
+    if (rnd() < 0.55) return DECOR_KIT.meadow(置く, a);
+    const s = 3 + rnd() * 6;
+    置く({ m: M.slab, x, y: base + 8 + rnd() * 14, z, ry: rnd() * TAU,
+      sx: s, sy: 0.5, sz: s * 0.7, c: P.prop, e: 0.04, rim: 0.28, float: 0.25 + rnd() * 0.4 });
+  },
+  /* お菓子 … 棒つきキャンディ・ドーナツ・積み木 */
+  candy(置く, a) {
+    const { x, y, z, rnd, P, M, TAU } = a;
+    const k = rnd();
+    if (k < 0.4) {
+      const hh = 3 + rnd() * 5;
+      置く({ m: M.post, x, y: y + hh / 2, z, ry: 0, sx: 0.3, sy: hh, sz: 0.3, c: P.prop, e: 0, rim: 0.24 });
+      置く({ m: M.ring, x, y: y + hh + 1.4, z, ry: rnd() * TAU, sx: 2.6, sy: 2.6, sz: 0.7,
+        c: rnd() < 0.5 ? P.accent : P.spring, e: 0.06, rim: 0.34 });
+    } else if (k < 0.72) {
+      /* ドーナツの 山 */
+      const s = 1.8 + rnd() * 1.6;
+      for (let i = 0; i < 3; i++) {
+        置く({ m: M.ring, x, y: y + 0.5 + i * 0.75, z, ry: rnd() * TAU,
+          sx: s - i * 0.28, sy: s - i * 0.28, sz: 0.6, c: i % 2 ? P.gold : P.accent, e: 0.05, rim: 0.3 });
+      }
+    } else {
+      const s = 1.2 + rnd() * 2.2;
+      置く({ m: M.box, x, y: y + s / 2, z, ry: rnd() * TAU, sx: s, sy: s, sz: s, c: P.spring, e: 0.04, rim: 0.3 });
+      置く({ m: M.dot, x, y: y + s + 0.5, z, ry: 0, sx: 0.8, sy: 0.8, sz: 0.8, c: P.gold, e: 0.1, rim: 0.34 });
+    }
+  },
+  /* 氷 … 氷柱・氷塊・尖った 山 */
+  ice(置く, a) {
+    const { x, y, z, rnd, P, M, TAU } = a;
+    const k = rnd();
+    if (k < 0.45) {
+      const hh = 4 + rnd() * 12;
+      置く({ m: M.cone, x, y: y + hh / 2, z, ry: rnd() * TAU,
+        sx: 1.6 + rnd() * 2.4, sy: hh, sz: 1.6 + rnd() * 2.4, c: P.prop, e: 0.05, rim: 0.4 });
+    } else if (k < 0.78) {
+      const s = 1.6 + rnd() * 3.4;
+      置く({ m: M.box, x, y: y + s / 2.4, z, ry: rnd() * TAU,
+        sx: s, sy: s * 0.8, sz: s * 0.9, c: P.floorAlt, e: 0.03, rim: 0.4 });
+    } else {
+      /* 逆さの 氷柱（浮く） */
+      const hh = 2 + rnd() * 4;
+      置く({ m: M.cone, x, y: y + 12 + rnd() * 8, z, ry: Math.PI,
+        sx: 1.0 + rnd(), sy: -hh, sz: 1.0 + rnd(), c: P.prop, e: 0.06, rim: 0.42, float: 0.2 + rnd() * 0.3 });
+    }
+  },
+  /* 溶岩 … 黒い 岩柱・噴き出し・火の粉 */
+  lava(置く, a) {
+    const { x, y, z, base, rnd, P, M, TAU } = a;
+    const k = rnd();
+    if (k < 0.45) {
+      const hh = 4 + rnd() * 10;
+      置く({ m: M.cyl, x, y: y + hh / 2, z, ry: rnd() * TAU,
+        sx: 1.4 + rnd() * 2.2, sy: hh, sz: 1.4 + rnd() * 2.2, c: P.floorAlt, e: 0, rim: 0.2 });
+      置く({ m: M.dot, x, y: y + hh + 0.4, z, ry: 0, sx: 1.4, sy: 0.7, sz: 1.4, c: P.hot, e: 0.5, rim: 0.4 });
+    } else if (k < 0.72) {
+      const s = 1.6 + rnd() * 3.2;
+      置く({ m: M.box, x, y: y + s / 3, z, ry: rnd() * TAU, sx: s, sy: s * 0.6, sz: s, c: P.floorAlt, e: 0, rim: 0.18 });
+    } else {
+      /* 舞い上がる 火の粉 */
+      for (let i = 0; i < 3; i++) {
+        置く({ m: M.dot, x: x + (rnd() - 0.5) * 5, y: base + 2 + rnd() * 14, z: z + (rnd() - 0.5) * 5,
+          ry: 0, sx: 0.5, sy: 0.5, sz: 0.5, c: rnd() < 0.5 ? P.hot : P.warn, e: 0.7, rim: 0.5, float: 0.6 + rnd() });
+      }
+    }
+  },
+  /* ネオン … 光る 柱・浮く 輪・格子の 板 */
+  neon(置く, a) {
+    const { x, y, z, base, rnd, P, M, TAU } = a;
+    const k = rnd();
+    if (k < 0.4) {
+      const hh = 6 + rnd() * 16;
+      置く({ m: M.post, x, y: y + hh / 2, z, ry: 0, sx: 0.5, sy: hh, sz: 0.5, c: P.metal, e: 0, rim: 0.3 });
+      置く({ m: M.post, x, y: y + hh / 2, z, ry: 0, sx: 0.22, sy: hh * 0.94, sz: 0.22,
+        c: rnd() < 0.5 ? P.gateFrame : P.spring, e: 0.8, rim: 0.5 });
+    } else if (k < 0.72) {
+      置く({ m: M.ring, x, y: base + 5 + rnd() * 16, z, ry: rnd() * TAU,
+        sx: 3 + rnd() * 4, sy: 3 + rnd() * 4, sz: 0.5,
+        c: rnd() < 0.5 ? P.accent : P.gateCurtain, e: 0.6, rim: 0.5, float: 0.3 + rnd() * 0.5 });
+    } else {
+      const s = 2 + rnd() * 5;
+      置く({ m: M.slab, x, y: base + 3 + rnd() * 10, z, ry: rnd() * TAU,
+        sx: s, sy: 0.3, sz: s, c: P.metal, e: 0.1, rim: 0.4, float: 0.2 + rnd() * 0.3 });
+    }
+  },
+  /* 森 … 高い 針葉樹・切り株・下草 */
+  forest(置く, a) {
+    const { x, y, z, rnd, P, M, TAU } = a;
+    const k = rnd();
+    if (k < 0.6) {
+      const hh = 6 + rnd() * 12;
+      置く({ m: M.cyl, x, y: y + hh * 0.3, z, ry: 0, sx: 0.6, sy: hh * 0.6, sz: 0.6, c: P.trunk, e: 0, rim: 0.18 });
+      /* 三段の 円すいで もみの木 */
+      for (let i = 0; i < 3; i++) {
+        const w = (3.4 - i * 0.8) * (0.8 + rnd() * 0.4);
+        置く({ m: M.cone, x, y: y + hh * 0.45 + i * hh * 0.22, z, ry: rnd() * TAU,
+          sx: w, sy: hh * 0.34, sz: w, c: P.leaf, e: 0, rim: 0.22 });
+      }
+    } else if (k < 0.82) {
+      /* 切り株 */
+      const s = 1.2 + rnd() * 1.4;
+      置く({ m: M.cyl, x, y: y + 0.5, z, ry: 0, sx: s, sy: 1.0, sz: s, c: P.trunk, e: 0, rim: 0.2 });
+    } else {
+      /* 下草 */
+      for (let i = 0; i < 3; i++) {
+        置く({ m: M.blade, x: x + (rnd() - 0.5) * 4, y: y + 0.6, z: z + (rnd() - 0.5) * 4,
+          ry: rnd() * TAU, sx: 0.3, sy: 1.2 + rnd(), sz: 0.3, c: P.leaf, e: 0, rim: 0.24 });
+      }
+    }
+  },
+  /* 空 … 雲・浮島・遠くの 風車 */
+  sky(置く, a) {
+    const { x, y, z, base, rnd, P, M, TAU } = a;
+    const k = rnd();
+    if (k < 0.5) {
+      /* 雲（玉の かたまり） */
+      const s = 3 + rnd() * 5;
+      const cy = base + 6 + rnd() * 22;
+      for (let i = 0; i < 3; i++) {
+        置く({ m: M.ball, x: x + (i - 1) * s * 0.7, y: cy + (rnd() - 0.5) * 1.2, z: z + (rnd() - 0.5) * 3,
+          ry: 0, sx: s * (0.7 + rnd() * 0.5), sy: s * 0.5, sz: s * (0.7 + rnd() * 0.5),
+          c: P.prop, e: 0.08, rim: 0.34, float: 0.12 + rnd() * 0.18 });
+      }
+    } else if (k < 0.8) {
+      /* 浮島（板 ＋ 下に 逆さの 円すい） */
+      const s = 3 + rnd() * 6;
+      const cy = base - 4 - rnd() * 14;
+      置く({ m: M.slab, x, y: cy, z, ry: rnd() * TAU, sx: s, sy: 0.9, sz: s * 0.8, c: P.floor, e: 0, rim: 0.24, float: 0.15 });
+      置く({ m: M.cone, x, y: cy - s * 0.5, z, ry: Math.PI, sx: s * 0.7, sy: -s, sz: s * 0.6, c: P.floorAlt, e: 0, rim: 0.2, float: 0.15 });
+    } else {
+      置く({ m: M.ring, x, y: base + 10 + rnd() * 16, z, ry: rnd() * TAU,
+        sx: 2 + rnd() * 3, sy: 2 + rnd() * 3, sz: 0.4, c: P.gold, e: 0.2, rim: 0.4, float: 0.3 + rnd() * 0.4 });
+    }
+  },
+  /* 遺跡 … 折れた 柱・門・崩れた 石 */
+  ruins(置く, a) {
+    const { x, y, z, rnd, P, M, TAU } = a;
+    const k = rnd();
+    if (k < 0.45) {
+      /* 折れた 柱（高さが ばらばら） */
+      const hh = 2 + rnd() * 11;
+      置く({ m: M.cyl, x, y: y + hh / 2, z, ry: 0, sx: 1.1 + rnd() * 0.6, sy: hh, sz: 1.1 + rnd() * 0.6,
+        c: P.prop, e: 0, rim: 0.24 });
+      if (rnd() < 0.5) {
+        置く({ m: M.box, x, y: y + hh + 0.4, z, ry: rnd() * TAU, sx: 2.2, sy: 0.7, sz: 2.2, c: P.prop, e: 0, rim: 0.24 });
+      }
+    } else if (k < 0.7) {
+      /* 崩れかけの 門 */
+      const s = 4 + rnd() * 5;
+      置く({ m: M.frame, x, y: y + s / 2, z, ry: (rnd() - 0.5) * 0.5, sx: s, sy: s, sz: 0.8, c: P.prop, e: 0, rim: 0.26 });
+    } else {
+      const s = 1.2 + rnd() * 2.8;
+      置く({ m: M.box, x, y: y + s / 3, z, ry: rnd() * TAU, sx: s, sy: s * 0.5, sz: s * 1.2, c: P.floorAlt, e: 0, rim: 0.2 });
+    }
+  },
+  /* 闘技場 … 観客席・旗・照明 */
+  arena(置く, a) {
+    const { x, y, z, base, side, rnd, P, M, TAU } = a;
+    const k = rnd();
+    if (k < 0.5) {
+      /* 段になった 観客席 */
+      for (let i = 0; i < 3; i++) {
+        置く({ m: M.box, x: x + side * i * 2.2, y: y + 0.6 + i * 1.2, z, ry: 0,
+          sx: 2.0, sy: 1.2, sz: 7 + rnd() * 5, c: i % 2 ? P.prop : P.floorAlt, e: 0, rim: 0.22 });
+      }
+    } else if (k < 0.8) {
+      /* 旗 */
+      const hh = 5 + rnd() * 7;
+      置く({ m: M.post, x, y: y + hh / 2, z, ry: 0, sx: 0.28, sy: hh, sz: 0.28, c: P.metal, e: 0, rim: 0.3 });
+      置く({ m: M.flag, x: x + side * 1.1, y: y + hh - 1.0, z, ry: side > 0 ? 0 : Math.PI,
+        sx: 2.2, sy: 1.4, sz: 0.2, c: rnd() < 0.5 ? P.accent : P.gateFrame, e: 0.06, rim: 0.32 });
+    } else {
+      /* 照明（下向きの 円すい） */
+      const hh = 9 + rnd() * 8;
+      置く({ m: M.post, x, y: base + hh / 2, z, ry: 0, sx: 0.3, sy: hh, sz: 0.3, c: P.metal, e: 0, rim: 0.3 });
+      置く({ m: M.cone, x, y: base + hh, z, ry: Math.PI, sx: 1.8, sy: -1.6, sz: 1.8, c: P.gold, e: 0.5, rim: 0.44 });
+    }
+  }
+};
 
 /** コースの 定義から 作る。 */
 export function buildCourse(def) { return new Course(def).build(); }
