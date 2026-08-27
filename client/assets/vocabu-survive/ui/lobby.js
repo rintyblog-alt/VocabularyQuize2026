@@ -18,6 +18,7 @@ import { COURSES, tierOf, TIERS } from "../data/courses.js";
 import { themeOf } from "../game/theme3d.js";
 import { SurviveNet, createRoom, roomInfo } from "../net/client.js";
 import { buildCourse } from "../game/course.js";
+import { HelpCard } from "./hud.js";
 
 const MODES = [
   { key: "race", label: "レース", desc: "先に ゴールした 人が 勝ち", ready: true },
@@ -69,6 +70,15 @@ export class LobbyScreen {
         volume: this.volume, music: this.musicOn, invert: this.invertY
       }));
     } catch (e) {}
+  }
+
+  /** あそび方を 出す（ロビーの ? から。試合の 最初にも 出る） */
+  _showHelp() {
+    if (!this._help) {
+      this._help = new HelpCard(() => {});
+      this.el.appendChild(this._help.el);
+    }
+    this._help.show();
   }
 
   _setQuality(k) {
@@ -211,7 +221,12 @@ export class LobbyScreen {
     return h("div", { class: "vs-lobby" },
       h("header", { class: "vs-lb-head" },
         h("h1", { class: "vs-lb-title" }, "VocabuSurvive"),
-        h("button", { class: "vs-lb-x", type: "button", "aria-label": "閉じる", onclick: () => this.onExit() }, "✕")),
+        h("div", { class: "vs-lb-headbtns" },
+          h("button", {
+            class: "vs-lb-x", type: "button", "aria-label": "あそび方",
+            title: "あそび方", onclick: () => this._showHelp()
+          }, "?"),
+          h("button", { class: "vs-lb-x", type: "button", "aria-label": "閉じる", onclick: () => this.onExit() }, "✕"))),
       h("div", { class: "vs-lb-grid" },
         /* 左 */
         h("section", { class: "vs-card vs-lb-me", "aria-label": "あなた" },
@@ -571,8 +586,10 @@ export const LOBBY_CSS = `
   background:linear-gradient(96deg,#ffd66b,#ff8fb1 40%,#8fb8ff 78%,#6ef0cf);
   -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
 @supports not ((-webkit-background-clip:text) or (background-clip:text)){ .vs-lb-title{ color:#ffd66b; -webkit-text-fill-color:currentColor; } }
+.vs-lb-headbtns{ display:flex; gap:7px; }
 .vs-lb-x{ width:36px; height:36px; border-radius:11px; background:rgba(255,255,255,.07);
   border:1px solid ${PALETTE.line}; color:rgba(243,245,255,.75); font-size:14px; }
+.vs-lb-x:hover{ background:rgba(255,255,255,.14); }
 .vs-lb-grid{ flex:1; display:grid; grid-template-columns: 264px minmax(0,1fr) 300px; gap:12px; min-height:0; }
 .vs-card{ background:${PALETTE.panel}; border:1px solid ${PALETTE.line}; border-radius:18px;
   padding:14px; overflow:auto; min-height:0; }

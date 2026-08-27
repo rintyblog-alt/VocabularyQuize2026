@@ -109,6 +109,21 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "match", null, { timeout: 25000 });
     ok("試合の 画面へ 移る", true);
+    /* ★ 初めてなら「あそび方」が 出る。出ていれば 中身を 見てから 閉じる。 */
+    const 説明 = await pg.evaluate(() => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const el = r.querySelector(".vs-help");
+      if (!el || el.getAttribute("data-on") !== "1") return null;
+      const rows = r.querySelectorAll(".vs-help-row").length;
+      const cols = r.querySelectorAll(".vs-help-col").length;
+      el.querySelector(".vs-btn").click();
+      return { rows, cols };
+    });
+    ok("初めては あそび方が 出る", !!説明, 説明);
+    if (説明) {
+      ok("キーボード・指・遊び方の 3 つが ある", 説明.cols === 3, 説明.cols);
+      ok("操作が 10 個 以上 書いてある", 説明.rows >= 10, 説明.rows);
+    }
     await pg.waitForFunction(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
       const cv = r.querySelector(".vs-match canvas.vs-canvas");

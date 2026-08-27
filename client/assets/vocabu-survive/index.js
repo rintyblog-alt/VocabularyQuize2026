@@ -109,6 +109,11 @@ class App {
   async _registerScreens(mods) {
     if (mods.lobby && mods.lobby.LobbyScreen) {
       addCss(this.shell.root, mods.lobby.LOBBY_CSS || "");
+      /* あそび方の 札は ロビーと 試合の 両方で 使う。CSS は HUD 側に ある。 */
+      try {
+        const hud = await import("./ui/hud.js");
+        addCss(this.shell.root, hud.HUD_CSS || "");
+      } catch (e) {}
       const lobby = new mods.lobby.LobbyScreen({
         settings: this.settings,
         app: this,

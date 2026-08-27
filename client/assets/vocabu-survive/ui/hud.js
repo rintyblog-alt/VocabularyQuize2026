@@ -9,8 +9,67 @@
        60Hz で textContent を 触ると それだけで 描きが 詰まる。
      ・順位表は 8 行 固定。作り直さず 中身だけ 差し替える。
    ══════════════════════════════════════════════════════════════════════════ */
-import { h } from "./shell.js";
+import { h, svg } from "./shell.js";
 import { PALETTE, beanByIndex } from "./theme.js";
+
+/* ── 操作の 説明 ─────────────────────────────────────────────────────
+   ★ **初めて 遊ぶ 人は 何を 押せば よいか 分からない。**
+     3D の 遊びは 走り方が 分からないだけで 「壊れている」に 見える。
+     最初の 1 回だけ 出し、以後は ロビーの ？ から 見られる ように する。 */
+const HELP_KEY = "vq.survive.helpseen.v1";
+
+export class HelpCard {
+  constructor(onClose) {
+    this.onClose = onClose || (() => {});
+    this.el = this._build();
+  }
+  _row(k, t) {
+    const keys = h("span", { class: "vs-help-keys" });
+    for (const x of k) keys.appendChild(h("kbd", { class: "vs-help-k", text: x }));
+    return h("div", { class: "vs-help-row" }, keys, h("span", { class: "vs-help-t", text: t }));
+  }
+  _build() {
+    const 机 = h("div", { class: "vs-help-col" },
+      h("h4", { class: "vs-help-h", text: "キーボード / マウス" }),
+      this._row(["W", "A", "S", "D"], "走る"),
+      this._row(["Space"], "跳ぶ（長く押すと 高く）"),
+      this._row(["Shift"], "飛び込み（前へ 突っ込む）"),
+      this._row(["Q", "E"], "カメラを 回す"),
+      this._row(["ドラッグ"], "カメラを 回す"),
+      this._row(["1", "2", "3", "4"], "クイズに 答える"));
+    const 指 = h("div", { class: "vs-help-col" },
+      h("h4", { class: "vs-help-h", text: "スマホ / タブレット" }),
+      this._row(["左下"], "押した 場所に 棒が 出る → 走る"),
+      this._row(["右下 ⬆"], "跳ぶ"),
+      this._row(["右下 ↩"], "飛び込み"),
+      this._row(["なぞる"], "カメラを 回す"),
+      this._row(["札を 押す"], "クイズに 答える"));
+    const 遊び方 = h("div", { class: "vs-help-col" },
+      h("h4", { class: "vs-help-h", text: "遊び方" }),
+      h("p", { class: "vs-help-p", text: "クイズの 門を 通らないと 先へ 進めません。" }),
+      h("p", { class: "vs-help-p", text: "正解すると 少しの 間 速くなり、外すと 少し 遅くなります。" }),
+      h("p", { class: "vs-help-p", text: "落ちても 中間地点から やり直せます（サバイバルは 3 回まで）。" }),
+      h("p", { class: "vs-help-p", text: "走りながら 読んで、走りながら 答えられます。" }));
+    return h("div", { class: "vs-help", role: "dialog", "aria-label": "操作の 説明" },
+      h("div", { class: "vs-help-card" },
+        h("h3", { class: "vs-help-title", text: "あそび方" }),
+        h("div", { class: "vs-help-grid" }, 机, 指, 遊び方),
+        h("button", {
+          class: "vs-btn", type: "button",
+          onclick: () => this.hide()
+        }, "はじめる")));
+  }
+  show() { this.el.setAttribute("data-on", "1"); this.open = true; }
+  hide() {
+    this.el.removeAttribute("data-on");
+    this.open = false;
+    try { localStorage.setItem(HELP_KEY, "1"); } catch (e) {}
+    try { this.onClose(); } catch (e) {}
+  }
+  static seen() {
+    try { return localStorage.getItem(HELP_KEY) === "1"; } catch (e) { return false; }
+  }
+}
 
 export class HUD {
   constructor() {
@@ -194,6 +253,32 @@ export const HUD_CSS = `
 .vs-toast[data-kind="bad"]{ background:rgba(200,60,70,.86); border-color:rgba(255,255,255,.3); }
 @keyframes vsToast{ 0%{opacity:0;transform:translateY(10px)} 12%{opacity:1;transform:none}
   80%{opacity:1} 100%{opacity:0;transform:translateY(-8px)} }
+
+/* ── 操作の 説明 ─────────────────────────────────────────────────── */
+.vs-help{ position:absolute; inset:0; z-index:11; display:none;
+  align-items:center; justify-content:center;
+  background:rgba(6,8,22,.80); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  padding: calc(14px + var(--vs-safe-t)) 14px calc(14px + var(--vs-safe-b)); }
+.vs-help[data-on="1"]{ display:flex; }
+.vs-help-card{ width:min(760px,100%); max-height:100%; overflow:auto;
+  background:rgba(12,15,36,.96); border:1px solid rgba(255,255,255,.16);
+  border-radius:20px; padding:20px; text-align:center;
+  box-shadow:0 24px 70px rgba(0,0,0,.5); }
+.vs-help-title{ font-size:22px; font-weight:900; margin-bottom:14px; }
+.vs-help-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; text-align:left; margin-bottom:16px; }
+.vs-help-col{ background:rgba(255,255,255,.05); border-radius:13px; padding:12px; }
+.vs-help-h{ font-size:11.5px; font-weight:800; letter-spacing:.06em; color:${PALETTE.amber}; margin-bottom:8px; }
+.vs-help-row{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.vs-help-keys{ display:flex; gap:3px; flex:0 0 auto; }
+.vs-help-k{ display:inline-flex; align-items:center; justify-content:center;
+  min-width:22px; height:22px; padding:0 5px; border-radius:6px; font-family:inherit;
+  background:rgba(255,255,255,.14); font-size:10.5px; font-weight:800; }
+.vs-help-t{ font-size:12px; color:rgba(243,245,255,.78); }
+.vs-help-p{ font-size:12px; color:rgba(243,245,255,.72); line-height:1.8; margin-bottom:4px; }
+@media (max-width: 700px){
+  .vs-help-grid{ grid-template-columns:1fr; }
+  .vs-help-card{ padding:14px; }
+}
 
 @media (max-width: 640px){
   .vs-hud-list{ min-width:132px; top:calc(84px + var(--vs-safe-t)); }

@@ -29,7 +29,7 @@ import { Sim, PHASE, MODE } from "./sim.js";
 import { GATE_STATE } from "./gate.js";
 import { Input } from "./input.js";
 import { TouchPad, TOUCH_CSS } from "../ui/touch.js";
-import { HUD, HUD_CSS } from "../ui/hud.js";
+import { HUD, HUD_CSS, HelpCard } from "../ui/hud.js";
 import { QuizPanel, QUIZ_CSS } from "../ui/quiz.js";
 import { ResultPanel, RESULT_CSS } from "../ui/result.js";
 import { COURSE_BY_ID, COURSES } from "../data/courses.js";
@@ -57,6 +57,8 @@ export class MatchScreen {
       onLobby: () => { this.result.hide(); this.onQuit(); },
       onExit: () => { this.result.hide(); this.app.backToQuiz(); }
     });
+    /* ★ 初めての 人には 操作を 見せる。合図が 始まる 前に 出す。 */
+    this.help = new HelpCard(() => { try { this.input.attach(); } catch (e) {} });
     this.pauseBtn = h("button", {
       class: "vs-pause", type: "button", "aria-label": "やめる",
       onclick: () => this._confirmQuit()
@@ -64,7 +66,7 @@ export class MatchScreen {
 
     this.el = h("div", { class: "vs-match" },
       this.canvas, this.plates, this.hud.el, this.touch.el,
-      this.quiz.el, this.pauseBtn, this.result.el);
+      this.quiz.el, this.pauseBtn, this.help.el, this.result.el);
 
     this.renderer = null;
     this.cam = new ThirdPersonCamera();
@@ -194,6 +196,20 @@ export class MatchScreen {
     /* 試合の 間は 本体の 下の 帯を しまう（横向きで 跳ぶ ボタンが 切れる） */
     try { if (typeof window.__vqSurviveImmersive === "function") window.__vqSurviveImmersive(true); } catch (e) {}
 
+    /* 初めてなら 操作の 説明を 出す（合図の 間に 読める）。
+       ★ **みんなで 遊ぶ ときは 合図を 止めない。**
+         ほかの 人が 待たされる。読みながら 始まる。
+         1 人の ときだけ 止めて、それでも 15 秒で 勝手に 閉じる
+         （閉じ方が 分からず 固まる 人を 出さない）。 */
+    if (!HelpCard.seen() && !cfg.noHelp) {
+      this.help.show();
+      this.helpHolds = !this.online;
+      if (this._helpTimer) clearTimeout(this._helpTimer);
+      this._helpTimer = setTimeout(() => { try { this.help.hide(); } catch (e) {} }, 15000);
+    } else {
+      this.helpHolds = false;
+    }
+
     this.running = true;
     this._acc = 0;
     this.stepper.acc = 0;
@@ -204,6 +220,8 @@ export class MatchScreen {
 
   exit() {
     try { if (typeof window.__vqSurviveImmersive === "function") window.__vqSurviveImmersive(false); } catch (e) {}
+    if (this._helpTimer) { clearTimeout(this._helpTimer); this._helpTimer = 0; }
+    this.help.hide();
     this.running = false;
     this.input.detach();
     this.quiz.detach();
@@ -231,6 +249,24 @@ export class MatchScreen {
     if (look.dx || look.dy) this.cam.rotate(look.dx, look.dy);
     const z = this.input.takeZoom();
     if (z) this.cam.zoom(z);
+
+    /* ★ 操作の 説明を 読んでいる 間は 合図を 進めない。
+       読んでいる うちに レースが 始まって いたら 意味が ない。 */
+    if (this.help.open && this.helpHolds && this.sim.phase === PHASE.COUNTDOWN) {
+      this.stepper.acc = 0;
+      const sz2 = sz;
+      this.cam.update(dt, [this.local.x, this.local.y, this.local.z], 0, sz2.w / Math.max(1, sz2.h));
+      const R0 = this.renderer;
+      R0.shadowCenter[0] = this.local.x; R0.shadowCenter[1] = this.local.y; R0.shadowCenter[2] = this.local.z;
+      R0.begin(this.cam);
+      this.course.draw(R0, this.sim.time);
+      for (const p of this.sim.players) {
+        const v = this.visuals.get(p.id);
+        if (v) v.v.draw(R0, p.x, p.y, p.z, p.yaw, 1);
+      }
+      R0.end(dt);
+      return;
+    }
 
     /* ② 決まった 歩で 進める */
     const n = this.stepper.advance(dt);
