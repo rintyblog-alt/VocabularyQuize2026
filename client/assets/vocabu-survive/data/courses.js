@@ -453,11 +453,14 @@ C.push({
       o("narrow", 16, { dx: -10, w: 1.5, d: 30, wave: 2.2 }),
       /* ★ 中心どうし 7m は 遠い（跳べるのは 縁から 5.88m）。
          5.4m ずつに して 1 枚 増やす。 */
-      o("blinker", 5, { w: 4.6, d: 4.6, period: 3.4, duty: 0.72, phase: 0.0 }),
-      o("blinker", 10.4, { w: 4.6, d: 4.6, period: 3.4, duty: 0.72, phase: 0.11 }),
-      o("blinker", 15.8, { w: 4.6, d: 4.6, period: 3.4, duty: 0.72, phase: 0.22 }),
-      o("blinker", 21.2, { w: 4.6, d: 4.6, period: 3.4, duty: 0.72, phase: 0.33 }),
-      o("blinker", 26.6, { w: 4.6, d: 4.6, period: 3.4, duty: 0.72, phase: 0.44 }),
+      /* ★ ここは 3 本の 道の 真ん中。ほかの 道を 選べる ぶん、
+         消えている 時間を 短く して 「渡り切れる」ように する。
+         duty 0.85（消えるのは 0.51 秒）。隣どうしの 重なりは 2.5 秒。 */
+      o("blinker", 5, { w: 4.6, d: 4.6, period: 3.4, duty: 0.85, phase: 0.0 }),
+      o("blinker", 10.4, { w: 4.6, d: 4.6, period: 3.4, duty: 0.85, phase: 0.11 }),
+      o("blinker", 15.8, { w: 4.6, d: 4.6, period: 3.4, duty: 0.85, phase: 0.22 }),
+      o("blinker", 21.2, { w: 4.6, d: 4.6, period: 3.4, duty: 0.85, phase: 0.33 }),
+      o("blinker", 26.6, { w: 4.6, d: 4.6, period: 3.4, duty: 0.85, phase: 0.44 }),
       o("stones", 4, { dx: 10, count: 7, gap: 4.4, spread: 1.4, r: 1.4, bob: 0.7 })] },
     PW(18, 18),
     GATE(12, 9),
@@ -585,7 +588,7 @@ C.push({
     { t: "gap", len: 36, obs: (() => {
       const a = [];
       for (let i = 0; i < 10; i++) {
-        a.push(o("faller", 3.2 + i * 3.4, { w: 3.2, d: 3.2, delay: 0.66, back: 4.4,
+        a.push(o("faller", 3.2 + i * 3.4, { w: 3.2, d: 3.2, delay: 0.66, back: 2.4,
           dx: Math.sin(i * 0.9) * 2.6 }));
       }
       return a;
@@ -784,11 +787,18 @@ C.push({
     PW(18, 11, [o("timedgate", 9, { w: 5, h: 4, period: 2.4, duty: 0.36 })]),
     BR(20, 2.8, [o("fan", 10, { dx: -9, dir: { x: 1, z: 0 }, strength: 18, range: 13, width: 9, cycle: 2.6, duty: 0.5 }),
                  o("pushwall", 15, { dx: 5, dir: { x: -1, z: 0 }, w: 4, reach: 5, period: 2.2 })]),
-    STONE(6, 4.6, 3.4, 0.8),
-    { t: "gap", len: 16, obs: [o("narrow", 8, { w: 1.6, d: 15, wave: 2.4 })] },
+    /* ★ 横 3.4 だと 石から 石まで 最大 6.66m。跳べるのは 縁から 5.88m。
+       横を 1.8 に して 5.6m まで 縮める（実測で ここで 19 回 落ちていた）。 */
+    STONE(6, 4.4, 1.8, 0.8),
+    /* 20 種類を 一度ずつ 出す コースなので、細い道 は 「出る」ことが 目的。
+       ここだけで 詰ませない ように 幅 2.0m・くねり 1.6 に する。 */
+    { t: "gap", len: 16, obs: [o("narrow", 8, { w: 2.0, d: 15, wave: 1.6 })] },
     P(12, 10, [o("launch", 6, { r: 1.6, power: 1.9 }), o("tramp", 10, { r: 2.0 })]),
     G(6.4),
-    PW(18, 12, [o("hazard", 9, { w: 11, d: 5 }), o("mover", 9, { w: 5, d: 5, ax: 4, period: 3.0, dy: 0.6 })]),
+    /* ★ 幅 12m の 台に 幅 11m の 熱い 床。安全な 端が 片側 0.5m しか なく、
+       事実上 動く 板に 乗る しか ない。台を 15m・熱い 床を 9m に して
+       片側 3m の 逃げ道を 作る（実測で ここで 12 回 落ちていた）。 */
+    PW(18, 15, [o("hazard", 9, { w: 9, d: 5 }), o("mover", 9, { w: 5.4, d: 5, ax: 4, period: 3.0, dy: 0.6 })]),
     GATE(11),
     PW(22, 13),
     FIN()

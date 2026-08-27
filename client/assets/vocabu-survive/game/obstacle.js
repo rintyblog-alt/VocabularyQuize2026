@@ -276,7 +276,11 @@ export class FallingPlatform extends Obstacle {
        間に合わない（ボットで 151 回 落ちた）。人でも 同じ。
        0.66 秒 に する。「止まったら 落ちる」という 芯は 変わらない。 */
     this.delay = o.delay === undefined ? 0.66 : o.delay;
-    this.back = o.back === undefined ? 3.6 : o.back;
+    /* ★ 落ちた 板が 戻るまでの 時間。
+       長いと、一度 落ちて 中間地点から やり直す とき
+       **自分が 落とした 板が まだ 戻っていない**。
+       穴だらけの 道を もう一度 走る ことに なる。2.2 秒に する。 */
+    this.back = o.back === undefined ? 2.2 : o.back;
     this.state = 0;    /* 0 待ち / 1 揺れ / 2 落下 / 3 戻り */
     this.tick = 0;
     this.s = this._solid({ type: SOLID.BOX, x: this.x, y: this.y, z: this.z,

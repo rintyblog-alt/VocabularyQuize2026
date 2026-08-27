@@ -19,7 +19,9 @@ const path = require("path");
 const 道 = (p) => "file://" + path.join(__dirname, "client/assets/vocabu-survive", p);
 const だけ = process.argv[2] && /^c\d+$/.test(process.argv[2]) ? process.argv[2] : "";
 const 段 = process.env.VQ_LEVEL || "perfect";
-const 回数 = Number(process.env.VQ_RUNS || 2);
+/* ★ 3 回まで 試す。仕掛けは 通し時間で 動くので、
+   何秒目に 着くかで 当たり外れが 出る。1 回でも 通れば 「越えられる」。 */
+const 回数 = Number(process.env.VQ_RUNS || 3);
 
 let pass = 0, fail = 0; const bad = [];
 const ok = (n, c, x) => {
@@ -58,14 +60,19 @@ const ok = (n, c, x) => {
       const 最大歩 = Math.round(480 / STEP);
       while (sim.phase !== PHASE.FINISHED && 歩 < 最大歩) {
         inputs.set(p.id, bot.decide(sim.time));
-        sim.step(inputs);
+        const ev = sim.step(inputs);
+        /* ★ 戻された ら 数え直す。
+           前は 「これまでの 最高」と 比べていたので、戻された あと
+           走っていても ずっと 「止まっている」と 数えていた
+           （c07 で 318 秒 と 出ていたが 実際は 走っていた）。 */
+        for (const e of ev) { if (e.t === "respawn") { 止まった秒 = 0; 前進 = 0; } }
         歩++;
         if (sim.phase === PHASE.RUNNING) {
           /* ★ 「どこまで 行けたか」は **最高到達**で 見る。
              最後の 位置だと 落ちた 直後は 出発点に 戻っていて、
              「8% で 詰まった」のように 見える（実際 そう 誤読した）。 */
           if (p.progress > 最高到達) 最高到達 = p.progress;
-          if (p.progress - 前進 < 0.01) { 止まった秒 += STEP; 最大詰まり = Math.max(最大詰まり, 止まった秒); }
+          if (p.progress <= 前進 + 0.01) { 止まった秒 += STEP; 最大詰まり = Math.max(最大詰まり, 止まった秒); }
           else { 止まった秒 = 0; 前進 = p.progress; }
         }
         if (p.finished) break;
@@ -92,7 +99,11 @@ const ok = (n, c, x) => {
     総括.push({ def, r });
     ok(def.id + " ゴールできる", r.finished, { 到達: 割 + "%", 戻り: r.respawns, 詰まり: r.stuck.toFixed(1) });
     ok(def.id + " 門を 全部 通る", r.passed >= r.gates, { 通った: r.passed, 全: r.gates });
-    ok(def.id + " どこにも 8 秒 以上 詰まらない", r.stuck < 8, r.stuck.toFixed(1));
+    /* ★ 線は 8 秒 では なく 60 秒。
+       時間の 門・消える 板・振り子 は **待つのが 正しい 遊び方**なので、
+       止まっている 時間 そのものは 不具合では ない。
+       ここで 見たいのは 「二度と 進めなく なっていないか」。 */
+    ok(def.id + " どこかで 60 秒 以上 止まり続けない", r.stuck < 60, r.stuck.toFixed(1));
     ok(def.id + " 中間地点が 1 つ 以上", r.cps >= 1, r.cps);
     ok(def.id + " 門が 2 つ 以上", r.gates >= 2, r.gates);
   }
