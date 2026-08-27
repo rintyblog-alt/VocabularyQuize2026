@@ -235,21 +235,82 @@ async function handleFriends(request, env) {
   const me = await userFromRequest(request, env);
   if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
   if (!env.DB) return json({ ok: true, friends: [] });
+  /* ★ 表の 名前は **user_follows**。social_follows は この アプリに 無い。
+     前は 無い 表を 引いて いたので、友だちは 必ず 0 件だった。
+     「相互に フォロー」＝ どちらの 行も 生きて いて 承認ずみ。 */
   let rows = [];
   try {
     rows = (await env.DB.prepare(`
-      SELECT u.id AS id, u.nickname AS name
-        FROM social_follows a
-        JOIN social_follows b ON b.follower_id = a.following_id AND b.following_id = a.follower_id
-        JOIN users u ON u.id = a.following_id
-       WHERE a.follower_id = ?1
-       LIMIT 60
+      SELECT u.id AS id, u.nickname AS name, up.display_name AS disp
+        FROM user_follows a
+        JOIN user_follows b
+          ON b.follower_id = a.followee_id AND b.followee_id = a.follower_id
+         AND b.deleted_at = 0 AND b.approved_at > 0
+        JOIN users u ON u.id = a.followee_id
+        LEFT JOIN user_profiles up ON up.user_id = u.id
+       WHERE a.follower_id = ?1 AND a.deleted_at = 0 AND a.approved_at > 0
+       ORDER BY u.id LIMIT 60
     `).bind(me.uid).all().catch(() => ({ results: [] }))).results || [];
   } catch (e) { rows = []; }
   return json({
     ok: true,
-    friends: rows.map((r) => ({ id: String(r.id), name: S(r.name, 40) || ("ID" + r.id), online: false }))
+    friends: rows.map((r) => ({
+      id: String(r.id),
+      name: S(r.disp || r.name, 40) || ("ID" + r.id),
+      online: false
+    }))
   });
+}
+
+/* ══ ②' 招待 ═════════════════════════════════════════════════════════
+   相互に フォローして いる 人にだけ 送れる。
+   同じ 相手へは 1 日 3 回まで（しつこさを 止める）。 */
+const INVITE_PER_DAY = 3;
+
+async function handleInvite(request, env) {
+  const me = await userFromRequest(request, env);
+  if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
+  if (!env.DB) return bad("DB_NOT_CONFIGURED", "DB が ありません。", 500);
+  const b = await readJson(request, 4096);
+  if (!b) return bad("BAD_REQUEST", "本文が 読めません。");
+  const to = Math.max(0, N(b.userId, 0));
+  const roomId = S(b.roomId, 16).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!to || to === me.uid) return bad("BAD_REQUEST", "招く 相手が 正しく ありません。");
+  if (!roomId) return bad("BAD_REQUEST", "あいことばが ありません。");
+
+  /* 相互に フォローして いるか */
+  const rel = await env.DB.prepare(`
+    SELECT 1 AS ok FROM user_follows a
+      JOIN user_follows b ON b.follower_id = a.followee_id AND b.followee_id = a.follower_id
+       AND b.deleted_at = 0 AND b.approved_at > 0
+     WHERE a.follower_id = ?1 AND a.followee_id = ?2 AND a.deleted_at = 0 AND a.approved_at > 0
+     LIMIT 1
+  `).bind(me.uid, to).first().catch(() => null);
+  if (!rel) return bad("FORBIDDEN", "相互に フォローして いる 人だけ 誘えます。", 403);
+
+  const now = Date.now();
+  const dayKey = new Date(now + 9 * 3600 * 1000).toISOString().slice(0, 10);   /* 日本の 日付 */
+  const cnt = await env.DB.prepare(`
+    SELECT COUNT(1) AS c FROM user_notifications
+     WHERE user_id = ?1 AND type = 'survive_invite' AND day_key = ?2 AND actor_user_id = ?3
+  `).bind(to, dayKey, me.uid).first().catch(() => null);
+  if (N(cnt && cnt.c, 0) >= INVITE_PER_DAY) {
+    return json({ ok: true, sent: false, reason: "daily_limit", message: "この 人への 招待は 今日は ここまでです。" });
+  }
+
+  const title = (me.nickname || "だれか") + "さんが VocabuSurvive に 誘っています。";
+  const body = ["あいことば: " + roomId, "開いて すぐ 入れます。"].join("\n");
+  const meta = JSON.stringify({ type: "survive_invite", actorUserId: me.uid, roomId });
+  try {
+    await env.DB.prepare(`
+      INSERT INTO user_notifications (id, user_id, actor_user_id, type, title, body, ts, day_key, meta_json)
+      VALUES (?1, ?2, ?3, 'survive_invite', ?4, ?5, ?6, ?7, ?8)
+    `).bind("un:" + crypto.randomUUID(), to, me.uid, title, body, now, dayKey, meta).run();
+  } catch (e) {
+    console.error("[survive] 招待を 送れません:", String(e && e.message || e));
+    return json({ ok: true, sent: false, reason: "notify_failed" });
+  }
+  return json({ ok: true, sent: true, roomId });
 }
 
 /* ══ ③ 成績を 残す ════════════════════════════════════════════════════ */
@@ -441,6 +502,7 @@ export async function handleSurviveRequest(request, env, ctx) {
     if (m === "POST" && path === "/api/survive/result") return await handleResult(request, env);
     if (m === "GET" && path === "/api/survive/stats") return await handleStats(request, env);
     if (m === "POST" && path === "/api/survive/room") return await handleRoomCreate(request, env);
+    if (m === "POST" && path === "/api/survive/invite") return await handleInvite(request, env);
     {
       const g = /^\/api\/survive\/room\/([A-Za-z0-9]{1,16})$/.exec(path);
       if (m === "GET" && g) return await handleRoomInfo(request, env, g[1]);

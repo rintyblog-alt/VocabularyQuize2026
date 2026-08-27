@@ -29252,6 +29252,7 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
         if (type === "private_follow_request") return "lock";
         if (type === "private_follow_approved") return "visibility";
         if (type === "survival_invite") return "sports_esports";
+        if (type === "survive_invite") return "videogame_asset";
         if (type === "login_failed") return "shield";
         const text = `${String(item?.category || "")} ${String(item?.title || "")} ${String(item?.body || "")}`.toLowerCase();
         if (/(like|いいね|favorite|heart)/.test(text)) return "favorite";
@@ -29273,7 +29274,26 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
         };
       }
 
+      /* VocabuSurvive の 招待から あいことばを 取り出す（2026-08-28）。
+         meta_json に 入っている。無ければ 本文から 拾う。 */
+      function _appSurviveInviteRoom(item){
+        if (String(item?.type || "") !== "survive_invite") return "";
+        let meta = item?.meta;
+        if (!meta && item?.meta_json){ try { meta = JSON.parse(String(item.meta_json)); } catch(e){ meta = null; } }
+        let code = String(meta?.roomId || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (!code){
+          const m = /あいことば[:：]\s*([A-Z0-9]{4,8})/.exec(String(item?.body || ""));
+          code = m ? m[1] : "";
+        }
+        return code.slice(0, 6);
+      }
+
       function _appInboxActionSpecs(item){
+        const room = _appSurviveInviteRoom(item);
+        if (room){
+          return [{ action: "joinSurvive", label: "入る", room,
+            className: "textbtn app-inbox-action-btn is-approve" }];
+        }
         const requestMeta = _appInboxPrivateFollowRequestMeta(item);
         if (requestMeta && requestMeta.status === "pending"){
           return [
@@ -29310,6 +29330,7 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
           btn.dataset.inboxAction = String(spec.action || "");
           btn.dataset.id = String(notificationId || item?.id || "");
           btn.dataset.userId = String(Math.max(0, Number(spec.userId || 0)));
+          if (spec.room) btn.dataset.room = String(spec.room);
           btn.textContent = String(spec.label || "");
           const busyKey = `${String(spec.action || "")}:${String(notificationId || item?.id || "")}:${Math.max(0, Number(spec.userId || 0))}`;
           btn.disabled = _appSocialState.notificationActionBusy.has(busyKey);
@@ -43207,6 +43228,15 @@ actionタイプ:
           /* ★ 遊んでいる 間だけ 下の 帯を しまう（2026-08-28）。
              横向きの スマホ（844×390）だと 帯が 高さの 17% を 食い、
              跳ぶ ボタンが 切れていた。**試合の 間だけ**。ロビーでは 出す。 */
+          /* ★ 通知「◯◯さんが VocabuSurvive に 誘っています」を 押したら
+             そのまま 部屋へ 入れる（2026-08-28）。
+             あいことばを 覚えておいて、開いたら ロビーへ 渡す。 */
+          window.__vqSurviveJoin = (code) => {
+            const c = String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+            if (!c) return;
+            window.__vqSurvivePendingRoom = c;
+            try { _appSetTab(APP_TAB_KEY.SURVIVE); } catch(e){}
+          };
           window.__vqSurviveImmersive = (on) => {
             try {
               document.body.classList.toggle("vq-survive-play", !!on);
@@ -43218,7 +43248,11 @@ actionタイプ:
         _appSurviveFit();
         setTimeout(_appSurviveFit, 60);
         if (window.VocabuSurvive){
-          try { window.VocabuSurvive.open(container); } catch(e){ _appSurviveShowError(container, String(e && e.message || e)); }
+          try {
+            window.VocabuSurvive.open(container);
+            const 待ち = window.__vqSurvivePendingRoom;
+            if (待ち){ window.__vqSurvivePendingRoom = ""; setTimeout(() => { try { window.VocabuSurvive.joinRoom(待ち); } catch(e){} }, 400); }
+          } catch(e){ _appSurviveShowError(container, String(e && e.message || e)); }
           return;
         }
         /* 読み込み中の 印。束が 届くまでの 数百ミリ秒だけ 出る。 */
@@ -43233,6 +43267,8 @@ actionタイプ:
           container.textContent = "";
           _appSurviveFit();
           api.open(container);
+          const 待ち = window.__vqSurvivePendingRoom;
+          if (待ち){ window.__vqSurvivePendingRoom = ""; setTimeout(() => { try { api.joinRoom(待ち); } catch(e){} }, 600); }
         }).catch((e) => {
           if (document.body.dataset.appTab !== APP_TAB_KEY.SURVIVE) return;
           _appSurviveShowError(container, String(e && e.message || e));
@@ -45827,6 +45863,11 @@ actionタイプ:
               return;
             }
             _appInboxOpenDetail(id);
+            return;
+          }
+          if (action === "joinSurvive"){
+            const room = String(inboxActionBtn.getAttribute("data-room") || "").trim();
+            if (room && typeof window.__vqSurviveJoin === "function") window.__vqSurviveJoin(room);
             return;
           }
           if (action === "approvePrivateFollow" || action === "rejectPrivateFollow"){

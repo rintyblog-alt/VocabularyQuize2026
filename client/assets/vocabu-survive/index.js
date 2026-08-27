@@ -134,6 +134,14 @@ class App {
     await this.goLobby();
   }
 
+  /** 通知や URL から 「この あいことばで 入って」と 言われた とき */
+  async joinRoom(code) {
+    if (this._loadPromise) { try { await this._loadPromise; } catch (e) {} }
+    await this.goLobby();
+    const lb = this.shell && this.shell.get("lobby");
+    if (lb && lb.joinByCode) { try { await lb.joinByCode(code); } catch (e) { console.error(LOG, e); } }
+  }
+
   async goLobby() {
     if (!this.shell) return;
     if (this.audio) { try { this.audio.startMusic("calm"); } catch (e) {} }
@@ -220,6 +228,8 @@ const api = {
   close: () => app.close(),
   state: () => app.state(),
   setTier: (t) => { saveTier(t); return t; },
+  /* 通知を 押した ときの 入口。本体が これを 呼ぶ。 */
+  joinRoom: (code) => app.joinRoom(code),
   /* 検査で 中を 見たいとき用。ふだんは 使わない。 */
   __app: app
 };

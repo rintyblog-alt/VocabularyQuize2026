@@ -446,8 +446,39 @@ export class LobbyScreen {
   }
 
   async _invite(f) {
-    if (this.net && this.net.invite) { this.net.invite(f.id); return; }
-    this.friendsNote.textContent = f.name + " を 誘うには 先に 部屋を 作ってください。";
+    /* ★ 「先に 部屋を 作ってください」と 突き放さない。
+       部屋が 無ければ **こちらで 作ってから** 誘う。 */
+    try {
+      if (!this.roomId) {
+        this.friendsNote.textContent = "部屋を 作っています…";
+        const c = COURSES[this.courseIndex];
+        const d = await createRoom({ courseId: c.id, mode: this.mode, max: 8 });
+        this.roomId = d.roomId;
+        this.codeInput.value = d.roomId;
+        this._connect(d.wsUrl);
+      }
+      this.friendsNote.textContent = f.name + " を 誘っています…";
+      const base = String(window.VQ_API_BASE || "").replace(/\/+$/, "");
+      const tk = (typeof window._authGetToken === "function") ? String(window._authGetToken() || "") : "";
+      const r = await fetch(base + "/api/survive/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + tk },
+        body: JSON.stringify({ userId: f.id, roomId: this.roomId })
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !d || !d.ok) throw new Error((d && d.message) || ("HTTP " + r.status));
+      this.friendsNote.textContent = d.sent
+        ? (f.name + " に 通知を 送りました。あいことば " + this.roomId)
+        : (d.message || (f.name + " には 今日は これ以上 送れません。"));
+    } catch (e) {
+      this.friendsNote.textContent = "誘えませんでした: " + String(e && e.message || e);
+    }
+  }
+
+  /** 外から あいことばを 渡されて 入る（通知を 押した とき） */
+  async joinByCode(code) {
+    this.codeInput.value = String(code || "").toUpperCase().slice(0, 6);
+    await this._joinRoom();
   }
 }
 
