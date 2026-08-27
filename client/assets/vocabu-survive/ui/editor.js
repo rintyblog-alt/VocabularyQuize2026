@@ -88,6 +88,9 @@ export class EditorScreen {
       }, "＋ " + k.名));
     }
 
+    /* ★ **上から 見た 図。** 数字だけ 並べても どんな コースか 分からない。
+       選んでいる 区画を 光らせる ことで「いま どこを 直しているか」が 一目で 分かる。 */
+    this.mapEl = h("canvas", { class: "vs-ed-map", "aria-label": "上から 見た コース" });
     this.checkEl = h("div", { class: "vs-ed-check", role: "status", "aria-live": "polite" });
     this.saveBtn = h("button", { class: "vs-btn is-mint", type: "button", onclick: () => this._save() }, "保存");
     this.playBtn = h("button", { class: "vs-btn", type: "button", onclick: () => this._play() }, "試しに 走る");
@@ -111,6 +114,7 @@ export class EditorScreen {
         h("section", { class: "vs-card vs-ed-left", "aria-label": "並び" },
           h("div", { class: "vs-lb-lab", text: "名前" }), this.nameInput,
           h("div", { class: "vs-lb-lab", text: "風景" }), this.themeRow,
+          h("div", { class: "vs-lb-lab", text: "上から 見た ところ" }), this.mapEl,
           h("div", { class: "vs-lb-lab", text: "区画（上から 下へ 走ります）" }),
           this.listEl, this.addRow),
         h("section", { class: "vs-card vs-ed-right", "aria-label": "細かい 設定" },
@@ -180,11 +184,88 @@ export class EditorScreen {
       if (a.far > 0) 行("板から 板へ " + a.far.toFixed(1) + "m（届くのは " + 越えられる隙間 + "m）", a.far <= 越えられる隙間);
     }
     this._ok = !!(a && a.ok && c.length >= 60 && 門 >= 1 && 中 >= 1);
+    try { this._drawMap(c); } catch (e) { /* 図が 描けなくても 編集は 続く */ }
     if (!this._ok) {
       this.checkEl.appendChild(h("p", { class: "vs-lb-note",
         text: "× が 残っていても 走れます。ただし 途中で 進めなく なる かも しれません。" }));
     }
     return c;
+  }
+
+  /* ── 上から 見た 図 ───────────────────────────────────────────────
+     ★ 3D では 描かない。**2D で 十分**で、しかも 軽い。
+       編集の たびに 3D を 建て直すと 数百 ms 止まる。 */
+  _drawMap(c) {
+    const cv = this.mapEl;
+    if (!cv) return;
+    const box = cv.parentElement ? cv.parentElement.getBoundingClientRect() : { width: 480 };
+    const W = Math.max(200, Math.round(box.width - 28));
+    const H = 150;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      cv.style.width = W + "px"; cv.style.height = H + "px";
+    }
+    const g = cv.getContext("2d");
+    if (!g) return;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    if (!c) return;
+
+    /* 端から 端まで 入る ように 縮める（進む 向きは -Z なので 左→右 に 描く） */
+    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (const f of c.floors) {
+      x0 = Math.min(x0, f.x - f.w / 2); x1 = Math.max(x1, f.x + f.w / 2);
+      z0 = Math.min(z0, f.z - f.d / 2); z1 = Math.max(z1, f.z + f.d / 2);
+    }
+    if (!(x1 > x0) || !(z1 > z0)) return;
+    const pad = 8;
+    const k = Math.min((W - pad * 2) / (z1 - z0), (H - pad * 2) / Math.max(8, x1 - x0));
+    const px = (f) => pad + (-f.z - (-z1)) * k;          /* -Z を 右へ */
+    const py = (f) => H / 2 + (f.x - (x0 + x1) / 2) * k;
+
+    /* 選んでいる 区画の 帯 */
+    const at = c.sectionAt || [];
+    const sel = this.sel;
+    if (at[sel] !== undefined && at[sel + 1] !== undefined) {
+      const a = pad + (-at[sel].z - (-z1)) * k;
+      const b = pad + (-at[sel + 1].z - (-z1)) * k;
+      g.fillStyle = "rgba(90,230,190,.16)";
+      g.fillRect(Math.min(a, b), 0, Math.abs(b - a), H);
+    }
+
+    const 色 = { path: "#5d7a8f", cp: "#5ae6be", finish: "#ffd84d", gate: "#7aa2ff",
+      ice: "#9fd8ff", conveyor: "#c9a0ff", bridge: "#8ea0b4", ramp: "#8fb0c4", start: "#7de0b0" };
+    for (const f of c.floors) {
+      const w = Math.max(1.5, f.d * k), hh = Math.max(1.5, f.w * k);
+      g.fillStyle = 色[f.kind] || "#5d7a8f";
+      g.globalAlpha = 0.92;
+      g.fillRect(px(f) - w / 2, py(f) - hh / 2, w, hh);
+    }
+    g.globalAlpha = 1;
+    /* 仕掛けは 小さな 点 */
+    for (const o of c.obstacles) {
+      if (o.kind === "checkpoint" || o.kind === "finish") continue;
+      g.fillStyle = "rgba(255,138,151,.9)";
+      g.beginPath();
+      g.arc(px(o), py(o), 2.2, 0, Math.PI * 2);
+      g.fill();
+    }
+    /* 門と 中間地点 */
+    for (const o of c.obstacles) {
+      if (o.kind !== "checkpoint") continue;
+      g.strokeStyle = "#5ae6be"; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(px(o), 4); g.lineTo(px(o), H - 4); g.stroke();
+    }
+    for (const gt of c.gates) {
+      g.strokeStyle = "#7aa2ff"; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(px(gt), 10); g.lineTo(px(gt), H - 10); g.stroke();
+    }
+    /* 出発と ゴール */
+    g.fillStyle = "#7de0b0"; g.font = "700 10px system-ui, sans-serif";
+    g.fillText("出発", 4, 12);
+    g.fillStyle = "#ffd84d";
+    g.fillText("ゴール", W - 32, 12);
   }
 
   _clean() {
@@ -418,6 +499,8 @@ export const EDITOR_CSS = `
 .vs-ed-ob{ padding:4px 8px; border-radius:999px; border:1px dashed rgba(255,255,255,.20);
   background:transparent; color:rgba(243,245,255,.76); font:inherit; font-size:11px; cursor:pointer; }
 .vs-ed-ob:hover{ background:rgba(255,255,255,.07); border-style:solid; }
+.vs-ed-map{ display:block; width:100%; height:150px; border-radius:10px;
+  border:1px solid ${PALETTE.line}; background:rgba(8,11,24,.6); margin-bottom:4px; }
 .vs-ed-check{ display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
 .vs-ed-good{ margin:0; font-size:11.5px; color:#5ae6be; }
 .vs-ed-bad{ margin:0; font-size:11.5px; color:#ff8a97; font-weight:700; }

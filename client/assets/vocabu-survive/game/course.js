@@ -79,11 +79,15 @@ export class Course {
     };
     push(cx, y, z, (this.def.sections[0] && this.def.sections[0].w) || 14);
 
+    /* ★ 区画ごとの 区切りを 覚える。
+       コースを 作る 画面で「いま 選んでいる 区画は ここ」を 塗る ために 要る。 */
+    this.sectionAt = [{ z: 0, cx: 0, y: 0 }];
     for (let i = 0; i < this.def.sections.length; i++) {
       const sec = this.def.sections[i];
       const r = this._section(sec, cx, y, z, i);
       cx = r.cx; y = r.y; z = r.z;
       push(cx, y, z, sec.w || 10);
+      this.sectionAt.push({ z, cx, y });
     }
     this.length = this.path[this.path.length - 1].dist;
     this.endZ = z;

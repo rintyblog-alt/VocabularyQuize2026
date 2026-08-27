@@ -182,6 +182,19 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     ok("足せる 区画が 並ぶ", 編.足 >= 10, 編.足);
     ok("風景が 10 種", 編.風 === 10, 編.風);
     ok("**その場で 判定が 出る**", 編.判.length >= 4, 編.判);
+    /* ★ 上から 見た 図。数字だけでは どんな コースか 分からない。 */
+    const 図 = await pg.evaluate(() => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const cv = r.querySelector(".vs-ed-map");
+      if (!cv) return null;
+      const g = cv.getContext("2d");
+      const d = g.getImageData(0, 0, cv.width, cv.height).data;
+      let 塗 = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 8) 塗++;
+      return { w: cv.width, h: cv.height, 塗, 割: 塗 / (cv.width * cv.height) };
+    });
+    ok("上から 見た 図が ある", !!図 && 図.w > 100, 図);
+    ok("**何か 描かれている**", 図 && 図.割 > 0.02, 図);
     ok("ひな形は 全部 ○", 編.悪 === 0, 編.判);
 
     /* 区画を 足す → 判定が 変わる */
@@ -197,6 +210,27 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
         判: Array.from(r.querySelectorAll(".vs-ed-check p")).map((e) => e.textContent) };
     });
     ok("区画が 増える", 足.区 === 10, 足.区);
+    /* 選んだ 区画が 図の 上で 光るか（帯の 色が 増える） */
+    const 光 = await pg.evaluate(async () => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const ed = window.VocabuSurvive.__app.shell.get("editor");
+      const 数える = () => {
+        const cv = r.querySelector(".vs-ed-map");
+        const d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
+        let n = 0;
+        /* 帯の 色（緑がかった 半透明）を 数える */
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] > 8 && d[i + 1] > d[i] + 20 && d[i + 2] > d[i]) n++;
+        }
+        return n;
+      };
+      ed.sel = 1; ed._render(); await new Promise((x) => setTimeout(x, 250));
+      const a = 数える();
+      ed.sel = ed.course.sections.length - 2; ed._render(); await new Promise((x) => setTimeout(x, 250));
+      const b = 数える();
+      return { a, b, ちがう: Math.abs(a - b) > 40 };
+    });
+    ok("えらんだ 区画が 図の 上で 変わる", 光.ちがう, 光);
     ok("足した ものが 選ばれる", 足.選 >= 1, 足.選);
     ok("ゴールの 前に 入る", 足.選 < 足.区 - 1, 足);
 
