@@ -110,6 +110,8 @@ export class HUD {
 
     this.bigEl = h("div", { class: "vs-hud-big", "aria-live": "assertive" });
     this.toastEl = h("div", { class: "vs-hud-toast" });
+    /* ゴーストとの 差。**時間**で 出す（「あと 何 m」より 分かりやすい）。 */
+    this.ghostEl = h("div", { class: "vs-hud-ghost vs-hide vs-mono" });
 
     return h("div", { class: "vs-hud" },
       h("div", { class: "vs-hud-top" },
@@ -118,6 +120,7 @@ export class HUD {
           h("div", { class: "vs-hud-meta" }, this.courseEl, this.cpEl)),
         h("div", { class: "vs-hud-rank" }, this.rankNum, this.rankOf)),
       h("div", { class: "vs-hud-prog" }, this.progFill, this.progMe),
+      this.ghostEl,
       this.teamEl,
       this.list,
       this.bigEl,
@@ -159,6 +162,22 @@ export class HUD {
       this._last.pct = pct;
       this.progFill.style.width = pct + "%";
       this.progMe.style.left = pct + "%";
+    }
+
+    /* ゴーストとの 差 */
+    const gd = state.ghost;
+    if (gd === null || gd === undefined) {
+      if (!this.ghostEl.classList.contains("vs-hide")) this.ghostEl.classList.add("vs-hide");
+      this._last.ghost = undefined;
+    } else {
+      if (this.ghostEl.classList.contains("vs-hide")) this.ghostEl.classList.remove("vs-hide");
+      /* 0.1 秒 きざみ。もっと 細かく すると 数字が 落ち着かず 読めない。 */
+      const v = Math.round(gd * 10) / 10;
+      if (v !== this._last.ghost) {
+        this._last.ghost = v;
+        this.ghostEl.textContent = "ベスト " + (v <= 0 ? "-" : "+") + Math.abs(v).toFixed(1);
+        this.ghostEl.setAttribute("data-good", v <= 0 ? "1" : "0");
+      }
     }
 
     /* 組の 点 */
@@ -214,6 +233,14 @@ export class HUD {
 }
 
 export const HUD_CSS = `
+/* ★ **幅を 中身に 合わせる。** 親が 縦積みの 箱なので、
+   放っておくと 横いっぱいに 伸びて 画面を 横切る 帯に なる（実写で 気づいた）。 */
+.vs-hud-ghost{ align-self:flex-start; width:max-content; max-width:60%;
+  margin:6px 0 0; padding:3px 10px; border-radius:999px;
+  font-size:13px; font-weight:800; letter-spacing:.02em;
+  background:rgba(12,16,28,.62); color:#ff9aa5; border:1px solid rgba(255,255,255,.12); }
+.vs-hud-ghost[data-good="1"]{ color:#5ae6be; }
+
 .vs-hud{ position:absolute; inset:0; pointer-events:none; z-index:4;
   padding: calc(12px + var(--vs-safe-t)) calc(14px + var(--vs-safe-r)) calc(12px + var(--vs-safe-b)) calc(14px + var(--vs-safe-l)); }
 .vs-hud-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }

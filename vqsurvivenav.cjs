@@ -156,6 +156,37 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     const gone = await pg.evaluate(() => !document.querySelector("#appSurvivePage .vq-survive-host"));
     ok("器の 中が 空になった", gone === true);
 
+    節("⑥-b 器を 空に されても 建て直す");
+    /* ★ 実際に 起きた 不具合。本体は 束を 読み終えた とき 器を 一度 空に する。
+       その 前に ゲームが 開いて いると 影の 器ごと 消え、
+       open() は 「もう 開いている」と 早戻りして **真っ白**に なる。 */
+    await pg.evaluate(() => { document.querySelector('#appTabBar [data-app-tab="survive"]').click(); });
+    await pg.waitForFunction(() => {
+      const h = document.querySelector("#appSurvivePage .vq-survive-host");
+      return !!(h && h.shadowRoot);
+    }, null, { timeout: 30000, polling: 250 });
+    const 前 = await pg.evaluate(() => document.querySelectorAll("#appSurvivePage .vq-survive-host").length);
+    ok("器が できている", 前 === 1, 前);
+    /* 空に してから もう一度 開く */
+    await pg.evaluate(async () => {
+      const c = document.getElementById("appSurvivePage");
+      c.textContent = "";
+      await window.VocabuSurvive.open(c);
+    });
+    await pg.waitForFunction(() => {
+      const h = document.querySelector("#appSurvivePage .vq-survive-host");
+      return !!(h && h.shadowRoot && h.shadowRoot.querySelector(".vs-root"));
+    }, null, { timeout: 20000, polling: 200 }).catch(() => {});
+    const 後 = await pg.evaluate(() => {
+      const h = document.querySelector("#appSurvivePage .vq-survive-host");
+      return { 数: document.querySelectorAll("#appSurvivePage .vq-survive-host").length,
+        影: !!(h && h.shadowRoot && h.shadowRoot.querySelector(".vs-root")),
+        開: window.VocabuSurvive.state().opened };
+    });
+    ok("**空に されても 建て直す**", 後.数 === 1 && 後.影 === true, 後);
+    ok("二重に 建てない", 後.数 === 1, 後.数);
+    ok("開いた ままに なる", 後.開 === true, 後.開);
+
     節("⑦ 旧 VocabuSurvival");
     const old = await pg.evaluate(() => {
       const btns = Array.from(document.querySelectorAll("#appTabBar [data-app-tab]"));

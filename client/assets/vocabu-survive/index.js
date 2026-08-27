@@ -32,7 +32,17 @@ class App {
 
   /* ── 開く ─────────────────────────────────────────────────────────── */
   async open(container, opts) {
-    if (this.opened && this.container === container) return this;
+    /* ★ 同じ 器に もう 開いて いても、**器の 中身が 消されて いる**ことが ある。
+       本体は 束を 読み終えた とき container.textContent = "" で 一度 空に する。
+       その 前に こちらが 開いて いると、影の 器ごと 消えて
+       「開いている ことに なっている のに 何も 見えない」に なる。
+       （検査で 実際に 起きた: opened=true・#appSurvivePage の 子が 0 個）
+       生きて いるかを 見て、消えて いれば 建て直す。 */
+    if (this.opened && this.container === container) {
+      const 生きている = !!(this.shell && this.shell.mountEl && this.shell.mountEl.parentNode === container);
+      if (生きている) return this;
+      this.close();
+    }
     if (this.opened) this.close();
     this.container = container;
     this.opened = true;

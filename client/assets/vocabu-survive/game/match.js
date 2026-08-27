@@ -34,10 +34,13 @@ import { QuizPanel, QUIZ_CSS } from "../ui/quiz.js";
 import { ResultPanel, RESULT_CSS } from "../ui/result.js";
 import { COURSE_BY_ID, COURSES } from "../data/courses.js";
 import { fetchQuestions, localQuestions } from "../data/questions.js";
+import { GhostRecorder, GhostPlayer, loadGhost, saveGhost } from "../data/ghost.js";
 import { settingsFor, measure } from "../boot/caps.js";
 
 const BEST_KEY = "vq.survive.best.v1";
 const SPLIT_KEY = "vq.survive.splits.v1";   /* コースごとの 自己ベストの 区間 */
+const GHOST_KEY = "vq.survive.ghost.on.v1";  /* ゴーストを 出すか */
+const GHOST_RGB = [0.62, 0.78, 0.98];        /* 青白い。走る人の 8 色 どれとも 違う。 */
 
 export class MatchScreen {
   constructor(opt) {
@@ -135,6 +138,16 @@ export class MatchScreen {
     this.visuals.clear();
     this.bots.length = 0;
     this._splits = [];
+
+    /* ── ゴースト（自己ベストと 並んで 走る）──────────────────────
+       ★ **対戦では 出さない。** 相手が いる ところに 半透明の 自分が
+         もう 1 人 いると、どれが 相手か 分からなく なる。
+       ★ 読み込みは 待たない。届いたら 途中から 出る。 */
+    this.ghostRec = this.ghostRec || new GhostRecorder();
+    this.ghostRec.reset();
+    this.ghost = null;
+    this.ghostVis = null;
+    this._ghostDelta = null;
     const me = new Player({
       id: "me", name: cfg.myName || "あなた", colorIndex: cfg.myColor || 0, isLocal: true,
       hat: cfg.myHat || "none", hatColor: cfg.myHatColor | 0
@@ -217,6 +230,20 @@ export class MatchScreen {
       }).then((qs) => {
         /* まだ 1 問も 出していない ときだけ 差し替える */
         if (this.qIndex === 0 && qs && qs.length >= need) this.questions = qs;
+      }).catch(() => {});
+    }
+
+    if (!this.online && this._ghostOn()) {
+      loadGhost(this.course.id).then((d) => {
+        if (!d || this.course.id !== (d.id || this.course.id)) return;
+        const g = new GhostPlayer(d);
+        if (!g.ok) return;
+        this.ghost = g;
+        const gv = new BeanVisual(GHOST_RGB);
+        gv.dark = [GHOST_RGB[0] * 0.72, GHOST_RGB[1] * 0.72, GHOST_RGB[2] * 0.78, 1];
+        gv.hat = hatByKey(cfg.myHat || "none");
+        gv.hatColor = [GHOST_RGB[0], GHOST_RGB[1], GHOST_RGB[2], 1];
+        this.ghostVis = gv;
       }).catch(() => {});
     }
 
@@ -314,6 +341,20 @@ export class MatchScreen {
       this._onEvents(evs);
     }
     if (n > 0) this._syncVisual(false);
+
+    /* ── ゴースト。**走っている 間だけ**。 */
+    if (this.sim.phase === PHASE.RUNNING && !this.local.finished) {
+      this.ghostRec.sample(this.sim.raceTime, this.local, this.local.progress);
+      if (this.ghost) {
+        this.ghost.at(this.sim.raceTime);
+        if (this.ghostVis) this.ghostVis.update(dt, {
+          speed: 6, grounded: true, vy: 0, yaw: this.ghost.yaw, stunned: 0
+        });
+        /* いま 自分が いる ところを ゴーストは 何秒で 通ったか */
+        const tg = this.ghost.timeAt(this.local.progress);
+        this._ghostDelta = tg >= 0 ? this.sim.raceTime - tg : null;
+      }
+    }
     /* 自分の 位置を 送る（中で 20Hz に 間引く） */
     if (this.net) this.net.tick(dt, this.local);
 
@@ -377,6 +418,11 @@ export class MatchScreen {
         R.draw(M.ring, this._mat, [c[0], c[1], c[2], 0.85], 0.45, 0.3, 0, 0, 1.5);
       }
       vis.v.draw(R, vis.draw.x, vis.draw.y, vis.draw.z, vis.draw.yaw, 1);
+    }
+    /* ゴースト。**当たらない・押さない・止めない**。ただの 見た目。 */
+    if (this.ghost && this.ghostVis && !this.ghost.done && this.sim.phase === PHASE.RUNNING) {
+      const g = this.ghost;
+      this.ghostVis.draw(R, g.x, g.y, g.z, g.yaw, 0.98);
     }
     if (this.fx) this.fx.draw(R, { ball: M.dot, slab: M.slab, ring: M.ring });
     R.end(dt);
@@ -591,6 +637,10 @@ export class MatchScreen {
     }
   }
 
+  _ghostOn() {
+    try { return localStorage.getItem(GHOST_KEY) !== "0"; } catch (e) { return true; }
+  }
+
   /* ── 区間の 記録 ─────────────────────────────────────────────────
      ★ 自己ベストの 区間は **手元にも 置く**。
        通信が 遅い ときに 「差」が 出ない のは、遊びの 手応えを 一番 損なう。 */
@@ -614,6 +664,8 @@ export class MatchScreen {
     const rows = s.standings().map((r) => Object.assign({}, r, { me: r.id === this.local.id }));
     return {
       time: s.phase === PHASE.COUNTDOWN ? 0 : s.raceTime,
+      /* ゴーストが 居て、まだ 走って いる ときだけ 差を 出す */
+      ghost: (this.ghost && !this.ghost.done && this._ghostDelta !== null) ? this._ghostDelta : null,
       teams: s.mode === MODE.TEAM ? s.teamScores() : null,
       rank: this.local.rank, total: s.players.length,
       checkpoint: this.local.checkpoint, checkpoints: this.course.checkpoints.length,
@@ -638,6 +690,12 @@ export class MatchScreen {
            更新して いないのに 上書きすると 「一番 速かった 走り」で なくなる。 */
         if (this._splits && this._splits.length) {
           localStorage.setItem(SPLIT_KEY + ":" + this.course.id, JSON.stringify(this._splits));
+        }
+        /* ★ 走りの 記録も 覚える。**自己ベストの ときだけ。**
+           毎回 上書きすると 「一番 速かった 走り」で なくなる。
+           置き場は IndexedDB（localStorage は もう いっぱい）。 */
+        if (!this.online && this.ghostRec.length >= 4) {
+          saveGhost(this.course.id, this.ghostRec.a.slice(), p.finishTime * 1000).catch(() => {});
         }
       } catch (e) {}
     }

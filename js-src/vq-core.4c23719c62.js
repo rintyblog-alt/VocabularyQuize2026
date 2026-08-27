@@ -43264,7 +43264,13 @@ actionタイプ:
         container.appendChild(wait);
         _appSurviveLoad().then((api) => {
           if (document.body.dataset.appTab !== APP_TAB_KEY.SURVIVE) return;
-          container.textContent = "";
+          /* ★ **すでに 開いて いれば 中身を 消さない。**
+             タブが 2 回 効く ことが あり、
+             （1）2 回目が 先に api.open() を 済ませる →
+             （2）ここで textContent="" が 走って 影の 器ごと 消える →
+             （3）api.open() は 「もう 開いている」と 早戻りして 何も 建てない
+             で、真っ白な まま に なる（検査で 実際に 起きた）。 */
+          if (!container.querySelector(".vq-survive-host")) container.textContent = "";
           _appSurviveFit();
           api.open(container);
           const 待ち = window.__vqSurvivePendingRoom;

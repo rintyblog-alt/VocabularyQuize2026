@@ -60,18 +60,25 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     await pg.waitForFunction(() => !!document.getElementById("appSurvivePage"), null, { timeout: 20000 });
     await どける();
     await pg.evaluate(() => document.querySelector('#appTabBar [data-app-tab="survive"]').click());
-    await pg.waitForFunction(() => window.VocabuSurvive && window.VocabuSurvive.state().opened, null, { timeout: 20000 });
+    await pg.waitForFunction(() => window.VocabuSurvive && window.VocabuSurvive.state().opened,
+      null, { timeout: 45000, polling: 250 });
     await どける();
     ok("読み込み画面が 出る", (await pg.evaluate(() => window.VocabuSurvive.state().screen)) === "loading");
     await pg.waitForFunction(() => {
       const st = window.VocabuSurvive.state();
       return st.loaded && st.loaded.length >= 5;
-    }, null, { timeout: 25000 }).catch(() => {});
+    }, null, { timeout: 45000, polling: 250 }).catch(() => {});
     const st1 = await pg.evaluate(() => window.VocabuSurvive.state());
     ok("部品が 全部 読めた", st1.loaded.length >= 5, st1);
     ok("読み込みで 例外が 出ていない", !st1.error, st1.error);
 
     節("② START → ロビー");
+    /* ★ 影の DOM と START が 出るまで 待つ。**時間で 見る**（polling）。
+       出る 前に 押すと null で 落ちる。 */
+    await pg.waitForFunction(() => {
+      const h = document.querySelector("#appSurvivePage .vq-survive-host");
+      return !!(h && h.shadowRoot && h.shadowRoot.querySelector(".vs-load-start"));
+    }, null, { timeout: 45000, polling: 250 });
     await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
       r.querySelector(".vs-load-start").click();

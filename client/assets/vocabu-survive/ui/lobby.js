@@ -17,6 +17,7 @@ import { listLocalPresets, listSharedPresets } from "../data/questions.js";
 import { PALETTE, BEAN_COLORS, beanByIndex } from "./theme.js";
 import { COURSES, tierOf, TIERS } from "../data/courses.js";
 import { CUP_ROUNDS } from "../game/sim.js";
+import { clearGhost } from "../data/ghost.js";
 import { themeOf } from "../game/theme3d.js";
 import { HATS, HAT_COLORS } from "../game/bean.js";
 import { SurviveNet, createRoom, roomInfo } from "../net/client.js";
@@ -87,6 +88,7 @@ export class LobbyScreen {
       this.invertY = !!raw.invert;
     } catch (e) { this.volume = 0.7; this.musicOn = true; this.invertY = false; }
     try { this.quality = localStorage.getItem("vq.survive.tier.v1") || "auto"; } catch (e) { this.quality = "auto"; }
+    try { this.ghostOn = localStorage.getItem("vq.survive.ghost.on.v1") !== "0"; } catch (e) { this.ghostOn = true; }
   }
   _save() {
     try {
@@ -225,6 +227,22 @@ export class LobbyScreen {
     if (this.app && this.app.audio) this.app.audio.setMusic(this.musicOn);
     this._save(); this._render();
   }
+  _setGhost(on) {
+    this.ghostOn = !!on;
+    try { localStorage.setItem("vq.survive.ghost.on.v1", on ? "1" : "0"); } catch (e) {}
+    this._render();
+  }
+  async _clearGhost() {
+    const c = COURSES[this.courseIndex];
+    this.ghostClearBtn.disabled = true;
+    try { await clearGhost(c.id); } catch (e) {}
+    this.ghostClearBtn.textContent = "消しました";
+    setTimeout(() => {
+      this.ghostClearBtn.disabled = false;
+      this.ghostClearBtn.textContent = "この コースの 記録を 消す";
+    }, 1600);
+  }
+
   _setInvert(on) {
     this.invertY = !!on;
     if (this.app) this.app.invertY = this.invertY;
@@ -367,13 +385,25 @@ export class LobbyScreen {
       class: "vs-lb-toggle", type: "button", "aria-pressed": "false",
       onclick: () => this._setInvert(!this.invertY)
     }, "上下を 逆に");
+    /* ゴースト。自己ベストの 走りと 並んで 走る。 */
+    this.ghostBtn = h("button", {
+      class: "vs-lb-toggle", type: "button", "aria-pressed": "true",
+      onclick: () => this._setGhost(!this.ghostOn)
+    }, "ベストと 走る");
+    this.ghostClearBtn = h("button", {
+      class: "vs-btn is-sm is-ghost", type: "button",
+      onclick: () => this._clearGhost()
+    }, "この コースの 記録を 消す");
     this.settingsEl = h("details", { class: "vs-lb-settings" },
       h("summary", null, "設定（画質・音）"),
       h("div", { class: "vs-lb-set-body" },
         h("div", { class: "vs-lb-lab", text: "画質" }), this.qualityRow,
         h("div", { class: "vs-lb-lab", text: "音の 大きさ" }), this.volInput,
-        h("div", { class: "vs-lb-togglerow" }, this.musicBtn, this.invertBtn),
-        h("p", { class: "vs-lb-note", text: "画質は 次の 試合から 変わります。" })));
+        h("div", { class: "vs-lb-togglerow" }, this.musicBtn, this.invertBtn, this.ghostBtn),
+        h("div", { class: "vs-lb-togglerow" }, this.ghostClearBtn),
+        h("p", { class: "vs-lb-note", text: "画質は 次の 試合から 変わります。" }),
+        h("p", { class: "vs-lb-note",
+          text: "「ベストと 走る」は ひとりの ときだけ。自己ベストを 更新すると 走りを 覚え直します。" })));
 
     /* ── 門に 出る 問題（要件 12・自分の 単語で 遊べる ように）─────────
        ★ **ひとり用と 対戦で できる ことが 違う。**
@@ -799,6 +829,7 @@ export class LobbyScreen {
       const ht = HATS.filter((x) => x.key === this.hat)[0];
       this.hatName.textContent = ht ? ht.name : "なし";
     }
+    if (this.ghostBtn) this.ghostBtn.setAttribute("aria-pressed", this.ghostOn ? "true" : "false");
 
     this.roomEl.textContent = "";
     if (this.roomId) {
