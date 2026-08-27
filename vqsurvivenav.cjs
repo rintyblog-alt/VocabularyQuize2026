@@ -144,8 +144,14 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
 
     節("⑥ 別のタブへ 移ると 片づく");
     await pg.evaluate(() => { document.querySelector('#appTabBar [data-app-tab="home"]').click(); });
-    await 待つ(500);
-    const st2 = await pg.evaluate(() => window.VocabuSurvive.state());
+    /* ★ 500ms 固定では 足りない ことが ある（本体が 切り替えの 途中）。
+       **判定は 変えず**、片づく のを 待ってから 測る。 */
+    await pg.waitForFunction(() => window.VocabuSurvive && window.VocabuSurvive.state().opened === false,
+      null, { timeout: 8000, polling: 200 }).catch(() => {});
+    const st2 = await pg.evaluate(() => ({
+      state: window.VocabuSurvive.state(),
+      tab: document.body.dataset.appTab
+    })).then((x) => Object.assign(x.state, { タブ: x.tab }));
     ok("閉じている", st2.opened === false, st2);
     const gone = await pg.evaluate(() => !document.querySelector("#appSurvivePage .vq-survive-host"));
     ok("器の 中が 空になった", gone === true);

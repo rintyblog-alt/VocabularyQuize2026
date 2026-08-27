@@ -58,12 +58,12 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     節("① 開いて 閉じてを 繰り返す");
     const 開く = async () => {
       await pg.evaluate(() => document.querySelector('#appTabBar [data-app-tab="survive"]').click());
-      await pg.waitForFunction(() => window.VocabuSurvive && window.VocabuSurvive.state().opened, null, { timeout: 25000 });
-      await pg.waitForFunction(() => (window.VocabuSurvive.state().loaded || []).length >= 5, null, { timeout: 25000 }).catch(() => {});
+      await pg.waitForFunction(() => window.VocabuSurvive && window.VocabuSurvive.state().opened, null, { timeout: 45000, polling: 250 });
+      await pg.waitForFunction(() => (window.VocabuSurvive.state().loaded || []).length >= 5, null, { timeout: 45000, polling: 250 }).catch(() => {});
     };
     const 閉じる = async () => {
       await pg.evaluate(() => document.querySelector('#appTabBar [data-app-tab="home"]').click());
-      await pg.waitForFunction(() => !window.VocabuSurvive.state().opened, null, { timeout: 15000 });
+      await pg.waitForFunction(() => !window.VocabuSurvive.state().opened, null, { timeout: 20000, polling: 200 });
     };
     await 開く(); await 閉じる();
     const 前 = await pg.evaluate(() => {
@@ -90,6 +90,10 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     await 開く();
     const st = await pg.evaluate(() => window.VocabuSurvive.state());
     ok("読み込みで 例外が 出ない", !st.error, st.error);
+    await pg.waitForFunction(() => {
+      const h = document.querySelector("#appSurvivePage .vq-survive-host");
+      return !!(h && h.shadowRoot && h.shadowRoot.querySelector(".vs-load-start"));
+    }, null, { timeout: 45000, polling: 250 });
     await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
       r.querySelector(".vs-load-start").click();

@@ -141,10 +141,15 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     await pg.evaluate(() => document.querySelector('#appTabBar [data-app-tab="survive"]').click());
     await pg.waitForFunction(() => window.VocabuSurvive && window.VocabuSurvive.state().opened, null, { timeout: 30000 });
+    /* ★ 待ちは **時間で 見る**（polling）。既定の rAF だと、
+       描きが 詰まっている 間 一度も 評価されない ことが ある。
+       検査を 何本も 並べて 走らせると ここで 空振りしていた。 */
+    await pg.waitForFunction(() => !!(window.VocabuSurvive && window.VocabuSurvive.state().opened),
+      null, { timeout: 45000, polling: 250 });
     await pg.waitForFunction(() => {
       const h = document.querySelector("#appSurvivePage .vq-survive-host");
       return !!(h && h.shadowRoot && h.shadowRoot.querySelector(".vs-load-start"));
-    }, null, { timeout: 30000, polling: 250 });
+    }, null, { timeout: 45000, polling: 250 });
     await pg.evaluate(() => document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot.querySelector(".vs-load-start").click());
     await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "lobby", null, { timeout: 25000 });
 

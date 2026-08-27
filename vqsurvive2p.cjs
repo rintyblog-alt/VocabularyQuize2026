@@ -68,15 +68,17 @@ const 影 = (fn, arg) => ({ fn, arg });
         f(); if (!window.__g) window.__g = setInterval(f, 120);
       });
       await pg.evaluate(() => document.querySelector('#appTabBar [data-app-tab="survive"]').click());
-      await pg.waitForFunction(() => window.VocabuSurvive && window.VocabuSurvive.state().opened, null, { timeout: 30000 });
-      await pg.waitForFunction(() => (window.VocabuSurvive.state().loaded || []).length >= 5, null, { timeout: 30000 }).catch(() => {});
+      await pg.waitForFunction(() => window.VocabuSurvive && window.VocabuSurvive.state().opened,
+        null, { timeout: 45000, polling: 250 });
+      await pg.waitForFunction(() => (window.VocabuSurvive.state().loaded || []).length >= 5,
+        null, { timeout: 45000, polling: 250 }).catch(() => {});
       /* 影の DOM と START が 出るまで 待つ（出る 前に 押すと 落ちる）。
          ★ 見張りは **時間で**（polling）。既定の rAF だと、
            描きが 詰まっている 間 一度も 評価されない ことが ある。 */
       await pg.waitForFunction(() => {
         const h = document.querySelector("#appSurvivePage .vq-survive-host");
         return !!(h && h.shadowRoot && h.shadowRoot.querySelector(".vs-load-start"));
-      }, null, { timeout: 30000, polling: 250 });
+      }, null, { timeout: 45000, polling: 250 });
       await pg.evaluate(() => {
         const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
         r.querySelector(".vs-load-start").click();
