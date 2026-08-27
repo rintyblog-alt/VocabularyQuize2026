@@ -71,12 +71,13 @@ export class Bot {
     const w = this.course.world;
     w.near(x, z, 2.2, this._near);
     let best = null;
+    this.groundSolid = null;
     for (const s of this._near) {
       const top = topOf(s, x, z, TUNE.radius * 0.55);
       if (top === null) continue;
       if (top > fromY + JUMP_UP + 0.6) continue;   /* 高すぎて 乗れない */
       if (top < fromY - 14) continue;              /* 深すぎ */
-      if (best === null || top > best) best = top;
+      if (best === null || top > best) { best = top; this.groundSolid = s; }
     }
     return best;
   }
@@ -287,6 +288,11 @@ export class Bot {
     let best = null, bestScore = -1e9;
     const movers = (tNow !== undefined) ? this._movers() : [];
     const v = clamp(p.speed + 2.0, 5.0, TUNE.maxSpeed);
+    /* ★ 「着いた あと まだ 乗っていられるか」も 見る（1.5 手 先読み）。
+       着いた 瞬間だけ 見ると、降りる 前に 消える 板を 選んで しまう。
+       消える 板を 続けて 渡る コースは これが 無いと 抜けられない。 */
+    const 先も見る = movers.length > 0;
+    const 後で = new Map();     /* "x|z" → その 先の 時刻でも 足場か */
     for (let d = 最短; d <= JUMP_REACH; d += 0.5) {
       if (movers.length) {
         /* 跳んで 着くまでの 見込み時間 */
@@ -299,6 +305,7 @@ export class Bot {
         const z = p.z + dirz * d + rz * lat;
         const g = this.ground(x, z, p.y);
         if (g === null) continue;
+        const gs = this.groundSolid;
         if (g - p.y > JUMP_UP) continue;
         if (this.deadlyAt(x, z, g)) continue;
         const np = C.progressOf(x, z);
@@ -310,9 +317,29 @@ export class Bot {
            「前へ 進む ほど 良い」に すると、手前の 石を 飛び越して
            その 先の 石を 狙い、間の 谷に 落ちる（実際 c07 で そうなった）。
            遠い ほど 大きく 減点する。 */
-        const score = -d * 2.2 - Math.abs(lat) * 0.45 - Math.max(0, g - p.y) * 0.8
+        let score = -d * 2.2 - Math.abs(lat) * 0.45 - Math.max(0, g - p.y) * 0.8
                       + Math.min(3, (np - prog)) * 0.5;
-        if (score > bestScore) { bestScore = score; best = { x, z, y: g, d, lat, gain: np - prog }; }
+        if (score > bestScore - 4) {
+          /* 見込みの ある ものだけ 先を 見る（全部 見ると 重い） */
+          if (先も見る) {
+            const key = ((x * 4) | 0) + "|" + ((z * 4) | 0);
+            let 後ok = 後で.get(key);
+            if (後ok === undefined) {
+              const tau2 = d / v + 0.18 + 0.9;
+              for (const o of movers) o.update(tNow + tau2);
+              後ok = this.ground(x, z, p.y) !== null;
+              後で.set(key, 後ok);
+              /* 見終わったら 元の 見込み時刻へ 戻す */
+              const tau = d / v + 0.18;
+              for (const o of movers) o.update(tNow + tau);
+            }
+            if (!後ok) score -= 3.0;   /* 消える 板。最後の 手段に する */
+          }
+          /* ★ 「小さい 足場は 真ん中を 狙う」も 試したが、通過が 23→20 に 落ちた。
+             狙いを ずらすと 距離 d が 変わり、跳ぶ 場所と 要る 速さの
+             計算が すべて ずれる。格子の 点の まま 使う。 */
+          if (score > bestScore) { bestScore = score; best = { x, z, y: g, d, lat, gain: np - prog }; }
+        }
       }
     }
     /* 必ず 元の 時刻へ 戻す。戻さないと 当たり判定が ずれる。 */
@@ -458,8 +485,12 @@ export class Bot {
         /* ★ あと 何秒 乗っていられるかを 聞く。
            消える／落ちる 板は 「縁まで 歩いてから 跳ぶ」では 間に合わない。
            残りが 短ければ **その場から 跳ぶ**。 */
+        /* ★ **あと 何秒 乗っていられるか。**
+           これを 見ないと、まだ 1 秒 以上 立っていられる のに
+           「行き先が 無いから とにかく 跳ぶ」を して 落ちる。
+           跳ぶ 場所の 判断には 使わない（使ったら 通過が 23→20 に 落ちた）。 */
         this._remain = this._urgent && go0.remainOn
-          ? (go0.kind === "blinker" ? go0.remainOn(t) : go0.remainOn()) : 99;
+          ? (go0.kind === "blinker" ? go0.remainOn(t) : go0.remainOn()) : 0;
       }
       const landing = (this._tick % PLAN_EVERY === 0 || !this._lastLanding)
         ? this.findLanding(dirx, dirz, prog, t, 縁まで) : this._lastLanding;
@@ -526,7 +557,7 @@ export class Bot {
         }
         inp.jumpDown = this.jumpHold > 0;
         if (this.jumpHold > 0) this.jumpHold--;
-      } else if (this._urgent) {
+      } else if (this._urgent && this._remain < 1.0) {
         /* ★ いま 立っている 板が **消える／落ちる**のに 行き先が 無い。
            待っても 足元が 無くなる だけ なので、
            **少し あとの 時刻**で もう一度 探して、あれば 跳ぶ。
