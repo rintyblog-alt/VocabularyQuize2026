@@ -149,6 +149,18 @@ class App {
     else { this.screenName = "loading"; await this.shell.show("loading"); }
   }
 
+  /** 画質を 変える。**次の 試合から** 効く（いま 動いている 場は 触らない）。 */
+  setQuality(t) {
+    saveTier(t);
+    this.settings = settingsFor(t);
+    /* 画面へも 伝える（次に 作る 描き手が 使う） */
+    for (const name of ["match", "lobby"]) {
+      const sc = this.shell && this.shell.get(name);
+      if (sc) sc.settings = this.settings;
+    }
+    return this.settings.tier;
+  }
+
   async startMatch(cfg) {
     if (!this.shell || !this.shell.get("match")) { await this.goLobby(); return; }
     this.screenName = "match";
@@ -228,6 +240,7 @@ const api = {
   close: () => app.close(),
   state: () => app.state(),
   setTier: (t) => { saveTier(t); return t; },
+  setQuality: (t) => app.setQuality(t),
   /* 通知を 押した ときの 入口。本体が これを 呼ぶ。 */
   joinRoom: (code) => app.joinRoom(code),
   /* 検査で 中を 見たいとき用。ふだんは 使わない。 */

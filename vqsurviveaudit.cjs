@@ -104,6 +104,35 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     ok("札が 無くても スタートは 押せる", lb.start && !lb.startDisabled, lb);
     ok("友だちの 欄が 案内を 出す", /ログイン/.test(lb.note), lb.note);
 
+    節("②' 設定（画質・音）");
+    const 設定 = await pg.evaluate(() => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const det = r.querySelector(".vs-lb-settings");
+      if (det) det.open = true;
+      const q = Array.from(r.querySelectorAll(".vs-lb-q")).map((b) => b.getAttribute("data-q"));
+      const 選 = r.querySelector('.vs-lb-q[aria-checked="true"]');
+      return { q, 選: 選 ? 選.getAttribute("data-q") : "",
+               vol: !!r.querySelector(".vs-lb-range"),
+               music: !!r.querySelector('.vs-lb-toggle[aria-pressed]') };
+    });
+    ok("画質が 5 段 選べる（自動 含む）", 設定.q.join(",") === "auto,low,medium,high,ultra", 設定.q);
+    ok("既定は 自動", 設定.選 === "auto", 設定.選);
+    ok("音の 大きさを 変えられる", 設定.vol);
+    ok("曲の 入切が ある", 設定.music);
+    /* 実際に 変えて 覚えるか */
+    const 変えた = await pg.evaluate(() => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      r.querySelector('.vs-lb-q[data-q="low"]').click();
+      return { 覚え: localStorage.getItem("vq.survive.tier.v1"),
+               tier: window.VocabuSurvive.state().tier };
+    });
+    ok("選んだ 画質を 覚える", 変えた.覚え === "low", 変えた);
+    ok("その場で 段が 変わる", 変えた.tier === "low", 変えた);
+    await pg.evaluate(() => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      r.querySelector('.vs-lb-q[data-q="auto"]').click();
+    });
+
     節("③ 鍵盤だけで 遊べる");
     await pg.evaluate(() => window.VocabuSurvive.__app.startMatch({ courseId: "c01", bots: 2, myName: "監査", myColor: 0, seed: 1 }));
     await pg.waitForFunction(() => {

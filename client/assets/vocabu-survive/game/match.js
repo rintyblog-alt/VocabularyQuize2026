@@ -156,6 +156,7 @@ export class MatchScreen {
 
     /* カメラ */
     this.cam.raycast = (from, dir, max) => this.course.world.ray(from, dir, max);
+    this.cam.invertY = !!(this.app && this.app.invertY);
     this.cam.wantDistance = 8.4;
     this.cam.wantPitch = 0.34;
     this.cam.height = 1.5;
@@ -380,6 +381,7 @@ export class MatchScreen {
         if (this.fx) this.fx.hit(e.p.x, e.p.y + 0.8, e.p.z, clamp((e.power || 6) / 9, 0.4, 1.4), this.course.palette.hot);
       }
       else if (e.t === "bounce" && this.fx) this.fx.boost(e.p.x, e.p.y, e.p.z, this.course.palette.spring);
+      else if (e.t === "land" && this.fx) this.fx.land(e.p.x, e.p.y, e.p.z, e.power || 1, this.course.palette.floorAlt);
       else if (e.t === "respawn" && this.fx) this.fx.hit(e.p.x, e.p.y + 0.6, e.p.z, 0.7, this.course.palette.accent);
       else if (e.t === "finish") {
         if (e.p === this.local) {
@@ -531,6 +533,9 @@ export class MatchScreen {
       this.course.difficulty * 12
     );
     const rows = this.sim.standings().map((r) => Object.assign({}, r, { me: r.id === this.local.id }));
+    if (this.app && this.app.audio) {
+      try { this.app.audio.stopMusic(); this.app.audio.results(p.rank === 1); } catch (e) {}
+    }
     setTimeout(() => {
       this.result.show({
         rank: p.rank, total: this.sim.players.length, finished: p.finished,

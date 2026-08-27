@@ -132,6 +132,12 @@ export class Audio3 {
   }
   respawn() { this._tone(note(60), 0.24, { type: "sine", slide: 0.55, gain: 0.14 }); }
 
+  /** 結果画面の 短い 曲 */
+  results(win) {
+    const seq = win ? [72, 76, 79, 84, 88] : [69, 67, 64, 60];
+    seq.forEach((n, i) => setTimeout(() => this._tone(note(n), 0.36, { type: "triangle", gain: 0.16 }), i * 150));
+  }
+
   /** sim の 出来事を そのまま 受ける */
   onEvent(e, localPlayer) {
     if (!this.enabled || !this.ctx) return;
@@ -139,6 +145,7 @@ export class Audio3 {
     if (!mine && e.t !== "finish") return;   /* 他人の 音は うるさいので 出さない */
     switch (e.t) {
       case "jump": this.jump(); break;
+      case "land": this.land(); break;
       case "hit": this.hit(); break;
       case "bounce": this.bounce(); break;
       case "dive": this.dive(); break;

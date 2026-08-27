@@ -144,6 +144,7 @@ export class Sim {
           const tr = e.solid && e.solid.owner;
           if (tr && tr.bump) tr.bump();
         } else if (e.t === "jump") this.events.push({ t: "jump", p });
+        else if (e.t === "land") this.events.push({ t: "land", p, power: e.power });
         else if (e.t === "hit") this.events.push({ t: "hit", p, power: e.power });
         else if (e.t === "dive") this.events.push({ t: "dive", p });
       }

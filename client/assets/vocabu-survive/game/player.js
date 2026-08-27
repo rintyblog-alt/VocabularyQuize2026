@@ -305,6 +305,11 @@ export class Player {
           this.vz -= hit.nz * vn;
         }
         if (hit.ny > T.maxSlope) {
+          /* ★ 着地の 合図。**落ちる 速さが 大きい ときだけ**。
+             毎フレーム 出すと 走っている 間 ずっと 鳴る。 */
+          if (!this.grounded && this.vy < -4.5) {
+            this.events.push({ t: "land", power: Math.min(1.6, -this.vy / 12) });
+          }
           this.grounded = true;
           this.groundNy = hit.ny;
           this.groundSolid = s;

@@ -56,14 +56,41 @@ export class LobbyScreen {
       if (typeof raw.course === "number") this.courseIndex = Math.max(0, Math.min(COURSES.length - 1, raw.course));
       if (raw.mode) this.mode = raw.mode;
       if (typeof raw.color === "number") this.me.colorIndex = raw.color % BEAN_COLORS.length;
-    } catch (e) {}
+      this.volume = typeof raw.volume === "number" ? raw.volume : 0.7;
+      this.musicOn = raw.music !== false;
+      this.invertY = !!raw.invert;
+    } catch (e) { this.volume = 0.7; this.musicOn = true; this.invertY = false; }
+    try { this.quality = localStorage.getItem("vq.survive.tier.v1") || "auto"; } catch (e) { this.quality = "auto"; }
   }
   _save() {
     try {
       localStorage.setItem(PICK_KEY, JSON.stringify({
-        course: this.courseIndex, mode: this.mode, color: this.me.colorIndex
+        course: this.courseIndex, mode: this.mode, color: this.me.colorIndex,
+        volume: this.volume, music: this.musicOn, invert: this.invertY
       }));
     } catch (e) {}
+  }
+
+  _setQuality(k) {
+    this.quality = k;
+    try { localStorage.setItem("vq.survive.tier.v1", k); } catch (e) {}
+    if (this.app && this.app.setQuality) this.app.setQuality(k);
+    this._render();
+  }
+  _setVolume(v) {
+    this.volume = Math.max(0, Math.min(1, v));
+    if (this.app && this.app.audio) this.app.audio.setVolume(this.volume);
+    this._save();
+  }
+  _setMusic(on) {
+    this.musicOn = !!on;
+    if (this.app && this.app.audio) this.app.audio.setMusic(this.musicOn);
+    this._save(); this._render();
+  }
+  _setInvert(on) {
+    this.invertY = !!on;
+    if (this.app) this.app.invertY = this.invertY;
+    this._save(); this._render();
   }
 
   /* ── 組み立て ─────────────────────────────────────────────────── */
@@ -141,6 +168,37 @@ export class LobbyScreen {
       h("div", { class: "vs-lb-onrow" }, this.makeBtn, this.codeInput, this.joinBtn),
       this.leaveBtn, this.netNote);
 
+    /* ── 見た目と 音の 設定（要件 25 / 27）───────────────────────────
+       ★ 「自動」を 既定に する。端末を 測って 決めた 段が 入る。
+         手で 選べる ように するのは、測り違いが 必ず ある から。 */
+    this.qualityRow = h("div", { class: "vs-lb-quality", role: "radiogroup", "aria-label": "画質" });
+    for (const [k, lab] of [["auto", "自動"], ["low", "低"], ["medium", "中"], ["high", "高"], ["ultra", "最高"]]) {
+      this.qualityRow.appendChild(h("button", {
+        class: "vs-lb-q", type: "button", role: "radio", "data-q": k,
+        onclick: () => this._setQuality(k)
+      }, lab));
+    }
+    this.volInput = h("input", {
+      class: "vs-lb-range", type: "range", min: "0", max: "100", step: "5",
+      "aria-label": "音の 大きさ",
+      oninput: (e) => this._setVolume(Number(e.target.value) / 100)
+    });
+    this.musicBtn = h("button", {
+      class: "vs-lb-toggle", type: "button", "aria-pressed": "true",
+      onclick: () => this._setMusic(!this.musicOn)
+    }, "曲を 鳴らす");
+    this.invertBtn = h("button", {
+      class: "vs-lb-toggle", type: "button", "aria-pressed": "false",
+      onclick: () => this._setInvert(!this.invertY)
+    }, "上下を 逆に");
+    this.settingsEl = h("details", { class: "vs-lb-settings" },
+      h("summary", null, "設定（画質・音）"),
+      h("div", { class: "vs-lb-set-body" },
+        h("div", { class: "vs-lb-lab", text: "画質" }), this.qualityRow,
+        h("div", { class: "vs-lb-lab", text: "音の 大きさ" }), this.volInput,
+        h("div", { class: "vs-lb-togglerow" }, this.musicBtn, this.invertBtn),
+        h("p", { class: "vs-lb-note", text: "画質は 次の 試合から 変わります。" })));
+
     this.botRow = h("div", { class: "vs-lb-bots" });
     this.botCount = 3;
     for (const n of [0, 1, 3, 5, 7]) {
@@ -173,6 +231,7 @@ export class LobbyScreen {
           h("div", { class: "vs-lb-lab", text: "いま 集まっている 人" }), this.partyEl,
           this.roomEl,
           h("div", { class: "vs-lb-lab", text: "みんなで あそぶ" }), this.onlineEl,
+          this.settingsEl,
           h("div", { class: "vs-lb-actions" }, this.readyBtn, this.startBtn))));
   }
 
@@ -390,6 +449,16 @@ export class LobbyScreen {
     this.readyBtn.className = "vs-btn vs-lb-ready " + (this.ready ? "is-ghost" : "is-mint");
     this.startBtn.disabled = false;
 
+    for (const b of this.qualityRow.children) {
+      b.setAttribute("aria-checked", b.getAttribute("data-q") === this.quality ? "true" : "false");
+    }
+    if (this.volInput.value !== String(Math.round(this.volume * 100))) {
+      this.volInput.value = String(Math.round(this.volume * 100));
+    }
+    this.musicBtn.setAttribute("aria-pressed", this.musicOn ? "true" : "false");
+    this.musicBtn.textContent = this.musicOn ? "曲を 鳴らす" : "曲を 止める";
+    this.invertBtn.setAttribute("aria-pressed", this.invertY ? "true" : "false");
+
     this.roomEl.textContent = "";
     if (this.roomId) {
       this.roomEl.appendChild(h("div", { class: "vs-lb-roomid" },
@@ -399,6 +468,11 @@ export class LobbyScreen {
   }
 
   async enter() {
+    /* 覚えていた 音の 設定を 効かせる */
+    if (this.app && this.app.audio) {
+      try { this.app.audio.setVolume(this.volume); this.app.audio.setMusic(this.musicOn); } catch (e) {}
+    }
+    if (this.app) this.app.invertY = this.invertY;
     this._render();
     /* 名前と アバターを 本体から 借りる */
     try {
@@ -573,6 +647,23 @@ export const LOBBY_CSS = `
 .vs-lb-roomid{ margin-top:9px; display:flex; align-items:center; justify-content:space-between;
   padding:8px 11px; border-radius:10px; background:rgba(255,255,255,.06); font-size:13px; }
 .vs-lb-roomlab{ font-size:10.5px; color:rgba(243,245,255,.5); }
+.vs-lb-settings{ margin-top:14px; border-top:1px solid ${PALETTE.line}; padding-top:10px; }
+.vs-lb-settings summary{ font-size:12px; font-weight:800; color:rgba(243,245,255,.62);
+  cursor:pointer; list-style:none; padding:4px 0; }
+.vs-lb-settings summary::-webkit-details-marker{ display:none; }
+.vs-lb-settings summary::before{ content:"▸ "; }
+.vs-lb-settings[open] summary::before{ content:"▾ "; }
+.vs-lb-set-body{ padding-top:4px; }
+.vs-lb-quality{ display:flex; gap:4px; flex-wrap:wrap; }
+.vs-lb-q{ height:28px; padding:0 10px; border-radius:8px; font-size:11.5px; font-weight:700;
+  background:rgba(255,255,255,.06); border:1px solid ${PALETTE.line}; color:rgba(243,245,255,.7); }
+.vs-lb-q[aria-checked="true"]{ background:${PALETTE.violet}; color:#fff; border-color:transparent; }
+.vs-lb-range{ width:100%; accent-color:${PALETTE.mint}; }
+.vs-lb-togglerow{ display:flex; gap:5px; margin-top:9px; flex-wrap:wrap; }
+.vs-lb-toggle{ height:28px; padding:0 11px; border-radius:8px; font-size:11.5px; font-weight:700;
+  background:rgba(255,255,255,.06); border:1px solid ${PALETTE.line}; color:rgba(243,245,255,.6); }
+.vs-lb-toggle[aria-pressed="true"]{ background:rgba(55,224,176,.18); border-color:${PALETTE.mint};
+  color:${PALETTE.mint}; }
 .vs-lb-actions{ display:flex; flex-direction:column; gap:8px; margin-top:16px; }
 .vs-lb-actions .vs-btn{ width:100%; }
 
