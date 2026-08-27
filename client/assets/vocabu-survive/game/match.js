@@ -226,7 +226,7 @@ export class MatchScreen {
     const sz = this.renderer.resize();
 
     /* ① 見回し */
-    const look = this.input.takeLook();
+    const look = this.input.takeLook(dt);
     if (look.dx || look.dy) this.cam.rotate(look.dx, look.dy);
     const z = this.input.takeZoom();
     if (z) this.cam.zoom(z);

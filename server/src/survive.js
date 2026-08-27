@@ -64,7 +64,29 @@ async function userFromToken(token, env) {
   if (!row) return null;
   /* 暗証番号を 決めている 人は、その 端末で 確かめるまで 中へ 入れない */
   if (String(row.pinHash || "") && !(N(row.pinOkAt, 0) > 0)) return null;
-  return { uid: N(row.userId, 0), nickname: S(row.nickname, 40), grade: S(row.gradePrefix, 8) };
+  const uid = N(row.userId, 0);
+  /* ★ 管理画面からの Ban / 一時停止を **ここでも 効かせる**。
+     この 引き受けは 本体の 「利用停止の 関所」より 先に あるので、
+     自分で 見ないと 止めた はずの 人が 遊べて しまう。 */
+  if (await 止められているか(env, uid)) return { uid, blocked: true, nickname: "", grade: "" };
+  return { uid, nickname: S(row.nickname, 40), grade: S(row.gradePrefix, 8) };
+}
+
+async function 止められているか(env, uid) {
+  if (!env || !env.DB || !uid) return false;
+  let row = null;
+  try {
+    row = await env.DB.prepare(
+      "SELECT state, suspend_until FROM user_status WHERE user_id = ?1 LIMIT 1"
+    ).bind(String(uid)).first();
+  } catch (e) { return false; }
+  if (!row) return false;
+  const st = S(row.state, 24);
+  if (!st || st === "active") return false;
+  /* 期限つきの 一時停止は 期限が 過ぎたら 通す（戻すのは 本体に 任せる） */
+  const until = S(row.suspend_until, 40);
+  if (st === "suspended" && until && new Date(until).getTime() < Date.now()) return false;
+  return true;
 }
 async function userFromRequest(request, env) {
   return userFromToken(parseBearer(request), env);
@@ -204,7 +226,7 @@ async function handleQuestions(request, env) {
   const presetId = S(body.presetId, 80);
   if (presetId && env.DB) {
     const me = await userFromRequest(request, env);
-    if (me) {
+    if (me && !me.blocked) {
       try {
         const rows = (await env.DB.prepare(
           "SELECT chunk FROM account_blobs WHERE user_id = ?1 AND key = ?2 ORDER BY part ASC LIMIT 64"
@@ -234,6 +256,7 @@ async function handleQuestions(request, env) {
 async function handleFriends(request, env) {
   const me = await userFromRequest(request, env);
   if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
+  if (me.blocked) return bad("ACCOUNT_BLOCKED", "この アカウントは いま 使えません。", 403);
   if (!env.DB) return json({ ok: true, friends: [] });
   /* ★ 表の 名前は **user_follows**。social_follows は この アプリに 無い。
      前は 無い 表を 引いて いたので、友だちは 必ず 0 件だった。
@@ -270,6 +293,7 @@ const INVITE_PER_DAY = 3;
 async function handleInvite(request, env) {
   const me = await userFromRequest(request, env);
   if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
+  if (me.blocked) return bad("ACCOUNT_BLOCKED", "この アカウントは いま 使えません。", 403);
   if (!env.DB) return bad("DB_NOT_CONFIGURED", "DB が ありません。", 500);
   const b = await readJson(request, 4096);
   if (!b) return bad("BAD_REQUEST", "本文が 読めません。");
@@ -317,6 +341,7 @@ async function handleInvite(request, env) {
 async function handleResult(request, env) {
   const me = await userFromRequest(request, env);
   if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
+  if (me.blocked) return bad("ACCOUNT_BLOCKED", "この アカウントは いま 使えません。", 403);
   if (!(await ensureTables(env))) return json({ ok: true, saved: false });
   const b = await readJson(request, 8 * 1024);
   if (!b) return bad("BAD_REQUEST", "本文が 読めません。");
@@ -367,6 +392,7 @@ async function handleResult(request, env) {
 async function handleStats(request, env) {
   const me = await userFromRequest(request, env);
   if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
+  if (me.blocked) return bad("ACCOUNT_BLOCKED", "この アカウントは いま 使えません。", 403);
   if (!(await ensureTables(env))) return json({ ok: true, stats: null, records: [] });
   const st = await env.DB.prepare("SELECT * FROM survive_stats WHERE user_id = ?1 LIMIT 1")
     .bind(me.uid).first().catch(() => null);
@@ -423,6 +449,7 @@ function tooManyRooms(uid) {
 async function handleRoomCreate(request, env) {
   const me = await userFromRequest(request, env);
   if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
+  if (me.blocked) return bad("ACCOUNT_BLOCKED", "この アカウントは いま 使えません。", 403);
   if (!env.SURVIVE_ROOMS) return bad("NOT_CONFIGURED", "対戦の 部屋が 使えません。", 500);
   if (tooManyRooms(me.uid)) return bad("TOO_MANY", "部屋を 作りすぎです。少し 待ってください。", 429);
   const b = (await readJson(request, 4096)) || {};
@@ -471,6 +498,7 @@ async function handleWsUpgrade(request, env, roomIdRaw) {
   const token = S(url.searchParams.get("token") || "", 4096) || parseBearer(request);
   const me = await userFromToken(token, env);
   if (!me) return bad("UNAUTHORIZED", "ログインが 必要です。", 401);
+  if (me.blocked) return bad("ACCOUNT_BLOCKED", "この アカウントは いま 使えません。", 403);
   const stub = env.SURVIVE_ROOMS.get(env.SURVIVE_ROOMS.idFromName(id));
   return stub.fetch("https://survive.internal/connect", {
     headers: {

@@ -150,9 +150,17 @@ export class Input {
     return out;
   }
 
-  /** 見回した 量を 取り出す（取ると 0 に 戻る） */
-  takeLook() {
-    const dx = this.look.dx, dy = this.look.dy;
+  /** 見回した 量を 取り出す（取ると 0 に 戻る）。
+      ★ Q / E は **鍵盤だけで 遊べる ように** ここで 混ぜる。
+        マウスが 使えない 人・使いたくない 人が いる。 */
+  takeLook(dt) {
+    let dx = this.look.dx, dy = this.look.dy;
+    const 秒 = (dt === undefined ? 1 / 60 : dt);
+    /* ★ 向きに 注意。rotate() は dx が 正だと wantYaw を **減らす**。
+       wantYaw が 増えると 前向きは -x 側（＝左）へ 回る。
+       だから 「左へ 回す（Q）」は dx を **負**に する。 */
+    if (this._any(KEYMAP.camLeft)) dx -= 620 * 秒;
+    if (this._any(KEYMAP.camRight)) dx += 620 * 秒;
     this.look.dx = 0; this.look.dy = 0;
     return { dx, dy };
   }
