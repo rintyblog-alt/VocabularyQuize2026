@@ -24,7 +24,8 @@ const MODES = [
   { key: "race", label: "レース", desc: "先に ゴールした 人が 勝ち", ready: true },
   { key: "timeattack", label: "タイムアタック", desc: "1 人で 記録に 挑む", ready: true },
   { key: "survival", label: "サバイバル", desc: "落ちたら 脱落。最後まで 残った 人が 勝ち", ready: true },
-  { key: "quizrush", label: "クイズラッシュ", desc: "100 秒で 門を 多く 通った 人が 勝ち", ready: true }
+  { key: "quizrush", label: "クイズラッシュ", desc: "100 秒で 門を 多く 通った 人が 勝ち", ready: true },
+  { key: "team", label: "チーム戦", desc: "2 組に 分かれて 組の 合計で 勝ち", ready: true }
 ];
 
 const PICK_KEY = "vq.survive.pick.v1";

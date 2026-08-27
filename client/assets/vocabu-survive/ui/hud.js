@@ -98,6 +98,16 @@ export class HUD {
       this.list.appendChild(li);
     }
 
+    /* 組（チーム戦）の 点。ふだんは 出さない。 */
+    this.teamEl = h("div", { class: "vs-hud-team vs-hide", role: "status" });
+    this.teamA = h("span", { class: "vs-hud-tv vs-mono" });
+    this.teamB = h("span", { class: "vs-hud-tv vs-mono" });
+    this.teamEl.appendChild(h("span", { class: "vs-hud-tn", text: "レッド" }));
+    this.teamEl.appendChild(this.teamA);
+    this.teamEl.appendChild(h("span", { class: "vs-hud-td", text: "—" }));
+    this.teamEl.appendChild(this.teamB);
+    this.teamEl.appendChild(h("span", { class: "vs-hud-tn is-b", text: "ブルー" }));
+
     this.bigEl = h("div", { class: "vs-hud-big", "aria-live": "assertive" });
     this.toastEl = h("div", { class: "vs-hud-toast" });
 
@@ -108,6 +118,7 @@ export class HUD {
           h("div", { class: "vs-hud-meta" }, this.courseEl, this.cpEl)),
         h("div", { class: "vs-hud-rank" }, this.rankNum, this.rankOf)),
       h("div", { class: "vs-hud-prog" }, this.progFill, this.progMe),
+      this.teamEl,
       this.list,
       this.bigEl,
       this.toastEl
@@ -150,6 +161,18 @@ export class HUD {
       this.progMe.style.left = pct + "%";
     }
 
+    /* 組の 点 */
+    if (state.teams) {
+      if (this.teamEl.classList.contains("vs-hide")) this.teamEl.classList.remove("vs-hide");
+      const key = state.teams[0] + "|" + state.teams[1];
+      if (key !== this._last.team) {
+        this._last.team = key;
+        this.teamA.textContent = String(state.teams[0]);
+        this.teamB.textContent = String(state.teams[1]);
+        this.teamEl.setAttribute("data-lead", state.teams[0] === state.teams[1] ? "" : (state.teams[0] > state.teams[1] ? "a" : "b"));
+      }
+    } else if (!this.teamEl.classList.contains("vs-hide")) this.teamEl.classList.add("vs-hide");
+
     /* 一覧 */
     const rows = state.standings || [];
     for (let i = 0; i < this.rows.length; i++) {
@@ -163,6 +186,8 @@ export class HUD {
       R.nm.textContent = d.name;
       R.pc.textContent = d.finished ? "GOAL" : (Math.round(d.pct * 100) + "%");
       R.dot.style.background = beanByIndex(d.colorIndex).hex;
+      /* 組が ある ときは 名前の 前に 組の 色の 帯を 出す */
+      R.li.setAttribute("data-team", d.team === 0 ? "a" : (d.team === 1 ? "b" : ""));
       R.li.setAttribute("data-me", d.me ? "1" : "0");
       R.li.setAttribute("data-fin", d.finished ? "1" : "0");
     }
@@ -215,6 +240,17 @@ export const HUD_CSS = `
 .vs-hud-progme{ position:absolute; top:50%; width:11px; height:11px; margin:-5.5px 0 0 -5.5px;
   border-radius:50%; background:#fff; box-shadow:0 0 0 2px rgba(8,11,28,.6); transition:left .18s linear; }
 
+.vs-hud-team{ display:inline-flex; align-items:center; gap:8px; margin-top:8px;
+  padding:5px 13px; border-radius:999px; background:rgba(8,11,28,.55);
+  border:1px solid rgba(255,255,255,.14); font-size:13px; }
+.vs-hud-tn{ font-size:10.5px; font-weight:800; letter-spacing:.06em; color:#ff5d6e; }
+.vs-hud-tn.is-b{ color:#4d9dff; }
+.vs-hud-tv{ font-size:17px; font-weight:900; }
+.vs-hud-td{ color:rgba(243,245,255,.35); font-size:11px; }
+.vs-hud-team[data-lead="a"] .vs-hud-tv:first-of-type{ color:#ff5d6e; }
+.vs-hud-team[data-lead="b"] .vs-hud-tv:last-of-type{ color:#4d9dff; }
+.vs-hud-row[data-team="a"]{ border-left:3px solid #ff5d6e; }
+.vs-hud-row[data-team="b"]{ border-left:3px solid #4d9dff; }
 .vs-hud-list{ position:absolute; right:calc(14px + var(--vs-safe-r)); top:calc(96px + var(--vs-safe-t));
   list-style:none; display:flex; flex-direction:column; gap:3px; min-width:172px; }
 .vs-hud-row{ display:flex; align-items:center; gap:7px; height:26px; padding:0 9px;

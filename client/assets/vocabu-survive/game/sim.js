@@ -28,8 +28,15 @@ export const MODE = {
   RACE: "race",             /* 先に ゴールした 人が 勝ち */
   TIMEATTACK: "timeattack", /* 1 人で 記録に 挑む（中身は レースと 同じ） */
   SURVIVAL: "survival",     /* 落ちたら 脱落。最後まで 残った 人が 勝ち */
-  QUIZRUSH: "quizrush"      /* 制限時間内に 門を 多く 通った 人が 勝ち */
+  QUIZRUSH: "quizrush",     /* 制限時間内に 門を 多く 通った 人が 勝ち */
+  TEAM: "team"              /* 2 組に 分かれて、組の 合計で 勝ち負けを 決める */
 };
+
+/* 組（チーム）。色は 走る人の 色とは 別に 持つ（人の 色は 好きに 選べる ままに する）。 */
+export const TEAMS = [
+  { key: 0, name: "レッド", hex: "#ff5d6e", rgb: [1.0, 0.365, 0.431] },
+  { key: 1, name: "ブルー", hex: "#4d9dff", rgb: [0.302, 0.616, 1.0] }
+];
 
 export class Sim {
   /**
@@ -72,6 +79,8 @@ export class Sim {
       p.slot = i;
       p.lives = this.mode === MODE.SURVIVAL ? this.lives : 0;
       p.eliminated = false;
+      /* 組は 並びの 順に 交互。人数が 奇数でも 差は 1 人まで。 */
+      p.team = this.mode === MODE.TEAM ? (i % 2) : -1;
     }
     this.time = 0; this.raceTime = 0;
     this.phase = PHASE.COUNTDOWN;
@@ -353,6 +362,24 @@ export class Sim {
     for (let i = 0; i < rest.length; i++) rest[i].rank = base + i + 1;
   }
 
+  /**
+   * 組の 点。
+   * ★ 「順位の 合計」だと **1 人が 早く ゴールしても 追いつけない**。
+   *   ゴールした 人は 大きく、走っている 人は 進んだ ぶんだけ 入れる。
+   *   こうすると 最後まで どちらが 勝つか 分からない。
+   */
+  teamScores() {
+    const n = Math.max(1, this.players.length);
+    const len = Math.max(1, this.course.length);
+    const s = [0, 0];
+    for (const p of this.players) {
+      const t = p.team === 1 ? 1 : 0;
+      if (p.team < 0) continue;
+      s[t] += p.finished ? (n - (p.rank || n) + 1) * 10 : Math.round((p.progress / len) * 8);
+    }
+    return s;
+  }
+
   /** 全員の 進み（画面の 順位表 用） */
   standings() {
     const rows = this.players.map((p) => ({
@@ -360,7 +387,7 @@ export class Sim {
       rank: p.rank, progress: p.progress, finished: p.finished,
       finishTime: p.finishTime, checkpoint: p.checkpoint,
       correct: p.quizCorrect, wrong: p.quizWrong, respawns: p.respawns,
-      eliminated: !!p.eliminated, lives: p.lives | 0,
+      eliminated: !!p.eliminated, lives: p.lives | 0, team: p.team === undefined ? -1 : p.team,
       pct: this.course.length > 0 ? Math.min(1, p.progress / this.course.length) : 0
     }));
     rows.sort((a, b) => a.rank - b.rank);

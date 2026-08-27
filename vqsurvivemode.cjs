@@ -95,7 +95,30 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
     ok("制限時間で 終わる", r.秒 <= 61, r.秒.toFixed(1));
   }
 
-  節("④ タイムアタック（画面側の 決まり）");
+  節("④ チーム戦");
+  {
+    const r = 走らせる(MODE.TEAM, { n: 6, limit: 120 });
+    const 組 = r.ps.map((p) => p.team);
+    console.log("     組: " + 組.join(",") + " / 点: " + JSON.stringify(r.sim.teamScores()));
+    ok("2 組に 分かれる", new Set(組).size === 2, 組);
+    ok("人数の 差は 1 人まで",
+      Math.abs(組.filter((t) => t === 0).length - 組.filter((t) => t === 1).length) <= 1, 組);
+    const s2 = r.sim.teamScores();
+    ok("組の 点が 出る", Array.isArray(s2) && s2.length === 2 && s2[0] + s2[1] > 0, s2);
+    /* ゴールした 人が いる 組の ほうが 高い はず */
+    const 済 = r.ps.filter((p) => p.finished);
+    if (済.length && 済.length < r.ps.length) {
+      const 勝ち組 = 済[0].team;
+      ok("先に ゴールした 組が 上", s2[勝ち組] >= s2[1 - 勝ち組], { s: s2, 先: 勝ち組 });
+    }
+    const rows = r.sim.standings();
+    ok("順位表に 組が 入る", rows.every((x) => x.team === 0 || x.team === 1), rows.map((x) => x.team));
+    /* レースでは 組を 付けない */
+    const r2 = 走らせる(MODE.RACE, { n: 4, limit: 40 });
+    ok("レースでは 組を 付けない", r2.ps.every((p) => p.team === -1), r2.ps.map((p) => p.team));
+  }
+
+  節("⑤ タイムアタック（画面側の 決まり）");
   {
     /* ロビーが bots:0 を 渡すこと は vqsurvivegame で 見ている。
        ここでは **1 人でも 成立する** ことを 見る。 */

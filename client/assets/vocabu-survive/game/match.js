@@ -25,7 +25,7 @@ import { BeanVisual, registerBeanMeshes, BEAN_HEIGHT } from "./bean.js";
 import { buildCourse } from "./course.js";
 import { Player, FixedStepper, STEP, TUNE } from "./player.js";
 import { Bot } from "./bot.js";
-import { Sim, PHASE, MODE } from "./sim.js";
+import { Sim, PHASE, MODE, TEAMS } from "./sim.js";
 import { GATE_STATE } from "./gate.js";
 import { Input } from "./input.js";
 import { TouchPad, TOUCH_CSS } from "../ui/touch.js";
@@ -333,6 +333,14 @@ export class MatchScreen {
     for (const p of this.sim.players) {
       const vis = this.visuals.get(p.id);
       if (!vis || !vis.draw) continue;
+      /* ★ チーム戦では 足元に 組の 色の 輪を 置く。
+         走る人の 色は 好きに 選べる ままに したい ので、
+         組は **別の 印**で 示す。 */
+      if (p.team >= 0 && TEAMS[p.team]) {
+        const c = TEAMS[p.team].rgb;
+        m4.compose(this._mat, vis.draw.x, vis.draw.y + 0.05, vis.draw.z, this.sim.time * 0.9, 1.5, 0.5, 1.5);
+        R.draw(M.ring, this._mat, [c[0], c[1], c[2], 0.85], 0.45, 0.3, 0, 0, 1.5);
+      }
       vis.v.draw(R, vis.draw.x, vis.draw.y, vis.draw.z, vis.draw.yaw, 1);
     }
     if (this.fx) this.fx.draw(R, { ball: M.dot, slab: M.slab, ring: M.ring });
@@ -547,6 +555,7 @@ export class MatchScreen {
     const rows = s.standings().map((r) => Object.assign({}, r, { me: r.id === this.local.id }));
     return {
       time: s.phase === PHASE.COUNTDOWN ? 0 : s.raceTime,
+      teams: s.mode === MODE.TEAM ? s.teamScores() : null,
       rank: this.local.rank, total: s.players.length,
       checkpoint: this.local.checkpoint, checkpoints: this.course.checkpoints.length,
       pct: this.course.length > 0 ? clamp(this.local.progress / this.course.length, 0, 1) : 0,
@@ -581,6 +590,8 @@ export class MatchScreen {
         time: p.finishTime, correct: p.quizCorrect, wrong: p.quizWrong,
         respawns: p.respawns, xp, best: newBest ? p.finishTime : best, newBest,
         eliminated: !!p.eliminated, mode: this.sim.mode,
+        teams: this.sim.mode === MODE.TEAM ? this.sim.teamScores() : null,
+        myTeam: p.team,
         standings: rows, courseName: this.course.name
       });
       if (this.net && this.net.sendResult) {

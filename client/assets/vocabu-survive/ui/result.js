@@ -53,13 +53,25 @@ export class ResultPanel {
   show(d) {
     const rank = d.rank || 0;
     const medal = rank >= 1 && rank <= 3 ? MEDAL[rank - 1] : "";
-    this.titleEl.textContent = d.eliminated
+    if (d.teams) {
+      /* チーム戦は **組の 勝ち負け**を いちばん 大きく 出す */
+      const 勝ち = d.teams[0] === d.teams[1] ? -1 : (d.teams[0] > d.teams[1] ? 0 : 1);
+      const 名 = ["レッド", "ブルー"];
+      this.titleEl.textContent = 勝ち < 0 ? "引き分け"
+        : (勝ち === d.myTeam ? "🏆 " + 名[勝ち] + "の 勝ち！" : 名[勝ち] + "の 勝ち");
+      this.titleEl.setAttribute("data-rank", 勝ち === d.myTeam ? "1" : "0");
+      this.subEl.textContent = d.courseName + " ・ レッド " + d.teams[0] + " — " + d.teams[1] + " ブルー";
+      this._teamDone = true;
+    } else this._teamDone = false;
+    if (!this._teamDone) this.titleEl.textContent = d.eliminated
       ? (rank === 1 ? "🥇 生き残った!" : rank + "位（脱落）")
       : (d.finished
         ? (medal ? medal + " " + rank + "位" : rank + "位")
         : "ゴールできませんでした");
-    this.titleEl.setAttribute("data-rank", String(rank));
-    this.subEl.textContent = d.courseName + " ・ " + d.total + "人";
+    if (!this._teamDone) {
+      this.titleEl.setAttribute("data-rank", String(rank));
+      this.subEl.textContent = d.courseName + " ・ " + d.total + "人";
+    }
 
     const acc = (d.correct + d.wrong) > 0
       ? Math.round((d.correct / (d.correct + d.wrong)) * 100) : 0;
@@ -81,7 +93,10 @@ export class ResultPanel {
     for (const r of (d.standings || [])) {
       const dot = h("i", { class: "vs-res-dot" });
       dot.style.background = beanByIndex(r.colorIndex).hex;
-      this.listEl.appendChild(h("li", { class: "vs-res-row", "data-me": r.me ? "1" : "0" },
+      this.listEl.appendChild(h("li", {
+        class: "vs-res-row", "data-me": r.me ? "1" : "0",
+        "data-team": r.team === 0 ? "a" : (r.team === 1 ? "b" : "")
+      },
         h("span", { class: "vs-res-no vs-mono", text: String(r.rank) }),
         dot,
         h("span", { class: "vs-res-nm", text: r.name }),
@@ -137,6 +152,8 @@ export const RESULT_CSS = `
   border-bottom:1px solid rgba(255,255,255,.06); }
 .vs-res-row:last-child{ border-bottom:0; }
 .vs-res-row[data-me="1"]{ background:rgba(255,176,32,.14); font-weight:800; }
+.vs-res-row[data-team="a"]{ border-left:3px solid #ff5d6e; }
+.vs-res-row[data-team="b"]{ border-left:3px solid #4d9dff; }
 .vs-res-no{ width:18px; text-align:right; color:rgba(243,245,255,.55); }
 .vs-res-dot{ width:10px; height:10px; border-radius:50%; }
 .vs-res-nm{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
