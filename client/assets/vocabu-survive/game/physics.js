@@ -206,6 +206,43 @@ export function testSolid(s, cx, cy, cz, r, hh) {
   return boxTest(s, cx, cy, cz, r, hh);
 }
 
+/**
+ * その (x, z) の **足場の 上面の 高さ**を 返す。無ければ null。
+ *
+ * なぜ 要るか（2026-08-28）:
+ *   ボットは 「この先に 床が あるか」を 1 秒に 何十回も 聞く。
+ *   縦に 少しずつ 当たりを 見る やり方だと 1 回で 20 回 当たり判定が 走り、
+ *   8 人ぶんで 画面が 止まる。上面の 高さは **式で 出せる**ので 直に 出す。
+ *
+ * @param {Solid} s
+ * @param {number} x @param {number} z
+ * @param {number} pad 足の 太さぶんの 余裕
+ * @returns {number|null}
+ */
+export function topOf(s, x, z, pad, 通り抜けも見る) {
+  if (!s.enabled) return null;
+  /* ★ 既定では 「通り抜ける もの」（熱い 床・門の 判定）は 見ない。
+     ただし **危ないかを 調べる ときは 見なければ ならない。**
+     ここを 分けていなかったので、ボットは 熱い 床を 一切 認識できず
+     c19 で 247 回 焼かれていた（2026-08-28 実測）。 */
+  if (!s.solid && !通り抜けも見る) return null;
+  const r = pad || 0;
+  if (s.type === SOLID.CYL) {
+    if (Math.hypot(x - s.x, z - s.z) > s.hx + r) return null;
+    return s.y + s.hy;
+  }
+  const c = Math.cos(-s.ry), si = Math.sin(-s.ry);
+  const rx = x - s.x, rz = z - s.z;
+  const lx = rx * c - rz * si;
+  const lz = rx * si + rz * c;
+  if (Math.abs(lx) > s.hx + r || Math.abs(lz) > s.hz + r) return null;
+  if (s.type === SOLID.RAMP) {
+    const t = Math.max(0, Math.min(1, (lz + s.hz) / (2 * s.hz)));
+    return s.y - s.hy + t * (2 * s.hy);
+  }
+  return s.y + s.hy;
+}
+
 /* ── 世界 ─────────────────────────────────────────────────────────────
    形が 増えると 総当たりが 効かなくなるので、**格子**に 割って 持つ。
    コースは 細長いので Z を 主に 切る。 */
