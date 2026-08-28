@@ -52,12 +52,33 @@ function 道具たち() {
   if (終 < 0) throw new Error("関数の 終わりが 見つかりません");
   const 本体 = src.slice(頭, 終);
   const 名 = /function\s+([A-Za-z0-9_]+)\s*\(/.exec(本体)[1];
+  /* ★ この関数は **外の 決めごと**を 使うことがある（2026-08-29 実測）。
+     WP_HUMAN_NOTE のような module の const を 足したら、
+     ここが ReferenceError で 落ち、**検査が まるごと 死んだ**。
+     検査が 死ぬと「Lumi が 繋がらない」の 見張りが 消えるので、
+     外から 使っている 名前は **worker.js から そのまま 拾って** 一緒に 渡す。 */
+  const 外の名 = [];
+  (本体.match(/\b[A-Z][A-Z0-9_]{3,}\b/g) || []).forEach((n) => {
+    if (外の名.indexOf(n) < 0) 外の名.push(n);
+  });
+  const 前置 = 外の名.map((n) => {
+    const m = new RegExp("^\\s*const\\s+" + n + "\\s*=", "m").exec(src);
+    if (!m) return "";
+    /* その const の 終わり（次の行頭 const/function/コメント まで）を 取る */
+    const from = m.index;
+    const rest = src.slice(from + 1);
+    const next = rest.search(/\n(?:const |let |var |function |async function |\/\* )/);
+    return src.slice(from, next < 0 ? src.length : from + 1 + next);
+  }).filter(Boolean).join("\n");
+
   /* この関数は env や 設定を 使うことがある。空の 入れ物で 呼ぶ。 */
-  const 作る = new Function("env", "cfg", 本体 + "\nreturn " + 名 + "(env, cfg);");
-  let 出 = null;
+  const 作る = new Function("env", "cfg", 前置 + "\n" + 本体 + "\nreturn " + 名 + "(env, cfg);");
+  let 出 = null, 訳 = "";
   for (const 引数 of [[{}, {}], [{}], []]) {
-    try { 出 = 作る.apply(null, 引数); if (出) break; } catch (e) { 出 = null; }
+    try { 出 = 作る.apply(null, 引数); if (出) break; }
+    catch (e) { 出 = null; 訳 = String(e && e.message); }
   }
+  if (!出 && 訳) throw new Error("道具の一覧を 作れませんでした: " + 訳);
   if (!出) throw new Error("道具の一覧を 作れませんでした");
   const 並 = Array.isArray(出) ? 出 : [出];
   const 全 = [];
@@ -94,8 +115,10 @@ let 悪い = [], 入れ子 = 0;
   ok("名前が 重なっていない", new Set(名前).size === 名前.length,
      名前.filter((x, i) => 名前.indexOf(x) !== i));
 
-  /* 今回 足した 6 つが 入っているか */
-  ["planAdd", "planShow", "boardBlocks", "boardMark", "boardWrite", "boardClear"]
+  /* 足した ものが 入っているか（足すたび ここへ 名前を 足す） */
+  ["planAdd", "planShow", "boardBlocks", "boardMark", "boardWrite", "boardClear",
+   /* 2026-08-29 に 足した もの */
+   "docDesign", "sheetsPivot", "sheetsRule", "sheetsDedupe"]
     .forEach((n) => ok("「" + n + "」が 宣言されている", 名前.indexOf(n) >= 0));
 
   全.forEach((f) => {
