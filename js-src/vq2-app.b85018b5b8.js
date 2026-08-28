@@ -72879,6 +72879,16 @@
     var api = VQ2.ui.mount("vq-wp-docs", { title: item.title, css: (WP.CSS || "") + (WP.CSS_EXTRA || ""),
       onBeforeClose: function () { shell.tryClose(); return false; },
       onClose: function () { try { if (数式の見張り) 数式の見張り(); } catch (e) {} } });
+
+    /* ★ この 書類だけの 見た目（2026-08-29・訴え「デザインが 毎回 同じ」）。
+       body.design が あれば 影の DOM へ style を 1 枚 入れる。
+       印は api.root に 付ける（paint の innerHTML では 消えない）。 */
+    try {
+      if (WP.current) {
+        WP.current.root = api.root; WP.current.shadow = api.shadow;
+        WP.見た目.当てる(WP.current);
+      }
+    } catch (e) {}
     /* ★ 数式が **遅れて 届く**（2026-08-28）。
        MathJax は 2.2MB で 読むのは 数式が 出てきたとき。
        つまり **最初の 描画には まず 間に合わない**。
@@ -75354,6 +75364,16 @@
     var api = VQ2.ui.mount("vq-wp-sheets", { title: item.title, css: (WP.CSS || "") + (WP.CSS_EXTRA || ""),
       onBeforeClose: function () { shell.tryClose(); return false; },
       onClose: function () { try { if (数式の見張り) 数式の見張り(); } catch (e) {} } });
+
+    /* ★ この 書類だけの 見た目（2026-08-29・訴え「デザインが 毎回 同じ」）。
+       body.design が あれば 影の DOM へ style を 1 枚 入れる。
+       印は api.root に 付ける（paint の innerHTML では 消えない）。 */
+    try {
+      if (WP.current) {
+        WP.current.root = api.root; WP.current.shadow = api.shadow;
+        WP.見た目.当てる(WP.current);
+      }
+    } catch (e) {}
     /* ★ 数式が **遅れて 届く**（2026-08-28）。
        MathJax は 2.2MB で 読むのは 数式が 出てきたとき。
        つまり **最初の 描画には まず 間に合わない**。
@@ -77465,6 +77485,16 @@
     var api = VQ2.ui.mount("vq-wp-slides", { title: item.title, css: (WP.CSS || "") + (WP.CSS_EXTRA || ""),
       onBeforeClose: function () { shell.tryClose(); return false; },
       onClose: function () { try { if (数式の見張り) 数式の見張り(); } catch (e) {} } });
+
+    /* ★ この 書類だけの 見た目（2026-08-29・訴え「デザインが 毎回 同じ」）。
+       body.design が あれば 影の DOM へ style を 1 枚 入れる。
+       印は api.root に 付ける（paint の innerHTML では 消えない）。 */
+    try {
+      if (WP.current) {
+        WP.current.root = api.root; WP.current.shadow = api.shadow;
+        WP.見た目.当てる(WP.current);
+      }
+    } catch (e) {}
     /* ★ 数式が **遅れて 届く**（2026-08-28）。
        MathJax は 2.2MB で 読むのは 数式が 出てきたとき。
        つまり **最初の 描画には まず 間に合わない**。
@@ -79392,6 +79422,16 @@
     var api = VQ2.ui.mount("vq-wp-forms", { title: item.title, css: (WP.CSS || "") + (WP.CSS_EXTRA || ""),
       onBeforeClose: function () { shell.tryClose(); return false; },
       onClose: function () { try { if (数式の見張り) 数式の見張り(); } catch (e) {} } });
+
+    /* ★ この 書類だけの 見た目（2026-08-29・訴え「デザインが 毎回 同じ」）。
+       body.design が あれば 影の DOM へ style を 1 枚 入れる。
+       印は api.root に 付ける（paint の innerHTML では 消えない）。 */
+    try {
+      if (WP.current) {
+        WP.current.root = api.root; WP.current.shadow = api.shadow;
+        WP.見た目.当てる(WP.current);
+      }
+    } catch (e) {}
     /* ★ 数式が **遅れて 届く**（2026-08-28）。
        MathJax は 2.2MB で 読むのは 数式が 出てきたとき。
        つまり **最初の 描画には まず 間に合わない**。
@@ -84446,6 +84486,91 @@
     return W.ops.preview(k, b, ops);
   }
 
+  /* ══ 書類の 見た目（2026-08-29・訴え）════════════════════════════
+     訴え「スライド／ワード／エクセル／フォームの デザインが 毎回 同じ」。
+     スライドには 座標まで 組み立てる エンジンが あるが、
+     書類の 3 つには **何も 無かった**。同じ白い紙・同じ黒い字だった。
+
+     ★ ここは **置き場所を 触らない**。人が 打って 直す ものなので、
+       段組みや 順番を 勝手に 動かすと 邪魔になる。
+       変えるのは 色・書体・見出しの飾り・表の塗り・紙の地 だけ。
+     ★ 作りは design/doc-theme.js（純粋関数）。ここは 当てるだけ。
+     ★ 当て方は **開いている 画面の 中へ style を 1 枚**。
+       アプリ全体の トークンを 書き換えると 画面ぜんぶが 変わってしまう。 */
+  function 見た目を当てる(c) {
+    c = c || 今();
+    if (!c) return false;
+    var b = 本体(c);
+    var d = b && b.design;
+    /* ★ style は **影の DOM 側**へ置く（2026-08-29）。
+       paint() は api.root.innerHTML を まるごと 書き換えるので、
+       中に 置くと 描き直すたびに 消える。
+       印（data-vqdesign）は api.root に 付ける。属性は innerHTML では 消えない。 */
+    var 影 = c.shadow, 器 = c.root;
+    if (!影 || !器) return false;
+    var 札 = null;
+    try { 札 = 影.querySelector('style[data-vqdoc]'); } catch (e) {}
+    if (!d || !d.seed) {
+      if (札 && 札.parentNode) 札.parentNode.removeChild(札);
+      try { 器.removeAttribute("data-vqdesign"); } catch (e) {}
+      return false;
+    }
+    var css = "";
+    try { css = root.VQD.docTheme.CSSを作る(d.seed); } catch (e) { return false; }
+    if (!css) return false;
+    if (!札) {
+      札 = document.createElement("style");
+      札.setAttribute("data-vqdoc", "1");
+      影.appendChild(札);            /* いちばん後ろ＝ほかの CSS より 後に 効く */
+    }
+    札.textContent = css;
+    try { 器.setAttribute("data-vqdesign", "1"); } catch (e) {}
+    return true;
+  }
+
+  function 見た目を決める(a) {
+    var c = 今();
+    if (!c) return { だめ: "いま 開いている 書類が ありません。**何もしていません。**" };
+    if (c.kind === "presentation") {
+      return { だめ: "スライドの デザインは deckStart → deckDesign で 決めます。",
+               つぎ: "この道具は Docs / Sheets / Forms 用です。" };
+    }
+    var b = 本体(c);
+    if (!b) return { だめ: "中身を 読めません。**何もしていません。**" };
+    var D = root.VQD;
+    if (!D || !D.docTheme || !D.seed) {
+      return { だめ: "デザインの 部品が 読み込めていません。**何もしていません。**" };
+    }
+    /* 書き忘れた 軸は **前と ちがう おすすめ**で 埋める。
+       軸の 先頭へ 落とすと、書き忘れる ほど 同じ 見た目に なる。 */
+    var おすすめ = null;
+    try {
+      var 最近 = JSON.parse(root.localStorage.getItem("vq.design.recent.v1") || "[]");
+      おすすめ = D.seed.別の座標(Array.isArray(最近) ? 最近 : [], Date.now() | 0);
+    } catch (e) { おすすめ = null; }
+    var s = D.docTheme.書類向けに(D.seed.normalize(a || {}, おすすめ));
+    b.design = { seed: s, key: D.seed.encode(s), at: Date.now() };
+    try {
+      var 最近2 = JSON.parse(root.localStorage.getItem("vq.design.recent.v1") || "[]");
+      if (!Array.isArray(最近2)) 最近2 = [];
+      最近2 = [b.design.key].concat(最近2.filter(function (x) { return x !== b.design.key; }));
+      root.localStorage.setItem("vq.design.recent.v1", JSON.stringify(最近2.slice(0, 8)));
+    } catch (e) {}
+    try { if (c.session && c.session.touch) c.session.touch(); } catch (e) {}
+    var 当た = 見た目を当てる(c);
+    try { if (c.paint) c.paint(); } catch (e) {}
+    /* paint で 中身が 描き直されるので、もう一度 当てる（style が 消えることがある） */
+    try { 見た目を当てる(c); } catch (e) {}
+    return { やった: "この 書類の 見た目を 決めました。",
+             使った設計: D.docTheme.要約(s),
+             画面に出た: 当た,
+             つぎ: "**中身は 触っていません。**"
+               + "置き場所・順番・文は そのままで、色・書体・見出しの飾り・"
+               + "表の塗り・紙の地 だけを 変えました。" };
+  }
+
+  WP.見た目 = { 当てる: 見た目を当てる, 決める: 見た目を決める };
+
   WP.cmd = {
     いま: 今, 本体: 本体, 書類: 書類, 要約: 要約, 読む: 読む, 見直す: 見直す,
     できること: できること,
@@ -84454,6 +84579,8 @@
     控える: 控える, 控え一覧: 控え一覧, 巻き戻す: 巻き戻す,
     命令一覧: 命令一覧, 命令: 命令,
     docs: docs, sheets: sheets, slides: slides, forms: forms, ファイル: ファイル,
+    /* 書類の 見た目（Docs / Sheets / Forms）。スライドは pipeline が持つ。 */
+    見た目: WP.見た目,
     /* 中で使う小道具も出す（試験と、あとから足す層のため） */
     画布: 画布, はみ出し: はみ出し, 範囲を割る: 範囲を割る, 番地を割る: 番地を割る,
     種類の別名: 種類の別名,

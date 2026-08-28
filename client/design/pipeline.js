@@ -89,6 +89,32 @@
   function S(v) { return v === undefined || v === null ? "" : String(v); }
   function N(v, d) { var n = Number(v); return isFinite(n) ? n : d; }
 
+  /* ══ 前に 作った デザインを 覚えておく（2026-08-29・訴え）════════
+     訴え「スライド／ワード／エクセル／フォームの デザインが 毎回 同じ」。
+     原因は 2 つ。
+       ① LLM が 10 軸を 書き忘れると、その軸は **選択肢の 先頭**へ 落ちる。
+          先頭は いつも 同じ なので、書き忘れが 多いほど 同じ 見た目に なる。
+       ② LLM は 何も 言わないと 「無難な 値」を 選び続ける。
+          前に 何を 選んだかを 知らないので、避けようが ない。
+     直しかた: **この端末が 覚える**。deckStart のときに
+     「前と 4 軸 以上 ちがう 座標」を こちらで 1 つ 選んで おすすめし、
+     LLM が 書き忘れた 軸は その おすすめで 埋める。 */
+  var 覚えの鍵 = "vq.design.recent.v1";
+  function 最近の座標() {
+    try {
+      var a = JSON.parse(root.localStorage.getItem(覚えの鍵) || "[]");
+      return Array.isArray(a) ? a.slice(0, 8) : [];
+    } catch (e) { return []; }
+  }
+  function 座標を覚える(key) {
+    if (!key) return;
+    try {
+      var a = 最近の座標().filter(function (x) { return x !== key; });
+      a.unshift(String(key));
+      root.localStorage.setItem(覚えの鍵, JSON.stringify(a.slice(0, 8)));
+    } catch (e) {}
+  }
+
   /* ── [1] 始める（構成は LLM が purpose の並びで渡す）───────────── */
   function deckStart(a) {
     a = a || {};
@@ -100,14 +126,34 @@
 
     進捗("生成中… 組み立てを始めています", 0, 枚);
     var 知らない = 並び.filter(function (p) { return VQD.grammar.PURPOSES.indexOf(p) < 0; });
+    /* 今回の おすすめ。前に 作った ものと 4 軸 以上 ちがう ところを 選ぶ。 */
+    var おすすめ = null;
+    try {
+      おすすめ = VQD.seed.別の座標(最近の座標(),
+        (Date.now() ^ (S(a.title).length * 2654435761)) | 0);
+      var 直 = VQD.constraints.nearestValidSeed(おすすめ);
+      おすすめ = 直 && 直.seed ? 直.seed : おすすめ;
+    } catch (e) { おすすめ = null; }
+
     状態 = {
       meta: { title: S(a.title) || "無題", audience: S(a.audience), purpose: S(a.purpose),
               pageCount: 枚, lang: a.lang === "en" ? "en" : "ja" },
       purposes: 並び.map(function (p) { return VQD.grammar.PURPOSES.indexOf(p) >= 0 ? p : "detail"; }),
+      おすすめ: おすすめ,
       deck: null, 段階: "設計まち", 周: 0
     };
     return {
       やった: 枚 + " 枚の組み立てを 始めました。",
+      /* ★ **毎回 ちがう 見た目に する ための おすすめ**（2026-08-29）。
+         前に この端末で 作った ものと 4 軸 以上 ちがう ところを 選んである。 */
+      おすすめの座標: おすすめ || undefined,
+      おすすめの使いかた: おすすめ
+        ? "**この 10 個を そのまま deckDesign へ 渡してください。**"
+          + "前に 作った 資料とは ちがう 見た目に なるように 選んであります。"
+          + "頼まれた 雰囲気（かたい／やわらかい／暗い 地 など）が あるときだけ、"
+          + "その軸を 変えてください。**全部を 自分で 選び直さないこと。**"
+          + "書き忘れた 軸は この おすすめで 埋めます。"
+        : undefined,
       ページの役目: 状態.purposes.map(function (p, i) { return (i + 1) + ". " + p; }),
       知らない役目: 知らない.length ? 知らない : undefined,
       つぎ: "**deckDesign を 1 回だけ呼んでください。**"
@@ -144,7 +190,10 @@
     var 直し = [];
 
     /* Seed: 形をそろえて、禁じ手なら **計算で** いちばん近い有効な組へ */
-    var s0 = VQD.seed.normalize(a);
+    /* ★ 書き忘れた 軸は **おすすめ**で 埋める（2026-08-29）。
+       前は 軸の 先頭（hue 0・mono・light・…）へ 落ちていたので、
+       1 つ 書き忘れる ごとに 見た目が 同じ 方へ 寄っていた。 */
+    var s0 = VQD.seed.normalize(a, 状態.おすすめ);
     var n = VQD.constraints.nearestValidSeed(s0);
     if (n.直した.length)
       n.直した.forEach(function (x) {
@@ -177,6 +226,8 @@
     });
     状態.deck = deck;
     状態.段階 = "中身まち";
+    /* 次に 作る ときに 避けられるよう、使った 座標を 覚える。 */
+    try { 座標を覚える(deck.tokens.seedKey); } catch (e) {}
 
     return {
       やった: "デザインを決めました。",

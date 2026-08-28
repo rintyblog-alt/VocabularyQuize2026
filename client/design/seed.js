@@ -79,8 +79,14 @@
     return true;
   }
 
-  /* 足りない軸を既定で埋める（LLM の出力が欠けていても落とさない）。 */
-  function normalize(s) {
+  /* 足りない軸を既定で埋める（LLM の出力が欠けていても落とさない）。
+     ★ 既定を 渡せるように した（2026-08-29・訴え「デザインが 毎回 同じ」）。
+       渡さないと 軸の **先頭の値**へ 落ちる。先頭は いつも 同じなので、
+       LLM が 軸を 1 つでも 書き忘れると そこだけ 固定に なり、
+       いくつも 書き忘れると **毎回 まったく 同じ 見た目**に なる。
+       実際、書き忘れは よく 起きる。だから 呼ぶ側が
+       「今回の おすすめ」を 既定として 渡せるように する。 */
+  function normalize(s, 既定) {
     var o = {}, src = s || {};
     ORDER.forEach(function (k) {
       var v = valuesOf(k);
@@ -98,9 +104,52 @@
         x = b2;
       }
       if (k === "fontPair" && typeof x === "number") x = ((Math.round(x) % v.length) + v.length) % v.length;
-      o[k] = v.indexOf(x) >= 0 ? x : v[0];
+      if (v.indexOf(x) >= 0) { o[k] = x; return; }
+      var d = 既定 ? 既定[k] : undefined;
+      o[k] = v.indexOf(d) >= 0 ? d : v[0];
     });
     return o;
+  }
+
+  /* ── 前に 使った ものと ちがう 座標を 1 つ選ぶ（2026-08-29）──────
+     ★ 訴え「スライド／ワード／エクセル／フォームの デザインが 毎回 同じ」。
+       2,986 万通り あるのに、実際に 出てくるのは いつも 同じ 1 つだった。
+     ★ ここでは **乱数を 種から 作る**（同じ 種なら 同じ 結果）。
+       時計を 種に すれば 毎回 変わり、検査では 種を 固定できる。
+     ★ 「ちがう」は **軸が 4 つ 以上 ちがうこと**。1 つ 2 つでは
+       見た目が 変わったと 感じられない（色相だけ 15° ずれても 同じに見える）。 */
+  function ちがい(a, b) {
+    var n = 0;
+    ORDER.forEach(function (k) { if (a[k] !== b[k]) n++; });
+    return n;
+  }
+  function 乱(種) {
+    /* xorshift。**時計を 直接 使わない**（検査で 固定できるように） */
+    var x = (種 | 0) || 123456789;
+    return function () {
+      x ^= x << 13; x |= 0; x ^= x >>> 17; x ^= x << 5; x |= 0;
+      return ((x >>> 0) % 100000) / 100000;
+    };
+  }
+  function 別の座標(除く, 種) {
+    var 前 = (除く || []).map(function (v) {
+      return typeof v === "string" ? decode(v) : normalize(v);
+    });
+    var r = 乱(種);
+    var 一番 = null, 一番のちがい = -1;
+    for (var t = 0; t < 60; t++) {
+      var c = {};
+      ORDER.forEach(function (k) {
+        var v = valuesOf(k);
+        c[k] = v[Math.floor(r() * v.length) % v.length];
+      });
+      if (!前.length) return c;
+      var 最小 = Infinity;
+      前.forEach(function (p) { 最小 = Math.min(最小, ちがい(c, p)); });
+      if (最小 >= 4) return c;
+      if (最小 > 一番のちがい) { 一番のちがい = 最小; 一番 = c; }
+    }
+    return 一番;
   }
 
   /* ── 文字列にする / 戻す（?seed= と 重複判定に使う）───────────── */
@@ -126,6 +175,7 @@
 
   VQD.seed = {
     AXES: AXES, ORDER: ORDER, valuesOf: valuesOf,
-    isSeed: isSeed, normalize: normalize, encode: encode, decode: decode, space: space
+    isSeed: isSeed, normalize: normalize, encode: encode, decode: decode, space: space,
+    ちがい: ちがい, 別の座標: 別の座標
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

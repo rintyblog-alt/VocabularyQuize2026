@@ -7854,7 +7854,7 @@
     sheetsWrite: "表を作っています…", sheetsEdit: "表を直しています…",
     slidesWrite: "スライドを作っています…", slidesEdit: "スライドを直しています…",
     formsWrite: "フォームを作っています…", formsEdit: "フォームを直しています…",
-    runCommand: "操作しています…"
+    runCommand: "操作しています…", docDesign: "見た目を 決めています…"
   };
 
   function 促しを止める(なぜ) {
@@ -8785,6 +8785,17 @@
     if (op === "convert" || op === "変換") return Promise.resolve(K.ファイル.変換(a));
     return Promise.resolve({ だめ: "その操作は分かりません。**何もしていません。**",
                              できる操作: ["save", "rename", "duplicate", "convert"] });
+  }
+
+  /* ── 書類の 見た目（Docs / Sheets / Forms）──────────────────
+     訴え（2026-08-29）「スライド／ワード／エクセル／フォームの デザインが
+     毎回 同じ。Lumi が 作るように して」。
+     スライドは deckDesign が 受け持つ。ここは 残りの 3 つ。
+     ★ **中身は 触らない。** 色・書体・見出しの飾り・表の塗り・紙の地 だけ。 */
+  function docDesign(a) {
+    var K = WPC(); if (!K) return 操作の口が無い();
+    if (!K.見た目) return { だめ: "この 画面では まだ 見た目を 変えられません。" };
+    return 落ち着いてから(K.見た目.決める(a || {}));
   }
 
   /* ── Docs ─────────────────────────────────────────────────── */
@@ -12593,6 +12604,7 @@
     if (name === "slidesEdit") return slidesEdit(a);
     if (name === "findPicture") return findPicture(a);
     if (name === "usePicture") return usePicture(a);
+    if (name === "docDesign") return docDesign(a);
     if (name === "deckStart") return deckStart(a);
     if (name === "deckDesign") return deckDesign(a);
     if (name === "deckWrite") return deckWrite(a);

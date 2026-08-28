@@ -32,7 +32,7 @@ const 並び = [
   "/design/font-pairs.js", "/design/derive.js", "/design/constraints.js",
   "/design/layout-grammar.js", "/design/layout-diversity.js", "/design/layout-resolve.js",
   "/design/gate.js", "/design/ir.js", "/design/preview.js",
-  "/design/render-vqslides.js", "/design/pipeline.js",
+  "/design/render-vqslides.js", "/design/pipeline.js", "/design/doc-theme.js",
   "/core/ir/types.js", "/core/ir/ids.js", "/core/ir/hash.js", "/core/ir/walk.js",
   "/core/ir/project.js", "/core/ir/snapshot.js",
   "/core/ops/types.js", "/core/ops/apply.js", "/core/ops/guard.js", "/core/ops/decompose.js",
