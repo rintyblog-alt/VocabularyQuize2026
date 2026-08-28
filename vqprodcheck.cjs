@@ -115,6 +115,41 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
       return src.indexOf("vq2-pp-lookwrap") >= 0 && src.indexOf("is-locked") >= 0 && src.indexOf("vq2-pp-lock") >= 0;
     }));
 
+  節("④-c 生成の 作り（余計な ものを 足していないか）");
+  const 生成 = await pg.evaluate(async () => {
+    const src = await fetch([...document.querySelectorAll('script[src*="/js/vq2-app."]')][0].src).then((x) => x.text());
+    const i = src.indexOf("generateQuestionsTracked");
+    const 周り = i < 0 ? "" : src.slice(Math.max(0, i - 500), i + 500);
+    const core = await fetch(document.querySelector('script[src*="/js/vq-core."]').src).then((x) => x.text());
+    return {
+      台帳: i >= 0,
+      鍵なし: !/idempotencyKey/.test(周り),
+      /* 「終わった 仕事から プリセットを 作る」は 外した。残っていたら 3 つに 割れる。 */
+      取り込み無し: core.indexOf("emptyPreset") < 0 || !/aijob\/list\?limit=20"[^]{0,400}emptyPreset/.test(core)
+    };
+  });
+  ok("作るのは 台帳を 通る", 生成.台帳);
+  ok("**鍵を 付けていない**（同じ 注文の 2 回目が 弾かれない）", 生成.鍵なし, 生成);
+  ok("終わった 仕事から プリセットを 作らない", 生成.取り込み無し, 生成);
+
+  節("④-d 左パネルの 開閉（パソコン）");
+  const 帯 = await pg.evaluate(async () => {
+    const sh = document.getElementById("vqShell");
+    const sr = sh && sh.shadowRoot;
+    const b = sr && sr.querySelector('[data-fn="fold"]');
+    const st = sr && sr.querySelector("style");
+    return {
+      ボタン: !!b,
+      見える: b ? getComputedStyle(b).display !== "none" : null,
+      畳む見た目: !!st && /app-v2-sidebar-collapsed/.test(st.textContent || ""),
+      本体の口: !!document.getElementById("appV2SidebarCollapseBtn")
+    };
+  });
+  ok("畳む ボタンが ある", 帯.ボタン, 帯);
+  ok("パソコンでは 見える", 帯.見える === true, 帯.見える);
+  ok("畳んだ ときの 見た目が 入っている", 帯.畳む見た目);
+  ok("本体側の 口に つないでいる", 帯.本体の口);
+
   節("⑤ 目安の 時間");
   const 分 = await pg.evaluate(() => {
     const L = window.VQ2 && window.VQ2.library;
