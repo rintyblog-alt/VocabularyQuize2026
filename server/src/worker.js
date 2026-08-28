@@ -18406,8 +18406,20 @@ const ACCOUNT_STORE_TABLES = [
 ];
 
 const ACCOUNT_CHUNK = 700 * 1024;          /* D1 は 1 行 2MB まで。余裕を見る。 */
-const ACCOUNT_VALUE_MAX = 12 * 1024 * 1024; /* 1 つの鍵の 上限 */
-const ACCOUNT_POST_MAX = 16 * 1024 * 1024;
+const ACCOUNT_VALUE_MAX = 24 * 1024 * 1024; /* 1 つの鍵の 上限（2026-08-29 に 12MB から） */
+/* ★ **枠を 広げた**（2026-08-29・訴え「プリセットが 保存されない。
+   割り当てを 増やして」）。
+   プリセットは 1 つの 鍵（vq2.presets.v1）に まとめて 入るので、
+   作れば 作るほど この 1 本が 太る。12MB を 越えると 画面は
+   **黙って 手元だけに 置いて**、クラウドへは 送らなくなっていた
+   （知らせる 口が どこにも 無かった）。
+   ★ 上げすぎない 理由: 本体（Worker）が 一度に 使える 覚えは 128MB。
+     JSON を 読み込むと 中の 文字は 2 バイトずつ 持つので、
+     24MB の 中身は それだけで 約 48MB。切り分けの 写しも 要る。
+     だから **24MB / 1 鍵・32MB / 1 回** までに する。
+     ここを 変えるときは client/core/store/cloud.js の 鍵の上限 も 一緒に。
+     ずれると 送っても 断られる（vqsynckeys が 見張る）。 */
+const ACCOUNT_POST_MAX = 32 * 1024 * 1024;
 /* 置いてよい鍵。**知らない鍵は 受けない**（何でも置ける口にしない）。 */
 /* ★ この 並びは **client/core/store/cloud.js の 揃える鍵と そっくり 同じ**に
    すること。片方だけ 足すと accountKeyOk が 断り、画面には 何も 出ない。
@@ -18529,7 +18541,9 @@ async function handleAccountStorePost(request, env) {
     const 文 = typeof it?.value === "string" ? it.value
              : (it?.value == null ? "" : JSON.stringify(it.value));
     if (文.length > ACCOUNT_VALUE_MAX) {
-      断った.push({ key, reason: "大きすぎます（12MB まで）", bytes: 文.length });
+      断った.push({ key, reason: "大きすぎます（"
+        + Math.round(ACCOUNT_VALUE_MAX / 1024 / 1024) + "MB まで）", bytes: 文.length,
+        maxBytes: ACCOUNT_VALUE_MAX });
       continue;
     }
     await accountWrite(env, g.uid, key, 文, updatedAt);
@@ -56849,7 +56863,13 @@ const STORAGE_LIMITS = {
   backupBytes: 800 * 1024,
   syncBytes: 4 * 1024 * 1024,
   pdfBytes: 100 * 1024 * 1024,
-  rowBytes: 2 * 1024 * 1024
+  rowBytes: 2 * 1024 * 1024,
+  /* ★ プリセットの 本当の 上限（2026-08-29）。
+     ここまで「あなたが 使える容量 500MB」しか 出していなかったが、
+     それは **画像と動画の 話**で、プリセットには かかっていない。
+     プリセットに 効くのは この 2 つ。画面は こちらを 出す。 */
+  accountKeyBytes: 24 * 1024 * 1024,
+  accountPostBytes: 32 * 1024 * 1024
 };
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -62709,11 +62729,76 @@ async function handleAiModelsProbe(request, env) {
     絞り込み: String(AI_MODELS_PROBE_PATTERN), 結果: out }, 200, request);
 }
 
-async function handleStorageUsage(request, env) {
+/* ══ 数え上げの 覚え（2026-08-29・訴え「ずっと 数えています…」）════════
+   ★ 訴えの 元は 速さ。この 数え上げは 表を 13 本 なめて
+     SUM(length(...)) を 出すので、中身が 増えるほど 遅くなる
+     （実測 11.5 秒。もっと 増えれば もっと かかる）。
+   ★ 直しかた: **前に 数えた 結果を 覚えておく**。
+     ・新しければ そのまま 返す（すぐ 出る）
+     ・古ければ **古いまま すぐ 返して、うしろで 数え直す**
+       （待たせない。次に 開いたときには 新しい）
+     ・?fresh=1 のときだけ 数え終わるまで 待つ（「数え直す」を 押したとき）
+   ★ **いつの 数字かを 必ず 添える**（countedAt）。黙って 古い数を 出さない。 */
+const STORAGE_USAGE_CACHE_SQL =
+  `CREATE TABLE IF NOT EXISTS storage_usage_cache (
+     user_id INTEGER PRIMARY KEY,
+     json TEXT NOT NULL,
+     at INTEGER NOT NULL
+   )`;
+const STORAGE_USAGE_FRESH_MS = 3 * 60 * 1000;    /* これより 新しければ そのまま */
+
+async function storageUsageCacheGet(env, uid) {
+  try {
+    await env.DB.prepare(STORAGE_USAGE_CACHE_SQL).run();
+    const r = await env.DB.prepare(
+      "SELECT json, at FROM storage_usage_cache WHERE user_id = ?1").bind(uid).first();
+    if (!r || !r.json) return null;
+    const d = JSON.parse(String(r.json));
+    return { data: d, at: Math.max(0, Number(r.at || 0)) };
+  } catch (e) { return null; }
+}
+async function storageUsageCachePut(env, uid, data) {
+  try {
+    await env.DB.prepare(STORAGE_USAGE_CACHE_SQL).run();
+    await env.DB.prepare(
+      "INSERT INTO storage_usage_cache (user_id, json, at) VALUES (?1,?2,?3) " +
+      "ON CONFLICT(user_id) DO UPDATE SET json = excluded.json, at = excluded.at"
+    ).bind(uid, JSON.stringify(data), Date.now()).run();
+  } catch (e) {}
+}
+
+async function handleStorageUsage(request, env, ctx) {
   if (!env?.DB) return json({ code: "DB_NOT_CONFIGURED", message: "DB が未設定です。" }, 500);
   const user = await resolveAuthUser(request, env);
   const uid = Math.max(0, Number(user?.uid || 0));
   if (!uid) return json({ code: "UNAUTHORIZED", message: "ログインが必要です。" }, 401);
+
+  const 数え直す = new URL(request.url).searchParams.get("fresh") === "1";
+  const 覚え = 数え直す ? null : await storageUsageCacheGet(env, uid);
+  if (覚え && 覚え.data) {
+    const 古さ = Date.now() - 覚え.at;
+    const 出 = Object.assign({}, 覚え.data, {
+      countedAt: 覚え.at,
+      /* 古いなら **古いと 言う**。黙って 古い数を 出さない。 */
+      stale: 古さ > STORAGE_USAGE_FRESH_MS
+    });
+    if (出.stale && ctx && typeof ctx.waitUntil === "function") {
+      /* 待たせない。うしろで 数え直して 覚えを 入れ替える。 */
+      ctx.waitUntil(storageUsageCompute(env, uid)
+        .then((d) => storageUsageCachePut(env, uid, d)).catch(() => {}));
+    }
+    return json(出, 200, request);
+  }
+  const 出 = await storageUsageCompute(env, uid);
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(storageUsageCachePut(env, uid, 出).catch(() => {}));
+  } else {
+    await storageUsageCachePut(env, uid, 出).catch(() => {});
+  }
+  return json(Object.assign({}, 出, { countedAt: Date.now(), stale: false }), 200, request);
+}
+
+async function storageUsageCompute(env, uid) {
 
   /* 日本語が多いので 1 文字 ≒ 3 バイトで見る。英数字だけなら多めに出る。 */
   const B = 3;
@@ -62831,7 +62916,7 @@ async function handleStorageUsage(request, env) {
   ];
   const total = items.reduce((n, x) => n + x.bytes, 0);
 
-  return json({
+  return {
     ok: true,
     totalBytes: total,
     /* Google Drive へ 逃がした ぶん。合計には 入っていない。 */
@@ -62869,7 +62954,7 @@ async function handleStorageUsage(request, env) {
     items: items.sort((a, b) => b.bytes - a.bytes),
     limits: STORAGE_LIMITS,
     mediaBackend: env.MEDIA_R2 ? "r2" : "d1"
-  }, 200);
+  };
 }
 
 async function handleSocialList(request, env) {
@@ -63341,7 +63426,7 @@ export default {
       }
       if (request.method === "GET" && path === "/api/storage/usage") {
         stage = "storage.usage";
-        return respond(await handleStorageUsage(request, env));
+        return respond(await handleStorageUsage(request, env, ctx));
       }
       /* ── Google Drive 連携（2026-08-27）──────────────────────────
          戻り道（callback）だけは **札を 持たない**。Google が 直接 叩き、

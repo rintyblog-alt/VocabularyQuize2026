@@ -455,19 +455,38 @@
      数え方（文字数からの見積もりか、実バイトか）は隠さずその場に書く。
      ══════════════════════════════════════════════════════════════════ */
   var STG = { state: "idle", data: null, err: "" };
+  /* ★ **待ちっぱなしに しない**（2026-08-29・訴え「ずっと 数えています…」）。
+     預けているぶんの 数え上げは、中身が 増えるほど 遅くなる
+     （実測 11.5 秒）。返って こない ことも ある。
+     待つのは 25 秒まで。それを 過ぎたら **そう 言って、押し直せる**ようにする。
+     この端末の ぶんは サーバを 待たずに 出す（下の storageHTML）。 */
+  var STG_締切 = 25000;
   function stgLoad(force) {
     if (!force && (STG.state === "loading" || STG.state === "ready")) return;
     var tok = acctToken();
     if (!tok) { STG.state = "anon"; return; }
     STG.state = "loading"; STG.err = "";
-    fetch(acctApi() + "/api/storage/usage", { headers: { Authorization: "Bearer " + tok } })
+    var 切 = null, 時計 = 0, 済 = false;
+    try { 切 = new AbortController(); } catch (e) { 切 = null; }
+    var 終 = function (状, 訳) {
+      if (済) return; 済 = true;
+      if (時計) clearTimeout(時計);
+      STG.state = 状; if (訳) STG.err = 訳;
+      if (cur === "storage") renderMain();
+    };
+    時計 = setTimeout(function () {
+      try { if (切) 切.abort(); } catch (e) {}
+      終("error", "数え上げが " + Math.round(STG_締切 / 1000) + " 秒 たっても 終わりませんでした。");
+    }, STG_締切);
+    fetch(acctApi() + "/api/storage/usage",
+      { headers: { Authorization: "Bearer " + tok }, signal: 切 ? 切.signal : undefined })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
-        if (!d || !d.ok) { STG.state = "error"; STG.err = "読み取れませんでした。"; }
-        else { STG.data = d; STG.state = "ready"; }
-        if (cur === "storage") renderMain();
+        if (済) return;
+        if (!d || !d.ok) { 終("error", "読み取れませんでした。"); return; }
+        STG.data = d; 終("ready");
       })
-      .catch(function () { STG.state = "error"; STG.err = "サーバーへつながりませんでした。"; if (cur === "storage") renderMain(); });
+      .catch(function () { 終("error", "サーバーへつながりませんでした。"); });
   }
   function fmtBytes(n) {
     n = Math.max(0, Number(n) || 0);
@@ -792,6 +811,79 @@
     return k;
   }
 
+  /* ══ プリセットの 置き場（2026-08-29・訴え）════════════════════
+     訴え「プリセットが 容量いっぱいで 保存されない」「どれだけ あるの？」
+
+     ★ ここまで この画面が 出していた「あなたが 使える容量 500MB」は
+       **画像と 動画の 話**で、プリセットには かかっていない。
+       プリセットに 効くのは 次の 2 つ:
+         ・この端末 … IndexedDB（何 GB も ある。手元の 4.4MB では ない）
+         ・クラウド … **1 つの 鍵で 24MB まで**
+       だから ここで その 2 つを そのまま 出す。
+     ★ **置けていない ものは 隠さない。** これまで 大きすぎる 鍵は
+       黙って 手元だけに 置かれ、知らせる 口が どこにも 無かった
+       （＝ 利用者から見ると「保存されない」）。 */
+  function プリセットHTML() {
+    var C = null, I = null;
+    try { C = window.VQCLOUD; } catch (e) {}
+    try { I = window.VQIDB; } catch (e) {}
+    var 様 = null;
+    try { 様 = C && C.様子 ? C.様子() : null; } catch (e) { 様 = null; }
+    var 上限 = (STG.data && STG.data.limits && STG.data.limits.accountKeyBytes) || 24 * 1024 * 1024;
+    var 鍵たち = ["vq2.presets.v1", "wordPractice400.presets.v1",
+                  "vq2.presetAttachments.v1", "vq2.presetChats.v1"];
+    var 名 = { "vq2.presets.v1": "プリセット本体",
+               "wordPractice400.presets.v1": "プリセット（古い形）",
+               "vq2.presetAttachments.v1": "プリセットに つけた 資料",
+               "vq2.presetChats.v1": "プリセットごとの 会話" };
+    var 行 = [], 合計 = 0, 危 = [];
+    鍵たち.forEach(function (k) {
+      var 情 = (様 && 様.揃えるもの && 様.揃えるもの[k]) || null;
+      var b = 情 ? Number(情.バイト || 0) : 0;
+      if (!b) return;
+      合計 += b;
+      var どこ = "この端末（手元）";
+      try { if (I && I.鏡にある && I.鏡にある(k)) どこ = "この端末（広い置き場）"; } catch (e) {}
+      var 大 = 様 && 様.大きすぎる && 様.大きすぎる[k];
+      if (大) 危.push({ 鍵: k, 名: 名[k] || k, バイト: Number(大.バイト || b) });
+      行.push('<div class="row"><span class="row__main">'
+        + '<span class="row__label">' + esc(名[k] || k) + "</span>"
+        + '<span class="row__desc">' + esc(どこ)
+        + (情 && 情.件数 != null ? "　" + 情.件数 + " 件" : "")
+        + (大 ? "　／　<b>クラウドへ 置けていません</b>" : "") + "</span></span>"
+        + '<span class="rval"' + (大 ? ' style="color:#C0392B"' : "") + ">"
+        + fmtBytes(b) + "</span></div>");
+    });
+
+    var 頭 = '<div class="gttl" style="margin-top:18px;">プリセットの 置き場</div>'
+      + '<div class="grp">'
+      + (行.length ? 行.join("")
+         : '<div class="row"><span class="row__main"><span class="row__label">まだ ありません</span>'
+           + '<span class="row__desc">作ると ここに 出ます。</span></span></div>')
+      + '<div class="row"><span class="row__main">'
+      + '<span class="row__label">クラウドへ 送れる 大きさ</span>'
+      + '<span class="row__desc">1 つの まとまりに つき ここまで。'
+      + "越えると この端末だけに 残ります。</span></span>"
+      + '<span class="rval">' + fmtBytes(上限) + "</span></div></div>";
+
+    var 注 = '<div class="note" style="margin-top:10px">'
+      + "プリセットは <b>この端末の 広い置き場（IndexedDB）</b>に 入ります。"
+      + "設定の いちばん上に 出ている 「この端末」の 空きが そのまま 使えます。"
+      + "上に 出ている「クラウド」の 500MB は <b>画像と 動画の 枠</b>で、"
+      + "プリセットには かかりません。</div>";
+
+    if (危.length) {
+      注 = '<div class="note" style="margin-top:10px;color:#B4321F">'
+        + "<b>クラウドへ 置けていない ものが " + 危.length + " つ あります。</b><br>"
+        + 危.map(function (x) {
+            return esc(x.名) + "（" + fmtBytes(x.バイト) + "／上限 " + fmtBytes(上限) + "）";
+          }).join("<br>")
+        + "<br>この端末には 残っていますが、ほかの 端末へは 届きません。"
+        + "使っていない プリセットや 資料を 減らすと 送れるように なります。</div>" + 注;
+    }
+    return 頭 + 注;
+  }
+
   function storageHTML() {
     /* ★ この端末のぶんは **ログインしていなくても** 出す
        （詰まっているのは こちらなので、ここで 隠してはいけない）。 */
@@ -800,9 +892,20 @@
         + '<div class="note" style="margin-top:14px">ログインすると、'
         + "VocabuQuiz に 預けているぶんも 出せます。</div>";
     stgLoad();
+    /* ★ **サーバを 待たずに この端末の ぶんを 出す**（2026-08-29・訴え）。
+       前は 預けているぶんが 返るまで 画面ぜんぶが「数えています…」だった。
+       詰まって 困るのは この端末の ほうなのに、その 数字まで 隠れていた。 */
     if (STG.state !== "ready") {
-      return '<div class="grp"><div class="row"><span class="row__main"><span class="row__label">'
-        + (STG.state === "error" ? esc(STG.err) : "数えています…") + "</span></span></div></div>";
+      var 訳 = STG.state === "error" ? esc(STG.err) : "数えています…";
+      return 要約カード(0, 0, { まだ: true, 訳: 訳 })
+        + '<div class="grp" style="margin-top:12px"><div class="row">'
+        + '<span class="row__main"><span class="row__label">預けているぶん</span>'
+        + '<span class="row__desc">' + 訳 + "</span></span>"
+        + '<button class="btn btn--sm" data-dev="recount">'
+        + (STG.state === "error" ? "もう一度 数える" : "数え直す") + "</button></div></div>"
+        + プリセットHTML()
+        + '<details class="stg-more" style="margin-top:12px"><summary>この端末の くわしい 中身</summary>'
+        + '<div class="stg-more__b">' + deviceHTML() + "</div></details>";
     }
     var d = STG.data;
     var used = Math.max(0, Number(d.totalBytes) || 0);
@@ -874,7 +977,7 @@
        前は 6 つの 表が 縦に 並び、どこを 見れば よいか 分からなかった。
        いまは「いま どれだけ 使っているか」を **1 枚**で 出し、
        細かい 数字は「くわしく」を 押した ときだけ。 */
-    return 要約カード(used, q) + driveHTML()
+    return 要約カード(used, q) + プリセットHTML() + driveHTML()
       + '<details class="stg-more"><summary>くわしく見る</summary><div class="stg-more__b">'
       + deviceHTML({ 表だけ: true })
       + '<div class="gttl" style="margin-top:18px;">預けているぶんの 内訳</div>'
@@ -883,7 +986,7 @@
   }
 
   /* ── 要約（この端末 と クラウドを 並べて 1 枚で）──────────────── */
-  function 要約カード(用, 枠) {
+  function 要約カード(用, 枠, 雲状態) {
     var I = window.VQIDB;
     var h = (I && DEV.手元) || { 合計: 0, 上限のめやす: 4.4 * 1024 * 1024 };
     if (I && !DEV.手元) devLoad();
@@ -906,7 +1009,8 @@
       + 枡("この端末", 端末使用, 端末上限, 端末割, "作った プリセットや 会話が 入ります")
       + (枠 ? 枡("クラウド", 用, 枠, 雲割, "ほかの 端末とも 同じに なります")
             : '<div class="stg2-c"><div class="stg2-t">クラウド</div>'
-              + '<div class="stg2-n">—</div><div class="stg2-h">ログインすると 出ます</div></div>')
+              + '<div class="stg2-n">—</div><div class="stg2-h">'
+              + ((雲状態 && 雲状態.まだ) ? 雲状態.訳 : "ログインすると 出ます") + "</div></div>")
       + "</div>";
   }
 
@@ -1399,6 +1503,7 @@
       var d = el.dataset;
       /* この端末の 容量まわり（2026-08-19） */
       if (d.dev === "move") { devMove(); return; }
+      if (d.dev === "recount") { stgLoad(true); renderMain(); return; }
       /* Google Drive（2026-08-27） */
       if (d.drv === "connect") { drvConnect(); return; }
       if (d.drv === "unlink") { drvUnlink(); return; }
