@@ -160,6 +160,23 @@ function 週の名(ms) {
   ok("札なしなら 自分の 行は 無い", 匿.data.me === null, 匿.data.me);
   ok("札なしでも 上位は 見える", 匿.data.rows.length === 20, 匿.data.rows.length);
 
+  節("⑥-b これまでの 成績が 画面に 出る");
+  /* ★ サーバは ずっと 数えて いたのに、どこにも 出して いなかった。 */
+  {
+    const lob = fs.readFileSync("client/assets/vocabu-survive/ui/lobby.js", "utf8");
+    ok("成績を 取りに 行く", /\/api\/survive\/stats/.test(lob));
+    ok("成績の 欄が ある", /vs-lb-stats/.test(lob));
+    ok("札が 無い ときの 断りが ある", /ログインすると 成績が 残ります/.test(lob));
+    ok("まだ 走っていない ときの 言葉が ある", /まだ 1 回も 走っていません/.test(lob));
+    /* 実際の 中身も 見る */
+    const st = await api("GET", "/api/survive/stats", undefined, A.token);
+    ok("成績の 口が 返る", st.status === 200 && st.data.stats, st.status);
+    for (const k of ["matches", "wins", "finishes", "xp", "correct", "wrong", "seconds"]) {
+      ok("成績に " + k + " が ある", typeof st.data.stats[k] === "number", st.data.stats);
+    }
+    ok("記録の 一覧も 返る", Array.isArray(st.data.records), typeof st.data.records);
+  }
+
   節("⑦ 画面の 作り");
   const lob = fs.readFileSync("client/assets/vocabu-survive/ui/lobby.js", "utf8");
   ok("範囲の タブが ある", /vs-lb-rec-tab/.test(lob) && /今週/.test(lob) && /友だち/.test(lob));

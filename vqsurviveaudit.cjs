@@ -266,12 +266,15 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
         }
         return { 色: 触れる(".vs-lb-colors"), 帽: 触れる(".vs-lb-hatbox"),
           問: 触れる(".vs-lb-qz"), 記: 触れる(".vs-lb-rec-tabs"),
+          成: 触れる(".vs-lb-stats"), 図: 触れる(".vs-lb-map"),
           遊: r.querySelectorAll(".vs-lb-mode").length, はみ };
       });
       ok(w + "×" + h + " 色を 選べる", t.色, t);
       ok(w + "×" + h + " かぶりものを 選べる", t.帽, t);
       ok(w + "×" + h + " 門の 問題を 選べる", t.問, t);
       ok(w + "×" + h + " 記録の 範囲を 選べる", t.記, t);
+      ok(w + "×" + h + " これまでの 成績が 見える", t.成, t);
+      ok(w + "×" + h + " コースの 図が 見える", t.図, t);
       ok(w + "×" + h + " 遊び方が 6 つ 出る", t.遊 === 6, t.遊);
       ok(w + "×" + h + " **横に はみ出さない**", t.はみ === 0, t);
     }

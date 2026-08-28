@@ -326,6 +326,10 @@ export class LobbyScreen {
         h("div", { class: "vs-lb-lab", text: "色" }), this.hatColorRow,
         h("p", { class: "vs-lb-note", text: "見た目だけです。速さは 変わりません。" })));
 
+    /* ★ **これまでの 成績。** サーバは ずっと 数えていたのに、
+       どこにも 出して いなかった（誰も 見られない 数字だった）。 */
+    this.statsEl = h("div", { class: "vs-lb-stats", "aria-label": "これまでの 成績" });
+
     this.friendsEl = h("div", { class: "vs-lb-friends" });
     /* ★ 印を 1 つ 足す。案内文は 画面に いくつも あるので、
        「いちばん 最初の .vs-lb-note」で 友だちの 欄を 指すのは もう 効かない。 */
@@ -488,6 +492,7 @@ export class LobbyScreen {
               h("i", { class: "vs-lb-dot" }), h("span", { text: "オンライン" })))),
           h("div", { class: "vs-lb-lab", text: "色" }), this.colorRow,
           this.hatEl,
+          h("div", { class: "vs-lb-lab", text: "これまで" }), this.statsEl,
           h("div", { class: "vs-lb-lab", text: "友だち" }),
           this.friendsNote, this.friendsEl),
         /* 中 */
@@ -650,6 +655,56 @@ export class LobbyScreen {
       this.mineEl.appendChild(h("p", { class: "vs-lb-note",
         text: "えらぶと みんなへ 配ります（合言葉ごと 送るので、相手は 持っていなくても 走れます）。" }));
     }
+  }
+
+  /** これまでの 成績。札が 無ければ 出さない。 */
+  async _loadStats() {
+    if (!this.statsEl) return;
+    const tk = (typeof window._authGetToken === "function") ? String(window._authGetToken() || "") : "";
+    if (!tk) {
+      this.statsEl.textContent = "";
+      this.statsEl.appendChild(h("p", { class: "vs-lb-note", text: "ログインすると 成績が 残ります。" }));
+      return;
+    }
+    let d = null;
+    try {
+      const base = String(window.VQ_API_BASE || "").replace(/\/+$/, "");
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 5000);
+      const r = await fetch(base + "/api/survive/stats", {
+        headers: { Authorization: "Bearer " + tk }, signal: ctrl.signal
+      });
+      clearTimeout(to);
+      d = await r.json();
+    } catch (e) { d = null; }
+    this.statsEl.textContent = "";
+    const st = d && d.stats;
+    if (!st) {
+      this.statsEl.appendChild(h("p", { class: "vs-lb-note", text: "成績を 読めませんでした。" }));
+      return;
+    }
+    if (!st.matches) {
+      this.statsEl.appendChild(h("p", { class: "vs-lb-note", text: "まだ 1 回も 走っていません。" }));
+      return;
+    }
+    const 率 = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
+    const 時 = (sec) => {
+      const h2 = Math.floor(sec / 3600), m2 = Math.round((sec % 3600) / 60);
+      return h2 > 0 ? h2 + "時間 " + m2 + "分" : m2 + "分";
+    };
+    const 一 = (名, 値, 添) => this.statsEl.appendChild(h("div", { class: "vs-lb-stat" },
+      h("span", { class: "vs-lb-stat-l", text: 名 }),
+      h("span", { class: "vs-lb-stat-v vs-mono", text: 値 }),
+      添 ? h("span", { class: "vs-lb-stat-s", text: 添 }) : null));
+    一("走った", String(st.matches), "回");
+    一("1 位", String(st.wins), 率(st.wins, st.matches) + "%");
+    一("ゴール", String(st.finishes), 率(st.finishes, st.matches) + "%");
+    一("クイズ", 率(st.correct, st.correct + st.wrong) + "%", st.correct + " / " + (st.correct + st.wrong));
+    一("XP", String(st.xp), "");
+    一("あそんだ 時間", 時(st.seconds), "");
+    /* 自己ベストの ある コースの 数 */
+    const 記 = (d.records || []).filter((r) => r.bestMs > 0).length;
+    if (記) 一("記録の ある コース", String(記), "本");
   }
 
   async _loadPresets() {
@@ -984,6 +1039,7 @@ export class LobbyScreen {
     this._loadFriends();
     this._loadPresets();
     this._loadMine();
+    this._loadStats();
   }
   exit() {}
   resize() {}
@@ -1181,6 +1237,12 @@ export const LOBBY_CSS = `
 .vs-lb-sharing{ color:${PALETTE.mint} !important; font-weight:700; }
 .vs-lb-map{ display:block; width:100%; height:88px; border-radius:10px;
   border:1px solid ${PALETTE.line}; background:rgba(8,11,24,.55); margin:8px 0 2px; }
+.vs-lb-stats{ display:flex; flex-direction:column; gap:1px; margin-bottom:4px; }
+.vs-lb-stat{ display:flex; align-items:baseline; gap:8px; font-size:12px; padding:2px 0; }
+.vs-lb-stat-l{ flex:1 1 auto; color:rgba(243,245,255,.66); }
+.vs-lb-stat-v{ flex:0 0 auto; font-weight:800; color:#f3f5ff; }
+.vs-lb-stat-s{ flex:0 0 auto; width:4.6em; text-align:right; font-size:10.5px;
+  color:rgba(243,245,255,.62); }
 .vs-lb-minerow{ display:flex; gap:6px; margin-bottom:5px; }
 .vs-lb-mine{ display:flex; flex-direction:column; gap:3px; max-height:150px; overflow-y:auto; }
 .vs-lb-mineb{ display:flex; align-items:baseline; gap:8px; width:100%; text-align:left;
