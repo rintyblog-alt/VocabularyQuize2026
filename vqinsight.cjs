@@ -1,329 +1,166 @@
-/* ══════════════════════════════════════════════════════════════════════
-   学習データの統合と Insight（作り直し後）を、実画面で確かめる。
-   使い方: node vqinsight.cjs
+/* ══════════════════════════════════════════════════════════════════════════
+   vqinsight.cjs — インサイトの **細かい 指標**と **総合評価・一言**を
+   実物で 確かめる。
 
-   ・新しいクイズ / Quick Mock の結果がホームと Insight へ届くか
-   ・同じ結果を保存し直しても二重に数えないか
-   ・採点待ちを 0 点にしないか
-   ・記録が無いとき・少ないときに、巨大な空白や作り話を出さないか
-   ・ホームには無い分析（科目・単元・形式・苦手・試験・習慣）が出るか
-   ・グラフだけで伝えず、同じ数字を表でも出すか
-   ・横にはみ出さないか
-   ══════════════════════════════════════════════════════════════════════ */
+   訴え（2026-08-29）:
+     「インサイトを もう少し 正確に、細かい 指標まで 記録して」
+     「Lumi が 毎回 こっそり 記録できれば なお いい。裏で 3 flash live・音声なし」
+     「総合評価の 欄と 一言フィードバックを 追加」
+     「細かい 分析を して、それを 数値化する。毎回」
+
+   見るところ:
+     ① 解き終わると **指標が 数えられる**（速さ・失速・連続・迷い…）
+     ② 総合点は **式のとおり**（同じ入力なら 同じ点。AI では 決めない）
+     ③ 採点できた数が 3 問 未満なら 点を 出さない（でっち上げない）
+     ④ 裏で 一言が 届き、セッションに しまわれる
+     ⑤ インサイトの 画面に 総合評価と くわしい 数値が 出る
+     ⑥ 答えの 中身は **1 文字も 送らない**
+
+   使い方: VQ_TOKEN=<札> node vqinsight.cjs
+   ══════════════════════════════════════════════════════════════════════════ */
+"use strict";
 const { chromium } = require("playwright");
-const fs = require("node:fs");
-fs.mkdirSync("shots/insight", { recursive: true });
-const BASE = process.env.VQ_BASE || "http://127.0.0.1:8791";
-let pass = 0, fail = 0;
-const ok = (n, c, x) => { c ? (pass++, console.log("  ok   " + n)) : (fail++, console.log("  NG   " + n + (x ? "  → " + x : ""))); };
+const BASE = process.env.VQ_BASE || "https://vocabuquiz-api-dev.rintyblog.workers.dev";
+if (!/127\.0\.0\.1|localhost|-dev\./.test(BASE)) {
+  console.error("本番では実行しません。"); process.exit(2);
+}
+const token = process.env.VQ_TOKEN;
+if (!token) { console.error("VQ_TOKEN を 渡してください。"); process.exit(2); }
+const SP = process.env.SP || ".";
 
-const HIDE = () => {
-  ["firstLaunchOverlay", "vqbFlow", "vqNewAuth", "authGate", "authBootSplash"].forEach((id) => {
-    const e = document.getElementById(id);
-    if (e) { e.hidden = true; e.style.setProperty("display", "none", "important"); }
-  });
-  document.querySelectorAll('[data-act="dlg-x"],[data-act="dlg-o"]').forEach((x) => x.click());
-  document.body.classList.remove("auth-booting", "auth-gate-open");
-  const a = document.getElementById("app");
-  if (a) a.style.setProperty("display", "block", "important");
-  document.body.setAttribute("data-ui-v2", "1");
-  try {
-    localStorage.setItem("vq.tour.v1", JSON.stringify({
-      pin: 1, preset: 1, feed: 1, news: 1, insight: 1, chat: 1,
-      notif: 1, mock: 1, presetmake: 1, settings: 1
-    }));
-    const tv = document.getElementById("vqTour"); if (tv) tv.style.display = "none";
-  } catch (e) {}
-};
-
-/* 学習の記録をこしらえる。
-   **画面へ数字を直に書かない。** 実際に結果を保存する経路を通し、
-   本体の集計を経て画面へ出させる。 */
-const SEED = (spec) => {
-  const L = VQ2.learning, ST = VQ2.store;
-  const DAY = 86400000;
-  L.clearAll();
-  try { localStorage.setItem(L.LEGACY_SESSIONS_KEY, "[]"); } catch (e) {}
-  const mk = (o) => {
-    const n = o.items;
-    const items = [];
-    for (let i = 0; i < n; i++) {
-      const pending = o.pending && i >= n - o.pending;
-      items.push({
-        questionId: o.id + "-q" + i,
-        type: i % 3 === 0 ? "summarize" : "multiple_choice_single",
-        engine: i % 3 === 0 ? "free_text" : "single_choice",
-        answered: true,
-        correct: pending ? null : i < o.correct,
-        score: pending ? null : (i < o.correct ? 1 : 0),
-        maxScore: 1, timeMs: 9000 + i * 500,
-        hintUsed: i % 5 === 0, flagged: false, confidence: null,
-        method: pending ? "ai" : "rule"
-      });
-    }
-    return {
-      id: o.id, kind: o.kind || "quiz",
-      presetId: o.presetId || "p1", presetName: o.name || "テスト用プリセット",
-      mode: o.mode || "practice",
-      finishedAt: new Date(Date.now() - o.daysAgo * DAY).toISOString(),
-      elapsedMs: 240000, items,
-      score: items.reduce((a, x) => a + (x.score || 0), 0), maxScore: n,
-      questionsSnapshot: items.map((x, i) => ({
-        id: x.questionId, type: x.type,
-        subject: o.subject || "英語",
-        unit: i % 2 === 0 ? "関係代名詞" : "仮定法"
-      }))
-    };
+/* 12 問。前半は 当たり、後半は 外す（失速が 出る はず）。 */
+function 作る(id) {
+  const items = [], snaps = [];
+  for (let i = 0; i < 12; i++) {
+    const 前半 = i < 6;
+    const type = i < 6 ? "multiple_choice_single" : (i < 10 ? "fill_blank" : "ordering");
+    snaps.push({ id: "q" + i, type: type, subject: "japanese_history", unit: "鎌倉", difficulty: "normal" });
+    items.push({
+      questionId: "q" + i, type: type, answered: i !== 11,
+      correct: 前半, isCorrect: 前半,
+      score: 前半 ? 1 : 0, maxScore: 1,
+      timeMs: 前半 ? 9000 : (i === 6 ? 1500 : 12000),   /* 1 問は 3 秒 未満で 外す */
+      changeCount: i === 8 ? 2 : 0, hintUsed: i === 9,
+      /* ★ 答えの 中身。**送られない ことを 確かめる ため**に わざと 入れる。 */
+      answerText: "ヒミツの答え" + i, userAnswer: "ヒミツの答え" + i
+    });
+  }
+  return {
+    id: id, sessionId: id, presetId: "p_test", presetName: "鎌倉時代テスト対策",
+    subject: "japanese_history", kind: "practice",
+    startedAt: new Date(Date.now() - 5 * 60000).toISOString(),
+    finishedAt: new Date().toISOString(),
+    elapsedMs: 5 * 60000, items: items, questionsSnapshot: snaps
   };
-  (spec || []).forEach((o) => { ST.results.put(mk(o)); });
-  return { sessions: L.listSessions({}).length };
-};
-
-async function goInsight(pg) {
-  await pg.evaluate(() => {
-    const b = document.querySelector('#appTabBar [data-app-tab="insight"]');
-    if (b) b.click();
-    else document.body.setAttribute("data-app-tab", "insight");
-  });
-  await pg.waitForTimeout(1500);
 }
 
 (async () => {
-  const b = await chromium.launch({ headless: true });
+  const b = await chromium.launch();
+  const page = await b.newPage({ viewport: { width: 900, height: 1000 }, deviceScaleFactor: 2 });
+  const 例外 = [];
+  page.on("pageerror", (e) => 例外.push(String(e.message).slice(0, 160)));
+  /* 送った 中身を 覗く（答えの 文が 混ざっていない ことを 見る） */
+  const 送信 = [];
+  await page.route("**/api/insight/review", async (route) => {
+    try { 送信.push(route.request().postData() || ""); } catch (e) {}
+    await route.continue();
+  });
+  await page.addInitScript((tk) => {
+    try { localStorage.setItem("app.auth.token.v1", tk); localStorage.setItem("app.auth.mode.v1", "user"); } catch (e) {}
+  }, token);
+  await page.goto(BASE + "/?vqdev=1", { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => window.VQ2 && window.VQ2.learning, null, { timeout: 60000 });
+  await page.waitForTimeout(2000);
 
-  for (const d of [{ n: "PC", w: 1440, h: 950, m: false }, { n: "スマホ", w: 390, h: 844, m: true }]) {
-    const ctx = await b.newContext({ viewport: { width: d.w, height: d.h }, deviceScaleFactor: 2, isMobile: d.m, hasTouch: d.m });
-    const pg = await ctx.newPage();
-    const errs = [];
-    pg.on("pageerror", (e) => errs.push(String(e).slice(0, 180)));
-    await pg.goto(BASE + "/?vq2=all&vqdev=1&cb=" + Date.now(), { waitUntil: "domcontentloaded" });
-    await pg.waitForTimeout(4000);
-    await pg.evaluate(HIDE);
-    await pg.waitForTimeout(800);
+  let 落 = 0;
+  const 見 = (ok, 名, 追) => { console.log((ok ? "✓ " : "✗ ") + 名 + (追 !== undefined ? " → " + JSON.stringify(追).slice(0, 300) : "")); if (!ok) 落++; };
 
-    console.log("\n══ " + d.n + " ══");
+  /* ── ① 指標が 数えられる ── */
+  const m = await page.evaluate((r) => {
+    const L = window.VQ2.learning;
+    const out = L.recordResult(r, {});
+    return { ok: out.ok, metrics: out.session && out.session.metrics, sid: out.session && out.session.id };
+  }, 作る("res_test_1"));
+  console.log("指標:", JSON.stringify(m.metrics, null, 1).slice(0, 900));
+  const M = m.metrics || {};
+  見(m.ok && !!M.schema, "① 指標が 数えられた");
+  見(M.questionCount === 12 && M.gradedCount === 11, "① 問題数 12 ／ 採点できた 11", [M.questionCount, M.gradedCount]);
+  見(M.firstHalfAccuracy === 1 && M.secondHalfAccuracy === 0, "① 前半 100% ／ 後半 0%", [M.firstHalfAccuracy, M.secondHalfAccuracy]);
+  見(M.fade === -1, "① 失速が −1（後半で 落ちた）", M.fade);
+  見(M.maxStreakCorrect === 6 && M.maxStreakWrong === 5, "① 連続 正解 6 ／ 連続 不正解 5", [M.maxStreakCorrect, M.maxStreakWrong]);
+  見(Math.abs(M.fastMissRate - 1 / 12) < 0.01, "① 3 秒 未満で 外した 割合", M.fastMissRate);
+  見(Math.abs(M.skipRate - 1 / 12) < 0.01, "① 飛ばした 割合", M.skipRate);
+  見(Math.abs(M.changeRate - 1 / 12) < 0.01, "① 答えを 変えた 割合", M.changeRate);
+  見(M.medianSecPerQuestion === 9, "① 1 問あたりの 中央値 9 秒", M.medianSecPerQuestion);
+  見((M.weakTypes || []).length > 0 && M.weakTypes[0].accuracy === 0, "① 弱い 形式が 出る", M.weakTypes);
 
-    /* ── 0. 基盤 ── */
-    const base = await pg.evaluate(() => ({
-      learning: !!(window.VQ2 && VQ2.learning),
-      analytics: !!(window.VQ2 && VQ2.analytics),
-      hooked: !!(window.VQ2 && VQ2.store && VQ2.store.results.__learnHooked)
-    }));
-    ok(d.n + "：学習データの基盤が載っている", base.learning && base.analytics);
-    ok(d.n + "：結果の保存が学習記録へ結線されている", base.hooked);
+  /* ── ② 総合点は 式のとおり ── */
+  /* 正しさ = 6/11*70 = 38.18 ／ ねばり = (1-1)*10 = 0 ／ やりきり = (1-1/12)*10 = 9.17
+     落ち着き = (1-1/12)*10 = 9.17 → 56.5 → 57 */
+  見(M.score100 === 57, "② 総合点が 式のとおり（57）", { 点: M.score100, 内訳: M.scoreParts });
 
-    /* ── 1. 記録がまったく無いとき ── */
-    await pg.evaluate(() => { VQ2.learning.clearAll(); });
-    await goInsight(pg);
-    const e0 = await pg.evaluate(() => {
-      const h = document.getElementById("vqInsight");
-      if (!h || !h.shadowRoot) return { none: true };
-      const r = h.shadowRoot.querySelector(".wrap");
-      const empty = r.querySelector(".empty");
-      return {
-        text: r.textContent,
-        title: (r.querySelector(".head h1") || {}).textContent,
-        hasEmpty: !!empty,
-        emptyH: empty ? Math.round(empty.getBoundingClientRect().height) : 0,
-        acts: [].map.call(r.querySelectorAll(".empty .act"), (x) => x.textContent.trim()),
-        hasChart: !!r.querySelector("[data-chart] svg")
-      };
+  /* ── ③ 採点が 少ないと 点を 出さない ── */
+  const 少 = await page.evaluate(() => {
+    const L = window.VQ2.learning;
+    const r = { id: "res_test_2", sessionId: "res_test_2", presetId: "p2", presetName: "少ない",
+      startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), elapsedMs: 1000,
+      items: [{ questionId: "a", type: "multiple_choice_single", answered: true, correct: true, score: 1, maxScore: 1, timeMs: 3000 },
+              { questionId: "b", type: "multiple_choice_single", answered: true, correct: false, score: 0, maxScore: 1, timeMs: 3000 }],
+      questionsSnapshot: [{ id: "a", type: "multiple_choice_single" }, { id: "b", type: "multiple_choice_single" }] };
+    const o = L.recordResult(r, {});
+    return o.session.metrics;
+  });
+  見(少.score100 === null, "③ 採点できた数が 3 未満なら 点は null（でっち上げない）", 少.score100);
+
+  /* ── ④ 裏で 一言が 届く ── */
+  const rev = await page.evaluate((sid) => window.VQ2.learning.askReview(sid, { force: true }), m.sid);
+  console.log("一言:", JSON.stringify(rev));
+  見(!!(rev && rev.headline && rev.advice), "④ AI の 一言が 返る", rev);
+  見(!!(rev && rev.by), "④ どこで 作ったかが 分かる（live / gemini）", rev && rev.by);
+  const しまった = await page.evaluate((sid) => {
+    const ss = window.VQ2.learning.listSessions({});
+    const s = ss.filter((x) => x.id === sid)[0];
+    return s && s.review;
+  }, m.sid);
+  見(!!(しまった && しまった.headline), "④ セッションに しまわれた", しまった);
+
+  /* ── ⑥ 答えの 中身を 送っていない ── */
+  const 本文 = 送信.join("\n");
+  見(送信.length > 0, "⑥ 送った 中身を 見られた（" + 送信.length + " 回）");
+  見(本文.indexOf("ヒミツの答え") < 0, "⑥ **答えの 中身は 1 文字も 送っていない**");
+  見(本文.indexOf("鎌倉時代テスト対策") >= 0, "⑥ 題と 数字は 送っている（分析に 要る）");
+
+  /* ── ⑤ 画面に 出る ── */
+  await page.evaluate(() => {
+    Array.from(document.querySelectorAll("body > *")).forEach((h) => {
+      const t = (h.shadowRoot ? h.shadowRoot.textContent : h.textContent) || "";
+      if (/はじめかた|声で話しかけてみよう|もう出さない/.test(t)) h.remove();
     });
-    ok(d.n + "：Insight が出る", !e0.none && e0.title === "Insight", e0.title);
-    ok(d.n + "：記録が無くても次の一手を出す", e0.hasEmpty && e0.acts.length >= 2, JSON.stringify(e0.acts));
-    ok(d.n + "：巨大な空白にしない", e0.emptyH > 0 && e0.emptyH < 560, e0.emptyH + "px");
-    ok(d.n + "：どんな分析が出るかを説明する", /正答率/.test(e0.text) && /苦手/.test(e0.text));
-    ok(d.n + "：作り話の図を描かない", !e0.hasChart);
-    ok(d.n + "：作り話の数を出さない", !/\d+\s*%/.test(e0.text));
+    document.body.setAttribute("data-app-tab", "insight");
+  });
+  await page.waitForTimeout(3500);
+  const 画 = await page.evaluate(() => {
+    const 器 = Array.from(document.querySelectorAll("*")).find(
+      (e) => e.shadowRoot && e.shadowRoot.querySelector(".ov-n, .wrap"));
+    if (!器) return { 無い: true };
+    const r = 器.shadowRoot;
+    const t = (r.textContent || "").replace(/\s+/g, " ");
+    return { 総合: /総合評価/.test(t), 点: (r.querySelector(".ov-n") || {}).textContent || "",
+             ランク: (r.querySelector(".ov-g") || {}).textContent || "",
+             一言: (r.querySelector(".ov-hl") || {}).textContent || "",
+             くわしい: /くわしい 数値/.test(t),
+             失速行: /後半 − 前半/.test(t) };
+  });
+  console.log("画面:", JSON.stringify(画));
+  見(画.総合, "⑤ 総合評価の 欄が 出る");
+  見(!!String(画.点).trim() && 画.点 !== "—", "⑤ 点が 出る", 画.点);
+  見(!!String(画.ランク).trim(), "⑤ ランクが 出る", 画.ランク);
+  見(!!String(画.一言).trim(), "⑤ 一言が 出る", 画.一言);
+  見(画.くわしい && 画.失速行, "⑤ くわしい 数値が 出る");
+  見(例外.length === 0, "⑦ 画面の 例外 0 件", 例外.slice(0, 3));
 
-    /* ── 2. 学習を記録する ── */
-    const seeded = await pg.evaluate(SEED, [
-      { id: "s1", daysAgo: 0, items: 9, correct: 6 },
-      { id: "s2", daysAgo: 1, items: 9, correct: 3 },
-      { id: "s3", daysAgo: 2, items: 6, correct: 5, subject: "数学", presetId: "p2", name: "数学テスト" },
-      { id: "s4", daysAgo: 4, items: 9, correct: 4 },
-      { id: "s5", daysAgo: 6, items: 6, correct: 2 },
-      { id: "s6", daysAgo: 9, items: 9, correct: 5 },
-      { id: "m1", daysAgo: 3, items: 12, correct: 7, kind: "mock", mode: "mock", name: "第1回 模試" },
-      { id: "m2", daysAgo: 1, items: 12, correct: 9, kind: "mock", mode: "mock", name: "第2回 模試", pending: 2 }
-    ]);
-    ok(d.n + "：結果を保存すると学習記録になる", seeded.sessions === 8, "セッション " + seeded.sessions);
-
-    const mirrored = await pg.evaluate(() => {
-      const raw = JSON.parse(localStorage.getItem(VQ2.learning.LEGACY_SESSIONS_KEY) || "[]");
-      return { n: raw.length, mine: raw.filter((x) => x.vq2SessionId).length };
-    });
-    ok(d.n + "：ホームが読む場所へも届く", mirrored.mine === 8, JSON.stringify(mirrored));
-
-    const dbl = await pg.evaluate(() => {
-      const before = VQ2.learning.listSessions({}).length;
-      const r = VQ2.store.results.list()[0];
-      VQ2.store.results.put(r);
-      VQ2.store.results.put(r);
-      return { before, after: VQ2.learning.listSessions({}).length };
-    });
-    ok(d.n + "：同じ結果を保存し直しても増えない", dbl.before === dbl.after, JSON.stringify(dbl));
-
-    const pend = await pg.evaluate(() => {
-      const s = VQ2.learning.listSessions({}).filter((x) => x.pendingCount > 0)[0];
-      return s ? { pending: s.pendingCount, correct: s.correctCount, wrong: s.incorrectCount,
-                   acc: s.accuracy, status: s.status } : null;
-    });
-    /* 12 問中 2 問が採点待ち → 採点が済んだのは 10 問。
-       待っている 2 問を不正解側へ入れていないことを見る。 */
-    ok(d.n + "：採点待ちを不正解として数えない",
-       pend && pend.pending === 2 && (pend.correct + pend.wrong) === 10 && pend.status === "scoring",
-       JSON.stringify(pend));
-
-    /* ── 3. Insight の中身 ── */
-    await goInsight(pg);
-    const v = await pg.evaluate(() => {
-      const sr = document.getElementById("vqInsight").shadowRoot;
-      const r = sr.querySelector(".wrap");
-      return {
-        text: r.textContent,
-        kpis: [].map.call(r.querySelectorAll(".kpi .k"), (x) => x.textContent.trim()),
-        cards: [].map.call(r.querySelectorAll(".card-h h2"), (x) => x.textContent.trim()),
-        pills: [].map.call(r.querySelectorAll('[data-a="range"]'), (x) => x.textContent.trim()),
-        metrics: [].map.call(r.querySelectorAll('[data-a="metric"]'), (x) => x.textContent.trim()),
-        hasChart: !!r.querySelector("[data-chart] svg"),
-        hasTable: !!r.querySelector(".tbl"),
-        weak: r.querySelectorAll(".weak").length,
-        reasons: [].map.call(r.querySelectorAll(".why li"), (x) => x.textContent.trim()),
-        mockRows: r.querySelectorAll(".mockrow").length,
-        recs: r.querySelectorAll(".rec").length,
-        pend: (r.textContent.match(/採点待ち/g) || []).length
-      };
-    });
-    ok(d.n + "：主要な数が並ぶ", v.kpis.length >= 5, JSON.stringify(v.kpis));
-    ok(d.n + "：期間を選べる", v.pills.length >= 4, JSON.stringify(v.pills));
-    ok(d.n + "：指標を切り替えられる", v.metrics.length === 4, JSON.stringify(v.metrics));
-    ok(d.n + "：グラフが出る", v.hasChart);
-    ok(d.n + "：グラフと同じ数字を表でも出す", v.hasTable);
-    ok(d.n + "：ホームには無い分析が並ぶ",
-       ["科目ごと", "問題の形式ごと", "苦手なところ", "学習の習慣"].every((t) => v.cards.indexOf(t) >= 0),
-       JSON.stringify(v.cards));
-    ok(d.n + "：苦手が理由つきで出る", v.weak >= 1 && v.reasons.length >= 1,
-       "苦手 " + v.weak + " 件 / 理由 " + v.reasons.length);
-    ok(d.n + "：試験の分析が別に出る", v.mockRows >= 2, "行 " + v.mockRows);
-    ok(d.n + "：採点待ちを画面でも待っていると書く", v.pend >= 1);
-    ok(d.n + "：次のおすすめが出る", v.recs >= 1, "件 " + v.recs);
-    ok(d.n + "：内部の ID を出さない",
-       !/sub:|multiple_choice_single|summarize|free_text|quick_mock/.test(v.text),
-       (v.text.match(/sub:[a-z]+|multiple_choice_single|summarize/g) || []).slice(0, 3).join(","));
-
-    /* 画面の数が集計と一致するか（画面で数を作っていないこと） */
-    const truth = await pg.evaluate(() => {
-      const sr = document.getElementById("vqInsight").shadowRoot;
-      const r = sr.querySelector(".wrap");
-      const pillOn = [].filter.call(r.querySelectorAll('[data-a="range"]'),
-        (x) => x.getAttribute("aria-selected") === "true")[0];
-      const range = pillOn ? pillOn.getAttribute("data-v") : "30d";
-      const s = VQ2.analytics.summary({ range });
-      const kpis = [].map.call(r.querySelectorAll(".kpi"), (x) => ({
-        k: x.querySelector(".k").textContent.trim(),
-        n: x.querySelector(".n").textContent.trim()
-      }));
-      const acc = kpis.filter((x) => x.k === "正答率")[0];
-      const ans = kpis.filter((x) => x.k === "答えた数")[0];
-      return { range, acc: acc ? acc.n : "", ans: ans ? ans.n : "",
-               trueAcc: String(s.current.accuracy), trueAns: String(s.current.answeredCount) };
-    });
-    ok(d.n + "：正答率が集計と一致する", truth.acc === truth.trueAcc, truth.acc + " / " + truth.trueAcc);
-    ok(d.n + "：解答数が集計と一致する", truth.ans === truth.trueAns, truth.ans + " / " + truth.trueAns);
-
-    /* ── 4. 指標の切り替えとツールチップ ── */
-    const sw = await pg.evaluate(async () => {
-      const sr = document.getElementById("vqInsight").shadowRoot;
-      const m = [].filter.call(sr.querySelectorAll('[data-a="metric"]'), (x) => /学習時間/.test(x.textContent))[0];
-      if (m) m.click();
-      await new Promise((r) => setTimeout(r, 400));
-      const sr2 = document.getElementById("vqInsight").shadowRoot;
-      const on = [].filter.call(sr2.querySelectorAll('[data-a="metric"]'),
-        (x) => x.getAttribute("aria-selected") === "true")[0];
-      const box = sr2.querySelector("[data-chart]");
-      const hit = box ? box.querySelector("rect[data-i]") : null;
-      if (hit) hit.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
-      await new Promise((r) => setTimeout(r, 200));
-      const tip = sr2.querySelector("[data-tip]");
-      return { on: on ? on.textContent.trim() : "", tip: tip ? tip.textContent.trim() : "",
-               shown: tip ? tip.classList.contains("on") : false };
-    });
-    ok(d.n + "：指標を切り替えられる（学習時間）", /学習時間/.test(sw.on), sw.on);
-    ok(d.n + "：グラフに触ると値が出る", sw.shown && sw.tip.length > 0, sw.tip.slice(0, 40));
-
-    /* ── 5. くらべられないときに 0% と言わない ── */
-    const cmp = await pg.evaluate(async () => {
-      const sr = document.getElementById("vqInsight").shadowRoot;
-      const all = [].filter.call(sr.querySelectorAll('[data-a="range"]'), (x) => /全期間/.test(x.textContent))[0];
-      if (all) all.click();
-      await new Promise((r) => setTimeout(r, 700));
-      const sr2 = document.getElementById("vqInsight").shadowRoot;
-      return { na: [].map.call(sr2.querySelectorAll(".kpi .d.na"), (x) => x.textContent.trim()) };
-    });
-    ok(d.n + "：くらべられないときは理由を書く（0% と出さない）",
-       cmp.na.length >= 1 && cmp.na.some((t) => /くらべ|ありません/.test(t)), JSON.stringify(cmp.na.slice(0, 2)));
-
-    /* ── 6. 科目のドリルダウン ── */
-    const drill = await pg.evaluate(async () => {
-      const sr = document.getElementById("vqInsight").shadowRoot;
-      const row = sr.querySelector('.row[data-a="subject"]');
-      if (!row) return { none: true };
-      const before = sr.querySelectorAll(".row").length;
-      row.click();
-      await new Promise((r) => setTimeout(r, 400));
-      const sr2 = document.getElementById("vqInsight").shadowRoot;
-      return { before, after: sr2.querySelectorAll(".row").length,
-               expanded: sr2.querySelector('.row[data-a="subject"]').getAttribute("aria-expanded") };
-    });
-    ok(d.n + "：科目を押すと単元まで見られる",
-       !drill.none && drill.after > drill.before && drill.expanded === "true", JSON.stringify(drill));
-
-    /* ── 7. 形式は全部並べない ── */
-    const types = await pg.evaluate(() => {
-      const sr = document.getElementById("vqInsight").shadowRoot;
-      const cards = [].slice.call(sr.querySelectorAll(".card"));
-      const c = cards.filter((x) => /問題の形式ごと/.test(x.textContent))[0];
-      if (!c) return { none: true };
-      return { rows: c.querySelectorAll(".row").length, hasMore: !!c.querySelector('[data-a="alltypes"]') };
-    });
-    ok(d.n + "：形式は使った分だけ（130 個並べない）", !types.none && types.rows <= 6, "行 " + types.rows);
-
-    /* ── 8. 横にはみ出さない ── */
-    const over = await pg.evaluate(() => {
-      const w = document.getElementById("vqInsight").shadowRoot.querySelector(".wrap");
-      return { wrap: Math.max(0, w.scrollWidth - w.clientWidth) };
-    });
-    ok(d.n + "：横にはみ出さない", over.wrap === 0, over.wrap + "px");
-
-    await pg.screenshot({ path: "shots/insight/insight-" + d.n + ".png" });
-
-    /* ── 9. 記録はあるが、その期間には無い ── */
-    const gone = await pg.evaluate(async () => {
-      VQ2.learning.clearAll();
-      const DAY = 86400000;
-      VQ2.learning.recordResult({
-        id: "old", kind: "quiz", presetId: "p1", presetName: "むかし", mode: "practice",
-        finishedAt: new Date(Date.now() - 200 * DAY).toISOString(), elapsedMs: 60000,
-        items: [{ questionId: "q1", type: "multiple_choice_single", engine: "single_choice",
-                  answered: true, correct: true, score: 1, maxScore: 1, timeMs: 5000 }],
-        score: 1, maxScore: 1,
-        questionsSnapshot: [{ id: "q1", type: "multiple_choice_single", subject: "英語" }]
-      });
-      const sr = document.getElementById("vqInsight").shadowRoot;
-      const p7 = [].filter.call(sr.querySelectorAll('[data-a="range"]'), (x) => /7日/.test(x.textContent))[0];
-      if (p7) p7.click();
-      await new Promise((r) => setTimeout(r, 800));
-      return { text: document.getElementById("vqInsight").shadowRoot.querySelector(".wrap").textContent };
-    });
-    ok(d.n + "：この期間に無いときは 0 件と言い切らない",
-       /この期間の記録はありません/.test(gone.text) && /ほかの期間には記録があります/.test(gone.text));
-
-    ok(d.n + "：画面のエラーが出ていない", errs.length === 0, errs.slice(0, 2).join(" / "));
-    await ctx.close();
-  }
-
+  await page.screenshot({ path: SP + "/insight.png", fullPage: false });
   await b.close();
-  console.log("\n合格 " + pass + " / 不合格 " + fail);
-  process.exit(fail ? 1 : 0);
-})();
+  console.log(`\n落ち ${落} 件`);
+  process.exit(落 ? 1 : 0);
+})().catch((e) => { console.error("✗ 途中で 落ちた:", e && e.stack); process.exit(1); });

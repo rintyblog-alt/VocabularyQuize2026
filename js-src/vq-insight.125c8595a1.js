@@ -41,6 +41,33 @@
     /* カード */
     ".card{background:var(--vq-surface,#fff);border:1px solid var(--vq-border-subtle,#ECEAF4);border-radius:calc(18px * var(--vq-r-scale,1));padding:20px;margin-bottom:16px;}",
     ".card-h{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;}",
+
+    /* ── 総合評価（2026-08-29）───────────────────────────────
+       数字を いちばん 大きく。ランクは その 隣に 小さく。
+       色は 点で 変えない（**色だけで 伝えない**。字が 出ている）。 */
+    ".ov{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;}",
+    ".ov-n{font-size:44px;font-weight:800;line-height:1;color:var(--vq-text,#2B2836);"
+      + "font-variant-numeric:tabular-nums;letter-spacing:-.01em;}",
+    ".ov-u{font-size:15px;font-weight:650;color:var(--vq-text-tertiary,#9994A8);}",
+    ".ov-g{min-width:38px;height:38px;padding:0 10px;border-radius:999px;display:inline-flex;"
+      + "align-items:center;justify-content:center;font-size:17px;font-weight:800;"
+      + "background:var(--vq-accent-subtle,#EFEBFA);color:var(--vq-accent-text,#5F579E);}",
+    ".ov-c{margin-top:14px;padding-top:14px;border-top:1px solid var(--vq-border-subtle,#ECEAF4);}",
+    ".ov-hl{font-size:16px;font-weight:750;color:var(--vq-text,#2B2836);line-height:1.5;}",
+    ".ov-ad{margin-top:6px;font-size:13px;line-height:1.8;color:var(--vq-text-secondary,#5A5568);}",
+    ".ov-ad.na{color:var(--vq-text-tertiary,#9994A8);}",
+    ".ov-fo{margin-top:8px;font-size:13px;color:var(--vq-text-secondary,#5A5568);}",
+    ".ov-src{margin-top:8px;font-size:11px;color:var(--vq-text-tertiary,#9994A8);}",
+
+    /* ── くわしい 数値 ─────────────────────────────────────── */
+    ".mtab{display:grid;gap:0;}",
+    ".mrow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;"
+      + "padding:9px 0;border-bottom:1px solid var(--vq-border-subtle,#ECEAF4);}",
+    ".mrow:last-child{border-bottom:0;}",
+    ".mk{font-size:13px;color:var(--vq-text-secondary,#5A5568);}",
+    ".mh{display:block;font-size:11px;color:var(--vq-text-tertiary,#9994A8);margin-top:2px;}",
+    ".mv{font-size:15px;font-weight:750;color:var(--vq-text,#2B2836);"
+      + "font-variant-numeric:tabular-nums;white-space:nowrap;}",
     ".card-h h2{font-size:15px;font-weight:750;color:var(--vq-text,#2B2836);}",
     ".card-h .sub{font-size:11.5px;color:var(--vq-text-tertiary,#9994A8);margin-top:3px;font-weight:550;}",
     ".note{font-size:11.5px;color:var(--vq-text-tertiary,#9994A8);font-weight:600;}",
@@ -317,8 +344,10 @@
     if (!d.hasAnyRecord) return firstEmptyHtml();
     if (!d.hasRangeRecord) return rangeEmptyHtml();
 
-    return overviewHtml(d)
+    return 評価Html()
+      + overviewHtml(d)
       + trendHtml(d)
+      + 細かいHtml()
       + '<div class="two">' + subjectHtml(d) + typeHtml(d) + "</div>"
       + weakHtml(d)
       + mockHtml(d)
@@ -362,6 +391,135 @@
   }
 
   /* ── A：概要 ─────────────────────────────────────────── */
+  /* ══ 総合評価と 一言（2026-08-29・訴え）════════════════════════════
+     訴え「総合評価の 欄を 入れて、一言フィードバックを 追加できたら いい。
+           あとは 細かい 分析を して、それを 数値化する。毎回」
+
+     ★ **点も 割合も 数えた もの**（VQ2.learning の metrics）。
+       AI が 出した 数は 1 つも 使っていない。AI は 言葉だけ。
+     ★ 一言が まだ 無い ときは **その欄を 出さない**。
+       それらしい 文を こちらで 作らない。 */
+  function 期間のセッション() {
+    var l = LN();
+    if (!l) return [];
+    var f = {};
+    try {
+      var b = l.rangeBounds ? l.rangeBounds(st.range || "30d") : null;
+      if (b && b.from) f.from = b.from;
+      if (b && b.to) f.to = b.to;
+    } catch (e) {}
+    if (st.subject) f.subject = st.subject;
+    if (st.mode) f.mode = st.mode;
+    try { return l.listSessions(f) || []; } catch (e) { return []; }
+  }
+  function 平均(list) {
+    var a = list.filter(function (x) { return typeof x === "number" && isFinite(x); });
+    if (!a.length) return null;
+    return a.reduce(function (x, y) { return x + y; }, 0) / a.length;
+  }
+  function ランク(点) {
+    if (点 === null || 点 === undefined) return "";
+    return 点 >= 90 ? "S" : 点 >= 75 ? "A" : 点 >= 60 ? "B" : 点 >= 45 ? "C" : "D";
+  }
+  function pct(v) { return (v === null || v === undefined) ? "—" : Math.round(v * 100) + "%"; }
+  function 秒(v) { return (v === null || v === undefined) ? "—" : (Math.round(v * 10) / 10) + " 秒"; }
+
+  function 評価Html() {
+    var ss = 期間のセッション();
+    var 指 = ss.map(function (x) { return x.metrics; }).filter(Boolean);
+    if (!指.length) return "";
+    var 平点 = 平均(指.map(function (m) { return m.score100; }));
+    var 点 = 平点 === null ? null : Math.round(平点);
+    var 直 = null;
+    for (var i = 0; i < ss.length; i++) {
+      if (ss[i] && ss[i].review && ss[i].review.headline) { 直 = ss[i]; break; }
+    }
+    var h = '<div class="card"><div class="card-h"><div>'
+      + "<h2>総合評価</h2>"
+      + '<div class="sub">この期間の ' + ss.length + " 回を まとめた 点です。"
+      + "正しさ 70・ねばり 10・やりきり 10・落ち着き 10 で 数えています。</div>"
+      + "</div></div>";
+    h += '<div class="ov"><div class="ov-n">' + (点 === null ? "—" : 点)
+      + '<span class="ov-u"> / 100</span></div>'
+      + '<div class="ov-g" data-g="' + esc(ランク(点)) + '">' + esc(ランク(点) || "—") + "</div></div>";
+    if (直) {
+      var r = 直.review;
+      h += '<div class="ov-c">'
+        + '<div class="ov-hl">' + esc(r.headline) + "</div>"
+        + '<div class="ov-ad">' + esc(r.advice) + "</div>"
+        + (r.focus ? '<div class="ov-fo">つぎに やること：<b>' + esc(r.focus) + "</b></div>" : "")
+        + '<div class="ov-src">' + esc(String(直.localDate || "").slice(5)) + " の「"
+        + esc(直.title || "学習") + "」から</div></div>";
+    } else {
+      h += '<div class="ov-c"><div class="ov-ad na">'
+        + "一言は、次に 解き終わった あと 裏で 作られます。"
+        + "（採点できた 問題が 3 問 以上 ある 回が 対象です）</div></div>";
+    }
+    return h + "</div>";
+  }
+
+  /* 細かい 指標を **数値で** 並べる。分からない ものは —。 */
+  function 細かいHtml() {
+    var ss = 期間のセッション();
+    var 指 = ss.map(function (x) { return x.metrics; }).filter(Boolean);
+    if (!指.length) return "";
+    var 取 = function (k) { return 平均(指.map(function (m) { return m[k]; })); };
+    var 行 = [
+      ["1 問あたりの 速さ（中央値）", 秒(取("medianSecPerQuestion")), "速すぎても 遅すぎても 崩れます"],
+      ["時間を かけすぎた 割合", pct(取("longThinkRate")), "60 秒 より 長く かかった 問題"],
+      ["3 秒 未満で 外した 割合", pct(取("fastMissRate")), "当てずっぽうの めやす"],
+      ["前半の 正答率", pct(取("firstHalfAccuracy")), ""],
+      ["後半の 正答率", pct(取("secondHalfAccuracy")), ""],
+      ["後半 − 前半", (function () {
+        var v = 取("fade");
+        return v === null ? "—" : (v > 0 ? "+" : "") + Math.round(v * 100) + " ポイント";
+      })(), "マイナスなら 後半で 失速しています"],
+      ["答えを 変えた 割合", pct(取("changeRate")), "迷いの めやす"],
+      ["飛ばした 割合", pct(取("skipRate")), ""],
+      ["採点待ちの 割合", pct(取("pendingRate")), "記述の AI 採点が 済んでいない ぶん"]
+    ];
+    var 連正 = 平均(指.map(function (m) { return m.maxStreakCorrect; }));
+    var 連誤 = 平均(指.map(function (m) { return m.maxStreakWrong; }));
+    行.push(["続けて 正解できた 最長", 連正 === null ? "—" : Math.round(連正) + " 問", ""]);
+    行.push(["続けて 外した 最長", 連誤 === null ? "—" : Math.round(連誤) + " 問", ""]);
+
+    /* 弱い ところを 合算する（形式ごと） */
+    var 束 = Object.create(null);
+    指.forEach(function (m) {
+      (m.byType || []).forEach(function (x) {
+        if (!x || !x.key || x.accuracy === null || x.accuracy === undefined) return;
+        var e = 束[x.key] || (束[x.key] = { n: 0, 正: 0, label: x.label || x.key });
+        e.n += x.n || 0;
+        e.正 += (x.accuracy || 0) * (x.n || 0);
+      });
+    });
+    var 弱 = Object.keys(束).map(function (k) {
+      return { key: k, label: 束[k].label, n: 束[k].n, acc: 束[k].n ? 束[k].正 / 束[k].n : null };
+    }).filter(function (x) { return x.n >= 3 && x.acc !== null; })
+      .sort(function (a, b) { return a.acc - b.acc; }).slice(0, 3);
+
+    var h = '<div class="card"><div class="card-h"><div><h2>くわしい 数値</h2>'
+      + '<div class="sub">この期間の ' + 指.length + " 回を ならした 値です。"
+      + "数えられなかった ものは — と出します（0 とは 別です）。</div></div></div>"
+      + '<div class="mtab">';
+    行.forEach(function (r) {
+      h += '<div class="mrow"><span class="mk">' + esc(r[0])
+        + (r[2] ? '<span class="mh">' + esc(r[2]) + "</span>" : "") + "</span>"
+        + '<span class="mv">' + esc(r[1]) + "</span></div>";
+    });
+    h += "</div>";
+    if (弱.length) {
+      h += '<div class="sub" style="margin-top:14px">とくに 落としている 形式</div><div class="mtab">';
+      弱.forEach(function (x) {
+        h += '<div class="mrow"><span class="mk">' + esc(x.label)
+          + '<span class="mh">' + x.n + " 問</span></span>"
+          + '<span class="mv">' + Math.round(x.acc * 100) + "%</span></div>";
+      });
+      h += "</div>";
+    }
+    return h + "</div>";
+  }
+
   function overviewHtml(d) {
     var s = d.summary, c = s.current;
     var mins = fmtMin(c.minutes);
@@ -851,6 +1009,20 @@
   }
   function boot() {
     syncTab();
+    /* ★ 昔の 回にも 指標を 入れる（2026-08-29）。答えの 記録が 残っているので
+       数え直せる。**数え直すだけ**で、中身は 1 つも 変えない。 */
+    try {
+      var l = LN();
+      if (l && l.backfillMetrics) setTimeout(function () {
+        try { l.backfillMetrics(200); } catch (e) {}
+      }, 1500);
+    } catch (e) {}
+    /* 裏で 一言が 届いたら、開いている なら 出し直す。 */
+    try {
+      window.addEventListener("vq-insight-review", function () {
+        if (mounted) refresh();
+      });
+    } catch (e) {}
     try {
       new MutationObserver(syncTab).observe(document.body, { attributes: true, attributeFilter: ["data-app-tab"] });
     } catch (e) {}

@@ -44762,6 +44762,162 @@ function aigenGradeStrArr(v, n, len) {
   return o.length ? o : undefined;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   Insight の 総合評価と 一言（2026-08-29・訴え）
+
+   訴え:「インサイトを 向上させたい。総合評価の 欄と 一言フィードバックを
+         追加できたら いい。裏で 動かすのは 3 flash live で、音声は 出さない」
+
+   ★ 決めごと（ここを 崩すと また 嘘を つく）
+     ・**数字は AI に 出させない。** 数えた ものを こちらから 渡し、
+       AI は それを 読んで **言葉を 添えるだけ**。
+       点（score100）も 割合も 画面側で 数えた ものを そのまま 使う。
+     ・答えの 中身・問題文・個人の 書いた 文は **1 文字も 送らない**。
+       送るのは 数と、形式や 科目の 名前だけ。
+     ・声は 使わない。Live の 返りは 音だが、こちらは **書き起こしの 文字**
+       だけを 受け取り、音は 捨てる（そもそも 画面へ 渡さない）。
+     ・作れなければ **何も 出さない**。それらしい 一言を こちらで 作らない。
+   ══════════════════════════════════════════════════════════════════════ */
+const INSIGHT_SYS =
+  "あなたは 日本の 学校の 先生です。生徒が 解いた 1 回ぶんの **数字だけ**を 見て、"
+  + "短い ことばを 返します。出力は JSON だけ。前置きは 書きません。";
+
+function insightNum(v, d) {
+  const n = Number(v);
+  return isFinite(n) ? n : (d === undefined ? null : d);
+}
+function insightPct(v) {
+  const n = Number(v);
+  return isFinite(n) ? Math.round(n * 100) + "%" : "—";
+}
+/* 渡す 中身を **数と 名前だけ**に そろえる（余計な ものを 送らない）。 */
+function insightSlim(body) {
+  const m = (body && body.metrics) || {};
+  const c = (body && body.context) || {};
+  const 形 = Array.isArray(m.byType) ? m.byType.slice(0, 6).map((x) => ({
+    形式: toSafeString(x && x.label ? x.label : x && x.key, 24),
+    問数: insightNum(x && x.n, 0),
+    正答率: insightPct(x && x.accuracy)
+  })) : [];
+  const 弱 = Array.isArray(m.weakTypes) ? m.weakTypes.slice(0, 3).map((x) => ({
+    形式: toSafeString(x && x.label ? x.label : x && x.key, 24),
+    問数: insightNum(x && x.n, 0),
+    正答率: insightPct(x && x.accuracy)
+  })) : [];
+  return {
+    科目: toSafeString(c.subject, 24) || "（指定なし）",
+    解きかた: toSafeString(c.mode, 24) || "",
+    題: toSafeString(c.title, 40),
+    問題数: insightNum(m.questionCount, 0),
+    採点できた数: insightNum(m.gradedCount, 0),
+    正答率: insightPct(m.accuracy),
+    総合点: insightNum(m.score100),
+    "1問あたりの秒（中央値）": insightNum(m.medianSecPerQuestion),
+    "時間をかけすぎた割合": insightPct(m.longThinkRate),
+    "3秒未満で外した割合": insightPct(m.fastMissRate),
+    前半の正答率: insightPct(m.firstHalfAccuracy),
+    後半の正答率: insightPct(m.secondHalfAccuracy),
+    "後半-前半": m.fade === null || m.fade === undefined ? "—" : insightPct(m.fade),
+    連続正解の最長: insightNum(m.maxStreakCorrect),
+    連続不正解の最長: insightNum(m.maxStreakWrong),
+    答えを変えた割合: insightPct(m.changeRate),
+    飛ばした割合: insightPct(m.skipRate),
+    形式ごと: 形,
+    弱いところ: 弱,
+    直近の流れ: Array.isArray(c.recent) ? c.recent.slice(0, 6).map((x) => ({
+      日: toSafeString(x && x.date, 12), 正答率: insightPct(x && x.accuracy),
+      総合点: insightNum(x && x.score100)
+    })) : []
+  };
+}
+function insightPrompt(slim) {
+  return [
+    "次は、生徒が いま 解き終わった 1 回ぶんの 数字です。",
+    "**この数字だけ**を 見て 答えてください。ここに 無い ことは 書かないでください。",
+    "",
+    JSON.stringify(slim, null, 1),
+    "",
+    "返すもの（JSON だけ）:",
+    '{"grade":"A","headline":"…","advice":"…","focus":"…"}',
+    "",
+    "・grade … S / A / B / C / D の どれか 1 文字。総合点が あれば それに 合わせます",
+    "　（90 以上 S ／ 75 以上 A ／ 60 以上 B ／ 45 以上 C ／ それ未満 D）。",
+    "　総合点が null の ときは 正答率で 決めます。",
+    "・headline … **20 字以内**の 一言。いまの 出来を 一息で 言い切ります。",
+    "・advice … **60〜110 字**。上の 数字の うち **いちばん 効くもの 1 つ**を 名指しして、",
+    "　次に 何を どうするかを 書きます。数字を 1 つ そのまま 入れてください。",
+    "・focus … **20 字以内**。次に 取り組む こと 1 つだけ。",
+    "",
+    "書きかたの 決まり:",
+    "・「頑張りましょう」「重要です」「向上させましょう」だけで 終わらせない。",
+    "　何を どう 変えるのかを そのまま 書きます。",
+    "・**数字を 作らない。** 上に 無い 数は 書かないでください。",
+    "・生徒に 話しかけるように、ふつうの ことばで 書きます。"
+  ].join("\n");
+}
+function insightRows(text) {
+  const raw = String(text || "").replace(/^\s*```(?:json)?/i, "").replace(/```\s*$/, "").trim();
+  let j = null;
+  try { j = JSON.parse(raw); } catch (e) {
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) { try { j = JSON.parse(m[0]); } catch (e2) { j = null; } }
+  }
+  if (!j || typeof j !== "object") return null;
+  const g = String(j.grade || "").trim().toUpperCase().slice(0, 1);
+  const 出 = {
+    grade: "SABCD".indexOf(g) >= 0 ? g : "",
+    headline: toSafeString(j.headline, 60),
+    advice: toSafeString(j.advice, 200),
+    focus: toSafeString(j.focus, 60)
+  };
+  /* 一言も 助言も 無い ものは 受け取らない（空の 欄を 出さない）。 */
+  if (!出.headline || !出.advice) return null;
+  return 出;
+}
+
+async function handleInsightReview(request, env) {
+  const uid = await aiJobRequireUser(request, env);
+  if (!uid) return json({ code: "UNAUTHORIZED", message: "ログインが必要です。" }, 401, request);
+  const body = await readJsonBody(request, 256 * 1024).catch(() => null);
+  const m = body && body.metrics;
+  if (!m || typeof m !== "object") {
+    return json({ code: "BAD_REQUEST", message: "metrics が要ります。" }, 400, request);
+  }
+  /* 採点できた 数が 少ないと、言えることが 無い。**作らない。** */
+  if (insightNum(m.gradedCount, 0) < 3) {
+    return json({ ok: true, skipped: "採点できた 問題が 3 問 未満です。" }, 200, request);
+  }
+  const slim = insightSlim(body);
+  const user = insightPrompt(slim);
+
+  /* ① Live（3.1 flash live）で 頼む。音は 使わず、書き起こしの 文字だけ 読む。 */
+  let out = null, つかった = "";
+  if (aigenGeminiKeys(env).length) {
+    const r = await liveOnce(env, { sys: INSIGHT_SYS, user, tries: 3 }).catch(() => null);
+    if (r && r.ok) { out = insightRows(r.text); if (out) つかった = "live"; }
+  }
+  /* ② だめなら これまでの 道へ。 */
+  if (!out) {
+    const keys = aigenGeminiChatKeys(env);
+    if (keys.length) {
+      const run = await aigenGeminiTry(env, keys, aigenChatModels(env, false), {
+        sys: INSIGHT_SYS, user, files: [], max_tokens: 700, temperature: 0.4, noThink: true
+      }).catch(() => null);
+      const rr = run && run.r;
+      if (rr && !rr.err) {
+        const g = aigenGeminiText(rr.out);
+        out = insightRows(g.text);
+        if (out) つかった = "gemini";
+      }
+    }
+  }
+  if (!out) {
+    /* **それらしい 一言を こちらで 作らない。**作れなかったと 返す。 */
+    return json({ ok: true, skipped: "いま 一言を 作れませんでした。" }, 200, request);
+  }
+  return json({ ok: true, review: Object.assign({}, out, { by: つかった }) }, 200, request);
+}
+
 async function handleAiGrade(request, env) {
   const uid = await aiJobRequireUser(request, env);
   if (!uid) return json({ code: "UNAUTHORIZED", message: "ログインが必要です。" }, 401, request);
@@ -64189,6 +64345,10 @@ export default {
         stage = "sede.quick-fix";
         return respond(await handleSedeQuickFix(request, env));
       }
+      if (request.method === "POST" && path === "/api/insight/review") {
+        stage = "insight.review";
+        return respond(await handleInsightReview(request, env));
+      }
       if (request.method === "POST" && path === "/api/ai/grade") {
         stage = "ai.grade";
         return respond(await handleAiGrade(request, env));
@@ -65391,6 +65551,7 @@ export default {
           || path === "/api/live/keys/check"
           || path === "/api/ai/models/probe"
           || path === "/api/storage/usage"
+          || path === "/api/insight/review"
           || path === "/api/stock/find"
           || path === "/api/stock/adopt"
           || path === "/api/drive/status"

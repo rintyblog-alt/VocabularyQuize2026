@@ -15675,6 +15675,132 @@
   }
 
   /* 結果を取り込む。すでにあれば上書き（＝二重に数えない）。 */
+  /* ══ 1 回ぶんの **細かい 指標**（2026-08-29・訴え）═══════════════
+     訴え「インサイトを もう少し 正確に、細かい 指標まで 記録して。
+           細かい 分析を して、それを 数値化する。毎回」
+
+     ★ ここは **AI を 使わない**。数えれば 分かる ものは 数える。
+       AI に 出させると 毎回 ぶれるし、外れた ときに 直しようが ない。
+       AI は この 数字を **読んで 一言 添える** 役（下の review）。
+     ★ 分からない ものは **null**。0 で 埋めない
+       （0 と「測れなかった」は まったく 別のこと）。
+     ★ 答えの 中身は 持たない（これまでどおり）。持つのは 数だけ。 */
+  function 中央値(a) {
+    var b = a.filter(function (x) { return isNum(x) && x >= 0; }).sort(function (x, y) { return x - y; });
+    if (!b.length) return null;
+    var m = Math.floor(b.length / 2);
+    return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2;
+  }
+  function 分位(a, p) {
+    var b = a.filter(function (x) { return isNum(x) && x >= 0; }).sort(function (x, y) { return x - y; });
+    if (!b.length) return null;
+    var i = Math.min(b.length - 1, Math.max(0, Math.round((b.length - 1) * p)));
+    return b[i];
+  }
+  function 正答率(rows) {
+    var g = rows.filter(function (r) { return r.isCorrect === true || r.isCorrect === false; });
+    if (!g.length) return null;
+    return r2(g.filter(function (r) { return r.isCorrect === true; }).length / g.length);
+  }
+  function 束ねる(rows, 鍵) {
+    var m = Object.create(null);
+    rows.forEach(function (r) {
+      var k = str(r[鍵]) || "unknown";
+      (m[k] || (m[k] = [])).push(r);
+    });
+    var out = [];
+    Object.keys(m).forEach(function (k) {
+      out.push({ key: k, n: m[k].length, accuracy: 正答率(m[k]) });
+    });
+    return out.sort(function (a, b) { return b.n - a.n; });
+  }
+  function セッションの指標(rows, session, finishedTs) {
+    var 採点済 = rows.filter(function (r) { return r.isCorrect === true || r.isCorrect === false; });
+    var 秒 = rows.map(function (r) { return isNum(r.responseTimeMs) ? r.responseTimeMs / 1000 : null; })
+      .filter(function (x) { return x !== null; });
+    var n = rows.length || 0;
+
+    /* 速すぎて 外した ＝ 当てずっぽうの めやす（3 秒 未満で 不正解） */
+    var 速外し = rows.filter(function (r) {
+      return r.isCorrect === false && isNum(r.responseTimeMs) && r.responseTimeMs < 3000;
+    }).length;
+    /* 時間を かけすぎた（60 秒 超え） */
+    var 長考 = 秒.filter(function (x) { return x > 60; }).length;
+
+    /* 前半 と 後半（採点できた ものだけで 見る） */
+    var 半 = Math.floor(採点済.length / 2);
+    var 前半 = 半 >= 2 ? 正答率(採点済.slice(0, 半)) : null;
+    var 後半 = 半 >= 2 ? 正答率(採点済.slice(採点済.length - 半)) : null;
+
+    /* いちばん 長く 続いた 正解／不正解 */
+    var 連正 = 0, 連誤 = 0, c = 0, w = 0;
+    採点済.forEach(function (r) {
+      if (r.isCorrect === true) { c++; w = 0; if (c > 連正) 連正 = c; }
+      else { w++; c = 0; if (w > 連誤) 連誤 = w; }
+    });
+
+    var 迷い = rows.filter(function (r) { return isNum(r.changedAnswerCount) && r.changedAnswerCount > 0; }).length;
+    var ヒント = rows.filter(function (r) { return r.hintUsed; }).length;
+    var 飛ばし = rows.filter(function (r) { return r.skipped; }).length;
+    var 保留 = rows.filter(function (r) { return r.evaluationStatus === "pending"; }).length;
+
+    var 形式 = 束ねる(rows, "questionType");
+    var 難 = 束ねる(rows.filter(function (r) { return str(r.difficulty); }), "difficulty");
+    /* 弱い ところ。**2 問 以上 出た ものだけ**（1 問で 決めつけない） */
+    var 弱い = 形式.filter(function (x) { return x.n >= 2 && x.accuracy !== null; })
+      .sort(function (a, b) { return a.accuracy - b.accuracy; }).slice(0, 3);
+
+    var acc = 正答率(rows);
+    var 率 = function (x) { return n > 0 ? r2(x / n) : null; };
+
+    /* ★ 総合の 点（0〜100）。**式は ここに 書いてある とおり**で、
+       毎回 同じ 入力なら 同じ 点に なる（AI では 決めない）。
+         正しさ 70 ・ 失速しない 10 ・ やりきる 10 ・ 落ち着き 10
+       採点できた ものが 3 問 未満の ときは **出さない**（null）。 */
+    var 点 = null, 内訳 = null;
+    if (採点済.length >= 3 && acc !== null) {
+      var 失速 = (前半 !== null && 後半 !== null) ? Math.abs(後半 - 前半) : 0;
+      var a1 = acc * 70;
+      var a2 = (1 - Math.min(1, 失速)) * 10;
+      var a3 = (1 - (率(飛ばし) || 0)) * 10;
+      var a4 = (1 - (率(速外し) || 0)) * 10;
+      点 = Math.max(0, Math.min(100, Math.round(a1 + a2 + a3 + a4)));
+      内訳 = { 正しさ: r2(a1), ねばり: r2(a2), やりきり: r2(a3), 落ち着き: r2(a4) };
+    }
+
+    return {
+      schema: 1,
+      questionCount: n,
+      gradedCount: 採点済.length,
+      accuracy: acc,
+      /* 速さ */
+      medianSecPerQuestion: 中央値(秒) === null ? null : r2(中央値(秒)),
+      p90SecPerQuestion: 分位(秒, 0.9) === null ? null : r2(分位(秒, 0.9)),
+      fastMissRate: 率(速外し),
+      longThinkRate: 率(長考),
+      /* 流れ */
+      firstHalfAccuracy: 前半,
+      secondHalfAccuracy: 後半,
+      fade: (前半 !== null && 後半 !== null) ? r2(後半 - 前半) : null,
+      maxStreakCorrect: 連正 || null,
+      maxStreakWrong: 連誤 || null,
+      /* ふるまい */
+      changeRate: 率(迷い),
+      hintRate: 率(ヒント),
+      skipRate: 率(飛ばし),
+      pendingRate: 率(保留),
+      /* 内訳 */
+      byType: 形式.slice(0, 12),
+      byDifficulty: 難.slice(0, 6),
+      weakTypes: 弱い,
+      /* いつ やったか */
+      hourOfDay: new Date(finishedTs).getHours(),
+      /* 総合 */
+      score100: 点,
+      scoreParts: 内訳
+    };
+  }
+
   function recordResult(result, opts) {
     opts = opts || {};
     if (!isObj(result)) return { ok: false, error: "BAD_RESULT" };
@@ -15785,6 +15911,10 @@
       scoreRatio: (maxScore - pendingMax) > 0 ? r2(score / (maxScore - pendingMax)) : null,
 
       questionTypeCounts: typeCounts,
+      /* ★ 細かい 指標（2026-08-29）。**毎回 数えて ここに 残す**。
+         Insight は これを 読むだけ。あとから 数え直せる ように、
+         もとの answers も これまでどおり 残してある。 */
+      metrics: セッションの指標(answerRows, null, finishedTs),
       expired: !!result.expired,
       deviceType: deviceType(),
 
@@ -15814,6 +15944,11 @@
 
     touchDaily(session.localDate);
     mirrorLegacy(session);
+    /* ★ **裏で 一言を もらう**（2026-08-29・訴え「毎回 こっそり 記録」）。
+       画面は 待たせない。まだ AI 採点の 途中（pending）なら 頼まない
+       （数字が 変わるので、確定して からで ないと 見当違いに なる）。
+       確定は applyPendingScores の あとで もう一度 頼む。 */
+    if (!pending) { try { setTimeout(function () { askReview(sid); }, 400); } catch (e) {} }
     return { ok: true, session: session, answers: answerRows, created: created };
   }
 
@@ -16137,6 +16272,158 @@
     if (f.type) list = list.filter(function (a) { return a.questionType === f.type; });
     return list;
   }
+  /* ══ 昔の 回にも 指標を 入れる（2026-08-29）═══════════════════════
+     指標は 今日から 数え始めた ものなので、これまでの 回には 入っていない。
+     答えの 記録（answers）は 残っているので、**そこから 数え直せる**。
+     ★ 数え直すだけ。中身は 1 つも 変えない。 */
+  function backfillMetrics(限り) {
+    var 上 = Math.max(1, Math.min(500, Number(限り) || 200));
+    var sessions = readAll(K.sessions);
+    var answers = readAll(K.answers);
+    var 別 = Object.create(null);
+    answers.forEach(function (a) {
+      if (!a || !a.sessionId) return;
+      (別[a.sessionId] || (別[a.sessionId] = [])).push(a);
+    });
+    var 直した = 0, 見た = 0;
+    for (var i = 0; i < sessions.length && 見た < 上; i++) {
+      var ss = sessions[i];
+      if (!ss || !ss.id) continue;
+      if (ss.metrics && ss.metrics.schema) continue;
+      見た++;
+      var rows = 別[ss.id] || [];
+      if (!rows.length) continue;
+      var t = tsOf(ss.completedAt) || tsOf(ss.createdAt) || Date.now();
+      ss.metrics = セッションの指標(rows, ss, t);
+      直した++;
+    }
+    if (直した) writeAll(K.sessions, sessions);
+    return { 直した: 直した, 見た: 見た };
+  }
+
+  /* ══ AI の 一言を しまう（2026-08-29）═══════════════════════════
+     ★ 中身は **サーバが 作る**（/api/insight/review）。ここは しまうだけ。
+     ★ 数字（metrics）を 消したり 書き換えたり しない。
+       AI が 何を 言おうと、数字は 数えた ものが 正しい。 */
+  /* ══ AI に 一言を もらう（2026-08-29・訴え）══════════════════════
+     訴え「Lumi が もう少し ユーザーの 学習履歴を 毎回 こっそり 記録できれば
+           なお いい。裏で 動かすのは 3 flash live で、音声は 出さない」
+
+     ★ **こっそり**とは: 画面を 止めない・音を 出さない・失敗しても 何も 言わない。
+       解き終わった あと 裏で 頼み、返って きたら そっと しまう。
+     ★ 送るのは **数だけ**（metrics と 科目・形式の 名前）。
+       答えの 中身・問題文・書いた 文は 1 文字も 送らない。
+     ★ 返って こなければ **何も しない**。それらしい 一言を こちらで 作らない。 */
+  function apiBase() {
+    try {
+      if (root.API_BASE) return String(root.API_BASE);
+      if (root.CONFIG && root.CONFIG.apiBase) return String(root.CONFIG.apiBase);
+    } catch (e) {}
+    return "";
+  }
+  function authHeader() {
+    try {
+      var t = "";
+      try { if (typeof root._authGetToken === "function") t = String(root._authGetToken() || ""); } catch (e0) {}
+      if (!t) t = String(root.localStorage.getItem("app.auth.token.v1") || "");
+      t = t.trim().replace(/^"|"$/g, "").trim();
+      return t ? { Authorization: "Bearer " + t } : {};
+    } catch (e) { return {}; }
+  }
+  /* 直近の 流れ（日ごとの 正答率と 点）。AI が 「前より」を 言えるように。 */
+  function 近ごろ(n) {
+    try {
+      var ss = listSessions({}).slice(0, Math.max(1, n || 6));
+      return ss.map(function (x) {
+        return { date: str(x.localDate).slice(5),
+                 accuracy: isNum(x.accuracy) ? x.accuracy : null,
+                 score100: (x.metrics && isNum(x.metrics.score100)) ? x.metrics.score100 : null };
+      });
+    } catch (e) { return []; }
+  }
+  function askReview(sessionId, opts) {
+    opts = opts || {};
+    var sid = str(sessionId);
+    if (!sid || !root.fetch) return Promise.resolve(null);
+    var h = authHeader();
+    if (!h.Authorization) return Promise.resolve(null);      /* ログインしていない */
+    var ss = null;
+    try {
+      var all = readAll(K.sessions);
+      for (var i = 0; i < all.length; i++) if (all[i] && all[i].id === sid) { ss = all[i]; break; }
+    } catch (e) {}
+    if (!ss || !ss.metrics) return Promise.resolve(null);
+    /* すでに 一言が ある なら 頼み直さない（毎回 同じ ものを 何度も 頼まない）。 */
+    if (!opts.force && ss.review && ss.review.headline) return Promise.resolve(ss.review);
+    /* 採点できた 数が 少ないと 言えることが 無い。 */
+    if (!isNum(ss.metrics.gradedCount) || ss.metrics.gradedCount < 3) return Promise.resolve(null);
+
+    var 荷 = {
+      metrics: ss.metrics,
+      context: {
+        subject: subjectLabel ? subjectLabel(ss.subject) : str(ss.subject),
+        mode: modeLabel ? modeLabel(ss.mode) : str(ss.mode),
+        title: str(ss.title),
+        recent: 近ごろ(6)
+      }
+    };
+    /* 形式の 名前は 読める ように しておく（key のままだと AI に 伝わらない）。 */
+    try {
+      var 名 = function (x) {
+        return Object.assign({}, x, { label: typeLabel ? typeLabel(x.key) : x.key });
+      };
+      if (Array.isArray(荷.metrics.byType)) 荷.metrics = Object.assign({}, 荷.metrics, {
+        byType: 荷.metrics.byType.map(名),
+        weakTypes: (荷.metrics.weakTypes || []).map(名)
+      });
+    } catch (e) {}
+
+    return root.fetch(apiBase() + "/api/insight/review", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, h),
+      body: JSON.stringify(荷)
+    }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !j.ok || !j.review) return null;
+        saveReview(sid, j.review);
+        try { root.dispatchEvent(new CustomEvent("vq-insight-review", { detail: { sessionId: sid } })); } catch (e) {}
+        return j.review;
+      })
+      .catch(function () { return null; });          /* こっそり。失敗しても 黙る */
+  }
+
+  function saveReview(sessionId, review) {
+    var sid = str(sessionId);
+    if (!sid || !isObj(review)) return { ok: false, error: "BAD_ARG" };
+    var sessions = readAll(K.sessions);
+    for (var i = 0; i < sessions.length; i++) {
+      if (!sessions[i] || sessions[i].id !== sid) continue;
+      sessions[i].review = {
+        grade: str(review.grade).slice(0, 4) || null,
+        headline: str(review.headline).slice(0, 60) || null,
+        advice: str(review.advice).slice(0, 200) || null,
+        focus: str(review.focus).slice(0, 60) || null,
+        by: str(review.by).slice(0, 24) || "ai",
+        at: nowIso()
+      };
+      sessions[i].updatedAt = nowIso();
+      writeAll(K.sessions, sessions);
+      return { ok: true };
+    }
+    return { ok: false, error: "NOT_FOUND" };
+  }
+  /* いちばん 新しい 一言（Insight の 総合評価に 出す）。 */
+  function latestReview(f) {
+    var ss = listSessions(f || {});
+    for (var i = 0; i < ss.length; i++) {
+      if (ss[i] && ss[i].review && ss[i].review.headline) {
+        return { sessionId: ss[i].id, at: ss[i].completedAt, review: ss[i].review,
+                 metrics: ss[i].metrics || null, title: ss[i].title || "" };
+      }
+    }
+    return null;
+  }
+
   function listEvents(f) {
     f = f || {};
     var list = mineOf(readAll(K.events));
@@ -16192,6 +16479,9 @@
     sourceLabel: sourceLabel, modeLabel: modeLabel, typeLabel: typeLabel, subjectLabel: subjectLabel,
     localDate: localDate, dayStart: dayStart, rangeBounds: rangeBounds, previousBounds: previousBounds,
     recordResult: recordResult, applyPendingScores: applyPendingScores,
+    /* 細かい 指標（2026-08-29）。数えるのは ここ 1 か所だけ。 */
+    metricsOf: セッションの指標, backfillMetrics: backfillMetrics,
+    saveReview: saveReview, latestReview: latestReview, askReview: askReview,
     event: pushEvent,
     mirrorLegacy: mirrorLegacy, importLegacy: importLegacy, backfill: backfill,
     daily: daily, rebuildDaily: rebuildDaily, buildDailyFor: buildDailyFor,
