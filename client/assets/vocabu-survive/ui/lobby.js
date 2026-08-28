@@ -18,7 +18,7 @@ import { PALETTE, BEAN_COLORS, beanByIndex } from "./theme.js";
 import { COURSES, tierOf, TIERS } from "../data/courses.js";
 import { CUP_ROUNDS } from "../game/sim.js";
 import { clearGhost } from "../data/ghost.js";
-import { listMyCourses, getMyCourse, toDef } from "../data/mycourse.js";
+import { listMyCourses, getMyCourse, toDef, exportCode, importCode } from "../data/mycourse.js";
 import { themeOf } from "../game/theme3d.js";
 import { HATS, HAT_COLORS } from "../game/bean.js";
 import { SurviveNet, createRoom, roomInfo } from "../net/client.js";
@@ -578,21 +578,39 @@ export class LobbyScreen {
   }
   _renderMine() {
     if (!this.mineEl) return;
-    const 対戦中 = !!(this.net && this.roomId);
+    /* ★ 対戦でも 使える ように なった（部屋主が 合言葉ごと 配る）。
+       押せないのは **部屋主で ない とき**だけ。 */
+    const 対戦中 = !!(this.net && this.roomId) && !this.isHost;
     this.mineEl.textContent = "";
     const list = this._mine || [];
     if (!list.length) {
       this.mineEl.appendChild(h("p", { class: "vs-lb-note", text: "まだ ありません。「コースを 作る」から。" }));
       return;
     }
+    /* いま 部屋へ 配っている もの（部屋主）／配られて いる もの（そのほか） */
+    const 配名 = this._myCourse ? this._myCourse.name : (this._roomHasCourse ? this._roomCourseName : "");
+    if (this.net && this.roomId && 配名) {
+      this.mineEl.appendChild(h("p", { class: "vs-lb-note vs-lb-sharing",
+        text: "いま 部屋で 使う コース: " + 配名 }));
+    }
     for (const c of list.slice(0, 12)) {
       this.mineEl.appendChild(h("button", {
         class: "vs-lb-mineb", type: "button", disabled: 対戦中,
-        title: 対戦中 ? "対戦では 使えません（相手が 持っていません）" : c.name,
+        title: 対戦中 ? "部屋主だけが えらべます" : c.name,
         onclick: async () => {
           if (対戦中) return;
           const got = await getMyCourse(c.id);
           if (!got) return;
+          /* 部屋の 中なら **みんなに 配って** 部屋主として 始める */
+          if (this.net && this.roomId && this.isHost) {
+            /* ★ 知らせは **消えない ところ**へ 出す。
+               netNote は 部屋の 知らせが 来る たびに 書き換わる ので、
+               「配りました」は すぐ 消えて 誰も 読めない。 */
+            this._myCourse = got;
+            this.net.setCourse(got.id, exportCode(got), got.name);
+            this._render();
+            return;
+          }
           this.onPlay({
             courseId: got.id, courseDef: toDef(got),
             mode: this.mode === "cup" ? "race" : this.mode,
@@ -608,7 +626,10 @@ export class LobbyScreen {
     }
     if (対戦中) {
       this.mineEl.appendChild(h("p", { class: "vs-lb-note",
-        text: "対戦では 使えません（相手が その コースを 持っていません）。" }));
+        text: "自作コースは 部屋主だけが えらべます。" }));
+    } else if (this.net && this.roomId) {
+      this.mineEl.appendChild(h("p", { class: "vs-lb-note",
+        text: "えらぶと みんなへ 配ります（合言葉ごと 送るので、相手は 持っていなくても 走れます）。" }));
     }
   }
 
@@ -650,17 +671,22 @@ export class LobbyScreen {
     const c = COURSES[this.courseIndex];
     if (this.net && this.roomId) {
       if (!this.isHost) { this.netNote.textContent = "部屋主だけが 始められます。"; return; }
-      /* コースの 長さは サーバの 検算に 使う。ここで 一度 組み立てて 測る。 */
+      /* コースの 長さは サーバの 検算に 使う。ここで 一度 組み立てて 測る。
+         ★ 自作コースを 配って いる ときは **その 長さ**を 送る。
+           作り置きの 長さを 送ると 検算が ずれて、
+           正しく ゴールした 人が「あり得ない」と 断られる。 */
+      const 自作 = this._myCourse;
+      const def = 自作 ? toDef(自作) : c;
       let len = 0;
       try {
         if (!this._lenCache) this._lenCache = {};
-        if (this._lenCache[c.id] === undefined) {
-          /* 一度 組み立てて 長さを 測る（数 ms）。結果は 覚える。 */
-          this._lenCache[c.id] = Math.round(buildCourse(c).length);
+        const key = def.id;
+        if (this._lenCache[key] === undefined) {
+          this._lenCache[key] = Math.round(buildCourse(def).length);
         }
-        len = this._lenCache[c.id] || 0;
+        len = this._lenCache[key] || 0;
       } catch (e) { len = 0; }
-      this.net.setCourse(c.id);
+      this.net.setCourse(def.id, 自作 ? exportCode(自作) : "", 自作 ? 自作.name : "");
       this.net.setMode(this.mode);
       if (this.net.setPreset) {
         this.net.setPreset(this.qz.kind === "mine" || !this.qz.kind
@@ -726,6 +752,8 @@ export class LobbyScreen {
         /* 自分の 行は 自分の ものへ 揃える */
         const mine = this.party.find((p) => p.id === (this.net && this.net.you));
         if (mine) { this.me.id = mine.id; this.me.colorIndex = mine.colorIndex; this.me.ready = mine.ready; this.ready = mine.ready; }
+        this._roomCourseName = room.courseName || "";
+        this._roomHasCourse = !!room.hasCourse;
         const idx = COURSES.findIndex((c) => c.id === room.courseId);
         if (idx >= 0 && !this.isHost) this.courseIndex = idx;
         if (room.mode && !this.isHost) this.mode = room.mode;
@@ -743,8 +771,16 @@ export class LobbyScreen {
       onGo: (m) => {
         /* サーバの 合図で 全員 同時に 始める */
         const idx = COURSES.findIndex((c) => c.id === m.courseId);
+        /* ★ 自作コースは **合言葉で 届く**。必ず 洗ってから 組み立てる
+           （importCode の 中で 洗う）。読めなければ 作り置きへ 落ちる。 */
+        let def = null;
+        if (m.courseCode) {
+          const got = importCode(m.courseCode, m.courseId || "my:room");
+          if (got) { got.name = m.courseName || got.name; def = toDef(got); }
+        }
         this.onPlay({
-          courseId: m.courseId || COURSES[Math.max(0, idx)].id,
+          courseDef: def,
+          courseId: (def && def.id) || m.courseId || COURSES[Math.max(0, idx)].id,
           mode: m.mode || this.mode,
           bots: 0,
           myName: this.me.name, myColor: this.me.colorIndex,
@@ -1122,6 +1158,7 @@ export const LOBBY_CSS = `
 .vs-lb-rec-no{ flex:0 0 auto; width:20px; text-align:right; color:rgba(243,245,255,.5); }
 .vs-lb-rec-row[data-me="1"] .vs-lb-rec-no{ color:${PALETTE.mint}; }
 .vs-lb-rec-gap{ font-size:11px; color:rgba(243,245,255,.35); padding-left:9px; line-height:1; }
+.vs-lb-sharing{ color:${PALETTE.mint} !important; font-weight:700; }
 .vs-lb-minerow{ display:flex; gap:6px; margin-bottom:5px; }
 .vs-lb-mine{ display:flex; flex-direction:column; gap:3px; max-height:150px; overflow-y:auto; }
 .vs-lb-mineb{ display:flex; align-items:baseline; gap:8px; width:100%; text-align:left;

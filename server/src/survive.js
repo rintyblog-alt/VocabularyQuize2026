@@ -886,6 +886,11 @@ export class SurviveRoom {
     this.room = (st && typeof st === "object") ? st : {
       roomId: "", hostId: 0, courseId: "c01", mode: "race", max: 8,
       presetKind: "", presetId: "", presetOwner: 0, presetName: "",
+      /* 自作コースの 中身（合言葉と 同じ 縮めた 文字）。
+         ★ **中身は 見ない。** 受け取った 画面が 洗ってから 組み立てる。
+           ここで 洗おうとすると、区画の 決まりを サーバにも 写す ことに なり、
+           片方だけ 直った ときに 「主だけ 違う コース」に なる。 */
+      courseCode: "", courseName: "",
       phase: "lobby",                 /* lobby / countdown / running / finished */
       createdAt: Date.now(), expiresAt: Date.now() + ROOM_TTL_MS,
       seed: (Date.now() / 1000) | 0,
@@ -908,6 +913,9 @@ export class SurviveRoom {
       roomId: r.roomId, hostId: r.hostId, courseId: r.courseId, mode: r.mode,
       presetKind: r.presetKind || "", presetId: r.presetId || "",
       presetOwner: r.presetOwner || 0, presetName: r.presetName || "",
+      /* ★ 合言葉そのものは ここに 載せない。部屋の 知らせは 何度も 飛ぶ ので、
+         3KB を 毎回 配ると 通信が 太る。始める ときに 1 回だけ 配る。 */
+      courseName: r.courseName || "", hasCourse: r.courseCode ? 1 : 0,
       phase: r.phase, max: r.max, seed: r.seed, startAt: r.startAt,
       players: Object.values(r.players).map((p) => ({
         id: String(p.uid), name: p.name, colorIndex: p.color,
@@ -1032,7 +1040,13 @@ export class SurviveRoom {
       this._all({ t: "room", room: this._publicRoom() }); this._save(); return;
     }
     if (t === "course" && uid === r.hostId && r.phase === "lobby") {
-      r.courseId = S(m.id, 24) || r.courseId;
+      r.courseId = S(m.id, 40) || r.courseId;
+      /* 自作コース。**大きさだけ 見る**（24KB まで）。
+         中身は 受け取る 側が 洗う。 */
+      const code = S(m.code, 24 * 1024);
+      if (code && /^VS1[A-Za-z0-9\-_]+$/.test(code)) {
+        r.courseCode = code; r.courseName = S(m.name, 40);
+      } else { r.courseCode = ""; r.courseName = ""; }
       this._all({ t: "room", room: this._publicRoom() }); this._save(); return;
     }
     /* ★ 対戦で 使えるのは **誰でも 読める もの だけ**（公開・公式）。
@@ -1175,6 +1189,7 @@ export class SurviveRoom {
     }
     await this._save();
     this._all({ t: "go", startAt: r.startAt, seed: r.seed, courseId: r.courseId,
+      courseCode: r.courseCode || "", courseName: r.courseName || "",
       mode: r.mode, questions: this._maskQuestions(), room: this._publicRoom() });
     this._ensureTimer();
     setTimeout(() => { if (this.room.phase === "countdown") { this.room.phase = "running"; this._save(); } }, COUNTDOWN_MS + 50);

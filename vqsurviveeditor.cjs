@@ -306,7 +306,7 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     ok("名前も 引き継ぐ", /検査で 作った/.test(走.名), 走.名);
     ok("組み立てられている", 走.長 > 60 && 走.門 >= 1 && 走.板 > 100, 走);
 
-    節("⑧ 対戦では 使えない");
+    節("⑧ 対戦では 部屋主だけ（合言葉ごと 配る）");
     await pg.evaluate(() => {
       const app = window.VocabuSurvive.__app;
       const m = app.shell.get("match"); if (m && m.quiz && m.quiz.close) m.quiz.close();
@@ -326,12 +326,25 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
       const b = r.querySelector(".vs-lb-mineb");
       return { 部屋: window.VocabuSurvive.__app.shell.get("lobby").roomId,
-        止: b ? b.disabled : null, 断: !!Array.from(r.querySelectorAll(".vs-lb-note"))
-          .filter((e) => /相手が その コースを 持っていません/.test(e.textContent))[0] };
+        止: b ? b.disabled : null, 配: !!Array.from(r.querySelectorAll(".vs-lb-note"))
+          .filter((e) => /みんなへ 配ります/.test(e.textContent))[0] };
     });
     ok("部屋に 入った", /^[A-Z0-9]{6}$/.test(String(部.部屋 || "")), 部.部屋);
-    ok("**自分の コースは 押せなく なる**", 部.止 === true, 部);
-    ok("なぜ 使えないか 書いてある", 部.断, 部);
+    /* ★ 前は「対戦では 使えない」だった。
+       いまは **合言葉ごと 部屋へ 配れる**ので、部屋主なら えらべる。
+       部屋主で ない 側が 押せない ことは vqsurviveshare で 見る。 */
+    ok("部屋主なら 押せる", 部.止 === false, 部);
+    ok("配る 旨が 書いてある", 部.配, 部);
+    const 配 = await pg.evaluate(async () => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      r.querySelector(".vs-lb-mineb").click();
+      await new Promise((x) => setTimeout(x, 700));
+      const lb = window.VocabuSurvive.__app.shell.get("lobby");
+      return { 自: lb._myCourse ? lb._myCourse.name : "",
+        知: (r.querySelector(".vs-lb-sharing") || {}).textContent || "" };
+    });
+    ok("えらぶと 部屋へ 配る", /検査で 作った/.test(String(配.自)), 配);
+    ok("いま 使う コースが **消えずに** 出る", /いま 部屋で 使う コース/.test(String(配.知)) && /検査で 作った/.test(String(配.知)), 配);
 
     節("⑨ 例外");
     ok("画面の 例外 0 件", errs.length === 0, errs.slice(0, 4));
