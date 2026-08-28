@@ -52271,10 +52271,13 @@ actionタイプ:
         }
       ]);
       const PRESET_ENGINE_GRADE_LABELS = Object.freeze(["J1", "J2", "J3", "H1", "H2", "H3", "一般"]);
+      /* ★ 2026-08-28: 段を **2 つ**に した。
+         前は 公開ID → 表示設定 → 注意事項 と 3 回 進める 必要が あり、
+         しかも 注意事項が 表示設定の いちばん 下に ぶら下がって 見えて いた。
+         いまは「①作る（見た目を 決める）→ ②読んで 同意する」の 2 段。 */
       const PRESET_PUBLIC_PROGRESS_STEPS = Object.freeze([
-        { key: "slug", label: "公開ID" },
-        { key: "display", label: "表示設定" },
-        { key: "notice", label: "注意事項" },
+        { key: "setup", label: "公開の設定" },
+        { key: "terms", label: "利用規約" },
         { key: "publishing", label: "公開中" },
         { key: "done", label: "完了" }
       ]);
@@ -52362,11 +52365,16 @@ actionタイプ:
         checkToken: 0,
         checkTimer: 0,
         publishingToken: 0,
+        coverBusy: false,
+        termsScrolled: false,
         draft: {
           slug: "",
           publicTitle: "",
           publicIcon: "open_book",
           publicIconColor: "blue",
+          /* 表紙。プリセットの appearance と 同じ 置き場（一覧は そこを 読む）。 */
+          banner: "",
+          iconImage: "",
           agreed: false
         }
       };
@@ -52955,7 +52963,9 @@ actionタイプ:
           _presetPublishState.checkTimer = 0;
         }
         _presetPublishState.open = false;
-        _presetPublishState.step = "slug";
+        _presetPublishState.step = "setup";
+        _presetPublishState.coverBusy = false;
+        _presetPublishState.termsScrolled = false;
         _presetPublishState.presetId = "";
         _presetPublishState.error = "";
         _presetPublishState.checking = false;
@@ -52968,6 +52978,8 @@ actionタイプ:
           publicTitle: "",
           publicIcon: "open_book",
           publicIconColor: "blue",
+          banner: "",
+          iconImage: "",
           agreed: false
         };
       }
@@ -53017,9 +53029,9 @@ actionタイプ:
         const slug = _presetPublicNormalizeSlug(_presetPublishState.draft.slug || "");
         if (previewTitle) previewTitle.textContent = title;
         if (previewLink) previewLink.textContent = _presetPublicPreviewLink(slug);
-        if (_presetPublishState.step === "slug"){
+        if (_presetPublishState.step === "setup"){
           const status = presetPublishSurface.querySelector(".app-preset-publish-slug-status");
-          const nextBtn = presetPublishSurface.querySelector('[data-preset-public-action="nextSlug"]');
+          const nextBtn = presetPublishSurface.querySelector('[data-preset-public-action="nextSetup"]');
           const validation = _presetPublicValidateSlugLocal(_presetPublishState.draft.slug || "");
           if (status){
             status.classList.remove("is-ok", "is-error");
@@ -53029,15 +53041,11 @@ actionタイプ:
             }
             status.textContent = String(_presetPublishState.slugMessage || validation.message || "英数字とハイフンで設定できます。");
           }
-          if (nextBtn) nextBtn.disabled = !_presetPublicSlugCheckReady();
+          if (nextBtn) nextBtn.disabled = !(_presetPublicSlugCheckReady() && title);
         }
-        if (_presetPublishState.step === "display"){
-          const nextBtn = presetPublishSurface.querySelector('[data-preset-public-action="nextDisplay"]');
-          if (nextBtn) nextBtn.disabled = !title;
-        }
-        if (_presetPublishState.step === "notice"){
+        if (_presetPublishState.step === "terms"){
           const startBtn = presetPublishSurface.querySelector('[data-preset-public-action="startPublishing"]');
-          if (startBtn) startBtn.disabled = !_presetPublishState.draft.agreed;
+          if (startBtn) startBtn.disabled = !(_presetPublishState.draft.agreed && _presetPublishState.termsScrolled);
         }
       }
       async function _presetPublicFetchSlugAvailability(slug, presetId){
@@ -53123,86 +53131,212 @@ actionタイプ:
           void _presetPublicRunSlugCheck(rawValue);
         }, 220);
       }
+      /* ══ 「こう 見えます」 ══════════════════════════════════════════
+         ★ 前の 見本は 古い（丸い アイコンと 名前だけ）作りで、
+           実際に 一覧へ 並ぶ 札とは 別物だった。見本の 意味が 無い。
+         いまは **一覧の 札と 同じ 組み立て**（表紙 → 重なる アイコン →
+         名前 → 作った人 → 問題数・目安の 時間）で 描く。 */
       function _presetPublicPreviewCardHtml(){
-        const icon = _presetPublicIconOption(_presetPublishState.draft.publicIcon);
+        const iconOpt = _presetPublicIconOption(_presetPublishState.draft.publicIcon);
         const color = _presetPublicColorValue(_presetPublishState.draft.publicIconColor);
         const preset = _presetPublicCurrentPreset();
         const title = String(_presetPublishState.draft.publicTitle || preset?.name || "My Preset").trim() || "My Preset";
         const slug = _presetPublicNormalizeSlug(_presetPublishState.draft.slug || "");
+        const banner = String(_presetPublishState.draft.banner || "");
+        const iconImage = String(_presetPublishState.draft.iconImage || "");
+        const count = preset ? _presetEntryCount(preset) : 0;
+        const unit = _isEnglishSubjectId(preset?.subjectId || "sub:english") ? "語" : "問";
+        const subject = preset ? subjectNameById(preset.subjectId || "sub:english") : "";
+        /* 表紙が 無い ときは、名前から 決まる 色と 模様で 描く（一覧と 同じ 考え） */
+        let hue = 250;
+        for (let i = 0; i < title.length; i++) hue = (hue * 31 + title.charCodeAt(i)) % 360;
+        const me = (typeof _vqMeProfile === "function") ? _vqMeProfile() : null;
         return `
-          <div class="app-preset-publish-preview-card">
-            <div class="app-preset-publish-preview-icon" style="background:${escapeHtml(color)};">
-              <span class="ms" aria-hidden="true">${escapeHtml(icon.icon)}</span>
-            </div>
-            <div class="app-preset-publish-preview-copy">
-              <strong class="app-preset-publish-preview-title">${escapeHtml(title)}</strong>
-              <span class="app-preset-publish-preview-link">${escapeHtml(_presetPublicPreviewLink(slug))}</span>
+          <div class="app-preset-publish-pv">
+            <div class="app-preset-publish-pv-cover"${banner ? ` style="background-image:url('${escapeHtml(banner)}');background-size:cover;background-position:center;"` : ` style="background:linear-gradient(135deg, hsl(${hue} 46% var(--pv-l1,90%)), hsl(${hue} 36% var(--pv-l2,96%)));"`}></div>
+            <div class="app-preset-publish-pv-body">
+              <div class="app-preset-publish-pv-ico"${iconImage ? "" : ` style="background:${escapeHtml(color)};"`}>
+                ${iconImage
+                  ? `<img src="${escapeHtml(iconImage)}" alt="" />`
+                  : `<span class="ms" aria-hidden="true">${escapeHtml(iconOpt.icon)}</span>`}
+              </div>
+              <div class="app-preset-publish-pv-title app-preset-publish-preview-title">${escapeHtml(title)}</div>
+              <div class="app-preset-publish-pv-by">
+                <span class="ms" aria-hidden="true">person</span>
+                <span>${escapeHtml(String(me?.displayName || "自分"))}</span>
+              </div>
+              <div class="app-preset-publish-pv-meta">
+                ${subject ? `<span>${escapeHtml(subject)}</span>` : ""}
+                <span>${count}${unit}</span>
+              </div>
+              <div class="app-preset-publish-pv-link app-preset-publish-preview-link">${escapeHtml(_presetPublicPreviewLink(slug))}</div>
             </div>
           </div>
         `;
       }
-      function _presetPublicRenderSlugStep(){
+
+      /* ── 表紙の 画像を 受け取る ────────────────────────────────
+         そのままの 大きさで 持つと 端末の 置き場を すぐ 食いつぶす。
+         **必ず 縮めて から** 持つ（バナー 1200×480 / アイコン 256）。 */
+      function _presetPublicShrinkImage(file, maxW, maxH, quality){
+        return new Promise((resolve, reject) => {
+          if (!file || !/^image\//i.test(String(file.type || ""))) { reject(new Error("画像を選んでください。")); return; }
+          const fr = new FileReader();
+          fr.onerror = () => reject(new Error("画像を読めませんでした。"));
+          fr.onload = () => {
+            const img = new Image();
+            img.onerror = () => reject(new Error("画像を読めませんでした。"));
+            img.onload = () => {
+              try{
+                const k = Math.min(1, maxW / Math.max(1, img.width), maxH / Math.max(1, img.height));
+                const w = Math.max(1, Math.round(img.width * k));
+                const h = Math.max(1, Math.round(img.height * k));
+                const cv = document.createElement("canvas");
+                cv.width = w; cv.height = h;
+                const cx = cv.getContext("2d");
+                cx.drawImage(img, 0, 0, w, h);
+                let out = cv.toDataURL("image/jpeg", quality || 0.82);
+                /* 700KB を 超えたら もう一段 落とす（上限は 表紙の 決まり） */
+                let q = quality || 0.82;
+                while (out.length > 700 * 1024 && q > 0.4) { q -= 0.12; out = cv.toDataURL("image/jpeg", q); }
+                resolve(out);
+              }catch(e){ reject(new Error("画像を 小さくできませんでした。")); }
+            };
+            img.src = String(fr.result || "");
+          };
+          fr.readAsDataURL(file);
+        });
+      }
+      function _presetPublicPickImage(kind){
+        return new Promise((resolve) => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept = "image/*";
+          input.style.display = "none";
+          input.onchange = async () => {
+            const f = input.files && input.files[0];
+            document.body.removeChild(input);
+            if (!f) { resolve(null); return; }
+            try{
+              const url = kind === "icon"
+                ? await _presetPublicShrinkImage(f, 256, 256, 0.86)
+                : await _presetPublicShrinkImage(f, 1200, 480, 0.82);
+              resolve(url);
+            }catch(e){
+              uiToast(String(e?.message || "画像を 読めませんでした。"));
+              resolve(null);
+            }
+          };
+          document.body.appendChild(input);
+          input.click();
+        });
+      }
+      /* AI に 表紙を 作らせる。作り方は Quick Mock と 同じ 口（VQ2.aigen.cover）。 */
+      async function _presetPublicMakeCoverWithAi(){
+        const preset = _presetPublicCurrentPreset();
+        const G = window.VQ2 && window.VQ2.aigen;
+        if (!G || !G.cover){
+          uiToast("いまは 表紙を 作れません。");
+          return;
+        }
+        _presetPublishState.coverBusy = true;
+        _presetPublicRender();
+        try{
+          const samples = [];
+          try{
+            const qs = Array.isArray(preset?.questions) ? preset.questions : [];
+            qs.slice(0, 5).forEach((q) => { const t = String(q?.prompt || "").trim(); if (t) samples.push(t.slice(0, 120)); });
+            if (!samples.length && Array.isArray(preset?.words)){
+              preset.words.slice(0, 5).forEach((w) => { const t = String(w?.q || w?.front || "").trim(); if (t) samples.push(t.slice(0, 120)); });
+            }
+          }catch(e){}
+          const res = await G.cover({
+            instruction: String(_presetPublishState.draft.publicTitle || preset?.name || ""),
+            subject: String(preset?.subjectId || ""),
+            samples,
+            icons: PRESET_PUBLIC_ICON_OPTIONS.map((x) => x.icon),
+            banner: true,
+            waitMs: 60000
+          });
+          if (!res){ uiToast("表紙を 作れませんでした。"); return; }
+          if (res.icon){
+            const hit = PRESET_PUBLIC_ICON_OPTIONS.find((x) => x.icon === String(res.icon));
+            if (hit) _presetPublishState.draft.publicIcon = hit.id;
+          }
+          if (res.image && res.mimeType){
+            _presetPublishState.draft.banner = `data:${res.mimeType};base64,${res.image}`;
+          }
+          if (!res.image && !res.icon) uiToast("表紙を 作れませんでした。");
+          else uiToast("表紙を 作りました。");
+        }catch(e){
+          uiToast("表紙を 作れませんでした。");
+        }finally{
+          _presetPublishState.coverBusy = false;
+          _presetPublicRender();
+        }
+      }
+      /* ══ STEP 1: 公開の 設定 ═══════════════════════════════════════
+         公開ID・公開名・アイコン・表紙を **1 枚**で 決める。
+         右に「こう 見えます」（一覧の 札と 同じ 組み立て）。 */
+      function _presetPublicRenderSetupStep(){
+        const groups = _presetPublicGroupedIcons();
+        const title = String(_presetPublishState.draft.publicTitle || "").trim();
         const validation = _presetPublicValidateSlugLocal(_presetPublishState.draft.slug || "");
         const statusClass = !_presetPublishState.draft.slug
           ? ""
           : (_presetPublishState.slugAvailable ? " is-ok" : (_presetPublishState.checking ? "" : " is-error"));
+        const banner = String(_presetPublishState.draft.banner || "");
+        const iconImage = String(_presetPublishState.draft.iconImage || "");
+        const busy = !!_presetPublishState.coverBusy;
         presetPublishSurface.innerHTML = `
           <div class="app-preset-publish-flow">
-            ${_presetPublicProgressHtml("slug")}
+            ${_presetPublicProgressHtml("setup")}
             <div class="app-preset-engine-head">
               <div class="app-preset-engine-kicker">STEP 1</div>
-              <h2 class="app-preset-engine-title">公開IDを決める</h2>
-              <p class="app-preset-engine-sub">複雑な設定ではなく、公開先として見える識別子だけを、最初に静かに整えます。</p>
-            </div>
-            ${_presetPublishState.error ? `<div class="app-preset-engine-error">${escapeHtml(_presetPublishState.error)}</div>` : ""}
-            <div class="app-preset-publish-grid">
-              <section class="app-preset-publish-panel app-preset-publish-slug-wrap">
-                <div class="app-preset-engine-note"><span class="ms" aria-hidden="true">public</span><span>公開ページとして見える固有IDです。あとから見分けやすく、共有もしやすい形にします。</span></div>
-                <div class="app-preset-publish-slug-row">
-                  <span class="ms" aria-hidden="true">public</span>
-                  <span class="app-preset-publish-prefix">vocabuquiz.app/preset/</span>
-                  <input id="presetPublishSlugInput" class="app-preset-publish-slug-input" type="text" autocomplete="off" spellcheck="false" value="${escapeHtml(_presetPublishState.draft.slug || "")}" placeholder="custom-id" />
-                  <button class="btn secondary" type="button" data-preset-public-action="regenSlug">自動で指定する</button>
-                </div>
-                <div class="app-preset-publish-slug-status${statusClass}">${escapeHtml(_presetPublishState.slugMessage || validation.message || "英数字とハイフンで設定できます。")}</div>
-                <div class="app-preset-engine-help">4〜32文字、英数字とハイフンのみ。公開済みIDや予約語とは重複できません。</div>
-              </section>
-              <aside class="app-preset-publish-preview">
-                ${_presetPublicPreviewCardHtml()}
-                <div class="app-preset-engine-note"><span class="ms" aria-hidden="true">travel_explore</span><span>公開後の一覧では、このアイコンとリンクで見分けられるようになります。</span></div>
-              </aside>
-            </div>
-            <div class="app-preset-engine-footer">
-              <button class="textbtn" type="button" data-preset-public-action="close">閉じる</button>
-              <div class="app-preset-engine-footer-actions">
-                <button class="navbtn primary" type="button" data-preset-public-action="nextSlug"${_presetPublicSlugCheckReady() ? "" : " disabled"}>次へ</button>
-              </div>
-            </div>
-          </div>
-        `;
-      }
-      function _presetPublicRenderDisplayStep(){
-        const groups = _presetPublicGroupedIcons();
-        const title = String(_presetPublishState.draft.publicTitle || "").trim();
-        presetPublishSurface.innerHTML = `
-          <div class="app-preset-publish-flow">
-            ${_presetPublicProgressHtml("display")}
-            <div class="app-preset-engine-head">
-              <div class="app-preset-engine-kicker">STEP 2</div>
-              <h2 class="app-preset-engine-title">公開時の見え方を整える</h2>
-              <p class="app-preset-engine-sub">一覧に並んだときに見分けやすいように、公開用の名前とアイコンをここで選びます。</p>
+              <h2 class="app-preset-engine-title">公開したときの 見え方を 決める</h2>
+              <p class="app-preset-engine-sub">公開ID・名前・アイコン・表紙を ここで まとめて 整えます。右が そのまま 一覧での 見え方です。</p>
             </div>
             ${_presetPublishState.error ? `<div class="app-preset-engine-error">${escapeHtml(_presetPublishState.error)}</div>` : ""}
             <div class="app-preset-publish-grid">
               <section class="app-preset-publish-panel">
                 <label class="app-preset-engine-field">
+                  <span class="app-preset-engine-label">公開ID</span>
+                  <div class="app-preset-publish-slug-row">
+                    <span class="app-preset-publish-slug-prefix">vocabuquiz.app/preset/</span>
+                    <input id="presetPublishSlugInput" class="spell-input" type="text" maxlength="32" value="${escapeHtml(String(_presetPublishState.draft.slug || ""))}" placeholder="my-preset" />
+                    <button class="btn secondary" type="button" data-preset-public-action="regenSlug">自動で指定する</button>
+                  </div>
+                  <span class="app-preset-publish-slug-status${statusClass}">${escapeHtml(String(_presetPublishState.slugMessage || validation.message || "4〜32文字、英数字とハイフンのみ。"))}</span>
+                </label>
+
+                <label class="app-preset-engine-field">
                   <span class="app-preset-engine-label">公開用プリセット名</span>
                   <input id="presetPublishTitleInput" class="spell-input" type="text" maxlength="80" value="${escapeHtml(title)}" placeholder="公開時の表示名" />
                   <span class="app-preset-engine-help">内部タイトルと分けても構いません。一覧や公開先で見える名前です。</span>
                 </label>
+
+                <div class="app-preset-engine-field">
+                  <span class="app-preset-engine-label">表紙（バナー）</span>
+                  <div class="app-preset-publish-cover">
+                    <div class="app-preset-publish-cover-view"${banner ? ` style="background-image:url('${escapeHtml(banner)}');"` : ""}>
+                      ${banner ? "" : '<span class="ms" aria-hidden="true">image</span><span>まだ ありません</span>'}
+                    </div>
+                    <div class="app-preset-publish-cover-acts">
+                      <button class="btn secondary" type="button" data-preset-public-action="uploadBanner"${busy ? " disabled" : ""}>画像を 選ぶ</button>
+                      <button class="btn secondary" type="button" data-preset-public-action="aiCover"${busy ? " disabled" : ""}>${busy ? "作っています…" : "AI で 作る"}</button>
+                      ${banner ? '<button class="textbtn" type="button" data-preset-public-action="clearBanner">外す</button>' : ""}
+                    </div>
+                  </div>
+                  <span class="app-preset-engine-help">AI で 作ると、名前と 中身から 表紙と アイコンを 選びます。</span>
+                </div>
+
                 <div class="app-preset-engine-field">
                   <span class="app-preset-engine-label">アイコン</span>
-                  <div class="app-preset-publish-icon-groups">
+                  <div class="app-preset-publish-cover-acts">
+                    <button class="btn secondary" type="button" data-preset-public-action="uploadIcon"${busy ? " disabled" : ""}>画像を 選ぶ</button>
+                    ${iconImage ? '<button class="textbtn" type="button" data-preset-public-action="clearIcon">画像を 外す</button>' : ""}
+                  </div>
+                  <div class="app-preset-publish-icon-groups"${iconImage ? ' style="opacity:.5;"' : ""}>
                     ${groups.map((group) => `
                       <section class="app-preset-publish-icon-group">
                         <h4>${escapeHtml(group.label)}</h4>
@@ -53230,49 +53364,124 @@ actionタイプ:
                 </div>
               </section>
               <aside class="app-preset-publish-preview">
+                <div class="app-preset-engine-label">こう 見えます</div>
                 ${_presetPublicPreviewCardHtml()}
-                <div class="app-preset-engine-note"><span class="ms" aria-hidden="true">palette</span><span>色付き背景と白アイコンの組み合わせで、一覧でも静かに見分けやすくします。</span></div>
               </aside>
             </div>
             <div class="app-preset-engine-footer">
-              <button class="textbtn" type="button" data-preset-public-action="backDisplay">戻る</button>
+              <button class="textbtn" type="button" data-preset-public-action="close">やめる</button>
               <div class="app-preset-engine-footer-actions">
-                <button class="navbtn primary" type="button" data-preset-public-action="nextDisplay"${title ? "" : " disabled"}>次へ</button>
+                <button class="navbtn primary" type="button" data-preset-public-action="nextSetup"${_presetPublicSlugCheckReady() && title ? "" : " disabled"}>次へ（規約の 確認）</button>
               </div>
             </div>
           </div>
         `;
+        _presetPublicBindSetupInputs();
       }
-      function _presetPublicRenderNoticeStep(){
+
+      function _presetPublicBindSetupInputs(){
+        const slugInput = document.getElementById("presetPublishSlugInput");
+        if (slugInput){
+          slugInput.addEventListener("input", () => {
+            _presetPublishState.draft.slug = _presetPublicNormalizeSlug(slugInput.value || "");
+            _presetPublishState.slugAvailable = false;
+            _presetPublishState.slugMessage = "利用状況を確認しています…";
+            _presetPublicSyncLiveUi();
+            if (_presetPublishState.checkTimer) clearTimeout(_presetPublishState.checkTimer);
+            _presetPublishState.checkTimer = setTimeout(() => {
+              void _presetPublicRunSlugCheck(_presetPublishState.draft.slug);
+            }, 380);
+          });
+        }
+        const titleInput = document.getElementById("presetPublishTitleInput");
+        if (titleInput){
+          titleInput.addEventListener("input", () => {
+            _presetPublishState.draft.publicTitle = String(titleInput.value || "").slice(0, 80);
+            _presetPublicSyncLiveUi();
+          });
+        }
+      }
+
+      /* ══ STEP 2: 利用規約 ═══════════════════════════════════════════
+         ★ 長い 手続きには しない。ただし **AI が 作った 問題も 公開される**ので、
+           そこは はっきり 書いて、読んだ うえで 同意して もらう。
+           下まで 読まないと 同意の 印は 押せない（読まずに 通れない）。 */
+      const PRESET_PUBLIC_TERMS = Object.freeze([
+        { h: "1. 公開すると どうなるか",
+          p: "公開した プリセットは、ほかの 利用者が 見て、解いて、自分の 一覧に 取り込めます。公開を 取り消しても、すでに 取り込まれた ものは 相手の 手元に 残ります。" },
+        { h: "2. 中身の 責任は 作った人に あります",
+          p: "問題・解説・表紙を 含め、公開した 中身の 責任は 作成者に あります。運営は 内容の 正しさを 保証しません。" },
+        { h: "3. AI が 作った 問題も 同じ 扱いです",
+          p: "AI に 作らせた 問題を そのまま 公開する ときも、**中身を 自分で 確かめて から**公開して ください。AI は 事実でない ことを もっともらしく 書きます。誤りが 見つかった 公開物は、運営が 予告なく 非公開に する ことが あります。" },
+        { h: "4. 出してはいけない もの",
+          p: "他人の 著作物（教科書・問題集・試験問題の 引き写し）、個人が 特定できる 情報、差別・攻撃・わいせつな 内容、法令に 触れる 内容は 公開できません。資料から 作った 問題でも、元の 文章を そのまま 載せることは できません。" },
+        { h: "5. 通報と 取り下げ",
+          p: "公開物には 通報の 口が あります。通報が あった もの、規約に 反する ものは、運営が 非公開に する ことが あります。繰り返す 場合は 公開の 機能を 止める ことが あります。" },
+        { h: "6. あなたが 与える 許可",
+          p: "公開する ことで、この アプリの 中で 表示・検索・複製（利用者が 自分の 一覧へ 取り込む こと）に 使う 許可を 運営に 与えます。著作権は あなたの ものです。" }
+      ]);
+      function _presetPublicRenderTermsStep(){
+        const 読んだ = !!_presetPublishState.termsScrolled;
         presetPublishSurface.innerHTML = `
           <div class="app-preset-publish-flow">
-            ${_presetPublicProgressHtml("notice")}
+            ${_presetPublicProgressHtml("terms")}
             <div class="app-preset-engine-head">
-              <div class="app-preset-engine-kicker">STEP 3</div>
-              <h2 class="app-preset-engine-title">公開前に、短い注意だけ確認する</h2>
-              <p class="app-preset-engine-sub">長い手続きではなく、公開に必要なポイントだけをここで軽く揃えます。</p>
+              <div class="app-preset-engine-kicker">STEP 2</div>
+              <h2 class="app-preset-engine-title">公開の 決まりを 読む</h2>
+              <p class="app-preset-engine-sub">短くしてあります。最後まで 読むと、下の 同意が 押せるように なります。</p>
             </div>
             ${_presetPublishState.error ? `<div class="app-preset-engine-error">${escapeHtml(_presetPublishState.error)}</div>` : ""}
             <section class="app-preset-publish-panel">
-              <ul class="app-preset-publish-notice-list">
-                <li class="app-preset-publish-notice-item"><span class="ms" aria-hidden="true">visibility</span><span>公開後は他のユーザーから閲覧され、学習や保存に使われる可能性があります。</span></li>
-                <li class="app-preset-publish-notice-item"><span class="ms" aria-hidden="true">gavel</span><span>公序良俗に反する内容、差別的・攻撃的な内容は公開できません。</span></li>
-                <li class="app-preset-publish-notice-item"><span class="ms" aria-hidden="true">copyright</span><span>著作権や出典ルールに注意し、共有可能な内容だけを公開してください。</span></li>
-                <li class="app-preset-publish-notice-item"><span class="ms" aria-hidden="true">verified_user</span><span>公開内容には作成者として責任を持ち、必要に応じて見直せる状態で保存されます。</span></li>
-              </ul>
+              <div class="app-preset-publish-terms" id="presetPublishTermsBox" tabindex="0" role="region" aria-label="公開の 決まり">
+                ${PRESET_PUBLIC_TERMS.map((t) => `
+                  <article class="app-preset-publish-term">
+                    <h4>${escapeHtml(t.h)}</h4>
+                    <p>${t.p.replace(/\*\*(.+?)\*\*/g, (m, x) => `<strong>${escapeHtml(x)}</strong>`)}</p>
+                  </article>
+                `).join("")}
+                <div class="app-preset-publish-term-end">ここまでです。下の 同意に 進めます。</div>
+              </div>
+              <div class="app-preset-publish-terms-hint${読んだ ? " is-done" : ""}" id="presetPublishTermsHint">
+                <span class="ms" aria-hidden="true">${読んだ ? "check_circle" : "arrow_downward"}</span>
+                <span>${読んだ ? "最後まで 読みました。" : "最後まで 読むと 同意できます。"}</span>
+              </div>
               <label class="app-preset-publish-agree">
-                <input id="presetPublishAgreeInput" type="checkbox"${_presetPublishState.draft.agreed ? " checked" : ""} />
-                <span>注意事項を確認し、この内容で公開することに同意します。</span>
+                <input id="presetPublishAgreeInput" type="checkbox"${_presetPublishState.draft.agreed ? " checked" : ""}${読んだ ? "" : " disabled"} />
+                <span>上の 決まりを 読み、この 内容で 公開する ことに 同意します。</span>
               </label>
             </section>
             <div class="app-preset-engine-footer">
-              <button class="textbtn" type="button" data-preset-public-action="backNotice">戻る</button>
+              <button class="textbtn" type="button" data-preset-public-action="backTerms">戻る</button>
               <div class="app-preset-engine-footer-actions">
-                <button class="navbtn primary" type="button" data-preset-public-action="startPublishing"${_presetPublishState.draft.agreed ? "" : " disabled"}>公開する</button>
+                <button class="navbtn primary" type="button" data-preset-public-action="startPublishing"${_presetPublishState.draft.agreed && 読んだ ? "" : " disabled"}>公開する</button>
               </div>
             </div>
           </div>
         `;
+        _presetPublicBindTerms();
+      }
+      function _presetPublicBindTerms(){
+        const box = document.getElementById("presetPublishTermsBox");
+        if (!box) return;
+        const 見る = () => {
+          /* 下まで 8px 以内に 来たら 読んだ ことに する。
+             はじめから 全部 入り切って いる ときも 読んだ ことに する
+             （スクロールできない のに 押せないのは おかしい）。 */
+          const 全部見えている = box.scrollHeight <= box.clientHeight + 8;
+          const 下まで = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+          if (!(全部見えている || 下まで)) return;
+          if (_presetPublishState.termsScrolled) return;
+          _presetPublishState.termsScrolled = true;
+          const hint = document.getElementById("presetPublishTermsHint");
+          const cb = document.getElementById("presetPublishAgreeInput");
+          if (hint){
+            hint.classList.add("is-done");
+            hint.innerHTML = '<span class="ms" aria-hidden="true">check_circle</span><span>最後まで 読みました。</span>';
+          }
+          if (cb) cb.disabled = false;
+        };
+        box.addEventListener("scroll", 見る, { passive: true });
+        setTimeout(見る, 0);
       }
       function _presetPublicRenderPublishingStep(){
         presetPublishSurface.innerHTML = `
@@ -53319,9 +53528,8 @@ actionタイプ:
       }
       function _presetPublicRender(){
         if (!presetPublishOverlay || !presetPublishSurface || !_presetPublishState.open) return;
-        if (_presetPublishState.step === "slug") _presetPublicRenderSlugStep();
-        else if (_presetPublishState.step === "display") _presetPublicRenderDisplayStep();
-        else if (_presetPublishState.step === "notice") _presetPublicRenderNoticeStep();
+        if (_presetPublishState.step === "setup") _presetPublicRenderSetupStep();
+        else if (_presetPublishState.step === "terms") _presetPublicRenderTermsStep();
         else if (_presetPublishState.step === "publishing") _presetPublicRenderPublishingStep();
         else _presetPublicRenderDoneStep();
         if (typeof _applyPresetEngineFlat === "function") setTimeout(_applyPresetEngineFlat, 0);
@@ -53349,6 +53557,13 @@ actionタイプ:
         _presetPublishState.draft.publicTitle = meta.publicTitle || preset.name || "My Preset";
         _presetPublishState.draft.publicIcon = meta.publicIcon || "open_book";
         _presetPublishState.draft.publicIconColor = meta.publicIconColor || "blue";
+        /* 表紙は プリセットが 持っている ものを そのまま 引き継ぐ。
+           ここで 作り直すと、編集画面で 決めた 表紙が 公開で 消える。 */
+        {
+          const ap = (preset.appearance && typeof preset.appearance === "object") ? preset.appearance : {};
+          _presetPublishState.draft.banner = /^data:image\//i.test(String(ap.banner || "")) ? String(ap.banner) : "";
+          _presetPublishState.draft.iconImage = /^data:image\//i.test(String(ap.iconImage || "")) ? String(ap.iconImage) : "";
+        }
         presetPublishOverlay.classList.remove("hidden");
         document.body.classList.add("dialog-open");
         document.body.classList.add("preset-publish-open");
@@ -53371,6 +53586,20 @@ actionタイプ:
         _presetPublishState.error = "";
         _presetPublishState.step = "publishing";
         _presetPublicRender();
+        /* 表紙は **プリセット本体（appearance）**が 持ち主。ここで 先に 保存する。
+           一覧も 詳細も そこを 読むので、公開の 見た目だけ 別に 持つと ずれる。 */
+        try{
+          const b0 = String(_presetPublishState.draft.banner || "");
+          const i0 = String(_presetPublishState.draft.iconImage || "");
+          _presetPublicUpdateLocalPreset(_presetPublishState.presetId, (current) => {
+            const next = { ...(current || {}) };
+            const ap = (next.appearance && typeof next.appearance === "object") ? { ...next.appearance } : {};
+            ap.banner = b0;
+            ap.iconImage = i0;
+            next.appearance = ap;
+            return next;
+          });
+        }catch(e){}
         const token = ++_presetPublishState.publishingToken;
         await new Promise((resolve) => setTimeout(resolve, 950));
         if (!_presetPublishState.open || token !== _presetPublishState.publishingToken) return;
@@ -53381,7 +53610,7 @@ actionタイプ:
           publicIconColor: _presetPublishState.draft.publicIconColor
         });
         if (!result?.ok){
-          _presetPublishState.step = "notice";
+          _presetPublishState.step = "terms";
           _presetPublishState.error = String(result?.error?.message || "公開に失敗しました。");
           _presetPublicRender();
           return;
@@ -53403,16 +53632,46 @@ actionタイプ:
           void _presetPublicRunSlugCheck(_presetPublishState.draft.slug);
           return;
         }
-        if (action === "nextSlug"){
+        if (action === "nextSetup"){
           if (!_presetPublicSlugCheckReady()) return;
-          _presetPublishState.step = "display";
+          if (!String(_presetPublishState.draft.publicTitle || "").trim()){
+            _presetPublishState.error = "公開用プリセット名を入力してください。";
+            _presetPublicRender();
+            return;
+          }
+          _presetPublishState.step = "terms";
           _presetPublishState.error = "";
           _presetPublicRender();
           return;
         }
-        if (action === "backDisplay"){
-          _presetPublishState.step = "slug";
+        if (action === "backTerms"){
+          _presetPublishState.step = "setup";
           _presetPublicRender();
+          return;
+        }
+        if (action === "uploadBanner"){
+          const url = await _presetPublicPickImage("banner");
+          if (url){ _presetPublishState.draft.banner = url; _presetPublicRender(); }
+          return;
+        }
+        if (action === "uploadIcon"){
+          const url = await _presetPublicPickImage("icon");
+          if (url){ _presetPublishState.draft.iconImage = url; _presetPublicRender(); }
+          return;
+        }
+        if (action === "clearBanner"){
+          _presetPublishState.draft.banner = "";
+          _presetPublicRender();
+          return;
+        }
+        if (action === "clearIcon"){
+          _presetPublishState.draft.iconImage = "";
+          _presetPublicRender();
+          return;
+        }
+        if (action === "aiCover"){
+          if (_presetPublishState.coverBusy) return;
+          await _presetPublicMakeCoverWithAi();
           return;
         }
         if (action === "pickIcon"){
@@ -53425,24 +53684,8 @@ actionタイプ:
           _presetPublicRender();
           return;
         }
-        if (action === "nextDisplay"){
-          if (!String(_presetPublishState.draft.publicTitle || "").trim()){
-            _presetPublishState.error = "公開用プリセット名を入力してください。";
-            _presetPublicRender();
-            return;
-          }
-          _presetPublishState.error = "";
-          _presetPublishState.step = "notice";
-          _presetPublicRender();
-          return;
-        }
-        if (action === "backNotice"){
-          _presetPublishState.step = "display";
-          _presetPublicRender();
-          return;
-        }
         if (action === "startPublishing"){
-          if (!_presetPublishState.draft.agreed) return;
+          if (!_presetPublishState.draft.agreed || !_presetPublishState.termsScrolled) return;
           await _presetPublicStartPublishing();
           return;
         }

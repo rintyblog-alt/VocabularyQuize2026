@@ -78,10 +78,17 @@ async function req(path, o = {}) {
   await pg.waitForTimeout(1200);
   ok("公開の 画面が 開く", !!(await 面()));
   await pg.waitForTimeout(2600);
-  ok("STEP1 から 進める", await 押す("nextSlug"));
+  ok("STEP1 から 進める", await 押す("nextSetup"));
   await pg.waitForTimeout(900);
-  ok("STEP2 から 進める", await 押す("nextDisplay"));
-  await pg.waitForTimeout(900);
+  /* 規約を 最後まで 読む（読まないと 同意は 押せない） */
+  ok("同意は はじめ 押せない", await pg.evaluate(() => {
+    const cb = document.getElementById("presetPublishAgreeInput"); return !!cb && cb.disabled;
+  }));
+  await pg.evaluate(() => { const b = document.getElementById("presetPublishTermsBox"); if (b) b.scrollTop = b.scrollHeight; });
+  await pg.waitForTimeout(600);
+  ok("最後まで 読むと 押せる", await pg.evaluate(() => {
+    const cb = document.getElementById("presetPublishAgreeInput"); return !!cb && !cb.disabled;
+  }));
   await pg.evaluate(() => { const cb = document.getElementById("presetPublishAgreeInput"); if (cb) cb.click(); });
   await pg.waitForTimeout(400);
   ok("同意すると 公開できる", await 押す("startPublishing"));

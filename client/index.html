@@ -6067,7 +6067,7 @@ body.vq-survive-play #appMobileBottomBar{ display:none !important; }
   #appSurvivePage{ border-radius:0; }
 }
 </style>
-<script id="vq-core" src="/js/vq-core.83333f0f90.js"></script>
+<script id="vq-core" src="/js/vq-core.ed1dc726d5.js"></script>
 <script type="module" src="/assets/survival/runtime.js"></script>
 <!-- ★ three.js の 先読みをやめた（2026-08-18）。
      Qredit のカードを 立体で見せるためだけの 118KB を、**見ない人にも**
@@ -15110,6 +15110,99 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
 </script>
 
 
+<style id="vq-publish-v2">
+/* ── 公開の 画面（2 段） ─────────────────────────────────────────── */
+.app-preset-publish-slug-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.app-preset-publish-slug-row .spell-input{ flex:1 1 160px; min-width:0; }
+.app-preset-publish-slug-prefix{
+  font: var(--vq-type-caption, 500 11.5px/1.5 inherit);
+  color: var(--vq-text-tertiary, #9994A8); white-space: nowrap;
+}
+.app-preset-publish-slug-status{ font: var(--vq-type-caption, 500 11.5px/1.5 inherit); color: var(--vq-text-secondary, #686477); }
+.app-preset-publish-slug-status.is-ok{ color: var(--vq-success-text, #3E7A56); }
+.app-preset-publish-slug-status.is-error{ color: var(--vq-danger-text, #A94A4A); }
+
+/* 表紙 */
+.app-preset-publish-cover{ display:grid; gap:10px; }
+.app-preset-publish-cover-view{
+  height: 132px; border-radius: var(--vq-r-md, 14px);
+  background: var(--vq-surface-sunken, #F7F6FB) center/cover no-repeat;
+  border: 1px dashed var(--vq-border-strong, #D7D2E4);
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  color: var(--vq-text-tertiary, #9994A8);
+  font: var(--vq-type-caption, 500 11.5px/1.5 inherit);
+}
+.app-preset-publish-cover-view .ms{ font-size:22px; }
+.app-preset-publish-cover-acts{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+
+/* こう 見えます（一覧の 札と 同じ 組み立て） */
+.app-preset-publish-pv{
+  --pv-l1: 90%; --pv-l2: 96%;
+  border-radius: var(--vq-r-lg, 18px); overflow:hidden;
+  background: var(--vq-surface, #fff);
+  border: 1px solid var(--vq-border-subtle, #EFEDF5);
+  box-shadow: var(--vq-shadow-raised, 0 2px 4px rgba(84,72,140,.04));
+}
+html[data-theme-mode="dark"] .app-preset-publish-pv{ --pv-l1: 26%; --pv-l2: 19%; }
+.app-preset-publish-pv-cover{ height: 96px; }
+.app-preset-publish-pv-body{ padding: 0 15px 14px; display:grid; gap:5px; }
+.app-preset-publish-pv-ico{
+  width:50px; height:50px; margin-top:-26px; margin-bottom:2px;
+  border-radius: var(--vq-r-md, 14px);
+  border: 2.5px solid var(--vq-surface, #fff);
+  box-shadow: 0 3px 10px rgba(84,72,140,.18);
+  display:grid; place-items:center; overflow:hidden; color:#fff;
+}
+.app-preset-publish-pv-ico .ms{ font-size:25px; }
+.app-preset-publish-pv-ico img{ width:100%; height:100%; object-fit:cover; display:block; }
+.app-preset-publish-pv-title{
+  font: var(--vq-type-heading-sm, 650 14.5px/1.5 inherit);
+  color: var(--vq-text, #454151); word-break: break-word;
+}
+.app-preset-publish-pv-by{
+  display:flex; align-items:center; gap:6px;
+  font: var(--vq-type-caption, 500 11.5px/1.5 inherit); color: var(--vq-text-secondary, #686477);
+}
+.app-preset-publish-pv-by .ms{ font-size:14px; color: var(--vq-text-tertiary, #9994A8); }
+.app-preset-publish-pv-meta{
+  display:flex; gap:10px; flex-wrap:wrap;
+  font: var(--vq-type-caption, 500 11.5px/1.5 inherit); color: var(--vq-text-secondary, #686477);
+}
+.app-preset-publish-pv-link{
+  font: var(--vq-type-caption, 500 11.5px/1.5 inherit); color: var(--vq-text-tertiary, #9994A8);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* 利用規約 */
+.app-preset-publish-terms{
+  max-height: 44vh; overflow-y: auto; overscroll-behavior: contain;
+  padding: 14px 16px; display:grid; gap:14px;
+  background: var(--vq-surface-sunken, #F7F6FB);
+  border: 1px solid var(--vq-border-subtle, #EFEDF5);
+  border-radius: var(--vq-r-md, 14px);
+}
+.app-preset-publish-terms:focus-visible{ outline:none; box-shadow: var(--vq-focus-ring, 0 0 0 3px rgba(117,109,179,.26)); }
+.app-preset-publish-term h4{
+  margin:0 0 4px; font: var(--vq-type-heading-sm, 650 14.5px/1.5 inherit); color: var(--vq-text, #454151);
+}
+.app-preset-publish-term p{
+  margin:0; font: var(--vq-type-body-sm, 400 13px/1.7 inherit); color: var(--vq-text-secondary, #686477);
+}
+.app-preset-publish-term-end{
+  text-align:center; padding-top:4px;
+  font: var(--vq-type-caption, 500 11.5px/1.5 inherit); color: var(--vq-text-tertiary, #9994A8);
+}
+.app-preset-publish-terms-hint{
+  display:flex; align-items:center; gap:8px; margin-top:10px;
+  font: var(--vq-type-caption, 500 11.5px/1.5 inherit); color: var(--vq-text-secondary, #686477);
+}
+.app-preset-publish-terms-hint .ms{ font-size:18px; }
+.app-preset-publish-terms-hint.is-done{ color: var(--vq-success-text, #3E7A56); }
+.app-preset-publish-agree input[disabled]{ cursor:not-allowed; }
+@media (max-width: 900px){
+  .app-preset-publish-terms{ max-height: 40vh; }
+}
+</style>
 <style id="vq-library-building">
 /* ── クラウドで 作りかけの プリセット ────────────────────────────
    一覧に **うすい 札**として 並ぶ。押せる ものは 何も 無い
