@@ -304,6 +304,42 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       rs.btnAll > rs.btns && !rs.btnText.some((t) => /次の ラウンドへ|間違えた 単語で/.test(t)),
       [rs.btnAll, rs.btns, rs.btnText]);
 
+    節("②-b 音が 本当に 鳴っている");
+    /* ★ 音源ファイルは 1 つも 置いていない（著作権と 落とす量）。
+       その場で 作って いる ので、**作られた 音の 数**を 数えれば 鳴った ことが 分かる。 */
+    const 音 = await pg.evaluate(async () => {
+      const a = window.VocabuSurvive.__app.audio;
+      if (!a) return { なし: true };
+      window.__osc = 0; window.__buf = 0;
+      const A = window.AudioContext || window.webkitAudioContext;
+      if (A) {
+        const 元o = A.prototype.createOscillator, 元b = A.prototype.createBufferSource;
+        A.prototype.createOscillator = function () { window.__osc++; return 元o.apply(this, arguments); };
+        A.prototype.createBufferSource = function () { window.__buf++; return 元b.apply(this, arguments); };
+      }
+      try { a.unlock(); } catch (e) {}
+      for (const k of ["ui", "beep", "jump", "land", "hit", "correct", "wrong", "checkpoint", "finish"]) {
+        try { a[k] && a[k](); } catch (e) {}
+      }
+      await new Promise((x) => setTimeout(x, 300));
+      return { osc: window.__osc, buf: window.__buf,
+        ctx: a.ctx ? a.ctx.state : "なし", 量: a.volume };
+    });
+    if (音.なし) console.log("     （音が 用意されていない）");
+    else {
+      console.log("     作った 音: 発振 " + 音.osc + " / 雑音 " + 音.buf + " / 器 " + 音.ctx);
+      ok("音の 器が 動いている", 音.ctx === "running" || 音.ctx === "suspended", 音.ctx);
+      ok("**その場で 音を 作っている**", (音.osc + 音.buf) >= 8, 音);
+      ok("音量が 効いている", 音.量 > 0 && 音.量 <= 1, 音.量);
+    }
+    /* 音源ファイルを 1 つも 置いていない */
+    const 束 = fs.readFileSync("client/js/" + fs.readdirSync("client/js")
+      .filter((f) => /^vq-survive\./.test(f))[0], "utf8");
+    /* ★ 拡張子だけで 探すと `this.wave`（細い道の 揺れ）が `.wav` に 当たる。
+       **「」で 囲まれた 場所の 終わり**だけを 見る。 */
+    const 音源 = 束.match(/["'`][^"'`\n]{0,120}\.(?:mp3|ogg|wav|m4a|aac|flac)["'`]/gi) || [];
+    ok("**音源ファイルを 読んでいない**", 音源.length === 0, 音源.slice(0, 3));
+
     節("③-a 今日の コース");
     /* ★ 30 本 あっても「どれを 走ろう」で 止まる。
        日付だけから 決める ので、誰が 開いても 同じ もの。 */
@@ -524,7 +560,10 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     if (絵) await pg.screenshot({ path: OUT + "/survive-result.png" });
 
     節("⑨ 例外");
-    const 無視 = /favicon|net::ERR_|Failed to load resource|firebase|config\.public|\/api\/|AudioContext|play\(\) failed/i;
+    /* ★ この 検査は **client/ を そのまま 配る だけ**の 静かな サーバで 動かす。
+       API は 無い ので、本体が 出す 通信の 失敗は 当たり前に 起きる。
+       VocabuSurvive の 中の 例外だけを 見たいので、それらは 除く。 */
+    const 無視 = /favicon|net::ERR_|Failed to load resource|Failed to fetch|\[OFFICIAL\]|firebase|config\.public|\/api\/|AudioContext|play\(\) failed/i;
     const 実害 = errs.filter((e) => !無視.test(e));
     ok("実害の ある 例外が 0 件", 実害.length === 0, 実害.slice(0, 6));
     console.log("     （参考）出た 全部: " + errs.length + " 件");
