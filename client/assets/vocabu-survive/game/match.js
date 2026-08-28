@@ -33,7 +33,7 @@ import { HUD, HUD_CSS, HelpCard } from "../ui/hud.js";
 import { QuizPanel, QUIZ_CSS } from "../ui/quiz.js";
 import { ResultPanel, RESULT_CSS } from "../ui/result.js";
 import { COURSE_BY_ID, COURSES } from "../data/courses.js";
-import { fetchQuestions, localQuestions } from "../data/questions.js";
+import { fetchQuestions, localQuestions, questionsFromPairs } from "../data/questions.js";
 import { GhostRecorder, GhostPlayer, loadGhost, saveGhost } from "../data/ghost.js";
 import { settingsFor, measure } from "../boot/caps.js";
 
@@ -60,6 +60,15 @@ export class MatchScreen {
       onAgain: () => { this.result.hide(); this.onAgain(this.cfg); },
       /* 勝ち抜きの 次の 本。cfg は 結果の 画面が 組み立てて 持っている。 */
       onNext: (next) => { this.result.hide(); this.onAgain(next); },
+      /* 間違えた 単語だけで もう一度。**同じ コース・同じ 相手**で 走る。 */
+      onReview: (missed) => {
+        this.result.hide();
+        const cfg = Object.assign({}, this.cfg, {
+          reviewWords: missed.map((m) => [m.q, m.a]),
+          seed: (this.cfg.seed || 1) + 4242
+        });
+        this.onAgain(cfg);
+      },
       onLobby: () => { this.result.hide(); this.onQuit(); },
       onExit: () => { this.result.hide(); this.app.backToQuiz(); }
     });
@@ -227,6 +236,12 @@ export class MatchScreen {
     if (this.net && this.net.questions && this.net.questions.length >= need) {
       /* 対戦中は **サーバが 配った 問題**（全員 同じ）。答えは 隠されている。 */
       this.questions = this.net.questions.slice();
+    } else if (Array.isArray(cfg.reviewWords) && cfg.reviewWords.length >= 2) {
+      /* ★ 間違えた 単語だけで 作る。**通信は しない**（手元に ある）。
+         足りない ぶんは 控えで 埋める（4 択の 迷わせ役が 要る）。 */
+      const pairs = cfg.reviewWords.filter((x) => Array.isArray(x) && x[0] && x[1]);
+      const q = questionsFromPairs(pairs, need, seed);
+      this.questions = q.length >= need ? q : q.concat(localQuestions(need - q.length, seed + 11));
     } else {
       this.questions = localQuestions(need, seed);
       fetchQuestions({

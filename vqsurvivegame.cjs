@@ -298,7 +298,11 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     ok("成績が 4 つ 出る（時間/クイズ/戻り/XP）", rs.stats === 4, rs.stats);
     ok("全員の 一覧が 出る", rs.rows >= 4, rs.rows);
     ok("もう一度 / ロビー / 戻る の 3 つ", rs.btns === 3, rs.btnText);
-    ok("勝ち抜き以外では「次の ラウンドへ」は 隠れている", rs.btnAll === 4 && rs.btns === 3, [rs.btnAll, rs.btns]);
+    /* ★ 数で 決め打ちしない。ボタンは これからも 増える。
+       「その 場面で 出て いない ものが 隠れている」ことだけ 見る。 */
+    ok("いま 使えない ボタンは 隠れている（次の ラウンドへ／間違えた 単語で）",
+      rs.btnAll > rs.btns && !rs.btnText.some((t) => /次の ラウンドへ|間違えた 単語で/.test(t)),
+      [rs.btnAll, rs.btns, rs.btnText]);
 
     節("⑦-a 実際に 間違えると 覚える");
     /* 見た目だけ 作っても 意味が ない。**本当の 門で 間違えて** 溜まるか。 */
@@ -368,6 +372,57 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       return !el || el.classList.contains("vs-hide");
     });
     ok("全問 正解なら 出さない", 無 === true, 無);
+
+    節("⑦-c 間違えた 単語で もう一度");
+    const 復 = await pg.evaluate(async () => {
+      const m = window.VocabuSurvive.__app.shell.get("match");
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      m.result.show({ rank: 2, total: 4, finished: true, time: 40, correct: 1, wrong: 3, respawns: 0,
+        xp: 100, best: 0, newBest: false, mode: "race", standings: [], courseName: "検査",
+        splits: [], bestSplits: [],
+        missed: [{ q: "ZQAlpha", a: "アルファ", y: "" }, { q: "ZQBeta", a: "ベータ", y: "" },
+                 { q: "ZQGamma", a: "ガンマ", y: "" }, { q: "ZQDelta", a: "デルタ", y: "" }] });
+      /* ★ 位置で 取らない。ボタンが 増える たびに 検査が ずれる。 */
+      const b = Array.from(r.querySelectorAll(".vs-res-btns .vs-btn"))
+        .filter((e) => /間違えた 単語で/.test(e.textContent))[0];
+      return { 文: b ? b.textContent : "", 出: !!b && !b.classList.contains("vs-hide") };
+    });
+    ok("「間違えた 単語で もう一度」が 出る", 復.出 && /間違えた 単語で/.test(復.文), 復);
+    const 少 = await pg.evaluate(() => {
+      const m = window.VocabuSurvive.__app.shell.get("match");
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      m.result.show({ rank: 2, total: 4, finished: true, time: 40, correct: 3, wrong: 1, respawns: 0,
+        xp: 100, best: 0, newBest: false, mode: "race", standings: [], courseName: "検査",
+        splits: [], bestSplits: [], missed: [{ q: "a", a: "b", y: "" }] });
+      const b = Array.from(r.querySelectorAll(".vs-res-btns .vs-btn"))
+        .filter((e) => /間違えた 単語で/.test(e.textContent))[0];
+      return !b || b.classList.contains("vs-hide");
+    });
+    ok("1 個 だけなら 出さない（4 択が 作れない）", 少 === true, 少);
+
+    /* 押して 走る */
+    await pg.evaluate(async () => {
+      const m = window.VocabuSurvive.__app.shell.get("match");
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      m.result.show({ rank: 2, total: 4, finished: true, time: 40, correct: 1, wrong: 3, respawns: 0,
+        xp: 100, best: 0, newBest: false, mode: "race", standings: [], courseName: "検査",
+        splits: [], bestSplits: [],
+        missed: [{ q: "ZQAlpha", a: "アルファ", y: "" }, { q: "ZQBeta", a: "ベータ", y: "" },
+                 { q: "ZQGamma", a: "ガンマ", y: "" }, { q: "ZQDelta", a: "デルタ", y: "" }] });
+      await new Promise((x) => setTimeout(x, 200));
+      Array.from(r.querySelectorAll(".vs-res-btns .vs-btn"))
+        .filter((e) => /間違えた 単語で/.test(e.textContent))[0].click();
+    });
+    await 待つ(2600);
+    const 走 = await pg.evaluate(() => {
+      const m = window.VocabuSurvive.__app.shell.get("match");
+      return { 語: (m.cfg.reviewWords || []).length,
+        問: (m.questions || []).slice(0, 6).map((q) => q.prompt) };
+    });
+    ok("間違えた 単語が 渡る", 走.語 === 4, 走);
+    ok("**門の 問題が その 単語に なる**",
+      走.問.some((p2) => /^ZQ/.test(String(p2))), 走.問);
+    ok("問題が 足りる（門の 数 ＋ 2）", 走.問.length >= 4, 走.問.length);
     if (絵) await pg.screenshot({ path: OUT + "/survive-result.png" });
 
     節("⑨ 例外");

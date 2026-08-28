@@ -16,6 +16,7 @@ export class ResultPanel {
   constructor(opt) {
     this.onAgain = (opt && opt.onAgain) || (() => {});
     this.onNext = (opt && opt.onNext) || (() => {});
+    this.onReview = (opt && opt.onReview) || (() => {});
     this.onLobby = (opt && opt.onLobby) || (() => {});
     this.onExit = (opt && opt.onExit) || (() => {});
     this.el = this._build();
@@ -47,6 +48,10 @@ export class ResultPanel {
             class: "vs-btn is-mint vs-hide", type: "button",
             onclick: () => { const n = this._next; this.hide(); if (n) this.onNext(n); }
           }, "次の ラウンドへ"),
+          this.reviewBtn = h("button", {
+            class: "vs-btn is-mint vs-hide", type: "button",
+            onclick: () => { const m = this._missed; this.hide(); if (m && m.length) this.onReview(m); }
+          }, "間違えた 単語で もう一度"),
           this.againBtn = h("button", { class: "vs-btn is-mint", type: "button", onclick: () => this.onAgain() }, "もう一度"),
           h("button", { class: "vs-btn is-ghost", type: "button", onclick: () => this.onLobby() }, "ロビーへ"),
           h("button", { class: "vs-btn is-ghost", type: "button", onclick: () => this.onExit() }, "VocabuQuiz へ戻る"))));
@@ -162,6 +167,11 @@ export class ResultPanel {
     } else {
       this.missEl.classList.add("vs-hide");
     }
+    /* ★ **間違えた 単語だけで もう一度 走れる。**
+       出して 終わりでは 覚えない。すぐ もう一度 出会える ように する。
+       2 個 未満だと 4 択が 作れない ので 出さない。 */
+    this._missed = ms;
+    if (this.reviewBtn) this.reviewBtn.classList.toggle("vs-hide", ms.length < 2 || !!(d.cup && d.cup.next));
 
     /* ── 区間の 記録 ────────────────────────────────────────────────
        ★ 「どこで 遅れたか」が 分かるのが 記録の 値打ち。
