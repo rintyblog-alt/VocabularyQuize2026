@@ -1,4 +1,36 @@
 
+    /* ══════════════════════════════════════════════════════════════════════
+       localStorage が **触った 瞬間に 投げる** ことが ある。
+         ・プライベート窓／埋め込み／file:// で 保存を 止められている
+         ・容量が いっぱい（setItem だけ 投げる。こちらは 各所の try で 受ける）
+       投げると、タブの 切り替えや 画面の 組み立てが そこで 止まり、
+       **アプリの どこにも 移れなく なる**（実測で 見つけた）。
+
+       ここでは 「触れないなら **その場しのぎの 入れ物**へ すり替える」だけ する。
+       覚えられない ことは 変わらないが、遊びは 全部 動く。
+       ★ 触れる ときは 何も しない（本物を そのまま 使う）。
+       ══════════════════════════════════════════════════════════════════════ */
+    ;(function(){
+      try { window.localStorage.getItem("__vq_probe__"); return; } catch(e){}
+      try {
+        var mem = new Map();
+        Object.defineProperty(window, "localStorage", {
+          configurable: true,
+          get: function(){
+            return {
+              getItem: function(k){ k = String(k); return mem.has(k) ? mem.get(k) : null; },
+              setItem: function(k, v){ mem.set(String(k), String(v)); },
+              removeItem: function(k){ mem.delete(String(k)); },
+              clear: function(){ mem.clear(); },
+              key: function(i){ var a = Array.from(mem.keys()); return i >= 0 && i < a.length ? a[i] : null; },
+              get length(){ return mem.size; }
+            };
+          }
+        });
+        try { console.warn("[VQ] localStorage が 使えない ので、その場しのぎの 入れ物で 動きます（覚えません）"); } catch(e2){}
+      } catch(e3){}
+    })();
+
     ;(() => {
       "use strict";
 
@@ -2054,7 +2086,11 @@
       }
       function loadActivePresetId(fallbackDeck){
         const fb = fallbackDeck || "A";
-        const stored = window.localStorage.getItem(ACTIVE_PRESET_KEY);
+        /* ★ localStorage は **投げる ことが ある**（容量いっぱい・プライベート窓）。
+           ここが 投げると タブの 切り替えごと 止まり、
+           **どの 画面にも 移れなく なる**（実測で 見つけた）。 */
+        let stored = "";
+        try { stored = window.localStorage.getItem(ACTIVE_PRESET_KEY); } catch(e){ stored = ""; }
         if (stored) return stored;
         if (_isBuiltinPresetTerminatedUnavailable()){
           return getFirstCustomPresetId() || BUILTIN_PRESET_DISABLED_ID;
@@ -2062,7 +2098,8 @@
         return `builtin:${fb}`;
       }
       function saveActivePresetId(id){
-        window.localStorage.setItem(ACTIVE_PRESET_KEY, id);
+        /* ★ 同上。覚えられなく ても 遊べる ほうが よい。 */
+        try { window.localStorage.setItem(ACTIVE_PRESET_KEY, id); } catch(e){}
       }
 
       let _builtinPresetTerminationNoticeDismissed = false;
