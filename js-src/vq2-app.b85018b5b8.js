@@ -64181,7 +64181,15 @@
   /* ★ 数式・図（SVG）・出どころの 見た目を **4 画面 共通**で 持つ（2026-08-28）。
      Workplace は 影の DOM の 中なので、外の stylesheet は 届かない。
      WP.CSS は mount へ 渡っている ので、ここへ 足せば 4 画面とも 効く。 */
-  WP.CSS_EXTRA = ".wp-m{display:inline-block;vertical-align:middle;max-width:100%;}"
+  WP.CSS_EXTRA = ""
+    /* ★ 入力規則の 印（2026-08-29）。**色だけで 伝えない**ので、
+       角の 三角に 加えて title（そこへ 何を 入れるか）も 付けてある。 */
+    + ".wps-c.is-bad{box-shadow:inset 0 0 0 1.5px rgba(220,38,38,.55);}"
+    + ".wps-c.is-bad::after{content:'';position:absolute;top:0;right:0;"
+    + "border:5px solid transparent;border-top-color:#dc2626;border-right-color:#dc2626;}"
+    + ".wps-c.has-list::before{content:'\\25BE';position:absolute;right:3px;bottom:0;"
+    + "font-size:9px;line-height:1;opacity:.42;pointer-events:none;}"
+    + ".wp-m{display:inline-block;vertical-align:middle;max-width:100%;}"
     + ".wp-m svg{max-width:100%;height:auto;vertical-align:middle;}"
     + ".wp-m--b{display:block;text-align:center;margin:.5em 0;}"
     + ".wp-svg{display:block;width:100%;height:100%;min-height:0;}"
@@ -65932,7 +65940,12 @@
       freeze: { rows: 0, cols: 0 },
       hidden: false, color: "",
       filters: null,             /* {range, conds:[{col, op, value}]} */
-      conditionals: []           /* [{range, op, value, style}] */
+      conditionals: [],          /* [{range, op, value, style}] */
+      /* ★ 入力規則（2026-08-29・訴え「高度な機能を 増やして」）。
+         [{range, kind:"list"|"number"|"date"|"text", list:[…], min, max, strict, help}]
+         strict が true なら **合わない値は 入れない**（入れる前に 断る）。
+         false なら 入るが 赤い印が 付く（あとから 気づける）。 */
+      rules: []
     };
   }
   function newSlide(layout) {
@@ -75361,7 +75374,9 @@
         { label: "グラフを作る", icon: "chart", run: chartDialog },
         /* ★ 集計表（2026-08-29・訴え「高度な機能を 増やして」）。
            Lumi からも 呼べるが、**人が 自分で 押せる 道**も 置く。 */
-        { label: "集計表を作る（ピボット）", icon: "chart", run: pivotDialog }
+        { label: "集計表を作る（ピボット）", icon: "chart", run: pivotDialog },
+        /* ★ 入力規則（2026-08-29）。人に 記入して もらう 表で いちばん 効く。 */
+        { label: "入力規則（入れてよい ものを 決める）", icon: "check", run: ruleDialog }
       ] });
 
     var api = VQ2.ui.mount("vq-wp-sheets", { title: item.title, css: (WP.CSS || "") + (WP.CSS_EXTRA || ""),
@@ -75652,12 +75667,18 @@
                自分で付けた色より条件のほうを優先する（そのための機能なので）。 */
           var 条 = 条件の書式(k, v);
           if (条) style += 条;
+          /* 入力規則。**式の マスは 見ない**（計算の 結果を 打ち間違い扱いしない）。 */
+          var 規 = (cl && cl.f) ? null : 規則を探す(k);
+          var 違 = 規 ? 規則に合わない(規, v) : "";
+          var 一覧あり = !!(規 && String(規.kind || "list") === "list" && (規.list || []).length);
           var inSel = r >= r1 && r <= r2 && cc >= k1 && cc <= k2;
           var isCur = r === sel.r && cc === sel.c;
           h += '<div class="wps-c' + (isCur ? " is-sel" : (inSel ? " is-rng" : ""))
             + (isNum && !(st && st.a) ? " is-num" : "") + (isErr ? " is-err" : "")
+            + (違 ? " is-bad" : "") + (一覧あり ? " has-list" : "")
             + '" data-r="' + r + '" data-c="' + cc + '" style="' + style + '" title="'
-            + esc(cl && cl.f ? cl.f : "") + '">'
+            + esc(違 ? "入力規則: " + 違 + (規 && 規.help ? "（" + 規.help + "）" : "")
+                     : (cl && cl.f ? cl.f : "")) + '">'
             /* ★ 数式（2026-08-28）。Sheets にも 道が 無かった。
                いま選んでいる セルは 素の文字のまま（打ち直せなくなる）。 */
             + ((!isCur && root.VQWPM && root.VQWPM.式がある(fmtCell(v, st)))
@@ -75669,6 +75690,64 @@
       h += "</div>";
       host.innerHTML = h;
     }
+    /* ══ 入力規則（2026-08-29・訴え「高度な機能を 増やして」）════════
+       ★ 何が うれしいか: 「この列は ○か× だけ」「点は 0〜100」と 決めておくと、
+         打ちまちがいが **その場で** 分かる。あとから 集計が 崩れない。
+       ★ 決めごと
+         ・**式の 入った マスは 見ない。** 計算の 結果を 人の 打ち間違い扱い
+           しない（直しようが ないので 赤くしても 困らせるだけ）。
+         ・空は いつでも 通す（「必ず 入れる」は 別の 話）。
+         ・strict なら **入れる前に 断る**。そうでなければ 入るが 印を 付ける。 */
+    function 規則を探す(k) {
+      var list = sheet().rules;
+      if (!list || !list.length) return null;
+      var p = /^([A-Z]+)(\d+)$/.exec(k);
+      if (!p) return null;
+      var c = M.colIndex(p[1]), r = parseInt(p[2], 10);
+      for (var i = list.length - 1; i >= 0; i--) {
+        var d = list[i];
+        if (!d || !d.range) continue;
+        var m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(String(d.range).toUpperCase());
+        if (!m) continue;
+        var c1 = M.colIndex(m[1]), r1c = parseInt(m[2], 10);
+        var c2 = M.colIndex(m[3]), r2c = parseInt(m[4], 10);
+        if (c < Math.min(c1, c2) || c > Math.max(c1, c2)) continue;
+        if (r < Math.min(r1c, r2c) || r > Math.max(r1c, r2c)) continue;
+        return d;                       /* あとから 足した ものが 勝つ */
+      }
+      return null;
+    }
+    function 規則に合わない(d, v) {
+      if (!d) return "";
+      if (v === "" || v === null || v === undefined) return "";   /* 空は 通す */
+      var kind = String(d.kind || "list");
+      if (kind === "list") {
+        var 一覧 = (d.list || []).map(function (x) { return String(x); });
+        if (!一覧.length) return "";
+        return 一覧.indexOf(String(v)) >= 0 ? ""
+          : "「" + 一覧.slice(0, 6).join("／") + (一覧.length > 6 ? "…" : "") + "」の どれかにします";
+      }
+      if (kind === "number") {
+        var n = Number(v);
+        if (String(v).trim() === "" || isNaN(n)) return "数を 入れます";
+        if (d.min !== undefined && d.min !== null && n < Number(d.min)) return Number(d.min) + " 以上にします";
+        if (d.max !== undefined && d.max !== null && n > Number(d.max)) return Number(d.max) + " 以下にします";
+        return "";
+      }
+      if (kind === "date") {
+        var t = String(v);
+        return /^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(t) || !isNaN(Number(v))
+          ? "" : "日付（2026/8/29 の 形）を 入れます";
+      }
+      if (kind === "text") {
+        var len = String(v).length;
+        if (d.min !== undefined && d.min !== null && len < Number(d.min)) return Number(d.min) + " 文字以上にします";
+        if (d.max !== undefined && d.max !== null && len > Number(d.max)) return Number(d.max) + " 文字以下にします";
+        return "";
+      }
+      return "";
+    }
+
     /* この 1 マスに当たる条件付き書式を返す（無ければ ""） */
     function 条件の書式(k, v) {
       var list = sheet().conditionals;
@@ -75871,8 +75950,23 @@
       recalc(); session.touch(); drawGrid(); updateBar();
     }
     function commit(text) {
-      shell.pushUndo("セルの入力");
       var t = String(text === undefined ? "" : text);
+      /* ★ 入力規則（2026-08-29）。strict なら **入れる前に 断る**。
+         入れてから 赤くするより、その場で 止めるほうが 直しやすい。
+         式（=…）は 見ない（計算の 結果を 打ち間違い扱いしない）。 */
+      if (t.charAt(0) !== "=") {
+        var 規0 = 規則を探す(ref(sel.r, sel.c));
+        if (規0 && 規0.strict) {
+          var 違0 = 規則に合わない(規0, t.trim());
+          if (違0) {
+            try { api.toast("入れられません: " + 違0, "warn"); }
+            catch (e) { try { alert("入れられません: " + 違0); } catch (e2) {} }
+            placeGhost(true);
+            return;                       /* **1 マスも 触っていない** */
+          }
+        }
+      }
+      shell.pushUndo("セルの入力");
       if (t.charAt(0) === "=") setCell(sel.r, sel.c, { f: t, v: "" });
       else {
         var n = Number(t.replace(/,/g, ""));
@@ -76584,6 +76678,91 @@
       }
       return { type: c.type, title: c.title || "", labels: labels, series: series };
     }
+    /* ══ 入力規則の 窓（2026-08-29）════════════════════════════════
+       いま選んでいる 範囲に かける。判定と 保存は **WP.cmd.sheets.規則**が
+       1 か所で 持つ（同じ 決まりを 2 回 書かない）。 */
+    function ruleDialog() {
+      var r1 = Math.min(sel.r, sel.r2), r2 = Math.max(sel.r, sel.r2);
+      var c1 = Math.min(sel.c, sel.c2), c2 = Math.max(sel.c, sel.c2);
+      /* 1 マスだけ 選んでいるときは、その列の 2 行目〜50 行目に かける
+         （見出しの 下 ぜんぶ、が いちばん よく 使う）。 */
+      if (r1 === r2 && c1 === c2) { r1 = 2; r2 = 50; }
+      var rg = M.colName(c1) + r1 + ":" + M.colName(c2) + r2;
+      var いま = (sheet().rules || []);
+      var html = '<div style="display:grid;gap:12px;padding:4px 2px 8px">'
+        + '<div style="font-size:12px;opacity:.8">かける ところ: <b>' + esc(rg) + "</b></div>"
+        + '<div><label class="wp-lab">決まりの 種類</label>'
+        + '<select class="wp-in" data-f="kind" style="width:100%">'
+        + '<option value="list">一覧から 選ぶ</option>'
+        + '<option value="number">数の 範囲</option>'
+        + '<option value="date">日付</option>'
+        + '<option value="text">文字数</option></select></div>'
+        + '<div data-w="list"><label class="wp-lab">選べる もの（読点か 改行で 区切る）</label>'
+        + '<input class="wp-in" data-f="list" style="width:100%" placeholder="○、×、△"></div>'
+        + '<div data-w="minmax" style="display:none;gap:8px">'
+        + '<div style="flex:1"><label class="wp-lab">下限</label>'
+        + '<input class="wp-in" data-f="min" style="width:100%" inputmode="numeric"></div>'
+        + '<div style="flex:1"><label class="wp-lab">上限</label>'
+        + '<input class="wp-in" data-f="max" style="width:100%" inputmode="numeric"></div></div>'
+        + '<label style="display:flex;gap:8px;align-items:center">'
+        + '<input type="checkbox" data-f="strict" checked> 合わない ものは **入れさせない**'
+        + "（外すと 入るが 赤い 印が 付きます）</label>"
+        + '<button type="button" class="wp-btn is-outline" data-act="go" '
+        + 'style="width:100%;height:44px;justify-content:center">決まりを 置く</button>'
+        + (いま.length
+            ? '<div style="font-size:12px;opacity:.8;border-top:1px solid var(--vq-border-subtle);'
+              + 'padding-top:10px">いまの 決まり<br>'
+              + いま.map(function (d, i) {
+                  return (i + 1) + ". " + esc(d.range) + " … " + esc(d.kind)
+                    + ' <button type="button" class="wp-btn" data-del="' + i + '"'
+                    + ' style="height:26px;padding:0 8px">消す</button>';
+                }).join("<br>") + "</div>"
+            : "")
+        + "</div>";
+      U.sheet(api.root, {
+        title: "入力規則",
+        html: html,
+        onOpen: function (bodyEl, close) {
+          var g = function (n) { return bodyEl.querySelector('[data-f="' + n + '"]'); };
+          var 出し分け = function () {
+            var k = g("kind").value;
+            bodyEl.querySelector('[data-w="list"]').style.display = k === "list" ? "" : "none";
+            bodyEl.querySelector('[data-w="minmax"]').style.display =
+              (k === "number" || k === "text") ? "flex" : "none";
+          };
+          g("kind").addEventListener("change", 出し分け);
+          出し分け();
+          bodyEl.addEventListener("click", function (e) {
+            var d = e.target.closest ? e.target.closest("[data-del]") : null;
+            if (d) {
+              WP.cmd.sheets.規則({ op: "消す", number: Number(d.getAttribute("data-del")) + 1 });
+              close(); recalc(); paint();
+              return;
+            }
+            var b = e.target.closest ? e.target.closest('[data-act="go"]') : null;
+            if (!b) return;
+            var kind = g("kind").value;
+            var 頼 = { op: "足す", range: rg, kind: kind, strict: !!g("strict").checked };
+            if (kind === "list") {
+              頼.list = String(g("list").value || "").split(/[、,\n]/)
+                .map(function (x) { return x.trim(); }).filter(Boolean);
+            } else if (kind === "number" || kind === "text") {
+              if (String(g("min").value).trim() !== "") 頼.min = Number(g("min").value);
+              if (String(g("max").value).trim() !== "") 頼.max = Number(g("max").value);
+            }
+            var r = WP.cmd.sheets.規則(頼);
+            close();
+            if (r && r.だめ) { alert(r.だめ); return; }
+            recalc(); paint();
+            var 合 = r && r.いま合わないマス;
+            if (Array.isArray(合) && 合.length) {
+              try { api.toast("いま 入っている " + 合.length + " マスが 決まりに 合いません（赤い 印）。", "warn"); } catch (e) {}
+            }
+          });
+        }
+      });
+    }
+
     /* ══ 集計表（ピボット）の 窓（2026-08-29）═══════════════════════
        中身の 計算は **WP.cmd.sheets.集計** が 1 か所で 持つ。
        ここは 列を 選んで 渡すだけ（同じ 計算を 2 回 書かない）。 */
@@ -82603,6 +82782,123 @@
     return Math.round(v * 1000000) / 1000000;
   }
 
+  /* ══ 入力規則（2026-08-29・訴え「高度な機能を 増やして」）════════
+     「この列は ○か× だけ」「点は 0〜100」と 決めておくと、打ちまちがいが
+     その場で 分かる。あとから 集計が 崩れない。
+     ★ 判定そのものは **画面側（ui-sheets）と 同じ 考えかた**。
+       ここは 決まりを 置く／消す／数えるだけ。 */
+  sheets.規則 = function (a) {
+    var c = 今(); if (!c) return 開いてない();
+    if (c.kind !== "spreadsheet") return 種類ちがい(c, "spreadsheet");
+    a = a || {};
+    var b = 本体(c), 前 = 要約(c);
+    var sh = 表(b, a.sheet);
+    if (!sh) return { だめ: "シートがありません。**何もしていません。**" };
+    sh.rules = sh.rules || [];
+    var 何 = S(a.op) || "足す";
+    var 種類 = ["list", "number", "date", "text"];
+
+    if (何 === "一覧" || 何 === "list" || 何 === "見る") {
+      return { いまの規則: sh.rules.map(function (d, i) {
+        return (i + 1) + ": " + d.range + " … " + d.kind
+          + (d.kind === "list" ? "（" + (d.list || []).join("／") + "）" : "")
+          + (d.min !== undefined && d.min !== null ? " 下限 " + d.min : "")
+          + (d.max !== undefined && d.max !== null ? " 上限 " + d.max : "")
+          + (d.strict ? "・合わないものは 入れない" : "・合わないものには 印だけ");
+      }), 数: sh.rules.length };
+    }
+    if (何 === "消す" || 何 === "remove") {
+      var i2 = N(a.number, 0) - 1;
+      if (i2 < 0 || i2 >= sh.rules.length)
+        return { だめ: "その規則はありません。**消していません。**", いまの規則: sh.rules.length + " 個" };
+      sh.rules.splice(i2, 1);
+      塗って残す(c);
+      return 確かめて返す(c, 前, (i2 + 1) + " 番目の 入力規則を 消しました。");
+    }
+    if (何 !== "足す" && 何 !== "add")
+      return { だめ: "その操作は分かりません。**触っていません。**",
+               できる操作: ["足す", "消す", "一覧"] };
+
+    var rg = S(a.range).toUpperCase().replace(/\s/g, "");
+    if (!範囲を割る(rg))
+      return { だめ: "どの範囲に かけるかを A1:C10 の形で 教えてください。**足していません。**" };
+    var kind = S(a.kind) || "list";
+    if (種類.indexOf(kind) < 0)
+      return { だめ: "「" + kind + "」という 決まりは ありません。**足していません。**",
+               できる決まり: 種類 };
+    var 一覧 = 配(a.list).map(function (x) { return S(x).trim(); }).filter(Boolean);
+    if (kind === "list" && 一覧.length < 2)
+      return { だめ: "選べる ものを **2 つ以上** list で 教えてください。**足していません。**",
+               例: '{ range: "C2:C50", kind: "list", list: ["○", "×"] }' };
+    if (kind === "number" && a.min === undefined && a.max === undefined)
+      return { だめ: "数の 決まりには min か max が 要ります。**足していません。**",
+               例: '{ range: "D2:D50", kind: "number", min: 0, max: 100 }' };
+    var 決 = { range: rg, kind: kind, strict: a.strict !== false,
+               help: S(a.help).slice(0, 80) };
+    if (kind === "list") 決.list = 一覧.slice(0, 60);
+    if (a.min !== undefined && a.min !== null && S(a.min) !== "") 決.min = Number(a.min);
+    if (a.max !== undefined && a.max !== null && S(a.max) !== "") 決.max = Number(a.max);
+    sh.rules.push(決);
+
+    /* いま **すでに 入っている** マスで 合わない ものを 数える。
+       あとから 決まりを 足したときに 気づけるように（黙って 通さない）。 */
+    var 合わない = [];
+    try {
+      var m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(rg);
+      if (m) {
+        var c1 = M.colIndex(m[1]), r1 = parseInt(m[2], 10);
+        var c2 = M.colIndex(m[3]), r2 = parseInt(m[4], 10);
+        var 計 = {};
+        try { 計 = (WP.formula.recalc(sh) || {}).values || {}; } catch (e) {}
+        for (var r = Math.min(r1, r2); r <= Math.max(r1, r2) && 合わない.length < 40; r++) {
+          for (var cc = Math.min(c1, c2); cc <= Math.max(c1, c2); cc++) {
+            var k = M.colName(cc) + r;
+            var cl = (sh.cells || {})[k];
+            if (!cl || cl.f) continue;                 /* 式は 見ない */
+            var v = 計[k] !== undefined ? 計[k] : cl.v;
+            if (v === "" || v === undefined || v === null) continue;
+            if (規則に合うか(決, v)) continue;
+            合わない.push(k + "=" + S(v).slice(0, 20));
+          }
+        }
+      }
+    } catch (e) {}
+
+    塗って残す(c);
+    return 確かめて返す(c, 前, rg + " に 入力規則を 足しました。",
+      { 決まり: 決,
+        いま合わないマス: 合わない.length ? 合わない : "なし",
+        つぎ: 合わない.length
+          ? "★ すでに 入っている マスの うち " + 合わない.length + " 個が 合いません。"
+            + "**赤い 印が 付いています。**勝手に 直していません。利用者に そのまま 伝えてください。"
+          : (決.strict ? "これから 合わない 値は 入れられません。"
+                       : "合わない 値には 赤い 印が 付きます（入れることは できます）。") });
+  };
+  /* 決まりに 合うか（画面側と 同じ 考えかた。ここでは 真偽だけ 返す）。 */
+  function 規則に合うか(d, v) {
+    if (v === "" || v === null || v === undefined) return true;
+    var kind = S(d.kind) || "list";
+    if (kind === "list") {
+      var 一覧 = (d.list || []).map(function (x) { return S(x); });
+      return !一覧.length || 一覧.indexOf(S(v)) >= 0;
+    }
+    if (kind === "number") {
+      var n = Number(v);
+      if (S(v).trim() === "" || isNaN(n)) return false;
+      if (d.min !== undefined && d.min !== null && n < Number(d.min)) return false;
+      if (d.max !== undefined && d.max !== null && n > Number(d.max)) return false;
+      return true;
+    }
+    if (kind === "date") return /^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(S(v)) || !isNaN(Number(v));
+    if (kind === "text") {
+      var len = S(v).length;
+      if (d.min !== undefined && d.min !== null && len < Number(d.min)) return false;
+      if (d.max !== undefined && d.max !== null && len > Number(d.max)) return false;
+      return true;
+    }
+    return true;
+  }
+
   sheets.グラフ = function (a) {
     var c = 今(); if (!c) return 開いてない();
     if (c.kind !== "spreadsheet") return 種類ちがい(c, "spreadsheet");
@@ -84006,6 +84302,8 @@
       "Sheets の関数": 関数,
       /* ★ 集計表（2026-08-29）。ここに 出さないと Lumi は この道具を 知らない。 */
       "Sheets のまとめかた（sheetsPivot）": ["合計", "平均", "件数", "最大", "最小"],
+      "Sheets の入力規則（sheetsRule）": ["list（一覧から）", "number（数の 範囲）",
+                                          "date（日付）", "text（文字数）"],
       "Slides の部品": 部品の種類(),
       "Slides のレイアウト": レ,
       "Slides のテーマ": テ,

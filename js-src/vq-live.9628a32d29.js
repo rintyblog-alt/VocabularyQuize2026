@@ -7855,7 +7855,7 @@
     slidesWrite: "スライドを作っています…", slidesEdit: "スライドを直しています…",
     formsWrite: "フォームを作っています…", formsEdit: "フォームを直しています…",
     runCommand: "操作しています…", docDesign: "見た目を 決めています…",
-    sheetsPivot: "集計しています…"
+    sheetsPivot: "集計しています…", sheetsRule: "入力の 決まりを 置いています…"
   };
 
   function 促しを止める(なぜ) {
@@ -9652,6 +9652,12 @@
   function sheetsPivot(a) {
     var K = WPC(); if (!K) return 操作の口が無い();
     return 落ち着いてから(K.sheets.集計(a || {}));
+  }
+
+  /* 入力規則（この列は 一覧から／数の 範囲）。 */
+  function sheetsRule(a) {
+    var K = WPC(); if (!K) return 操作の口が無い();
+    return 落ち着いてから(K.sheets.規則(a || {}));
   }
 
   function sheetsEdit(a) {
@@ -12613,6 +12619,7 @@
     if (name === "usePicture") return usePicture(a);
     if (name === "docDesign") return docDesign(a);
     if (name === "sheetsPivot") return sheetsPivot(a);
+    if (name === "sheetsRule") return sheetsRule(a);
     if (name === "deckStart") return deckStart(a);
     if (name === "deckDesign") return deckDesign(a);
     if (name === "deckWrite") return deckWrite(a);
