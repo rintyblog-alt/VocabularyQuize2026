@@ -14957,17 +14957,140 @@
   }
 
   /* 1 問あたりの目安から、おおよその時間を出す。分からなければ null。 */
+  /* ══ 目安の 時間 ═══════════════════════════════════════════════════
+     ★ これまでは ほぼ **問題数 × 60 秒**だった。型ごとの 既定は あったが、
+       V1 から 来た 問題には 型が 無いので 既定の 60 秒に 落ちる。
+       123 問 → 約 123 分。**単語 1 問と 長文 1 問が 同じ 1 分**に なるので、
+       目安として 使えなかった（実測: 一覧の どの 札も 問題数＝分）。
+
+     いまの 決め方（1 問ずつ 足す）:
+       ① 読む 時間  … 本文と 選択肢の **字数**から。
+                      日本語は 6 字/秒（学習として 読む 速さ）、
+                      英字は 5.5 字＝1 語として 3.3 語/秒（約 200 wpm）。
+       ② 答える 時間 … 型ごと。選ぶ 問題は **選択肢が 増えるほど 伸びる**
+                      （迷う 時間は 選択肢の 数で 増える）。
+                      書く 問題は **答えの 字数 ÷ 2.5 字/秒**。
+       ③ 見る 時間  … 画像・資料が 付いていれば 足す。
+       ④ 立ち上がり … ひと通しに 1 回 20 秒（開いて 読み始めるまで）。
+     ⑤ さらに **本人の 実測で 補正**する（personalFactor）。
+
+     ここは 目安であって 制限時間では ない。短めに 出して 焦らせない。 */
+  var READ_JA_CPS = 6;        /* 日本語: 字/秒 */
+  var READ_EN_WPS = 3.3;      /* 英語: 語/秒（約 200 wpm） */
+  var EN_CHARS_PER_WORD = 5.5;
+  var WRITE_CPS = 2.5;        /* 書く 速さ: 字/秒 */
+  var OPEN_OVERHEAD_SEC = 20; /* 立ち上がり */
+
+  function textOf(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "string") return v;
+    if (typeof v === "number") return String(v);
+    if (Array.isArray(v)) return v.map(textOf).join(" ");
+    if (typeof v === "object") return textOf(v.text || v.label || v.value || v.content || "");
+    return "";
+  }
+  /* 読むのに かかる 秒。日本語と 英字で 速さが 違うので 分けて 数える。 */
+  function readSeconds(text) {
+    var t = str(text);
+    if (!t) return 0;
+    var ja = 0, other = 0;
+    for (var i = 0; i < t.length; i++) {
+      var c = t.charCodeAt(i);
+      /* CJK・かな・全角記号 */
+      if ((c >= 0x3000 && c <= 0x30ff) || (c >= 0x3400 && c <= 0x9fff) || (c >= 0xff00 && c <= 0xffef)) ja++;
+      else if (c > 32) other++;
+    }
+    return ja / READ_JA_CPS + (other / EN_CHARS_PER_WORD) / READ_EN_WPS;
+  }
+  function engineOfSafe(q) {
+    try {
+      if (VQ2.qtypes && VQ2.qtypes.engineOf) return VQ2.qtypes.engineOf(q && q.type) || str(q && q.type);
+    } catch (e) {}
+    return str(q && q.type);
+  }
+  /* 1 問ぶんの 目安（秒）。**作り話を しない**: 材料が 無ければ 型の 既定に 戻す。 */
+  function estimateSecondsForQuestion(q) {
+    if (!isObj(q)) return 45;
+    if (isNum(q.estimatedSeconds) && q.estimatedSeconds > 0) return q.estimatedSeconds;
+    var e = engineOfSafe(q);
+    var choices = arr(q.choices);
+    var 読み = readSeconds(
+      textOf(q.prompt) + " " + textOf(q.passage || q.body || q.text || "") + " " +
+      textOf(q.instruction || "") + " " + choices.map(textOf).join(" ")
+    );
+    var 答え = 0;
+    if (e === "flashcard") 答え = 4;
+    else if (e === "true_false") 答え = 4;
+    else if (e === "multiple_choice_single" || e === "multiple_choice_multi" || e === "multiple_choice") {
+      /* 迷う 時間は 選択肢の 数で 増える。2 択を 基準に 1 つ 増えるごとに 1.2 秒。 */
+      var n = Math.max(2, choices.length || 4);
+      答え = 5 + (n - 2) * 1.2;
+      if (e === "multiple_choice_multi") 答え *= 1.6;
+    }
+    else if (e === "short_answer" || e === "fill_blank" || e === "cloze") {
+      答え = 5 + readSeconds(textOf(q.answer || (arr(q.answers)[0]) || "")) * (READ_JA_CPS / WRITE_CPS);
+    }
+    else if (e === "free_text") {
+      var 目標 = Number(q.targetLength || q.minLength || 0) || 120;
+      答え = 40 + 目標 / WRITE_CPS;
+    }
+    else if (e === "reorder" || e === "matching" || e === "classification" || e === "table_fill") {
+      var m = Math.max(2, (choices.length || arr(q.items).length || 4));
+      答え = 8 + m * 3.5;
+    }
+    else if (e === "dictation") 答え = 30 + readSeconds(textOf(q.answer || "")) * (READ_JA_CPS / WRITE_CPS);
+    else if (e === "image_point" || e === "image_label" || e === "chart_read") 答え = 25;
+    else if (e === "composite") 答え = 240;
+    else 答え = 12;                     /* 型が 分からない ときの 素の 答える 時間 */
+    /* 見る 時間 */
+    var 見る = 0;
+    if (str(q.imageUrl || q.image || (q.media && q.media.url) || "")) 見る += 8;
+    if (str(q.assetUrl || q.assetName || "")) 見る += 8;
+    var 秒 = 読み + 答え + 見る;
+    /* 短すぎ・長すぎを 押さえる（1 問 5 秒〜10 分） */
+    return Math.max(5, Math.min(600, 秒));
+  }
+
+  /* ⑤ 本人の 実測で 補正する。
+     過去の 結果は presetId と elapsedMs を 持っているので、
+     その プリセットの 見積りと 突き合わせて 比の 中央値を 取る。
+     3 回 貯まるまでは 1.0（データが 無いのに 補正しない）。 */
+  var _paceCache = { at: 0, v: 1 };
+  function personalFactor() {
+    if (Date.now() - _paceCache.at < 5 * 60 * 1000) return _paceCache.v;
+    var v = 1;
+    try {
+      var rs = (VQ2.store && VQ2.store.results && VQ2.store.results.list) ? VQ2.store.results.list() : [];
+      var ratios = [];
+      arr(rs).slice(-30).forEach(function (r) {
+        var ms = Number(r && r.elapsedMs) || 0;
+        var pid = str(r && r.presetId);
+        if (!ms || !pid) return;
+        var p = (VQ2.store.getPreset ? VQ2.store.getPreset(pid) : null);
+        var qs = arr(p && p.questions);
+        if (!qs.length) return;
+        var model = 0;
+        qs.forEach(function (q) { model += estimateSecondsForQuestion(q); });
+        model += OPEN_OVERHEAD_SEC;
+        if (model < 10) return;
+        ratios.push((ms / 1000) / model);
+      });
+      if (ratios.length >= 3) {
+        ratios.sort(function (a, b) { return a - b; });
+        var mid = ratios[Math.floor(ratios.length / 2)];
+        v = Math.max(0.6, Math.min(1.8, mid));
+      }
+    } catch (e) { v = 1; }
+    _paceCache = { at: Date.now(), v: v };
+    return v;
+  }
+
   function estimateMinutes(questions) {
     var qs = arr(questions);
     if (!qs.length) return null;
-    var sec = 0;
-    qs.forEach(function (q) {
-      var s = isNum(q && q.estimatedSeconds) ? q.estimatedSeconds : null;
-      if (s === null && VQ2.qmodel && VQ2.qmodel.defaultSeconds) {
-        try { s = VQ2.qmodel.defaultSeconds(q.type); } catch (e) { s = 60; }
-      }
-      sec += isNum(s) ? s : 60;
-    });
+    var sec = OPEN_OVERHEAD_SEC;
+    qs.forEach(function (q) { sec += estimateSecondsForQuestion(q); });
+    sec *= personalFactor();
     return Math.max(1, Math.round(sec / 60));
   }
 
@@ -18807,6 +18930,10 @@
         questionTypes: o.questionTypes || undefined,
         questionPlan: o.questionPlan || undefined,
         maxRounds: o.maxRounds || undefined, maxCalls: o.maxCalls || undefined,
+        /* ★ 資料も 渡す。渡していなかったので、台帳に 載せて 作ると
+           **資料つきの 注文が 資料なしで 作られて** いた。
+           サーバ側は track のときも files を 読む（同じ 入口）。 */
+        files: o.files || undefined,
         track: true,
         /* 同じ注文を 2 回送っても 1 件にする（二重生成の防止）。 */
         idempotencyKey: o.idempotencyKey || undefined
@@ -55772,13 +55899,30 @@
                     slotPlan[t] = (slotPlan[t] || 0) + 1;
                   });
                 } catch (e) {}
-                return G.generateQuestions({
+                /* ★ 台帳に 載せて 作る（クラウド化）。
+                   これまでは 出しっぱなしの 要求で 作っていたので、
+                   **編集画面を 閉じた 瞬間に 止まって** いた。
+                   台帳（ai_jobs）に 載せると サーバ側が waitUntil で 走り切り、
+                   画面は あとから 合流できる。同じ 注文を 2 回 押しても
+                   idempotencyKey で 1 件に なる。 */
+                var 注文の鍵 = "";
+                try {
+                  注文の鍵 = "mock:" + String(st.runId || "")
+                    + ":" + String(req.slots.length)
+                    + ":" + String(cx.prompt || "").slice(0, 60).replace(/\s+/g, " ");
+                } catch (e) { 注文の鍵 = ""; }
+                var 頼み = {
                   prompt: withSourcePolicy(cx.prompt, s),
                   count: req.slots.length,
                   questionTypes: slotTypes.length ? slotTypes : undefined,
                   questionPlan: Object.keys(slotPlan).length ? slotPlan : undefined,
                   files: files.length ? files : undefined
-                });
+                };
+                if (G.generateQuestionsTracked) {
+                  頼み.idempotencyKey = 注文の鍵 || undefined;
+                  return G.generateQuestionsTracked(頼み);
+                }
+                return G.generateQuestions(頼み);
               }).then(function (r) {
                 first = false;
                 /* 実際に使われた提供元とモデルを、**サーバが返した値のまま**出す。

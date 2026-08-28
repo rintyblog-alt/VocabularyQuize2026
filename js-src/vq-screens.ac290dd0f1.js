@@ -275,6 +275,48 @@
     } catch (e) {}
     return 並;
   }
+  /* ══ クラウドで 作りかけの プリセット ══════════════════════════════
+     ★ AI で 作っている 間、これまでは 作成の 画面を 開いたままに して
+       おかないと 止まっていた。いまは サーバの 台帳（ai_jobs）で 走り続ける。
+       ここは その 台帳を **一覧に うすい 札**として 出す 側。
+       中身は まだ 無いので 押しても 開かない。止めることだけ できる。
+       端末には 何も 覚えさせていないので、**再読み込みしても 残る**。 */
+  function buildingJobs() {
+    try {
+      var G = window.__vqCloudGen;
+      return (G && G.list) ? (G.list() || []) : [];
+    } catch (e) { return []; }
+  }
+  function buildingPct(j) {
+    var planned = Math.max(0, Number(j && j.planned) || 0);
+    var made = Math.max(0, Number(j && j.made) || 0);
+    if (planned > 0) return Math.max(0, Math.min(100, Math.round((made / planned) * 100)));
+    var p = Number(j && j.progress) || 0;
+    return Math.max(0, Math.min(100, Math.round(p > 1 ? p : p * 100)));
+  }
+  function buildingHTML() {
+    var jobs = buildingJobs();
+    if (!jobs.length) return "";
+    return jobs.map(function (j) {
+      var pct = buildingPct(j);
+      var made = Math.max(0, Number(j.made) || 0);
+      var planned = Math.max(0, Number(j.planned) || 0);
+      return '<article class="pc pc--building" aria-busy="true">' +
+        '<div class="pc--building__ic">' + ms("cloud_upload") +
+          '<span class="pc--building__pct">' + pct + "%</span></div>" +
+        '<div class="pc--building__b">' +
+          '<div class="pc__title">' + esc(String(j.title || "AI で 作成中")) + "</div>" +
+          '<div class="pc--building__m">クラウドで 作成中' +
+            (planned ? " ・ " + made + " / " + planned + " 問" : "") +
+            (j.currentStage ? " ・ " + esc(String(j.currentStage)) : "") + "</div>" +
+          '<div class="pc--building__bar"><span style="width:' + pct + '%"></span></div>' +
+          '<div class="pc--building__n">この 画面を 閉じても 作り続けます。できたら ここに 並びます。</div>' +
+        "</div>" +
+        '<button class="pc--building__x" data-cancelgen="' + esc(String(j.jobId || "")) + '">止める</button>' +
+        "</article>";
+    }).join("");
+  }
+
   function cardById(id) {
     for (var i = 0; i < cardRows.length; i++) if (cardRows[i].id === String(id)) return cardRows[i];
     return null;
@@ -451,6 +493,29 @@
     ".pc__fav.on{color:#E0A31C;}.pc__fav .ms{font-size:19px;}.pc__fav:hover{background:#fff;}" +
     ".pc__fav:not(.on) .ms{font-variation-settings:'FILL' 0;}" +
     ".pc__fav:focus-visible{outline:2px solid var(--vq-accent,#756DB3);outline-offset:2px;}" +
+    /* ── クラウドで 作りかけの 札 ────────────────────────────────
+       ★ 「ちょっと 薄暗い 見た目」。押せる ものは 止めるだけ。
+         できた 割合は **できた数 ÷ 頼んだ数**。時間から 推し量らない。 */
+    ".pc--building{position:relative;display:flex;gap:13px;align-items:flex-start;padding:15px;" +
+      "background:var(--vq-surface,#fff);border:1px dashed var(--vq-border-strong,#D7D2E4);" +
+      "border-radius:calc(18px * var(--vq-r-scale,1));opacity:.72;}" +
+    ".pc--building__ic{position:relative;flex:0 0 auto;width:50px;height:50px;" +
+      "border-radius:calc(15px * var(--vq-r-scale,1));display:grid;place-items:center;" +
+      "background:var(--vq-accent-subtle,#EAE8F7);color:var(--vq-accent-text,#5F579E);}" +
+    ".pc--building__ic .ms{font-size:25px;animation:vqscr-lift 1.8s ease-in-out infinite;}" +
+    ".pc--building__pct{position:absolute;right:-7px;bottom:-7px;min-width:32px;padding:1px 5px;" +
+      "border-radius:999px;background:var(--vq-accent,#756DB3);color:var(--vq-accent-contrast,#fff);" +
+      "font-size:11px;font-weight:750;text-align:center;font-variant-numeric:tabular-nums;}" +
+    "@keyframes vqscr-lift{0%,100%{transform:translateY(1px);}50%{transform:translateY(-2px);}}" +
+    ".pc--building__b{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px;}" +
+    ".pc--building__m{font-size:11.5px;color:var(--vq-text-secondary,#686477);font-weight:550;}" +
+    ".pc--building__bar{height:4px;border-radius:999px;background:var(--vq-surface-active,#F1EEF8);overflow:hidden;}" +
+    ".pc--building__bar>span{display:block;height:100%;border-radius:inherit;background:var(--vq-accent,#756DB3);transition:width .3s ease;}" +
+    ".pc--building__n{font-size:11px;color:var(--vq-text-tertiary,#9994A8);}" +
+    ".pc--building__x{position:absolute;right:10px;top:10px;border:0;background:none;cursor:pointer;" +
+      "font-size:11.5px;font-weight:650;color:var(--vq-text-secondary,#686477);padding:4px 6px;border-radius:8px;}" +
+    ".pc--building__x:hover{background:var(--vq-surface-active,#F1EEF8);color:var(--vq-text,#2B2836);}" +
+    "@media (prefers-reduced-motion:reduce){.pc--building__ic .ms{animation:none;}.pc--building__bar>span{transition:none;}}" +
     /* アイコン（表紙に少し重ねる） */
     ".pc__body{padding:0 15px 13px;display:flex;flex-direction:column;gap:6px;flex:1 1 auto;min-width:0;}" +
     ".pc__ico{width:50px;height:50px;margin-top:-26px;margin-bottom:2px;border-radius:calc(15px * var(--vq-r-scale,1));background:var(--ico,hsl(var(--lib-hue,250) 32% 48%));border:2.5px solid var(--vq-surface,#fff);box-shadow:0 3px 10px rgba(84,72,140,.18);display:grid;place-items:center;overflow:hidden;position:relative;z-index:1;flex:0 0 auto;color:#fff;font-weight:800;font-size:19px;}" +
@@ -1274,6 +1339,10 @@
 
     if (gridEl) gridEl.classList.toggle("is-list", pstate.view === "list");
 
+    /* ★ 作りかけは **いちばん 上**へ。絞り込みには かけない
+       （まだ 中身が 無いので 科目も 問題数も 無い）。 */
+    var 作りかけ = buildingHTML();
+
     if (useSections && rows.length) {
       var secs = L.sections(rows);
       if (secEl) {
@@ -1286,18 +1355,22 @@
             '<div class="pgrid">' + s.cards.map(pcHTML).join("") + "</div></section>";
         }).join("");
       }
+      if (secEl && 作りかけ) secEl.insertAdjacentHTML("afterbegin",
+        '<section class="psec"><div class="psec__h"><div>' +
+        '<h2 class="psec__t">作成中</h2><div class="psec__s">クラウドで 作っています</div></div></div>' +
+        '<div class="pgrid">' + 作りかけ + "</div></section>");
       if (gridEl) { gridEl.hidden = true; gridEl.innerHTML = ""; }
     } else {
       if (secEl) secEl.innerHTML = "";
       if (gridEl) {
-        gridEl.hidden = !rows.length;
-        gridEl.innerHTML = rows.map(pcHTML).join("");
+        gridEl.hidden = !rows.length && !作りかけ;
+        gridEl.innerHTML = 作りかけ + rows.map(pcHTML).join("");
       }
     }
 
     /* 空のときは、理由と次の一手を出す */
     if (emptyEl) {
-      if (rows.length) emptyEl.hidden = true;
+      if (rows.length || 作りかけ) emptyEl.hidden = true;
       else {
         emptyEl.hidden = false;
         emptyEl.innerHTML = emptyHTML(all.length);
@@ -1392,7 +1465,8 @@
 
     /* クリック → ブリッジ */
     var HOOKS = ["click", "home", "bridgeAction", "navTab", "presetStart", "presetSelect", "fav",
-                 "subj", "tab", "view", "sortpick", "openFilter", "closeFilter", "clearFilter", "retry"];
+                 "subj", "tab", "view", "sortpick", "openFilter", "closeFilter", "clearFilter", "retry",
+                 "cancelgen"];
     function hookedEl(target) {
       var el = target;
       while (el && el !== root) {
@@ -1430,6 +1504,12 @@
         syncUrl(); renderPresets();
       }
       else if (d.retry != null) { loadRemoteOnce(true); }
+      else if (d.cancelgen != null) {
+        try {
+          var G = window.__vqCloudGen;
+          if (G && G.cancel) G.cancel(String(d.cancelgen)).then(function () { renderPresets(); });
+        } catch (e2) {}
+      }
       else if (d.view != null) {
         pstate.view = d.view;
         root.querySelectorAll(".seg button").forEach(function (v) {
@@ -1549,6 +1629,11 @@
     try {
       new MutationObserver(route).observe(document.body,
         { attributes: true, attributeFilter: ["data-app-tab", "data-ui-v2", "class"] });
+    } catch (e) {}
+
+    /* クラウドの 作りかけが 動いたら 描き直す（本体が 知らせてくる） */
+    try {
+      window.addEventListener("vq:cloudgen", function () { if (curScreen === "presets") renderPresets(); });
     } catch (e) {}
 
     /* 実ライブラリのリスト更新（自作追加/削除・公式到着）を監視して Presets を再描画 */

@@ -5995,7 +5995,7 @@ html.vq-css-wait body.auth-booting > *:not(#authBootSplash):not(.vqload-defs){vi
      合わせて 5.8MB＝全 JS の 53%。どれも ログイン画面には 1 つも要らない。
      受け取る側は window.○○ を 見てから 呼ぶ作りで、
      一覧（vq-screens）は VQ2.library が来るまで 150ms ごとに 見に来る。 */
-  var 道具 = ["/js/vq2-app.18130ca47a.js", "/js/quick-sede.e9d63fce50.js", "/js/sede-redesign.588cafa4b5.js", "/vendor/lib/firebase-app-compat-10.13.2.87a1d26154.js", "/vendor/lib/firebase-auth-compat-10.13.2.444be4c9e8.js", "/vendor/lib/firebase-firestore-compat-10.13.2.b1e8bf63fa.js", "/vendor/lib/jsQR-1.4.0.bc40c8a151.js", "/vendor/lib/emailjs-browser-4.052f6916a2.js", "/vendor/lib/html2canvas-1.4.1.e87e550794.js", "/vendor/lib/marked-9.1.6.6002af6348.js", "/vendor/lib/dompurify-3.0.6.ea4b09082c.js", "/vendor/lib/highlight-11.9.0.837a6fa5b0.js", "/vendor/lib/jszip-3.10.1.acc7e41455.js"], 飾り = ["/vendor/lib/highlight-atom-one-dark-11.9.0.4237ffca7c.css"], 始めた = false;
+  var 道具 = ["/js/vq2-app.4f18a0bd02.js", "/js/quick-sede.e9d63fce50.js", "/js/sede-redesign.588cafa4b5.js", "/vendor/lib/firebase-app-compat-10.13.2.87a1d26154.js", "/vendor/lib/firebase-auth-compat-10.13.2.444be4c9e8.js", "/vendor/lib/firebase-firestore-compat-10.13.2.b1e8bf63fa.js", "/vendor/lib/jsQR-1.4.0.bc40c8a151.js", "/vendor/lib/emailjs-browser-4.052f6916a2.js", "/vendor/lib/html2canvas-1.4.1.e87e550794.js", "/vendor/lib/marked-9.1.6.6002af6348.js", "/vendor/lib/dompurify-3.0.6.ea4b09082c.js", "/vendor/lib/highlight-11.9.0.837a6fa5b0.js", "/vendor/lib/jszip-3.10.1.acc7e41455.js"], 飾り = ["/vendor/lib/highlight-atom-one-dark-11.9.0.4237ffca7c.css"], 始めた = false;
   function 順に(i) {
     if (i >= 道具.length) { try { window.__vqLibsReady = true; } catch (e) {} return; }
     var s = document.createElement("script");
@@ -6067,7 +6067,7 @@ body.vq-survive-play #appMobileBottomBar{ display:none !important; }
   #appSurvivePage{ border-radius:0; }
 }
 </style>
-<script id="vq-core" src="/js/vq-core.3902d981f4.js"></script>
+<script id="vq-core" src="/js/vq-core.83333f0f90.js"></script>
 <script type="module" src="/assets/survival/runtime.js"></script>
 <!-- ★ three.js の 先読みをやめた（2026-08-18）。
      Qredit のカードを 立体で見せるためだけの 118KB を、**見ない人にも**
@@ -10356,7 +10356,7 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
   else boot();
 })();
 </script>
-<script id="vq-screens" src="/js/vq-screens.eeb2712068.js"></script>
+<script id="vq-screens" src="/js/vq-screens.4d2ddcefb4.js"></script>
 <script id="vq-settings-store" src="/js/vq-settings-store.7d8033cf78.js"></script>
 <script id="vq-settings" src="/js/vq-settings.a32785511a.js"></script>
 <script id="vq-newsflash">
@@ -15110,6 +15110,70 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
 </script>
 
 
+<style id="vq-library-building">
+/* ── クラウドで 作りかけの プリセット ────────────────────────────
+   一覧に **うすい 札**として 並ぶ。押せる ものは 何も 無い
+   （中身が まだ 無いのに 開けると 空を 見せることに なる）。
+   雲の しるしと、できた 割合の % を 出す。 */
+.app-library-card--building{
+  position: relative;
+  display: grid; gap: 10px;
+  padding: var(--vq-card-p, 20px);
+  background: var(--vq-surface, #fff);
+  border: 1px dashed var(--vq-border-strong, #D7D2E4);
+  border-radius: var(--vq-r-lg, 18px);
+  opacity: .72;                      /* ★ 「ちょっと 薄暗い」 */
+}
+.app-library-card--building .app-library-card-top{
+  display: flex; align-items: center; gap: 14px; min-width: 0;
+}
+.app-library-card--building .app-library-card-copy{ min-width: 0; }
+.app-library-card--building .app-library-card-title{
+  font: var(--vq-type-heading-sm, 650 14.5px/1.5 inherit);
+  color: var(--vq-text, #454151);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.app-library-card--building .app-library-card-meta{
+  font: var(--vq-type-caption, 500 11.5px/1.5 inherit);
+  color: var(--vq-text-secondary, #686477); margin-top: 2px;
+}
+.app-library-building-icon{
+  position: relative; flex: 0 0 auto;
+  width: 48px; height: 48px; border-radius: var(--vq-r-md, 14px);
+  display: grid; place-items: center;
+  background: var(--vq-accent-subtle, #EAE8F7);
+  color: var(--vq-accent-text, #5F579E);
+}
+.app-library-building-icon .ms{ font-size: 24px; line-height: 1; animation: vq-build-lift 1.8s ease-in-out infinite; }
+.app-library-building-pct{
+  position: absolute; right: -6px; bottom: -6px;
+  min-width: 30px; padding: 1px 5px;
+  border-radius: var(--vq-r-full, 999px);
+  background: var(--vq-accent, #756DB3); color: var(--vq-accent-contrast, #fff);
+  font: var(--vq-type-caption, 500 11.5px/1.5 inherit); font-weight: 700;
+  text-align: center; font-variant-numeric: tabular-nums;
+  box-shadow: var(--vq-shadow-subtle, 0 1px 2px rgba(0,0,0,.08));
+}
+@keyframes vq-build-lift{ 0%,100%{ transform: translateY(1px); } 50%{ transform: translateY(-2px); } }
+.app-library-building-bar{
+  height: 4px; border-radius: var(--vq-r-full, 999px);
+  background: var(--vq-surface-active, #F1EEF8); overflow: hidden;
+}
+.app-library-building-bar > span{
+  display: block; height: 100%; border-radius: inherit;
+  background: var(--vq-accent, #756DB3);
+  transition: width var(--vq-dur-slow, 300ms) var(--vq-ease-standard, ease);
+}
+.app-library-building-note{
+  margin: 0; font: var(--vq-type-caption, 500 11.5px/1.5 inherit);
+  color: var(--vq-text-tertiary, #9994A8);
+}
+.app-library-building-stop{ justify-self: start; }
+@media (prefers-reduced-motion: reduce){
+  .app-library-building-icon .ms{ animation: none; }
+  .app-library-building-bar > span{ transition: none; }
+}
+</style>
 <style id="vq-library-reload">
 /* Library の 見出しの 右に「最新にする」を 置く。
    もとは grid 1 列なので、行にして ボタンだけ 右へ 逃がす。 */

@@ -24428,6 +24428,188 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
          **帯は「できた数 ÷ 頼んだ数」だけで描く。**
          残り時間や、時間から推し量った進み具合は出さない
          （実際より進んで見えると嘘になる）。 */
+      /* ══ クラウドで 作りかけの プリセット ══════════════════════════
+         ★ これまでは AI で 作っている 間、**編集画面を 開いたまま**に して
+           おかないと 止まっていた。サーバ側には すでに 台帳（ai_jobs）が
+           あって「離れても 続く」ように なっていたが、**画面が それを
+           見に いっていなかった**ので、閉じると 何も 残らなかった。
+
+         ここは 台帳を 一覧へ 出す 側:
+           ・/api/aijob/list?live=1 を 定期的に 見る（真実は サーバに ある）
+           ・作りかけは プリセット一覧に **うすい 札**として 並ぶ
+             （雲のしるし＋できた割合の %）
+           ・**再読み込みしても 残る**。端末に 何も 覚えさせていないから。
+           ・できあがったら その場で 本物の プリセットに して 札を 消す
+
+         進み具合は **できた数 ÷ 頼んだ数**だけ。時間から 推し量らない。 */
+      const _appCloudGen = {
+        jobs: [],          /* いま 走っている 仕事 */
+        timer: 0,
+        busy: false,
+        loadedAt: 0,
+        取り込みずみ: new Set()   /* 二重に プリセットへ しない */
+      };
+      const CLOUD_GEN_POLL_MS = 5000;
+
+      function _appCloudGenPct(job){
+        const planned = Math.max(0, Number(job?.planned) || 0);
+        const made = Math.max(0, Number(job?.made) || 0);
+        if (planned > 0) return Math.max(0, Math.min(100, Math.round((made / planned) * 100)));
+        const p = Number(job?.progress) || 0;
+        return Math.max(0, Math.min(100, Math.round(p > 1 ? p : p * 100)));
+      }
+
+      async function _appCloudGenRefresh(){
+        if (_appCloudGen.busy) return _appCloudGen.jobs;
+        if (!_appIsLoggedUser()) { _appCloudGen.jobs = []; return []; }
+        _appCloudGen.busy = true;
+        try{
+          const body = await _appApiJson("/api/aijob/list?live=1&limit=20", { method: "GET" });
+          const all = Array.isArray(body?.jobs) ? body.jobs : [];
+          _appCloudGen.jobs = all.filter((j) => j && String(j.type || "") === "preset-gen");
+          _appCloudGen.loadedAt = Date.now();
+        }catch(err){
+          /* 取れなくても 画面は 壊さない。次の 機会に 取り直す。 */
+        }finally{
+          _appCloudGen.busy = false;
+        }
+        return _appCloudGen.jobs;
+      }
+
+      /* できあがった 仕事を 本物の プリセットに する。
+         形を 直す ところ（toClientShape）と 保存は **VQ2 が 持っている**ので
+         そのまま 借りる。ここで 別に 作ると 形が 食い違う。 */
+      async function _appCloudGenAdoptFinished(){
+        if (!_appIsLoggedUser()) return 0;
+        let 取り込んだ = 0;
+        try{
+          const body = await _appApiJson("/api/aijob/list?limit=20", { method: "GET" });
+          const all = Array.isArray(body?.jobs) ? body.jobs : [];
+          const 済み = all.filter((j) => j && String(j.type || "") === "preset-gen"
+            && (j.status === "completed" || j.status === "partial")
+            && !_appCloudGen.取り込みずみ.has(String(j.jobId || "")));
+          for (const job of 済み){
+            const id = String(job.jobId || "");
+            _appCloudGen.取り込みずみ.add(id);
+            const qsRaw = (job.partial && Array.isArray(job.partial.questions)) ? job.partial.questions : [];
+            if (!qsRaw.length) continue;
+            const V = window.VQ2 || {};
+            if (!V.aigen?.toClientShape || !V.schema?.emptyPreset || !V.store?.savePreset) continue;
+            /* 同じ 仕事から 二度 作らない（別の タブで 作られていることも ある） */
+            const 既に = (typeof V.store.listPresets === "function")
+              ? (V.store.listPresets() || []).some((x) => String(x?.sourceJobId || "") === id)
+              : false;
+            if (既に) continue;
+            let np = null;
+            try{
+              const qs = qsRaw.map((q) => V.aigen.toClientShape(q)).filter(Boolean);
+              if (!qs.length) continue;
+              np = V.schema.emptyPreset({
+                name: String(job.title || "AI で 作った プリセット").slice(0, 60),
+                description: "AI が クラウドで 作りました（" + qs.length + " 問）。",
+                questions: qs
+              });
+              np.sourceJobId = id;
+              const r = V.store.savePreset(np);
+              if (r && r.ok !== false) 取り込んだ++;
+            }catch(e){
+              console.warn("[cloud gen] プリセットに できません:", String(e?.message || e));
+            }
+          }
+        }catch(e){}
+        return 取り込んだ;
+      }
+
+      function _appCloudGenStop(){
+        if (_appCloudGen.timer) { clearInterval(_appCloudGen.timer); _appCloudGen.timer = 0; }
+      }
+      function _appCloudGenStart(){
+        _appCloudGenStop();
+        if (document.hidden) return;
+        _appCloudGen.timer = setInterval(_appCloudGenTick, CLOUD_GEN_POLL_MS);
+      }
+      async function _appCloudGenTick(){
+        const 前 = _appCloudGen.jobs.length;
+        const いま = await _appCloudGenRefresh();
+        /* 走っていた ものが 消えた ＝ どれかが 終わった。取り込みに いく。 */
+        if (前 > 0 && いま.length < 前) {
+          const n = await _appCloudGenAdoptFinished();
+          if (n > 0) uiToast(n === 1 ? "作りかけの プリセットが できました。" : `作りかけの プリセット ${n} 件が できました。`);
+        }
+        if (_appCurrentTab === APP_TAB_KEY.LIBRARY) _appRenderLibrary();
+        try{ window.dispatchEvent(new CustomEvent("vq:cloudgen")); }catch(e){}
+        if (!いま.length) _appCloudGenStop();
+      }
+
+      /* 新しい 一覧の 画面（vq-screens・影の DOM）からも 読めるように 出す。
+         見えている 一覧は そちらなので、ここに 出さないと 札が 出せない。 */
+      try{
+        window.__vqCloudGen = {
+          list: () => (Array.isArray(_appCloudGen.jobs) ? _appCloudGen.jobs.slice() : []),
+          pct: (job) => _appCloudGenPct(job),
+          refresh: () => _appCloudGenRefresh(),
+          cancel: async (jobId) => {
+            try{ await _appApiJson("/api/aijob/cancel", { method: "POST", body: JSON.stringify({ jobId: String(jobId || "") }) }); }catch(e){}
+            await _appCloudGenRefresh();
+            try{ window.dispatchEvent(new CustomEvent("vq:cloudgen")); }catch(e){}
+          }
+        };
+      }catch(e){}
+
+      /* 起動と、窓に 戻ってきた ときに 見に いく。 */
+      (function _appCloudGenBind(){
+        if (window.__vqCloudGenBound) return;
+        window.__vqCloudGenBound = true;
+        const kick = async () => {
+          if (document.hidden || !_appIsLoggedUser()) return;
+          await _appCloudGenRefresh();
+          await _appCloudGenAdoptFinished();
+          if (_appCurrentTab === APP_TAB_KEY.LIBRARY) _appRenderLibrary();
+          try{ window.dispatchEvent(new CustomEvent("vq:cloudgen")); }catch(e){}
+          if (_appCloudGen.jobs.length) _appCloudGenStart();
+        };
+        setTimeout(() => { kick().catch(() => {}); }, 3200);
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden) _appCloudGenStop();
+          else kick().catch(() => {});
+        });
+        window.addEventListener("pagehide", _appCloudGenStop);
+      })();
+
+      /* うすい 札（作りかけ）。押しても 何も 起きない ＝ まだ 中身が 無いから。 */
+      function _appCloudGenCardEl(job){
+        const pct = _appCloudGenPct(job);
+        const made = Math.max(0, Number(job?.made) || 0);
+        const planned = Math.max(0, Number(job?.planned) || 0);
+        const card = document.createElement("article");
+        card.className = "app-library-card app-library-card--building";
+        card.setAttribute("aria-busy", "true");
+        card.innerHTML = `
+          <div class="app-library-card-top">
+            <span class="app-library-building-icon" aria-hidden="true">
+              <span class="ms">cloud_upload</span>
+              <span class="app-library-building-pct">${pct}%</span>
+            </span>
+            <div class="app-library-card-copy">
+              <div class="app-library-card-title">${escapeHtml(String(job?.title || "AI で 作成中"))}</div>
+              <div class="app-library-card-meta">クラウドで 作成中${planned ? ` ・ ${made} / ${planned}問` : ""}${job?.currentStage ? ` ・ ${escapeHtml(String(job.currentStage))}` : ""}</div>
+            </div>
+          </div>
+          <div class="app-library-building-bar" role="progressbar" aria-valuenow="${made}" aria-valuemin="0" aria-valuemax="${planned || 100}" aria-label="${escapeHtml(String(job?.title || ""))}の進み具合">
+            <span style="width:${pct}%"></span>
+          </div>
+          <p class="app-library-building-note">この 画面を 閉じても 作り続けます。できたら ここに 並びます。</p>
+        `;
+        const stop = document.createElement("button");
+        stop.type = "button";
+        stop.className = "textbtn app-library-building-stop";
+        stop.textContent = "止める";
+        stop.setAttribute("data-lib-action", "cancelCloudGen");
+        stop.setAttribute("data-id", String(job?.jobId || ""));
+        card.appendChild(stop);
+        return card;
+      }
+
       const GENRUN_STATUS_JA = {
         running: "作成中", partial: "一部できました", done: "できました",
         failed: "作れませんでした", cancelled: "止めました"
@@ -24611,9 +24793,19 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
         const mine = loadPresets();
         const filteredMine = mine.filter((p) => _appPresetMatchesLibraryFilter(p));
         const publishedIds = _appOwnPublishedPresetIds();
-        if (myMetaEl) myMetaEl.textContent = `${filteredMine.length}件`;
+        /* ★ クラウドで 作りかけの ものを **一覧の 頭**へ。
+           絞り込みには かけない（まだ 中身が 無いので 科目も タグも 無い）。 */
+        const 作りかけ = Array.isArray(_appCloudGen.jobs) ? _appCloudGen.jobs : [];
+        if (作りかけ.length){
+          const gFrag = document.createDocumentFragment();
+          for (const job of 作りかけ) gFrag.appendChild(_appCloudGenCardEl(job));
+          el.appLibraryMyList.appendChild(gFrag);
+        }
+        if (myMetaEl) myMetaEl.textContent = 作りかけ.length
+          ? `${filteredMine.length}件（作成中 ${作りかけ.length}）`
+          : `${filteredMine.length}件`;
         if (!filteredMine.length){
-          el.appLibraryMyList.appendChild(_appLibraryEmptyEl(mine.length ? "条件に一致する自分のプリセットはありません。" : "まだ自分のプリセットはありません。"));
+          if (!作りかけ.length) el.appLibraryMyList.appendChild(_appLibraryEmptyEl(mine.length ? "条件に一致する自分のプリセットはありません。" : "まだ自分のプリセットはありません。"));
           _appRenderProfilePanel();
           _appRenderPublicPresetList();
           if (_appFeaturePresetPublicOn() && _appIsLoggedUser()){
@@ -44791,8 +44983,12 @@ actionタイプ:
           _appRenderLibrary();
           await Promise.all([
             _appLoadPublicPresets(true).catch(() => {}),
-            _appIsLoggedUser() ? _appLoadPresetQueue(true).catch(() => {}) : Promise.resolve()
+            _appIsLoggedUser() ? _appLoadPresetQueue(true).catch(() => {}) : Promise.resolve(),
+            /* クラウドで 作りかけの ものも 一緒に 見に いく */
+            _appCloudGenRefresh().catch(() => {}),
+            _appCloudGenAdoptFinished().catch(() => {})
           ]);
+          if (_appCloudGen.jobs.length) _appCloudGenStart();
           _appRenderLibrary();
           uiToast("最新にしました。");
         }finally{
@@ -44804,6 +45000,17 @@ actionタイプ:
       async function _appHandleLibraryAction(action, id){
         if (action === "reloadLibrary"){
           await _appLibraryReload();
+          return;
+        }
+        if (action === "cancelCloudGen"){
+          const ok = await uiConfirm("この 作成を 止めますか？ ここまでに できた 問題も 残りません。",
+            { title: "作成を 止める", okText: "止める", cancelText: "やめる", danger: true });
+          if (!ok) return;
+          try{
+            await _appApiJson("/api/aijob/cancel", { method: "POST", body: JSON.stringify({ jobId: String(id || "") }) });
+          }catch(e){}
+          await _appCloudGenRefresh();
+          _appRenderLibrary();
           return;
         }
         if (action === "newPreset"){
