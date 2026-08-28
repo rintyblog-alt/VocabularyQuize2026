@@ -304,6 +304,48 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       rs.btnAll > rs.btns && !rs.btnText.some((t) => /次の ラウンドへ|間違えた 単語で/.test(t)),
       [rs.btnAll, rs.btns, rs.btnText]);
 
+    節("③-a 今日の コース");
+    /* ★ 30 本 あっても「どれを 走ろう」で 止まる。
+       日付だけから 決める ので、誰が 開いても 同じ もの。 */
+    const 今 = await pg.evaluate(async () => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const mod = await import("/assets/vocabu-survive/data/courses.js");
+      const el = r.querySelector(".vs-lb-daily");
+      const 期 = mod.COURSES[mod.dailyCourseIndex()];
+      /* 同じ 日で ぶれない・日本時間で 変わる */
+      const t = Date.UTC(2026, 7, 28, 14, 59), t2 = Date.UTC(2026, 7, 28, 15, 0);
+      const 連 = [];
+      for (let i = 0; i < 20; i++) 連.push(mod.dailyCourseIndex(Date.UTC(2026, 7, 1) + i * 86400000));
+      let 続 = 0;
+      for (let i = 1; i < 連.length; i++) if (連[i] === 連[i - 1]) 続++;
+      return {
+        有: !!el, 文: el ? el.textContent : "",
+        名: 期.name, 日: mod.todayKey(),
+        ぶれ: mod.dailyCourseIndex() === mod.dailyCourseIndex(),
+        JST: [mod.todayKey(t), mod.todayKey(t2)],
+        続, 難: 期.difficulty
+      };
+    });
+    ok("今日の コースの 札が ある", 今.有, 今);
+    ok("名前が 出る", 今.文.indexOf(今.名) >= 0, 今);
+    ok("日付が 出る", /\d{4}-\d{2}-\d{2}/.test(今.文), 今.文);
+    ok("同じ 日で ぶれない", 今.ぶれ === true, 今);
+    ok("**日本時間で 切り替わる**", 今.JST[0] === "2026-08-28" && 今.JST[1] === "2026-08-29", 今.JST);
+    ok("**同じ コースが 2 日 続かない**", 今.続 === 0, 今.続);
+    /* 押すと えらばれる */
+    const 押 = await pg.evaluate(async () => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const mod = await import("/assets/vocabu-survive/data/courses.js");
+      const lb = window.VocabuSurvive.__app.shell.get("lobby");
+      lb.courseIndex = 0; lb._render();
+      r.querySelector(".vs-lb-daily").click();
+      await new Promise((x) => setTimeout(x, 250));
+      return { i: lb.courseIndex, 期: mod.dailyCourseIndex(),
+        印: r.querySelector(".vs-lb-daily").getAttribute("data-on") };
+    });
+    ok("押すと その コースに なる", 押.i === 押.期, 押);
+    ok("えらばれて いる 印が つく", 押.印 === "1", 押);
+
     節("③-b コースの 形が 下見に 出る");
     /* ★ 名前と 一言だけでは「どんな コースか」が 分からず、
        30 本の 中から えらぶ 手がかりに ならない。 */

@@ -15,7 +15,7 @@
 import { h, svg } from "./shell.js";
 import { listLocalPresets, listSharedPresets } from "../data/questions.js";
 import { PALETTE, BEAN_COLORS, beanByIndex } from "./theme.js";
-import { COURSES, tierOf, TIERS } from "../data/courses.js";
+import { COURSES, tierOf, TIERS, dailyCourseIndex, todayKey } from "../data/courses.js";
 import { CUP_ROUNDS } from "../game/sim.js";
 import { clearGhost } from "../data/ghost.js";
 import { listMyCourses, getMyCourse, toDef, exportCode, importCode } from "../data/mycourse.js";
@@ -352,6 +352,14 @@ export class LobbyScreen {
       this.courseList.appendChild(card);
     }
 
+    /* ★ **今日の コース。** 30 本 あっても「どれを 走ろう」で 止まる。
+       日付だけから 決める ので、誰が 開いても 同じ もの。
+       今週の 上位表と 合わせると「今日 これで 競う」に なる。 */
+    this.dailyEl = h("button", {
+      class: "vs-lb-daily", type: "button",
+      onclick: () => { this.courseIndex = dailyCourseIndex(); this._save(); this._render(); }
+    });
+
     this.previewEl = h("div", { class: "vs-lb-preview" });
     /* ★ 下見に **上から 見た 形**を 出す。
        名前と 一言だけでは 「どんな コースか」が 分からず、
@@ -497,7 +505,7 @@ export class LobbyScreen {
           this.friendsNote, this.friendsEl),
         /* 中 */
         h("section", { class: "vs-card vs-lb-course", "aria-label": "コース" },
-          this.previewEl, this.mapEl, this.recordEl, this.tierRow, this.courseList),
+          this.dailyEl, this.previewEl, this.mapEl, this.recordEl, this.tierRow, this.courseList),
         /* 右 */
         h("section", { class: "vs-card vs-lb-right", "aria-label": "参加者" },
           h("div", { class: "vs-lb-lab", text: "遊び方" }), this.modeRow,
@@ -933,6 +941,18 @@ export class LobbyScreen {
         h("span", { text: "難しさ " + c.difficulty + " / 10" }),
         h("span", { text: c.recommendedPlayers[0] + "〜" + c.recommendedPlayers[1] + " 人" }))));
 
+    /* 今日の コース */
+    if (this.dailyEl) {
+      const di = dailyCourseIndex();
+      const dc = COURSES[di];
+      this.dailyEl.textContent = "";
+      this.dailyEl.setAttribute("aria-label", "今日の コース " + dc.name + " を えらぶ");
+      this.dailyEl.setAttribute("data-on", di === this.courseIndex ? "1" : "0");
+      this.dailyEl.appendChild(h("span", { class: "vs-lb-daily-l", text: "今日の コース" }));
+      this.dailyEl.appendChild(h("strong", { class: "vs-lb-daily-n", text: dc.name }));
+      this.dailyEl.appendChild(h("span", { class: "vs-lb-daily-d", text: todayKey() }));
+    }
+
     this._drawMap(c);
     this._renderRecord(c);
 
@@ -1237,6 +1257,15 @@ export const LOBBY_CSS = `
 .vs-lb-sharing{ color:${PALETTE.mint} !important; font-weight:700; }
 .vs-lb-map{ display:block; width:100%; height:88px; border-radius:10px;
   border:1px solid ${PALETTE.line}; background:rgba(8,11,24,.55); margin:8px 0 2px; }
+.vs-lb-daily{ display:flex; align-items:baseline; gap:8px; width:100%; text-align:left;
+  padding:7px 11px; margin-bottom:8px; border-radius:999px; cursor:pointer;
+  border:1px solid rgba(255,216,77,.35); background:rgba(255,216,77,.09);
+  color:#f3f5ff; font:inherit; font-size:12.5px; }
+.vs-lb-daily:hover{ background:rgba(255,216,77,.16); }
+.vs-lb-daily[data-on="1"]{ border-color:#ffd84d; background:rgba(255,216,77,.20); }
+.vs-lb-daily-l{ flex:0 0 auto; font-size:11px; font-weight:800; color:#ffd84d; letter-spacing:.04em; }
+.vs-lb-daily-n{ flex:1 1 auto; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vs-lb-daily-d{ flex:0 0 auto; font-size:10.5px; color:rgba(243,245,255,.62); }
 .vs-lb-stats{ display:flex; flex-direction:column; gap:1px; margin-bottom:4px; }
 .vs-lb-stat{ display:flex; align-items:baseline; gap:8px; font-size:12px; padding:2px 0; }
 .vs-lb-stat-l{ flex:1 1 auto; color:rgba(243,245,255,.66); }

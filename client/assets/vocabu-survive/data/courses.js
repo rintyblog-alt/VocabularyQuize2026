@@ -868,6 +868,44 @@ export const TIERS = [
   { key: "champion", label: "決勝", from: 29, to: 29 }
 ];
 
+/* ══════════════════════════════════════════════════════════════════════════
+   今日の コース
+
+   ★ **みんな 同じ もの**に なる ように、日付だけから 決める。
+     乱数や 端末の 事情を 混ぜると、隣の 人と 違う コースに なって
+     「今日の コース」で 競う 意味が なくなる。
+   ★ 日付は **日本時間**で 数える。UTC で 数えると 朝 9 時に 切り替わる。
+   ══════════════════════════════════════════════════════════════════════════ */
+export function todayKey(nowMs) {
+  const d = new Date((nowMs === undefined ? Date.now() : nowMs) + 9 * 3600 * 1000);
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  return y + "-" + (m < 10 ? "0" : "") + m + "-" + (day < 10 ? "0" : "") + day;
+}
+
+export function dailyCourseIndex(nowMs) {
+  /* ★ **いちばん 難しい 段は 外す**。今日の コースが 決勝だと
+     ほとんどの 人が ゴールできず、毎日 開く 気に ならない。 */
+  const n = Math.max(1, COURSES.length - 3);
+  /* 何日目か（日本時間の 日付から） */
+  const k = todayKey(nowMs);
+  const [y, m, d] = k.split("-").map(Number);
+  const day = Math.floor(Date.UTC(y, m - 1, d) / 86400000);
+  /* ★ 単なる ハッシュだと **同じ コースが 2 日 続く** ことが ある（実測）。
+     n 日を ひと回りと して 並べ替え、1 回りの 中では 同じ コースを 出さない。 */
+  const 周 = Math.floor(day / n);
+  const 順 = [];
+  for (let i = 0; i < n; i++) 順.push(i);
+  let a = ((周 + 1) * 2654435761) >>> 0;
+  const rnd = () => { a = (Math.imul(a ^ (a >>> 15), 1 | a) + 0x6D2B79F5) >>> 0; return a / 4294967296; };
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const t = 順[i]; 順[i] = 順[j]; 順[j] = t;
+  }
+  return 順[((day % n) + n) % n];
+}
+
 export function tierOf(index) {
   for (const t of TIERS) if (index >= t.from && index <= t.to) return t;
   return TIERS[0];
