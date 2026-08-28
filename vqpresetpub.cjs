@@ -117,11 +117,19 @@ async function req(path, o = {}) {
   節("④ 最新にする");
   ok("ボタンが ある", await pg.evaluate(() => !!document.getElementById("appLibraryReloadBtn")));
   const 前 = await pg.evaluate(() => (document.getElementById("appLibraryMyMeta") || {}).textContent || "");
+  /* ★ プリセットの 置き場は 端末が 詰まると IndexedDB へ 移る。
+     だから **その時どきの 置き場**へ 足す（localStorage に 直に 書くと、
+     移ったあとは 読まれないので 増えない）。 */
   await pg.evaluate(() => {
-    const raw = JSON.parse(localStorage.getItem("wordPractice400.presets.v1") || "[]");
+    const K = "wordPractice400.presets.v1";
+    const I = window.VQIDB;
+    const 鏡 = !!(I && I.用意できた && I.用意できた(K) && I.鏡にある && I.鏡にある(K));
+    const 生 = 鏡 ? I.鏡から(K) : localStorage.getItem(K);
+    const raw = JSON.parse(生 || "[]");
     raw.push({ id: "pubchk2", name: "あとから足した", subjectId: "sub:english", tagIds: [],
       createdAt: Date.now(), updatedAt: Date.now(), words: [{ q: "x", a: "y", choices: ["A", "B", "C", "D"] }] });
-    localStorage.setItem("wordPractice400.presets.v1", JSON.stringify(raw));
+    const 文 = JSON.stringify(raw);
+    if (鏡) I.鏡へ(K, 文); else localStorage.setItem(K, 文);
   });
   await pg.evaluate(() => document.getElementById("appLibraryReloadBtn").click());
   await pg.waitForTimeout(2800);

@@ -1813,7 +1813,7 @@
       }
       function loadPresetsAll(){
         try{
-          const raw = window.localStorage.getItem(PRESETS_KEY);
+          const raw = _lsGetPresetsRaw();
           if (!raw) { _presetsRaw = null; _presetsOut = null; return []; }
           if (_presetsOut && raw === _presetsRaw) return _presetsOut.slice();
           const arr = JSON.parse(raw);
@@ -1839,7 +1839,10 @@
           if (changed){
             try{
               const 書く = JSON.stringify(out);
-              window.localStorage.setItem(PRESETS_KEY, 書く);
+              /* ★ ここも **置き場の 口を 通す**。直に localStorage へ 書くと、
+                 IndexedDB へ 移したはずの ものが 手元に 復活し、
+                 次の 起動で 古い ほうが 勝つ（二重持ちの もと）。 */
+              _lsPutPresets(書く);
               _presetsRaw = 書く;
             }catch{ _presetsRaw = null; }
           } else {
@@ -1910,6 +1913,62 @@
       }
 
       /* localStorage helper — handles QuotaExceededError gracefully */
+      /* ══ プリセットの 置き場 ═══════════════════════════════════════
+         ★ 手元（localStorage）は 端末に よって 4〜5MB で 詰まる。
+           詰まった ときの 逃げ道が **「古い ぶんを 30 件に 削る」**だった。
+           黙って 消えるのが いちばん まずい。
+         ★ VQIDB（client/core/store/idb.js の 鏡）が 用意できて いれば
+           **そちらを 正**に する。IndexedDB は GB 級なので 詰まらない。
+           鏡は 同期で 読み書きできる（中身を 覚えていて、あとで 流す）。
+         ★ 用意が 済むまでは 手元が 正（空だと 勘違いさせない）。
+         ★ **書き手は ここ 1 つ**に する。鏡へ 書いたら 手元は 消す。
+           両方に 残すと、次の 起動で 古い ほうが 勝つ。 */
+      function _presetIdbReady(){
+        try{
+          const I = window.VQIDB;
+          return !!(I && I.用意できた && I.用意できた(PRESETS_KEY)
+            && I.鏡にある && I.鏡から && I.鏡へ);
+        }catch(e){ return false; }
+      }
+      /* 文字列を そのまま 置き場へ。鏡が 用意できて いれば そちら、
+         でなければ 手元。**直に localStorage へ 書かない**ための 口。 */
+      function _lsPutPresets(文){
+        if (_presetIdbReady()){
+          try{
+            window.VQIDB.鏡へ(PRESETS_KEY, String(文));
+            try{ window.localStorage.removeItem(PRESETS_KEY); }catch(e){}
+            return true;
+          }catch(e){}
+        }
+        try{ window.localStorage.setItem(PRESETS_KEY, String(文)); return true; }
+        catch(e){ return false; }
+      }
+      function _lsGetPresetsRaw(){
+        try{
+          const I = window.VQIDB;
+          if (_presetIdbReady() && I.鏡にある(PRESETS_KEY)){
+            const v = I.鏡から(PRESETS_KEY);
+            if (typeof v === "string") return v;
+          }
+        }catch(e){}
+        try{ return window.localStorage.getItem(PRESETS_KEY); }catch(e){ return null; }
+      }
+      /* 起動のとき 1 回、鏡の 用意を 頼む。済んだら 読み先が 変わるので
+         覚えを 捨てて 描き直す（古い 絵のままに しない）。 */
+      (function _presetIdbKick(){
+        const 頼む = () => {
+          try{
+            const I = window.VQIDB;
+            if (!I || !I.用意を待つ) { setTimeout(頼む, 400); return; }
+            I.用意を待つ().then(() => {
+              try{ _presetsRaw = null; _presetsOut = null; }catch(e){}
+              try{ _appPresetsChanged(); }catch(e){}
+            }).catch(() => {});
+          }catch(e){}
+        };
+        setTimeout(頼む, 0);
+      })();
+
       function _lsSetPresets(data){
         /* ★ プリセットの 書き込みは **ここ 1 か所**を 通る（savePresets も
            savePresetsAll も 最後は ここ）。だから 画面へ 伝えるのも ここ。
@@ -1918,26 +1977,35 @@
            になる ＝「ホームへ 行って 戻らないと 直らない」。 */
         try{ _appPresetsChanged(); }catch(e){}
         const arr = Array.isArray(data) ? data : [];
+        const 文 = JSON.stringify(arr);
+        /* ① 鏡が 用意できて いれば そちらへ。詰まらない。 */
+        if (_presetIdbReady() && _lsPutPresets(文)) return true;
+        /* ② 手元へ。鏡が まだ／使えない ときだけ 通る。 */
         try{
-          window.localStorage.setItem(PRESETS_KEY, JSON.stringify(arr));
+          window.localStorage.setItem(PRESETS_KEY, 文);
           return true;
         }catch(e){
-          // Recovery 1: strip tombstones
           const live = arr.filter(function(p){ return !p?.deletedAt; });
           try{
             window.localStorage.setItem(PRESETS_KEY, JSON.stringify(live));
             return true;
           }catch(e2){
-            // Recovery 2: keep only the most recent 30 presets
-            const trimmed = live.sort(function(a,b){ return (b.updatedAt||0)-(a.updatedAt||0); }).slice(0,30);
+            /* ★ 「古い ぶんを 30 件に 削る」は やめた。
+               黙って 消えるのが いちばん まずい（消えたことに 気づけない）。
+               IndexedDB へ 逃がす。それも 駄目な ときだけ 断る。 */
             try{
-              window.localStorage.setItem(PRESETS_KEY, JSON.stringify(trimmed));
-              uiAlert("ストレージの空き容量が不足しているため、古いプリセットの一部が自動削除されました。\n不要なプリセットを削除して空き容量を確保することをお勧めします。", { title: "ストレージ容量不足" });
-              return true;
-            }catch(e3){
-              uiAlert("ストレージの空き容量が不足しているため、プリセットを保存できませんでした。\nブラウザの設定からサイトデータを一部削除するか、不要なプリセットを削除してから再試行してください。", { title: "保存できませんでした" });
-              return false;
-            }
+              const I = window.VQIDB;
+              if (I && I.使える && I.使える() && I.鏡へ){
+                I.鏡へ(PRESETS_KEY, 文);
+                try{ window.localStorage.removeItem(PRESETS_KEY); }catch(e4){}
+                return true;
+              }
+            }catch(e3){}
+            uiAlert("この端末の保存領域がいっぱいです。プリセットは消していませんが、"
+              + "これ以上は保存できませんでした。\nブラウザの設定からこのサイトのデータを"
+              + "少し空けてから、もう一度お試しください。",
+              { title: "保存できませんでした" });
+            return false;
           }
         }
       }

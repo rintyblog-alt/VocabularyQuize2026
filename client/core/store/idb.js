@@ -190,10 +190,33 @@
      localStorage に まだ 在るなら それを 正とし、IndexedDB へ 移す。 */
   function 鏡を用意() {
     if (!使える()) return Promise.resolve({ 用意: 0, 理由: "IndexedDB を 使えません" });
+    /* ★ **空で 潰さない。**
+       手元に「[]」や「{}」だけが 残っている ことが ある（用意が 済む前に
+       画面が 空を 書いた ときなど）。それを そのまま 正に すると、
+       IndexedDB に 入っている 本物を 空で 上書きして **全部 消える**。
+       中身が 入っている ほうを 残す。 */
+    var 空っぽ = function (v) {
+      var t = String(v == null ? "" : v).trim();
+      return t === "" || t === "[]" || t === "{}" || t === "null";
+    };
     return 移してよい鍵.reduce(function (p, k) {
       return p.then(function () {
         var 手 = null;
         try { 手 = root.localStorage.getItem(k); } catch (e) { 手 = null; }
+        if (手 !== null && 空っぽ(手)) {
+          /* 手元が 空。IndexedDB に 中身が あれば そちらを 正に する。 */
+          return 読む("ls:" + k).then(function (v) {
+            if (typeof v === "string" && !空っぽ(v)) {
+              鏡[k] = v; 用意済[k] = true;
+              try { root.localStorage.removeItem(k); } catch (e) {}
+              return;
+            }
+            鏡[k] = 手; 用意済[k] = true;
+            return 書く("ls:" + k, 手).then(function (ok) {
+              if (ok) { try { root.localStorage.removeItem(k); } catch (e) {} }
+            });
+          });
+        }
         if (手 !== null) {
           鏡[k] = 手; 用意済[k] = true;
           return 書く("ls:" + k, 手).then(function (ok) {
