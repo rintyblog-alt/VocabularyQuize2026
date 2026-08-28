@@ -1911,6 +1911,12 @@
 
       /* localStorage helper — handles QuotaExceededError gracefully */
       function _lsSetPresets(data){
+        /* ★ プリセットの 書き込みは **ここ 1 か所**を 通る（savePresets も
+           savePresetsAll も 最後は ここ）。だから 画面へ 伝えるのも ここ。
+           保存した 側が それぞれ 描き直しを 呼ぶ 作りだと、呼び忘れた 道
+           （作る・直す・同期で 降ってくる）から 保存したとき 一覧が 古いまま
+           になる ＝「ホームへ 行って 戻らないと 直らない」。 */
+        try{ _appPresetsChanged(); }catch(e){}
         const arr = Array.isArray(data) ? data : [];
         try{
           window.localStorage.setItem(PRESETS_KEY, JSON.stringify(arr));
@@ -12425,6 +12431,23 @@ function reviewWrong(){
         __presetsRev++;
         __searchIndexCache.rev = -1;
         if (!opts.skipSync) _queueUserBackupSync("presets");
+      }
+
+      /* ── プリセットが 変わったことを 画面へ 伝える ────────────────────
+         これまでは 保存した 側が それぞれ 描き直しを 呼んでいたので、
+         呼び忘れた 道（作る・直す・消す・同期で 降ってくる）から 保存すると
+         **一覧が 古いまま**だった。ホームへ 行って 戻らないと 直らない、
+         という 声は これ。持ち主は 1 か所（ここ）に する。
+         同じ コマに 何度 保存されても 描き直しは 1 回。 */
+      let _appPresetsChangedTimer = 0;
+      function _appPresetsChanged(){
+        if (_appPresetsChangedTimer) return;
+        _appPresetsChangedTimer = setTimeout(() => {
+          _appPresetsChangedTimer = 0;
+          try{ refreshPresetList(); }catch(e){ console.warn("[preset] 一覧を 直せません:", String(e?.message || e)); }
+          try{ if (_appCurrentTab === APP_TAB_KEY.LIBRARY) _appRenderLibrary(); }catch(e){}
+          try{ if (_appCurrentTab === APP_TAB_KEY.HOME) _appRenderHomeOverview(); }catch(e){}
+        }, 0);
       }
       function saveSettingsWithUpdatedAt(settings, updatedAt, opts = {}){
         const normalized = normalizeSettings(settings);
@@ -25561,6 +25584,11 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
               publicIconColor: String(opts.publicIconColor || "")
             })
           });
+          /* ★ ここから 先は **後片づけ**。API は もう 通っている（body が 返っている）。
+             後片づけで 落ちても「公開に 失敗」に しては いけない。
+             実際 refreshPresetList の 取り違えで 落ちていて、
+             公開できているのに 失敗と 出ていた。人が 勘違いする。 */
+          try{
           _presetPublicUpdateLocalPreset(pid, (current) => {
             const next = { ...(current || {}) };
             const prevMeta = _presetPublicBuildMeta(_presetPublicMetaFromPreset(current), current?.name || preset?.name || "My Preset");
@@ -25577,9 +25605,12 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
             return next;
           });
           await _appLoadPublicPresets(true);
+          _appRenderLibrary();
+          }catch(err2){
+            console.warn("[preset publish] 後片づけで つまずきました:", String(err2?.message || err2));
+          }
           if (publish) uiToast("公開しました。");
           else uiToast("非公開にしました。");
-          _appRenderLibrary();
           return { ok: true, body };
         }catch(err){
           uiToast(`公開設定に失敗: ${String(err?.message || err)}`);
@@ -44748,7 +44779,33 @@ actionタイプ:
         if (section) section.classList.toggle("is-menu-open", target.open);
       }, true);
 
+      /* 手で 取り直す。自分の ぶんは その場で、公開ぶんは 取り直して から。 */
+      let _appLibraryReloading = false;
+      async function _appLibraryReload(){
+        if (_appLibraryReloading) return;
+        _appLibraryReloading = true;
+        const btn = document.getElementById("appLibraryReloadBtn");
+        if (btn){ btn.disabled = true; btn.classList.add("is-busy"); }
+        try{
+          try{ refreshPresetList(); }catch(e){}
+          _appRenderLibrary();
+          await Promise.all([
+            _appLoadPublicPresets(true).catch(() => {}),
+            _appIsLoggedUser() ? _appLoadPresetQueue(true).catch(() => {}) : Promise.resolve()
+          ]);
+          _appRenderLibrary();
+          uiToast("最新にしました。");
+        }finally{
+          _appLibraryReloading = false;
+          if (btn){ btn.disabled = false; btn.classList.remove("is-busy"); }
+        }
+      }
+
       async function _appHandleLibraryAction(action, id){
+        if (action === "reloadLibrary"){
+          await _appLibraryReload();
+          return;
+        }
         if (action === "newPreset"){
           _presetEngineOpen();
           return;
@@ -55066,7 +55123,12 @@ actionタイプ:
             const wc = _presetEntryCount(p);
             const unit = _isEnglishSubjectId(p.subjectId || "sub:english") ? "語" : "問";
             const publicMeta = _presetPublicMetaForLibraryPreset(p);
-            const iconHtml = _presetPublicIconBadgeEl(publicMeta.publicIcon, publicMeta.publicIconColor, { muted: !publicMeta.isPublic, tagName: "span", appearance: preset?.appearance }).outerHTML;
+            /* ★ ここは 変数名の 取り違え。並べているのは p なのに preset を 見ていた。
+               `preset?.` は **宣言が 無い ときは ?. でも ReferenceError**に なるので、
+               プリセットが 1 件でも あると refreshPresetList() が 必ず 落ちていた。
+               公開の あと この 関数を 通るので、公開は 成功しているのに
+               「公開設定に失敗」と 出ていた（実測: /api/preset/publish は 200）。 */
+            const iconHtml = _presetPublicIconBadgeEl(publicMeta.publicIcon, publicMeta.publicIconColor, { muted: !publicMeta.isPublic, tagName: "span", appearance: p?.appearance }).outerHTML;
             const row = document.createElement("div");
             row.className = "preset-item";
             row.innerHTML = `
