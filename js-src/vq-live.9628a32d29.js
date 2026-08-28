@@ -7855,7 +7855,8 @@
     slidesWrite: "スライドを作っています…", slidesEdit: "スライドを直しています…",
     formsWrite: "フォームを作っています…", formsEdit: "フォームを直しています…",
     runCommand: "操作しています…", docDesign: "見た目を 決めています…",
-    sheetsPivot: "集計しています…", sheetsRule: "入力の 決まりを 置いています…"
+    sheetsPivot: "集計しています…", sheetsRule: "入力の 決まりを 置いています…",
+    sheetsDedupe: "重なりを 調べています…"
   };
 
   function 促しを止める(なぜ) {
@@ -9658,6 +9659,12 @@
   function sheetsRule(a) {
     var K = WPC(); if (!K) return 操作の口が無い();
     return 落ち着いてから(K.sheets.規則(a || {}));
+  }
+
+  /* 重複の 始末（見つける／消す）。消すのは 頼まれた ときだけ。 */
+  function sheetsDedupe(a) {
+    var K = WPC(); if (!K) return 操作の口が無い();
+    return 落ち着いてから(K.sheets.重複(a || {}));
   }
 
   function sheetsEdit(a) {
@@ -12628,6 +12635,7 @@
     if (name === "docDesign") return docDesign(a);
     if (name === "sheetsPivot") return sheetsPivot(a);
     if (name === "sheetsRule") return sheetsRule(a);
+    if (name === "sheetsDedupe") return sheetsDedupe(a);
     if (name === "deckStart") return deckStart(a);
     if (name === "deckDesign") return deckDesign(a);
     if (name === "deckWrite") return deckWrite(a);

@@ -75376,7 +75376,9 @@
            Lumi からも 呼べるが、**人が 自分で 押せる 道**も 置く。 */
         { label: "集計表を作る（ピボット）", icon: "chart", run: pivotDialog },
         /* ★ 入力規則（2026-08-29）。人に 記入して もらう 表で いちばん 効く。 */
-        { label: "入力規則（入れてよい ものを 決める）", icon: "check", run: ruleDialog }
+        { label: "入力規則（入れてよい ものを 決める）", icon: "check", run: ruleDialog },
+        /* ★ 重複の 始末（2026-08-29）。**まず 数えるだけ**。消すのは 確かめてから。 */
+        { label: "重なりを 調べる（重複）", icon: "copy", run: dedupeDialog }
       ] });
 
     var api = VQ2.ui.mount("vq-wp-sheets", { title: item.title, css: (WP.CSS || "") + (WP.CSS_EXTRA || ""),
@@ -76678,6 +76680,69 @@
       }
       return { type: c.type, title: c.title || "", labels: labels, series: series };
     }
+    /* ══ 重なりの 窓（2026-08-29）════════════════════════════════
+       **まず 数えるだけ**。消すのは、何行 消えるかを 見せてから。 */
+    function dedupeDialog() {
+      var sh0 = sheet(); if (!sh0) return;
+      var 計 = {};
+      try { 計 = (F.recalc(sh0) || {}).values || {}; } catch (e) {}
+      var 最大列 = 0;
+      Object.keys(sh0.cells || {}).forEach(function (k) {
+        var m = /^([A-Z]+)(\d+)$/.exec(k); if (!m) return;
+        var ci = M.colIndex(m[1]); if (ci > 最大列) 最大列 = ci;
+      });
+      var 列 = [];
+      for (var i = 0; i <= Math.max(最大列, 1); i++) {
+        var k = M.colName(i) + "1";
+        var v = 計[k]; if (v === undefined) { var cl = (sh0.cells || {})[k]; v = cl ? cl.v : ""; }
+        列.push({ i: i, 名: String(v || "").trim() || (M.colName(i) + " 列") });
+      }
+      var html = '<div style="display:grid;gap:12px;padding:4px 2px 8px">'
+        + '<div><label class="wp-lab">比べる列</label>'
+        + '<select class="wp-in" data-f="col" style="width:100%">'
+        + 列.map(function (c) {
+            return '<option value="' + c.i + '">' + esc(M.colName(c.i)) + "：" + esc(c.名) + "</option>";
+          }).join("") + "</select></div>"
+        + '<label style="display:flex;gap:8px;align-items:center">'
+        + '<input type="checkbox" data-f="header" checked> 1 行目は 見出し</label>'
+        + '<button type="button" class="wp-btn is-outline" data-act="find" '
+        + 'style="width:100%;height:44px;justify-content:center">重なりを 数える</button>'
+        + '<div data-w="out" style="font-size:12.5px;line-height:1.7"></div></div>';
+      U.sheet(api.root, {
+        title: "重なりを 調べる",
+        html: html,
+        onOpen: function (bodyEl, close) {
+          var g = function (n) { return bodyEl.querySelector('[data-f="' + n + '"]'); };
+          var 出 = bodyEl.querySelector('[data-w="out"]');
+          bodyEl.addEventListener("click", function (e) {
+            var f = e.target.closest ? e.target.closest('[data-act="find"]') : null;
+            if (f) {
+              var r = WP.cmd.sheets.重複({ op: "見つける",
+                column: Number(g("col").value) + 1, header: !!g("header").checked });
+              if (r && r.だめ) { 出.textContent = r.だめ; return; }
+              var n = Number(r.重なり || 0);
+              出.innerHTML = "<b>" + n + " 行</b>が 重なっています。"
+                + (n ? "<br>" + (r.中身 || []).slice(0, 8).map(esc).join("<br>")
+                       + ((r.中身 || []).length > 8 ? "<br>…" : "")
+                       + '<br><br><button type="button" class="wp-btn is-outline" data-act="del" '
+                       + 'style="width:100%;height:44px;justify-content:center">'
+                       + "いちばん上を 残して " + n + " 行 消す</button>"
+                     : "");
+              return;
+            }
+            var d = e.target.closest ? e.target.closest('[data-act="del"]') : null;
+            if (!d) return;
+            var r2 = WP.cmd.sheets.重複({ op: "消す",
+              column: Number(g("col").value) + 1, header: !!g("header").checked });
+            close();
+            if (r2 && r2.だめ) { alert(r2.だめ); return; }
+            recalc(); paint();
+            try { api.toast(String((r2 && r2.やった) || "消しました。")); } catch (e2) {}
+          });
+        }
+      });
+    }
+
     /* ══ 入力規則の 窓（2026-08-29）════════════════════════════════
        いま選んでいる 範囲に かける。判定と 保存は **WP.cmd.sheets.規則**が
        1 か所で 持つ（同じ 決まりを 2 回 書かない）。 */
@@ -82899,6 +82964,108 @@
     return true;
   }
 
+  /* ══ 重複の 始末（2026-08-29・訴え「高度な機能を 増やして」）════
+     単語帳や 名簿を 作ると、同じ ものが 必ず まぎれ込む。
+     いままでは 目で 探すしか なかった。
+     ★ 決めごと
+       ・**まず 見つけるだけ。** 消すのは はっきり 頼まれた ときだけ。
+       ・消すときは **いちばん上を 残す**（あとから 入れた ほうを 消す）。
+       ・比べかたは そろえてから（前後の 空白・大文字小文字・全半角）。
+         そろえないと「Apple」と「apple」が 別ものに なり、役に立たない。
+       ・数えるのは **計算した あとの 値**（式の マスも 入る）。
+       ・控えを 取ってから 消す（巻き戻せる）。 */
+  function 重複の鍵(v) {
+    return String(v === undefined || v === null ? "" : v)
+      .replace(/\s+/g, "")
+      .replace(/[Ａ-Ｚａ-ｚ０-９]/g, function (ch) {
+        return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+      })
+      .toLowerCase();
+  }
+  sheets.重複 = function (a) {
+    var c = 今(); if (!c) return 開いてない();
+    if (c.kind !== "spreadsheet") return 種類ちがい(c, "spreadsheet");
+    a = a || {};
+    var b = 本体(c), 前 = 要約(c);
+    var sh = 表(b, a.sheet);
+    if (!sh) return { だめ: "シートがありません。**何もしていません。**" };
+    var 何 = S(a.op) || "見つける";
+    var ci = 列番号(a.column !== undefined ? a.column : a.col);
+    if (ci < 0) ci = 0;
+    var 見出し = a.header !== false;
+
+    var 計 = {};
+    try { 計 = (WP.formula.recalc(sh) || {}).values || {}; } catch (e) {}
+    var 読 = function (r, cc) {
+      var k = M.colName(cc) + r, v = 計[k];
+      if (v === undefined) { var cl = (sh.cells || {})[k]; v = cl ? cl.v : ""; }
+      return v;
+    };
+    var 最大行 = 0, 最大列 = 0;
+    Object.keys(sh.cells || {}).forEach(function (k) {
+      var p = 番地を割る(k); if (!p) return;
+      if (p.r > 最大行) 最大行 = p.r;
+      if (p.c > 最大列) 最大列 = p.c;
+    });
+    var 始 = 見出し ? 2 : 1;
+    if (最大行 < 始 + 1)
+      return { だめ: "比べる 行が ありません（" + 最大行 + " 行）。**何もしていません。**" };
+
+    var 初 = {}, 重 = [];
+    for (var r = 始; r <= 最大行; r++) {
+      var v = 読(r, ci);
+      var k2 = 重複の鍵(v);
+      if (k2 === "") continue;                       /* 空は 重複と 見なさない */
+      if (初[k2] === undefined) { 初[k2] = r; continue; }
+      重.push({ 行: r, もと: 初[k2], 値: String(v).slice(0, 30) });
+    }
+
+    if (何 === "見つける" || 何 === "find" || 何 === "数える") {
+      return { やった: M.colName(ci) + " 列で 重なりを 数えました。**何も 消していません。**",
+               くらべた列: M.colName(ci),
+               くらべた行数: 最大行 - 始 + 1,
+               重なり: 重.length,
+               中身: 重.slice(0, 30).map(function (x) {
+                 return x.行 + " 行目「" + x.値 + "」（" + x.もと + " 行目と 同じ）"; }),
+               つぎ: 重.length
+                 ? "消すなら op を「消す」に します。**いちばん上を 残します。**"
+                 : "重なりは ありません。" };
+    }
+    if (何 !== "消す" && 何 !== "remove")
+      return { だめ: "その操作は分かりません。**触っていません。**",
+               できる操作: ["見つける", "消す"] };
+    if (!重.length)
+      return { やった: "重なりは ありませんでした。**何も 消していません。**",
+               くらべた列: M.colName(ci) };
+
+    控える("重複を 消す");
+    var 消す行 = {};
+    重.forEach(function (x) { 消す行[x.行] = 1; });
+    /* 上から 詰め直す。**行を 1 つずつ 消すと 番号が ずれる**ので、
+       残す 行だけを 集めて 置き直す。 */
+    var 残 = [];
+    for (var r2 = 1; r2 <= 最大行; r2++) {
+      if (消す行[r2]) continue;
+      var 一行 = {};
+      for (var cc = 0; cc <= 最大列; cc++) {
+        var k3 = M.colName(cc) + r2;
+        if (sh.cells[k3]) 一行[cc] = sh.cells[k3];
+      }
+      残.push(一行);
+    }
+    var 新cells = {};
+    残.forEach(function (行, i) {
+      Object.keys(行).forEach(function (cc) { 新cells[M.colName(Number(cc)) + (i + 1)] = 行[cc]; });
+    });
+    sh.cells = 新cells;
+    塗って残す(c);
+    return 確かめて返す(c, 前,
+      M.colName(ci) + " 列の 重なり " + 重.length + " 行を 消しました。",
+      { 消した行: 重.slice(0, 30).map(function (x) { return x.行 + " 行目「" + x.値 + "」"; }),
+        のこり行数: 残.length,
+        つぎ: "**いちばん上を 残しました。**元に 戻すなら undoLast です。" });
+  };
+
   sheets.グラフ = function (a) {
     var c = 今(); if (!c) return 開いてない();
     if (c.kind !== "spreadsheet") return 種類ちがい(c, "spreadsheet");
@@ -84304,6 +84471,7 @@
       "Sheets のまとめかた（sheetsPivot）": ["合計", "平均", "件数", "最大", "最小"],
       "Sheets の入力規則（sheetsRule）": ["list（一覧から）", "number（数の 範囲）",
                                           "date（日付）", "text（文字数）"],
+      "Sheets の重複の始末（sheetsDedupe）": ["見つける", "消す"],
       "Slides の部品": 部品の種類(),
       "Slides のレイアウト": レ,
       "Slides のテーマ": テ,
