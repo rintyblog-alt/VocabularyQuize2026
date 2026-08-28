@@ -53833,8 +53833,42 @@ actionタイプ:
               publicIconColor: String(m.publicIconColor || "blue"),
               isPublic: !!m.isPublic,
               publishedAt: Math.max(0, Number(m.publishedAt || 0)),
-              questionCount: _presetEntryCount(preset)
+              questionCount: _presetEntryCount(preset),
+              /* 見本を **一覧の 札と 同じ**に 描くために 要るもの */
+              subjectName: subjectNameById(preset.subjectId || "sub:english"),
+              unit: _isEnglishSubjectId(preset.subjectId || "sub:english") ? "語" : "問",
+              ownerName: String((typeof _vqMeProfile === "function" ? _vqMeProfile().displayName : "") || "自分"),
+              banner: /^data:image\//i.test(String(preset.appearance?.banner || "")) ? String(preset.appearance.banner) : "",
+              iconImage: /^data:image\//i.test(String(preset.appearance?.iconImage || "")) ? String(preset.appearance.iconImage) : ""
             };
+          },
+          /* 表紙（バナー・アイコン画像）の 持ち主は **プリセット本体**（appearance）。
+             一覧も 詳細も そこを 読むので、公開の 見た目だけ 別に 持つと ずれる。 */
+          setAppearance(pid, o){
+            const b0 = String(o?.banner || "");
+            const i0 = String(o?.iconImage || "");
+            _presetPublicUpdateLocalPreset(pid, (current) => {
+              const next = { ...(current || {}) };
+              const ap = (next.appearance && typeof next.appearance === "object") ? { ...next.appearance } : {};
+              ap.banner = /^data:image\//i.test(b0) ? b0 : "";
+              ap.iconImage = /^data:image\//i.test(i0) ? i0 : "";
+              next.appearance = ap;
+              return next;
+            });
+            return true;
+          },
+          /* AI に 表紙を 作らせる ときの 材料（問題の 頭 5 つ） */
+          samples(pid){
+            const preset = getPresetById(pid);
+            const out = [];
+            try{
+              const qs = Array.isArray(preset?.questions) ? preset.questions : [];
+              qs.slice(0, 5).forEach((q) => { const t = String(q?.prompt || "").trim(); if (t) out.push(t.slice(0, 120)); });
+              if (!out.length && Array.isArray(preset?.words)){
+                preset.words.slice(0, 5).forEach((w) => { const t = String(w?.q || w?.front || "").trim(); if (t) out.push(t.slice(0, 120)); });
+              }
+            }catch(e){}
+            return out;
           },
           suggestSlug(title){ return _presetPublicSuggestSlug(String(title || "preset")); },
           validateSlug(v){ return _presetPublicValidateSlugLocal(String(v || "")); },

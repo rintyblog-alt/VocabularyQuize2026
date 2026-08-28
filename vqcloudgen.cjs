@@ -143,7 +143,31 @@ async function req(path, o = {}) {
   ok("4 択 20 問は 単語より 長い", !!分 && 分.四択20 > 分.単語20, 分);
   ok("**長文 5 問は 5 分では 終わらない**（前は 5 分だった）", !!分 && 分.長文5 > 6, 分 && 分.長文5);
 
-  節("⑥ 例外");
+  節("⑥ 作る 道が 台帳を 通っているか");
+  {
+    /* ★ プリセットを 作る 画面（preset-studio）は VQ2.ai.generatePreset を 通る。
+       ここが 台帳を 通らない 口を 使っていると、画面を 閉じた 瞬間に 止まる。
+       本物を 呼ぶと AI を 使うので、口だけ 差し替えて **どちらを 呼ぶか**を 見る。 */
+    const 道 = await pg.evaluate(async () => {
+      const G = window.VQ2 && window.VQ2.aigen;
+      const AI = window.VQ2 && window.VQ2.ai;
+      if (!G || !AI || !AI.generatePreset) return null;
+      const c = { tracked: 0, plain: 0 };
+      const 元 = { a: G.available, s: G.availableSync, f: G.filesToPayload, t: G.generateQuestionsTracked, g: G.generateQuestions };
+      G.available = () => Promise.resolve(true);
+      G.availableSync = () => true;
+      G.filesToPayload = () => Promise.resolve([]);
+      G.generateQuestionsTracked = () => { c.tracked++; return Promise.resolve({ questions: [], warnings: [], usage: {} }); };
+      G.generateQuestions = () => { c.plain++; return Promise.resolve({ questions: [], warnings: [], usage: {} }); };
+      try { await AI.generatePreset({ instruction: "たしかめ", count: 2, attachments: [] }); } catch (e) {}
+      G.available = 元.a; G.availableSync = 元.s; G.filesToPayload = 元.f;
+      G.generateQuestionsTracked = 元.t; G.generateQuestions = 元.g;
+      return c;
+    });
+    ok("**プリセット作成は 台帳を 通る**", !!道 && 道.tracked === 1 && 道.plain === 0, 道);
+  }
+
+  節("⑦ 例外");
   ok("画面の 例外 0 件", 例外.length === 0, 例外.slice(0, 4));
 
   await b.close();
