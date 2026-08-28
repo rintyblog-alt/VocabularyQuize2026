@@ -15,6 +15,9 @@
 
   var P = 'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"';
   var ICON = {
+    /* 左のパネルを 畳む／開く（パソコンだけ） */
+    panelfold: '<rect x="3" y="4" width="18" height="16" rx="2.2"/><path d="M9 4v16"/><path d="M15.5 9.5 13 12l2.5 2.5"/>',
+    panelopen: '<rect x="3" y="4" width="18" height="16" rx="2.2"/><path d="M9 4v16"/><path d="M13 9.5 15.5 12 13 14.5"/>',
     home: '<path d="M3 9.6 12 3l9 6.6"/><path d="M5 9v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M9.5 21v-6h5v6"/>',
     grid: '<rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/>',
     message: '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.5 8.5 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5Z"/>',
@@ -171,7 +174,10 @@
     }
     /* ★ β / NEW の札は **管理画面から付ける**（feature_flags.badge）。 */
     var mark = n.badge ? '<span class="vqs-item__n">' + n.badge + "</span>" : "";
-    return '<button class="vqs-item" ' + attr + ' data-flag="' + (n.key || "") + '">'
+    /* ★ title は 畳んだ ときの 手がかり。字が 消えるので これが 無いと
+       どれが 何か 分からなく なる。 */
+    return '<button class="vqs-item" ' + attr + ' data-flag="' + (n.key || "") + '"'
+      + ' title="' + String(n.label || "").replace(/"/g, "") + '">'
       + svg(n.icon) + '<span class="vqs-item__l">' + n.label + '</span>' + mark + badge + '</button>';
   }
 
@@ -301,7 +307,90 @@
       "color:var(--vq-accent-hover,#8078A8);background:var(--vq-surface-active,#F1EEF8);border-radius:999px;padding:2px 7px;white-space:nowrap;}" +
     ".vqs-item.is-off svg{color:var(--vq-text-disabled,#CFCBD9);opacity:.85;}" +
     ".vqs-item.is-off:hover{background:transparent;}" +
-    ".qredit:hover{background:var(--vq-surface-active,#F1EEF8);}.qredit svg{width:16px;height:16px;color:var(--vq-warning-text,#C79A00);flex:0 0 auto;}.qredit .g{margin-left:auto;color:var(--vq-text-tertiary,#9994A8);font-weight:600;font-size:11px;}";
+    ".qredit:hover{background:var(--vq-surface-active,#F1EEF8);}.qredit svg{width:16px;height:16px;color:var(--vq-warning-text,#C79A00);flex:0 0 auto;}.qredit .g{margin-left:auto;color:var(--vq-text-tertiary,#9994A8);font-weight:600;font-size:11px;}" +
+
+    /* ── 畳んだ ときの 見た目（細い 帯）───────────────────────────
+       字を 消して 絵だけに する。どれが 何かは title（当てたら 出る 札）。
+       畳む ボタンは パソコンだけ（狭い ときは 引き出しなので 要らない）。 */
+    ".cbtn{margin-left:auto;flex:0 0 auto;width:28px;height:28px;display:none;align-items:center;justify-content:center;" +
+      "border:0;background:none;border-radius:calc(9px * var(--vq-r-scale,1));cursor:pointer;color:var(--vq-text-tertiary,#9994A8);transition:background .12s,color .12s;}" +
+    ".cbtn:hover{background:var(--vq-surface-active,#F1EEF8);color:var(--vq-text,#2B2836);}" +
+    ".cbtn svg{width:18px;height:18px;}" +
+    "@media (min-width:880px){.cbtn{display:flex;}}" +
+    ":host-context(body.app-v2-sidebar-collapsed) .wrap{padding:calc(40px + env(safe-area-inset-top,0px)) 8px calc(12px + env(safe-area-inset-bottom,0px));}" +
+    ":host-context(body.app-v2-sidebar-collapsed) .brand{justify-content:center;padding:6px 0 10px;gap:0;}" +
+    ":host-context(body.app-v2-sidebar-collapsed) .brand__name," +
+    ":host-context(body.app-v2-sidebar-collapsed) .find .t," +
+    ":host-context(body.app-v2-sidebar-collapsed) .find .k," +
+    ":host-context(body.app-v2-sidebar-collapsed) .create .t," +
+    ":host-context(body.app-v2-sidebar-collapsed) .section," +
+    ":host-context(body.app-v2-sidebar-collapsed) .vqs-item__l," +
+    ":host-context(body.app-v2-sidebar-collapsed) .vqs-item__n," +
+    ":host-context(body.app-v2-sidebar-collapsed) .user__col," +
+    ":host-context(body.app-v2-sidebar-collapsed) .qredit .t," +
+    ":host-context(body.app-v2-sidebar-collapsed) .qredit .g{display:none !important;}" +
+    ":host-context(body.app-v2-sidebar-collapsed) .cbtn{position:absolute;top:10px;right:10px;margin:0;}" +
+    ":host-context(body.app-v2-sidebar-collapsed) .create," +
+    ":host-context(body.app-v2-sidebar-collapsed) .find," +
+    ":host-context(body.app-v2-sidebar-collapsed) .qredit{justify-content:center;padding:0;gap:0;}" +
+    ":host-context(body.app-v2-sidebar-collapsed) .vqs-item{position:relative;justify-content:center;padding:9px 0;gap:0;}" +
+    ":host-context(body.app-v2-sidebar-collapsed) .vqs-badge{position:absolute;transform:translate(12px,-10px);margin:0;}" +
+    ":host-context(body.app-v2-sidebar-collapsed) .user{justify-content:center;padding:8px 0;gap:0;}" +
+    ":host-context(body.app-v2-sidebar-collapsed) .foot{padding-top:8px;}";
+
+  /* ══ 左のパネルを 畳む（パソコンだけ）═══════════════════════════
+     ★ **持ち主は 本体側**（index.html の #appV2SidebarCollapseBtn）。
+       あちらが 覚える（vq.sidebar.collapsed.v1）・幅を 変える・
+       画面が 狭く なったら 開いた 形へ 戻す、まで 全部 やっている。
+       ここで 別に 状態を 持つと、画面の 幅が 変わった ときに
+       あちらの syncCollapse に 上書きされて **畳んだ ことが 消える**
+       （実測: 広く 戻したら 開いた 形に なった）。
+       だから ここは **押すだけ**。見た目は body の 印を 見て 合わせる。
+     ★ 狭い ときは 引き出しなので 畳まない（畳むと 開けなく なる）。 */
+  function isWide() {
+    try { return (window.innerWidth || document.documentElement.clientWidth || 0) >= 880; }
+    catch (e) { return true; }
+  }
+  function isFolded() {
+    return !!(document.body && document.body.classList.contains("app-v2-sidebar-collapsed"));
+  }
+  function paintFold() {
+    var host = document.getElementById("vqShell");
+    var sr = host && host.shadowRoot;
+    var b = sr && sr.querySelector('[data-fn="fold"]');
+    if (!b) return;
+    var 畳 = isFolded();
+    b.setAttribute("aria-expanded", 畳 ? "false" : "true");
+    b.setAttribute("aria-label", 畳 ? "左のパネルを開く" : "左のパネルを畳む");
+    b.setAttribute("title", 畳 ? "左のパネルを開く" : "左のパネルを畳む");
+    b.innerHTML = svg(畳 ? "panelopen" : "panelfold");
+  }
+  function nudge() {
+    /* 幅が 変わった ことを 右の 画面へ 伝える。#vqScreens は #appTabBar を
+       見張って 付いてくるが、transition の 途中も 追わせたい。 */
+    try {
+      var n = 0;
+      var 打つ = function () {
+        window.dispatchEvent(new Event("resize"));
+        if (++n < 8) setTimeout(打つ, 45);
+      };
+      打つ();
+    } catch (e) {}
+  }
+  function toggleFold() {
+    if (!isWide()) return;
+    var b = document.getElementById("appV2SidebarCollapseBtn");
+    if (b) { try { b.click(); } catch (e) {} }
+    nudge();
+  }
+  function bindFold() {
+    paintFold();
+    nudge();
+    try {
+      new MutationObserver(function () { paintFold(); }).observe(document.body,
+        { attributes: true, attributeFilter: ["class"] });
+    } catch (e) {}
+  }
 
   function build() {
     if (!document.body) { document.addEventListener("DOMContentLoaded", build); return; }
@@ -327,9 +416,12 @@
 
     var wrap = document.createElement("div"); wrap.className = "wrap";
     wrap.innerHTML =
-      '<div class="brand"><span class="brand__logo">VQ</span><span class="brand__name">VocabuQuiz</span></div>' +
-      '<button class="create" data-action="create-quiz">' + svg("plus") + 'クイズを作成</button>' +
-      '<button class="find" data-fn="cmdk" aria-label="検索・コマンドパレットを開く">' + svg("search") +
+      '<div class="brand"><span class="brand__logo">VQ</span><span class="brand__name">VocabuQuiz</span>' +
+        '<button class="cbtn" data-fn="fold" type="button" aria-label="左のパネルを畳む" title="左のパネルを畳む" aria-expanded="true">' +
+          svg("panelfold") + '</button>' +
+      '</div>' +
+      '<button class="create" data-action="create-quiz" title="クイズを作成">' + svg("plus") + '<span class="t">クイズを作成</span></button>' +
+      '<button class="find" data-fn="cmdk" aria-label="検索・コマンドパレットを開く" title="検索">' + svg("search") +
         '<span class="t">検索</span><span class="k">⌘K</span></button>' +
       '<div class="scroll">' +
         '<div class="nav" data-nav="main">' + NAV_MAIN().map(itemHTML).join("") + '</div>' +
@@ -350,6 +442,7 @@
       var el = e.target;
       while (el && el !== root && !(el.dataset && (el.dataset.tab || el.dataset.action || el.dataset.sel || el.dataset.fn))) el = el.parentNode;
       if (!el || el === root) return;
+      if (el.dataset.fn === "fold") { toggleFold(); return; }
       if (el.dataset.fn === "settings") { if (window.__vqOpenSettings) window.__vqOpenSettings(); }
       else if (el.dataset.fn === "timer") {
         closeDrawer();
@@ -453,6 +546,8 @@
     var poll = setInterval(syncIdentity, 1500); setTimeout(function () { clearInterval(poll); }, 20000);
 
     buildTopbar(syncIdentity);
+    /* 覚えていた 形（畳んである／開いてある）へ 戻す。 */
+    bindFold();
   }
 
   /* ══ モバイル用トップバー（Gmail風ピル: ハンバーガー / 検索 / アバター） ══

@@ -98,7 +98,15 @@ async function req(path, o = {}) {
       const r = document.getElementById("vqScreens").shadowRoot;
       return r.querySelectorAll(".pc--building").length;
     });
-    ok("**画面を 離れずに 2 件目が 出る**", n === 2, { 札の数: n });
+    /* ★ 1 回の 注文が 中で 何回かに 分かれるので、**札は 1 枚に まとめる**。
+       ここは 2 件目が 増えても 札は 1 枚のまま、数だけ 足されるのが 正しい。 */
+    const 中身 = await pg.evaluate(() => {
+      const r = document.getElementById("vqScreens").shadowRoot;
+      const c = r.querySelector(".pc--building");
+      return c ? (c.innerText || "").replace(/\s+/g, " ") : "";
+    });
+    ok("**札は 1 枚のまま**（注文が 分かれても 割れない）", n === 1, { 札の数: n });
+    ok("数は 足し合わせる（3+1 / 10+4）", /4 \/ 14/.test(中身), 中身.slice(0, 80));
     await req("/api/aijob/cancel", { method: "POST", token, body: { jobId: id2 } });
     await pg.waitForTimeout(300);
   }
@@ -167,7 +175,53 @@ async function req(path, o = {}) {
     ok("**プリセット作成は 台帳を 通る**", !!道 && 道.tracked === 1 && 道.plain === 0, 道);
   }
 
-  節("⑦ 例外");
+  節("⑦ 台帳から 受け取る 形（問題文が 空に ならない）");
+  {
+    /* ★ 「10 問 頼んだら 3 つに 割れて 問題文が 空」という 訴えの あと に 足した。
+       台帳を 通しても、画面が 受け取る 形は これまでと 同じで なければ ならない。
+       サーバが 返す 形の 問題を 台帳へ 置き、followJob で 受け取って 確かめる。 */
+    const q = [
+      { id: "sq1", type: "multiple_choice_single", question: "光合成に 必要な ものは？",
+        choices: ["光", "音", "風", "熱"], answer: "光", explanation: "光が 要る。" },
+      { id: "sq2", type: "short_answer", question: "葉緑体の はたらきは？", answer: "光合成" }
+    ];
+    const st3 = await req("/api/aijob/start", { method: "POST", token, body: {
+      type: "preset-gen", title: "形のたしかめ", planned: 2, executor: "cloud",
+      stages: [{ id: "make", label: "作る", total: 2, done: 0 }] } });
+    const id3 = st3.j?.job?.jobId;
+    await req("/api/aijob/update", { method: "POST", token, body: { jobId: id3, made: 2, partial: { questions: q },
+      stages: [{ id: "make", label: "作る", total: 2, done: 2 }] } });
+    await req("/api/aijob/finish", { method: "POST", token, body: { jobId: id3, status: "completed", made: 2, partial: { questions: q } } });
+    const 形 = await pg.evaluate(async (id) => {
+      const G = window.VQ2 && window.VQ2.aigen;
+      if (!G || !G.followJob) return null;
+      try {
+        const res = await G.followJob(id);
+        const qs = res.questions || [];
+        return { 数: qs.length,
+          文: qs.map((x) => String((x && (x.question || x.prompt)) || "")),
+          型: qs.map((x) => String((x && x.type) || "")),
+          選択肢数: (qs[0] && (qs[0].choices || []).length) || 0 };
+      } catch (e) { return { err: String((e && e.message) || e).slice(0, 120) }; }
+    }, id3);
+    ok("2 問 とも 受け取れる", !!形 && 形.数 === 2, 形);
+    ok("**問題文が 空に ならない**", !!形 && 形.文.every((t) => t.length > 3), 形 && 形.文);
+    ok("形式も 保たれる", !!形 && 形.型[0] === "multiple_choice_single", 形 && 形.型);
+    ok("選択肢も 残る", !!形 && 形.選択肢数 === 4, 形 && 形.選択肢数);
+  }
+
+  節("⑧ 同じ 注文が 何回かに 分かれても 弾かれない");
+  ok("**作る 口に idempotencyKey を 付けていない**",
+    !/idempotencyKey/.test(await (await fetch(BASE + "/js/" + (await pg.evaluate(() =>
+      (document.querySelector('script[src*="/js/vq2-app."]').src.split("/js/")[1]))))).text()
+      .then((t) => {
+        /* 作る 口の 前後 だけ 見る（別の 用途の 鍵は ある） */
+        const i = t.indexOf("generateQuestionsTracked");
+        return i < 0 ? "" : t.slice(Math.max(0, i - 400), i + 400);
+      })),
+    "作る 口の まわりに 鍵が 無い こと");
+
+  節("⑨ 例外");
   ok("画面の 例外 0 件", 例外.length === 0, 例外.slice(0, 4));
 
   await b.close();

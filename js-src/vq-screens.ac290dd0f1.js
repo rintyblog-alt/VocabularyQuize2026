@@ -294,27 +294,36 @@
     var p = Number(j && j.progress) || 0;
     return Math.max(0, Math.min(100, Math.round(p > 1 ? p : p * 100)));
   }
+  /* ★ **札は 1 枚に まとめる。**
+     1 回の 注文（例: 10 問）は、中で 何回かに 分けて 頼まれるので
+     仕事は 2〜3 件に なる。そのまま 並べると「10 問 頼んだのに
+     3 つに 割れた」ように 見える。数は 足し合わせて 1 枚で 出す。 */
   function buildingHTML() {
     var jobs = buildingJobs();
     if (!jobs.length) return "";
-    return jobs.map(function (j) {
-      var pct = buildingPct(j);
-      var made = Math.max(0, Number(j.made) || 0);
-      var planned = Math.max(0, Number(j.planned) || 0);
-      return '<article class="pc pc--building" aria-busy="true">' +
-        '<div class="pc--building__ic">' + ms("cloud_upload") +
-          '<span class="pc--building__pct">' + pct + "%</span></div>" +
-        '<div class="pc--building__b">' +
-          '<div class="pc__title">' + esc(String(j.title || "AI で 作成中")) + "</div>" +
-          '<div class="pc--building__m">クラウドで 作成中' +
-            (planned ? " ・ " + made + " / " + planned + " 問" : "") +
-            (j.currentStage ? " ・ " + esc(String(j.currentStage)) : "") + "</div>" +
-          '<div class="pc--building__bar"><span style="width:' + pct + '%"></span></div>' +
-          '<div class="pc--building__n">この 画面を 閉じても 作り続けます。できたら ここに 並びます。</div>' +
-        "</div>" +
-        '<button class="pc--building__x" data-cancelgen="' + esc(String(j.jobId || "")) + '">止める</button>' +
-        "</article>";
-    }).join("");
+    var made = 0, planned = 0, stage = "", title = "";
+    jobs.forEach(function (j) {
+      made += Math.max(0, Number(j.made) || 0);
+      planned += Math.max(0, Number(j.planned) || 0);
+      if (!stage && j.currentStage) stage = String(j.currentStage);
+      if (!title && j.title) title = String(j.title);
+    });
+    var pct = planned > 0 ? Math.max(0, Math.min(100, Math.round((made / planned) * 100)))
+      : buildingPct(jobs[0]);
+    var ids = jobs.map(function (j) { return String(j.jobId || ""); }).filter(Boolean).join(",");
+    return '<article class="pc pc--building" aria-busy="true">' +
+      '<div class="pc--building__ic">' + ms("cloud_upload") +
+        '<span class="pc--building__pct">' + pct + "%</span></div>" +
+      '<div class="pc--building__b">' +
+        '<div class="pc__title">' + esc(title || "AI で 作成中") + "</div>" +
+        '<div class="pc--building__m">クラウドで 作成中' +
+          (planned ? " ・ " + made + " / " + planned + " 問" : "") +
+          (stage ? " ・ " + esc(stage) : "") + "</div>" +
+        '<div class="pc--building__bar"><span style="width:' + pct + '%"></span></div>' +
+        '<div class="pc--building__n">この 画面を 閉じても 作り続けます。できたら ここに 並びます。</div>' +
+      "</div>" +
+      '<button class="pc--building__x" data-cancelgen="' + esc(ids) + '">止める</button>' +
+      "</article>";
   }
 
   function cardById(id) {

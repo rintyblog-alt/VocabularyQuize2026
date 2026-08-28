@@ -32247,14 +32247,13 @@
            止まっていた。台帳（ai_jobs）へ 載せると サーバが 走り切り、
            一覧に「作成中」として 出て、再読み込みしても 残る。
            同じ 注文を 2 回 押しても idempotencyKey で 1 件に なる。 */
-        if (G.generateQuestionsTracked) {
-          try {
-            頼み.idempotencyKey = "studio:" + String(o.runId || o.jobKey || "")
-              + ":" + String(頼み.count || 0)
-              + ":" + String(o.instruction || "").slice(0, 60).replace(/\s+/g, " ");
-          } catch (e) {}
-          return G.generateQuestionsTracked(頼み);
-        }
+        /* ★ ここで idempotencyKey を 付けては いけない。
+           1 回の 注文は 中で **何回かに 分けて** 頼まれるので、
+           同じ 鍵が 2 回 飛ぶ。サーバは 同じ 鍵を 一意制約で 弾くので、
+           2 回目 以降の 回が まるごと 失敗する
+           （実測: 10 問 頼んで 途中の 回が エラー・中身が 欠ける）。
+           二重に 押した ときの 用心は 画面側が すでに 持っている。 */
+        if (G.generateQuestionsTracked) return G.generateQuestionsTracked(頼み);
         return G.generateQuestions(頼み);
       });
     }).then(function (r) {
@@ -55929,12 +55928,8 @@
                    台帳（ai_jobs）に 載せると サーバ側が waitUntil で 走り切り、
                    画面は あとから 合流できる。同じ 注文を 2 回 押しても
                    idempotencyKey で 1 件に なる。 */
-                var 注文の鍵 = "";
-                try {
-                  注文の鍵 = "mock:" + String(st.runId || "")
-                    + ":" + String(req.slots.length)
-                    + ":" + String(cx.prompt || "").slice(0, 60).replace(/\s+/g, " ");
-                } catch (e) { 注文の鍵 = ""; }
+                /* ★ idempotencyKey は 付けない。1 回の 注文が 中で 何回かに
+                   分かれる ので、同じ 鍵が 2 回 飛んで 2 回目が 弾かれる。 */
                 var 頼み = {
                   prompt: withSourcePolicy(cx.prompt, s),
                   count: req.slots.length,
@@ -55942,10 +55937,7 @@
                   questionPlan: Object.keys(slotPlan).length ? slotPlan : undefined,
                   files: files.length ? files : undefined
                 };
-                if (G.generateQuestionsTracked) {
-                  頼み.idempotencyKey = 注文の鍵 || undefined;
-                  return G.generateQuestionsTracked(頼み);
-                }
+                if (G.generateQuestionsTracked) return G.generateQuestionsTracked(頼み);
                 return G.generateQuestions(頼み);
               }).then(function (r) {
                 first = false;
