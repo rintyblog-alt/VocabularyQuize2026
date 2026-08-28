@@ -110,6 +110,53 @@ if (!token) { console.error("VQ_TOKEN を 渡してください。"); process.ex
   見(打.打てた ? !打.変わった : true,
      打.打てた ? "⑦ strict の マスに 合わない 値は **入らない**" : "⑦ （入力欄を つかめず 見送り）", 打);
 
+  /* ★ **ふつうの 打ち込みが 壊れていない**ことを 必ず 見る（2026-08-29）。
+     規則の 見張りを commit の 先頭に 置いたので、ここを 見ないと
+     「合う 値まで 入らない」に なっていても 気づけない。 */
+  /* 入力欄（ghost）が 上に あって クリックが 通らないので、鍵盤で 動かす。 */
+  await page.keyboard.press("ArrowDown");   /* B4 → B5（規則の 範囲の 中） */
+  await page.waitForTimeout(400);
+  const 良 = await page.evaluate(async () => {
+    const sh = document.getElementById("vq-wp-sheets").shadowRoot;
+    const 写 = () => JSON.parse(JSON.stringify(window.VQ2.workplace.cmd.本体().sheets[0].cells));
+    const 前 = 写();
+    const g = sh.querySelector(".wps-ghost");
+    if (!g) return { 打てた: false };
+    g.focus(); g.value = "○";
+    g.dispatchEvent(new Event("input", { bubbles: true }));
+    g.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((s) => setTimeout(s, 500));
+    const 後 = 写();
+    const 差 = [];
+    Object.keys(Object.assign({}, 前, 後)).forEach((k) => {
+      const a = JSON.stringify(前[k]), b2 = JSON.stringify(後[k]);
+      if (a !== b2) 差.push(k + ": " + a + " → " + b2);
+    });
+    return { 打てた: true, 差: 差 };
+  });
+  見(良.打てた ? (良.差 || []).length === 1 && /"v":"○"/.test((良.差 || [])[0] || "") : true,
+     良.打てた ? "⑦-b 規則に **合う** 値は ふつうに 入る（" + (良.差 || []).join(" / ") + "）"
+               : "⑦-b （入力欄を つかめず 見送り）", 良);
+
+  await page.keyboard.press("ArrowDown");
+  for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowRight");  /* B6 → E6 */
+  await page.waitForTimeout(400);
+  const 外 = await page.evaluate(async () => {
+    const sh = document.getElementById("vq-wp-sheets").shadowRoot;
+    const g = sh.querySelector(".wps-ghost");
+    if (!g) return { 打てた: false };
+    g.focus(); g.value = "なんでも";
+    g.dispatchEvent(new Event("input", { bubbles: true }));
+    g.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((s) => setTimeout(s, 500));
+    const c = window.VQ2.workplace.cmd.本体().sheets[0].cells;
+    return { 打てた: true, E6: c.E6 ? c.E6.v : null,
+             どこ: Object.keys(c).filter((k) => c[k] && c[k].v === "なんでも") };
+  });
+  見(外.打てた ? (外.どこ || []).length === 1 : true,
+     外.打てた ? "⑦-c 規則の 外の マスも ふつうに 入る（" + (外.どこ || []).join(",") + "）"
+               : "⑦-c （入力欄を つかめず 見送り）", 外);
+
   /* 消す */
   const 消 = await page.evaluate(() => {
     const K = window.VQ2.workplace.cmd;
