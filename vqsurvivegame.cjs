@@ -373,6 +373,30 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     ok("全問 正解なら 出さない", 無 === true, 無);
 
+    節("⑦-b2 上位表に 載らない ときは そう 言う");
+    const 断 = await pg.evaluate(async () => {
+      const m = window.VocabuSurvive.__app.shell.get("match");
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      m.result.show({ rank: 1, total: 1, finished: true, time: 3, correct: 1, wrong: 0, respawns: 0,
+        xp: 100, best: 0, newBest: false, mode: "timeattack", standings: [], courseName: "検査",
+        splits: [], bestSplits: [], missed: [] });
+      const 前 = r.querySelector(".vs-res-note").classList.contains("vs-hide");
+      m.result.note("この 記録は みんなの 上位表には 載りません（速すぎる）。成績は 数えています。");
+      await new Promise((x) => setTimeout(x, 150));
+      const el = r.querySelector(".vs-res-note");
+      return { 前, 後: !el.classList.contains("vs-hide"), 文: el.textContent };
+    });
+    ok("ふだんは 出ない", 断.前 === true, 断);
+    ok("**載らない ときは 出る**", 断.後 === true, 断);
+    ok("理由も 出る", /速すぎる/.test(断.文) && /成績は 数えています/.test(断.文), 断.文);
+    const 消 = await pg.evaluate(() => {
+      const m = window.VocabuSurvive.__app.shell.get("match");
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      m.result.hide();
+      return r.querySelector(".vs-res-note").classList.contains("vs-hide");
+    });
+    ok("閉じると 消える（次の 試合に 持ち越さない）", 消 === true, 消);
+
     節("⑦-c 間違えた 単語で もう一度");
     const 復 = await pg.evaluate(async () => {
       const m = window.VocabuSurvive.__app.shell.get("match");

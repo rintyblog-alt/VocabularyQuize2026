@@ -886,6 +886,13 @@ export class MatchScreen {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + tk },
         body: JSON.stringify(row), keepalive: true
+      }).then((r) => r.json()).then((d) => {
+        /* ★ 上位表に 載らなかった ことを **黙って いない**。
+           何も 言わずに 消えると 「記録が 反映されない」と 悩ませる。 */
+        if (d && d.saved && d.ranked === false && this.result && this.result.note) {
+          this.result.note("この 記録は みんなの 上位表には 載りません（" +
+            (d.why || "確かめられませんでした") + "）。成績は 数えています。");
+        }
       }).catch(() => {});
     } catch (e) {}
   }

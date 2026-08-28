@@ -33,6 +33,8 @@ export class ResultPanel {
     /* ★ 間違えた 単語。**数だけでは 学びに ならない。**
        ここは 学ぶ ための 遊びなので、何を 間違えたのかを 出す。 */
     this.missEl = h("div", { class: "vs-res-miss vs-hide" });
+    /* サーバからの ひとこと（あとから 届く）。 */
+    this.noteEl = h("p", { class: "vs-res-note vs-hide", role: "status" });
 
     return h("div", { class: "vs-res" },
       h("div", { class: "vs-res-card" },
@@ -40,6 +42,7 @@ export class ResultPanel {
         this.bestEl,
         this.cupEl,
         this.statsEl,
+        this.noteEl,
         this.missEl,
         this.splitEl,
         h("div", { class: "vs-res-listwrap" }, this.listEl),
@@ -170,6 +173,7 @@ export class ResultPanel {
     /* ★ **間違えた 単語だけで もう一度 走れる。**
        出して 終わりでは 覚えない。すぐ もう一度 出会える ように する。
        2 個 未満だと 4 択が 作れない ので 出さない。 */
+    this.note("");
     this._missed = ms;
     if (this.reviewBtn) this.reviewBtn.classList.toggle("vs-hide", ms.length < 2 || !!(d.cup && d.cup.next));
 
@@ -228,7 +232,14 @@ export class ResultPanel {
     this.el.setAttribute("data-on", "1");
   }
 
-  hide() { this.el.removeAttribute("data-on"); }
+  /** あとから 届いた ひとこと。 */
+  note(text) {
+    if (!this.noteEl) return;
+    this.noteEl.textContent = String(text || "");
+    this.noteEl.classList.toggle("vs-hide", !text);
+  }
+
+  hide() { this.el.removeAttribute("data-on"); this.note(""); }
 }
 
 function fmt(s) {
@@ -238,6 +249,10 @@ function fmt(s) {
 }
 
 export const RESULT_CSS = `
+.vs-res-note{ margin:6px 0 0; padding:7px 10px; border-radius:9px; font-size:11.5px;
+  line-height:1.7; color:rgba(255,216,77,.95);
+  background:rgba(255,216,77,.08); border:1px solid rgba(255,216,77,.24); }
+
 .vs-res-miss{ margin:8px 0 2px; padding:9px 11px; border-radius:12px;
   border:1px solid rgba(255,138,151,.28); background:rgba(255,138,151,.07); }
 .vs-res-misses{ display:flex; flex-direction:column; gap:3px; max-height:120px; overflow-y:auto; }
