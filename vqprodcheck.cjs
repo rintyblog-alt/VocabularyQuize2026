@@ -109,6 +109,11 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
   ok("表紙（バナー）の 欄が ある", 新公開.表紙);
   ok("決まりの 段が ある・AI の 条項も ある", 新公開.規約 && 新公開.AI条項);
   ok("**作るのは 台帳を 通る**", 新公開.作るのは台帳);
+  ok("画像を アイコンに したら 見た目を 錠に する 仕掛けが ある",
+    await pg.evaluate(async () => {
+      const src = await fetch([...document.querySelectorAll('script[src*="/js/vq2-app."]')][0].src).then((x) => x.text());
+      return src.indexOf("vq2-pp-lookwrap") >= 0 && src.indexOf("is-locked") >= 0 && src.indexOf("vq2-pp-lock") >= 0;
+    }));
 
   節("⑤ 目安の 時間");
   const 分 = await pg.evaluate(() => {
