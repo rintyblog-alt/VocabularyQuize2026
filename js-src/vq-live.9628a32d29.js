@@ -4721,6 +4721,12 @@
           });
         })).then(function (resps) {
           try { ws.send(JSON.stringify({ toolResponse: { functionResponses: resps } })); } catch (e) {}
+          /* ★ **道具の 答えを 返したのに 黙る**（2026-08-29・訴え）。
+             「聞いています」の まま 止まり、こちらから 一言 言わないと
+             動き出さない。番が 終わっていないので 促し（続きを促す）は
+             作りかけの 書類が あるときしか 動かず、ここは 素通りだった。
+             だから **返しっぱなしを 見張る** 別の 時計を 置く。 */
+          try { 返事の見張りを仕込む(resps); } catch (e) {}
         });
         return;
       }
@@ -7750,6 +7756,75 @@
         turns: [{ role: "user", parts: [{ text: 文 }] }], turnComplete: true } }));
       return true;
     } catch (e) { return false; }
+  }
+
+  /* ══ ★ **返しっぱなしの 見張り**（2026-08-29・訴え）════════════════
+     ★ 訴え: 「聞いています のまま 止まって、こちらから 一言 言わないと
+       動かない。クエスチョンに 限らない」。
+     ★ 何が 起きているか: 道具の 答えを 返したあと、向こうが
+       次の 番を 組み立てないまま 黙ることが ある（取りこぼし）。
+       こちらは 待ちの 姿勢（聞いています）に なるので、
+       人が 何か 言うまで 永久に 止まる。
+     ★ 直しかた: 道具の 答えを 返したら 時計を 置く。
+       ・声が 鳴り出した／番を 組み立て始めた／次の 道具が 動いた → 取り消す
+       ・人が しゃべった → 取り消す（そちらが 優先）
+       ・何も 起きないまま 過ぎた → **人には 聞こえない 合図**を 1 つ送る
+     ★ 促し（続きを促す）とは 別もの。あちらは「長い仕事の 続き」、
+       こちらは「返事が 落ちた」ときの 拾い直し。だから **2 回まで**。 */
+  var 見張り待ち = 7000;          /* 道具の 答えを 返してから これだけ待つ */
+  function 返事の見張りを止める(なぜ) {
+    if (st.見張りt) { clearTimeout(st.見張りt); st.見張りt = 0; if (なぜ) st.見張り理由 = なぜ; }
+  }
+  function 返事の見張りを仕込む(resps) {
+    返事の見張りを止める();
+    st.見張り基 = st.道具回 || 0;
+    st.見張り人 = st.人の番 || 0;
+    /* 段取りの 答えが そろった 直後は とくに 落ちやすいので 早めに 見る。 */
+    var 段取り = false;
+    try {
+      段取り = !!(resps && resps.some && resps.some(function (r) { return r && r.name === "askPlan"; }));
+    } catch (e) {}
+    st.見張り段 = 段取り;
+    st.見張り番 = st.turnAt || 0;
+    st.見張り回 = 0;
+    st.見張りt = setTimeout(返事を待つ, 段取り ? 5000 : 見張り待ち);
+  }
+  function 返事を待つ() {
+    st.見張りt = 0;
+    if (!st.on || !st.ws || st.ws.readyState !== 1) return;
+    /* ── ここで やめる（もう 拾う 必要が 無い） ── */
+    if ((st.道具回 || 0) !== st.見張り基) return;          /* 次の 道具が 動いた＝生きている */
+    if ((st.人の番 || 0) !== st.見張り人) return;          /* 人が しゃべった＝そちらが 優先 */
+    /* ★ 段取りの あとだけは「喋ったから もういい」と しない。
+       「では 始めますね」と 言って 何も しない のが まさに 訴えの 中身。
+       startPlan（＝道具）が 動くまで 見張り続ける。 */
+    if (!st.見張り段 && (st.turnAt || 0) !== st.見張り番) return;   /* 返事が 来た */
+    /* ── ここは まだ 待つ（少し あとで もう一度） ── */
+    if (問い窓 || st.speaking || st.inTurn
+      || Date.now() - (st.人の番 || 0) < 2500) {
+      st.見張りt = setTimeout(返事を待つ, 1800);
+      return;
+    }
+    st.見張り回 = (st.見張り回 || 0) + 1;
+    if (st.見張り回 > 2) return;                           /* 2 回で あきらめる */
+    var 文 = st.見張り段
+      ? "（これは自動の合図です。利用者は何も言っていません）\n"
+        + "**質問の答えは もう そろっています。**\n"
+        + "★ 同じことを 声で 聞き直さないでください。\n"
+        + "★ 感想や「では始めますね」を 喋らないでください。\n"
+        + "★ **いま すぐ startPlan を呼んでください。**"
+        + "answers には さっき返ってきた 答えを そのままの順で、"
+        + "steps には やる順を 1 件ずつ 入れます。"
+      : "（これは自動の合図です。利用者は何も言っていません）\n"
+        + "**道具の答えは もう 返っています。そこから 続けてください。**\n"
+        + "★ 黙ったままにしないでください。"
+        + "次にやることが あるなら **道具を すぐ呼び**、"
+        + "終わっているなら **結果を 一言で 伝えて**ください。\n"
+        + "★ できていないことを できたと 言わないこと。";
+    if (!自動で送る(文)) return;
+    noteEv("★ 返事が 落ちたので 拾い直した（" + st.見張り回 + " 回目"
+      + (st.見張り段 ? "・段取りの あと" : "") + "）");
+    st.見張りt = setTimeout(返事を待つ, 9000);
   }
 
   /* ★ 催促してよいのは **これらが動いたとき だけ**（2026-08-17・訴え）。
@@ -10888,6 +10963,10 @@
   function 問い窓を閉じる() {
     try { if (問い窓 && 問い窓.el && 問い窓.el.parentNode) 問い窓.el.parentNode.removeChild(問い窓.el); } catch (e) {}
     try { if (問い窓 && 問い窓.key) doc.removeEventListener("keydown", 問い窓.key, true); } catch (e) {}
+    /* ★ 見張りと 切り上げの 時計も 必ず 止める（2026-08-29）。
+       残すと、窓を 閉じた あとも 600ms おきに 走り続ける。 */
+    try { if (問い窓 && 問い窓.見張り) clearInterval(問い窓.見張り); } catch (e) {}
+    try { if (問い窓 && 問い窓.切上) clearTimeout(問い窓.切上); } catch (e) {}
     問い窓 = null;
   }
 
@@ -10895,7 +10974,10 @@
   function 質問をそろえる(v) {
     return Q配(v).map(function (x) {
       if (x && typeof x === "object") {
-        var o = { 問: Q文(x.q || x.question || x.問).trim(), 選: [] };
+        var o = { 問: Q文(x.q || x.question || x.問).trim(), 選: [],
+                  /* ★ いくつでも 選べる 問（2026-08-29）。
+                     Lumi が multi:true を 付けたときだけ 複数選べる。 */
+                  複数: !!(x.multi || x.multiple || x.複数) };
         Q配(x.options).forEach(function (y) {
           if (y && typeof y === "object") {
             var l = Q文(y.label || y.title).trim();
@@ -10920,12 +11002,22 @@
     el.setAttribute("role", "dialog");
     el.setAttribute("aria-modal", "true");
     el.setAttribute("aria-label", "段取りの確認");
-    el.style.cssText = "position:fixed;inset:0;z-index:9500;display:grid;place-items:center;"
-      + "background:rgba(15,18,28,.46);backdrop-filter:blur(2px);padding:16px";
+    /* ★ **かならず 最前面**（2026-08-29・訴え）。
+       前は z-index:9500 だった。ところが アプリの 覆い（クイズ・設定・
+       プリセットの 窓）は 2147483000 台を 使う。だから この窓は
+       **その 下に 隠れて**、人は 何を 聞かれているのか 分からないまま
+       Lumi が 黙って 待っている、という 見え方に なっていた。
+       ここは「人が 答えるまで 先へ 進めない」窓なので、
+       止まっている とき の 覆い（vq-downtime = ...646）だけ 上に 残し、
+       それ以外の すべてより 上に 置く。
+       さらに 下の 見張りで、あとから 出た 覆いにも 抜かれないよう
+       いちばん後ろの 子として 置き直す。 */
+    el.style.cssText = "position:fixed;inset:0;z-index:2147483644;display:grid;place-items:center;"
+      + "background:rgba(12,14,22,.52);backdrop-filter:blur(3px);padding:16px";
     var sr = el.attachShadow({ mode: "open" });
     doc.body.appendChild(el);
 
-    var 状態 = { 番: 0, 答: [], 済: false, 解決: null };
+    var 状態 = { 番: 0, 答: [], 選び: [], 済: false, 解決: null };
 
     /* ★ :host に all:initial を **書かないこと**（2026-08-17・実測）。
        書くと **CSS 変数の受け継ぎまで切れて**、--vq-surface などが
@@ -10936,41 +11028,75 @@
       + ':host{display:contents}'
       + '*{box-sizing:border-box;margin:0;padding:0;'
       + 'font-family:var(--vq-app-font,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif)}'
-      + '.w{width:min(680px,100%);max-height:88vh;overflow:auto;'
+      + '.w{width:min(560px,100%);max-height:88vh;overflow:auto;'
       + 'background:var(--vq-surface,#fff);color:var(--vq-text,#1e2330);'
-      + 'border:1px solid var(--vq-border,#e2e5ee);border-radius:16px;'
-      + 'box-shadow:0 24px 60px rgba(10,14,25,.28);font-size:16px;line-height:1.6}'
-      + '.hd{display:flex;align-items:flex-start;gap:12px;padding:20px 22px 14px}'
-      + '.q{flex:1;font-size:17px;font-weight:700;line-height:1.5}'
-      + '.n{flex:0 0 auto;font-size:13px;color:var(--vq-text-secondary,#6b7280);padding-top:3px}'
-      + '.gl{padding:0 22px 10px;font-size:13px;color:var(--vq-text-secondary,#6b7280)}'
-      + '.ls{border-top:1px solid var(--vq-border-subtle,#eef0f6)}'
-      + 'button.o{display:flex;width:100%;align-items:center;gap:12px;text-align:left;'
-      + 'padding:14px 22px;background:transparent;border:0;'
-      + 'border-bottom:1px solid var(--vq-border-subtle,#eef0f6);cursor:pointer;color:inherit;font:inherit}'
-      + 'button.o:hover,button.o:focus{background:var(--vq-surface-hover,#f5f6fb);outline:none}'
+      + 'border:1px solid var(--vq-border,#e6e8f0);border-radius:22px;'
+      + 'box-shadow:0 30px 80px rgba(8,11,20,.34);font-size:16px;line-height:1.6;'
+      + 'animation:up .22s cubic-bezier(.2,.9,.3,1) both}'
+      + '@keyframes up{from{opacity:0;transform:translateY(14px) scale(.985)}}'
+      /* 上の 細い 進み具合 */
+      + '.pg{height:3px;background:var(--vq-border-subtle,#eef0f6);'
+      + 'border-radius:22px 22px 0 0;overflow:hidden}'
+      + '.pg i{display:block;height:100%;background:var(--vq-text,#1e2330);'
+      + 'transition:width .28s cubic-bezier(.2,.9,.3,1)}'
+      /* 見出し */
+      + '.hd{display:flex;align-items:center;justify-content:space-between;'
+      + 'gap:12px;padding:22px 26px 0}'
+      + '.kk{font-size:11.5px;font-weight:800;letter-spacing:.2em;'
+      + 'color:var(--vq-text-secondary,#8a90a2)}'
+      + '.n{font-size:12.5px;font-weight:700;color:var(--vq-text-secondary,#8a90a2)}'
+      + '.q{padding:10px 26px 0;font-size:22px;font-weight:800;line-height:1.42}'
+      + '.gl{padding:8px 26px 0;font-size:13.5px;color:var(--vq-text-secondary,#8a90a2)}'
+      + '.mx{padding:8px 26px 0;font-size:12.5px;color:var(--vq-text-secondary,#8a90a2)}'
+      /* 選ぶところ */
+      + '.ls{margin-top:16px;border-top:1px solid var(--vq-border-subtle,#eef0f6)}'
+      + 'button.o{display:flex;width:100%;align-items:center;gap:14px;text-align:left;'
+      + 'padding:15px 26px;background:transparent;border:0;'
+      + 'border-bottom:1px solid var(--vq-border-subtle,#eef0f6);'
+      + 'cursor:pointer;color:inherit;font:inherit}'
+      + 'button.o:hover,button.o:focus-visible{background:var(--vq-surface-hover,#f6f7fb);outline:none}'
+      + 'button.o:focus-visible{box-shadow:inset 3px 0 0 var(--vq-accent,#2b70ef)}'
+      /* 丸い チェック */
+      + '.ck{flex:0 0 auto;width:24px;height:24px;border-radius:50%;'
+      + 'border:2px solid var(--vq-border,#cfd4e2);display:grid;place-items:center;'
+      + 'transition:background .12s ease,border-color .12s ease}'
+      + '.ck svg{width:13px;height:13px;opacity:0;transition:opacity .12s ease}'
+      + 'button.o[aria-pressed="true"] .ck{background:var(--vq-accent,#2b70ef);'
+      + 'border-color:var(--vq-accent,#2b70ef)}'
+      + 'button.o[aria-pressed="true"] .ck svg{opacity:1}'
       + '.t{flex:1;min-width:0}'
-      + '.t b{display:block;font-size:15px;font-weight:700}'
-      + '.t s{display:block;font-size:13px;color:var(--vq-text-secondary,#6b7280);'
-      + 'text-decoration:none;margin-top:2px}'
-      + '.k{flex:0 0 auto;min-width:26px;height:26px;display:grid;place-items:center;'
-      + 'font-size:12px;border-radius:7px;background:var(--vq-surface-sunken,#f0f2f8);'
-      + 'color:var(--vq-text-secondary,#6b7280)}'
-      + '.ft{display:flex;gap:8px;align-items:center;padding:14px 22px;flex-wrap:wrap}'
-      + 'input.f{flex:1 1 220px;min-width:0;padding:11px 13px;font:inherit;font-size:15px;'
-      + 'border:1px solid var(--vq-border,#d8dce8);border-radius:10px;'
+      + '.t b{display:block;font-size:15.5px;font-weight:700}'
+      + '.t s{display:block;font-size:13px;color:var(--vq-text-secondary,#8a90a2);'
+      + 'text-decoration:none;margin-top:2px;line-height:1.5}'
+      + '.k{flex:0 0 auto;font-size:11.5px;font-weight:700;'
+      + 'color:var(--vq-text-secondary,#b3b8c6)}'
+      /* 自分の言葉 */
+      + '.fw{padding:16px 26px 0}'
+      + 'input.f{width:100%;padding:12px 14px;font:inherit;font-size:15px;'
+      + 'border:1px solid var(--vq-border,#dde1ec);border-radius:12px;'
       + 'background:var(--vq-bg,#fff);color:inherit}'
       + 'input.f:focus{outline:none;border-color:var(--vq-accent,#2b70ef);'
       + 'box-shadow:0 0 0 3px rgba(43,112,239,.16)}'
-      + 'button.b{padding:11px 16px;font:inherit;font-size:15px;font-weight:600;cursor:pointer;'
-      + 'border-radius:10px;border:1px solid var(--vq-border,#d8dce8);'
-      + 'background:var(--vq-bg,#fff);color:inherit;white-space:nowrap}'
-      + 'button.b:hover{background:var(--vq-surface-hover,#f5f6fb)}'
-      + 'button.b.p{background:var(--vq-accent,#2b70ef);border-color:var(--vq-accent,#2b70ef);color:#fff}'
-      + 'button.b.p:hover{filter:brightness(1.08)}'
-      + '.sk{padding:0 22px 18px}'
-      + 'button.s{padding:9px 15px;font:inherit;font-size:14px;cursor:pointer;border-radius:10px;'
-      + 'border:1px solid var(--vq-border,#d8dce8);background:transparent;color:var(--vq-text-secondary,#6b7280)}'
+      /* 下の 帯 */
+      + '.ft{display:flex;align-items:center;gap:10px;padding:16px 26px 22px}'
+      + '.sp{flex:1}'
+      + 'button.s{padding:10px 4px;font:inherit;font-size:14px;font-weight:600;'
+      + 'cursor:pointer;border:0;background:transparent;'
+      + 'color:var(--vq-text-secondary,#8a90a2);text-decoration:underline;'
+      + 'text-underline-offset:3px}'
+      + 'button.s:hover{color:var(--vq-text,#1e2330)}'
+      /* 黒い 丸ボタン */
+      + 'button.go{padding:13px 32px;border-radius:999px;border:0;cursor:pointer;'
+      + 'font:inherit;font-size:15px;font-weight:800;'
+      + 'background:var(--vq-text,#12151f);color:var(--vq-surface,#fff);'
+      + 'transition:opacity .12s ease,transform .1s ease}'
+      + 'button.go:hover{opacity:.86}'
+      + 'button.go:active{transform:scale(.97)}'
+      + 'button.go[disabled]{opacity:.3;cursor:default;transform:none}'
+      + '@media (max-width:520px){'
+      + '.q{font-size:19px}.hd{padding-top:18px}'
+      + '.hd,.q,.gl,.mx,.fw,.ft{padding-left:18px;padding-right:18px}'
+      + 'button.o{padding-left:18px;padding-right:18px}}'
       + '</style><div class="w" data-role="w"></div>';
 
     var w = sr.querySelector('[data-role="w"]');
@@ -10979,33 +11105,86 @@
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
     };
+    var 丸印 = '<span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" '
+      + 'stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M4 12.6 9.2 18 20 6.6"/></svg></span>';
+
+    /* いま選んでいる中身（文字）。選択肢＋自由に書いた分。 */
+    function いまの答え() {
+      var q = 質問[状態.番] || {};
+      var 選 = q.選 || [];
+      var out = (状態.選び || []).map(function (i) { return (選[i] || {}).名 || ""; })
+        .filter(Boolean);
+      var f = sr.querySelector('[data-role="free"]');
+      var v = f ? String(f.value || "").trim() : "";
+      if (v) out.push(v);
+      return out.join(" / ");
+    }
+    function 送信を塗る() {
+      var b = sr.querySelector('[data-role="ok"]');
+      if (b) b.disabled = !いまの答え();
+    }
 
     function 描く() {
       var q = 質問[状態.番];
       var 選 = q.選 || [];
-      var h = '<div class="hd"><div class="q">' + esc2(q.問) + "</div>"
-        + '<div class="n">' + (状態.番 + 1) + " / " + 質問.length + "</div></div>";
+      var 複 = !!q.複数;
+      状態.選び = [];
+      var 進 = Math.round((状態.番 / 質問.length) * 100);
+      var h = '<div class="pg"><i style="width:' + 進 + '%"></i></div>'
+        + '<div class="hd"><span class="kk">質問</span>'
+        + '<span class="n">' + (状態.番 + 1) + " / " + 質問.length + "</span></div>"
+        + '<div class="q">' + esc2(q.問) + "</div>";
       if (状態.番 === 0 && 目的) h += '<div class="gl">' + esc2(目的) + "</div>";
       if (選.length) {
+        h += '<div class="mx">'
+          + (複 ? "あてはまるものを いくつでも 選べます。"
+                : "1 つ 選んで 送信。もう一度 押すと すぐ 送ります。")
+          + "</div>";
         h += '<div class="ls">';
         選.forEach(function (o, i) {
-          h += '<button type="button" class="o" data-i="' + i + '"><div class="t"><b>'
-            + esc2(o.名) + "</b>" + (o.説 ? "<s>" + esc2(o.説) + "</s>" : "")
-            + '</div><div class="k">' + (i + 1) + "</div></button>";
+          h += '<button type="button" class="o" aria-pressed="false" data-i="' + i + '">'
+            + 丸印 + '<span class="t"><b>' + esc2(o.名) + "</b>"
+            + (o.説 ? "<s>" + esc2(o.説) + "</s>" : "")
+            + '</span><span class="k">' + (i + 1) + "</span></button>";
         });
         h += "</div>";
       }
-      h += '<div class="ft">'
-        + '<input class="f" type="text" data-role="free" placeholder="自分の言葉で書く…" '
-        + 'aria-label="自分の言葉で答える" />'
-        + '<button type="button" class="b p" data-role="ok">決定</button>'
-        + '<button type="button" class="b" data-role="auto">おまかせ</button></div>'
-        + '<div class="sk"><button type="button" class="s" data-role="skip">スキップ</button></div>';
+      h += '<div class="fw"><input class="f" type="text" data-role="free" '
+        + 'placeholder="' + (選.length ? "ほかに あれば 書く…" : "自分の 言葉で 書く…") + '" '
+        + 'aria-label="自分の言葉で答える" /></div>'
+        + '<div class="ft"><button type="button" class="s" data-role="auto">おまかせでいい</button>'
+        + '<span class="sp"></span>'
+        + '<button type="button" class="go" data-role="ok" disabled>送信</button></div>';
       w.innerHTML = h;
       var f = sr.querySelector('[data-role="free"]');
+      if (f) f.addEventListener("input", 送信を塗る);
       /* ★ 選択肢が無い問だけ 自動で欄へ移す。
          選択肢があるのに欄へ移すと、番号キーが打てない（1 が欄に入る）。 */
       if (!選.length && f) setTimeout(function () { try { f.focus(); } catch (e) {} }, 60);
+      送信を塗る();
+    }
+
+    /* 選ぶ／外す。単一の問では ほかを 外す。
+       すでに 選んでいる ものを もう一度 押したら **そのまま 送る**。 */
+    function 選ぶ(i) {
+      var q = 質問[状態.番] || {};
+      var 複 = !!q.複数;
+      var 今 = 状態.選び.indexOf(i);
+      if (!複) {
+        if (今 >= 0) return 送る();              /* 2 度目＝決定 */
+        状態.選び = [i];
+      } else if (今 >= 0) 状態.選び.splice(今, 1);
+      else 状態.選び.push(i);
+      Array.prototype.forEach.call(sr.querySelectorAll("button.o"), function (b) {
+        var n = Number(b.getAttribute("data-i"));
+        b.setAttribute("aria-pressed", 状態.選び.indexOf(n) >= 0 ? "true" : "false");
+      });
+      送信を塗る();
+    }
+    function 送る() {
+      var v = いまの答え();
+      次へ(v || "おまかせ（この人は決めなかった）");
     }
 
     function 次へ(答) {
@@ -11027,25 +11206,16 @@
     sr.addEventListener("click", function (e) {
       var b = e.target && e.target.closest ? e.target.closest("button") : null;
       if (!b) return;
-      var q = 質問[状態.番];
       var i = b.getAttribute("data-i");
-      if (i !== null) { 次へ((q.選[Number(i)] || {}).名 || ""); return; }
+      if (i !== null) { 選ぶ(Number(i)); return; }
       var role = b.getAttribute("data-role");
-      if (role === "auto" || role === "skip") { 次へ("おまかせ（この人は決めなかった）"); return; }
-      if (role === "ok") {
-        var f = sr.querySelector('[data-role="free"]');
-        var v = f ? String(f.value || "").trim() : "";
-        次へ(v || "おまかせ（この人は決めなかった）");
-      }
+      if (role === "auto") { 次へ("おまかせ（この人は決めなかった）"); return; }
+      if (role === "ok") 送る();
     });
     sr.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") {
-        var f = sr.querySelector('[data-role="free"]');
-        if (f && doc.activeElement && sr.activeElement === f) {
-          e.preventDefault();
-          次へ(String(f.value || "").trim() || "おまかせ（この人は決めなかった）");
-        }
-      }
+      if (e.key !== "Enter") return;
+      var f = sr.querySelector('[data-role="free"]');
+      if (f && sr.activeElement === f) { e.preventDefault(); 送る(); }
     });
     /* 1〜9 のキーで選ぶ。文字を打っている最中は 効かせない。 */
     var key = function (e) {
@@ -11054,21 +11224,34 @@
       var 打っている = f && sr.activeElement === f;
       if (e.key === "Escape") { e.preventDefault(); 次へ("おまかせ（この人は決めなかった）"); return; }
       if (打っている) return;
+      if (e.key === "Enter") { e.preventDefault(); 送る(); return; }
       var n = Number(e.key);
       if (n >= 1 && n <= 9) {
         var q = 質問[状態.番];
-        if (q.選 && q.選[n - 1]) { e.preventDefault(); 次へ(q.選[n - 1].名); }
+        if (q.選 && q.選[n - 1]) { e.preventDefault(); 選ぶ(n - 1); }
       }
     };
     doc.addEventListener("keydown", key, true);
 
-    問い窓 = { el: el, sr: sr, 状態: 状態, key: key };
+    /* ★ 前へ 出し直す 見張り（2026-08-29）。
+       この窓を 出したあとに 別の 覆いが 開くと、同じ z でも
+       **あとから 置かれた 方が 上**に なる。だから いちばん後ろの
+       子でなくなったら 置き直す。ついでに z も 当て直す。 */
+    var 見張り = setInterval(function () {
+      try {
+        if (!問い窓 || !el.parentNode) return;
+        if (doc.body.lastElementChild !== el) doc.body.appendChild(el);
+        if (el.style.zIndex !== "2147483644") el.style.zIndex = "2147483644";
+      } catch (e) {}
+    }, 600);
+
+    問い窓 = { el: el, sr: sr, 状態: 状態, key: key, 見張り: 見張り };
     描く();
 
     return new Promise(function (done) {
       状態.解決 = done;
       /* 待ちっぱなしにしない。3 分で切り上げる。 */
-      setTimeout(function () {
+      問い窓.切上 = setTimeout(function () {
         if (状態.済) return;
         状態.済 = true;
         var 途中 = 質問.map(function (q, i) {

@@ -18873,6 +18873,32 @@
     try { if (typeof root.__vqNotifyLocal === "function") root.__vqNotifyLocal("問題ができました", msg); } catch (e) {}
   }
 
+  /* ══ 画面が 受け取った 仕事を 覚えておく（2026-08-29）════════════
+     ★ 台帳（ai_jobs）に 載せて 作ると、画面を 閉じても サーバは
+       走り切る。閉じたまま 終わった ぶんは、あとで こちらが
+       プリセットに して あげないと 消えたように 見える。
+     ★ ところが 画面が 開いたまま 終わった ぶんまで 拾うと、
+       **同じ プリセットが 2 つ** できる。だから
+       「画面が 受け取ったか」を ここで 残す。
+     ★ 置き場は この端末だけ。別の端末では 拾い直してよい。 */
+  var TAKEN_KEY = "vq2.cloudgen.taken.v1";
+  function takenList() {
+    try {
+      var a = JSON.parse(root.localStorage.getItem(TAKEN_KEY) || "[]");
+      return Array.isArray(a) ? a : [];
+    } catch (e) { return []; }
+  }
+  function markJobTaken(jobId) {
+    var id = String(jobId || ""); if (!id) return;
+    var a = takenList();
+    if (a.indexOf(id) >= 0) return;
+    a.push(id);
+    /* 増え続けさせない。新しい 200 件だけ 残す。 */
+    if (a.length > 200) a = a.slice(a.length - 200);
+    try { root.localStorage.setItem(TAKEN_KEY, JSON.stringify(a)); } catch (e) {}
+  }
+  function jobTaken(jobId) { return takenList().indexOf(String(jobId || "")) >= 0; }
+
   /* すでに走っている仕事に、あとから合流する（再読み込み・別端末）。 */
   function followJob(jobId, o) {
     o = o || {};
@@ -18907,6 +18933,10 @@
                 + "この端末の AI に切り替えて続けます。"
             }));
           }
+          /* ★ **画面が 受け取った** 印（2026-08-29）。
+             これが 付いている 仕事は、うしろで もう一度
+             プリセットに されない（二重に できない）。 */
+          try { markJobTaken(jobId); } catch (e) {}
           resolve(jobToResult(job, t0));
         }, function () { root.setTimeout(tick, POLL_MS); });
       };
@@ -18935,6 +18965,10 @@
            サーバ側は track のときも files を 読む（同じ 入口）。 */
         files: o.files || undefined,
         track: true,
+        /* ★ **同じ注文の 目印**（2026-08-29）。1 回の「作って」は 中で
+           2〜3 回に 分けて 頼まれる。画面を 閉じたまま 終わったとき、
+           これが 無いと 仕事の 数だけ プリセットが できる。 */
+        orderId: o.orderId || undefined,
         /* 同じ注文を 2 回送っても 1 件にする（二重生成の防止）。 */
         idempotencyKey: o.idempotencyKey || undefined
       })
@@ -19183,6 +19217,8 @@
     reviseQuestions: reviseQuestions,
     /* 台帳に載せて作る。画面を閉じても続く。返す形は上と同じ。 */
     generateQuestionsTracked: generateQuestionsTracked,
+    /* うしろで 拾う 側（vq-core）が 使う。 */
+    markJobTaken: markJobTaken, jobTaken: jobTaken,
     /* 資料（PDF・画像）を送れる形に直す */
     filesToPayload: filesToPayload,
     /* 大きい資料の文字（そのままでは送れないぶん）。無ければ空。 */
@@ -32239,7 +32275,10 @@
              文章で頼むだけでは守られない（サーバ側で形式を絞る）。 */
           questionTypes: o.questionTypes || undefined,
           questionPlan: o.questionPlan || undefined,
-          files: files.length ? files : undefined
+          files: files.length ? files : undefined,
+          /* ★ 同じ 注文の 目印。1 回の「作って」で 分けて 頼んだ ぶんを
+             **1 つの プリセット**へ まとめる ために 使う。 */
+          orderId: o.orderId || undefined
         };
         /* ★ 台帳に 載せて 作る（クラウド化）。
            ここは **プリセットを 作る 画面（preset-studio）が 通る 道**。
@@ -44155,6 +44194,10 @@
         instruction: "",
         attachments: st.attachments,
         sourceOnly: st.sourceOnly,
+        /* ★ この 1 回の「作って」の 目印（2026-08-29）。
+           中で 2〜3 回に 分けて 頼んでも、うしろで 拾うときに
+           **1 つの プリセット**へ まとまる。 */
+        orderId: st.runId || "",
         onActivity: function (items) {
           items.forEach(function (it) { if (isTruncation(it.label)) st.sawTruncation = true; });
           /* 添付カードは、サーバの解析ジョブの状態だけを見る。

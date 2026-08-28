@@ -24544,16 +24544,116 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
         return _appCloudGen.jobs;
       }
 
-      /* ★ ここに あった「終わった 仕事を プリセットに する」は **外した**。
-         そもそも 要らない。ふだんの 作成は 画面（Lumi の 作る 流れ）が
-         最後まで 面倒を 見て 1 つの プリセットに する。台帳は その 作成が
-         **画面を 閉じても 止まらない**ようにする ためだけの もの。
-         ここで 仕事から プリセットを 作ると:
-           ・1 回の 注文が 何回かに 分けて 頼まれる ので **仕事の 数だけ
-             プリセットが できる**（10 問 頼んで 3 つに 割れた）
-           ・仕事に 入っている のは サーバの 形の 途中結果なので、
-             そのまま 詰めると **問題文が 空**に なる
-         どちらも 実際に 起きた。作るのは 画面の 仕事、台帳は 進み具合だけ。 */
+      /* ══ 閉じたまま 終わった ぶんを プリセットに する（2026-08-29 作り直し）══
+         訴え:「閉じても リロードしても、同じ 処理を バッググラウンドする だけ」
+
+         ★ 一度 **まるごと 外した**（2026-08-29 未明）。理由は 2 つとも
+           この 取り込みの 作りが 悪かったから:
+             ① 1 回の「作って」は 中で 2〜3 回に 分けて 頼まれるので、
+                仕事の 数だけ プリセットが できた（10 問 頼んで 3 つ）。
+             ② 台帳に 入っているのは **サーバの 形**。toClientShape だけ
+                かけて 詰めていたので `question` のまま `prompt` が 無く、
+                **問題文が 空**の プリセットに なっていた。
+           外したままだと、こんどは「閉じたら 何も 残らない」。それは
+           頼まれた ことの 逆なので、**同じ 道具で 作り直す**。
+
+         ★ 直した ところ:
+             ① 同じ 注文の 目印（orderId＝inputReference）で **1 つに まとめる**。
+             ② 画面が 通るのと **同じ 2 段**を 通す。
+                toClientShape（サーバの形 → クラウドの形）
+                  → VQ2.draft.draftToQuestions（→ 画面の形・prompt が 入る）
+                ここを 端折ると 必ず 問題文が 空に なる。
+             ③ 画面が 受け取った 仕事は 取らない（VQ2.aigen.jobTaken）。
+                開いたまま 終わった ぶんまで 拾うと 二重に できる。
+             ④ 終わってから 20 秒 待つ。開いている 画面が 受け取る 猶予。 */
+      const CLOUD_ADOPT_WAIT_MS = 20000;
+
+      function _appCloudGenShape(qsRaw){
+        const V = window.VQ2 || {};
+        if (!V.aigen?.toClientShape || !V.draft?.draftToQuestions) return [];
+        /* ① サーバの形 → クラウドの形（question / choices など） */
+        const cloud = qsRaw.map((q) => { try{ return V.aigen.toClientShape(q); }catch(e){ return null; } })
+          .filter(Boolean);
+        if (!cloud.length) return [];
+        /* ② クラウドの形 → 画面の形（prompt / correctAnswer / choices…）
+           **ここが 抜けていた。** 画面の 生成は 必ず ここを 通る。 */
+        let out = [];
+        try{ out = V.draft.draftToQuestions({ questions: cloud }) || []; }catch(e){ out = []; }
+        /* 問題文の 無い ものは 入れない（空の 問題を 増やさない）。 */
+        return out.filter((q) => q && String(q.prompt || "").trim());
+      }
+
+      async function _appCloudGenAdoptFinished(){
+        if (!_appIsLoggedUser()) return 0;
+        const V = window.VQ2 || {};
+        if (!V.schema?.emptyPreset || !V.store?.savePreset) return 0;
+        let 取り込んだ = 0;
+        try{
+          const body = await _appApiJson("/api/aijob/list?limit=20", { method: "GET" });
+          const all = Array.isArray(body?.jobs) ? body.jobs : [];
+          const いま = Date.now();
+          const 済み = all.filter((j) => j && String(j.type || "") === "preset-gen"
+            && (j.status === "completed" || j.status === "partial")
+            && Number(j.made || 0) > 0
+            && (いま - Number(j.completedAt || j.updatedAt || 0)) > CLOUD_ADOPT_WAIT_MS
+            && !_appCloudGen.取り込みずみ.has(String(j.jobId || ""))
+            && !(V.aigen?.jobTaken && V.aigen.jobTaken(String(j.jobId || ""))));
+          if (!済み.length) return 0;
+
+          /* 同じ 注文（orderId）ごとに 束ねる。目印が 無い 古い ものは 1 件ずつ。 */
+          const 束 = new Map();
+          for (const job of 済み){
+            const 鍵 = String(job.inputReference || "") || ("job:" + String(job.jobId || ""));
+            if (!束.has(鍵)) 束.set(鍵, []);
+            束.get(鍵).push(job);
+          }
+
+          for (const [鍵, 仲間] of 束){
+            const ids = 仲間.map((x) => String(x.jobId || "")).filter(Boolean);
+            ids.forEach((id) => _appCloudGen.取り込みずみ.add(id));
+            /* 同じ 注文から 二度 作らない（別の タブで 作られていることも ある）。 */
+            let 既に = false;
+            try{
+              既に = (typeof V.store.listPresets === "function")
+                ? (V.store.listPresets() || []).some((x) => String(x?.sourceOrderId || "") === 鍵
+                    || ids.indexOf(String(x?.sourceJobId || "")) >= 0)
+                : false;
+            }catch(e){}
+            if (既に) { ids.forEach((id) => V.aigen?.markJobTaken && V.aigen.markJobTaken(id)); continue; }
+
+            /* 頼んだ 順に そろえる（作られた 順）。 */
+            仲間.sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0));
+            const 生 = [];
+            仲間.forEach((job) => {
+              const qs = (job.partial && Array.isArray(job.partial.questions)) ? job.partial.questions : [];
+              qs.forEach((q) => 生.push(q));
+            });
+            if (!生.length) continue;
+            const 問 = _appCloudGenShape(生);
+            if (!問.length) {
+              console.warn("[cloud gen] 形に できません（問題文が 空）:", 鍵, 生.length + " 件");
+              continue;
+            }
+            try{
+              const np = V.schema.emptyPreset({
+                name: String(仲間[0].title || "AI で 作った プリセット").slice(0, 60),
+                description: "画面を 閉じている あいだに AI が 作りました（" + 問.length + " 問）。",
+                questions: 問
+              });
+              np.sourceJobId = ids[0] || "";
+              np.sourceOrderId = 鍵;
+              const r = V.store.savePreset(np);
+              if (r && r.ok !== false) {
+                取り込んだ++;
+                ids.forEach((id) => V.aigen?.markJobTaken && V.aigen.markJobTaken(id));
+              }
+            }catch(e){
+              console.warn("[cloud gen] プリセットに できません:", String(e?.message || e));
+            }
+          }
+        }catch(e){}
+        return 取り込んだ;
+      }
 
       function _appCloudGenStop(){
         if (_appCloudGen.timer) { clearInterval(_appCloudGen.timer); _appCloudGen.timer = 0; }
@@ -24566,6 +24666,18 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
       async function _appCloudGenTick(){
         const 前 = _appCloudGen.jobs.length;
         const いま = await _appCloudGenRefresh();
+        /* 走っていた ものが 減った ＝ どれかが 終わった。拾いに いく。
+           （画面が 開いたまま 受け取った ものは jobTaken で 弾かれる） */
+        if (前 > 0 && いま.length < 前) {
+          setTimeout(async () => {
+            const n = await _appCloudGenAdoptFinished();
+            if (n > 0) {
+              try{ uiToast(n === 1 ? "作りかけの プリセットが できました。" : `作りかけの プリセット ${n} 件が できました。`); }catch(e){}
+              try{ _appPresetsChanged(); }catch(e){}
+              if (_appCurrentTab === APP_TAB_KEY.LIBRARY) _appRenderLibrary();
+            }
+          }, CLOUD_ADOPT_WAIT_MS + 1000);
+        }
         if (_appCurrentTab === APP_TAB_KEY.LIBRARY) _appRenderLibrary();
         try{ window.dispatchEvent(new CustomEvent("vq:cloudgen")); }catch(e){}
         if (!いま.length) _appCloudGenStop();
@@ -24578,6 +24690,9 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
           list: () => (Array.isArray(_appCloudGen.jobs) ? _appCloudGen.jobs.slice() : []),
           pct: (job) => _appCloudGenPct(job),
           refresh: () => _appCloudGenRefresh(),
+          /* 検査から 直接 呼べるように 出す（作りは 上の 取り込みと 同じ）。 */
+          adopt: () => _appCloudGenAdoptFinished(),
+          shape: (qs) => _appCloudGenShape(Array.isArray(qs) ? qs : []),
           /* 札は 1 枚に まとめてあるので、止めるのも **まとめて**（id は カンマ区切り）。 */
           cancel: async (jobIds) => {
             const list = String(jobIds || "").split(",").map((x) => x.trim()).filter(Boolean);
@@ -24600,6 +24715,14 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
           if (_appCurrentTab === APP_TAB_KEY.LIBRARY) _appRenderLibrary();
           try{ window.dispatchEvent(new CustomEvent("vq:cloudgen")); }catch(e){}
           if (_appCloudGen.jobs.length) _appCloudGenStart();
+          /* ★ 閉じている あいだに 終わった ぶんを 拾う（2026-08-29）。
+             読み込み直したら 出てくる、が 訴えの 中身。 */
+          const n = await _appCloudGenAdoptFinished();
+          if (n > 0) {
+            try{ uiToast(n === 1 ? "作りかけの プリセットが できました。" : `作りかけの プリセット ${n} 件が できました。`); }catch(e){}
+            try{ _appPresetsChanged(); }catch(e){}
+            if (_appCurrentTab === APP_TAB_KEY.LIBRARY) _appRenderLibrary();
+          }
         };
         setTimeout(() => { kick().catch(() => {}); }, 3200);
         document.addEventListener("visibilitychange", () => {
