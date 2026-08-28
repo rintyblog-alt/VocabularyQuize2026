@@ -124,13 +124,30 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
     return {
       台帳: i >= 0,
       鍵なし: !/idempotencyKey/.test(周り),
-      /* 「終わった 仕事から プリセットを 作る」は 外した。残っていたら 3 つに 割れる。 */
-      取り込み無し: core.indexOf("emptyPreset") < 0 || !/aijob\/list\?limit=20"[^]{0,400}emptyPreset/.test(core)
+      /* ★ 2026-08-29 に **見かたを 変えた**。
+         前は「終わった 仕事から プリセットを 作らない」を 正しいと していた。
+         いったん まるごと 外したから だが、それだと
+         **閉じたら 何も 残らない**（頼まれた ことの 逆）。
+         作り直したので、いまの 正しさは 次の 3 つ:
+           ① 取り込みが **ある**
+           ② 画面と 同じ **2 段**（toClientShape → draftToQuestions）を 通す
+              ← ここを 端折ると 必ず 問題文が 空に なる（それが 真因だった）
+           ③ 同じ 注文（orderId）で **1 つに まとめる**・
+              画面が 受け取った ものは 取らない（jobTaken） */
+      取り込みあり: /emptyPreset/.test(core),
+      二段通す: /toClientShape[^]{0,900}draftToQuestions/.test(core),
+      注文でまとめる: /sourceOrderId/.test(core),
+      画面が受けたら取らない: /jobTaken/.test(core),
+      注文の目印を送る: /orderId/.test(src)
     };
   });
   ok("作るのは 台帳を 通る", 生成.台帳);
   ok("**鍵を 付けていない**（同じ 注文の 2 回目が 弾かれない）", 生成.鍵なし, 生成);
-  ok("終わった 仕事から プリセットを 作らない", 生成.取り込み無し, 生成);
+  ok("閉じたまま 終わった ぶんを **プリセットに する**", 生成.取り込みあり, 生成);
+  ok("**画面と 同じ 2 段**を 通す（ここが 問題文が 空の 真因）", 生成.二段通す, 生成);
+  ok("同じ 注文で **1 つに まとめる**（3 つに 割れない）", 生成.注文でまとめる, 生成);
+  ok("画面が 受け取った 仕事は 取らない（二重に できない）", 生成.画面が受けたら取らない, 生成);
+  ok("注文の 目印を サーバへ 送る", 生成.注文の目印を送る, 生成);
 
   節("④-d 左パネルの 開閉（パソコン）");
   const 帯 = await pg.evaluate(async () => {
@@ -149,6 +166,36 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
   ok("パソコンでは 見える", 帯.見える === true, 帯.見える);
   ok("畳んだ ときの 見た目が 入っている", 帯.畳む見た目);
   ok("本体側の 口に つないでいる", 帯.本体の口);
+
+  節("⑤-b 今夜 足した もの（2026-08-29）");
+  const 今夜 = await pg.evaluate(async () => {
+    const app = await fetch([...document.querySelectorAll('script[src*="/js/vq2-app."]')][0].src).then((x) => x.text());
+    const live = document.querySelector('script[src*="/js/vq-live."]')
+      ? await fetch(document.querySelector('script[src*="/js/vq-live."]').src).then((x) => x.text()) : "";
+    const core = await fetch(document.querySelector('script[src*="/js/vq-core."]').src).then((x) => x.text());
+    const cssHref = [...document.querySelectorAll('link[href*="/css/vq-ds."]')].map((l) => l.href)[0];
+    const css = cssHref ? await fetch(cssHref).then((x) => x.text()) : "";
+    return {
+      書類の見た目: /docTheme/.test(app),
+      集計表: /sheetsPivot/.test(live) || /sheetsPivot/.test(app),
+      入力規則: /sheetsRule/.test(live) || /rules/.test(app),
+      段取りの窓: typeof window.__vqPlanAsk === "function",
+      題字: /vqload-word/.test(css) || /vqload-word/.test(document.documentElement.innerHTML),
+      ロードの暗い見た目: /data-theme-mode="dark"\][^]{0,400}authBootSplash/.test(css)
+        || /authBootSplash[^]{0,400}data-theme-mode="dark"/.test(css)
+        || /prefers-color-scheme: ?dark/.test(document.documentElement.innerHTML),
+      アイコンを覚える: /app\.profile\.avatar\.v1/.test(core),
+      デザインの座標を覚える: /vq\.design\.recent\.v1/.test(core) || /vq\.design\.recent\.v1/.test(app)
+    };
+  });
+  ok("書類の 見た目（docDesign）が 入っている", 今夜.書類の見た目, 今夜);
+  ok("集計表（sheetsPivot）が 入っている", 今夜.集計表, 今夜);
+  ok("入力規則（sheetsRule）が 入っている", 今夜.入力規則, 今夜);
+  ok("段取りの 質問の 窓が 出せる", 今夜.段取りの窓, 今夜);
+  ok("ロード画面に 題字が ある", 今夜.題字, 今夜);
+  ok("ロード画面に 暗い 見た目が ある", 今夜.ロードの暗い見た目, 今夜);
+  ok("プロフィールの 絵を この端末に 覚える", 今夜.アイコンを覚える, 今夜);
+  ok("デザインの 座標を 覚える（毎回 変える ため）", 今夜.デザインの座標を覚える, 今夜);
 
   節("⑤ 目安の 時間");
   const 分 = await pg.evaluate(() => {
