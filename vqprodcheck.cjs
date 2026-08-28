@@ -91,6 +91,25 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
   ok("古い 3 段目（注意事項）は 消えている", !段.古い段, 段);
   ok("規約に AI 生成の 条項が ある", 段.AIの条項, 段);
 
+  節("④-b 新しい 公開の 画面（人が 実際に 見る ほう）");
+  const 新公開 = await pg.evaluate(async () => {
+    const src = await fetch([...document.querySelectorAll('script[src*="/js/vq2-app."]')][0].src).then((x) => x.text());
+    const has = (t) => src.indexOf(t) >= 0 ||
+      src.indexOf(t.split("").map((c) => c.charCodeAt(0) > 127 ? "\\u" + c.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0") : c).join("")) >= 0;
+    return {
+      口: typeof (window.VQ2 && window.VQ2.presetPublish && window.VQ2.presetPublish.open) === "function",
+      段: has("vq2-pp-steps"), 新見本: has("vq2-pp-pv"), 表紙: has("vq2-pp-cover"),
+      規約: has("vq2-pp-terms"), AI条項: has("AI が 作った 問題も 同じ 扱いです"),
+      作るのは台帳: has("generateQuestionsTracked")
+    };
+  });
+  ok("新しい 公開の 口が ある", 新公開.口, 新公開);
+  ok("2 段の しるしが ある", 新公開.段);
+  ok("**見本が 一覧の 札と 同じ 作り**", 新公開.新見本);
+  ok("表紙（バナー）の 欄が ある", 新公開.表紙);
+  ok("決まりの 段が ある・AI の 条項も ある", 新公開.規約 && 新公開.AI条項);
+  ok("**作るのは 台帳を 通る**", 新公開.作るのは台帳);
+
   節("⑤ 目安の 時間");
   const 分 = await pg.evaluate(() => {
     const L = window.VQ2 && window.VQ2.library;
