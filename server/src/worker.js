@@ -46738,12 +46738,29 @@ function aigenExplainNote(required, lim) {
       + "\n**" + n + " 字を超えてはいけません。" + lo + " 字より短くてもいけません。**"
       + "書いたあとに数えて、はみ出していたら直してから返してください。";
   }
-  const range = n ? ("**" + Math.max(60, Math.round(n * 0.5)) + "〜" + n + " 字**") : "60〜160 字";
-  return ["explanation（日本語の解説）を必ず付けてください。次の 3 つを入れて、" + range + "で書きます。",
-    "　1) 正解が正しい理由（言葉の意味やしくみを、そこだけ読めば分かるように説明する）",
-    "　2) まちがえやすい点、または他の選択肢がなぜ違うか",
-    "　3) 覚えておくとよいこと（解説の中でだけ、資料に触れてもかまいません）",
-    "「資料の◯◯を根拠にしています」だけで終わらせないでください。"].join("\n");
+  /* ══ 既定の 解説（注文が 無い とき）══════════════════════════════
+     訴え（2026-08-29）「解説も標準でもうちょっとレベルが低い。具体的かつ
+     分かりやすく」。前は 60〜160 字で 3 点だけ だったので、
+     「重要です」「しっかり覚えましょう」のような **中身の 無い 一般論**で
+     字数だけ 埋まることが あった。
+     ★ 直しかた: 長さより **中身の 決まり**を 増やす。
+       ・具体（数字・年号・語の 意味・例）を **必ず 1 つ**入れる
+       ・外した 選択肢は **1 つずつ** なぜ 違うかを 言う
+       ・言い切る。「〜と 言われています」「重要です」で 逃げない
+       ・人が 話すように 書く（かたい 名詞の 並びに しない） */
+  const range = n ? ("**" + Math.max(70, Math.round(n * 0.55)) + "〜" + n + " 字**") : "90〜200 字";
+  return ["explanation（日本語の解説）を必ず付けてください。" + range + "で、次を **順に** 入れます。",
+    "　1) 正解が正しい理由。**言葉の意味やしくみから**、そこだけ読めば分かるように書く",
+    "　2) 具体を **必ず 1 つ以上**。年号・数字・式・語の由来・身近な例のどれか",
+    "　3) 選択肢があるときは、外したものが **なぜ 違うのか**を 1 つずつ短く",
+    "　4) まちがえやすい点、または覚え方",
+    "書き方の決まり:",
+    "　・**中身の無い一般論で字数を埋めない。**「重要です」「しっかり覚えましょう」"
+      + "「よく出ます」だけの文は書かない",
+    "　・言い切る。「〜と言われています」「〜かもしれません」で ぼかさない",
+    "　・**人が話すように書く。** かたい名詞をつなげただけの文にしない",
+    "　・「資料の◯◯を根拠にしています」だけで終わらせない",
+    "　・同じことを言い換えて伸ばさない（中身を足して長さにする）"].join("\n");
 }
 
 /* ══ 答えを 1 本の見分け鍵にする ═══════════════════════════════════════
@@ -48496,6 +48513,36 @@ function aigenQualityIssue(q, engineId, lim) {
   }
 
   const eng = AIGEN_ENGINES[engineId] || {};
+
+  /* ══ **やることだけ書いてあって、中身が無い** を 落とす ══════════
+     訴え（2026-08-29）「並べ替えでいきなり『並べ替えて正しい文にせよ』みたいな、
+     よく意味がわからん問題」。指示文だけで、**取り組む材料が 問題に 無い**。
+     形式ごとに「これが 無ければ 解きようが 無い」ものを 見る。
+     ここは AI に 頼まず コードで 落とす（頼むだけでは 守られない）。 */
+  {
+    const 空 = (v) => !Array.isArray(v) || !v.filter((x) => String(x == null ? "" : x).trim()).length;
+    if (engineId === "reorder" && 空(q.items)) return "並べる材料が無い";
+    if (engineId === "reorder" && Array.isArray(q.items) && q.items.filter((x) => String(x || "").trim()).length < 3) {
+      return "並べる材料が3つ未満";
+    }
+    if (engineId === "classification" && (空(q.items) || 空(q.groups))) return "分ける材料か仕分け先が無い";
+    if (engineId === "matching" && (空(q.left) || 空(q.right))) return "対応づける材料が無い";
+    if (engineId === "table_fill" && (空(q.headers) || 空(q.rows))) return "うめる表が無い";
+    /* 穴埋めは 空欄の 印が 無ければ、どこを 答えるのか 決まらない。 */
+    if ((engineId === "fill_blank" || engineId === "cloze")
+      && !/[（(]\s*[0-9０-９a-zA-Zａ-ｚA-Ｚ]?\s*[)）]|＿|_{2,}|\[\s*\]|〔\s*〕|◯|○|□/.test(qt)
+      && 空(q.blanks)) {
+      return "空欄の印が無い";
+    }
+    /* 選ぶ 形式で 選択肢が 足りない。2 未満は 選びようが 無い。 */
+    if (eng.choiceBased && Array.isArray(q.choices) && q.choices.filter((c) => {
+      const t = typeof c === "object" ? (c && (c.text || c.id)) : c;
+      return String(t == null ? "" : t).trim();
+    }).length < 2) {
+      return "選択肢が足りない";
+    }
+  }
+
   /* 選択肢のある形式は、答えが問題文に丸見えだと問題にならない。
      穴埋めは空欄の周りに答えが出ることがあるので、この検査から外す。 */
   if (eng.choiceBased && typeof q.answer === "string") {
@@ -48527,9 +48574,19 @@ function aigenQualityIssue(q, engineId, lim) {
        と **挟み撃ち**になり、8 問頼んで 5 問しか残らなかった。
        利用者が「N 字以内」と決めたなら、こちらの下限のほうを譲る。
        譲らないと、頼み方によっては通る幅がほとんど残らない。 */
+    /* 注文が あれば そちらに 譲る（挟み撃ちで 全部 落ちるのを 避ける）。
+       注文が 無い ときは **45 字**。90〜200 字で 頼んでいるので、
+       半分にも 届かない ものは 中身が 無い。 */
     const minEx = (lim && lim.explanation)
-      ? Math.min(25, Math.max(8, Math.round(lim.explanation * 0.5))) : 25;
+      ? Math.min(25, Math.max(8, Math.round(lim.explanation * 0.5))) : 45;
     if (body.length < minEx) return "解説が短すぎる";
+    /* ★ 中身の 無い 一般論だけの 解説を 落とす。
+       「重要です」「よく出ます」「覚えましょう」しか 書いていない もの。 */
+    if (!(lim && lim.explanation) && body.length < 90
+      && /(重要|大切|よく出|頻出|覚え(て|ま)|押さえ|しっかり)/.test(body)
+      && !/[0-9０-９]|年|世紀|％|%|＝|=|つまり|なぜなら|ため|から|例え|たとえ/.test(body)) {
+      return "解説が一般論だけ";
+    }
     const cite = /(根拠|もとづ|基づ|記載|書かれ|参照|より)/.test(body);
     const sentences = body.split(/[。．！？]/).filter((x) => x.trim()).length;
     /* 出どころの言い回ししか無く、1 文で終わっているもの。 */
@@ -48645,10 +48702,13 @@ function aigenReviewDigest(q, i) {
   return o;
 }
 
-async function aigenReviewBatch(env, list, base) {
+async function aigenReviewBatch(env, list, base, 題) {
   const sys = "あなたは作題の点検係です。問題を作り直さず、○か×かだけを判定します。出力は JSON だけ。";
+  const 頼み = String(題 || "").replace(/\s+/g, " ").slice(0, 300);
   const user = [
     "次の問題を 1 問ずつ点検してください。",
+    ...(頼み ? ["この問題集は次の注文で作られています。**この注文に対して出題として成り立つか**を見ます。",
+      "【注文】" + 頼み] : []),
     "**次のどれかに当てはまるものだけ** ok を false にします。",
     "　1) 答えが事実として間違っている",
     "　2) 選択肢の中に正しいものが 2 つ以上ある、または 1 つも無い",
@@ -48659,6 +48719,19 @@ async function aigenReviewBatch(env, list, base) {
        文法は正しく、直し方は知識が無いと決まらない＝解答欄に何を書くか決まらない。 */
     "　6) 誤文訂正で、その文だけでは直し方が 1 つに決まらない",
     "　7) 短答・穴埋め・数値入力で、答えが 1 つに決まらない（何通りも書ける）",
+    /* ★ 2026-08-29 の 訴え:
+         ・並べ替えなのに「並べ替えて正しい文にせよ」だけで **並べる材料が無い**
+         ・「日本の首都は？」のような、注文と関係のない・調べる価値のない問題が 混ざる
+       この 2 つは 上の 1〜7 の どれにも 当たらず、素通りしていた。 */
+    "　8) **やることだけ書いてあって、取り組む中身が無い**"
+      + "（例: 並べ替えなのに並べる語句や文が示されていない／"
+      + "「正しい文にしなさい」だけで直す対象が無い／表を完成させよ、なのに表が無い）",
+    ...(頼み ? ["　9) **注文と関係がない**。上の【注文】の題から外れている"
+      + "（例: 音楽のアーティストを頼まれているのに、一般常識の地理を出している）"] : []),
+    "　10) **調べたり考えたりする必要がまったく無い**。"
+      + "その分野を少しでも知っていれば考えずに答えられ、学習にならない"
+      + "（例:「日本の首都は？」「1+1は？」）。ただし語彙や暗記カードのように"
+      + "**覚えること自体が目的の形式は、短くても ok は true**",
     "**迷ったら ok は true。** 言い回しの好みや、もっと良くできる、では false にしません。",
     /* 中身が読み取れないときに false を返されると、正しい問題まで消える。 */
     "**中身が読み取れないとき・判断できないときも ok は true。** 分からないことを理由に false にしません。",
@@ -48761,7 +48834,7 @@ function aigenReviewMap(list, rows, base) {
 }
 
 /* まとめて点検する。返る配列は list と同じ長さ・同じ順。 */
-async function aigenReview(env, list, metrics) {
+async function aigenReview(env, list, metrics, 題) {
   const out = new Array(list.length);
   const batches = [];
   for (let i = 0; i < list.length; i += AIGEN_REVIEW_BATCH) {
@@ -48769,7 +48842,7 @@ async function aigenReview(env, list, metrics) {
   }
   for (let s = 0; s < batches.length; s += AIGEN_REVIEW_LANES) {
     const wave = batches.slice(s, s + AIGEN_REVIEW_LANES);
-    const rs = await Promise.all(wave.map((b) => aigenReviewBatch(env, b.part, b.at)
+    const rs = await Promise.all(wave.map((b) => aigenReviewBatch(env, b.part, b.at, 題)
       .catch(() => ({ ok: false, verdicts: b.part.map(() => ({ ok: true })) }))));
     wave.forEach((b, k) => {
       const r = rs[k];
@@ -49118,7 +49191,7 @@ async function aigenGenerate(env, contract, o = {}) {
       if (!filled) return;
     }
     const fresh = accepted.slice(before);
-    const verdicts = await aigenReview(env, fresh, metrics);
+    const verdicts = await aigenReview(env, fresh, metrics, o.topic);
     for (let k = fresh.length - 1; k >= 0; k--) {
       if (!verdicts[k] || verdicts[k].ok !== false) continue;
       const at = before + k;
@@ -50856,9 +50929,24 @@ async function handleAiGenQuestions(request, env, ctx) {
        毎回 検索を挟むと、速さだけが落ちて 何の得もない。
      ★ 調べられなくても 作るのは止めない（付け足しの材料として渡すだけ）。 */
   let 時事の材料 = "";
+  const 頼み文 = String(prompt || "");
   const 時事か = /(最新|いま|今の|現在|今年|去年|今月|今週|ニュース|時事|直近|新し(い|く)|20[23]\d\s*年|値段|価格|相場|ランキング|順位|結果|優勝|大会|受賞|改正|新制度|発売)/
-    .test(String(prompt || ""));
-  if (時事か && !hasDocs) {
+    .test(頼み文);
+  /* ══ **実在の ものが 主題の ときも 調べる**（2026-08-29 の 訴え）══════
+     「アーティストクイズ」のように、教科書に 載っていない **実在の 人・作品・
+     商品**が 主題だと、AI は 覚えで 書く。覚えは 曖昧なので、
+     意味の 分からない 問題や 事実と 違う 問題に なる。
+     そこで **先に 調べて、その 中身だけを 根拠に させる**。
+     ★ ふつうの 教科（数学・古文・化学…）では 調べない。速さだけ 落ちて 得が 無い。 */
+  const 実在ものか = (
+    /(アーティスト|歌手|バンド|アイドル|声優|俳優|タレント|芸人|監督|作家|漫画家|選手|チーム|球団|クラブ)/.test(頼み文)
+    || /(映画|ドラマ|アニメ|漫画|マンガ|ゲーム|楽曲|アルバム|シングル|番組|小説|作品)/.test(頼み文)
+    || /(企業|会社|ブランド|商品|製品|アプリ|サービス|車種|路線|駅|空港)/.test(頼み文)
+    || /(観光|名所|名物|ご当地|グルメ|料理店|温泉|城|世界遺産)/.test(頼み文)
+  ) && /(クイズ|問題|出題|作っ|作り|つくっ)/.test(頼み文);
+  /* 学校の 教科が はっきり 書いてあれば、調べない（覚えで 足りる）。 */
+  const 教科ものか = /(数学|算数|化学|物理|生物|地学|古文|漢文|英文法|英単語|世界史|日本史|地理|公民|政治経済|倫理|現代文|理科|社会|国語|英語)/.test(頼み文);
+  if ((時事か || (実在ものか && !教科ものか)) && !hasDocs) {
     try {
       const q = String(prompt).replace(/\s+/g, " ").slice(0, 80);
       const 安全に = (p) => p.then((v) => (Array.isArray(v) ? v : [])).catch(() => []);
@@ -50870,8 +50958,10 @@ async function handleAiGenQuestions(request, env, ctx) {
         時事の材料 = "\n\n【いま調べた材料（" + new Intl.DateTimeFormat("ja-JP", {
           timeZone: "Asia/Tokyo", year: "numeric", month: "long", day: "numeric"
         }).format(new Date()) + "時点）】\n" + 束.join("\n")
-          + "\n★ 時事にかかわる問題は、**ここに書いてあることだけ**を根拠にしてください。"
-          + "ここに無いことを 覚えで書かないこと。書けないなら その問題は作らないでください。";
+          + "\n★ **ここに書いてあることだけ**を根拠にしてください。"
+          + "ここに無いことを 覚えで書かないこと。書けないなら その問題は作らないでください。"
+          + "\n★ 実在の 人・作品・商品・場所を 問うときは、**この材料に 出てくる もの**から 選びます。"
+          + "材料に 無い 名前や 数字を 出さないでください（覚えは 曖昧で、事実と 違うことを 書きます）。";
       }
     } catch (e) {}
   }
