@@ -173,6 +173,41 @@ function 週の名(ms) {
   ok("結果に 区間が 出る", /vs-res-splits/.test(rs));
   ok("速い/遅いで 色を 変える", /data-good/.test(rs));
 
+  節("⑦-b 作り物の 記録は 上位表に 載せない");
+  /* ★ ひとりで 走った ぶんは 画面の 自己申告。
+     そのままでは 数字を 打ち込むだけで 1 位に なれる。 */
+  {
+    const cid3 = "ck" + Date.now().toString(36).slice(-7);
+    /* まず ふつうに 走る（長さ 200m・40 秒）→ サーバが 長さを 覚える */
+    const r0 = await 送る(A.token, { courseId: cid3, finished: true, time: 40, rank: 1, length: 200 });
+    ok("ふつうの 記録は 認める", r0.data.ranked === true, r0.data);
+    const g0 = await api("GET", "/api/survive/leaderboard/" + cid3, undefined, A.token);
+    ok("上位表に 載る", g0.data.me && g0.data.me.bestMs === 40000, g0.data.me);
+
+    /* 作り物 ①: あり得ない 速さ（200m を 3 秒） */
+    const r1 = await 送る(B.token, { courseId: cid3, finished: true, time: 3, rank: 1, length: 200 });
+    ok("**速すぎる 記録は 上位表に 載せない**", r1.data.ranked === false, r1.data);
+    ok("理由を 返す", /速すぎ/.test(String(r1.data.why || "")), r1.data.why);
+    const g1 = await api("GET", "/api/survive/leaderboard/" + cid3, undefined, B.token);
+    ok("1 位が 入れ替わらない", g1.data.rows[0] && g1.data.rows[0].bestMs === 40000, g1.data.rows);
+
+    /* 作り物 ②: 長さの 申告を 変える（20m の コースだと 言い張る） */
+    const r2 = await 送る(C.token, { courseId: cid3, finished: true, time: 5, rank: 1, length: 20 });
+    ok("**長さの 申告が 合わない ものも 載せない**", r2.data.ranked === false, r2.data);
+    ok("理由を 返す", /長さ/.test(String(r2.data.why || "")), r2.data.why);
+
+    /* それでも 成績（XP・回数）は 数える */
+    const st3 = await api("GET", "/api/survive/stats", undefined, B.token);
+    ok("走った ことは 数える（締め出さない）", st3.status === 200 && st3.data.stats.matches > 0, st3.data.stats);
+    ok("XP は 付く", st3.data.stats.xp > 0, st3.data.stats.xp);
+
+    /* ふつうに 速い 記録は ちゃんと 載る（200m を 30 秒 = 6.7m/s） */
+    const r3 = await 送る(B.token, { courseId: cid3, finished: true, time: 30, rank: 1, length: 200 });
+    ok("**速いだけの 記録は ちゃんと 載る**", r3.data.ranked === true, r3.data);
+    const g3 = await api("GET", "/api/survive/leaderboard/" + cid3, undefined, B.token);
+    ok("1 位が 入れ替わる", g3.data.rows[0] && g3.data.rows[0].bestMs === 30000, g3.data.rows);
+  }
+
   節("⑧ 走って 出る 中間地点（実際に 走らせる）");
   {
     const path = require("path");

@@ -870,6 +870,9 @@ export class MatchScreen {
     );
     this._saveStats({ courseId: this.course.id, rank: p.rank, time: p.finishTime,
       finished: p.finished && !p.eliminated, correct: p.quizCorrect, wrong: p.quizWrong, xp: this._xp,
+      /* ★ コースの 長さも 送る。サーバは これを 覚えて おいて、
+         「その コースでは あり得ない 速さ」を 上位表から 外す。 */
+      length: Math.round(this.course.length),
       splits: (this._splits || []).slice(0, 16) });
   }
 

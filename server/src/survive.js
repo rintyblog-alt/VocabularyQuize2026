@@ -147,6 +147,17 @@ const TABLES = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_survive_room_hits ON survive_room_hits (user_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_survive_weekly ON survive_weekly (course_id, week, best_ms)`,
+  /* コースの 長さ。**記録が 作り物か どうかの ものさし**。
+     ★ ひとりで 走った ぶんは 画面の 自己申告なので、
+       そのまま 上位表に 載せると 数字を 打ち込むだけで 1 位に なれる。
+       「その コースは だいたい 何 m か」を 覚えて おいて、
+       速すぎる 記録を **上位表にだけ 載せない**（成績は 数える）。 */
+  `CREATE TABLE IF NOT EXISTS survive_course_len (
+     course_id TEXT PRIMARY KEY,
+     len INTEGER NOT NULL DEFAULT 0,
+     n INTEGER NOT NULL DEFAULT 0,
+     updated_at INTEGER NOT NULL DEFAULT 0
+   )`,
   `CREATE INDEX IF NOT EXISTS idx_survive_rec_course ON survive_records (course_id, best_ms)`,
   `CREATE INDEX IF NOT EXISTS idx_survive_stats_xp ON survive_stats (xp DESC)`
 ];
@@ -525,6 +536,43 @@ async function handleResult(request, env) {
     Math.round((correct + wrong > 0 ? correct / (correct + wrong) : 0) * 60)
   );
   const now = Date.now();
+
+  /* ── 記録として 認めるか ────────────────────────────────────────
+     ★ 断らない。**上位表に 載せない だけ**に する。
+       断ると 「重い 端末で ゆっくり 走った 人」まで 巻き込む。 */
+  let 記録にする = finished && timeMs > 0;
+  let 訳 = "";
+  const 申告長 = Math.round(CL(b.length, 0, 4000));
+  if (記録にする && courseId) {
+    try {
+      const row = await env.DB.prepare(
+        "SELECT len, n FROM survive_course_len WHERE course_id = ?1 LIMIT 1"
+      ).bind(courseId).first();
+      const 既知 = N(row && row.len, 0);
+      if (既知 > 0) {
+        /* ① 長さの 申告が 前と 食い違う → 作り物 */
+        if (申告長 > 0 && Math.abs(申告長 - 既知) > 既知 * 0.25) { 記録にする = false; 訳 = "長さが 合わない"; }
+        /* ② いちばん 速く 走っても 届かない 時間 → 作り物
+           8.2m/s は 走りの 上限。加速や 打ち上げ台の ぶんを 見て 1.35 倍 まで 許す。 */
+        const 最短 = (既知 / (8.2 * 1.35)) * 1000;
+        if (記録にする && timeMs < 最短) { 記録にする = false; 訳 = "速すぎる"; }
+      }
+      /* 覚える（初めて／申告が 合っている ときだけ 近づける） */
+      if (申告長 > 40) {
+        if (既知 <= 0) {
+          await env.DB.prepare(
+            "INSERT INTO survive_course_len (course_id, len, n, updated_at) VALUES (?1, ?2, 1, ?3) " +
+            "ON CONFLICT(course_id) DO NOTHING"
+          ).bind(courseId, 申告長, now).run().catch(() => {});
+        } else if (Math.abs(申告長 - 既知) <= 既知 * 0.25) {
+          await env.DB.prepare(
+            "UPDATE survive_course_len SET n = n + 1, updated_at = ?2 WHERE course_id = ?1"
+          ).bind(courseId, now).run().catch(() => {});
+        }
+      }
+    } catch (e) { /* 表が 使えなければ そのまま 認める */ }
+  }
+
   try {
     await env.DB.prepare(`
       INSERT INTO survive_stats (user_id, matches, wins, losses, finishes, xp, quiz_correct, quiz_wrong, play_seconds, updated_at)
@@ -541,10 +589,10 @@ async function handleResult(request, env) {
         "SELECT best_ms FROM survive_records WHERE user_id = ?1 AND course_id = ?2 LIMIT 1"
       ).bind(me.uid, courseId).first().catch(() => null);
       const prevBest = N(prev && prev.best_ms, 0);
-      const best = finished && timeMs > 0 ? (prevBest > 0 ? Math.min(prevBest, timeMs) : timeMs) : prevBest;
+      const best = 記録にする ? (prevBest > 0 ? Math.min(prevBest, timeMs) : timeMs) : prevBest;
       /* 区間は **自己ベストを 更新した ときだけ** 入れ替える。
          そうしないと「一番 速かった 走りの 区間」で なくなる。 */
-      const 更新 = finished && timeMs > 0 && (prevBest === 0 || timeMs < prevBest);
+      const 更新 = 記録にする && (prevBest === 0 || timeMs < prevBest);
       const sj = (更新 && splits.length) ? JSON.stringify(splits) : "";
       await env.DB.prepare(`
         INSERT INTO survive_records (user_id, course_id, best_ms, runs, finishes, splits_json, updated_at)
@@ -554,7 +602,7 @@ async function handleResult(request, env) {
           splits_json = CASE WHEN ?6 <> '' THEN ?6 ELSE splits_json END
       `).bind(me.uid, courseId, best, finished ? 1 : 0, now, sj).run();
       /* 今週の 自己ベスト */
-      if (finished && timeMs > 0) {
+      if (記録にする) {
         await env.DB.prepare(`
           INSERT INTO survive_weekly (user_id, course_id, week, best_ms, runs, updated_at)
           VALUES (?1, ?2, ?3, ?4, 1, ?5)
@@ -567,7 +615,7 @@ async function handleResult(request, env) {
     console.error("[survive] 成績を 残せません:", String(e && e.message || e));
     return json({ ok: true, saved: false });
   }
-  return json({ ok: true, saved: true, xp });
+  return json({ ok: true, saved: true, xp, ranked: 記録にする, why: 訳 });
 }
 
 /* ══ ④ 成績を 見る ════════════════════════════════════════════════════ */
