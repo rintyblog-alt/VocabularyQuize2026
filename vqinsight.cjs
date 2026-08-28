@@ -130,6 +130,25 @@ function 作る(id) {
   見(本文.indexOf("ヒミツの答え") < 0, "⑥ **答えの 中身は 1 文字も 送っていない**");
   見(本文.indexOf("鎌倉時代テスト対策") >= 0, "⑥ 題と 数字は 送っている（分析に 要る）");
 
+  /* ── ⑤-0 何回か 記録して、点の 移り変わりが 出るか ── */
+  await page.evaluate(() => {
+    const L = window.VQ2.learning;
+    for (let k = 0; k < 4; k++) {
+      const items = [], snaps = [];
+      for (let i = 0; i < 8; i++) {
+        const 当 = i < (4 + k);            /* 回を 追うごとに 良くなる */
+        snaps.push({ id: "q" + i, type: "multiple_choice_single" });
+        items.push({ questionId: "q" + i, type: "multiple_choice_single", answered: true,
+          correct: 当, isCorrect: 当, score: 当 ? 1 : 0, maxScore: 1, timeMs: 8000 });
+      }
+      const t = new Date(Date.now() - (4 - k) * 86400000).toISOString();
+      L.recordResult({ id: "res_seq_" + k, sessionId: "res_seq_" + k, presetId: "p3",
+        presetName: "つづき " + k, startedAt: t, finishedAt: t, elapsedMs: 60000,
+        items: items, questionsSnapshot: snaps }, {});
+    }
+  });
+  await page.waitForTimeout(600);
+
   /* ── ⑤ 画面に 出る ── */
   await page.evaluate(() => {
     Array.from(document.querySelectorAll("body > *")).forEach((h) => {
@@ -149,7 +168,8 @@ function 作る(id) {
              ランク: (r.querySelector(".ov-g") || {}).textContent || "",
              一言: (r.querySelector(".ov-hl") || {}).textContent || "",
              くわしい: /くわしい 数値/.test(t),
-             失速行: /後半 − 前半/.test(t) };
+             失速行: /後半 − 前半/.test(t),
+             棒: r.querySelectorAll(".ov-b").length };
   });
   console.log("画面:", JSON.stringify(画));
   見(画.総合, "⑤ 総合評価の 欄が 出る");
@@ -157,6 +177,7 @@ function 作る(id) {
   見(!!String(画.ランク).trim(), "⑤ ランクが 出る", 画.ランク);
   見(!!String(画.一言).trim(), "⑤ 一言が 出る", 画.一言);
   見(画.くわしい && 画.失速行, "⑤ くわしい 数値が 出る");
+  見(画.棒 >= 5, "⑤ 総合点の 移り変わりが 出る（" + 画.棒 + " 回ぶん）", 画.棒);
   見(例外.length === 0, "⑦ 画面の 例外 0 件", 例外.slice(0, 3));
 
   await page.screenshot({ path: SP + "/insight.png", fullPage: false });

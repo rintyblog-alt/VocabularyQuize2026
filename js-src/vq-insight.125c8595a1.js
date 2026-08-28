@@ -52,6 +52,12 @@
     ".ov-g{min-width:38px;height:38px;padding:0 10px;border-radius:999px;display:inline-flex;"
       + "align-items:center;justify-content:center;font-size:17px;font-weight:800;"
       + "background:var(--vq-accent-subtle,#EFEBFA);color:var(--vq-accent-text,#5F579E);}",
+    ".ov-sp{display:flex;align-items:flex-end;justify-content:flex-start;gap:6px;"
+      + "height:56px;margin-top:16px;}",
+    ".ov-b{flex:1 1 0;min-width:10px;max-width:30px;height:100%;display:flex;align-items:flex-end;"
+      + "background:var(--vq-surface-sunken,#F7F6FB);border-radius:5px;overflow:hidden;}",
+    ".ov-b i{display:block;width:100%;background:var(--vq-accent,#756DB3);border-radius:5px;}",
+    ".ov-sph{margin-top:6px;font-size:11px;color:var(--vq-text-tertiary,#9994A8);}",
     ".ov-c{margin-top:14px;padding-top:14px;border-top:1px solid var(--vq-border-subtle,#ECEAF4);}",
     ".ov-hl{font-size:16px;font-weight:750;color:var(--vq-text,#2B2836);line-height:1.5;}",
     ".ov-ad{margin-top:6px;font-size:13px;line-height:1.8;color:var(--vq-text-secondary,#5A5568);}",
@@ -442,6 +448,21 @@
     h += '<div class="ov"><div class="ov-n">' + (点 === null ? "—" : 点)
       + '<span class="ov-u"> / 100</span></div>'
       + '<div class="ov-g" data-g="' + esc(ランク(点)) + '">' + esc(ランク(点) || "—") + "</div></div>";
+    /* ★ 点の 移り変わり（2026-08-29）。ここに 出すのが いちばん 見やすい
+       （上の グラフは 正答率などの 話で、総合点は 別の ものさし）。
+       **点が 付いた 回だけ** 並べる。付いていない 回で 線を つながない。 */
+    var 並 = ss.filter(function (x) { return x.metrics && typeof x.metrics.score100 === "number"; })
+      .slice(0, 10).reverse();
+    if (並.length >= 2) {
+      h += '<div class="ov-sp" role="img" aria-label="総合点の 移り変わり（新しいほど 右）">';
+      並.forEach(function (x) {
+        var v = x.metrics.score100;
+        h += '<span class="ov-b" title="' + esc(String(x.localDate || "").slice(5)) + "：" + v + ' 点">'
+          + '<i style="height:' + Math.max(6, v) + '%"></i></span>';
+      });
+      h += "</div>";
+      h += '<div class="ov-sph">左が 古く、右が 新しい（' + 並.length + " 回ぶん・0〜100）</div>";
+    }
     if (直) {
       var r = 直.review;
       h += '<div class="ov-c">'
@@ -482,6 +503,24 @@
     var 連誤 = 平均(指.map(function (m) { return m.maxStreakWrong; }));
     行.push(["続けて 正解できた 最長", 連正 === null ? "—" : Math.round(連正) + " 問", ""]);
     行.push(["続けて 外した 最長", 連誤 === null ? "—" : Math.round(連誤) + " 問", ""]);
+
+    /* いつ やると よく できるか。**3 回 以上 やった 時間帯だけ**（少ないと 偶然）。 */
+    var 時 = Object.create(null);
+    指.forEach(function (m) {
+      if (typeof m.hourOfDay !== "number" || m.accuracy === null || m.accuracy === undefined) return;
+      var k = Math.floor(m.hourOfDay / 3) * 3;
+      var e = 時[k] || (時[k] = { n: 0, 和: 0 });
+      e.n++; e.和 += m.accuracy;
+    });
+    var 時並 = Object.keys(時).map(function (k) {
+      return { 帯: Number(k), n: 時[k].n, acc: 時[k].和 / 時[k].n };
+    }).filter(function (x) { return x.n >= 3; }).sort(function (a, b) { return b.acc - a.acc; });
+    if (時並.length) {
+      var 上 = 時並[0];
+      行.push(["よく できる 時間帯",
+        上.帯 + "〜" + (上.帯 + 3) + " 時（" + Math.round(上.acc * 100) + "%）",
+        上.n + " 回ぶん。3 回 以上 やった 時間帯だけ 見ています"]);
+    }
 
     /* 弱い ところを 合算する（形式ごと） */
     var 束 = Object.create(null);
