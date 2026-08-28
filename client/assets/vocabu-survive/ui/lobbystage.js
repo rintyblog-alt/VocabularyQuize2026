@@ -171,7 +171,7 @@ export class LobbyStage {
       b.hop += dt * b.speed * 2.2;
       const bounce = Math.abs(Math.sin(b.hop)) * 0.28;
       b.v.update(dt, { speed: 2.4, grounded: bounce < 0.04, vy: Math.cos(b.hop) * 5, yaw: 0, stunned: 0 });
-      b.v.draw(R, b.x, bounce, b.z, Math.sin(this._t * 0.4 + b.hop) * 0.3, b.scale);
+      b.v.draw(R, b.x, bounce, b.z, Math.PI + Math.sin(this._t * 0.4 + b.hop) * 0.3, b.scale);
     }
 
     /* 主役 */
@@ -183,7 +183,9 @@ export class LobbyStage {
         yaw: 0, stunned: 0
       });
       this._me.faceYaw = Math.sin(this._t * 0.7) * 0.24;
-      this._me.draw(R, 0, jump, 0, Math.sin(this._t * 0.28) * 0.5, 1.18);
+      /* ★ ここは 見せる 場面。走る人には **こちらを 向いて** ほしいので 半回転 足す
+         （bean.js を 直して 顔が 進む向き＝奥を 向くように なった ため）。 */
+      this._me.draw(R, 0, jump, 0, Math.PI + Math.sin(this._t * 0.28) * 0.5, 1.18);
     }
 
     R.end(dt);

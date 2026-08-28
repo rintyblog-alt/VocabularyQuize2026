@@ -223,44 +223,57 @@ export class BeanVisual {
       0.86 * s * wide, 0.94 * s * sq, 0.80 * s * wide);
     R.draw(BEAN_MESHES.body, _m, this.color, 0, 0.24, 0, 0, s);
 
-    /* ── 頭 ── */
+    /* ── 頭 ──
+       ★★ 走る人が **ずっと 後ろ向きに 走って いた** 原因は ここ。
+         この 作りでは yaw は「カメラの ある 側」を 指していて、
+         **進む向きは -(sin yaw, cos yaw)** になる（脚も つま先も
+         そちら側へ 出している）。ところが 顔（目・帯・芽・かぶりもの）
+         だけ +(sin, cos) 側に 置いていたので、脚は 前へ 出るのに
+         顔は 後ろを 向く ＝ 後ずさりして 見えた。
+         実測: 進む向きと 顔の向きの 内積が -1（本人も ボットも）。
+         顔まわりだけ 半回転（fhy）させて 進む向きへ 向ける。
+         体・腕・脚は もとの yaw のまま（左右対称なので 触らない）。 */
     const headY = bodyY + 0.52 * s * sq;
     const hy = yaw + this.faceYaw;
-    m4.composeXYZ(_m, x, headY, z, this.tilt * 0.7, hy, tiltZ * 0.6,
+    const fhy = hy + Math.PI;                       /* 顔の 向き＝進む向き */
+    const fcy = Math.cos(fhy), fsy = Math.sin(fhy);
+    m4.composeXYZ(_m, x, headY, z, -this.tilt * 0.7, fhy, -tiltZ * 0.6,
       0.78 * s * wide, 0.74 * s * sq, 0.74 * s * wide);
     R.draw(BEAN_MESHES.head, _m, this.color, 0, 0.28, 0, 0, s);
 
     /* ── 目（帯の 下）── */
-    const cy = Math.cos(hy), sy = Math.sin(hy);
+    /* ★ 腕・脚は **体の 向き（yaw）**で 置く。ここを hy（＝顔の 向きを 足した もの）
+       に して いたので、顔を 横へ 振ると 足まで 横へ ずれていた。 */
+    const cy = Math.cos(yaw), sy = Math.sin(yaw);
     const eyeF = 0.30 * s, eyeSide = 0.155 * s, eyeH = headY + 0.04 * s;
     const open = this.blink > 0 ? 0.16 : 1;
     for (const side of [-1, 1]) {
-      const ex = x + sy * eyeF + cy * eyeSide * side;
-      const ez = z + cy * eyeF - sy * eyeSide * side;
-      m4.compose(_m, ex, eyeH, ez, hy, 0.185 * s, 0.185 * s * open, 0.13 * s);
+      const ex = x + fsy * eyeF + fcy * eyeSide * side;
+      const ez = z + fcy * eyeF - fsy * eyeSide * side;
+      m4.compose(_m, ex, eyeH, ez, fhy, 0.185 * s, 0.185 * s * open, 0.13 * s);
       R.draw(BEAN_MESHES.eye, _m, WHITE, 0.10, 0.05, 0, 0, s);
-      m4.compose(_m, x + sy * (eyeF + 0.045 * s) + cy * eyeSide * side, eyeH,
-        z + cy * (eyeF + 0.045 * s) - sy * eyeSide * side, hy,
+      m4.compose(_m, x + fsy * (eyeF + 0.045 * s) + fcy * eyeSide * side, eyeH,
+        z + fcy * (eyeF + 0.045 * s) - fsy * eyeSide * side, fhy,
         0.095 * s, 0.105 * s * open, 0.07 * s);
       R.draw(BEAN_MESHES.pupil, _m, DARK, 0, 0, 0, 0, s);
     }
 
     /* ── 帯（バイザー）。顔の 向きが 分かる 目印 ── */
-    m4.composeXYZ(_m, x + sy * 0.20 * s, headY + 0.21 * s, z + cy * 0.20 * s,
-      -0.16, hy, 0, 0.66 * s, 0.14 * s, 0.60 * s);
+    m4.composeXYZ(_m, x + fsy * 0.20 * s, headY + 0.21 * s, z + fcy * 0.20 * s,
+      0.16, fhy, 0, 0.66 * s, 0.14 * s, 0.60 * s);
     R.draw(BEAN_MESHES.visor, _m, this.dark, 0, 0.34, 0, 0, s);
 
     /* ── 芽（頭の 上の 二葉）── */
     const stemY = headY + 0.36 * s;
     const sway = Math.sin(ph * 1.3) * 0.10 * (0.4 + sw);
-    m4.composeXYZ(_m, x, stemY + 0.09 * s, z, sway * 0.4, hy, sway,
+    m4.composeXYZ(_m, x, stemY + 0.09 * s, z, -sway * 0.4, fhy, -sway,
       0.05 * s, 0.26 * s, 0.05 * s);
     R.draw(BEAN_MESHES.stem, _m, STEM, 0, 0.2, 0, 0, s);
     for (const side of [-1, 1]) {
-      const lx = x + cy * 0.13 * s * side + sy * 0.02 * s;
-      const lz = z - sy * 0.13 * s * side + cy * 0.02 * s;
+      const lx = x + fcy * 0.13 * s * side + fsy * 0.02 * s;
+      const lz = z - fsy * 0.13 * s * side + fcy * 0.02 * s;
       m4.composeXYZ(_m, lx, stemY + 0.20 * s, lz,
-        0.2, hy, side * (0.72 + sway),
+        -0.2, fhy, side * (0.72 + sway),
         0.24 * s, 0.075 * s, 0.15 * s);
       R.draw(BEAN_MESHES.leaf, _m, LEAF, 0, 0.30, 0, 0, s);
     }
@@ -272,10 +285,10 @@ export class BeanVisual {
       const topY = headY + 0.30 * s * sq;
       for (const q of this.hat.parts) {
         /* q = [形, 前, 上, 横, 傾き, 幅, 高, 奥, 色] */
-        const px = x + sy * q[1] * s + cy * q[3] * s;
-        const pz = z + cy * q[1] * s - sy * q[3] * s;
+        const px = x + fsy * q[1] * s + fcy * q[3] * s;
+        const pz = z + fcy * q[1] * s - fsy * q[3] * s;
         const col = q[8] === 1 ? this.dark : q[8] === 2 ? WHITE : q[8] === 3 ? DARK : this.hatColor;
-        m4.composeXYZ(_m, px, topY + q[2] * s * sq, pz, this.tilt * 0.7, hy, tiltZ * 0.6 + q[4],
+        m4.composeXYZ(_m, px, topY + q[2] * s * sq, pz, -this.tilt * 0.7, fhy, -(tiltZ * 0.6) - q[4],
           q[5] * s * wide, q[6] * s * sq, q[7] * s * wide);
         R.draw(q[0], _m, col, q[8] === 2 ? 0.08 : 0, 0.26, 0, 0, s);
       }

@@ -23,21 +23,12 @@ import { BeanVisual, registerBeanMeshes } from "../game/bean.js";
 
 const TITLE = "VOCABUSURVIVE";
 
-/* 題字の 虹。0〜1 の 位置から 色を 作る。 */
-const TITLE_STOPS = [
-  [1.00, 0.839, 0.420],   /* #ffd66b */
-  [1.00, 0.561, 0.694],   /* #ff8fb1 */
-  [0.561, 0.722, 1.00],   /* #8fb8ff */
-  [0.431, 0.941, 0.812]   /* #6ef0cf */
-];
-function gradientAt(t) {
-  const n = TITLE_STOPS.length - 1;
-  const x = Math.max(0, Math.min(1, t)) * n;
-  const i = Math.min(n - 1, Math.floor(x));
-  const f = x - i;
-  const a = TITLE_STOPS[i], b2 = TITLE_STOPS[i + 1];
-  const c = (k) => Math.round((a[k] + (b2[k] - a[k]) * f) * 255);
-  return "rgb(" + c(0) + "," + c(1) + "," + c(2) + ")";
+/* ★ 題字は もとは 1 文字ずつ 虹に していたが、本体の どこにも
+   そういう 表現は 無い（サイドバーの「VocabuQuiz」も ただの 文字）。
+   VOCABU は 文字の 色、SURVIVE は アプリの アクセント色。 */
+const TITLE_SPLIT = "VOCABU".length;
+function titleColorAt(i) {
+  return i < TITLE_SPLIT ? "var(--vs-ink)" : "var(--vs-accent)";
 }
 
 export class LoadingScreen {
@@ -75,10 +66,9 @@ export class LoadingScreen {
          こちらなら どこでも 同じに 出る。 */
     const titleEl = h("h1", { class: "vs-load-title", "aria-label": "VocabuSurvive" });
     for (let i = 0; i < TITLE.length; i++) {
-      const t = TITLE.length > 1 ? i / (TITLE.length - 1) : 0;
       const sp = h("span", {
         class: "vs-load-ch", "aria-hidden": "true",
-        style: "animation-delay:" + (i * 42) + "ms;color:" + gradientAt(t)
+        style: "animation-delay:" + (i * 42) + "ms;color:" + titleColorAt(i)
       }, TITLE[i]);
       titleEl.appendChild(sp);
     }
@@ -110,8 +100,8 @@ export class LoadingScreen {
       h("div", { class: "vs-load-top" },
         h("div", { class: "vs-load-badge" },
           svg("svg", { viewBox: "0 0 24 24", width: "18", height: "18", "aria-hidden": "true" },
-            svg("path", { d: "M12 3c2.6 2.1 4 4.6 4 7.4A4 4 0 0 1 12 15a4 4 0 0 1-4-4.6C8 7.6 9.4 5.1 12 3Z", fill: PALETTE.mint }),
-            svg("path", { d: "M12 15v6", stroke: PALETTE.mint, "stroke-width": "2", "stroke-linecap": "round", fill: "none" })
+            svg("path", { d: "M12 3c2.6 2.1 4 4.6 4 7.4A4 4 0 0 1 12 15a4 4 0 0 1-4-4.6C8 7.6 9.4 5.1 12 3Z", style: "fill:var(--vs-accent)" }),
+            svg("path", { d: "M12 15v6", style: "stroke:var(--vs-accent);fill:none", "stroke-width": "2", "stroke-linecap": "round" })
           ),
           h("span", { text: "VocabuQuiz" })
         ),
@@ -278,7 +268,8 @@ export class LoadingScreen {
       b.v.update(dt, { speed: i === 0 ? 2.2 : 3.0, grounded: bounce < 0.04, vy, yaw: 0, stunned: 0 });
       const yaw = i === 0 ? Math.sin(this._t * 0.5) * 0.45 : (this._t * b.yawSpin);
       b.v.faceYaw = i === 0 ? Math.sin(this._t * 0.9) * 0.22 : 0;
-      b.v.draw(R, b.x, bounce, b.z, yaw, b.scale);
+      /* ★ 見せる 場面なので こちらを 向かせる（半回転） */
+      b.v.draw(R, b.x, bounce, b.z, Math.PI + yaw, b.scale);
     }
 
     R.end(dt);
@@ -291,7 +282,7 @@ export class LoadingScreen {
 
 /* 読み込み画面 だけの CSS。theme の CSS へ 後ろから 足す。 */
 export const LOADING_CSS = `
-.vs-load{ position:absolute; inset:0; overflow:hidden; background:${PALETTE.bgDeep}; }
+.vs-load{ position:absolute; inset:0; overflow:hidden; background:var(--vs-bg); }
 .vs-load-vignette{
   position:absolute; inset:0; pointer-events:none;
   background:
@@ -312,17 +303,19 @@ export const LOADING_CSS = `
 }
 .vs-load-badge{
   display:inline-flex; align-items:center; gap:7px;
-  height:30px; padding:0 14px; border-radius:999px;
-  background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.16);
-  font-size:12px; font-weight:800; letter-spacing:.10em; color:rgba(243,245,255,.86);
+  height:30px; padding:0 14px; border-radius:var(--vs-r-full);
+  background:var(--vs-surface); border:1px solid var(--vs-line-subtle);
+  box-shadow:var(--vs-sh-subtle);
+  font-size:12px; font-weight:650; letter-spacing:.06em; color:var(--vs-ink);
 }
 /* ★ 色は JS が 1 文字ずつ 入れる（上の gradientAt）。
      ここでは 形と 影だけ。切り抜きには 頼らない。 */
 .vs-load-title{
-  font-size:clamp(30px, 8.2vw, 76px); font-weight:900; letter-spacing:-.028em;
-  line-height:1; margin:2px 0 0;
+  font-family: var(--vq-font-display, inherit);
+  font-size:clamp(28px, 6.6vw, 58px); font-weight:750; letter-spacing:-.004em;
+  line-height:1.1; margin:2px 0 0;
   display:flex; flex-wrap:wrap; justify-content:center;
-  filter: drop-shadow(0 3px 0 rgba(10,6,30,.55)) drop-shadow(0 12px 30px rgba(120,140,255,.34));
+  text-shadow: 0 2px 18px rgba(0,0,0,.45);
 }
 .vs-load-ch{
   display:inline-block;
@@ -333,37 +326,32 @@ export const LOADING_CSS = `
   to{ transform:none; opacity:1; }
 }
 .vs-load-hint{
-  color:rgba(243,245,255,.78); font-size:clamp(12px,2.4vw,15px); max-width:34em;
+  color:var(--vs-ink-sub); font-size:clamp(12px,2.4vw,15px); max-width:34em;
   text-shadow:0 2px 10px rgba(6,8,24,.9), 0 0 22px rgba(6,8,24,.7);
 }
 .vs-load-start{
-  min-width:212px; height:58px; font-size:19px; letter-spacing:.10em;
-  animation: vsPulse 2.6s ease-in-out infinite;
-}
-.vs-load[data-ready="1"] .vs-load-start{ animation: vsPulse 1.6s ease-in-out infinite; }
-@keyframes vsPulse{
-  0%,100%{ box-shadow:0 6px 0 #b97400, 0 12px 26px rgba(255,176,32,.28); }
-  50%{ box-shadow:0 6px 0 #b97400, 0 16px 42px rgba(255,176,32,.52); }
+  min-width:212px; --_h:var(--vs-h-lg); font-size:15px; letter-spacing:.04em;
+  box-shadow:var(--vs-sh-floating);
 }
 .vs-load[data-go="1"]{ animation: vsGo .34s ease forwards; }
 @keyframes vsGo{ to{ opacity:0; transform:scale(1.04); } }
 .vs-load-status{ width:min(360px,80%); display:flex; flex-direction:column; gap:7px; margin-top:6px; }
-.vs-load-bar{ height:6px; border-radius:999px; background:rgba(255,255,255,.13); overflow:hidden; }
+.vs-load-bar{ height:6px; border-radius:var(--vs-r-full); background:var(--vs-surface-3); overflow:hidden; }
 .vs-load-fill{
-  display:block; height:100%; width:0%; border-radius:999px;
-  background:linear-gradient(90deg, ${PALETTE.mint}, ${PALETTE.blue});
+  display:block; height:100%; width:0%; border-radius:var(--vs-r-full);
+  background:var(--vs-accent);
   transition: width .28s cubic-bezier(.3,.8,.3,1);
 }
-.vs-load-line{ display:flex; justify-content:space-between; font-size:11.5px; color:rgba(243,245,255,.52); }
+.vs-load-line{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--vs-ink-sub); }
 .vs-load-ver{
   position:absolute; right:calc(14px + var(--vs-safe-r)); bottom:calc(12px + var(--vs-safe-b));
-  font-size:11px; color:rgba(243,245,255,.34); letter-spacing:.06em;
+  font-size:11px; color:var(--vs-ink-faint); letter-spacing:.06em;
 }
 @media (max-height: 560px){
   .vs-load-hint{ display:none; }
   .vs-load-top{ top:calc(2vh + var(--vs-safe-t)); gap:6px; }
   .vs-load-bottom{ bottom:calc(2.5vh + var(--vs-safe-b)); gap:8px; }
-  .vs-load-start{ height:46px; min-width:180px; font-size:17px; }
+  .vs-load-start{ --_h:var(--vs-h-md); min-width:180px; font-size:14px; }
 }
 @media (prefers-reduced-motion: reduce){
   .vs-load-ch, .vs-load-start, .vs-load[data-go="1"]{ animation:none !important; }

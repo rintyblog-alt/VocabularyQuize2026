@@ -35,13 +35,13 @@ export class QuizPanel {
     this.qEl = h("p", { class: "vs-quiz-q" });
     this.tagEl = h("span", { class: "vs-quiz-tag", text: "QUIZ GATE" });
     this.ringPath = svg("circle", {
-      cx: "17", cy: "17", r: "15", fill: "none", stroke: PALETTE.amber,
+      cx: "17", cy: "17", r: "15", fill: "none", style: "stroke:var(--vs-accent)",
       "stroke-width": "3.4", "stroke-linecap": "round",
       "stroke-dasharray": "94.2", "stroke-dashoffset": "0",
       transform: "rotate(-90 17 17)"
     });
     this.ring = svg("svg", { viewBox: "0 0 34 34", width: "34", height: "34", class: "vs-quiz-ring", "aria-hidden": "true" },
-      svg("circle", { cx: "17", cy: "17", r: "15", fill: "none", stroke: "rgba(255,255,255,.18)", "stroke-width": "3.4" }),
+      svg("circle", { cx: "17", cy: "17", r: "15", fill: "none", style: "stroke:var(--vs-line)", "stroke-width": "3.4" }),
       this.ringPath);
     this.leftEl = h("span", { class: "vs-quiz-left vs-mono", text: "" });
 
@@ -95,7 +95,8 @@ export class QuizPanel {
   _ring(k) {
     const C = 94.2;
     this.ringPath.setAttribute("stroke-dashoffset", String(C * (1 - k)));
-    this.ringPath.setAttribute("stroke", k < 0.25 ? PALETTE.danger : (k < 0.5 ? PALETTE.amber : PALETTE.mint));
+    /* ★ SVG の 属性に var() は 効かない。style で 当てる。 */
+    this.ringPath.style.stroke = k < 0.25 ? "var(--vs-danger)" : (k < 0.5 ? "var(--vs-warn)" : "var(--vs-accent)");
   }
 
   tick(dt) {
@@ -150,44 +151,43 @@ export const QUIZ_CSS = `
 .vs-quiz[data-on="1"]{ opacity:1; transform:none; pointer-events:auto; }
 .vs-quiz-card{
   width:min(760px, 100%);
-  background:rgba(10,13,32,.90); border:1px solid rgba(255,255,255,.16);
-  border-radius:20px; padding:14px 16px 16px;
-  backdrop-filter:blur(18px) saturate(1.2); -webkit-backdrop-filter:blur(18px) saturate(1.2);
-  box-shadow:0 -8px 40px rgba(0,0,0,.42);
+  background:var(--vs-surface); border:1px solid var(--vs-line);
+  border-radius:var(--vs-r-lg); padding:14px 16px 16px;
+  box-shadow:var(--vs-sh-raised);
 }
 .vs-quiz-head{ display:grid; grid-template-columns:1fr auto; grid-template-rows:auto auto; gap:2px 12px; align-items:center; }
-.vs-quiz-tag{ grid-column:1; font-size:10.5px; font-weight:900; letter-spacing:.16em; color:${PALETTE.amber}; }
-.vs-quiz-q{ grid-column:1; font-size:clamp(16px,2.6vw,21px); font-weight:800; line-height:1.4; }
+.vs-quiz-tag{ grid-column:1; font-size:10.5px; font-weight:750; letter-spacing:.16em; color:${PALETTE.amber}; }
+.vs-quiz-q{ grid-column:1; font-size:clamp(16px,2.6vw,21px); font-weight:650; line-height:1.4; }
 .vs-quiz-timer{ grid-column:2; grid-row:1 / span 2; position:relative; width:34px; height:34px; }
 .vs-quiz-ring{ display:block; }
 .vs-quiz-left{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  font-size:12px; font-weight:800; }
+  font-size:12px; font-weight:650; }
 .vs-quiz-grid{ display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:12px; }
 .vs-quiz-opt{
   display:flex; align-items:center; gap:10px;
-  min-height:58px; padding:10px 14px; border-radius:14px; text-align:left;
-  background:rgba(255,255,255,.075); border:1.5px solid rgba(255,255,255,.16);
+  min-height:58px; padding:10px 14px; border-radius:var(--vs-r-md); text-align:left;
+  background:var(--vs-surface-2); border:1.5px solid var(--vs-line);
   font-size:15px; font-weight:700; color:${PALETTE.ink};
   transition: background .12s ease, border-color .12s ease, transform .1s ease;
 }
-.vs-quiz-opt:hover:not([disabled]){ background:rgba(255,255,255,.14); }
+.vs-quiz-opt:hover:not([disabled]){ background:var(--vs-surface-3); }
 .vs-quiz-opt:active:not([disabled]){ transform:scale(.98); }
 .vs-quiz-opt:focus-visible{ outline:3px solid ${PALETTE.amber}; outline-offset:2px; }
 .vs-quiz-key{
-  flex:0 0 auto; width:24px; height:24px; border-radius:7px;
+  flex:0 0 auto; width:24px; height:24px; border-radius:var(--vs-r-xs);
   display:inline-flex; align-items:center; justify-content:center;
-  background:rgba(255,255,255,.14); font-size:11px; font-weight:800; font-family:inherit;
+  background:var(--vs-surface-3); font-size:11px; font-weight:650; font-family:inherit;
 }
 .vs-quiz-label{ flex:1; }
 /* ★ 色だけで 伝えない。印を 付ける。 */
-.vs-quiz-opt[data-state="right"]{ background:rgba(48,190,124,.26); border-color:${PALETTE.good}; }
+.vs-quiz-opt[data-state="right"]{ background:var(--vs-good-bg); border-color:var(--vs-good); }
 .vs-quiz-opt[data-state="right"] .vs-quiz-key::after{ content:"○"; }
-.vs-quiz-opt[data-state="right"] .vs-quiz-key{ background:${PALETTE.good}; color:#04281c; font-size:13px; }
-.vs-quiz-opt[data-state="wrong"]{ background:rgba(210,60,72,.24); border-color:${PALETTE.danger}; }
-.vs-quiz-opt[data-state="wrong"] .vs-quiz-key{ background:${PALETTE.danger}; color:#fff; font-size:13px; }
+.vs-quiz-opt[data-state="right"] .vs-quiz-key{ background:var(--vs-good); color:var(--vs-solid-ink); font-size:13px; }
+.vs-quiz-opt[data-state="wrong"]{ background:var(--vs-danger-bg); border-color:var(--vs-danger); }
+.vs-quiz-opt[data-state="wrong"] .vs-quiz-key{ background:var(--vs-danger); color:var(--vs-solid-ink); font-size:13px; }
 .vs-quiz-opt[data-state="wrong"] .vs-quiz-key::after{ content:"×"; }
 .vs-quiz-opt[data-state] .vs-quiz-key{ font-size:0; }
-.vs-quiz-feed{ margin-top:10px; min-height:18px; font-size:13px; font-weight:700; color:rgba(243,245,255,.7); }
+.vs-quiz-feed{ margin-top:10px; min-height:18px; font-size:13px; font-weight:700; color:var(--vs-ink-sub); }
 .vs-quiz-feed[data-kind="good"]{ color:${PALETTE.good}; }
 .vs-quiz-feed[data-kind="bad"]{ color:${PALETTE.danger}; }
 /* ★ スマホでも **2 列**。1 列に すると 札が 縦に 伸びて
@@ -198,7 +198,7 @@ export const QUIZ_CSS = `
   .vs-quiz-grid{ grid-template-columns:1fr 1fr; gap:6px; }
   .vs-quiz-opt{ min-height:52px; font-size:13.5px; padding:8px 10px; gap:7px; }
   .vs-quiz-key{ width:20px; height:20px; font-size:10px; }
-  .vs-quiz-card{ padding:11px 11px 12px; border-radius:16px; }
+  .vs-quiz-card{ padding:11px 11px 12px; border-radius:var(--vs-r-md); }
   .vs-quiz-feed{ margin-top:8px; font-size:12px; }
 }
 @media (max-width: 380px){

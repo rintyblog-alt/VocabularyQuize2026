@@ -134,23 +134,25 @@ export const TOUCH_CSS = `
 .vs-stick[data-on="1"]{ opacity:1; }
 .vs-stick-ring{
   position:absolute; left:-58px; top:-58px; width:116px; height:116px; border-radius:50%;
-  border:2px solid rgba(255,255,255,.30); background:rgba(10,14,34,.28);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  /* 遊んでいる 絵の 上に 置く 輪。ここだけは 下が 透けないと 走れないので
+     アプリの 面の 色を **薄めて** 使う（色そのものは 本体の トークン）。 */
+  border:2px solid var(--vs-line-strong);
+  background:color-mix(in srgb, var(--vs-surface) 46%, transparent);
 }
 .vs-stick-knob{
   position:absolute; width:44px; height:44px; border-radius:50%;
-  background:rgba(255,255,255,.86); box-shadow:0 4px 14px rgba(0,0,0,.34);
+  background:var(--vs-ink); box-shadow:var(--vs-sh-raised);
   will-change: transform;
 }
 .vs-tbtn{
   position:absolute; border-radius:50%;
   display:flex; align-items:center; justify-content:center;
-  color:#231702; border:0;
-  background:linear-gradient(180deg,#ffc94a,${PALETTE.amber});
-  box-shadow:0 5px 0 #b97400, 0 10px 22px rgba(0,0,0,.30);
+  color:var(--vs-accent-ink); border:0;
+  background:var(--vs-accent);
+  box-shadow:var(--vs-sh-floating);
   touch-action:none; user-select:none; -webkit-user-select:none;
 }
-.vs-tbtn:active{ transform:translateY(4px); box-shadow:0 1px 0 #b97400; }
+.vs-tbtn:active{ transform:scale(.96); box-shadow:var(--vs-sh-raised); }
 .vs-tbtn-jump{
   width:96px; height:96px;
   right:calc(20px + var(--vs-safe-r)); bottom:calc(28px + var(--vs-safe-b));
@@ -158,10 +160,10 @@ export const TOUCH_CSS = `
 .vs-tbtn-dive{
   width:66px; height:66px;
   right:calc(126px + var(--vs-safe-r)); bottom:calc(34px + var(--vs-safe-b));
-  background:linear-gradient(180deg,#8fd8ff,${PALETTE.blue}); color:#04203f;
-  box-shadow:0 5px 0 #2a5bb8, 0 10px 22px rgba(0,0,0,.30);
+  background:var(--vs-surface); color:var(--vs-ink); border:1px solid var(--vs-line);
+  box-shadow:var(--vs-sh-floating);
 }
-.vs-tbtn-dive:active{ box-shadow:0 1px 0 #2a5bb8; }
+.vs-tbtn-dive:active{ box-shadow:var(--vs-sh-raised); }
 /* 横向きで 画面が 低い ときは 少し 小さく */
 @media (max-height: 460px){
   .vs-tbtn-jump{ width:80px; height:80px; bottom:calc(16px + var(--vs-safe-b)); }
