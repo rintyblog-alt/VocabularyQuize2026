@@ -576,7 +576,13 @@
     ".sheet{position:fixed;inset:0;z-index:60;display:none;}" +
     ".sheet.on{display:block;}" +
     ".sheet__bg{position:absolute;inset:0;background:rgba(24,18,40,.42);}" +
-    ".sheet__p{position:absolute;left:0;right:0;bottom:0;background:var(--vq-surface,#fff);border-radius:22px 22px 0 0;padding:8px 18px calc(22px + env(safe-area-inset-bottom,0px));max-height:82vh;overflow-y:auto;}" +
+    /* ★ 下の バー（#vqMobBar・z9990）は この 画面より 前面に 出る。
+       画面の 下端に 貼ると **バーの 下に 潜って 押せない**。
+       #vqScreens が 測って 入れている バーの 高さ（--vqs-pb）ぶん 上げる。
+       安全域は バーの 中に 入っているので ここで 二重に 足さない。 */
+    ".sheet__p{position:absolute;left:0;right:0;bottom:var(--vqs-pb,0px);background:var(--vq-surface,#fff);" +
+      "border-radius:22px 22px 0 0;padding:8px 18px 22px;max-height:calc(82vh - var(--vqs-pb,0px));overflow-y:auto;" +
+      "box-shadow:0 -10px 30px rgba(24,18,40,.16);}" +
     ".sheet__g{width:38px;height:4px;border-radius:999px;background:var(--vq-border,#E1DDEE);margin:6px auto 14px;}" +
     ".sheet__t{font-size:13px;font-weight:750;color:var(--vq-text,#2B2836);margin:14px 0 8px;}" +
     "@media (prefers-reduced-motion:reduce){.pc,.pc:hover{transition:none;transform:none;}.sk .sk__b,.sk .sk__l,.sk .sk__f{animation:none;}}" +

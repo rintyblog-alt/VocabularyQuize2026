@@ -194,6 +194,25 @@
     /* ストレージ（帯と内訳）。
        この画面は影の DOM の中なので、**この文字列に入れないと届かない**。
        外側の <style> に書いても効かない（実際に効かず、白いままだった）。 */
+    /* ── ストレージの 要約（一目で 分かる 2 枡）───────────────── */
+    ".stg2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:4px 0 16px;}" +
+    "@media (max-width:520px){.stg2{grid-template-columns:1fr;}}" +
+    ".stg2-c{border:1px solid var(--vq-border-subtle,#ECEAF4);border-radius:calc(14px * var(--vq-r-scale,1));" +
+      "padding:14px 15px;background:var(--vq-surface,#fff);}" +
+    ".stg2-t{font-size:12px;font-weight:700;color:var(--vq-text-secondary,#686477);}" +
+    ".stg2-n{margin-top:6px;font-size:20px;font-weight:750;color:var(--vq-text,#2B2836);letter-spacing:-.01em;}" +
+    ".stg2-s{font-size:12.5px;font-weight:600;color:var(--vq-text-tertiary,#9994A8);}" +
+    ".stg2-bar{height:8px;border-radius:999px;background:var(--vq-surface-active,#F1EEF8);overflow:hidden;margin:10px 0 7px;}" +
+    ".stg2-bar i{display:block;height:100%;border-radius:inherit;transition:width .3s ease;}" +
+    ".stg2-m{font-size:11.5px;font-weight:600;color:var(--vq-text-secondary,#686477);}" +
+    ".stg2-h{margin-top:5px;font-size:11px;color:var(--vq-text-tertiary,#9994A8);line-height:1.6;}" +
+    /* くわしく（畳んでおく） */
+    ".stg-more{margin-top:6px;border:1px solid var(--vq-border-subtle,#ECEAF4);border-radius:calc(14px * var(--vq-r-scale,1));background:var(--vq-surface,#fff);}" +
+    ".stg-more>summary{list-style:none;cursor:pointer;padding:13px 15px;font-size:13px;font-weight:700;color:var(--vq-text-secondary,#686477);display:flex;align-items:center;justify-content:space-between;}" +
+    ".stg-more>summary::-webkit-details-marker{display:none;}" +
+    ".stg-more>summary::after{content:\"\\203A\";font-size:18px;transform:rotate(90deg);transition:transform .18s ease;color:var(--vq-text-tertiary,#9994A8);}" +
+    ".stg-more[open]>summary::after{transform:rotate(-90deg);}" +
+    ".stg-more__b{padding:0 15px 15px;}" +
     ".stg-bar{display:flex;height:14px;border-radius:7px;overflow:hidden;margin:12px 0 10px;" +
     "background:var(--vq-surface-sunken,rgba(127,127,127,.16));}" +
     ".stg-bar i{display:block;height:100%;}" +
@@ -676,7 +695,7 @@
     return out;
   }
 
-  function deviceHTML() {
+  function deviceHTML(opts) {
     var I = window.VQIDB;
     if (!I) return "";
     if (!DEV.手元) devLoad();
@@ -684,6 +703,28 @@
     var 割 = Math.min(100, (h.合計 / (h.上限のめやす || 1)) * 100);
     var 色 = 割 > 85 ? "#C0392B" : 割 > 65 ? "#B0791F" : "#756DB3";
     var 上位 = h.明細.slice(0, 6);
+    /* ★ 上の 要約カードで 同じ 数字を 出している ので、
+       「くわしく」の 中では 表だけに する（二度 出さない）。 */
+    if (opts && opts.表だけ) {
+      var o2 = '<div class="gttl" style="margin-top:6px;">この端末で 大きいもの</div><div class="grp">'
+        + (上位.length ? 上位.map(function (x) {
+            return '<div class="row" title="' + esc(x.鍵) + '"><span class="row__main"><span class="row__label">'
+              + esc(名前をやさしく(x.鍵)) + '</span><span class="row__desc">'
+              + esc(何に使うか(x.鍵)) + "</span></span>"
+              + '<span class="rval">' + fmtBytes(x.バイト) + "</span></div>";
+          }).join("")
+          : '<div class="row"><span class="row__main"><span class="row__label">まだ 何も ありません</span></span></div>')
+        + "</div>"
+        + '<div class="grp" style="margin-top:12px"><div class="row"><span class="row__main">'
+        + '<span class="row__label">大きいものを 置き場へ 移す</span>'
+        + '<span class="row__desc">AR Board・会話の記録・控えを IndexedDB へ。中身は 消えません</span></span>'
+        + '<button class="btn btn--sm" data-dev="move"' + (DEV.移し中 ? " disabled" : "") + ">"
+        + (DEV.移し中 ? "移しています…" : "移す") + "</button></div>"
+        + (DEV.済 ? '<div class="row"><span class="row__main"><span class="row__desc">'
+            + esc(DEV.済) + "</span></span></div>" : "")
+        + "</div>";
+      return o2;
+    }
     var out = '<div class="gttl" style="margin-top:22px;">この端末の中</div>'
       + '<div class="acard"><div class="acard__t">すぐ読む場所</div>'
       + '<div class="acard__en">localStorage</div>'
@@ -829,9 +870,44 @@
       + "</span></span>"
       + '<span class="rval">' + fmtBytes(d.sharedDatabaseLimitBytes) + "</span></div></div>";
 
-    /* ★ この端末のぶんを **いちばん上**に 出す（2026-08-19）。
-       詰まっているのは こちら側なので、下へ 埋もれさせない。 */
-    return deviceHTML() + driveHTML() + head + list + note + lim + quota;
+    /* ★ 2026-08-29: **一目で 分かる 形**に した。
+       前は 6 つの 表が 縦に 並び、どこを 見れば よいか 分からなかった。
+       いまは「いま どれだけ 使っているか」を **1 枚**で 出し、
+       細かい 数字は「くわしく」を 押した ときだけ。 */
+    return 要約カード(used, q) + driveHTML()
+      + '<details class="stg-more"><summary>くわしく見る</summary><div class="stg-more__b">'
+      + deviceHTML({ 表だけ: true })
+      + '<div class="gttl" style="margin-top:18px;">預けているぶんの 内訳</div>'
+      + bar + legend + list.replace(/^<div class="gttl"[^>]*>内訳<\/div>/, "") + note + lim + quota
+      + "</div></details>";
+  }
+
+  /* ── 要約（この端末 と クラウドを 並べて 1 枚で）──────────────── */
+  function 要約カード(用, 枠) {
+    var I = window.VQIDB;
+    var h = (I && DEV.手元) || { 合計: 0, 上限のめやす: 4.4 * 1024 * 1024 };
+    if (I && !DEV.手元) devLoad();
+    var 端末上限 = (DEV.中 && DEV.中.分かる && DEV.中.上限) ? DEV.中.上限 : (h.上限のめやす || 1);
+    var 端末使用 = (DEV.中 && DEV.中.分かる) ? (DEV.中.使用 || 0) : (h.合計 || 0);
+    var 端末割 = Math.min(100, (端末使用 / (端末上限 || 1)) * 100);
+    var 雲割 = 枠 ? Math.min(100, (用 / 枠) * 100) : 0;
+    var 色 = function (p) { return p > 85 ? "var(--vq-danger,#C0392B)" : p > 65 ? "var(--vq-warning-text,#B0791F)" : "var(--vq-accent,#756DB3)"; };
+    var 言 = function (p) { return p > 85 ? "もう いっぱいです" : p > 65 ? "そろそろです" : "まだ 余裕が あります"; };
+    var 枡 = function (題, 使, 上, 割, 注) {
+      return '<div class="stg2-c">'
+        + '<div class="stg2-t">' + 題 + "</div>"
+        + '<div class="stg2-n">' + fmtBytes(使) + '<span class="stg2-s"> / ' + fmtBytes(上) + "</span></div>"
+        + '<div class="stg2-bar"><i style="width:' + Math.max(1.5, 割).toFixed(1) + "%;background:" + 色(割) + '"></i></div>'
+        + '<div class="stg2-m">' + (割 < 0.1 && 使 > 0 ? "0.1% 未満" : 割.toFixed(1) + "%") + " ・ " + 言(割) + "</div>"
+        + (注 ? '<div class="stg2-h">' + 注 + "</div>" : "")
+        + "</div>";
+    };
+    return '<div class="stg2">'
+      + 枡("この端末", 端末使用, 端末上限, 端末割, "作った プリセットや 会話が 入ります")
+      + (枠 ? 枡("クラウド", 用, 枠, 雲割, "ほかの 端末とも 同じに なります")
+            : '<div class="stg2-c"><div class="stg2-t">クラウド</div>'
+              + '<div class="stg2-n">—</div><div class="stg2-h">ログインすると 出ます</div></div>')
+      + "</div>";
   }
 
   function acctHTML() {
