@@ -48558,9 +48558,17 @@ function aigenQualityIssue(q, engineId, lim) {
     if (engineId === "classification" && (空(q.items) || 空(q.groups))) return "分ける材料か仕分け先が無い";
     if (engineId === "matching" && (空(q.left) || 空(q.right))) return "対応づける材料が無い";
     if (engineId === "table_fill" && (空(q.headers) || 空(q.rows))) return "うめる表が無い";
-    /* 穴埋めは 空欄の 印が 無ければ、どこを 答えるのか 決まらない。 */
+    /* 穴埋めは 空欄の 印が 無ければ、どこを 答えるのか 決まらない。
+       ★ **こちらの 取りこぼしで 全滅した**（2026-08-29 実測）。
+         この 検査を 入れた とき、**この 形式の 正しい 書きかた
+         【1】【2】を 見ていなかった**。エンジンの 決まりでは
+         「空欄は【1】【2】…と書く」と 指示しているのに、
+         それを 印として 数えていなかったので、
+         「英単語の 穴埋め 4 問」で **13 件 すべて 落ちて 0 問**に なった。
+         印の 有無は エンジンと **同じ 見かた**（aigenBlankNums）で 見る。 */
     if ((engineId === "fill_blank" || engineId === "cloze")
-      && !/[（(]\s*[0-9０-９a-zA-Zａ-ｚA-Ｚ]?\s*[)）]|＿|_{2,}|\[\s*\]|〔\s*〕|◯|○|□/.test(qt)
+      && !aigenBlankNums(qt).length
+      && !/[（(]\s*[0-9０-９a-zA-Zａ-ｚA-Ｚ]?\s*[)）]|＿|_{2,}|\[\s*\]|〔\s*〕/.test(qt)
       && 空(q.blanks)) {
       return "空欄の印が無い";
     }
@@ -49553,6 +49561,47 @@ async function aigenGenerate(env, contract, o = {}) {
           metrics.expandOk++;
         }
       }
+    }
+  }
+
+  /* ══ 解説が **空のまま** 通ったものを 埋める（2026-08-29・訴え）════
+     訴え「解説を もっと 具体的で 分かりやすく」。
+     ★ ところが 実測すると、できた 問題の 解説が **0 字**だった。
+       仕組みは こう:
+         ・依頼文に「解説」と 書いていないと explanationRequired は false
+         ・そのとき、質の 悪い 解説は **問題ごと 捨てずに 解説だけ 消す**
+           （2026-08-13 の 直し。捨てると 26% の 問題が 消えたため）
+       つまり 質を 上げる ほど 解説が 空に なりやすい、という 裏返し。
+     ★ 直しかた: 捨てるでも 甘くするでも なく、**もう一度 書かせる**。
+       まとめて 1 回だけ。書き直しても だめなら 空のまま（甘くしない）。 */
+  {
+    const 空解説 = accepted.filter((q) => !String(q.explanation || "").trim());
+    if (空解説.length && metrics.aiCalls < maxCalls) {
+      const min = (contract.lengths && contract.lengths.explanationMin) || 45;
+      const max = (contract.lengths && contract.lengths.explanation) || 0;
+      metrics.aiCalls++;
+      /* ★ 突き合わせは **並び順**で する（id では ない）。
+         aigenExpandExplanations は 渡した 並びの まま 返す 作りで、
+         中の id は 0,1,2… の 通し番号。問題の 側の id は
+         回ごとに q1,q2… と 重なることが あるので、鍵に できない。 */
+      const 対象 = 空解説.slice(0, 24);
+      const 書けた = await aigenExpandExplanations(env, 対象, {
+        min, max, files: o.files
+      }).catch(() => []);
+      metrics.exFillTried = 対象.length;
+      metrics.exFillOk = 0;
+      対象.forEach((q, i) => {
+        const n = (書けた || [])[i];
+        const ex = n ? String(n.explanation || "").trim() : "";
+        if (!ex) return;
+        /* **問題は 差し替えない。**解説だけ 入れる（中身が 変わるのを 防ぐ）。 */
+        const 試 = Object.assign({}, q, { explanation: ex });
+        const why = aigenLengthIssue(contract.lengths, 試)
+          || aigenQualityIssue(試, String(q.type || ""), contract.lengths);
+        if (why) return;                       /* だめなら 空のまま（甘くしない） */
+        q.explanation = ex;
+        metrics.exFillOk++;
+      });
     }
   }
 
