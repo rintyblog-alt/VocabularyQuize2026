@@ -331,6 +331,49 @@ function 比(a, b) {
       ok(nm + " の 明暗が " + 要 + ":1 以上", c >= 要, { 色: v.c, 背: v.b, 比: c && c.toFixed(2), px: v.px });
     }
 
+    節("⑦-c ゲームパッド");
+    /* ★ 走る 遊びなので、持っている 人は まず 使いたい。
+       繋ぐだけで 効く（設定は 要らない）。偽の パッドを 差して 確かめる。 */
+    const 盤 = await pg.evaluate(async () => {
+      const m = window.VocabuSurvive.__app.shell.get("match");
+      const 偽 = {
+        connected: true, axes: [0.9, -0.8, 0, 0],
+        buttons: Array.from({ length: 16 }, (_, i) => ({ pressed: i === 0, value: i === 0 ? 1 : 0 }))
+      };
+      const 元 = navigator.getGamepads;
+      navigator.getGamepads = () => [偽];
+      m.input.pad.prev = [];
+      m.input.pollPad();
+      const s1 = { on: m.input.pad.on, x: Math.round(m.input.pad.x * 100) / 100,
+        y: Math.round(m.input.pad.y * 100) / 100, jump: m.input.jumpQueued };
+      /* 押しっぱなしで 跳び続けない */
+      m.input.jumpQueued = false;
+      m.input.pollPad();
+      const s2 = { jump: m.input.jumpQueued };
+      /* 遊び（デッドゾーン）: 少しの ぐらつきでは 動かない */
+      偽.axes = [0.1, -0.15, 0, 0];
+      偽.buttons = 偽.buttons.map(() => ({ pressed: false, value: 0 }));
+      m.input.pollPad();
+      const s3 = { x: m.input.pad.x, y: m.input.pad.y };
+      /* 抜いたら 止まる */
+      navigator.getGamepads = () => [];
+      m.input.pollPad();
+      const s4 = { on: m.input.pad.on, x: m.input.pad.x };
+      navigator.getGamepads = 元;
+      return { s1, s2, s3, s4 };
+    });
+    ok("差すと 効く", 盤.s1.on === true, 盤.s1);
+    ok("棒が 効く", 盤.s1.x > 0.5 && 盤.s1.y < -0.5, 盤.s1);
+    ok("A で 跳ぶ", 盤.s1.jump === true, 盤.s1);
+    ok("**押しっぱなしで 跳び続けない**", 盤.s2.jump === false, 盤.s2);
+    ok("少しの ぐらつきでは 動かない", 盤.s3.x === 0 && 盤.s3.y === 0, 盤.s3);
+    ok("抜いたら 止まる", 盤.s4.on === false && 盤.s4.x === 0, 盤.s4);
+    const 札 = await pg.evaluate(() => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      return Array.from(r.querySelectorAll(".vs-help-t")).map((e) => e.textContent);
+    });
+    ok("あそび方に 書いてある", 札.some((t) => /ゲームパッド/.test(t)), 札);
+
     節("⑧ 動きを 減らす");
     const src = fs.readFileSync("client/assets/vocabu-survive/boot/loading.js", "utf8")
       + fs.readFileSync("client/assets/vocabu-survive/ui/theme.js", "utf8")

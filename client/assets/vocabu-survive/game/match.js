@@ -331,6 +331,8 @@ export class MatchScreen {
     const sz = this.renderer.resize();
 
     /* ① 見回し */
+    /* ゲームパッドは 出来事が 来ない ので、毎コマ 自分で 見に 行く */
+    this.input.pollPad();
     const look = this.input.takeLook(dt);
     if (look.dx || look.dy) this.cam.rotate(look.dx, look.dy);
     const z = this.input.takeZoom();

@@ -41,6 +41,44 @@ export class Input {
     this._binds = [];
     this._pointers = new Map();
     this._lastLook = { x: 0, y: 0 };
+    /* ── ゲームパッド ────────────────────────────────────────────────
+       ★ **繋がって いれば 勝手に 効く。** 設定は 要らない。
+         走る 遊びなので、持っている 人は まず 使いたい。
+       ★ ボタンの 押し始めだけを 拾う（押しっぱなしで 跳び続けない）。 */
+    this.pad = { on: false, x: 0, y: 0, lx: 0, ly: 0, prev: [] };
+  }
+
+  /** 毎コマ 1 回 呼ぶ。繋がって いなければ 何も しない。 */
+  pollPad() {
+    let list = null;
+    try { list = navigator.getGamepads ? navigator.getGamepads() : null; } catch (e) { list = null; }
+    if (!list) { this.pad.on = false; return; }
+    let g = null;
+    for (const p of list) { if (p && p.connected) { g = p; break; } }
+    if (!g) { this.pad.on = false; this.pad.x = this.pad.y = 0; return; }
+    this.pad.on = true;
+    const ax = g.axes || [];
+    /* 遊び（デッドゾーン）。**小さすぎると 勝手に 走り出す。** */
+    const 遊 = (v) => (Math.abs(v) < 0.22 ? 0 : (v - Math.sign(v) * 0.22) / 0.78);
+    this.pad.x = 遊(Number(ax[0]) || 0);
+    this.pad.y = 遊(Number(ax[1]) || 0);
+    this.pad.lx = 遊(Number(ax[2]) || 0);
+    this.pad.ly = 遊(Number(ax[3]) || 0);
+    const bs = g.buttons || [];
+    const 押 = (i) => !!(bs[i] && (bs[i].pressed || bs[i].value > 0.5));
+    const prev = this.pad.prev;
+    /* 0 = A/×（跳ぶ）／1 = B/○（伏せる）／2,3 も 跳ぶ・伏せるに 割る */
+    const 跳 = 押(0) || 押(7);
+    const 伏 = 押(1) || 押(2);
+    if (跳 && !prev[0]) this.jumpQueued = true;
+    if (伏 && !prev[1]) this.diveQueued = true;
+    this.jumpDown = 跳;
+    this.pad.prev = [跳, 伏];
+    /* 十字キーでも 動ける（4 = 上, 5 = 下, 6 = 左, 7 = 右 の 端末も ある） */
+    if (押(12)) this.pad.y = -1;
+    if (押(13)) this.pad.y = 1;
+    if (押(14)) this.pad.x = -1;
+    if (押(15)) this.pad.x = 1;
   }
 
   _on(target, type, fn, opt) {
@@ -129,9 +167,10 @@ export class Input {
     if (this._any(KEYMAP.back)) f -= 1;
     if (this._any(KEYMAP.right)) r += 1;
     if (this._any(KEYMAP.left)) r -= 1;
-    /* 指の 棒（あれば 上書きせず 足す） */
+    /* 指の 棒・ゲームパッド（あれば 上書きせず 足す） */
     f += -this.axis.y;
     r += this.axis.x;
+    if (this.pad.on) { f += -this.pad.y; r += this.pad.x; }
     const mag = Math.hypot(f, r);
     if (mag > 1) { f /= mag; r /= mag; }
 
@@ -161,6 +200,11 @@ export class Input {
        だから 「左へ 回す（Q）」は dx を **負**に する。 */
     if (this._any(KEYMAP.camLeft)) dx -= 620 * 秒;
     if (this._any(KEYMAP.camRight)) dx += 620 * 秒;
+    /* ゲームパッドの 右の 棒で 見回す */
+    if (this.pad.on) {
+      dx += this.pad.lx * 900 * 秒;
+      dy += this.pad.ly * 520 * 秒;
+    }
     this.look.dx = 0; this.look.dy = 0;
     return { dx, dy };
   }
