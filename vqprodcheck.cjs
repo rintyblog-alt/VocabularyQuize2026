@@ -179,6 +179,7 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
       書類の見た目: /docTheme/.test(app),
       集計表: /sheetsPivot/.test(live) || /sheetsPivot/.test(app),
       入力規則: /sheetsRule/.test(live) || /rules/.test(app),
+      重なりの始末: /sheetsDedupe/.test(live) || /sheetsDedupe/.test(app),
       段取りの窓: typeof window.__vqPlanAsk === "function",
       題字: /vqload-word/.test(css) || /vqload-word/.test(document.documentElement.innerHTML),
       ロードの暗い見た目: /data-theme-mode="dark"\][^]{0,400}authBootSplash/.test(css)
@@ -191,6 +192,7 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
   ok("書類の 見た目（docDesign）が 入っている", 今夜.書類の見た目, 今夜);
   ok("集計表（sheetsPivot）が 入っている", 今夜.集計表, 今夜);
   ok("入力規則（sheetsRule）が 入っている", 今夜.入力規則, 今夜);
+  ok("重なりの 始末（sheetsDedupe）が 入っている", 今夜.重なりの始末, 今夜);
   ok("段取りの 質問の 窓が 出せる", 今夜.段取りの窓, 今夜);
   ok("ロード画面に 題字が ある", 今夜.題字, 今夜);
   ok("ロード画面に 暗い 見た目が ある", 今夜.ロードの暗い見た目, 今夜);
