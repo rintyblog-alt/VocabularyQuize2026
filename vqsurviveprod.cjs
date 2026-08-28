@@ -159,6 +159,38 @@ const 取る = async (p, o) => {
       ok("コースが 30 本 並ぶ", lb.コース === 30, lb.コース);
       ok("遊び方が 6 つ", lb.遊 === 6, lb.遊);
       ok("かぶりものが 12 種", lb.帽 === 12, lb.帽);
+      /* ★ **実際に 走らせる。** ロビーが 出るだけでは
+         「開くが 遊べない」を 見つけられない。
+         ★ 札を 入れて いない ので **何も 書き込まない**
+           （結果を 送る 口は 札が 無ければ そこで 引き返す）。 */
+      await pg.evaluate(() => {
+        const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+        const lb = window.VocabuSurvive.__app.shell.get("lobby");
+        lb.courseIndex = 0; lb.botCount = 3; lb.mode = "race"; lb._render();
+        r.querySelector(".vs-lb-start").click();
+      });
+      await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "match",
+        null, { timeout: 45000, polling: 250 });
+      await pg.evaluate(() => {
+        const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+        const b = r.querySelector(".vs-help .vs-btn"); if (b) b.click();
+      });
+      await new Promise((r) => setTimeout(r, 5200));
+      const 走 = await pg.evaluate(() => {
+        const m = window.VocabuSurvive.__app.shell.get("match");
+        const st = m.renderer.stats || {};
+        return { 相: m.sim.phase, 秒: Math.round(m.sim.raceTime * 10) / 10,
+          板: [m.canvas.width, m.canvas.height], 人: m.sim.players.length,
+          描: st.draws | 0, 面: st.tris | 0, 問: (m.questions || []).length,
+          進: Math.round((m.sim.players[1] ? m.sim.players[1].progress : 0) * 10) / 10 };
+      });
+      console.log("     板 " + 走.板.join("×") + " / 描き " + 走.描 + " 回 / 面 " + 走.面);
+      ok("**本番で 実際に 走る**", 走.相 === "running" && 走.秒 > 0, 走);
+      ok("4 人 いる", 走.人 === 4, 走.人);
+      ok("描けている", 走.描 > 5 && 走.面 > 1000, 走);
+      ok("門の 問題が ある", 走.問 > 0, 走.問);
+      ok("ボットが 走っている", 走.進 > 1, 走.進);
+
       const 実害 = errs.filter((e) => !/favicon|net::ERR_|Failed to load resource|firebase/i.test(e));
       ok("実害の ある 例外が 0 件", 実害.length === 0, 実害.slice(0, 3));
     } finally { await br.close().catch(() => {}); }
