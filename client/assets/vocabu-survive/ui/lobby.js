@@ -23,6 +23,7 @@ import { themeOf } from "../game/theme3d.js";
 import { HATS, HAT_COLORS } from "../game/bean.js";
 import { SurviveNet, createRoom, roomInfo } from "../net/client.js";
 import { buildCourse } from "../game/course.js";
+import { drawCourseMap } from "./coursemap.js";
 import { HelpCard } from "./hud.js";
 
 const MODES = [
@@ -156,6 +157,19 @@ export class LobbyScreen {
       表.appendChild(this._recRow(box.me, box.meId));
     }
     el.appendChild(表);
+  }
+
+  /* 下見の 図。組み立てた ものは 覚えて おく（30 本 建て直さない）。 */
+  _drawMap(c) {
+    if (!this.mapEl) return;
+    try {
+      if (!this._built) this._built = Object.create(null);
+      if (!this._built[c.id]) this._built[c.id] = buildCourse(c);
+      const box = this.mapEl.parentElement ? this.mapEl.parentElement.getBoundingClientRect() : { width: 320 };
+      drawCourseMap(this.mapEl, this._built[c.id], {
+        w: Math.max(160, Math.round(box.width - 28)), h: 88, pad: 6, label: false, alpha: 0.85
+      });
+    } catch (e) { /* 図が 出なくても 遊べる */ }
   }
 
   _recRow(r, meId) {
@@ -335,6 +349,11 @@ export class LobbyScreen {
     }
 
     this.previewEl = h("div", { class: "vs-lb-preview" });
+    /* ★ 下見に **上から 見た 形**を 出す。
+       名前と 一言だけでは 「どんな コースか」が 分からず、
+       30 本の 中から えらぶ 手がかりに ならない。
+       組み立てた 結果は 覚えて おく（同じ コースを 何度も 建てない）。 */
+    this.mapEl = h("canvas", { class: "vs-lb-map", "aria-hidden": "true" });
     /* コースごとの 記録（自分の 自己ベスト ＋ みんなの 上位） */
     this.recordEl = h("div", { class: "vs-lb-record" });
     this._lbCache = Object.create(null);
@@ -473,7 +492,7 @@ export class LobbyScreen {
           this.friendsNote, this.friendsEl),
         /* 中 */
         h("section", { class: "vs-card vs-lb-course", "aria-label": "コース" },
-          this.previewEl, this.recordEl, this.tierRow, this.courseList),
+          this.previewEl, this.mapEl, this.recordEl, this.tierRow, this.courseList),
         /* 右 */
         h("section", { class: "vs-card vs-lb-right", "aria-label": "参加者" },
           h("div", { class: "vs-lb-lab", text: "遊び方" }), this.modeRow,
@@ -859,6 +878,7 @@ export class LobbyScreen {
         h("span", { text: "難しさ " + c.difficulty + " / 10" }),
         h("span", { text: c.recommendedPlayers[0] + "〜" + c.recommendedPlayers[1] + " 人" }))));
 
+    this._drawMap(c);
     this._renderRecord(c);
 
     for (let i = 0; i < this.courseCards.length; i++) {
@@ -1159,6 +1179,8 @@ export const LOBBY_CSS = `
 .vs-lb-rec-row[data-me="1"] .vs-lb-rec-no{ color:${PALETTE.mint}; }
 .vs-lb-rec-gap{ font-size:11px; color:rgba(243,245,255,.35); padding-left:9px; line-height:1; }
 .vs-lb-sharing{ color:${PALETTE.mint} !important; font-weight:700; }
+.vs-lb-map{ display:block; width:100%; height:88px; border-radius:10px;
+  border:1px solid ${PALETTE.line}; background:rgba(8,11,24,.55); margin:8px 0 2px; }
 .vs-lb-minerow{ display:flex; gap:6px; margin-bottom:5px; }
 .vs-lb-mine{ display:flex; flex-direction:column; gap:3px; max-height:150px; overflow-y:auto; }
 .vs-lb-mineb{ display:flex; align-items:baseline; gap:8px; width:100%; text-align:left;

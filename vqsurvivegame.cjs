@@ -304,6 +304,38 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       rs.btnAll > rs.btns && !rs.btnText.some((t) => /次の ラウンドへ|間違えた 単語で/.test(t)),
       [rs.btnAll, rs.btns, rs.btnText]);
 
+    節("③-b コースの 形が 下見に 出る");
+    /* ★ 名前と 一言だけでは「どんな コースか」が 分からず、
+       30 本の 中から えらぶ 手がかりに ならない。 */
+    const 図 = await pg.evaluate(async () => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const app = window.VocabuSurvive.__app;
+      const m0 = app.shell.get("match");
+      if (m0 && m0.quiz && m0.quiz.close) m0.quiz.close();
+      await app.goLobby();
+      await new Promise((x) => setTimeout(x, 500));
+      const cv = r.querySelector(".vs-lb-map");
+      if (!cv) return null;
+      const 塗 = () => {
+        const d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
+        let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 8) n++;
+        return n;
+      };
+      const lb = app.shell.get("lobby");
+      lb.courseIndex = 0; lb._render(); await new Promise((x) => setTimeout(x, 200));
+      const a = 塗();
+      lb.courseIndex = 29; lb._render(); await new Promise((x) => setTimeout(x, 200));
+      const b = 塗();
+      const t0 = performance.now();
+      for (let i = 0; i < 30; i++) { lb.courseIndex = i; lb._render(); }
+      const ms = performance.now() - t0;
+      return { w: cv.width, h: cv.height, a, b, ちがう: Math.abs(a - b) > 200, ms: Math.round(ms) };
+    });
+    ok("下見に 図が ある", !!図 && 図.w > 100, 図);
+    ok("**何か 描かれている**", 図 && 図.a > 200, 図);
+    ok("コースごとに 形が 変わる", 図 && 図.ちがう, 図);
+    ok("30 本 切り替えても 重くない（300ms 未満）", 図 && 図.ms < 300, 図 && 図.ms);
+
     節("⑦-a 実際に 間違えると 覚える");
     /* 見た目だけ 作っても 意味が ない。**本当の 門で 間違えて** 溜まるか。 */
     const 溜 = await pg.evaluate(async () => {
