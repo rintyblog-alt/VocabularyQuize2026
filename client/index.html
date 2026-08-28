@@ -10,8 +10,11 @@
 body.auth-booting .app{display:none !important;}
 #authBootSplash{
   display:none !important;position:fixed;inset:0;z-index:999998;
-  background:radial-gradient(62% 46% at 50% 40%, rgba(160,146,224,.18) 0%, rgba(160,146,224,0) 72%),
-    linear-gradient(180deg,#FCFBFE 0%,#F4F2FB 100%);
+  /* ★ 映画の 幕の ような 面（2026-08-29）。真ん中が わずかに 明るく、
+     まわりへ 向かって 沈む。**動かさない**（動く 背景は 落ち着かない）。 */
+  background:radial-gradient(58% 42% at 50% 38%, rgba(154,140,224,.20) 0%, rgba(154,140,224,0) 72%),
+    linear-gradient(180deg,#FBFAFE 0%,#F2F0FA 62%,#EBE8F6 100%);
+  box-shadow:inset 0 0 220px rgba(74,64,124,.10);
   justify-content:center;align-items:center;flex-direction:column;opacity:0;
   animation:liquidOverlayIn .5s cubic-bezier(.22,1,.36,1) forwards;
 }
@@ -40,45 +43,59 @@ html{background:#F8F7FC;}
 html.vq-css-wait body.auth-booting > *:not(#authBootSplash):not(.vqload-defs){visibility:hidden !important;}
 
 /* ══ 起動の 1 枚の 見た目 ════════════════════════════════════════
-   下は client/css/vq-ds.971e3733d6.css の ロード画面の所を **そのまま** 写した
+   下は client/css/vq-ds.31717646f7.css の ロード画面の所を **そのまま** 写した
    もの（15151〜15281 行）。写しなので、片方を直したら もう片方も 直すこと。
    動きの指定まで 丸ごと 写すのが 大事: あとから同じ指定が 当たっても
    中身が 同じなら 動きは 途中から やり直されない（点滅しない）。
    ══════════════════════════════════════════════════════════════ */
+/* ══ ロード画面（2026-08-29 作り直し）═══════════════════════════════
+   訴え:「アプリ起動時や そのほか 処理の ロード画面を 変えたい。
+          もっと シンプルなんだけど、おしゃれな デザインと 演出
+          （アニメーション・映画が あるもの）に したい」
+
+   考えかた ── **映画の 題名が 出る ところ**を まねる。
+     ① ぼけ → 焦点   マークが ぼけた 所から 合っていく（0.95 秒）
+     ② 光が 一度だけ  斜めの 光が 1 回 走って、二度と 走らない
+     ③ 幕が 開く      題字は 字を 1 つずつ 出さず、左から 幕を 開ける
+     ④ 線が 引かれる  細い 線が 引かれ、そのあと それが 進み具合に なる
+   ずっと 動き続ける ものは **細い 線 1 本だけ**。
+   まわりは 静かに して、真ん中の 一連の 流れだけ 見せる。
+   （進み具合の 数字は 出さない。本当の 所を 知らないので 嘘に なる） */
 .liquid-loading-inner{
-  display:flex;flex-direction:column;align-items:center;gap:22px;
+  display:flex;flex-direction:column;align-items:center;gap:0;
   padding:0 24px;text-align:center;
+  animation:vqlRise 1s cubic-bezier(.16,1,.3,1) both;
 }
+@keyframes vqlRise{ from{transform:translateY(12px)} to{transform:none} }
 
 /* ── マーク本体 ─────────────────────────────────────────── */
 .vqload-mark{
   position:relative;
-  width:clamp(104px,26vw,132px);
+  width:clamp(96px,24vw,122px);
   aspect-ratio:1/1;
   display:grid;place-items:center;
 }
-/* 背後の光。**動かさない**。
-   以前は 3.6 秒ごとに拡大縮小しながら明滅していたが、
-   待っている人の視線を引き続けるだけで、何も伝えていなかった。
-   置くだけにして、濃さも半分に落とす。 */
+/* 背後の光。**動かさない**。焦点が 合う のに 合わせて 濃くなるだけ。 */
 .vqload-mark::before{
-  content:"";position:absolute;inset:-22%;border-radius:50%;
-  background:radial-gradient(circle at 50% 45%, rgba(139,126,216,.16) 0%, rgba(139,126,216,0) 68%);
+  content:"";position:absolute;inset:-30%;border-radius:50%;
+  background:radial-gradient(circle at 50% 46%, rgba(139,126,216,.20) 0%, rgba(139,126,216,0) 70%);
+  opacity:0;animation:vqlGlow 1.1s .30s ease forwards;
 }
-/* 入場は **1 回だけ、跳ねずに**。
-   以前は行き過ぎて戻る曲線（.34,1.56,.64,1）で弾み、そのあと 4.2 秒ごとに
-   上下へ浮いていた。弾みは「元気さ」を出すが、待ち時間には落ち着かない。
-   出したあとは、その場に静かに置く。 */
+@keyframes vqlGlow{ to{ opacity:1 } }
+
+/* ★ ここが この画面の 芯。**ぼけから 焦点へ**。
+   跳ねる・浮くを やめて、レンズの 焦点が 合う 一回きりの 動きにする。 */
 .vqload-svg{
   position:relative;width:100%;height:100%;display:block;
-  transform:scale(.96);opacity:0;
-  animation:vqlShellIn .58s cubic-bezier(.22,1,.36,1) forwards;
-  filter:drop-shadow(0 8px 20px rgba(84,72,140,.18));
-  will-change:transform,opacity;
+  opacity:0;transform:scale(1.07);
+  filter:blur(11px);
+  animation:vqlFocus .95s cubic-bezier(.16,1,.3,1) forwards;
+  will-change:transform,opacity,filter;
 }
-@keyframes vqlShellIn{
-  from{transform:scale(.96);opacity:0}
-  to  {transform:scale(1);opacity:1}
+@keyframes vqlFocus{
+  0%  { opacity:0;transform:scale(1.07);filter:blur(11px) }
+  55% { opacity:1 }
+  100%{ opacity:1;transform:scale(1);filter:blur(0) }
 }
 
 /* リボン 3 本。線として描いてから、その場に残す。
@@ -86,20 +103,20 @@ html.vq-css-wait body.auth-booting > *:not(#authBootSplash):not(.vqload-defs){vi
 .vqload-ring{
   fill:none;stroke:url(#vqlRibbon);stroke-width:17;stroke-linecap:round;
   stroke-dasharray:314;stroke-dashoffset:314;
-  animation:vqlDraw .80s cubic-bezier(.32,.9,.36,1) forwards;
+  animation:vqlDraw .92s cubic-bezier(.32,.9,.36,1) forwards;
   opacity:.97;
 }
-.vqload-ring--a{ animation-delay:.10s }
-.vqload-ring--b{ animation-delay:.22s }
-.vqload-ring--c{ animation-delay:.34s }
+.vqload-ring--a{ animation-delay:.18s }
+.vqload-ring--b{ animation-delay:.30s }
+.vqload-ring--c{ animation-delay:.42s }
 @keyframes vqlDraw{ to{ stroke-dashoffset:0 } }
 
 /* ロゼット全体を、**気づかないくらいゆっくり**回す。
    ここが動き続ける唯一の場所。速いと「くるくる」になり、
-   止めると固まって見えるので、その間を取って 40 秒で 1 周にする。 */
+   止めると固まって見えるので、その間を取って 48 秒で 1 周にする。 */
 .vqload-rosette{
   transform-origin:100px 100px;
-  animation:vqlSpin 40s 1.1s linear infinite;
+  animation:vqlSpin 48s 1.8s linear infinite;
 }
 @keyframes vqlSpin{ to{ transform:rotate(360deg) } }
 
@@ -110,50 +127,79 @@ html.vq-css-wait body.auth-booting > *:not(#authBootSplash):not(.vqload-defs){vi
   stroke-linecap:round;stroke-linejoin:round;
   /* 2 辺の長さの合計（およそ 74×2）。少し多めに取って描き切る。 */
   stroke-dasharray:156;stroke-dashoffset:156;
-  animation:vqlDraw .60s .58s cubic-bezier(.32,.9,.36,1) forwards;
+  animation:vqlDraw .62s .66s cubic-bezier(.32,.9,.36,1) forwards;
 }
-/* 尾は跳ねさせない。0 から弾んで出ると、そこだけ目が奪われる。
-   ほぼ原寸から、そっと現れるだけにする。 */
+/* 尾は跳ねさせない。ほぼ原寸から、そっと現れるだけ。 */
 .vqload-tail{
   fill:url(#vqlMark);
   transform-origin:128px 134px;
-  transform:scale(.92);opacity:0;
-  animation:vqlPop .42s .98s cubic-bezier(.22,1,.36,1) forwards;
+  transform:scale(.94);opacity:0;
+  animation:vqlPop .40s 1.04s cubic-bezier(.22,1,.36,1) forwards;
 }
 @keyframes vqlPop{ to{ transform:scale(1);opacity:1 } }
 
-/* 光沢の走りと、外周をまわる粒は **やめた**。
-   どちらも 3〜6 秒ごとに視線を引くだけで、待ち時間について何も伝えていない。
-   「動いている」ことは、下の細いバー 1 本で足りる。 */
-.vqload-sheen{ display:none; }
+/* ★ 光は **1 回だけ** 走らせる（2026-08-29）。
+   前は「繰り返すと 視線を 引くだけ」と 止めていたが、
+   繰り返さない 1 回なら 引っかからず、**焦点が 合った 合図**に なる。
+   SVG の display="none" は CSS で 上書きできる。 */
+.vqload-sheen{
+  display:block;fill:url(#vqlSheen);
+  transform-box:view-box;transform-origin:100px 100px;
+  transform:rotate(18deg) translateX(0);
+  opacity:0;
+  animation:vqlSheen 1.05s .92s cubic-bezier(.5,0,.2,1) forwards;
+}
+@keyframes vqlSheen{
+  0%  { transform:rotate(18deg) translateX(0);   opacity:0 }
+  14% { opacity:1 }
+  86% { opacity:1 }
+  100%{ transform:rotate(18deg) translateX(430px); opacity:0 }
+}
 .vqload-orbit{ display:none; }
+
+/* ── 題字（起動の 1 枚だけ）──────────────────────────────
+   字を 1 つずつ 出すと 忙しい。**幕を 開ける**ように 左から 現す。 */
+.vqload-word{
+  margin-top:22px;
+  font-size:12.5px;font-weight:500;line-height:1;
+  letter-spacing:.36em;text-indent:.36em;
+  color:#4C4670;white-space:nowrap;
+  clip-path:inset(0 100% 0 0);
+  animation:vqlWipe .86s 1.02s cubic-bezier(.22,1,.36,1) forwards;
+}
+@keyframes vqlWipe{ to{ clip-path:inset(0 0 0 0) } }
+/* 処理中の 覆いには 題字を 出さない（1 秒で 消える 所に 題は 要らない）。 */
+#globalLoadingOverlay .vqload-word{ display:none; }
 
 /* ── 文言 ───────────────────────────────────────────────── */
 .liquid-loading-text{
-  font-size:15px;font-weight:600;color:#3A3552;letter-spacing:.01em;
-  opacity:0;transform:translateY(6px);
-  animation:liquidTextIn .5s .82s cubic-bezier(.22,1,.36,1) forwards;
+  margin-top:18px;
+  font-size:13.5px;font-weight:500;color:#635C8C;letter-spacing:.03em;
+  opacity:0;transform:translateY(5px);
+  animation:vqlIn .55s 1.46s cubic-bezier(.22,1,.36,1) forwards;
 }
 .liquid-loading-sub{
-  font-size:12.5px;color:#8A81A8;margin-top:-14px;
+  margin-top:6px;
+  font-size:11.5px;color:#9C95BA;letter-spacing:.03em;
   opacity:0;transform:translateY(4px);
-  animation:liquidTextIn .5s .96s cubic-bezier(.22,1,.36,1) forwards;
+  animation:vqlIn .55s 1.60s cubic-bezier(.22,1,.36,1) forwards;
 }
-@keyframes liquidTextIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-/* 進み具合のバー。数値は出さない（実際の進捗を知らないので嘘をつかない）。 */
+@keyframes vqlIn{ from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+
+/* 細い 線。まず **引かれ**、そのあと 進み具合として 往復する。 */
 .liquid-loading-dots{
-  position:relative;width:132px;height:3px;border-radius:99px;
-  background:rgba(139,126,216,.16);overflow:hidden;
-  opacity:0;animation:liquidTextIn .4s 1.06s ease forwards;
+  margin-top:24px;
+  position:relative;width:118px;height:1.5px;border-radius:99px;
+  background:rgba(139,126,216,.20);overflow:hidden;
+  transform:scaleX(0);
+  animation:vqlRule .72s 1.28s cubic-bezier(.22,1,.36,1) forwards;
 }
-/* バーは **1 本だけ**。以前は 3 本を少しずらして重ねていて、
-   常に何かが走っている状態だった。1 本にして、往復の端で息を継ぐ。
-   進み具合の数字は出さない（本当の進捗を知らないので、嘘をつかない）。 */
+@keyframes vqlRule{ to{ transform:scaleX(1) } }
 .liquid-loading-dots span{
   position:absolute;inset:0;display:block;border-radius:99px;
-  background:linear-gradient(90deg,rgba(139,126,216,0),#9A8FDD 50%,rgba(139,126,216,0));
+  background:linear-gradient(90deg,rgba(139,126,216,0),#8E82D6 50%,rgba(139,126,216,0));
   transform:translateX(-100%);
-  animation:vqlBar 2.1s cubic-bezier(.45,.05,.3,1) infinite;
+  animation:vqlBar 2.4s 2s cubic-bezier(.45,.05,.3,1) infinite;
 }
 .liquid-loading-dots span:nth-child(2),
 .liquid-loading-dots span:nth-child(3){ display:none; }
@@ -164,17 +210,58 @@ html.vq-css-wait body.auth-booting > *:not(#authBootSplash):not(.vqload-defs){vi
 
 /* 動きを減らす設定では、出るところまでで止める（点滅もさせない） */
 @media (prefers-reduced-motion: reduce){
-  .vqload-svg,.vqload-mark::before,.vqload-rosette,
+  .liquid-loading-inner,.vqload-svg,.vqload-mark::before,.vqload-rosette,
   .vqload-sheen,.vqload-orbit,.liquid-loading-dots span{
     animation:none !important;
   }
-  .vqload-svg{ transform:none;opacity:1 }
+  .liquid-loading-inner{ transform:none }
+  .vqload-svg{ transform:none;opacity:1;filter:none }
+  .vqload-mark::before{ opacity:1 }
+  .vqload-sheen{ display:none }
   .vqload-ring,.vqload-v{ stroke-dashoffset:0 !important;animation:none !important }
   .vqload-tail{ transform:none;opacity:1;animation:none !important }
+  .vqload-word{ clip-path:none;animation:none !important }
   .liquid-loading-text,.liquid-loading-sub,.liquid-loading-dots{
     opacity:1;transform:none;animation:none !important;
   }
   .liquid-loading-dots span{ transform:none;opacity:.5 }
+}
+
+/* ══ 暗い 見た目（2026-08-29）══════════════════════════════════════
+   ここは 起動の いちばん 最初に 描かれる ので、**まだ テーマの 色が
+   届いていない**。だから 値を 直に 書く。
+   ・html[data-theme-mode="dark"] … アプリが 決めた 暗い 設定
+   ・prefers-color-scheme       … その 印が まだ 付いていない 一瞬ぶん
+   これを 置かないと、暗い 設定の 人は 起動の たびに **真っ白が 光る**。 */
+html[data-theme-mode="dark"] #authBootSplash,
+html[data-theme-mode="dark"] #globalLoadingOverlay{
+  background:
+    radial-gradient(58% 42% at 50% 38%, rgba(154,140,224,.16) 0%, rgba(154,140,224,0) 72%),
+    linear-gradient(180deg,#17161E 0%,#131218 62%,#0F0E14 100%);
+  box-shadow:inset 0 0 220px rgba(0,0,0,.34);
+}
+html[data-theme-mode="dark"] .vqload-mark::before{
+  background:radial-gradient(circle at 50% 46%, rgba(154,140,224,.24) 0%, rgba(154,140,224,0) 70%);
+}
+html[data-theme-mode="dark"] .vqload-word{ color:#B9B2DC; }
+html[data-theme-mode="dark"] .liquid-loading-text{ color:#C6C0E2; }
+html[data-theme-mode="dark"] .liquid-loading-sub{ color:#8A83A8; }
+html[data-theme-mode="dark"] .liquid-loading-dots{ background:rgba(154,140,224,.20); }
+@media (prefers-color-scheme: dark){
+  html:not([data-theme-mode="light"]) #authBootSplash,
+  html:not([data-theme-mode="light"]) #globalLoadingOverlay{
+    background:
+      radial-gradient(58% 42% at 50% 38%, rgba(154,140,224,.16) 0%, rgba(154,140,224,0) 72%),
+      linear-gradient(180deg,#17161E 0%,#131218 62%,#0F0E14 100%);
+    box-shadow:inset 0 0 220px rgba(0,0,0,.34);
+  }
+  html:not([data-theme-mode="light"]) .vqload-mark::before{
+    background:radial-gradient(circle at 50% 46%, rgba(154,140,224,.24) 0%, rgba(154,140,224,0) 70%);
+  }
+  html:not([data-theme-mode="light"]) .vqload-word{ color:#B9B2DC; }
+  html:not([data-theme-mode="light"]) .liquid-loading-text{ color:#C6C0E2; }
+  html:not([data-theme-mode="light"]) .liquid-loading-sub{ color:#8A83A8; }
+  html:not([data-theme-mode="light"]) .liquid-loading-dots{ background:rgba(154,140,224,.20); }
 }
 </style>
 <script id="vq-css-gate">/* 上の vq-css-wait を 貼って、外の CSS が 届いたら 外す。
@@ -433,7 +520,7 @@ html.vq-css-wait body.auth-booting > *:not(#authBootSplash):not(.vqload-defs){vi
     }
   });
   </script>
-  <link id="vq-ds" rel="stylesheet" href="/css/vq-ds.971e3733d6.css" media="print" onload="this.media='all';window.__vqCssArrived&&window.__vqCssArrived()" onerror="window.__vqCssArrived&&window.__vqCssArrived()">
+  <link id="vq-ds" rel="stylesheet" href="/css/vq-ds.31717646f7.css" media="print" onload="this.media='all';window.__vqCssArrived&&window.__vqCssArrived()" onerror="window.__vqCssArrived&&window.__vqCssArrived()">
 <!-- ═══════════════════════════════════════════════════════════════════
      VocabuQuiz Auth Redesign (vqa-*)  — 2026-07 全面改修
      レガシー .auth-* は削除せず html body #authGate#authGate.vqa の高詳細度で上書き（可逆）
@@ -493,6 +580,7 @@ html.vq-css-wait body.auth-booting > *:not(#authBootSplash):not(.vqload-defs){vi
           </g>
         </svg>
       </div>
+      <div class="vqload-word" aria-hidden="true">VocabuQuiz</div>
       <div class="liquid-loading-text">準備しています</div>
       <div class="liquid-loading-sub">最新の情報を確認しています</div>
       <div class="liquid-loading-dots" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -6067,7 +6155,7 @@ body.vq-survive-play #appMobileBottomBar{ display:none !important; }
   #appSurvivePage{ border-radius:0; }
 }
 </style>
-<script id="vq-core" src="/js/vq-core.97aca2e37d.js"></script>
+<script id="vq-core" src="/js/vq-core.b091cbf7a8.js"></script>
 <script type="module" src="/assets/survival/runtime.js"></script>
 <!-- ★ three.js の 先読みをやめた（2026-08-18）。
      Qredit のカードを 立体で見せるためだけの 118KB を、**見ない人にも**
@@ -9563,7 +9651,7 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
 })();
 
 </script>
-<script id="vq-shell" src="/js/vq-shell.4eb8c17d32.js"></script>
+<script id="vq-shell" src="/js/vq-shell.f4f4e79ef4.js"></script>
 <script id="vq-feed" src="/js/vq-feed.f87ad2feb4.js"></script>
 <!-- DM（1 対 1 のやりとり）。左のサイドパネルから 開く。
      相互フォローでない相手へは 3 件まで（サーバでも 止めている）。 -->

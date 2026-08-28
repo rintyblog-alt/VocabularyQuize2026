@@ -22164,9 +22164,26 @@ function _openSearchResultByIndex(i){
         };
         _appSetNameWithOfficialBadge(el.appV2SidebarName, name, officialIdentity);
         if (el.appV2SidebarMeta) el.appV2SidebarMeta.textContent = meta;
+        /* ★ **アイコンは この端末に 覚えておく**（2026-08-29・訴え
+           「左パネルの下の アイコン／スマホ上の アイコンは、必ず
+             設定している プロフィール画像に して」）。
+           プロフィールは サーバから 取ってくるので、
+             ・読み込みが 遅い
+             ・その回だけ 取れなかった
+             ・機能の 札が まだ 届いていない
+           のどれかで **頭文字のまま**に なることが ある。
+           一度 見た 絵を 覚えておき、まだ 届いていない あいだは
+           それを 出す。届いたら もちろん そちらが 勝つ。 */
+        const AVA_KEY = "app.profile.avatar.v1";
+        let avaUrl = String(profile?.avatarUrl || "").trim();
+        try {
+          if (avaUrl) window.localStorage.setItem(AVA_KEY, avaUrl);
+          else if (!profile) avaUrl = String(window.localStorage.getItem(AVA_KEY) || "").trim();
+          else window.localStorage.removeItem(AVA_KEY);   /* 本人が 外したら 覚えも 消す */
+        } catch(_){}
         _appApplyAvatarVisual(
           el.appV2SidebarAvatar,
-          String(profile?.avatarUrl || ""),
+          avaUrl,
           _appAvatarFallbackText(name, profile?.nickname || authState?.user?.nickname || "")
         );
         _appRenderQreditSidebarChip();

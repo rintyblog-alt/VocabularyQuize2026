@@ -51,6 +51,15 @@
     document.body.classList.remove("app-v2-sidebar-open", "app-v2-sidebar-lock");
   }
 
+  /* この端末が 覚えている プロフィールの 絵（本体が 書き込む）。
+     プロフィールが まだ 届いていない あいだの つなぎに 使う。 */
+  function 覚えた絵() {
+    try {
+      var v = String(window.localStorage.getItem("app.profile.avatar.v1") || "").trim();
+      return /^(data:image\/|https?:\/\/|blob:)/i.test(v) ? v : "";
+    } catch (e) { return ""; }
+  }
+
   function bridge(kind, val) {
     var sel = kind === "tab" ? '#appTabBar [data-app-tab="' + val + '"]'
       : kind === "action" ? '#appTabBar [data-v2-action="' + val + '"]'
@@ -515,7 +524,15 @@
           var mm = /url\((["']?)(.*?)\1\)/.exec(src.style.backgroundImage);
           if (mm) url = mm[2];
         }
-        if (url) { elAva.innerHTML = '<img src="' + esc(url) + '" alt="">'; }
+        /* ★ もとが まだ 頭文字の ときは、この端末が 覚えている 絵を 使う
+           （2026-08-29・訴え「必ず プロフィール画像に して」）。
+           プロフィールの 取得が 遅れると、ここは ずっと 字のままだった。 */
+        if (!url) url = 覚えた絵();
+        if (url) {
+          var 今 = elAva.firstElementChild;
+          if (!今 || 今.tagName !== "IMG") { elAva.textContent = ""; 今 = document.createElement("img"); 今.alt = ""; elAva.appendChild(今); }
+          if (今.getAttribute("src") !== url) 今.setAttribute("src", url);
+        }
         else { var ini = (n || "V").trim().charAt(0).toUpperCase(); if (ini) elAva.textContent = ini; }
       }
       var nc = txt("appSidebarNotifyCount"); var num = parseInt(nc, 10);
@@ -665,6 +682,8 @@
          そのあとの 書き換えが どこにも 届かなくなっていた
          （＝ アイコンを 変えても 変わらない／初期のまま）。
          av は 残したまま、その 中身だけ 入れ替える。 */
+      /* ★ もとが まだ 頭文字の ときは 覚えている 絵を 使う（2026-08-29）。 */
+      if (!url) url = 覚えた絵();
       if (url) {
         var cur = av.firstElementChild;
         if (!cur || cur.tagName !== "IMG") { av.textContent = ""; cur = document.createElement("img"); cur.alt = ""; av.appendChild(cur); }
@@ -685,7 +704,15 @@
         var e = document.getElementById(id); if (e) mo.observe(e, { childList: true, characterData: true, subtree: true, attributes: true });
       });
     } catch (e) {}
-    var p = setInterval(syncAva, 1500); setTimeout(function () { clearInterval(p); }, 20000);
+    /* ★ 20 秒で 見回りを 打ち切っていた（2026-08-29 まで）。
+       もとの 要素が 作り直されると 見張りが 宙に浮き、そのあとは
+       **二度と 直らない**。細く 長く 見続ける（人が 見ている あいだだけ）。 */
+    var p = setInterval(syncAva, 1500);
+    setTimeout(function () {
+      clearInterval(p);
+      p = setInterval(function () { if (!document.hidden) syncAva(); }, 8000);
+    }, 20000);
+    try { document.addEventListener("visibilitychange", function () { if (!document.hidden) syncAva(); }); } catch (eV) {}
   }
 
   /* ══ トップバーの自動隠し（下スクロール=隠れる / 上スクロール=戻る） ══
