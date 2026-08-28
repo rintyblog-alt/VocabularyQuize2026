@@ -21,6 +21,7 @@ import { clearGhost } from "../data/ghost.js";
 import { listMyCourses, getMyCourse, toDef, exportCode, importCode } from "../data/mycourse.js";
 import { themeOf } from "../game/theme3d.js";
 import { HATS, HAT_COLORS } from "../game/bean.js";
+import { LobbyStage } from "./lobbystage.js";
 import { SurviveNet, createRoom, roomInfo } from "../net/client.js";
 import { buildCourse } from "../game/course.js";
 import { drawCourseMap } from "./coursemap.js";
@@ -483,42 +484,131 @@ export class LobbyScreen {
       }, n === 0 ? "1人で" : (n + 1) + "人"));
     }
 
+    /* いま 何で 走るか（コース・遊び方）。PLAY の すぐ 上に 出す。 */
+    this.pickEl = h("div", { class: "vs-lb-pickin" });
+    /* ── 立体の 場面 ────────────────────────────────────────────────
+       ★ ロビーが **管理画面**に なっていた（表と つまみが 並ぶだけ）。
+         真ん中は 自分の キャラクターに 明け渡し、数字と つまみは 端と
+         「窓」へ 逃がす。 */
+    this.stageEl = h("canvas", { class: "vs-lb-stage", "aria-hidden": "true" });
+
+    /* ── 窓（押すと 出る）────────────────────────────────────────── */
+    this.panels = {};
+    const 窓 = (key, 題, ...中) => {
+      const body = h("div", { class: "vs-lb-pane-body" }, ...中);
+      const el = h("div", {
+        class: "vs-lb-pane", "data-pane": key, role: "dialog",
+        "aria-label": 題, "aria-hidden": "true"
+      },
+        h("div", { class: "vs-lb-pane-head" },
+          h("h2", { class: "vs-lb-pane-t", text: 題 }),
+          h("button", {
+            class: "vs-lb-x", type: "button", "aria-label": "閉じる",
+            onclick: () => this._openPane("")
+          }, "✕")),
+        body);
+      this.panels[key] = el;
+      return el;
+    };
+
+    const 窓釦 = (key, 名, sub) => h("button", {
+      class: "vs-lb-tile", type: "button", "data-tile": key,
+      onclick: () => this._openPane(key)
+    }, h("span", { class: "vs-lb-tile-n", text: 名 }),
+       h("span", { class: "vs-lb-tile-s", text: sub || "" }));
+    this._tile = 窓釦;
+
+    this.tileCourse = 窓釦("course", "コース", "えらぶ");
+    this.tileLook = 窓釦("look", "きせかえ", "色 と かぶりもの");
+    this.tileParty = 窓釦("party", "みんなで", "あいことば");
+    this.tileMine = 窓釦("mine", "自分の コース", "作る・走る");
+
     return h("div", { class: "vs-lobby" },
-      h("header", { class: "vs-lb-head" },
-        h("h1", { class: "vs-lb-title" }, "VocabuSurvive"),
-        h("div", { class: "vs-lb-headbtns" },
+      this.stageEl,
+      h("div", { class: "vs-lb-vig" }),
+
+      /* 上の 帯 */
+      h("header", { class: "vs-lb-top" },
+        h("div", { class: "vs-lb-who" }, this.avatarEl,
+          h("div", { class: "vs-lb-whotx" }, this.nameEl,
+            h("div", { class: "vs-lb-st" }, h("i", { class: "vs-lb-dot" }),
+              h("span", { text: "オンライン" })))),
+        this.dailyEl,
+        h("div", { class: "vs-lb-topbtns" },
           h("button", {
             class: "vs-lb-x", type: "button", "aria-label": "あそび方",
             title: "あそび方", onclick: () => this._showHelp()
           }, "?"),
+          h("button", {
+            class: "vs-lb-x", type: "button", "aria-label": "設定",
+            title: "設定", onclick: () => this._openPane("setting")
+          }, "⚙"),
           h("button", { class: "vs-lb-x", type: "button", "aria-label": "閉じる", onclick: () => this.onExit() }, "✕"))),
-      h("div", { class: "vs-lb-grid" },
-        /* 左 */
-        h("section", { class: "vs-card vs-lb-me", "aria-label": "あなた" },
-          h("div", { class: "vs-lb-merow" }, this.avatarEl,
-            h("div", null, this.nameEl, h("div", { class: "vs-lb-st" },
-              h("i", { class: "vs-lb-dot" }), h("span", { text: "オンライン" })))),
-          h("div", { class: "vs-lb-lab", text: "色" }), this.colorRow,
-          this.hatEl,
-          h("div", { class: "vs-lb-lab", text: "これまで" }), this.statsEl,
-          h("div", { class: "vs-lb-lab", text: "友だち" }),
-          this.friendsNote, this.friendsEl),
-        /* 中 */
-        h("section", { class: "vs-card vs-lb-course", "aria-label": "コース" },
-          this.dailyEl, this.previewEl, this.mapEl, this.recordEl, this.tierRow, this.courseList),
-        /* 右 */
-        h("section", { class: "vs-card vs-lb-right", "aria-label": "参加者" },
-          h("div", { class: "vs-lb-lab", text: "遊び方" }), this.modeRow,
-          h("div", { class: "vs-lb-lab", text: "門に 出る 問題" }), this.qzEl,
-          h("div", { class: "vs-lb-lab", text: "人数（相手が いなければ ボット）" }), this.botRow,
-          h("div", { class: "vs-lb-lab", text: "いま 集まっている 人" }), this.partyEl,
-          this.roomEl,
-          h("div", { class: "vs-lb-lab", text: "自分の コース" }),
-          h("div", { class: "vs-lb-minerow" }, this.editBtn), this.mineEl,
-          h("div", { class: "vs-lb-lab", text: "みんなで あそぶ" }), this.onlineEl,
-          this.settingsEl,
-          h("div", { class: "vs-lb-actions" }, this.readyBtn, this.startBtn))));
+
+      /* 左下 … これまでの 成績 */
+      h("section", { class: "vs-lb-corner is-bl", "aria-label": "これまで" },
+        h("div", { class: "vs-lb-lab", text: "これまで" }), this.statsEl),
+
+      /* 右 … 遊び方と 記録 */
+      h("section", { class: "vs-lb-rail", "aria-label": "遊び方" },
+        h("div", { class: "vs-lb-lab", text: "遊び方" }), this.modeRow,
+        h("div", { class: "vs-lb-lab", text: "門に 出る 問題" }), this.qzEl,
+        h("div", { class: "vs-lb-lab", text: "人数" }), this.botRow),
+
+      /* 右下 … 大きい PLAY */
+      h("div", { class: "vs-lb-play" },
+        h("div", { class: "vs-lb-tiles" }, this.tileCourse, this.tileLook, this.tileParty, this.tileMine),
+        h("div", { class: "vs-lb-pick" }, this.pickEl),
+        h("div", { class: "vs-lb-actions" }, this.readyBtn, this.startBtn)),
+
+      /* ── 窓 ── */
+      窓("course", "コースを えらぶ",
+        this.previewEl, this.mapEl, this.recordEl, this.tierRow, this.courseList),
+      窓("look", "きせかえ",
+        h("div", { class: "vs-lb-lab", text: "色" }), this.colorRow, this.hatEl),
+      窓("party", "みんなで あそぶ",
+        h("div", { class: "vs-lb-lab", text: "いま 集まっている 人" }), this.partyEl,
+        this.roomEl, this.onlineEl,
+        h("div", { class: "vs-lb-lab", text: "友だち" }), this.friendsNote, this.friendsEl),
+      窓("mine", "自分の コース",
+        h("div", { class: "vs-lb-minerow" }, this.editBtn), this.mineEl),
+      窓("setting", "設定", this.settingsEl),
+      h("div", { class: "vs-lb-scrim", onclick: () => this._openPane("") }));
   }
+  /* ── 窓の 開け閉め ────────────────────────────────────────────────
+     ★ ロビーに 全部 並べると 管理画面に なる。
+       ふだんは キャラクターだけ 見せ、要る ものだけ 前へ 出す。 */
+  _openPane(key) {
+    this.pane = key || "";
+    for (const k in this.panels) {
+      const on = k === this.pane;
+      this.panels[k].setAttribute("data-on", on ? "1" : "0");
+      this.panels[k].setAttribute("aria-hidden", on ? "false" : "true");
+    }
+    if (this.el) this.el.setAttribute("data-pane", this.pane);
+    /* 開いた ときに 中身を 描き直す（閉じている 間は 触らない） */
+    if (this.pane) this._render();
+  }
+
+  /* ── 立体の 場面 ──────────────────────────────────────────────── */
+  _stageOn() {
+    if (this.stage || this._stageFailed) return;
+    try {
+      this.stage = new LobbyStage(this.stageEl, (this.app && this.app.settings) || this.settings || {});
+      if (!this.stage.init()) { this._stageFailed = true; this.stage = null; return; }
+      this._syncStage();
+    } catch (e) { this._stageFailed = true; this.stage = null; }
+  }
+  _syncStage() {
+    if (!this.stage) return;
+    try {
+      this.stage.setLook(this.me.colorIndex, this.hat, this.hatColor);
+      const c = COURSES[this.courseIndex];
+      if (c) this.stage.setTheme(themeOf(c.theme));
+    } catch (e) {}
+  }
+  /** 影の 器が 毎コマ 呼ぶ。 */
+  tick(dt) { if (this.stage) { try { this.stage.tick(dt); } catch (e) {} } }
 
   _courseCard(c, i) {
     const th = themeOf(c.theme);
@@ -1007,7 +1097,10 @@ export class LobbyScreen {
     }
 
     this.readyBtn.textContent = this.ready ? "準備を やめる" : "準備 OK";
-    this.readyBtn.className = "vs-btn vs-lb-ready " + (this.ready ? "is-ghost" : "is-mint");
+    /* ★ 「準備 OK」は **部屋の 中でしか 意味が ない**。
+       ひとりの ときに 出すと、押さないと 始まらない ように 見える。 */
+    this.readyBtn.className = "vs-btn vs-lb-ready " + (this.ready ? "is-ghost" : "is-mint")
+      + (this.roomId ? "" : " vs-hide");
     this.startBtn.disabled = false;
 
     for (const b of this.qualityRow.children) {
@@ -1022,6 +1115,20 @@ export class LobbyScreen {
 
     if (this.qzList) this._renderQuiz();
     if (this.mineEl) this._renderMine();
+    this._syncStage();
+    if (this.pickEl) {
+      const m = MODES.filter((x) => x.key === this.mode)[0];
+      this.pickEl.textContent = "";
+      this.pickEl.appendChild(h("span", { class: "vs-lb-pick-c", text: c.name }));
+      this.pickEl.appendChild(h("span", { class: "vs-lb-pick-m", text: m ? m.label : this.mode }));
+      const 人 = this.roomId ? (this.party.length + " 人") : (this.botCount === 0 ? "1 人で" : (this.botCount + 1) + " 人");
+      this.pickEl.appendChild(h("span", { class: "vs-lb-pick-n", text: 人 }));
+    }
+    /* 窓の 中の 札を 押した ままに しない（開いて いる 窓だけ 印を 付ける） */
+    for (const k in this.panels) {
+      const t = this.el && this.el.querySelector ? this.el.querySelector('[data-tile="' + k + '"]') : null;
+      if (t) t.setAttribute("aria-expanded", this.pane === k ? "true" : "false");
+    }
     if (this.hatRow) {
       for (const b of this.hatRow.children) {
         b.setAttribute("aria-checked", b.getAttribute("data-hat") === this.hat ? "true" : "false");
@@ -1044,6 +1151,8 @@ export class LobbyScreen {
   }
 
   async enter() {
+    this._openPane("");
+    this._stageOn();
     /* 覚えていた 音の 設定を 効かせる */
     if (this.app && this.app.audio) {
       try { this.app.audio.setVolume(this.volume); this.app.audio.setMusic(this.musicOn); } catch (e) {}
@@ -1061,7 +1170,12 @@ export class LobbyScreen {
     this._loadMine();
     this._loadStats();
   }
-  exit() {}
+  exit() {
+    /* ★ 立体は **画面を 出たら 捨てる**。裏で 回し続けると
+       試合の 板と GL を 取り合って 1 コマが 重く なる。 */
+    if (this.stage) { try { this.stage.destroy(); } catch (e) {} this.stage = null; }
+    this._openPane("");
+  }
   resize() {}
 
   async _loadFriends() {
@@ -1143,6 +1257,91 @@ function fmtTime(s) {
 }
 
 export const LOBBY_CSS = `
+/* ══════════════════════════════════════════════════════════════════════════
+   ロビー = **立体の 舞台 ＋ 浮いている 札**
+
+   ★ 前は 表と つまみが 3 列に 並ぶ「管理画面」だった。
+     真ん中は キャラクターに 明け渡し、要る ものだけ 端と 窓へ 置く。
+   ══════════════════════════════════════════════════════════════════════════ */
+.vs-lobby{ position:absolute; inset:0; overflow:hidden; background:${PALETTE.bgDeep}; }
+.vs-lb-stage{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+.vs-lb-vig{ position:absolute; inset:0; pointer-events:none;
+  background:
+    radial-gradient(120% 78% at 50% 6%, transparent 42%, rgba(4,5,16,.42) 100%),
+    linear-gradient(180deg, rgba(4,5,16,.52) 0%, transparent 22%, transparent 58%, rgba(4,5,16,.66) 100%); }
+
+/* ── 上の 帯 ─────────────────────────────────────────────────────── */
+.vs-lb-top{ position:absolute; left:0; right:0; top:0; z-index:3;
+  display:flex; align-items:center; gap:10px; padding:12px 14px; pointer-events:none; }
+.vs-lb-top > *{ pointer-events:auto; }
+.vs-lb-top .vs-lb-daily{ flex:0 1 auto; min-width:0; margin:0; width:auto; max-width:40%; }
+.vs-lb-who{ flex:0 0 auto; display:flex; align-items:center; gap:9px; padding:6px 14px 6px 6px;
+  border-radius:999px; background:rgba(10,13,30,.62); border:1px solid rgba(255,255,255,.14);
+  backdrop-filter:blur(8px); max-width:44%; }
+/* ★ 名前は **折り返さない**。折り返すと 丸い 名札の 中で 2 行に なって つぶれる。 */
+.vs-lb-whotx{ display:flex; flex-direction:column; min-width:0; }
+.vs-lb-whotx .vs-lb-nm{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vs-lb-whotx .vs-lb-st{ white-space:nowrap; }
+.vs-lb-topbtns{ flex:0 0 auto; margin-left:auto; display:flex; gap:6px; }
+
+/* ── 端の 札 ─────────────────────────────────────────────────────── */
+.vs-lb-corner, .vs-lb-rail{ position:absolute; z-index:3; padding:11px 13px;
+  border-radius:16px; background:rgba(10,13,30,.60); border:1px solid rgba(255,255,255,.13);
+  backdrop-filter:blur(9px); }
+.vs-lb-corner.is-bl{ left:14px; bottom:14px; width:250px; }
+/* ★ 高さを 決め打ちに しない。**下の PLAY の 上で 必ず 止める**
+   （決め打ちだと 遊び方が 増える たびに かぶる）。 */
+.vs-lb-rail{ right:14px; top:74px; bottom:272px; width:266px; overflow-y:auto; }
+
+/* ── 右下の PLAY ─────────────────────────────────────────────────── */
+.vs-lb-play{ position:absolute; right:14px; bottom:14px; z-index:4;
+  display:flex; flex-direction:column; gap:8px; align-items:stretch; width:300px; }
+.vs-lb-tiles{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.vs-lb-tile{ display:flex; flex-direction:column; gap:1px; text-align:left;
+  padding:8px 11px; border-radius:12px; cursor:pointer;
+  border:1px solid rgba(255,255,255,.16); background:rgba(10,13,30,.66);
+  color:#f3f5ff; font:inherit; backdrop-filter:blur(8px); }
+.vs-lb-tile:hover{ background:rgba(255,255,255,.14); }
+.vs-lb-tile[aria-expanded="true"]{ border-color:${PALETTE.mint}; background:rgba(90,230,190,.18); }
+.vs-lb-tile-n{ font-size:12.5px; font-weight:800; }
+.vs-lb-tile-s{ font-size:10.5px; color:rgba(243,245,255,.66); }
+.vs-lb-pick{ padding:8px 12px; border-radius:12px;
+  background:rgba(10,13,30,.66); border:1px solid rgba(255,255,255,.13); backdrop-filter:blur(8px); }
+.vs-lb-pickin{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.vs-lb-pick-c{ font-size:14px; font-weight:900; color:#f3f5ff; }
+.vs-lb-pick-m{ font-size:11.5px; font-weight:800; color:${PALETTE.mint}; }
+.vs-lb-pick-n{ font-size:11px; color:rgba(243,245,255,.66); margin-left:auto; }
+
+/* ── 窓 ──────────────────────────────────────────────────────────── */
+.vs-lb-scrim{ position:absolute; inset:0; z-index:5; background:rgba(4,5,16,.55);
+  opacity:0; pointer-events:none; transition:opacity .16s ease; }
+.vs-lobby[data-pane]:not([data-pane=""]) .vs-lb-scrim{ opacity:1; pointer-events:auto; }
+.vs-lb-pane{ position:absolute; z-index:6; left:50%; top:50%;
+  transform:translate(-50%,-48%) scale(.97); opacity:0; pointer-events:none;
+  width:min(680px, calc(100% - 32px)); max-height:calc(100% - 96px);
+  display:flex; flex-direction:column;
+  border-radius:18px; background:rgba(12,16,34,.96);
+  border:1px solid rgba(255,255,255,.16); box-shadow:0 24px 70px rgba(0,0,0,.55);
+  transition:opacity .16s ease, transform .16s ease; }
+.vs-lb-pane[data-on="1"]{ opacity:1; pointer-events:auto; transform:translate(-50%,-50%) scale(1); }
+.vs-lb-pane-head{ display:flex; align-items:center; gap:10px; padding:12px 14px 6px; }
+.vs-lb-pane-t{ margin:0; font-size:15px; font-weight:900; }
+.vs-lb-pane-head .vs-lb-x{ margin-left:auto; }
+.vs-lb-pane-body{ padding:4px 14px 14px; overflow-y:auto; }
+
+@media (max-width: 900px){
+  .vs-lb-corner.is-bl{ display:none; }
+  .vs-lb-rail{ right:10px; top:66px; width:min(240px, 46%); max-height:44%; }
+  .vs-lb-play{ right:10px; left:10px; bottom:10px; width:auto; }
+  .vs-lb-tiles{ grid-template-columns:repeat(4, 1fr); }
+  .vs-lb-tile-s{ display:none; }
+}
+@media (max-width: 560px){
+  .vs-lb-rail{ position:absolute; left:10px; right:10px; top:auto; bottom:150px;
+    width:auto; max-height:32%; }
+  .vs-lb-who{ padding:4px 10px 4px 4px; }
+}
+
 .vs-lobby{ position:absolute; inset:0; display:flex; flex-direction:column;
   background:
     radial-gradient(120% 90% at 12% -10%, rgba(91,140,255,.18), transparent 60%),
@@ -1212,12 +1411,13 @@ export const LOBBY_CSS = `
 .vs-lb-cc-d[data-on="1"]{ background:${PALETTE.amber}; }
 
 .vs-lb-modes{ display:flex; flex-direction:column; gap:5px; }
-.vs-lb-mode{ display:flex; flex-direction:column; align-items:flex-start; gap:1px;
-  padding:8px 11px; border-radius:11px; background:rgba(255,255,255,.05);
+/* ★ 舞台の 端に 置く ので **薄く 作る**。厚いと 6 つで 画面の 半分を 食う。 */
+.vs-lb-mode{ display:flex; flex-direction:column; align-items:flex-start; gap:0;
+  padding:6px 10px; border-radius:10px; background:rgba(255,255,255,.05);
   border:1.5px solid transparent; text-align:left; }
 .vs-lb-mode[aria-checked="true"]{ border-color:${PALETTE.mint}; background:rgba(55,224,176,.12); }
 .vs-lb-mode[disabled]{ opacity:.4; }
-.vs-lb-mode-l{ font-size:13px; font-weight:800; }
+.vs-lb-mode-l{ font-size:12.5px; font-weight:800; line-height:1.45; }
 /* 4.39:1 → 明るく する（遊び方の 説明。ここが 読めないと 何の 遊びか 分からない） */
 .vs-lb-mode-d{ font-size:10.5px; color:rgba(243,245,255,.66); }
 .vs-lb-bots{ display:flex; gap:5px; flex-wrap:wrap; }
