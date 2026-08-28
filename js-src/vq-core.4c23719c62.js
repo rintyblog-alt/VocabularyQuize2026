@@ -24573,6 +24573,17 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
           if (document.hidden) _appCloudGenStop();
           else kick().catch(() => {});
         });
+        /* ★ 作り始めた 合図。ここが 無いと、作り始めて すぐ 閉じたとき
+           一覧の「作成中」が 次の きっかけまで 出ない
+           （＝「閉じたら 消えた」に 見える）。 */
+        window.addEventListener("vq:cloudgen:start", () => {
+          (async () => {
+            await _appCloudGenRefresh();
+            if (_appCurrentTab === APP_TAB_KEY.LIBRARY) _appRenderLibrary();
+            try{ window.dispatchEvent(new CustomEvent("vq:cloudgen")); }catch(e){}
+            _appCloudGenStart();
+          })().catch(() => {});
+        });
         window.addEventListener("pagehide", _appCloudGenStop);
       })();
 
@@ -44808,6 +44819,15 @@ actionタイプ:
           if (t === APP_TAB_KEY.LIBRARY){
             _appLoadPublicPresets(false).catch(() => {});
             _appLoadPresetQueue(false).catch(() => {});
+            /* 一覧へ 入ったら、クラウドで 作りかけの ものも 見に いく。
+               ここを 忘れると「作成中」が 出ない ことが ある。 */
+            (async () => {
+              await _appCloudGenRefresh();
+              await _appCloudGenAdoptFinished();
+              _appRenderLibrary();
+              try{ window.dispatchEvent(new CustomEvent("vq:cloudgen")); }catch(e){}
+              if (_appCloudGen.jobs.length) _appCloudGenStart();
+            })().catch(() => {});
           }
           if (t === APP_TAB_KEY.NOTIFICATIONS){
             _appInboxBackToList();

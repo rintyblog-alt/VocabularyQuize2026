@@ -81,6 +81,28 @@ async function req(path, o = {}) {
   ok("何問中 何問か 出る", !!a1 && /3 \/ 10/.test(a1.文), a1 && a1.文.slice(0, 80));
   ok("止める 口が ある", !!a1 && a1.止める);
 
+  節("②-b 作り始めた 合図で **その場で** 出る");
+  {
+    /* 一覧を 開いたまま、もう 1 件 始める。
+       画面を 離れたり 読み込み直したり しなくても 出るか。 */
+    const st2 = await req("/api/aijob/start", { method: "POST", token, body: {
+      type: "preset-gen", title: "二件目のしごと", planned: 4, executor: "cloud",
+      stages: [{ id: "make", label: "作る", total: 4, done: 1 }] } });
+    const id2 = st2.j?.job?.jobId;
+    await req("/api/aijob/update", { method: "POST", token, body: { jobId: id2, made: 1,
+      stages: [{ id: "make", label: "作る", total: 4, done: 1 }] } });
+    /* 生成の 口が 出す 合図と 同じ ものを 投げる */
+    await pg.evaluate((d) => window.dispatchEvent(new CustomEvent("vq:cloudgen:start", { detail: d })), { jobId: id2, planned: 4 });
+    await pg.waitForTimeout(2500);
+    const n = await pg.evaluate(() => {
+      const r = document.getElementById("vqScreens").shadowRoot;
+      return r.querySelectorAll(".pc--building").length;
+    });
+    ok("**画面を 離れずに 2 件目が 出る**", n === 2, { 札の数: n });
+    await req("/api/aijob/cancel", { method: "POST", token, body: { jobId: id2 } });
+    await pg.waitForTimeout(300);
+  }
+
   節("③ 再読み込みしても 残る");
   await pg.reload({ waitUntil: "domcontentloaded" });
   await pg.addStyleTag({ content: "#vqPin,#vqTour,#vqLumiTour,#vqNewAuth,#authGate,#firstLaunchOverlay{display:none!important}" });

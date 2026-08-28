@@ -18953,6 +18953,15 @@
       }
       if (!j.jobId) throw new Error("NO_JOB");
       if (typeof o.onStart === "function") { try { o.onStart(j.jobId, j.planned || 0); } catch (e) {} }
+      /* ★ 始まった ことを **その場で** 本体へ 知らせる。
+         これが 無いと、作り始めて すぐ 画面を 閉じても、プリセット一覧の
+         「作成中」は **次の きっかけ（読み込み直し・窓に 戻る）まで 出ない**。
+         利用者からは「閉じたら 消えた」ように 見える。 */
+      try {
+        root.dispatchEvent(new CustomEvent("vq:cloudgen:start", {
+          detail: { jobId: j.jobId, planned: j.planned || 0 }
+        }));
+      } catch (e) {}
       return followJob(j.jobId, o);
     });
   }
