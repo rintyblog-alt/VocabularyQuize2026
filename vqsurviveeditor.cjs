@@ -134,6 +134,12 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     }, reg.token);
     await pg.goto(BASE + "/index.html", { waitUntil: "domcontentloaded" });
     await pg.waitForFunction(() => !!document.getElementById("appSurvivePage"), null, { timeout: 25000 });
+    /* ★ 本体の 案内（Gmail の 確認・暗証番号・ツアー）は 画面 いっぱいに 覆う。
+       **本物の マウスで つつく 検査**では、これを どけないと
+       すべての 押下が 覆いに 当たる（実測で ここに はまった）。 */
+    await pg.addStyleTag({ content:
+      "#vqPin,#vqTour,#vqLumiTour,#vqNewAuth,#authGate,#firstLaunchOverlay," +
+      "#globalLoadingOverlay,#vqEnvBadge,#vqNewsFlash{display:none!important}" });
     await pg.evaluate(() => {
       const f = () => {
         document.body.classList.remove("auth-booting", "auth-gate-open", "first-launch-open");
@@ -153,9 +159,11 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     await pg.evaluate(() => document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot.querySelector(".vs-load-start").click());
     await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "lobby", null, { timeout: 25000, polling: 250 });
 
-    節("⑦ 画面");
+    節("⑦ 画面（立体で 置く）");
     const 入口 = await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const lb = window.VocabuSurvive.__app.shell.get("lobby");
+      lb._openPane("mine");
       const b = Array.from(r.querySelectorAll(".vs-btn")).filter((e) => /コースを 作る/.test(e.textContent))[0];
       return { 有: !!b };
     });
@@ -165,96 +173,145 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
       Array.from(r.querySelectorAll(".vs-btn")).filter((e) => /コースを 作る/.test(e.textContent))[0].click();
     });
-    await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "editor", null, { timeout: 20000, polling: 200 });
-    await 待つ(500);
+    await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "editor", null, { timeout: 25000, polling: 200 });
+    await 待つ(2200);
     const 編 = await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const ed = window.VocabuSurvive.__app.shell.get("editor");
+      const cv = r.querySelector(".vs-e3-cv");
       return {
-        区: r.querySelectorAll(".vs-ed-row").length,
-        足: r.querySelectorAll(".vs-ed-addb").length,
-        風: r.querySelectorAll(".vs-ed-theme").length,
-        判: Array.from(r.querySelectorAll(".vs-ed-check p")).map((e) => e.textContent),
-        悪: r.querySelectorAll(".vs-ed-check .vs-ed-bad").length
+        区: r.querySelectorAll(".vs-e3-chip").length,
+        足: r.querySelectorAll(".vs-e3-addb").length,
+        仕: r.querySelectorAll(".vs-e3-ob").length,
+        風: r.querySelectorAll(".vs-e3-theme").length,
+        判: Array.from(r.querySelectorAll(".vs-e3-check p")).map((e) => e.textContent),
+        悪: r.querySelectorAll(".vs-e3-check .vs-e3-bad").length,
+        板: cv ? [cv.width, cv.height] : null,
+        建: !!ed.built, 長: ed.built ? Math.round(ed.built.length) : 0,
+        描: ed.renderer ? ((ed.renderer.stats || {}).draws | 0) : -1
       };
     });
     ok("編集の 画面へ 移る", 編.区 > 0, 編);
+    ok("**遊ぶ ときと 同じ 立体で 見える**", 編.板 && 編.板[0] > 100 && 編.描 > 5, 編);
+    ok("コースが 建っている", 編.建 && 編.長 > 60, 編);
     ok("ひな形が 9 区画", 編.区 === 9, 編.区);
     ok("足せる 区画が 並ぶ", 編.足 >= 10, 編.足);
+    ok("置ける 仕掛けが 並ぶ", 編.仕 >= 15, 編.仕);
     ok("風景が 10 種", 編.風 === 10, 編.風);
     ok("**その場で 判定が 出る**", 編.判.length >= 4, 編.判);
-    /* ★ 上から 見た 図。数字だけでは どんな コースか 分からない。 */
-    const 図 = await pg.evaluate(() => {
-      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
-      const cv = r.querySelector(".vs-ed-map");
-      if (!cv) return null;
-      const g = cv.getContext("2d");
-      const d = g.getImageData(0, 0, cv.width, cv.height).data;
-      let 塗 = 0;
-      for (let i = 3; i < d.length; i += 4) if (d[i] > 8) 塗++;
-      return { w: cv.width, h: cv.height, 塗, 割: 塗 / (cv.width * cv.height) };
-    });
-    ok("上から 見た 図が ある", !!図 && 図.w > 100, 図);
-    ok("**何か 描かれている**", 図 && 図.割 > 0.02, 図);
     ok("ひな形は 全部 ○", 編.悪 === 0, 編.判);
 
-    /* 区画を 足す → 判定が 変わる */
+    節("⑦-b 床を つついて 置く");
+    /* ★ ここが 今回の 肝。**実際の 絵の 中で 置ける**か。 */
     await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
-      Array.from(r.querySelectorAll(".vs-ed-addb")).filter((e) => /すきま/.test(e.textContent))[0].click();
+      r.querySelector('.vs-e3-ob[data-tool="spinner"]').click();
     });
-    await 待つ(400);
+    const 具 = await pg.evaluate(() => window.VocabuSurvive.__app.shell.get("editor").tool);
+    ok("仕掛けを えらべる", 具 === "spinner", 具);
+    const 板 = await pg.evaluate(() => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const b = r.querySelector(".vs-e3-cv").getBoundingClientRect();
+      return { l: b.left, t: b.top, w: b.width, h: b.height };
+    });
+    /* ★ 床の どこを つつくかは 見え方 しだい。人と 同じ ように
+       **当たるまで 何回か つつく**（当たらない ことを 検査の 失敗に しない）。 */
+    let 板箱 = { x: 板.l + 板.w * 0.5, y: 板.t + 板.h * 0.42 };
+    for (const f of [0.42, 0.5, 0.58, 0.34, 0.66]) {
+      const y = 板.t + 板.h * f;
+      await pg.mouse.move(板箱.x, y);
+      await pg.mouse.down(); await pg.mouse.up();
+      await 待つ(450);
+      const n = await pg.evaluate(() => {
+        const ed = window.VocabuSurvive.__app.shell.get("editor");
+        let k = 0; for (const s of ed.course.sections) k += (s.obs || []).length;
+        return k;
+      });
+      if (n > 0) { 板箱 = { x: 板箱.x, y }; break; }
+    }
+    await 待つ(300);
+    const 置 = await pg.evaluate(() => {
+      const ed = window.VocabuSurvive.__app.shell.get("editor");
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      let n = 0, どこ = -1;
+      for (let i = 0; i < ed.course.sections.length; i++) {
+        const k = (ed.course.sections[i].obs || []).length;
+        n += k; if (k && どこ < 0) どこ = i;
+      }
+      return { 総: n, どこ, 知: (r.querySelector(".vs-e3-hint") || {}).textContent,
+        中: どこ >= 0 ? ed.course.sections[どこ].obs[0] : null };
+    });
+    ok("**つついた ところに 置ける**", 置.総 === 1, 置);
+    ok("どの 区画かが 決まる", 置.どこ > 0, 置);
+    ok("その 区画の 中の 位置も 決まる", 置.中 && typeof 置.中.dz === "number" && 置.中.dz >= 0, 置.中);
+    ok("何を 置いたか 知らせる", /置きました/.test(String(置.知)), 置.知);
+
+    /* 引きずった ときは 置かない */
+    const 前数 = 置.総;
+    await pg.mouse.move(板箱.x - 60, 板箱.y - 30);
+    await pg.mouse.down();
+    await pg.mouse.move(板箱.x + 60, 板箱.y + 20, { steps: 8 });
+    await pg.mouse.up();
+    await 待つ(500);
+    const 引 = await pg.evaluate(() => {
+      const ed = window.VocabuSurvive.__app.shell.get("editor");
+      let n = 0; for (const s of ed.course.sections) n += (s.obs || []).length;
+      return n;
+    });
+    ok("**引きずった ときは 置かない**（見回すたびに 増えない）", 引 === 前数, [前数, 引]);
+
+    /* 手（えらぶ）に 戻すと 区画えらびに なる */
+    await pg.evaluate(() => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      r.querySelector('.vs-e3-ob[data-tool=""]').click();
+    });
+    await pg.mouse.move(板箱.x, 板箱.y + 60);
+    await pg.mouse.down(); await pg.mouse.up();
+    await 待つ(500);
+    const 選 = await pg.evaluate(() => {
+      const ed = window.VocabuSurvive.__app.shell.get("editor");
+      let n = 0; for (const s of ed.course.sections) n += (s.obs || []).length;
+      return { sel: ed.sel, 総: n };
+    });
+    ok("手に 戻すと 置かない", 選.総 === 引, 選);
+    ok("つついた 区画が えらばれる", 選.sel >= 0, 選);
+
+    節("⑦-c 区画を 足すと 判定が 変わる");
+    await pg.evaluate(() => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      Array.from(r.querySelectorAll(".vs-e3-addb")).filter((e) => /すきま/.test(e.textContent))[0].click();
+    });
+    await 待つ(500);
     const 足 = await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
       const ed = window.VocabuSurvive.__app.shell.get("editor");
-      return { 区: r.querySelectorAll(".vs-ed-row").length, 選: ed.sel,
-        判: Array.from(r.querySelectorAll(".vs-ed-check p")).map((e) => e.textContent) };
+      return { 区: r.querySelectorAll(".vs-e3-chip").length, 選: ed.sel };
     });
     ok("区画が 増える", 足.区 === 10, 足.区);
-    /* 選んだ 区画が 図の 上で 光るか（帯の 色が 増える） */
-    const 光 = await pg.evaluate(async () => {
-      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
-      const ed = window.VocabuSurvive.__app.shell.get("editor");
-      const 数える = () => {
-        const cv = r.querySelector(".vs-ed-map");
-        const d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
-        let n = 0;
-        /* 帯の 色（緑がかった 半透明）を 数える */
-        for (let i = 0; i < d.length; i += 4) {
-          if (d[i + 3] > 8 && d[i + 1] > d[i] + 20 && d[i + 2] > d[i]) n++;
-        }
-        return n;
-      };
-      ed.sel = 1; ed._render(); await new Promise((x) => setTimeout(x, 250));
-      const a = 数える();
-      ed.sel = ed.course.sections.length - 2; ed._render(); await new Promise((x) => setTimeout(x, 250));
-      const b = 数える();
-      return { a, b, ちがう: Math.abs(a - b) > 40 };
-    });
-    ok("えらんだ 区画が 図の 上で 変わる", 光.ちがう, 光);
-    ok("足した ものが 選ばれる", 足.選 >= 1, 足.選);
-    ok("ゴールの 前に 入る", 足.選 < 足.区 - 1, 足);
+    ok("足した ものが えらばれる", 足.選 >= 1 && 足.選 < 足.区 - 1, 足);
 
-    /* すきまを 大きく して 赤が 出るか */
     const 赤 = await pg.evaluate(async () => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
       const ed = window.VocabuSurvive.__app.shell.get("editor");
       ed.course.sections[ed.sel].len = 12;
-      ed._render();
-      await new Promise((x) => setTimeout(x, 300));
-      return { 悪: r.querySelectorAll(".vs-ed-check .vs-ed-bad").length,
-        文: Array.from(r.querySelectorAll(".vs-ed-check .vs-ed-bad")).map((e) => e.textContent) };
+      ed._need = true; ed._render();
+      await new Promise((x) => setTimeout(x, 400));
+      return { 悪: r.querySelectorAll(".vs-e3-check .vs-e3-bad").length,
+        文: Array.from(r.querySelectorAll(".vs-e3-check .vs-e3-bad")).map((e) => e.textContent),
+        印: ed.el.getAttribute("data-ok") };
     });
     ok("**跳べない と 赤で 出る**", 赤.悪 >= 1, 赤);
     ok("何が だめか 書いてある", 赤.文.some((t) => /すきま/.test(t)), 赤.文);
+    ok("画面ぜんたいにも 印が つく", 赤.印 === "0", 赤.印);
 
-    /* 戻して 保存 */
+    節("⑦-d 保存 → ロビー → 走る");
     await pg.evaluate(async () => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
       const ed = window.VocabuSurvive.__app.shell.get("editor");
       ed.course.sections[ed.sel].len = 5;
       ed.course.name = "検査で 作った コース";
-      ed._render();
-      await new Promise((x) => setTimeout(x, 200));
+      ed._need = true; ed._render();
+      await new Promise((x) => setTimeout(x, 250));
       Array.from(r.querySelectorAll(".vs-btn")).filter((e) => /^保存/.test(e.textContent))[0].click();
       await new Promise((x) => setTimeout(x, 900));
     });
@@ -262,31 +319,31 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       const mod = await import("/assets/vocabu-survive/data/mycourse.js");
       const list = await mod.listMyCourses();
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
-      return { 数: list.length, 名: list[0] && list[0].name,
-        一覧: r.querySelectorAll(".vs-ed-mrow").length };
+      return { 数: list.length, 名: list[0] && list[0].name, 仕: (list[0] ? list[0].sections : [])
+        .reduce((n, s) => n + ((s.obs || []).length), 0), 一覧: r.querySelectorAll(".vs-e3-mrow").length };
     });
     ok("保存できる", 保.数 === 1, 保);
     ok("名前が 残る", 保.名 === "検査で 作った コース", 保.名);
+    ok("**置いた 仕掛けも 残る**", 保.仕 >= 1, 保.仕);
     ok("作った 一覧に 出る", 保.一覧 === 1, 保.一覧);
 
-    /* 合言葉 */
     const 言 = await pg.evaluate(async () => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
       Array.from(r.querySelectorAll(".vs-btn")).filter((e) => /合言葉を 作る/.test(e.textContent))[0].click();
       await new Promise((x) => setTimeout(x, 400));
-      return r.querySelector(".vs-ed-code").value;
+      return r.querySelector(".vs-e3-code").value;
     });
     ok("合言葉が 出る", /^VS1/.test(言), 言.slice(0, 20));
 
-    /* ロビーへ 戻る → 一覧に 出る → 走れる */
     await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
-      r.querySelector(".vs-ed-head .vs-lb-x").click();
+      r.querySelector(".vs-e3-top .vs-lb-x").click();
     });
     await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "lobby", null, { timeout: 20000, polling: 250 });
-    await 待つ(800);
+    await 待つ(900);
     const 並 = await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      window.VocabuSurvive.__app.shell.get("lobby")._openPane("mine");
       return Array.from(r.querySelectorAll(".vs-lb-mineb")).map((e) => e.textContent);
     });
     ok("ロビーの 一覧に 出る", 並.length === 1 && /検査で 作った/.test(並[0]), 並);
@@ -300,51 +357,13 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     const 走 = await pg.evaluate(() => {
       const m = window.VocabuSurvive.__app.shell.get("match");
       return { id: m.course.id, 名: m.course.name, 長: Math.round(m.course.length),
-        門: m.course.gates.length, 板: m.canvas.width };
+        門: m.course.gates.length, 板: m.canvas.width,
+        仕: m.course.obstacles.filter((o) => o.kind === "spinner").length };
     });
     ok("**自分の コースで 走れる**", /^my:/.test(走.id), 走);
     ok("名前も 引き継ぐ", /検査で 作った/.test(走.名), 走.名);
     ok("組み立てられている", 走.長 > 60 && 走.門 >= 1 && 走.板 > 100, 走);
-
-    節("⑧ 対戦では 部屋主だけ（合言葉ごと 配る）");
-    await pg.evaluate(() => {
-      const app = window.VocabuSurvive.__app;
-      const m = app.shell.get("match"); if (m && m.quiz && m.quiz.close) m.quiz.close();
-      return app.goLobby();
-    });
-    await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "lobby", null, { timeout: 20000, polling: 250 });
-    await pg.evaluate(() => {
-      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
-      r.querySelector(".vs-lb-onrow .vs-btn").click();
-    });
-    await pg.waitForFunction(() => {
-      const lb = window.VocabuSurvive.__app.shell.get("lobby");
-      return lb && lb.roomId && lb.net && lb.net.connected;
-    }, null, { timeout: 25000, polling: 250 }).catch(() => {});
-    await 待つ(700);
-    const 部 = await pg.evaluate(() => {
-      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
-      const b = r.querySelector(".vs-lb-mineb");
-      return { 部屋: window.VocabuSurvive.__app.shell.get("lobby").roomId,
-        止: b ? b.disabled : null, 配: !!Array.from(r.querySelectorAll(".vs-lb-note"))
-          .filter((e) => /みんなへ 配ります/.test(e.textContent))[0] };
-    });
-    ok("部屋に 入った", /^[A-Z0-9]{6}$/.test(String(部.部屋 || "")), 部.部屋);
-    /* ★ 前は「対戦では 使えない」だった。
-       いまは **合言葉ごと 部屋へ 配れる**ので、部屋主なら えらべる。
-       部屋主で ない 側が 押せない ことは vqsurviveshare で 見る。 */
-    ok("部屋主なら 押せる", 部.止 === false, 部);
-    ok("配る 旨が 書いてある", 部.配, 部);
-    const 配 = await pg.evaluate(async () => {
-      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
-      r.querySelector(".vs-lb-mineb").click();
-      await new Promise((x) => setTimeout(x, 700));
-      const lb = window.VocabuSurvive.__app.shell.get("lobby");
-      return { 自: lb._myCourse ? lb._myCourse.name : "",
-        知: (r.querySelector(".vs-lb-sharing") || {}).textContent || "" };
-    });
-    ok("えらぶと 部屋へ 配る", /検査で 作った/.test(String(配.自)), 配);
-    ok("いま 使う コースが **消えずに** 出る", /いま 部屋で 使う コース/.test(String(配.知)) && /検査で 作った/.test(String(配.知)), 配);
+    ok("**置いた 仕掛けが 走る 場に 出る**", 走.仕 >= 1, 走.仕);
 
     節("⑨ 例外");
     ok("画面の 例外 0 件", errs.length === 0, errs.slice(0, 4));

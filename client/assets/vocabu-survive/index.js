@@ -96,7 +96,9 @@ class App {
       }],
       /* ★ 編集の 画面は **最後**に 読む。使わない 人の ほうが 多いので、
          ここで つまずいても ロビーと 試合は もう 動いている。 */
-      ["コースの 作り方を 用意しています", () => import("./ui/editor.js")]
+      /* ★ 作る 画面は **立体**（実際の 絵の 中で 置く）。
+         一覧で 並べる だけの 旧い 作り（ui/editor.js）は もう 読まない。 */
+      ["コースの 作り方を 用意しています", () => import("./ui/editor3d.js")]
     ];
     const mods = {};
     const keys = ["audio", "courses", "lobby", "net", "match", "questions", "editor"];
@@ -135,9 +137,9 @@ class App {
       });
       this.shell.register("lobby", lobby);
     }
-    if (mods.editor && mods.editor.EditorScreen) {
-      addCss(this.shell.root, mods.editor.EDITOR_CSS || "");
-      const ed = new mods.editor.EditorScreen({
+    if (mods.editor && mods.editor.Editor3DScreen) {
+      addCss(this.shell.root, mods.editor.EDITOR3D_CSS || "");
+      const ed = new mods.editor.Editor3DScreen({
         app: this,
         onPlay: (def) => this.startMatch({
           courseId: def.id, courseDef: def, mode: "timeattack", bots: 0,

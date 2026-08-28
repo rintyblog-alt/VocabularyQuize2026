@@ -529,7 +529,10 @@ export class LobbyScreen {
 
       /* 上の 帯 */
       h("header", { class: "vs-lb-top" },
-        h("div", { class: "vs-lb-who" }, this.avatarEl,
+        h("button", {
+          class: "vs-lb-who", type: "button", "aria-label": "これまでの 成績",
+          onclick: () => this._openPane(this.pane === "stats" ? "" : "stats")
+        }, this.avatarEl,
           h("div", { class: "vs-lb-whotx" }, this.nameEl,
             h("div", { class: "vs-lb-st" }, h("i", { class: "vs-lb-dot" }),
               h("span", { text: "オンライン" })))),
@@ -546,7 +549,7 @@ export class LobbyScreen {
           h("button", { class: "vs-lb-x", type: "button", "aria-label": "閉じる", onclick: () => this.onExit() }, "✕"))),
 
       /* 左下 … これまでの 成績 */
-      h("section", { class: "vs-lb-corner is-bl", "aria-label": "これまで" },
+      h("section", { class: "vs-lb-corner is-bl", "data-pane": "stats", "aria-label": "これまで" },
         h("div", { class: "vs-lb-lab", text: "これまで" }), this.statsEl),
 
       /* 右 … 遊び方と 記録 */
@@ -1330,7 +1333,11 @@ export const LOBBY_CSS = `
 .vs-lb-pane-body{ padding:4px 14px 14px; overflow-y:auto; }
 
 @media (max-width: 900px){
-  .vs-lb-corner.is-bl{ display:none; }
+  /* ★ 狭い ときは **名札を 押した ときだけ** 出す。
+     前は まるごと 消していた ので、スマホから 成績を 見られなかった。 */
+  .vs-lb-corner.is-bl{ left:10px; right:10px; bottom:150px; width:auto;
+    display:none; z-index:6; }
+  .vs-lobby[data-pane="stats"] .vs-lb-corner.is-bl{ display:block; }
   .vs-lb-rail{ right:10px; top:66px; width:min(240px, 46%); max-height:44%; }
   .vs-lb-play{ right:10px; left:10px; bottom:10px; width:auto; }
   .vs-lb-tiles{ grid-template-columns:repeat(4, 1fr); }

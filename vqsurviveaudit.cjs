@@ -253,21 +253,44 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       await 待つ(700);
       const t = await pg.evaluate(() => {
         const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+        /* ★ 新しい ロビーは 立体の 舞台。つまみは 「窓」の 中に ある。
+           **人が やる のと 同じ 順**で 開けてから 触れるかを 見る。 */
+        const lb = window.VocabuSurvive.__app.shell.get("lobby");
+        const 開いて測る = (key, sel) => {
+          lb._openPane(key);
+          const e = r.querySelector(sel);
+          if (!e) return false;
+          const b = e.getBoundingClientRect();
+          const ok2 = b.width > 8 && b.height > 8 && getComputedStyle(e).display !== "none";
+          return ok2;
+        };
         const rb = r.querySelector(".vs-root").getBoundingClientRect();
         const 触れる = (sel) => {
           const e = r.querySelector(sel); if (!e) return false;
           const b = e.getBoundingClientRect();
           return b.width > 8 && b.height > 8 && getComputedStyle(e).display !== "none";
         };
+        /* ★ はみ出しは **窓を 閉じた ふだんの 姿**で 見る
+           （窓は 画面の 真ん中に 出る ので 数え方が 変わる）。 */
+        lb._openPane("");
         let はみ = 0;
         for (const e of r.querySelectorAll(".vs-lobby *")) {
+          if (e.closest && e.closest(".vs-lb-pane")) continue;
           const b = e.getBoundingClientRect();
           if (b.width > 0 && (b.right > rb.right + 2 || b.left < rb.left - 2)) はみ++;
         }
-        return { 色: 触れる(".vs-lb-colors"), 帽: 触れる(".vs-lb-hatbox"),
-          問: 触れる(".vs-lb-qz"), 記: 触れる(".vs-lb-rec-tabs"),
-          成: 触れる(".vs-lb-stats"), 図: 触れる(".vs-lb-map"),
-          遊: r.querySelectorAll(".vs-lb-mode").length, はみ };
+        const out = {
+          色: 開いて測る("look", ".vs-lb-colors"),
+          帽: 開いて測る("look", ".vs-lb-hatbox"),
+          記: 開いて測る("course", ".vs-lb-rec-tabs"),
+          図: 開いて測る("course", ".vs-lb-map"),
+          成: 開いて測る("stats", ".vs-lb-stats"),
+          問: 触れる(".vs-lb-qz"),
+          遊: r.querySelectorAll(".vs-lb-mode").length
+        };
+        lb._openPane("");
+        out.はみ = はみ;
+        return out;
       });
       ok(w + "×" + h + " 色を 選べる", t.色, t);
       ok(w + "×" + h + " かぶりものを 選べる", t.帽, t);
