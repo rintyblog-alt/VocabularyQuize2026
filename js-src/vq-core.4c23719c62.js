@@ -3319,6 +3319,31 @@
         const wait = Math.max(0, Number(ms) || 0);
         if (wait > 0) await _authDelay(wait);
       }
+      /* ── 覆いが 外れなくなるのを 防ぐ ──────────────────────────────
+         showLoading / hideLoading は 数え上げなので、**返らない 約束が
+         1 つ ある だけで 画面が 永久に 塞がる**。そうなると 人には
+         「読み込みが 終わらない → リロードするしかない」としか 見えない。
+         いちばん 長い 待ちでも 認証 API の 20 秒 × 2 本 なので、それを
+         十分に 超えた ところで 強制的に 外し、何で 詰まったかを console に
+         残す。ふつうは 一度も 動かない（動いたら それが 手がかり）。 */
+      const LOADING_WATCHDOG_MS = 45000;
+      let _loadingWatchdogTimer = 0;
+      function _loadingArmWatchdog(){
+        if (_loadingWatchdogTimer) clearTimeout(_loadingWatchdogTimer);
+        _loadingWatchdogTimer = setTimeout(() => {
+          _loadingWatchdogTimer = 0;
+          if (_loadingState.count <= 0) return;
+          console.warn("[loading] 覆いが 外れないので 強制的に 外します:", _loadingState.message, "count=", _loadingState.count);
+          _loadingState.count = 0;
+          _loadingState.message = "処理しています…";
+          _loadingRender();
+        }, LOADING_WATCHDOG_MS);
+      }
+      function _loadingDisarmWatchdog(){
+        if (!_loadingWatchdogTimer) return;
+        clearTimeout(_loadingWatchdogTimer);
+        _loadingWatchdogTimer = 0;
+      }
       function showLoading(message){
         const msg = String(message || "").trim();
         if (msg) _loadingState.message = msg;
@@ -3326,12 +3351,14 @@
           _authApplyLoadingIcon();
         }
         _loadingState.count += 1;
+        _loadingArmWatchdog();
         _loadingRender();
       }
       function hideLoading(){
         _loadingState.count = Math.max(0, _loadingState.count - 1);
         if (_loadingState.count <= 0){
           _loadingState.message = "処理しています…";
+          _loadingDisarmWatchdog();
         }
         _loadingRender();
       }
@@ -11284,15 +11311,39 @@ function reviewWrong(){
         }
         listEl.appendChild(frag);
       }
+      /* ── 通知の 取り直しは **画面を 塞がない** ────────────────────────────
+         ここは 60 秒ごとの 見張り・窓に 戻ってきたとき・ホームを 開いたとき
+         からも 呼ばれる。以前は 頭で showLoading() を 呼んでいたので、
+         **どの画面に いても 1 分おきに 全画面の 液体ローディングが 出ていた**
+         （プリセット一覧で 実測: 63.5 秒・123.5 秒ちょうどに 出る）。
+         通知は 手元の 控えを 先に 出してから 裏で 取り直す作りなので、
+         待たせる 必要が そもそも 無い。全画面の 覆いは
+         **人が 押した ときだけ**（登録・発行・共有コードなど）に 使う。
+
+         あわせて 1 件ずつに 時間切れを 置く。Firestore は 圏外だと
+         `.get()` が いつまでも 返らないことがあり、返らないと
+         _vqNotifPollBusy が true のまま 見張りが 止まってしまう。 */
+      const NOTIF_QUERY_TIMEOUT_MS = 10000;
+      function _notifQueryTimeout(promise){
+        return Promise.race([
+          promise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error("NOTIF_QUERY_TIMEOUT")), NOTIF_QUERY_TIMEOUT_MS))
+        ]);
+      }
       async function _fetchNotificationsFromFirestore(){
-        showLoading("通知を読み込み中…");
-        try{
+        {
+          /* ★ ここは _adminGetDb のまま にしてある。読み取りの 口
+             （_drawerShareGetDb("read")）へ 替えると、**手元の 開発でも
+             本番の Firestore の お知らせを 引いてきてしまう**。
+             開発で 本番の お知らせが 混ざるのは 都合が 悪いので、
+             これまで どおり 開発では ここで 落ちる（落ちても 自分あての
+             通知は 下で ちゃんと 取りに いく）。 */
           const db = _adminGetDb();
           const map = new Map();
           let successCount = 0;
           const tryQuery = async (field) => {
             try{
-              const snap = await db.collection("notifications").orderBy(field, "desc").limit(NOTIF_MAX).get();
+              const snap = await _notifQueryTimeout(db.collection("notifications").orderBy(field, "desc").limit(NOTIF_MAX).get());
               successCount++;
               snap.forEach((doc) => {
                 const item = _notifFromDoc(doc);
@@ -11304,7 +11355,7 @@ function reviewWrong(){
           await tryQuery("publishedAt");
           await tryQuery("createdAt");
           if (!successCount){
-            const snap = await db.collection("notifications").limit(NOTIF_MAX).get();
+            const snap = await _notifQueryTimeout(db.collection("notifications").limit(NOTIF_MAX).get());
             snap.forEach((doc) => {
               const item = _notifFromDoc(doc);
               if (!item) return;
@@ -11316,8 +11367,6 @@ function reviewWrong(){
             .sort((a,b) => (b.ts || 0) - (a.ts || 0))
             .slice(0, NOTIF_MAX);
           return list;
-        } finally {
-          hideLoading();
         }
       }
       async function _fetchUserNotificationsFromApi(options){
@@ -11356,10 +11405,43 @@ function reviewWrong(){
           .sort((a,b) => (b.ts || 0) - (a.ts || 0))
           .slice(0, NOTIF_MAX);
       }
-      async function _refreshNotificationsFromFirestore(options){
+      /* ── 同じ 取り直しを 何本も 走らせない ────────────────────────────
+         起動の 直後は ホーム・通知・同期 など いくつもの ところから
+         いっせいに 頼まれる（実測: 最初の 0.6 秒で 9 回）。中身は 同じ
+         なので、走っている 間は **同じ 約束を 配る**。Firestore の
+         二重問い合わせも 通知 API も それだけ 減る。
+         管理画面向け（forAdmin）は 戻す 中身が 違うので まとめない。 */
+      let _notifRefreshInflight = null;
+      function _refreshNotificationsFromFirestore(options){
         const opt = options || {};
-        const list = await _fetchNotificationsFromFirestore();
+        if (opt.forAdmin) return _refreshNotificationsRun(opt);
+        if (_notifRefreshInflight) return _notifRefreshInflight;
+        _notifRefreshInflight = _refreshNotificationsRun(opt)
+          .finally(() => { _notifRefreshInflight = null; });
+        return _notifRefreshInflight;
+      }
+      async function _refreshNotificationsRun(opt){
+        /* お知らせ（Firestore）と 自分あて（アプリの API）は **別々に** 取る。
+           以前は 前者が 落ちた 時点で 後者まで 取りに 行かなかったので、
+           Firestore が 使えない ところでは 自分あての 通知が 丸ごと 消えていた。
+           両方 空の ときだけ、これまで どおり 失敗として 投げる
+           （通知の 窓と 管理画面の 「読み込み失敗」表示は そのまま）。 */
+        let list = [];
+        let お知らせの失敗 = null;
+        try{
+          list = await _fetchNotificationsFromFirestore();
+        }catch(err){
+          /* 管理画面は 失敗を そのまま 伝える（読み込み失敗の 表示が 要る）。 */
+          if (opt.forAdmin) throw err;
+          お知らせの失敗 = err;
+          /* ふだんの 画面では **手元の 控えを 消さない**。空の 一覧で
+             上書きすると、取れない 間だけ これまでの お知らせが
+             消えたように 見えてしまう。 */
+          list = loadNotifications();
+          console.warn("[notify] お知らせを 取れません:", String(err?.message || err));
+        }
         const userList = (!opt.forAdmin) ? await _fetchUserNotificationsFromApi({ loadingText: "通知を同期中…" }) : [];
+        if (お知らせの失敗 && !list.length && !userList.length) throw お知らせの失敗;
         const merged = _mergeNotificationLists(list, userList);
         saveNotifications(merged);
         updateNotifyDot();
@@ -11419,12 +11501,19 @@ function reviewWrong(){
          ・後片づけ（タイマー解除）を必ず行う */
       let _vqNotifPollTimer = null;
       let _vqNotifPollBusy = false;
+      let _vqNotifLastRunAt = 0;
       const VQ_NOTIF_POLL_MS = 60000;
+      /* 窓に 戻る たびに 取り直すと、行ったり来たりする だけで 何度も 走る。
+         きっかけが 窓（focus / visibilitychange）の ときは 間を あける。 */
+      const VQ_NOTIF_MIN_GAP_MS = 30000;
 
-      async function _vqNotifRefreshQuiet(){
+      async function _vqNotifRefreshQuiet(options){
+        const opt = options || {};
         if (_vqNotifPollBusy) return;
         if (document.hidden) return;
+        if (opt.間をあける && (Date.now() - _vqNotifLastRunAt) < VQ_NOTIF_MIN_GAP_MS) return;
         _vqNotifPollBusy = true;
+        _vqNotifLastRunAt = Date.now();
         try {
           await _refreshNotificationsFromFirestore();
           /* News の未読も同じきっかけで数え直す（別々に走らせない）。 */
@@ -11453,9 +11542,9 @@ function reviewWrong(){
         window.__vqNotifAutoBound = true;
         document.addEventListener("visibilitychange", () => {
           if (document.hidden) _vqNotifStopPolling();
-          else { _vqNotifRefreshQuiet(); _vqNotifStartPolling(); }
+          else { _vqNotifRefreshQuiet({ 間をあける: true }); _vqNotifStartPolling(); }
         });
-        window.addEventListener("focus", () => { _vqNotifRefreshQuiet(); });
+        window.addEventListener("focus", () => { _vqNotifRefreshQuiet({ 間をあける: true }); });
         window.addEventListener("pagehide", _vqNotifStopPolling);
         window.addEventListener("beforeunload", _vqNotifStopPolling);
         /* 最初の 1 回は、画面が落ち着いてから */
@@ -59546,7 +59635,10 @@ actionタイプ:
         try{
           const body = await _authFetch(`/api/battle/status?queueId=${encodeURIComponent(st.queueId)}`, {
             method: "GET",
-            headers: _battleAuthHeaders()
+            headers: _battleAuthHeaders(),
+            /* 2 秒おきの 見張り。全画面の 覆いを 出すと マッチング中 ずっと
+               画面が 点滅する。待っていることは battleStatusLine が 伝える。 */
+            skipLoading: true
           });
           const status = String(body?.status || "");
           if (status === "MATCHED" && body?.matchId){
