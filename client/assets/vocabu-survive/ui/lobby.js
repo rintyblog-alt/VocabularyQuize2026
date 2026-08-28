@@ -1332,6 +1332,16 @@ export const LOBBY_CSS = `
 .vs-lb-pane-head .vs-lb-x{ margin-left:auto; }
 .vs-lb-pane-body{ padding:4px 14px 14px; overflow-y:auto; }
 
+/* ★ きせかえは **走る人を 見ながら** 変えたい。
+   真ん中に 出して 帳を かけると、変えた 結果が 見えない。
+   左下へ 寄せ、帳も 薄く する。 */
+.vs-lobby[data-pane="look"] .vs-lb-scrim{ opacity:.28; }
+.vs-lb-pane[data-pane="look"]{ left:16px; top:auto; bottom:16px;
+  transform:translate(0,10px) scale(.98); width:min(430px, calc(100% - 32px)); }
+.vs-lb-pane[data-pane="look"][data-on="1"]{ transform:translate(0,0) scale(1); }
+.vs-lb-pane[data-pane="look"] .vs-lb-colors{ gap:6px; }
+.vs-lb-pane[data-pane="look"] .vs-lb-colors{ display:grid; grid-template-columns:repeat(8,1fr); gap:6px; max-width:300px; }
+
 @media (max-width: 900px){
   /* ★ 狭い ときは **名札を 押した ときだけ** 出す。
      前は まるごと 消していた ので、スマホから 成績を 見られなかった。 */

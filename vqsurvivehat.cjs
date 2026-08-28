@@ -153,6 +153,32 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     await pg.evaluate(() => document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot.querySelector(".vs-load-start").click());
     await pg.waitForFunction(() => window.VocabuSurvive.state().screen === "lobby", null, { timeout: 25000 });
 
+    節("④-b 立体の 走る人に すぐ 映る");
+    /* ★ きせかえは **走る人を 見ながら** 変える もの。
+       選んだ 色や 帽子が その場の 立体に 映らないと、何を 選んだのか 分からない。 */
+    const 映 = await pg.evaluate(async () => {
+      const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      const lb = window.VocabuSurvive.__app.shell.get("lobby");
+      lb._openPane("look");
+      await new Promise((x) => setTimeout(x, 300));
+      const 取 = () => {
+        const m = lb.stage && lb.stage._me;
+        return m ? { c: m.color.slice(0, 3).map((v) => Math.round(v * 100)), hat: m.hat ? m.hat.key : "" } : null;
+      };
+      const 前 = 取();
+      r.querySelectorAll(".vs-lb-color")[4].click();
+      r.querySelector('.vs-lb-hat[data-hat="crown"]').click();
+      await new Promise((x) => setTimeout(x, 300));
+      const 後 = 取();
+      return { 舞台: !!lb.stage, 前, 後 };
+    });
+    if (!映.舞台) console.log("     （立体が 出せない ので 飛ばす）");
+    else {
+      ok("立体の 走る人が いる", !!映.前, 映);
+      ok("**選んだ 色が すぐ 映る**", JSON.stringify(映.前.c) !== JSON.stringify(映.後.c), 映);
+      ok("**選んだ かぶりものも すぐ 映る**", 映.後.hat === "crown", 映);
+    }
+
     節("⑤ ロビーで えらぶ");
     const 並び = await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;

@@ -512,6 +512,16 @@ void main() {
 .vs-lb-pane-head .vs-lb-x{ margin-left:auto; }
 .vs-lb-pane-body{ padding:4px 14px 14px; overflow-y:auto; }
 
+/* \u2605 \u304D\u305B\u304B\u3048\u306F **\u8D70\u308B\u4EBA\u3092 \u898B\u306A\u304C\u3089** \u5909\u3048\u305F\u3044\u3002
+   \u771F\u3093\u4E2D\u306B \u51FA\u3057\u3066 \u5E33\u3092 \u304B\u3051\u308B\u3068\u3001\u5909\u3048\u305F \u7D50\u679C\u304C \u898B\u3048\u306A\u3044\u3002
+   \u5DE6\u4E0B\u3078 \u5BC4\u305B\u3001\u5E33\u3082 \u8584\u304F \u3059\u308B\u3002 */
+.vs-lobby[data-pane="look"] .vs-lb-scrim{ opacity:.28; }
+.vs-lb-pane[data-pane="look"]{ left:16px; top:auto; bottom:16px;
+  transform:translate(0,10px) scale(.98); width:min(430px, calc(100% - 32px)); }
+.vs-lb-pane[data-pane="look"][data-on="1"]{ transform:translate(0,0) scale(1); }
+.vs-lb-pane[data-pane="look"] .vs-lb-colors{ gap:6px; }
+.vs-lb-pane[data-pane="look"] .vs-lb-colors{ display:grid; grid-template-columns:repeat(8,1fr); gap:6px; max-width:300px; }
+
 @media (max-width: 900px){
   /* \u2605 \u72ED\u3044 \u3068\u304D\u306F **\u540D\u672D\u3092 \u62BC\u3057\u305F \u3068\u304D\u3060\u3051** \u51FA\u3059\u3002
      \u524D\u306F \u307E\u308B\u3054\u3068 \u6D88\u3057\u3066\u3044\u305F \u306E\u3067\u3001\u30B9\u30DE\u30DB\u304B\u3089 \u6210\u7E3E\u3092 \u898B\u3089\u308C\u306A\u304B\u3063\u305F\u3002 */
