@@ -75358,7 +75358,10 @@
       moreItems: [
         { label: "CSV / TSV で書き出し", icon: "download", run: exportSheet },
         { label: "CSV を取り込む", icon: "upload", run: importCsv },
-        { label: "グラフを作る", icon: "chart", run: chartDialog }
+        { label: "グラフを作る", icon: "chart", run: chartDialog },
+        /* ★ 集計表（2026-08-29・訴え「高度な機能を 増やして」）。
+           Lumi からも 呼べるが、**人が 自分で 押せる 道**も 置く。 */
+        { label: "集計表を作る（ピボット）", icon: "chart", run: pivotDialog }
       ] });
 
     var api = VQ2.ui.mount("vq-wp-sheets", { title: item.title, css: (WP.CSS || "") + (WP.CSS_EXTRA || ""),
@@ -76581,6 +76584,73 @@
       }
       return { type: c.type, title: c.title || "", labels: labels, series: series };
     }
+    /* ══ 集計表（ピボット）の 窓（2026-08-29）═══════════════════════
+       中身の 計算は **WP.cmd.sheets.集計** が 1 か所で 持つ。
+       ここは 列を 選んで 渡すだけ（同じ 計算を 2 回 書かない）。 */
+    function pivotDialog() {
+      var sh0 = sheet();
+      if (!sh0) return;
+      /* 1 行目を 見出しとして 読む。空なら「A 列」のように 出す。 */
+      var 計 = {};
+      try { 計 = (F.recalc(sh0) || {}).values || {}; } catch (e) {}
+      var 最大列 = 0;
+      Object.keys(sh0.cells || {}).forEach(function (k) {
+        var m = /^([A-Z]+)(\d+)$/.exec(k); if (!m) return;
+        var ci = M.colIndex(m[1]); if (ci > 最大列) 最大列 = ci;
+      });
+      var 列 = [];
+      for (var i = 0; i <= Math.max(最大列, 1); i++) {
+        var k = M.colName(i) + "1";
+        var v = 計[k]; if (v === undefined) { var cl = (sh0.cells || {})[k]; v = cl ? cl.v : ""; }
+        列.push({ i: i, 名: String(v || "").trim() || (M.colName(i) + " 列") });
+      }
+      var 選 = function (name, 付) {
+        return '<select class="wp-in" data-f="' + name + '" style="width:100%">'
+          + (付 ? '<option value="">（使わない）</option>' : "")
+          + 列.map(function (c) {
+              return '<option value="' + c.i + '">' + esc(M.colName(c.i)) + "：" + esc(c.名) + "</option>";
+            }).join("") + "</select>";
+      };
+      var html = '<div style="display:grid;gap:12px;padding:4px 2px 8px">'
+        + '<div><label class="wp-lab">まとめる列（この列で 1 行に まとめます）</label>' + 選("rows") + "</div>"
+        + '<div><label class="wp-lab">数える列（合計・平均する 数の 列）</label>' + 選("values", true) + "</div>"
+        + '<div><label class="wp-lab">まとめかた</label>'
+        + '<select class="wp-in" data-f="how" style="width:100%">'
+        + ["合計", "平均", "件数", "最大", "最小"].map(function (x) {
+            return '<option value="' + x + '">' + x + "</option>"; }).join("")
+        + "</select></div>"
+        + '<label style="display:flex;gap:8px;align-items:center">'
+        + '<input type="checkbox" data-f="header" checked> 1 行目は 見出し</label>'
+        + '<div style="font-size:12px;opacity:.75">元の 表は 触りません。新しい シートに できます。</div>'
+        + '<button type="button" class="wp-btn is-outline" data-act="go" style="width:100%;height:44px;justify-content:center">集計表を 作る</button></div>';
+      U.sheet(api.root, {
+        title: "集計表を作る（ピボット）",
+        html: html,
+        onOpen: function (bodyEl, close) {
+          var g = function (n) { return bodyEl.querySelector('[data-f="' + n + '"]'); };
+          bodyEl.addEventListener("click", function (e) {
+            var b = e.target.closest ? e.target.closest('[data-act="go"]') : null;
+            if (!b) return;
+            var how = g("how").value;
+            var vals = g("values").value;
+            if (how !== "件数" && vals === "") {
+              alert("合計・平均するには 数の 列を 選んでください。");
+              return;
+            }
+            var r = WP.cmd.sheets.集計({
+              rows: Number(g("rows").value) + 1,
+              values: vals === "" ? undefined : Number(vals) + 1,
+              how: how,
+              header: !!g("header").checked
+            });
+            close();
+            if (r && r.だめ) { alert(r.だめ); return; }
+            recalc(); paint();
+          });
+        }
+      });
+    }
+
     function chartDialog(editIdx) {
       var cur = editIdx !== undefined ? body.charts[editIdx] : null;
       var r1 = Math.min(sel.r, sel.r2), r2 = Math.max(sel.r, sel.r2);
@@ -81963,7 +82033,14 @@
         表2.forEach(function (r, ri) {
           r.forEach(function (v, ci) {
             if (S(v) === "") return;
-            入.push({ ref: M.colName(起.c + ci) + (起.r + ri), value: v });
+            var 番 = M.colName(起.c + ci) + (起.r + ri);
+            /* ★ 表の 中の「=…」は **式**として 入れる（2026-08-29 実測）。
+               前は 文字として 入れていたので、=SUM(B2:B9) と 書いた 表が
+               そのまま 文字で 出て、合計も 集計も 動かなかった。
+               マスを 1 つずつ 渡す 道（formula）では 前から 式に なるので、
+               **同じ 中身なのに 渡しかたで 結果が 変わって** いた。 */
+            if (S(v).charAt(0) === "=" && S(v).length > 1) 入.push({ ref: 番, formula: S(v) });
+            else 入.push({ ref: 番, value: v });
           });
         });
         直し.push("表（" + 表2.length + " 行 × " + 表2[0].length + " 列）を "
@@ -82356,6 +82433,175 @@
       { いまのシート: b.sheets.map(function (s, k) {
         return k + ": " + s.name + (k === b.activeSheet ? "（いま見ている）" : ""); }) });
   };
+
+  /* ══ 集計表（ピボット）（2026-08-29・訴え「高度な機能を 増やして」）══
+     ★ 何を するか: 表を 1 つの 列で **まとめて**、別の 列を 足す／平均する。
+       例:「クラスごとに 点数の 平均」「教科ごとに 件数」。
+       いままでは 人が 手で 数えるか、SUMIF を 並べるしか なかった。
+     ★ 決めごと（ここを 崩すと また 嘘をつく 道具に なる）
+       ・**元の 表は 1 マスも 触らない。** 新しい シートへ 書く。
+       ・数えるのは **計算した あとの 値**（recalc）。式の マスも ちゃんと 入る。
+       ・数に ならない ものは 合計・平均から 外す（0 として 数えない）。
+         外した 数は 返りに 出す。**黙って 減らさない。**
+       ・行が 200 通りを 超えたら 断る（表として 読めなく なるため）。 */
+  var 集計のしかた = {
+    /* ★ 中身が あるのに **数が 1 つも 無い** ところは 0 に しない（空にする）。
+       0 と 書くと「合計 0 点」に 見えるが、本当は「数えられる ものが 無い」。 */
+    "合計": function (a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) : ""; },
+    "平均": function (a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : ""; },
+    "件数": function (a, 全) { return 全; },
+    "最大": function (a) { return a.length ? Math.max.apply(null, a) : ""; },
+    "最小": function (a) { return a.length ? Math.min.apply(null, a) : ""; }
+  };
+  var 集計の別名 = { sum: "合計", total: "合計", average: "平均", avg: "平均", mean: "平均",
+                     count: "件数", max: "最大", min: "最小",
+                     "たす": "合計", "ならす": "平均", "かぞえる": "件数" };
+
+  function 列番号(v) {
+    if (v === undefined || v === null || v === "") return -1;
+    if (typeof v === "string" && /^[A-Za-z]+$/.test(v)) return M.colIndex(v.toUpperCase());
+    var n = N(v, 0);
+    return n >= 1 ? n - 1 : -1;
+  }
+
+  sheets.集計 = function (a) {
+    var c = 今(); if (!c) return 開いてない();
+    if (c.kind !== "spreadsheet") return 種類ちがい(c, "spreadsheet");
+    a = a || {};
+    var b = 本体(c), 前 = 要約(c);
+    /* ★ **できたばかりの 集計表を もう一度 集計しない**（2026-08-29 実測）。
+       集計すると 新しい シートへ 移る ので、続けて もう一度 呼ぶと
+       いま見ているのは その 集計表。そのまま 数えると
+       「A が 1 件」のような **でたらめ**が 静かに 出る。
+       どこから 作った かを シートに 覚えさせ、指定が 無ければ 元へ 戻る。 */
+    var 元番号 = (a.sheet === undefined || a.sheet === null || a.sheet === "")
+      ? N(b.activeSheet, 0) : N(a.sheet, 0);
+    var 見 = (b.sheets || [])[元番号];
+    if (a.sheet === undefined && 見 && 見.集計のもと !== undefined) {
+      元番号 = N(見.集計のもと, 0);
+    }
+    var sh = 表(b, 元番号);
+    if (!sh) return { だめ: "シートがありません。**何もしていません。**" };
+
+    var 行列 = 列番号(a.rows !== undefined ? a.rows : a.groupBy);
+    if (行列 < 0)
+      return { だめ: "**まとめる列**を rows で 教えてください（A や 1）。**何もしていません。**",
+               例: '{ rows: "A", values: "C", how: "平均" }' };
+    var 値列 = 列番号(a.values);
+    var 副列 = 列番号(a.cols);
+    var やり方 = S(a.how) || "合計";
+    やり方 = 集計の別名[やり方.toLowerCase()] || やり方;
+    if (!集計のしかた[やり方])
+      return { だめ: "「" + S(a.how) + "」という まとめかたは ありません。**何もしていません。**",
+               できるまとめかた: Object.keys(集計のしかた) };
+    if (やり方 !== "件数" && 値列 < 0)
+      return { だめ: "**足す（平均する）列**を values で 教えてください。**何もしていません。**",
+               つぎ: "件数を 数えるだけなら how を「件数」に します。" };
+    var 見出し = a.header !== false;
+
+    /* 計算した あとの 値で 読む（式の マスも ちゃんと 入る）。 */
+    var 計 = {};
+    try { 計 = (WP.formula.recalc(sh) || {}).values || {}; } catch (e) {}
+    var 読 = function (r, ci) {
+      var k = M.colName(ci) + r;
+      var v = 計[k];
+      if (v === undefined) { var cl = (sh.cells || {})[k]; v = cl ? cl.v : ""; }
+      return v;
+    };
+    var 最大行 = 0;
+    Object.keys(sh.cells || {}).forEach(function (k) {
+      var p = 番地を割る(k); if (p && p.r > 最大行) 最大行 = p.r;
+    });
+    var 始 = 見出し ? 2 : 1;
+    if (最大行 < 始)
+      return { だめ: "まとめる 中身が ありません（" + 最大行 + " 行）。**何もしていません。**" };
+
+    var 束 = {}, 行名 = [], 列名 = [], 外れ = 0, 数 = 0;
+    for (var r = 始; r <= 最大行; r++) {
+      var g = S(読(r, 行列));
+      var g2 = 副列 >= 0 ? S(読(r, 副列)) : "";
+      if (g === "" && g2 === "") continue;
+      数++;
+      if (行名.indexOf(g) < 0) 行名.push(g);
+      if (副列 >= 0 && 列名.indexOf(g2) < 0) 列名.push(g2);
+      var 鍵 = g + "\u0000" + g2;
+      if (!束[鍵]) 束[鍵] = { 数: [], 全: 0 };
+      束[鍵].全++;
+      if (値列 >= 0) {
+        var v = 読(r, 値列);
+        var n = Number(v);
+        if (S(v) !== "" && isFinite(n)) 束[鍵].数.push(n);
+        else if (やり方 !== "件数") 外れ++;
+      }
+    }
+    if (!行名.length)
+      return { だめ: "まとめる 中身が ありませんでした。**何もしていません。**",
+               つぎ: "1 行目が 見出しなら header は true（既定）、"
+                 + "見出しが 無いなら header: false にします。" };
+    if (行名.length > 200)
+      return { だめ: "まとめた 行が " + 行名.length + " 通りに なりました（200 まで）。"
+                 + "**何もしていません。**",
+               つぎ: "まとめる 列を もっと 大きな くくりに するか、先に 絞り込んでください。" };
+    行名.sort(function (x, y) {
+      var nx = Number(x), ny = Number(y);
+      if (x !== "" && y !== "" && isFinite(nx) && isFinite(ny)) return nx - ny;
+      return String(x).localeCompare(String(y), "ja");
+    });
+    列名.sort(function (x, y) { return String(x).localeCompare(String(y), "ja"); });
+
+    /* 新しい シートへ 書く。**元の 表は 触らない。** */
+    控える("集計表を 作る");
+    var 名 = S(a.to) || (やり方 + "の 集計");
+    var 新 = M.newSheet(名.slice(0, 40));
+    var 見出し列 = 見出し ? S(読(1, 行列)) || "まとめ" : "まとめ";
+    var 値見出し = 見出し && 値列 >= 0 ? S(読(1, 値列)) : "";
+    var 置 = function (r, ci, v, 太) {
+      var k = M.colName(ci) + r;
+      新.cells[k] = 太 ? { v: v, s: { b: true } } : { v: v };
+    };
+    置(1, 0, 見出し列, true);
+    if (副列 >= 0) {
+      列名.forEach(function (g2, i) { 置(1, i + 1, g2 === "" ? "（空）" : g2, true); });
+    } else {
+      置(1, 1, やり方 + (値見出し ? "（" + 値見出し + "）" : ""), true);
+    }
+    行名.forEach(function (g, i) {
+      var r2 = i + 2;
+      置(r2, 0, g === "" ? "（空）" : g);
+      if (副列 >= 0) {
+        列名.forEach(function (g2, j) {
+          var t = 束[g + "\u0000" + g2];
+          置(r2, j + 1, t ? 丸め(集計のしかた[やり方](t.数, t.全)) : "");
+        });
+      } else {
+        var t2 = 束[g + "\u0000"];
+        置(r2, 1, t2 ? 丸め(集計のしかた[やり方](t2.数, t2.全)) : "");
+      }
+    });
+    新.colW[0] = 140;
+    /* どこから 作ったか。次の 集計で **集計表を 集計しない** ため。 */
+    新.集計のもと = 元番号;
+    b.sheets.push(新);
+    b.activeSheet = b.sheets.length - 1;
+    塗って残す(c);
+    return 確かめて返す(c, 前,
+      "「" + 新.name + "」に 集計表を 作りました（" + 行名.length + " 行）。",
+      { もとの表: "「" + sh.name + "」（" + 元番号 + " 枚目）を 1 マスも 触っていません",
+        まとめかた: やり方,
+        まとめた行数: 数,
+        できた行: 行名.length,
+        できた列: 副列 >= 0 ? 列名.length : 1,
+        数にならず外したマス: 外れ,
+        つぎ: 外れ
+          ? "★ 数に ならない マスが " + 外れ + " 個 あったので 合計から 外しました。"
+            + "**0 として 数えていません。**利用者に そのまま 伝えてください。"
+          : "元の 表は そのままです。集計表は 新しい シートに あります。" });
+  };
+  /* 小数が 延々と 続かないように（0.1 の 足し算の くせ）。 */
+  function 丸め(v) {
+    if (typeof v !== "number" || !isFinite(v)) return v;
+    return Math.round(v * 1000000) / 1000000;
+  }
 
   sheets.グラフ = function (a) {
     var c = 今(); if (!c) return 開いてない();
@@ -83758,6 +84004,8 @@
     var 出 = {
       "Docs のかたまり": 種類の一覧(),
       "Sheets の関数": 関数,
+      /* ★ 集計表（2026-08-29）。ここに 出さないと Lumi は この道具を 知らない。 */
+      "Sheets のまとめかた（sheetsPivot）": ["合計", "平均", "件数", "最大", "最小"],
       "Slides の部品": 部品の種類(),
       "Slides のレイアウト": レ,
       "Slides のテーマ": テ,

@@ -7854,7 +7854,8 @@
     sheetsWrite: "表を作っています…", sheetsEdit: "表を直しています…",
     slidesWrite: "スライドを作っています…", slidesEdit: "スライドを直しています…",
     formsWrite: "フォームを作っています…", formsEdit: "フォームを直しています…",
-    runCommand: "操作しています…", docDesign: "見た目を 決めています…"
+    runCommand: "操作しています…", docDesign: "見た目を 決めています…",
+    sheetsPivot: "集計しています…"
   };
 
   function 促しを止める(なぜ) {
@@ -9647,6 +9648,12 @@
     var K = WPC(); if (!K) return 操作の口が無い();
     return 落ち着いてから(K.sheets.セル(a || {}));
   }
+  /* 集計表（ピボット）。**元の 表は 触らない**（新しい シートへ 書く）。 */
+  function sheetsPivot(a) {
+    var K = WPC(); if (!K) return 操作の口が無い();
+    return 落ち着いてから(K.sheets.集計(a || {}));
+  }
+
   function sheetsEdit(a) {
     var K = WPC(); if (!K) return 操作の口が無い();
     a = a || {};
@@ -12605,6 +12612,7 @@
     if (name === "findPicture") return findPicture(a);
     if (name === "usePicture") return usePicture(a);
     if (name === "docDesign") return docDesign(a);
+    if (name === "sheetsPivot") return sheetsPivot(a);
     if (name === "deckStart") return deckStart(a);
     if (name === "deckDesign") return deckDesign(a);
     if (name === "deckWrite") return deckWrite(a);
