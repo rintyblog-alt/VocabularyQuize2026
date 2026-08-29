@@ -20,6 +20,10 @@
      権限制御ではない。すべての口で呼び出し元の権限を確かめる。
    ══════════════════════════════════════════════════════════════════════════ */
 
+/* ★ 通話（2026-08-29）。控えを 捨てる 口と、数だけの 集計を 借りる。
+   calls.js は 何も import しないので、ここから 読んでも 輪に ならない。 */
+import { forgetCallLimitCache, callsAdminSummary, callsReportDetail } from "./calls.js";
+
 /* ══ 1. 権限 ══════════════════════════════════════════════════════════════
    ロールではなく **権限の集合**で持つ。ロールはその詰め合わせにすぎない。
    あとから権限を足すときに、ロールの定義を書き換えずに済む。 */
@@ -533,7 +537,16 @@ const SEED_LIMITS = [
   ["storage.file.max_mb", "1ファイルの最大サイズ", 24, "MB", "all", "storage"],
   ["quickmock.questions.max", "1回に生成できる最大問題数", 60, "問", "all", "quickmock"],
   ["quickmock.upload.max_files", "資料アップロードの上限枚数", 20, "枚", "all", "quickmock"],
-  ["quickmock.upload.max_mb", "資料アップロードの上限サイズ", 40, "MB", "all", "quickmock"]
+  ["quickmock.upload.max_mb", "資料アップロードの上限サイズ", 40, "MB", "all", "quickmock"],
+  /* ── DM の 音声通話（2026-08-29）──────────────────────────────────
+     ★ 既定値は calls.js の 制限の既定 と **同じ数字**に しておくこと。
+       ずれると「画面で 直したのに 効かない」に 見える。 */
+  ["call.daily.minutes", "1日あたりの通話時間の上限", 120, "分/日", "all", "call"],
+  ["call.daily.count", "1日あたりの発信回数の上限", 30, "回/日", "all", "call"],
+  ["call.max_minutes", "1通話の最大時間", 60, "分", "all", "call"],
+  ["call.concurrent.max", "同時通話数", 1, "本", "all", "call"],
+  ["call.lumi.daily.count", "Lumi介入の1日あたり回数", 10, "回/日", "all", "call"],
+  ["call.lumi.max_seconds", "Lumi介入の1回あたり最大時間", 300, "秒", "all", "call"]
 ];
 
 /* 提供元の上限。**実測値**（wrangler.dev.toml のコメントと同じ根拠）。 */
@@ -2359,9 +2372,62 @@ async function route(request, env, url, sub, method, adm, ip) {
     await env.DB.prepare(`UPDATE rate_limit_config SET value=?2, updated_by=?3, updated_at=?4 WHERE key=?1`)
       .bind(key, v, adm.adminId, nowIso()).run();
     _cfg.at = 0;   /* ★ 控えを捨てる。捨てないと最大 8 秒 古い値で動く。 */
+    try { forgetCallLimitCache(); } catch (e) {}   /* 通話側の 控えも 同時に 捨てる */
     await audit(env, adm, { action: "limits.edit", targetType: "limit", targetId: key,
       before: { value: N(before.value) }, after: { value: v }, reason: S(body.reason), ip });
     return ok({ value: v });
+  }
+
+  /* ── 通話（2026-08-29）────────────────────────────────────────────
+     ★ **個別の 通話の 中身は 出さない。数だけ。**
+       音声は そもそも 保存していないので、出しようが ない。 */
+  if (sub === "calls" && method === "GET") {
+    const g = guard(adm, "metrics.view"); if (g) return g;
+    const 要約 = await callsAdminSummary(env);
+    const reports = await allRows(env, `
+      SELECT r.report_id AS id, r.call_id AS callId, r.reporter_id AS reporterId,
+             r.reported_id AS reportedId, r.category, r.detail, r.status, r.created_at AS createdAt,
+             c.duration_sec AS durationSec, c.started_at AS startedAt, c.state AS callState,
+             c.lumi_used AS lumiUsed
+        FROM call_reports r LEFT JOIN calls c ON c.call_id = r.call_id
+       ORDER BY (r.status='open') DESC, r.created_at DESC LIMIT 200`);
+    const limits = await allRows(env,
+      `SELECT key, display_name, value, unit, default_value FROM rate_limit_config WHERE group_key='call' ORDER BY key`);
+    return ok({ data: {
+      summary: 要約,
+      reports: reports.map((r) => ({
+        id: S(r.id), callId: S(r.callId), reporterId: N(r.reporterId), reportedId: N(r.reportedId),
+        category: S(r.category), detail: S(r.detail), status: S(r.status),
+        createdAt: N(r.createdAt), startedAt: N(r.startedAt),
+        durationSec: N(r.durationSec), callState: S(r.callState), lumiUsed: N(r.lumiUsed) === 1
+      })),
+      limits: limits.map((l) => ({ key: S(l.key), label: S(l.display_name),
+        value: N(l.value), unit: S(l.unit), defaultValue: N(l.default_value) })),
+      note: "通話の 音声は 保存していません。内容は 確認できません。"
+    } });
+  }
+  if ((m = /^calls\/reports\/([^/]+)\/(handle|dismiss)$/.exec(sub)) && method === "POST") {
+    const g = guard(adm, "content.hide", { destructive: true }); if (g) return g;
+    const id = S(m[1]);
+    const next = m[2] === "handle" ? "handled" : "dismissed";
+    const before = await oneRow(env, `SELECT status, call_id FROM call_reports WHERE report_id=?1`, [id]);
+    if (!before) return bad("NOT_FOUND", "その通報はありません。", 404);
+    await env.DB.prepare(
+      `UPDATE call_reports SET status=?2, handled_by=?3, handled_at=?4 WHERE report_id=?1`)
+      .bind(id, next, adm.adminId, Date.now()).run();
+    try {
+      await env.DB.prepare(`UPDATE content_reports SET state=?2, handled_by=?3, handled_at=?4 WHERE id=?1`)
+        .bind(id, next === "handled" ? "handled" : "rejected", adm.adminId, nowIso()).run();
+    } catch (e) {}
+    await audit(env, adm, { action: "call.report." + m[2], targetType: "call_report", targetId: id,
+      before: { status: S(before.status) }, after: { status: next }, reason: S(body.reason), ip });
+    return ok({ status: next });
+  }
+  if ((m = /^calls\/([^/]+)$/.exec(sub)) && method === "GET") {
+    const g = guard(adm, "metrics.view"); if (g) return g;
+    const d = await callsReportDetail(env, S(m[1]));
+    if (!d) return bad("NOT_FOUND", "その通話はありません。", 404);
+    return ok({ data: d });
   }
 
   /* ── 機能フラグ ─────────────────────────────────────────────────── */

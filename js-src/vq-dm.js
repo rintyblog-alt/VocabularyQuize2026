@@ -159,6 +159,7 @@
     grid: '<rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/>',
     pin: '<path d="M9 3h6l-1 6 4 3v2H6v-2l4-3-1-6Z"/><path d="M12 14v7"/>',
     more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+    phone: '<path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.2.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1z"/>',
     reply: '<path d="M9 7 4 12l5 5"/><path d="M4 12h9a6 6 0 0 1 6 6v1"/>',
     trash: '<path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/>',
     flag: '<path d="M5 21V4"/><path d="M5 5h11l-1.5 3L16 11H5"/>',
@@ -600,6 +601,13 @@
       + ' aria-label="' + esc(o.displayName || "利用者") + ' さんのプロフィールを見る">'
       + 顔(o) + '<span class="nm"><b>' + 名と印(o) + "</b>"
       + "<span>@" + esc(o.handle || "user") + (o.isFriend ? " ・ 相互フォロー" : "") + "</span></span></button>"
+      /* ★ 音声通話（2026-08-29）。**出すか どうかは 見た目の 話**で、
+         かけて よいかは サーバ（/api/call/invite）が 決める。
+         土台（Cloudflare Realtime）が 無い うちは 出さない（押しても 断られる ため）。 */
+      + (window.__vqCallUsable
+          ? '<button class="iconb" data-a="call" data-uid="' + esc(String(o.userId || "")) + '"'
+            + ' aria-label="' + esc(o.displayName || "利用者") + ' さんに 音声通話を かける">' + svg("phone") + "</button>"
+          : "")
       + '<button class="iconb" data-a="tmenu" aria-label="この部屋のメニュー">' + svg("more") + "</button>"
       + '<button class="iconb" data-a="close" aria-label="閉じる">' + svg("x") + "</button>"
       + "</div>";
@@ -1059,6 +1067,7 @@
       if (a === "tpin") { 部屋の状態({ pinned: !現在の部屋().pinned }); return; }
       if (a === "tmute") { 部屋の状態({ muted: !現在の部屋().muted }); return; }
       if (a === "thide") { 部屋の状態({ hidden: true }); st.部屋 = ""; host.setAttribute("data-pane", "list"); return; }
+      if (a === "call") { 通話をかける(el.dataset.uid); return; }
       if (a === "prof") { プロフィールへ(el.dataset.uid || el.dataset.id); return; }
       if (a === "tblock") { ブロックする(true); return; }
       if (a === "unblock") { ブロックする(false); return; }
@@ -1267,6 +1276,26 @@
     if (host) host.setAttribute("data-open", "0");
     閉じるメニュー();
     巡回();
+  }
+
+  /* 通話が 使えると 分かったら、開いている 部屋を 描き直して 受話器を 出す。 */
+  window.addEventListener("vq-call-ready", function () {
+    if (st.開いた && st.部屋) 描く();
+  });
+
+  /* 音声通話。vq-call が まだ 来ていなければ 待って 呼ぶ。 */
+  function 通話をかける(uid) {
+    var id = Number(uid || 0);
+    if (!id) return;
+    var 呼ぶ = function () {
+      if (window.__vqCall && window.__vqCall.かける) { window.__vqCall.かける(id); return true; }
+      return false;
+    };
+    if (呼ぶ()) return;
+    var n = 0;
+    var t = setInterval(function () {
+      if (呼ぶ() || ++n > 20) clearInterval(t);
+    }, 250);
   }
 
   /* ── 外へ出す口 ─────────────────────────────────────────────── */

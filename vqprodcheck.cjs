@@ -196,6 +196,11 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
     const css = cssHref ? await fetch(cssHref).then((x) => x.text()) : "";
     const feedSrc = [...document.querySelectorAll('script[src*="/js/vq-feed."]')].map((x) => x.src)[0];
     const feed = feedSrc ? await fetch(feedSrc).then((x) => x.text()) : "";
+    const callSrc = [...document.querySelectorAll('script[src*="/js/vq-call."]')].map((x) => x.src)[0];
+    const callJs = callSrc ? await fetch(callSrc).then((x) => x.text()) : "";
+    const dmSrc = [...document.querySelectorAll('script[src*="/js/vq-dm."]')].map((x) => x.src)[0];
+    const dmJs = dmSrc ? await fetch(dmSrc).then((x) => x.text()) : "";
+    const 通話の口 = await fetch("/api/call/config").then((x) => x.status).catch(() => 0);
     const 素 = document.documentElement.innerHTML;
     return {
       書類の見た目: /docTheme/.test(app),
@@ -234,7 +239,17 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
       一覧から編集: /quick-edit/.test(feed),
       /* ── 窓が **開くとき**の 動き（訴え「閉じる時だけ 動いている」）── */
       窓が開くとき動く: /vqWinBd/.test(素) && /vqWinCard/.test(素) && /vqWinUp/.test(素),
-      影の窓も動く: /vqfCard/.test(feed) && /vqfMenu/.test(feed)
+      影の窓も動く: /vqfCard/.test(feed) && /vqfMenu/.test(feed),
+      /* ── 2026-08-29 夜: DM の 音声通話 ──
+         ★ ここで 見るのは 「口が 生きているか」と「作りが 芯を 外していないか」。
+           通話そのものは 本番で 鳴らせない（鳴らすと 人に かかる）ので、
+           流れは 開発版の vqcall.cjs / vqcallui.cjs で 測る。 */
+      通話の口: 通話の口 === 401,
+      通話の束: !!callSrc && /api\/call\/invite/.test(callJs),
+      通話はSFU: /rtc\/session/.test(callJs) && !/createDataChannel|直につなぐ/.test(callJs),
+      通話は音だけ: /video\s*:\s*!1|video:!1/.test(callJs) || /video:\s*false/.test(callJs),
+      受話器は土台しだい: /__vqCallUsable/.test(dmJs) && /__vqCallUsable/.test(callJs),
+      通報の口: /api\/call\/report/.test(callJs)
     };
   });
   ok("書類の 見た目（docDesign）が 入っている", 今夜.書類の見た目, 今夜);
@@ -261,6 +276,12 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
   ok("投稿の 一覧から そのまま 編集できる", 今夜.一覧から編集, 今夜);
   ok("窓は **開くときにも** 動く（本体）", 今夜.窓が開くとき動く, 今夜);
   ok("窓は **開くときにも** 動く（影の DOM）", 今夜.影の窓も動く, 今夜);
+  ok("通話の 口が 生きている（札なしで 401）", 今夜.通話の口, 今夜);
+  ok("通話の 束が 配られている", 今夜.通話の束, 今夜);
+  ok("通話は **SFU を 通す**（P2P に しない）", 今夜.通話はSFU, 今夜);
+  ok("通話は **音だけ**（映像を 作らない）", 今夜.通話は音だけ, 今夜);
+  ok("受話器は 土台が 用意できて いなければ 出さない", 今夜.受話器は土台しだい, 今夜);
+  ok("通話中に 通報できる 口が ある", 今夜.通報の口, 今夜);
 
   節("⑤ 目安の 時間");
   const 分 = await pg.evaluate(() => {

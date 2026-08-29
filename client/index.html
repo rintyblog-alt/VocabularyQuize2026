@@ -9773,7 +9773,11 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
 <!-- DM（1 対 1 のやりとり）。左のサイドパネルから 開く。
      相互フォローでない相手へは 3 件まで（サーバでも 止めている）。 -->
 <script id="vq-downtime" src="/js/vq-downtime.eb940603d4.js"></script>
-<script id="vq-dm" src="/js/vq-dm.00c176625c.js"></script>
+<script id="vq-dm" src="/js/vq-dm.a16bbc072d.js"></script>
+<!-- DM の 音声通話（2026-08-29）。1 対 1・音声のみ。
+     ★ かけて よいかは **サーバが 決める**（/api/call/*）。ここは 見た目だけ。
+     ★ 必ず Cloudflare Realtime（SFU）を 通す。P2P に しない（IP を 見せない）。 -->
+<script id="vq-call" src="/js/vq-call.c8e7c15841.js"></script>
 
 <script id="vq-news" src="/js/vq-news.cde9793aeb.js"></script>
 

@@ -299,6 +299,8 @@ tailwind.config = {
       lead: "実運用でいちばん見る画面です。上限値はこの画面から変えられます。" },
     { key: "lumi", path: "/admin/lumi", label: "Lumi稼働率と利用制限", perm: "metrics.view",
       lead: "制限の変更はデプロイなしで効きます（30 秒以内）。" },
+    { key: "calls", path: "/admin/calls", label: "通話", perm: "metrics.view",
+      lead: "件数と時間だけです。通話の音声は保存していないので、内容は出せません。" },
     { key: "flags", path: "/admin/flags", label: "機能フラグ", perm: "flags.view",
       lead: "左サイドパネルはこの表から描かれます。off にすると URL 直打ちでも入れません。" },
     { key: "quality", path: "/admin/quality", label: "生成品質", perm: "metrics.view",
@@ -862,6 +864,69 @@ tailwind.config = {
     });
   };
 
+  /* ── 通話（2026-08-29）──────────────────────────────────────────── */
+  RENDER.calls = function () {
+    return api("calls").then(function (j) {
+      if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
+      var d = j.data || {}, sm = d.summary || {}, bw = sm.bandwidth || {};
+      function stat(label, v, unit) {
+        return card('<div class="text-xs font-medium text-slate-500 uppercase tracking-wider">' + esc(label) + "</div>"
+          + '<div class="mt-2 leading-normal"><span class="text-3xl font-bold text-slate-900">' + esc(String(v)) + "</span>"
+          + '<span class="text-sm text-slate-500 ml-1">' + esc(unit || "") + "</span></div>");
+      }
+      var out = "";
+      if (!sm.configured) {
+        out += alertBox("err", "Cloudflare Realtime が未設定です（CALLS_APP_ID / CALLS_APP_SECRET）。"
+          + "設定するまで発信は 503 で断られます。");
+      }
+      if (!sm.lumiConfigured) {
+        out += alertBox("warn", "通話中の Lumi 用の有料キーが未設定です（GEMINI_PAID_API_KEY）。"
+          + "未設定のあいだ Lumi は起動しません（無料枠へは流しません）。");
+      }
+      out += '<div class="grid grid-cols-2 md:grid-cols-4 gap-6 mt-8">'
+        + stat("今日の通話", fmt((sm.today || {}).calls), "件")
+        + stat("今日の合計", fmt(Math.round(((sm.today || {}).seconds || 0) / 60)), "分")
+        + stat("今日の平均", fmt((sm.today || {}).avgSeconds), "秒")
+        + stat("未対応の通報", fmt((sm.reports || {}).open), "件")
+        + "</div>";
+      out += '<div class="grid grid-cols-2 md:grid-cols-4 gap-6 mt-6">'
+        + stat("7日間の通話", fmt((sm.week || {}).calls), "件")
+        + stat("7日間の合計", fmt(Math.round(((sm.week || {}).seconds || 0) / 60)), "分")
+        + stat("Lumi 介入", fmt((sm.lumi || {}).calls), "件")
+        + stat("帯域の見積り", (bw.estimatedGbWeek || 0) + " / " + fmt(bw.freeGb), "GB")
+        + "</div>";
+      out += '<div class="mt-6">' + alertBox("info", esc(bw.note || "")) + "</div>";
+
+      out += '<div class="mt-10">' + h2("通報") + '<div class="mb-4">'
+        + alertBox("info", esc(d.note || "")) + "</div>"
+        + table(["日時", "通報者", "相手", "理由", "記述", "通話時間", "状態", ""],
+          (d.reports || []).map(function (r) {
+            return [when(r.createdAt ? new Date(r.createdAt).toISOString() : ""),
+              "#" + fmt(r.reporterId), "#" + fmt(r.reportedId),
+              esc(r.category), esc((r.detail || "").slice(0, 80) || "—"),
+              fmt(r.durationSec) + " 秒",
+              badge(r.status, r.status === "open" ? "amber" : "green"),
+              (r.status === "open" && can("content.hide"))
+                ? '<div class="flex gap-2">'
+                  + '<button type="button" data-act="callrep" data-id="' + esc(r.id) + '" data-v="handle" class="inline-flex items-center justify-center h-8 px-3 text-[0.875rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">対応済み</button>'
+                  + '<button type="button" data-act="callrep" data-id="' + esc(r.id) + '" data-v="dismiss" class="inline-flex items-center justify-center h-8 px-3 text-[0.875rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">見送り</button></div>'
+                : "—"];
+          })) + "</div>";
+
+      out += '<div class="mt-10">' + h2("通話の利用制限（変更はデプロイなしで効きます）")
+        + table(["項目", "現在の値", "既定値", "単位", ""],
+          (d.limits || []).map(function (l) {
+            return [esc(l.label), '<span class="text-slate-900 font-medium">' + fmt(l.value) + "</span>",
+              fmt(l.defaultValue), esc(l.unit),
+              can("limits.edit")
+                ? '<div class="flex gap-2"><input type="number" data-lim="' + esc(l.key) + '" value="' + num(l.value) + '" class="w-24 px-2 py-1 text-sm border border-slate-300 rounded-lg">'
+                  + '<button type="button" data-act="limsave" data-id="' + esc(l.key) + '" class="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-[0.875rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">保存</button></div>'
+                : "—"];
+          })) + "</div>";
+      return out;
+    });
+  };
+
   RENDER.flags = function () {
     return api("flags").then(function (j) {
       if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
@@ -1382,6 +1447,16 @@ tailwind.config = {
         .then(function (j) {
           if (!j.ok) { show($("pageAlert"), j.message); return; }
           show($("pageAlert"), "保存しました。30 秒以内にアプリへ反映されます。", "ok");
+          draw();
+        });
+    }
+    if (act === "callrep") {
+      var v = t.getAttribute("data-v") || "";
+      apiGuarded("calls/reports/" + encodeURIComponent(id) + "/" + (v === "dismiss" ? "dismiss" : "handle"),
+        { method: "POST", body: { reason: "画面から対応" } })
+        .then(function (j) {
+          if (!j.ok) { show($("pageAlert"), j.message); return; }
+          show($("pageAlert"), "通報を更新しました。", "ok");
           draw();
         });
     }

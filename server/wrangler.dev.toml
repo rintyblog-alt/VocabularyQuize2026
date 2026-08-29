@@ -32,6 +32,11 @@ class_name = "RealtimeRoom"
 name = "ROOMS"
 class_name = "RoomDO"
 
+# ★ DM の 音声通話の 合図（2026-08-29）。**1 人 1 個**。
+[[durable_objects.bindings]]
+name = "CALL_HUB"
+class_name = "CallHub"
+
 [ai]
 binding = "AI"
 
@@ -39,6 +44,10 @@ binding = "AI"
 # 開発版だけ：Workers AI のモデルを直接ためす口を開ける。
 # 本番の wrangler.toml には**入れない**（誰でもモデルを回せてしまうため）。
 AI_PROBE_ENABLED = "1"
+# 開発版だけ：通話の SFU を **作りもの**で 通す（音は 流れない）。
+# 鍵が 無いと 合図・状態・通報・Lumi の 同意まで 1 つも 測れないため。
+# **本番の wrangler.toml には 入れない。**
+CALLS_FAKE = "1"
 # ── LUMI の使用量の上限 ──────────────────────────────────────────
 # **これは仮の値**。「1 回で何 % 使うか」はまだ決めていないので、
 # 画面と記録の確認ができるようにここだけ入れてある。
@@ -198,6 +207,11 @@ new_classes = ["RealtimeRoom"]
 [[migrations]]
 tag = "room-do-v1"
 new_classes = ["RoomDO"]
+
+# ★ 末尾に 足す。途中へ 差し込むと 前の tag との 順が 崩れる。
+[[migrations]]
+tag = "call-hub-v1"
+new_sqlite_classes = ["CallHub"]
 
 # ── 写真・動画・ファイルの 3 つめの 置き場（2026-08-19）──────────────
 #   置き場は 上から順に 選ぶ:

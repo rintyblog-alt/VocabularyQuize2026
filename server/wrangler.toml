@@ -28,6 +28,12 @@ class_name = "RoomDO"
 name = "SURVIVE_ROOMS"
 class_name = "SurviveRoom"
 
+# ★ DM の 音声通話の 合図（2026-08-29）。**1 人 1 個**。
+#   その人へ 押し出す だけの 器。判定は 一切 しない（calls.js の canCall が 唯一の 判定）。
+[[durable_objects.bindings]]
+name = "CALL_HUB"
+class_name = "CallHub"
+
 [ai]
 binding = "AI"
 
@@ -193,6 +199,12 @@ tag = "survive-room-v1"
 #   新しい 種類は SQLite 版でしか 作れない（API が 10097 で 断る）。
 #   storage.get / put は SQLite 版でも そのまま 使える。
 new_sqlite_classes = ["SurviveRoom"]
+
+# ★ DM の 音声通話の 合図（2026-08-29）。
+#   **必ず 末尾に 足す。** 途中へ 差し込むと 前の tag との 順が 崩れる。
+[[migrations]]
+tag = "call-hub-v1"
+new_sqlite_classes = ["CallHub"]
 
 # ── 写真・動画・ファイルの 3 つめの 置き場（2026-08-19）──────────────
 #   置き場は 上から順に 選ぶ:

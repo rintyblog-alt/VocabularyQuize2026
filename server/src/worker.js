@@ -16,6 +16,15 @@
 import { handleSurviveRequest, isSurvivePath, SurviveRoom } from "./survive.js";
 export { SurviveRoom };
 
+/* ══ DM の 音声通話（2026-08-29）══════════════════════════════════════
+   ★ 判定（誰と 通話して よいか）は **calls.js の canCall 1 か所だけ**。
+     画面の ボタンを 隠すのは 制御では ない。どの 口からでも ここを 通す。 */
+import {
+  handleCallRequest, isCallPath, CallHub,
+  callsOnBlock, callsAdminSummary, callsReportDetail, ensureCallSchema
+} from "./calls.js";
+export { CallHub };
+
 import {
   handleAdminRequest, isAdminPath, effectiveFlags,
   flagBlockResponse, userStatusBlock,
@@ -29711,6 +29720,9 @@ async function handleDmBlock(request, env) {
     await env.DB.prepare("DELETE FROM dm_blocks WHERE blocker_id = ?1 AND blocked_id = ?2")
       .bind(uid, otherId).run().catch(() => null);
   }
+  /* ★ 通話中に ブロックされたら **その場で 切る**（2026-08-29）。
+     画面の 都合では なく、ここで 切らないと 声が 届き続ける。 */
+  if (on) { try { await callsOnBlock(env, uid, otherId); } catch (e) {} }
   const st = await dmBlockState(env, uid, otherId);
   return json({ ok: true, userId: otherId, blocked: st.iBlocked }, 200);
 }
@@ -63347,6 +63359,20 @@ export default {
     /* ══ VocabuSurvive（2026-08-28）════════════════════════════════════
        /api/survive/* と /ws/survive/* は survive.js が 丸ごと 引き受ける。
        ★ WebSocket の 昇格が 混ざるので、後ろの CORS 加工へは 通さない。 */
+    /* ── DM の 音声通話（2026-08-29）──────────────────────────────
+       ★ ここは flag の 関所より 先に あるので、**自分で** 見る。
+         左パネルから 消すだけでは 止まらない（この アプリの 決まり）。 */
+    if (isCallPath(path)) {
+      stage = "call";
+      const 止 = await flagBlockResponse(env, "/api/dm/threads", { userId: "", isAdmin: false }).catch(() => null);
+      if (止) return applyCorsToResponse(止, corsPolicy, request);
+      const r = await handleCallRequest(request, env, ctx);
+      if (r) {
+        if (r.status === 101) return r;
+        return applyCorsToResponse(r, corsPolicy, request);
+      }
+    }
+
     if (isSurvivePath(path)) {
       stage = "survive";
       /* ★ off に した 機能は **URL 直打ちでも** 入れない。
