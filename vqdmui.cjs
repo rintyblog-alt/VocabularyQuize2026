@@ -118,7 +118,9 @@ const 中みんな = (sel) => `document.getElementById("vqDM").shadowRoot.queryS
       帯: (r.querySelector(".limit") || {}).textContent || ""
     };
   });
-  ok("吹き出しが 出る", 状.数 === 1 && 状.文 === "画面から送りました", JSON.stringify(状.文));
+  /* ★ 落ちた ときに **どちらが 違うのか**（数か 文か）が 分かるように 両方 出す。 */
+  ok("吹き出しが 出る", 状.数 === 1 && 状.文 === "画面から送りました",
+    JSON.stringify({ 数: 状.数, 文: 状.文 }));
   ok("自分の側に 寄る", 状.自分 === true);
   ok("時刻が 付く", /^\d\d:\d\d$/.test(String(状.時刻 || "").trim()), 状.時刻);
   ok("日付の 区切りが 上に 出る", /今日/.test(状.日付), 状.日付);
@@ -150,7 +152,7 @@ const 中みんな = (sel) => `document.getElementById("vqDM").shadowRoot.queryS
       字: last.querySelector(".stamp") ? last.querySelector(".stamp").textContent : "",
       大きさ: last.querySelector(".stamp") ? getComputedStyle(last.querySelector(".stamp")).fontSize : "" };
   });
-  ok("スタンプが 送れる", ス.数 === 2 && ス.大 === true, JSON.stringify(ス.字));
+  ok("スタンプが 送れる", ス.数 === 2 && ス.大 === true, JSON.stringify({ 数: ス.数, 字: ス.字 }));
   ok("スタンプは 大きく 出る", parseFloat(ス.大きさ) >= 40, ス.大きさ);
 
   節("⑦ 返信・ピン・メニュー");
