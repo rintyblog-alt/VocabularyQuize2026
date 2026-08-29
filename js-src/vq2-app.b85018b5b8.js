@@ -14547,6 +14547,10 @@
     if (low.indexOf("data:image/") === 0) return s;
     if (/^https?:\/\//.test(low)) return s;
     if (low.indexOf("blob:") === 0) return s;
+    /* ★ 自分の ところへ あげた 写真は **相対の 道**（2026-08-29 実測）。
+       ここで 落としていたので、作った人の 顔が 札に 出なかった。
+       形は Feed の safeImg と そろえる（勝手な 道は 通さない）。 */
+    if (/^\/api\/media\/img\/[A-Za-z0-9]+\.(jpg|jpeg|png|webp|gif)$/i.test(s)) return s;
     return "";
   }
 

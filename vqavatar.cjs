@@ -20,6 +20,10 @@ if (!token) { console.error("VQ_TOKEN を 渡してください。"); process.ex
 const H = { "Content-Type": "application/json", Authorization: "Bearer " + token };
 /* 1x1 の 赤い PNG（目印になれば よい） */
 const AVA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+/* ★ **実際に 写真を あげた ときの 形**（2026-08-29 実測）。
+   サーバは 相対の 道を 返す: /api/media/img/<32文字>.png
+   ここが 通らなかったのが「頭文字の まま」の 真因だった。 */
+const 相対 = "/api/media/img/00112233445566778899aabbccddeeff.png";
 
 (async () => {
   const put = await fetch(BASE + "/api/profile/me", {
@@ -118,6 +122,40 @@ const AVA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
     見(/^img:data:image/.test(出.左パネル下), "取れなくても 左パネル下は 絵の まま");
     await b.close();
   }
+  /* ── ④ **相対の 道**（実際に 写真を あげた ときの 形）でも 出るか ── */
+  {
+    await fetch(BASE + "/api/profile/me", {
+      method: "PUT", headers: H, body: JSON.stringify({ avatarUrl: 相対 })
+    }).then((r) => r.json());
+    const b = await chromium.launch();
+    const page = await b.newPage({ viewport: { width: 390, height: 844 } });
+    await page.addInitScript((tk) => {
+      try {
+        localStorage.setItem("app.auth.token.v1", tk);
+        localStorage.setItem("app.auth.mode.v1", "user");
+      } catch (e) {}
+    }, token);
+    await page.goto(BASE + "/?vqdev=1", { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(9000);
+    const 出 = await page.evaluate(() => {
+      const 絵 = (el) => {
+        if (!el) return "（要素なし）";
+        const im = el.tagName === "IMG" ? el : el.querySelector("img");
+        if (im && im.getAttribute("src")) return "img:" + im.getAttribute("src");
+        return "字:" + (el.textContent || "").trim().slice(0, 8);
+      };
+      const hosts = Array.from(document.querySelectorAll("*")).filter((e) => e.shadowRoot);
+      const 見つけ = (sel) => { for (const h of hosts) { const e = h.shadowRoot.querySelector(sel); if (e) return 絵(e); } return "（無し）"; };
+      return { 元: 絵(document.getElementById("appV2SidebarAvatar")),
+               左パネル下: 見つけ("[data-avatar]"), スマホ上: 見つけ("[data-tb-ava]") };
+    });
+    console.log("── 相対の 道（あげた 写真の 形）──", JSON.stringify(出));
+    見(/^img:\/api\/media\/img\//.test(出.元), "④ もとの アイコンが 相対の 道の 絵に なる", 出.元);
+    見(/^img:\/api\/media\/img\//.test(出.左パネル下), "④ **左パネル下**が 絵に なる", 出.左パネル下);
+    見(/^img:\/api\/media\/img\//.test(出.スマホ上), "④ **スマホ上の バー**が 絵に なる", 出.スマホ上);
+    await b.close();
+  }
+
   console.log(`\n落ち ${落} 件`);
   process.exit(落 ? 1 : 0);
 })().catch((e) => { console.error("✗ 途中で 落ちた:", e && e.stack); process.exit(1); });

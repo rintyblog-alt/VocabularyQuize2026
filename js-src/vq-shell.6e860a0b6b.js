@@ -56,7 +56,11 @@
   function 覚えた絵() {
     try {
       var v = String(window.localStorage.getItem("app.profile.avatar.v1") || "").trim();
-      return /^(data:image\/|https?:\/\/|blob:)/i.test(v) ? v : "";
+      /* ★ 自分の ところへ あげた 写真は **相対の 道**（/api/media/img/…）。
+         ここで 落とすと、覚えていても 出せない（2026-08-29 実測）。 */
+      var よい = /^(data:image\/|https?:\/\/|blob:)/i.test(v)
+        || /^\/api\/media\/img\/[A-Za-z0-9]+\.(jpg|jpeg|png|webp|gif)$/i.test(v);
+      return よい ? v : "";
     } catch (e) { return ""; }
   }
 

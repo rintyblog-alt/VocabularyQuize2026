@@ -27384,7 +27384,15 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
         const fallbackEl = document.createElement("span");
         fallbackEl.className = "app-avatar-fallback";
         fallbackEl.textContent = fallback;
-        if (src && /^(data:image\/|https?:\/\/|blob:)/i.test(src)){
+        /* ★ **ここが 頭文字の まま だった 真因**（2026-08-29 実測）。
+           写真を あげると サーバが 返す のは **相対の 道**:
+             /api/media/img/<32文字>.png
+           ところが ここは https:// と data: と blob: しか 通していなかった。
+           だから プロフィールには 写真が 出るのに、左パネル下と
+           スマホ上の バーだけ 頭文字の まま だった。
+           形は Feed の safeImg と そろえる（勝手な 道は 通さない）。 */
+        if (src && (/^(data:image\/|https?:\/\/|blob:)/i.test(src)
+          || /^\/api\/media\/img\/[A-Za-z0-9]+\.(jpg|jpeg|png|webp|gif)$/i.test(src))){
           const img = document.createElement("img");
           img.className = "app-avatar-image";
           img.alt = "";

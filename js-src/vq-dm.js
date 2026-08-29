@@ -412,7 +412,7 @@
 
   /* ── 状態 ───────────────────────────────────────────────────── */
   var st = {
-    開いた: false, 一覧: [], 部屋: "", 相手: null, 便り: [], もっと: false,
+    開いた: false, 一覧: [], 部屋: "", 相手: null, 便り: [], もっと: false, 上へ足した: false,
     ピン: [], 上限: null, 相手既読: 0, 返信先: null, さがし: "", 候補: [],
     盤: false, 盤の組: 0, 録音: null, 未読合計: 0, 最後: 0, 巡: 0, 読込中: false,
     ブロック中: false
@@ -460,16 +460,81 @@
     return '<span class="av ' + (cls || "") + '" role="img" aria-label="' + esc((c && c.displayName) || "利用者") + '">' + esc(頭文字(c)) + "</span>";
   }
 
+  /* ══ いちばん下へ 寄せる（2026-08-29・訴え）════════════════════════
+     訴え「DM で、必ず メッセージが 毎回 最下部に くるように してほしい」
+
+     ★ なぜ 来ていなかったか（読んで 分かった 2 つ）
+       ① 描き直しは **.sheet の innerHTML を まるごと 入れ替える**。
+          つまり 便りの 入れ物は 毎回 **新しい 箱**で、scrollTop は 0。
+          st.下へ が 立っている ときしか 寄せていなかったので、
+          既読を 付けた・相手が 読んだ・一覧を 読み直した などの
+          「ついでの 描き直し」の たびに **いちばん 上へ 飛んで いた**。
+       ② 絵（写真・スタンプ）は **描いたあとに 届く**。
+          届くと 高さが 増えるので、描いた 直後に 寄せても また 足りなくなる。
+
+     ★ 直しかた
+       ・**寄せるのは ここ 1 か所**（末尾へ）。絵が 届く たびに 寄せ直す。
+       ・ついでの 描き直しでは **前の 位置を 戻す**。
+         ただし 前が いちばん下だったなら、そのまま いちばん下へ。
+       ・人が 自分で 上へ 動かしたら、絵が 届いても 引きずり下ろさない。 */
+  var 貼り付き = true;               /* いま いちばん下に 貼り付いているか */
+  function 下端か(m) {
+    if (!m) return true;
+    return (m.scrollHeight - m.scrollTop - m.clientHeight) <= 48;
+  }
+  function 末尾へ(m) {
+    if (!m) return;
+    貼り付き = true;
+    var 寄せる = function () { if (貼り付き && m.isConnected) m.scrollTop = m.scrollHeight; };
+    寄せる();
+    /* 描いた 直後は まだ 高さが 決まっていない ことが ある。 */
+    try { root.requestAnimationFrame ? root.requestAnimationFrame(寄せる) : setTimeout(寄せる, 16); }
+    catch (e) { setTimeout(寄せる, 16); }
+    setTimeout(寄せる, 80);
+    setTimeout(寄せる, 300);
+    /* 絵が 届いた ぶんだけ 高さが 増える。届くたび 寄せ直す。 */
+    try {
+      Array.prototype.forEach.call(m.querySelectorAll("img"), function (im) {
+        if (im.complete) return;
+        im.addEventListener("load", 寄せる, { once: true });
+        im.addEventListener("error", 寄せる, { once: true });
+      });
+    } catch (e) {}
+  }
+
   /* ── 描く: 全体 ─────────────────────────────────────────────── */
   function 描く() {
     if (!root) return;
     var w = root.querySelector(".sheet");
     if (!w) return;
+    /* 入れ替える 前の 位置を 覚えておく（ついでの 描き直しで 飛ばさない ため）。 */
+    var 前 = w.querySelector(".msgs");
+    var 覚え = 前 ? { top: 前.scrollTop, 高: 前.scrollHeight, 下端: 下端か(前) } : null;
+
     w.innerHTML = 左を描く() + 右を描く()
       + (st.盤 ? 盤を描く() : "")
       + (st.窓 ? 窓を描く() : "");
+
     var m = w.querySelector(".msgs");
-    if (m && st.下へ) { m.scrollTop = m.scrollHeight; st.下へ = false; }
+    if (m) {
+      if (st.上へ足した && 覚え) {
+        /* 「前のやりとりを読む」で **上に 足した**。
+           そのまま 戻すと 増えた ぶん だけ ずれるので、増えた 高さを 足す
+           （いま 読んでいた ところが 動かない）。 */
+        貼り付き = false;
+        m.scrollTop = 覚え.top + Math.max(0, m.scrollHeight - 覚え.高);
+      } else if (st.下へ || !覚え || 覚え.下端) {
+        末尾へ(m);
+      } else {
+        /* 人が 上を 読んでいる。そこへ 戻す。 */
+        貼り付き = false;
+        m.scrollTop = 覚え.top;
+      }
+      st.下へ = false;
+      st.上へ足した = false;
+      /* 自分で 上へ 動かしたら 貼り付きを 外す（絵が 届いても 引きずらない）。 */
+      m.addEventListener("scroll", function () { 貼り付き = 下端か(m); }, { passive: true });
+    }
   }
 
   function 左を描く() {
@@ -1059,6 +1124,8 @@
     api("/api/dm/messages?threadId=" + encodeURIComponent(st.部屋) + "&before=" + before).then(function (j) {
       st.便り = (j.messages || []).concat(st.便り);
       st.もっと = !!j.hasMore;
+      /* ★ 上に 足したので、いま 読んでいる ところを 動かさない（下へ 飛ばさない）。 */
+      st.上へ足した = true;
       描く();
     }).catch(function () {});
   }
