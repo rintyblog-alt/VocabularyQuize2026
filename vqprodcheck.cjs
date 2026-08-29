@@ -134,20 +134,35 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
               ← ここを 端折ると 必ず 問題文が 空に なる（それが 真因だった）
            ③ 同じ 注文（orderId）で **1 つに まとめる**・
               画面が 受け取った ものは 取らない（jobTaken） */
-      取り込みあり: /emptyPreset/.test(core),
-      二段通す: /toClientShape[^]{0,900}draftToQuestions/.test(core),
+      /* ★ 取り込みが ある か。組み立ては vq2-app へ 移した ので、
+         vq-core 側は「台帳を 見に いって、同じ口を 呼ぶ」ことで 見る。 */
+      取り込みあり: /aijob\/list/.test(core) && /fromCloud/.test(core),
+      /* ★ 2 段（toClientShape → draftToQuestions）は **1 か所に まとめた**ので、
+         見る 先は vq-core では なく vq2-app（同じ口 fromCloud の 中）。
+         あわせて **vq-core が 自分で 組み立てていない** ことも 見る
+         （2 か所に あるのが、問題文が 空に なる 元だった）。 */
+      二段通す: /toClientShape[^]{0,900}draftToQuestions/.test(src),
+      うしろは組み立てない: !/emptyPreset/.test(core),
       注文でまとめる: /sourceOrderId/.test(core),
       画面が受けたら取らない: /jobTaken/.test(core),
-      注文の目印を送る: /orderId/.test(src)
+      注文の目印を送る: /orderId/.test(src),
+      /* ★ 2026-08-29 夕: **口が 1 本**か（画面も うしろも 同じ 関数を 通る） */
+      同じ口: /fromCloud/.test(src) && /fromCloud/.test(core),
+      題を作る: /cloudTitle/.test(src),
+      絵を決める: /cloudIcon/.test(src)
     };
   });
   ok("作るのは 台帳を 通る", 生成.台帳);
   ok("**鍵を 付けていない**（同じ 注文の 2 回目が 弾かれない）", 生成.鍵なし, 生成);
   ok("閉じたまま 終わった ぶんを **プリセットに する**", 生成.取り込みあり, 生成);
   ok("**画面と 同じ 2 段**を 通す（ここが 問題文が 空の 真因）", 生成.二段通す, 生成);
+  ok("うしろの 取り込みは **自分で 組み立てない**（口は 1 本）", 生成.うしろは組み立てない, 生成);
   ok("同じ 注文で **1 つに まとめる**（3 つに 割れない）", 生成.注文でまとめる, 生成);
   ok("画面が 受け取った 仕事は 取らない（二重に できない）", 生成.画面が受けたら取らない, 生成);
   ok("注文の 目印を サーバへ 送る", 生成.注文の目印を送る, 生成);
+  ok("**口が 1 本**（画面も うしろも fromCloud を 通る）", 生成.同じ口, 生成);
+  ok("作成中の 題を その場で 作る", 生成.題を作る, 生成);
+  ok("作成中の アイコンを その場で 決める", 生成.絵を決める, 生成);
 
   節("④-d 左パネルの 開閉（パソコン）");
   const 帯 = await pg.evaluate(async () => {

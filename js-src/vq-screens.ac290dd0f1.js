@@ -311,11 +311,22 @@
     var pct = planned > 0 ? Math.max(0, Math.min(100, Math.round((made / planned) * 100)))
       : buildingPct(jobs[0]);
     var ids = jobs.map(function (j) { return String(j.jobId || ""); }).filter(Boolean).join(",");
+    /* ★ 題と アイコンを **その場で** 決める（2026-08-29・訴え
+       「生成中の タイトルは 自動作成して。アイコンも 自動で 指定して」）。
+       台帳の title は 頼み文の 先頭 120 字 そのままで、札に 出すには 長い。
+       決めかたは 画面（preset-studio）と 同じ 関数を 借りる。
+       仕上がったら AI が 決めた 名前と アイコンが 勝つ。 */
+    var 題 = title, 絵 = "";
+    try {
+      var P = window.VQ2 && window.VQ2.presetStudio;
+      if (P && P.cloudTitle) 題 = P.cloudTitle(title);
+      if (P && P.cloudIcon) 絵 = P.cloudIcon(title, "");
+    } catch (e) {}
     return '<article class="pc pc--building" aria-busy="true">' +
-      '<div class="pc--building__ic">' + ms("cloud_upload") +
+      '<div class="pc--building__ic">' + ms(絵 || "cloud_upload") +
         '<span class="pc--building__pct">' + pct + "%</span></div>" +
       '<div class="pc--building__b">' +
-        '<div class="pc__title">' + esc(title || "AI で 作成中") + "</div>" +
+        '<div class="pc__title">' + esc(題 || "AI で 作成中") + "</div>" +
         '<div class="pc--building__m">クラウドで 作成中' +
           (planned ? " ・ " + made + " / " + planned + " 問" : "") +
           (stage ? " ・ " + esc(stage) : "") + "</div>" +

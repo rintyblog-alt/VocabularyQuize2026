@@ -24585,25 +24585,22 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
              ④ 終わってから 20 秒 待つ。開いている 画面が 受け取る 猶予。 */
       const CLOUD_ADOPT_WAIT_MS = 20000;
 
+/* ★ ここに あった 組み立ては **外した**（2026-08-29）。
+         同じ ことを 2 か所に 書いていたのが、問題文が 空に なる 元だった。
+         いまは VQ2.presetStudio.fromCloud（画面と 同じ 口）だけを 通す。 */
       function _appCloudGenShape(qsRaw){
-        const V = window.VQ2 || {};
-        if (!V.aigen?.toClientShape || !V.draft?.draftToQuestions) return [];
-        /* ① サーバの形 → クラウドの形（question / choices など） */
-        const cloud = qsRaw.map((q) => { try{ return V.aigen.toClientShape(q); }catch(e){ return null; } })
-          .filter(Boolean);
-        if (!cloud.length) return [];
-        /* ② クラウドの形 → 画面の形（prompt / correctAnswer / choices…）
-           **ここが 抜けていた。** 画面の 生成は 必ず ここを 通る。 */
-        let out = [];
-        try{ out = V.draft.draftToQuestions({ questions: cloud }) || []; }catch(e){ out = []; }
-        /* 問題文の 無い ものは 入れない（空の 問題を 増やさない）。 */
-        return out.filter((q) => q && String(q.prompt || "").trim());
+        try {
+          const V = window.VQ2 || {};
+          return (V.presetStudio && V.presetStudio.cloudQuestions)
+            ? V.presetStudio.cloudQuestions(qsRaw || []) : [];
+        } catch (e) { return []; }
       }
 
       async function _appCloudGenAdoptFinished(){
         if (!_appIsLoggedUser()) return 0;
         const V = window.VQ2 || {};
-        if (!V.schema?.emptyPreset || !V.store?.savePreset) return 0;
+        /* 組み立ては V.presetStudio.fromCloud が 持つ。ここでは 使えるかだけ 見る。 */
+        if (!V.presetStudio?.fromCloud) return 0;
         let 取り込んだ = 0;
         try{
           const body = await _appApiJson("/api/aijob/list?limit=20", { method: "GET" });
@@ -24613,8 +24610,22 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
             && (j.status === "completed" || j.status === "partial")
             && Number(j.made || 0) > 0
             && (いま - Number(j.completedAt || j.updatedAt || 0)) > CLOUD_ADOPT_WAIT_MS
-            && !_appCloudGen.取り込みずみ.has(String(j.jobId || ""))
-            && !(V.aigen?.jobTaken && V.aigen.jobTaken(String(j.jobId || ""))));
+            && !_appCloudGen.取り込みずみ.has(String(j.jobId || "")));
+          /* ★ 「画面が 受け取った」印（jobTaken）だけで 切り捨てない（2026-08-29）。
+             受け取った あと **保存する前に 画面を 閉じる**と、
+             その ぶんは どこにも 残らない（訴え「完成したら かならず 一覧へ」）。
+             だから: 印が あっても、**10 分 たっても その 注文の プリセットが
+             どこにも 無い**なら 拾い直す。
+             画面が 保存していれば sourceOrderId が 押してある ので、
+             下の「既に」で 見送られる。二重には ならない。 */
+          const 拾い直しの猶予 = 10 * 60 * 1000;
+          const 済み2 = 済み.filter((j) => {
+            const 印 = !!(V.aigen?.jobTaken && V.aigen.jobTaken(String(j.jobId || "")));
+            if (!印) return true;
+            return (いま - Number(j.completedAt || j.updatedAt || 0)) > 拾い直しの猶予;
+          });
+          済み.length = 0;
+          済み2.forEach((j) => 済み.push(j));
           if (!済み.length) return 0;
 
           /* 同じ 注文（orderId）ごとに 束ねる。目印が 無い 古い ものは 1 件ずつ。 */
@@ -24646,23 +24657,28 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
               qs.forEach((q) => 生.push(q));
             });
             if (!生.length) continue;
-            const 問 = _appCloudGenShape(生);
-            if (!問.length) {
-              console.warn("[cloud gen] 形に できません（問題文が 空）:", 鍵, 生.length + " 件");
+            /* ★ **同じ 口を 通す**（2026-08-29・訴え）。
+               ここで 自分で 組み立てない。画面（preset-studio）が 通るのと
+               まったく 同じ 関数を 呼ぶ。
+                 toClientShape → draftToQuestions → 重複を 落とす
+                 → 器へ 入れる → cover（名前と アイコン）→ 保存
+               別々に 書いていたから 片方だけ 直り、片方は 古いまま だった。 */
+            if (!V.presetStudio || !V.presetStudio.fromCloud) {
+              console.warn("[cloud gen] 取り込みの 口が まだ 読み込めていません");
               continue;
             }
             try{
-              const np = V.schema.emptyPreset({
-                name: String(仲間[0].title || "AI で 作った プリセット").slice(0, 60),
-                description: "画面を 閉じている あいだに AI が 作りました（" + 問.length + " 問）。",
-                questions: 問
+              const 出 = await V.presetStudio.fromCloud({
+                questions: 生,
+                instruction: String(仲間[0].title || ""),
+                sourceJobId: ids[0] || "",
+                sourceOrderId: 鍵
               });
-              np.sourceJobId = ids[0] || "";
-              np.sourceOrderId = 鍵;
-              const r = V.store.savePreset(np);
-              if (r && r.ok !== false) {
+              if (出 && 出.ok) {
                 取り込んだ++;
                 ids.forEach((id) => V.aigen?.markJobTaken && V.aigen.markJobTaken(id));
+              } else {
+                console.warn("[cloud gen] プリセットに できません:", 出 && (出.message || 出.error));
               }
             }catch(e){
               console.warn("[cloud gen] プリセットに できません:", String(e?.message || e));
@@ -44999,6 +45015,16 @@ actionタイプ:
               _appRenderLibrary();
               try{ window.dispatchEvent(new CustomEvent("vq:cloudgen")); }catch(e){}
               if (_appCloudGen.jobs.length) _appCloudGenStart();
+              /* ★ 一覧を 開いた ときにも 拾う（2026-08-29・訴え
+                 「完成したら かならず 一覧の マイプリセットに 追加すること」）。
+                 起動のときだけだと、開きっぱなしで 仕上がった ぶんが
+                 次に 開き直すまで 出てこない。 */
+              const n = await _appCloudGenAdoptFinished();
+              if (n > 0) {
+                try{ uiToast(n === 1 ? "作りかけの プリセットが できました。" : `作りかけの プリセット ${n} 件が できました。`); }catch(e){}
+                try{ _appPresetsChanged(); }catch(e){}
+                _appRenderLibrary();
+              }
             })().catch(() => {});
           }
           if (t === APP_TAB_KEY.NOTIFICATIONS){

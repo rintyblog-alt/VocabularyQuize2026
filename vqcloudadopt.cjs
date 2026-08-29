@@ -74,6 +74,17 @@ if (!token) { console.error("VQ_TOKEN を 渡してください。"); process.ex
   const 前 = await page.evaluate(() => (window.VQ2.store.listPresets() || []).length);
   const n1 = await page.evaluate(() => window.__vqCloudGen.adopt());
   await page.waitForTimeout(1500);
+  /* ★ 「同じ 口」を 通っているか（2026-08-29・訴え）。
+     画面が 通る 関数を、うしろの 取り込みも 呼んでいる ことを 確かめる。 */
+  const 口 = await page.evaluate(() => ({
+    同じ口: typeof (window.VQ2.presetStudio || {}).fromCloud === "function",
+    題: (window.VQ2.presetStudio || {}).cloudTitle
+      ? window.VQ2.presetStudio.cloudTitle("鎌倉時代について 4択で 10問 作ってください") : "",
+    絵: (window.VQ2.presetStudio || {}).cloudIcon
+      ? window.VQ2.presetStudio.cloudIcon("日本史の 鎌倉時代", "") : ""
+  }));
+  console.log("口:", JSON.stringify(口));
+
   const 見え = await page.evaluate((ord) => {
     const list = window.VQ2.store.listPresets() || [];
     const mine = list.filter((p) => String(p.sourceOrderId || "") === ord);
@@ -84,9 +95,20 @@ if (!token) { console.error("VQ_TOKEN を 渡してください。"); process.ex
         const qs = (window.VQ2.store.getPreset(p.id, {}) || {}).questions || [];
         return { 名: p.name, 問数: qs.length,
                  空: qs.filter((q) => !String(q.prompt || "").trim()).length,
+                 絵: (p.appearance && p.appearance.icon) || "",
                  例: String((qs[0] || {}).prompt || "").slice(0, 40) };
       })
     };
+  }, order);
+  /* ★ 画面が 保存した ぶんは 拾い直さない（目印 sourceOrderId で 見送る）。 */
+  const 二重 = await page.evaluate(async (ord) => {
+    const V = window.VQ2;
+    /* 画面が 作った ことに する（同じ 目印を 押した プリセットを 1 つ 置く） */
+    const np = V.schema.emptyPreset({ name: "画面が 作った ぶん", description: "",
+      questions: [] });
+    np.sourceOrderId = ord + "_screen";
+    V.store.savePreset(np);
+    return { 置いた: true };
   }, order);
   const n2 = await page.evaluate(() => window.__vqCloudGen.adopt());
   await page.waitForTimeout(800);
@@ -100,11 +122,17 @@ if (!token) { console.error("VQ_TOKEN を 渡してください。"); process.ex
   let 落 = 0;
   const 見 = (ok, 名) => { console.log((ok ? "✓ " : "✗ ") + 名); if (!ok) 落++; };
   見(ids.length === 2, "仕事が 2 件 立った");
+  見(口.同じ口, "★ **画面と 同じ 口**（VQ2.presetStudio.fromCloud）が ある");
+  見(口.題 === "鎌倉時代", "★ 題を その場で 作れる（" + 口.題 + "）", 口.題);
+  見(!!口.絵, "★ アイコンを その場で 決められる（" + 口.絵 + "）", 口.絵);
   見(見え.この注文 === 1, "同じ 注文は **1 つの プリセット**（" + 見え.この注文 + " 個）");
   const c = 見え.中身[0] || {};
   見((c.問数 || 0) > 0, "問題が 入っている（" + (c.問数 || 0) + " 問）");
   見(c.空 === 0, "**問題文が 空の ものが 無い**（空 " + c.空 + " 件）");
   見(!!String(c.例 || "").trim(), "1 問目の 問題文: " + (c.例 || "（空）"));
+  見(!!String(c.名 || "").trim() && c.名 !== "新しいプリセット",
+     "★ 題名が 付いている（" + c.名 + "）", c.名);
+  見(!!String(c.絵 || "").trim(), "★ アイコンが 付いている（" + c.絵 + "）", c.絵);
   見(n2 === 0 && 後 === 1, "2 回 拾っても 増えない（追加 " + n2 + " 件・合計 " + 後 + " 個）");
   console.log(`\n落ち ${落} 件`);
   process.exit(落 ? 1 : 0);

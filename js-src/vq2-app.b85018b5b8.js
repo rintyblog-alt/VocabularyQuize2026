@@ -45347,6 +45347,11 @@
            送信と完了がほぼ同時でも、ここで拾うので取りこぼさない。 */
         applyFollowups(list, function (finalList) {
           logAdd("done", "内容を確認してください。");
+          /* ★ **この 注文で 作った**という 目印を 押す（2026-08-29・訴え）。
+             これが 無いと、画面を 閉じた あとの 取り込みが
+             「まだ プリセットに なっていない」と 見て もう 1 つ 作る。
+             逆に 目印が あれば、取り込みは 黙って 見送る。 */
+          try { if (st.preset && st.runId) st.preset.sourceOrderId = String(st.runId); } catch (e) {}
           /* 表紙（名前・アイコン・バナー）は、問題を出したあとで静かに入れる。
              ここで待つと、できている問題が見えるまで数秒延びる。 */
           fillCover(instruction, finalList);
@@ -49028,6 +49033,176 @@
      人がすでに決めたものは絶対に上書きしない。3 つそれぞれ別に見る。
      画面を開かなくても確かめられるように VQ2.presetStudio.cover で出す。
      ══════════════════════════════════════════════════════════════════════ */
+  /* ══════════════════════════════════════════════════════════════════════
+     クラウドで 作った ぶんを **プリセットに する 口**（2026-08-29）
+
+     訴え:「既存の プリセット編集画面の AI と 同じ ものを 使用していないので、
+           全く 同じ 口を バッググラウンドで 生成してほしい。
+           だから 問題文が 空に なる ことが 多発する」
+           「生成中の タイトルは 自動作成して。アイコンも 自動で 指定して」
+           「完成したら かならず 一覧の マイプリセットに 追加すること」
+
+     ★ **口を 1 本に する。** 画面（preset-studio）が 通る 道と、
+       画面を 閉じた あとの 道が 別々に 書かれていたのが 元凶。
+       別々だと 片方だけ 直り、片方は 古いまま 残る（実際 そうなった）。
+       ここから 先は **どちらも この 関数を 通る**。
+     ★ 通す 順番は 画面と まったく 同じ:
+         ① toClientShape   … サーバの形 → クラウドの形（question / choices）
+         ② draftToQuestions … クラウドの形 → 画面の形（prompt が 入る）
+         ③ dropDuplicates   … 同じ 問題文を 落とす
+         ④ emptyPreset      … プリセットの 器へ
+         ⑤ cover            … 名前と アイコンを AI が 決める（画面と 同じ 呼び方）
+       ①か②を 端折ると **必ず 問題文が 空**に なる。ここが 真因だった。
+     ★ 名前と アイコンが 決まらなくても **プリセットは 必ず 保存する**。
+       表紙は あとから 変えられるが、問題は 消えたら 戻らない。
+     ══════════════════════════════════════════════════════════════════════ */
+  function 見出しをそろえる(s) {
+    return String(s || "").replace(/\s+/g, "").replace(/[。、．，？?！!「」（）()]/g, "").toLowerCase();
+  }
+  /* サーバの形の 問題たち → 画面の形。**画面と 同じ 2 段**を 通す。 */
+  function cloudQuestions(生, opts) {
+    var 出 = [];
+    try {
+      var G = VQ2.aigen, D = VQ2.draft;
+      if (!G || !G.toClientShape || !D || !D.draftToQuestions) return [];
+      var 雲 = (生 || []).map(function (q) {
+        try { return G.toClientShape(q); } catch (e) { return null; }
+      }).filter(Boolean);
+      if (!雲.length) return [];
+      出 = D.draftToQuestions({ questions: 雲 }, opts || {}) || [];
+    } catch (e) { return []; }
+    /* 同じ 問題文を 落とす（画面と 同じ 見かた）。 */
+    var 見た = {}, 残 = [];
+    出.forEach(function (q) {
+      var k = 見出しをそろえる(q && q.prompt);
+      if (!k || 見た[k]) return;         /* 問題文が 空の ものも ここで 落ちる */
+      見た[k] = true;
+      残.push(q);
+    });
+    return 残;
+  }
+
+  /* 頼み文から **その場で** 題名を 作る（AI を 待たない）。
+     作りかけの 札に 出す ためのもの。仕上がったら AI の 名前が 勝つ。 */
+  function cloudTitle(instruction) {
+    var t = String(instruction || "").replace(/\s+/g, " ").trim();
+    if (!t) return "AI で 作る プリセット";
+    /* 段取りの 言葉を 落とす（数・形式・お願い） */
+    t = t.replace(/【[^】]*】/g, " ")
+      .replace(/[0-9０-９]+\s*(問|門|個)/g, " ")
+      .replace(/(を|で)?\s*(作って|作成して|つくって|出して|お願い|ください|下さい|してください)[。.!！]?/g, " ")
+      .replace(/(4択|四択|正誤|穴埋め|並べ替え|記述|短答|複数選択|選択肢[^、。]*)/g, " ")
+      .replace(/(について|に関する|の問題|のクイズ|のテスト)/g, " ")
+      .replace(/\s+/g, " ").trim();
+    t = t.split(/[。\n]/)[0].trim();
+    /* 先頭・末尾に 残った 助詞や 記号を 落とす（「江戸時代 で」に ならない ように） */
+    t = t.replace(/^[のをにでとやもはがへ、,・\-–—]+/, "")
+      .replace(/[のをにでとやもはがへ、,・\-–—]+$/, "").trim();
+    if (!t) t = String(instruction || "").replace(/\s+/g, " ").trim();
+    return t.slice(0, 28) || "AI で 作る プリセット";
+  }
+  /* 題から アイコンを 選ぶ（AI を 待たない）。
+     ★ iconFind は **1 語ずつ**しか 見ない（文を 渡すと 何も 当たらない）。
+       だから ここで 語に ほどいて、当たった 最初の ものを 使う。
+       当たらなければ **空**（それらしい 絵を でっち上げない）。 */
+  var 教科の絵 = {
+    "英": "translate", "英語": "translate", "英単語": "translate", "国語": "menu_book",
+    "古文": "menu_book", "漢文": "menu_book", "数学": "functions", "算数": "functions",
+    "理科": "science", "化学": "science", "物理": "science", "生物": "biotech",
+    "地学": "public", "社会": "public", "歴史": "history_edu", "日本史": "history_edu",
+    "世界史": "history_edu", "地理": "map", "公民": "gavel", "政治": "gavel",
+    "経済": "payments", "音楽": "music_note", "美術": "palette", "体育": "sports_soccer",
+    "保健": "favorite", "家庭": "home", "情報": "computer", "技術": "build"
+  };
+  function cloudIcon(instruction, subject) {
+    var 文 = String(subject || "") + " " + String(instruction || "");
+    /* まず 教科の 決め打ち（いちばん よく 当たる） */
+    var 鍵 = Object.keys(教科の絵).sort(function (a, b) { return b.length - a.length; });
+    for (var i = 0; i < 鍵.length; i++) if (文.indexOf(鍵[i]) >= 0) return 教科の絵[鍵[i]];
+    /* 次に 語ごとに 探す */
+    try {
+      var f = VQ2.presetStudio && VQ2.presetStudio.iconFind;
+      if (f) {
+        var 語 = 文.split(/[\s、。「」（）()・,.]+/).filter(function (x) { return x.length >= 2; });
+        for (var k = 0; k < 語.length && k < 8; k++) {
+          var got = f(語[k]);
+          if (got && got.length && got[0] && got[0].name) return got[0].name;
+        }
+      }
+    } catch (e) {}
+    return "";
+  }
+
+  /* ★ ここが「同じ 口」。画面も、画面を 閉じた あとの 取り込みも ここを 通る。 */
+  function buildPresetFromCloud(o) {
+    o = o || {};
+    var 問 = cloudQuestions(o.questions, { idPrefix: "" });
+    if (!問.length) {
+      return Promise.resolve({ ok: false, error: "EMPTY",
+        message: "問題を 画面の 形に できませんでした。**保存していません。**" });
+    }
+    var S2 = VQ2.schema, ST2 = VQ2.store;
+    if (!S2 || !S2.emptyPreset || !ST2 || !ST2.savePreset) {
+      return Promise.resolve({ ok: false, error: "NO_STORE" });
+    }
+    var 仮題 = String(o.title || "").trim() || cloudTitle(o.instruction);
+    var np;
+    try {
+      np = S2.emptyPreset({
+        name: 仮題.slice(0, 60),
+        description: String(o.description || "AI が 作りました（" + 問.length + " 問）。"),
+        questions: 問
+      });
+    } catch (e) { return Promise.resolve({ ok: false, error: "SHAPE" }); }
+    if (o.subject) np.subject = o.subject;
+    if (o.sourceJobId) np.sourceJobId = o.sourceJobId;
+    if (o.sourceOrderId) np.sourceOrderId = o.sourceOrderId;
+    /* その場で 決まる アイコン。AI が 決めたら 上書きされる。 */
+    var 仮絵 = cloudIcon(o.instruction, o.subject);
+    if (仮絵) {
+      np.appearance = np.appearance && typeof np.appearance === "object" ? np.appearance : {};
+      np.appearance.icon = 仮絵;
+    }
+
+    /* ★ **まず 保存する。** 表紙が 決まらなくても 問題は 残す。 */
+    var r = ST2.savePreset(np);
+    if (!r || r.ok === false) {
+      return Promise.resolve({ ok: false, error: "SAVE", message: (r && r.message) || "保存できませんでした。" });
+    }
+    var 済 = { ok: true, preset: np, count: 問.length, coverBy: "" };
+
+    /* ★ 名前と アイコンは 画面と **同じ 呼び方**で 決める。
+       決まらなくても 失敗に しない（問題は もう 残っている）。 */
+    var G = VQ2.aigen, C = VQ2.presetStudio && VQ2.presetStudio.cover;
+    if (!G || !G.cover || !G.availableSync || !G.availableSync() || !C) {
+      return Promise.resolve(済);
+    }
+    /* ★ ここが 大事（2026-08-29 実測で 見つけた）。
+       仮の 名前と アイコンを **先に 入れて 保存している**ので、
+       COVER.needs は「もう 埋まっている」と 見て AI の 表紙を 入れない。
+       仮の ものは **人が 決めた ものでは ない**（機械が その場で 付けた）ので、
+       ここでは 上書きしてよい。人が あとから 変えた ものは、
+       そもそも この 取り込みを 通らない（新しく 作る ときだけ 通る）。 */
+    var need = { name: true, icon: true, banner: false };
+    return G.cover({
+      instruction: String(o.instruction || 仮題),
+      subject: String(np.subject || o.subject || ""),
+      samples: 問.slice(0, 5).map(function (q) { return String((q && q.prompt) || ""); }).filter(Boolean),
+      icons: (VQ2.presetStudio.icons || []).map(function (x) { return x.n; }),
+      banner: false          /* 絵は 押したときだけ（費用が かかるため） */
+    }).then(function (cr) {
+      if (!cr) return 済;
+      var got = [];
+      try { got = C.merge(np, cr, need) || []; } catch (e) { got = []; }
+      if (got.length) {
+        try { ST2.savePreset(np); } catch (e) {}
+        済.coverBy = got.join("・");
+        済.name = np.name;
+      }
+      return 済;
+    }, function () { return 済; });
+  }
+
   var COVER = (function () {
     var DEFAULT_NAME = "新しいプリセット";
     function ap(p) {
@@ -49702,6 +49877,11 @@
 
   VQ2.presetStudio = { open: open, TYPE_LABEL: TYPE_LABEL, condition: COND,
                        exporter: EXPORT, cover: COVER, icons: PRESET_ICONS,
+                       /* ★ 「同じ 口」（2026-08-29）。画面を 閉じた あとの 取り込みも
+                          これを 通す。ここ以外で プリセットを 組み立てないこと。 */
+                       fromCloud: buildPresetFromCloud,
+                       cloudQuestions: cloudQuestions,
+                       cloudTitle: cloudTitle, cloudIcon: cloudIcon,
                        iconFind: iconFind, makeBanner: makeBannerFor, shrink: shrinkImage,
                        /* 外から直したときに 開いている画面へ映す */
                        reload: function (id) {
