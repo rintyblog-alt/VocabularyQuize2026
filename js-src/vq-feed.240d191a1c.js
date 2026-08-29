@@ -263,11 +263,21 @@
     ".attbtn svg{width:15px;height:15px;}",
     ".attbtn:disabled{opacity:.45;cursor:default;}",
     /* 選ぶシート */
+    /* ══ かぶせる 窓の **出るとき**（2026-08-29・訴え「開くときにも 動きを」）══
+       これまで 出るときは いきなり 現れて、閉じるときだけ すっと 消えていた。
+       出入りの 向きを そろえる。幕は うすく、札は 少し 下から。
+       動きを 減らす 設定の 人には 出さない。 */
+    "@keyframes vqfBd{from{opacity:0}to{opacity:1}}",
+    "@keyframes vqfCard{from{opacity:0;transform:translateY(12px) scale(.975)}",
+      "to{opacity:1;transform:none}}",
+    "@keyframes vqfMenu{from{opacity:0;transform:translateY(-6px) scale(.97)}",
+      "to{opacity:1;transform:none}}",
     ".pick{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:20px;",
-      "background:rgba(35,32,64,.34);}",
+      "background:rgba(35,32,64,.34);animation:vqfBd .16s ease both;}",
     ".pick-c{width:min(460px,100%);max-height:72vh;display:flex;flex-direction:column;overflow:hidden;",
       "background:var(--vq-surface,#fff);border-radius:var(--vq-r-lg,calc(14px * var(--vq-r-scale,1)));",
-      "box-shadow:0 18px 48px rgba(35,32,64,.22);}",
+      "box-shadow:0 18px 48px rgba(35,32,64,.22);",
+      "animation:vqfCard .22s cubic-bezier(.22,1,.36,1) both;}",
     ".pick-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;",
       "border-bottom:1px solid var(--vq-border-subtle,#E7E4EF);font-size:15px;font-weight:700;}",
     ".pick-l{overflow:auto;padding:6px;}",
@@ -293,7 +303,8 @@
     ".upbusy{font-size:12.5px;color:var(--vq-text-tertiary,#9994A8);margin-top:8px;}",
     /* 押して大きく見る */
     ".lb{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:24px;",
-      "background:rgba(24,22,34,.92);}",
+      "background:rgba(24,22,34,.92);animation:vqfBd .18s ease both;}",
+    ".lb img{animation:vqfCard .26s cubic-bezier(.22,1,.36,1) both;}",
     ".lb img{max-width:100%;max-height:calc(100dvh - 120px);object-fit:contain;border-radius:calc(8px * var(--vq-r-scale,1));display:block;}",
     ".lb-x{position:absolute;top:16px;right:16px;width:40px;height:40px;border:0;cursor:pointer;",
       "border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:20px;line-height:1;",
@@ -320,10 +331,12 @@
     "display:inline-flex;align-items:center;justify-content:center;}",
     ".dots:hover{background:var(--vq-surface-hover,#F7F5FC);color:var(--vq-text,#2B2836);}",
     ".dots svg{width:17px;height:17px;}",
-    ".menu-bd{position:fixed;inset:0;z-index:60;background:rgba(24,22,38,.28);}",
+    ".menu-bd{position:fixed;inset:0;z-index:60;background:rgba(24,22,38,.28);",
+      "animation:vqfBd .14s ease both;}",
     ".menu{position:fixed;z-index:61;min-width:210px;max-width:calc(100vw - 24px);",
     "background:var(--vq-surface,#fff);border:1px solid var(--vq-border,#E7E4EF);",
-    "border-radius:16px;box-shadow:0 12px 40px rgba(15,23,42,.18);padding:6px;overflow:hidden;}",
+    "border-radius:16px;box-shadow:0 12px 40px rgba(15,23,42,.18);padding:6px;overflow:hidden;",
+    "animation:vqfMenu .16s cubic-bezier(.22,1,.36,1) both;transform-origin:top center;}",
     ".menu button{display:flex;align-items:center;gap:10px;width:100%;height:42px;padding:0 12px;",
     "border:0;background:none;font:inherit;font-size:14px;color:var(--vq-text,#2B2836);",
     "border-radius:11px;cursor:pointer;text-align:left;}",
@@ -333,16 +346,49 @@
     ".menu .sep{height:1px;margin:5px 8px;background:var(--vq-border-subtle,#EFEDF5);}",
     /* 編集の窓 */
     ".ped{position:fixed;inset:0;z-index:62;display:flex;align-items:center;justify-content:center;padding:16px;}",
-    ".ped-bd{position:absolute;inset:0;background:rgba(24,22,38,.42);}",
+    ".ped-bd{position:absolute;inset:0;background:rgba(24,22,38,.42);",
+      "animation:vqfBd .16s ease both;}",
     ".ped-w{position:relative;width:min(560px,100%);background:var(--vq-surface,#fff);",
     "border-radius:20px;border:1px solid var(--vq-border,#E7E4EF);padding:18px;",
-    "box-shadow:0 18px 60px rgba(15,23,42,.24);max-height:86vh;overflow:auto;}",
+    "box-shadow:0 18px 60px rgba(15,23,42,.24);max-height:86vh;overflow:auto;",
+    "animation:vqfCard .24s cubic-bezier(.22,1,.36,1) both;}",
     ".ped-w h2{margin:0 0 12px;font-size:16px;font-weight:750;}",
     ".ped-w input,.ped-w textarea{width:100%;box-sizing:border-box;font:inherit;font-size:14px;",
     "padding:10px 12px;border:1px solid var(--vq-border,#E7E4EF);border-radius:12px;",
     "background:var(--vq-surface,#fff);color:var(--vq-text,#2B2836);margin:0 0 10px;}",
     ".ped-w textarea{min-height:130px;line-height:1.8;resize:vertical;}",
-    ".ped-f{display:flex;gap:8px;justify-content:flex-end;margin-top:4px;}",
+    /* ★ 理由が 8 つ 並ぶと 窓が 縦に 伸びて、
+       「送る」が 画面の 外へ 出る（実測 1180×940 で 隠れた）。
+       中は 巻けるので、押すところだけ 下に 貼り付ける。 */
+    ".ped-f{display:flex;gap:8px;justify-content:flex-end;margin-top:4px;",
+      "position:sticky;bottom:-18px;padding:12px 0 0;",
+      "background:linear-gradient(180deg,rgba(255,255,255,0),var(--vq-surface,#fff) 34%);}",
+    /* ── 報告の 窓（2026-08-29・訴え「システムの モーダルを やめたい」）── */
+    ".rp-s{margin:0 0 10px;font-size:12.5px;line-height:1.7;color:var(--vq-text-secondary,#686477);}",
+    ".rp-t{margin:14px 0 8px;font-size:13px;font-weight:750;color:var(--vq-text,#2B2836);}",
+    ".rp-t .req{margin-left:6px;font-size:11px;font-weight:700;color:var(--vq-accent-text,#5F579E);}",
+    ".rp-prev{margin:0 0 12px;padding:10px 12px;border-radius:12px;",
+    "background:var(--vq-surface-sunken,#F7F6FB);border:1px solid var(--vq-border-subtle,#EFEDF5);",
+    "font-size:12.5px;line-height:1.7;color:var(--vq-text-secondary,#686477);",
+    "max-height:88px;overflow:hidden;}",
+    ".rp-prev b{display:block;color:var(--vq-text,#2B2836);font-weight:700;margin-bottom:2px;}",
+    ".rp-l{display:grid;gap:6px;}",
+    ".rp-o{display:flex;align-items:flex-start;gap:10px;width:100%;text-align:left;",
+    "padding:11px 12px;border-radius:12px;border:1px solid var(--vq-border,#E7E4EF);",
+    "background:var(--vq-surface,#fff);color:inherit;font:inherit;font-size:13.5px;cursor:pointer;}",
+    ".rp-o:hover{background:var(--vq-surface-hover,#F7F5FC);}",
+    ".rp-o[aria-pressed='true']{border-color:var(--vq-accent,#756DB3);",
+    "background:var(--vq-accent-subtle,#EFEBFA);}",
+    ".rp-ck{flex:0 0 auto;width:18px;height:18px;margin-top:1px;border-radius:50%;",
+    "border:2px solid var(--vq-border-strong,#D7D2E4);display:grid;place-items:center;}",
+    ".rp-o[aria-pressed='true'] .rp-ck{border-color:var(--vq-accent,#756DB3);",
+    "background:var(--vq-accent,#756DB3);}",
+    ".rp-ck i{width:8px;height:8px;border-radius:50%;background:#fff;opacity:0;}",
+    ".rp-o[aria-pressed='true'] .rp-ck i{opacity:1;}",
+    ".rp-o .rp-n{font-weight:700;}",
+    ".rp-o .rp-d{display:block;margin-top:2px;font-size:11.5px;font-weight:500;",
+    "color:var(--vq-text-secondary,#686477);}",
+    ".rp-err{margin:8px 0 0;font-size:12.5px;color:var(--vq-danger-text,#B4321F);}",
     ".acts--sm{max-width:320px;margin-top:6px;}",
     ".acts--sm .act{height:30px;padding:0 8px;font-size:12px;}",
     ".acts--sm .act svg{width:15px;height:15px;}",
@@ -655,7 +701,9 @@
     "}",
     ".fadein{animation:vqfIn .28s cubic-bezier(.22,1,.36,1) both;}",
     "@keyframes vqfIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}",
-    "@media (prefers-reduced-motion:reduce){.fadein,.sk{animation:none !important;}}"
+    "@media (prefers-reduced-motion:reduce){.fadein,.sk{animation:none !important;}}",
+    "@media (prefers-reduced-motion:reduce){",
+      ".pick,.pick-c,.lb,.lb img,.menu-bd,.menu,.ped-bd,.ped-w,.ovl,.sheet{animation:none !important;}}",
   ].join("");
 
   var ICON = {
@@ -966,7 +1014,7 @@
   var lbHost = null, lbRoot = null, lbPrevOverflow = "", lbLocked = false;
   /* ★ ⋯ メニューと 投稿の編集も **かぶせる画面**として 扱う（2026-08-19）。
      ここに入れ忘れると、出したのに 前面へ来ない／後ろが 押せてしまう。 */
-  function modalOpen() { return !!(st.lb || st.edit || st.share || st.menu || st.pedit); }
+  function modalOpen() { return !!(st.lb || st.edit || st.share || st.menu || st.pedit || st.report); }
   function bodyLock() {
     if (lbLocked) return;
     lbPrevOverflow = document.body.style.overflow;
@@ -997,6 +1045,10 @@
       var box = document.createElement("div"); box.setAttribute("data-lbbox", ""); lbRoot.appendChild(box);
       document.body.appendChild(lbHost);
       lbRoot.addEventListener("click", onLbClick);
+      /* ★ 打っている 最中に「送る」が 生き返るように（2026-08-29 実測）。
+         描き直すと 打ちかけの 場所が 飛ぶので、**描き直さずに**
+         控え と ボタンの 生き死にだけ 直す。 */
+      lbRoot.addEventListener("input", onLbInput);
     }
     /* 左パネル(#vqShell)・上のバー(#vqTopbar z900) より上、
        初回案内(999999)や認証より下に置く。
@@ -1020,7 +1072,10 @@
         if (typeof ae.selectionStart === "number") { keep.s = ae.selectionStart; keep.e = ae.selectionEnd; }
       }
     } catch (x) {}
-    box.innerHTML = lbHtml() + menuHtml() + postEditHtml() + editHtml() + shrHtml() + toastHtml();
+    /* ★ 打った 中身を 先に 控える（描き直しで 消さない）。 */
+    try { 報告を控える(); } catch (x) {}
+    box.innerHTML = lbHtml() + menuHtml() + postEditHtml() + 報告の窓()
+      + editHtml() + shrHtml() + toastHtml();
     try {
       var sb2 = box.querySelector(".sh-b");
       if (sb2 && keep.top) sb2.scrollTop = keep.top;
@@ -1046,6 +1101,19 @@
   function toastHtml() {
     if (!st.toast) return "";
     return '<div class="toast" role="status">' + svg("check") + esc(st.toast) + "</div>";
+  }
+  /* 打っている あいだの 直し。**描き直さない**（打ちかけを 守るため）。 */
+  function onLbInput(e) {
+    var t = e && e.target;
+    if (!t || !t.dataset || !st.report) return;
+    var k = t.dataset.rp;
+    if (k !== "other" && k !== "detail") return;
+    if (k === "other") st.report.その他 = String(t.value || "");
+    else st.report.詳細 = String(t.value || "");
+    var r = st.report;
+    var 送れる = !!r.理由 && (r.理由 !== "other" || String(r.その他 || "").trim());
+    var b = lbRoot && lbRoot.querySelector('[data-a="rp-send"]');
+    if (b) b.disabled = !!r.busy || !送れる;
   }
   function onLbClick(e) {
     var el = e.target;
@@ -1085,6 +1153,19 @@
     if (a === "mn-report") { メニューから("report"); return; }
     if (a === "mn-share") { メニューから("share"); return; }
     if (a === "pe-bd" || a === "pe-cancel") { st.pedit = null; paintOverlay(); return; }
+    /* 報告の 窓（2026-08-29） */
+    if (a === "rp-bd" || a === "rp-cancel") { st.report = null; paintOverlay(); return; }
+    if (a === "rp-pick") {
+      if (st.report) {
+        報告を控える();
+        st.report.理由 = el && el.dataset ? String(el.dataset.v || "") : "";
+        st.report.err = "";
+        paintOverlay();
+      }
+      return;
+    }
+    if (a === "rp-send") { 報告を送る(); return; }
+    if (a === "quick-edit") { 一覧から編集(el); return; }
     if (a === "pe-save") { 編集を保存(); return; }
 
     if (a === "sh-bd" || a === "sh-close") { st.share = null; paintOverlay(); return; }
@@ -1583,6 +1664,18 @@
        ・自分のもの … 編集 / 削除
        ・人のもの   … 報告（＋ 自分の投稿への 返信なら 削除も）
        できないことは 並べない（押しても 動かない飾りを 置かない）。 */
+  /* ★ 一覧から そのまま 編集する（2026-08-29・訴え
+     「投稿画面の 一覧から そのまま 編集できるように できる？」）。
+     ⋯ の 中には 前から あったが、札を 押すと 詳細が 開く 作りなので
+     ⋯ を 正確に 押さないと たどり着けなかった。**自分の 投稿だけ**
+     鉛筆を 並べて、1 回で 編集の 窓へ 行けるように する。 */
+  function editBtn(kind, id, pid, style) {
+    return '<button class="dots" type="button" data-a="quick-edit" data-kind="' + kind
+      + '" data-mid="' + esc(String(id)) + '"' + (pid ? ' data-pid="' + esc(String(pid)) + '"' : "")
+      + (style ? ' style="' + style + '"' : "")
+      + ' aria-label="この' + (kind === "reply" ? "返信" : "投稿") + 'を編集">'
+      + svg("pencil") + "</button>";
+  }
   function dotsBtn(kind, id, style, pid) {
     return '<button class="dots" type="button" data-a="menu" data-kind="' + kind
       + '" data-mid="' + esc(String(id)) + '"' + (pid ? ' data-pid="' + esc(String(pid)) + '"' : "")
@@ -1655,6 +1748,8 @@
         + 名(a, 18) + "</span>"
         + (a.isFollowing ? '<span class="badge">フォロー中</span>' : "") + "</span>"
         + '<span class="at">@' + esc(a.handle || a.nickname || "user") + "</span></div>"
+        + (自分か(a.userId)
+            ? editBtn("post", p.id, "", "position:absolute;top:14px;right:52px;margin:0") : "")
         + dotsBtn("post", p.id, "position:absolute;top:14px;right:14px;margin:0");
     } else {
       h += '<span data-a="pf-open" data-uid="' + esc(String(a.userId || "")) + '" style="cursor:pointer">'
@@ -1665,7 +1760,8 @@
         + (a.isFollowing ? '<span class="badge">フォロー中</span>' : "")
         + '<span class="at">@' + esc(a.handle || a.nickname || "user") + "</span>"
         + '<span class="dot">·</span><span class="at">' + esc(ago(p.createdAt)) + "</span>"
-        + dotsBtn("post", p.id) + "</div>";
+        + (自分か(a.userId) ? editBtn("post", p.id, "", "margin-left:auto") : "")
+        + dotsBtn("post", p.id, 自分か(a.userId) ? "margin-left:0" : "") + "</div>";
     }
 
     if (p.title) h += '<p class="title">' + esc(p.title) + "</p>";
@@ -2000,6 +2096,18 @@
                 x: x, y: Math.max(8, y) };
     paintOverlay();
   }
+  /* 一覧からの 編集（⋯ を 通さない 近道）。
+     ★ **中身は ⋯ の 編集と 同じ 口**（メニューから("edit")）を 通す。
+       別に 書くと、片方だけ 直って もう片方が 古いまま 残る。 */
+  function 一覧から編集(el) {
+    var d = (el && el.dataset) || {};
+    var k = String(d.kind || "post");
+    var mid = String(d.mid || "");
+    if (!mid) return;
+    st.menu = { kind: k, id: mid, pid: String(d.pid || ""),
+                編集できる: true, 削除できる: false, x: 0, y: 0 };
+    メニューから("edit");
+  }
   function メニューから(何) {
     var m = st.menu;
     if (!m) return;
@@ -2010,7 +2118,7 @@
                 m.kind === "reply" ? "返信を共有" : "投稿を共有");
       return;
     }
-    if (何 === "report") { paintOverlay(); 報告する(m.kind, m.id, m.pid); return; }
+    if (何 === "report") { 報告を開く(m.kind, m.id, m.pid); return; }
     if (何 === "edit") {
       if (m.kind === "post") {
         var p = findPost(m.id);
@@ -2090,35 +2198,144 @@
         render();
       });
   }
-  /* 報告。**画面の中で 作り話の受付をしない。**本体の お問い合わせ口
-     （/api/support/submit）へ そのまま 送る。届かなければ そう言う。 */
-  function 報告する(kind, id, pid) {
-    var 何 = kind === "reply" ? "返信" : "投稿";
-    var 理由 = window.prompt("この" + 何 + "を報告します。\n気になった点を書いてください（未記入でも送れます）。", "");
-    if (理由 === null) return;
+  /* ══ 報告の 窓（2026-08-29・訴え）════════════════════════════════
+     訴え「いまは システムの モーダル（window.prompt）だから、
+           アプリの モーダルに したい。理由を 選ぶ 形に して、
+           選んだら その 理由を 書く ところまで。
+           その他の ときは、その他が 何なのかを 書いて、
+           そのあと その 理由も 書けるように」
+
+     ★ 決めごと
+       ・**選ばないと 送れない。**（何を 報告されたのか 分からない 報せは
+         受け取っても 動きようが ない）
+       ・その他の ときは「どんなことか」も 要る。
+       ・くわしい 説明は **任意**（急いで 送りたい ことが ある）。
+       ・送り先は これまでと 同じ お問い合わせの 口。**画面の 中で
+         受け付けた ふりを しない。** */
+  var 報告の理由 = [
+    { id: "spam", 名: "スパム・宣伝", 説: "同じ 書き込みの 繰り返し、勧誘、広告" },
+    { id: "harassment", 名: "嫌がらせ・攻撃", 説: "特定の 人を 傷つける 書き方" },
+    { id: "inappropriate", 名: "不適切な 表現", 説: "性的・暴力的・過激な 中身" },
+    { id: "copyright", 名: "著作権・無断転載", 説: "人の 作った ものを 断りなく 使っている" },
+    { id: "impersonation", 名: "なりすまし", 説: "別人の ふりを している" },
+    { id: "misinfo", 名: "まちがった 情報", 説: "事実と ちがう・誤解を 招く" },
+    { id: "privacy", 名: "個人情報が ある", 説: "本名・住所・学校・連絡先 など" },
+    { id: "other", 名: "その他", 説: "上に 当てはまらない" }
+  ];
+  function 理由の名(id) {
+    for (var i = 0; i < 報告の理由.length; i++) if (報告の理由[i].id === id) return 報告の理由[i].名;
+    return "";
+  }
+  function 報告を開く(kind, id, pid) {
     var 中身 = kind === "reply" ? (返信を探す(pid, id) || {}) : (findPost(id) || {});
     var 作者 = 中身.author || {};
+    st.report = {
+      kind: kind, id: id, pid: pid || "",
+      理由: "", その他: "", 詳細: "", busy: false, err: "",
+      見本: String(中身.title || 中身.body || "").slice(0, 120),
+      作者: String(作者.displayName || 作者.nickname || "")
+    };
+    paintOverlay();
+  }
+  function 報告の窓() {
+    var r = st.report;
+    if (!r) return "";
+    var 何 = r.kind === "reply" ? "返信" : "投稿";
+    var 送れる = !!r.理由 && (r.理由 !== "other" || String(r.その他 || "").trim());
+    var h = '<div class="ped"><div class="ped-bd" data-a="rp-bd"></div><div class="ped-w">'
+      + "<h2>この" + 何 + "を 報告する</h2>"
+      + '<p class="rp-s">見つけた ことを 教えてください。'
+      + "中身を 確かめて、必要なら 手を 打ちます。"
+      + "**送ったことは 相手に 伝わりません。**".replace(/\*\*/g, "") + "</p>";
+    if (r.見本) {
+      h += '<div class="rp-prev">'
+        + (r.作者 ? "<b>" + esc(r.作者) + "</b>" : "")
+        + esc(r.見本) + "</div>";
+    }
+    h += '<div class="rp-t">どうして 報告しますか？<span class="req">えらぶ</span></div><div class="rp-l">';
+    報告の理由.forEach(function (x) {
+      var on = r.理由 === x.id;
+      h += '<button type="button" class="rp-o" data-a="rp-pick" data-v="' + x.id + '"'
+        + ' aria-pressed="' + (on ? "true" : "false") + '">'
+        + '<span class="rp-ck"><i></i></span>'
+        + '<span><span class="rp-n">' + esc(x.名) + "</span>"
+        + '<span class="rp-d">' + esc(x.説) + "</span></span></button>";
+    });
+    h += "</div>";
+    if (r.理由 === "other") {
+      h += '<div class="rp-t">どんなことですか？<span class="req">かく</span></div>'
+        + '<input data-rp="other" maxlength="60" placeholder="ひとことで（例: 待ち合わせの 約束を 破られた）" value="'
+        + esc(r.その他 || "") + '">';
+    }
+    if (r.理由) {
+      h += '<div class="rp-t">くわしく 教えてください<span class="req" style="color:var(--vq-text-tertiary,#9994A8)">なくてもよい</span></div>'
+        + '<textarea data-rp="detail" maxlength="1200" placeholder="どこが 気になったか、いつ 見つけたか など">'
+        + esc(r.詳細 || "") + "</textarea>";
+    }
+    if (r.err) h += '<p class="rp-err">' + esc(r.err) + "</p>";
+    h += '<div class="ped-f">'
+      + '<button class="btn btn--secondary btn--sm" data-a="rp-cancel">やめる</button>'
+      + '<button class="btn btn--primary btn--sm" data-a="rp-send"'
+      + (r.busy || !送れる ? " disabled" : "") + ">"
+      + (r.busy ? "送っています…" : "送る") + "</button></div>";
+    return h + "</div></div>";
+  }
+  /* 打った 中身を 控える（描き直しで 消えないように）。 */
+  function 報告を控える() {
+    var r = st.report;
+    if (!r || !lbRoot) return;
+    var o = lbRoot.querySelector('[data-rp="other"]');
+    var d = lbRoot.querySelector('[data-rp="detail"]');
+    if (o) r.その他 = String(o.value || "");
+    if (d) r.詳細 = String(d.value || "");
+  }
+  function 報告を送る() {
+    var r = st.report;
+    if (!r || r.busy) return;
+    報告を控える();
+    if (!r.理由) { r.err = "理由を 選んでください。"; paintOverlay(); return; }
+    if (r.理由 === "other" && !String(r.その他 || "").trim()) {
+      r.err = "どんなことか、ひとことで 書いてください。"; paintOverlay(); return;
+    }
+    var 何 = r.kind === "reply" ? "返信" : "投稿";
+    var 名 = r.理由 === "other" ? ("その他：" + String(r.その他).trim()) : 理由の名(r.理由);
+    var 本文 = [
+      "【理由】" + 名,
+      "【くわしく】" + (String(r.詳細 || "").trim() || "（記入なし）")
+    ].join("\n");
+    r.busy = true; r.err = ""; paintOverlay();
     api("/api/support/submit", { method: "POST", body: {
       kind: "report",
-      subject: 何 + "の報告",
-      body: String(理由 || "（理由の記入なし）").slice(0, 2000),
-      targetType: kind === "reply" ? "post" : "post",
-      targetId: String(id),
+      subject: 何 + "の報告：" + 名,
+      body: 本文.slice(0, 2000),
+      targetType: "post",
+      targetId: String(r.id),
       metadata: {
-        selectedReason: "feed_report",
-        selectedReasonLabel: 何 + "の報告",
-        targetKind: kind,
-        parentPostId: String(pid || ""),
-        targetAuthorHandle: String(作者.handle || 作者.nickname || ""),
-        targetSummary: String(中身.body || 中身.title || "").slice(0, 200)
+        selectedReason: r.理由,
+        selectedReasonLabel: 名,
+        otherReason: r.理由 === "other" ? String(r.その他 || "").slice(0, 60) : "",
+        targetKind: r.kind,
+        parentPostId: String(r.pid || ""),
+        targetAuthorHandle: r.作者,
+        targetSummary: r.見本
       }
     } })
-      .then(function () { toast("報告しました。確認します。"); })
+      .then(function () {
+        st.report = null;
+        paintOverlay();
+        toast("報告しました。確認します。");
+      })
       .catch(function (e) {
-        st.error = e.status === 401 ? "ログインが必要です。" : "報告を送れませんでした。";
-        render();
+        r.busy = false;
+        r.err = e.status === 401 ? "ログインが 必要です。" : "送れませんでした。少し あとで もう一度 お試しください。";
+        paintOverlay();
       });
   }
+
+  /* ★ ここに あった window.prompt の 報告は **外した**（2026-08-29・訴え
+     「システムの モーダルを やめて、アプリの モーダルに」）。
+     入口は 報告を開く → 報告の窓 → 報告を送る の 1 本だけ。
+     2 本 置くと、片方だけ 直って もう片方が 古いまま 残る。 */
   /* 返信への返信。いまの作りは 1 段（投稿の下に 並ぶ）なので、
      **相手の @ を 入れて** 返信欄へ 連れていく。誰への返事かは 残る。 */
   function 返信に返信(pid, rid) {
@@ -2479,6 +2696,10 @@
       if (a === "share") { openShare("post", id, "投稿を共有"); return; }
       /* ── ⋯ を押した（2026-08-19）── */
       if (a === "menu") { メニューを開く(el); return; }
+      /* ★ 一覧から そのまま 編集（2026-08-29・訴え）。
+         札は **本体の 側**に あるので、ここで 受ける
+         （窓の 側の 受け口だけでは 届かない）。 */
+      if (a === "quick-edit") { 一覧から編集(el); return; }
       /* ── 返信の 5 つ（投稿と同じ扱い）── */
       if (a === "r-like" || a === "r-bookmark" || a === "r-repost") {
         toggleReplyAction(el.dataset.pid, el.dataset.rid, a);

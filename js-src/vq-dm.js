@@ -182,7 +182,13 @@
       "font-family:var(--vq-app-font,Inter,'Hiragino Sans','Noto Sans JP',sans-serif);",
       "color:var(--vq-text,#2B2836)}",
     ":host([data-open='1']){display:block}",
-    ".sheet{position:absolute;inset:0;display:flex;background:var(--vq-bg-canvas,#F7F6FB)}",
+    /* 出るときに ふわっと（2026-08-29・訴え「開く時にも 動きを」）。
+       transition ではなく keyframes。display が 変わった その場から 走るので、
+       開く 側が コマを 空けていなくても 必ず 動く。 */
+    "@keyframes vqdmIn{from{opacity:0;transform:scale(.992)}to{opacity:1;transform:none}}",
+    ".sheet{position:absolute;inset:0;display:flex;background:var(--vq-bg-canvas,#F7F6FB);",
+      "animation:vqdmIn .24s cubic-bezier(.22,1,.36,1) both}",
+    "@media (prefers-reduced-motion:reduce){.sheet{animation:none}}",
     "button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}",
     "input,textarea{font:inherit;color:inherit}",
     ".i{width:20px;height:20px;flex:0 0 auto}",

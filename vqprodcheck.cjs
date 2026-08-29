@@ -194,6 +194,9 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
     const setJs = setSrc ? await fetch(setSrc).then((x) => x.text()) : "";
     const cssHref = [...document.querySelectorAll('link[href*="/css/vq-ds."]')].map((l) => l.href)[0];
     const css = cssHref ? await fetch(cssHref).then((x) => x.text()) : "";
+    const feedSrc = [...document.querySelectorAll('script[src*="/js/vq-feed."]')].map((x) => x.src)[0];
+    const feed = feedSrc ? await fetch(feedSrc).then((x) => x.text()) : "";
+    const 素 = document.documentElement.innerHTML;
     return {
       書類の見た目: /docTheme/.test(app),
       集計表: /sheetsPivot/.test(live) || /sheetsPivot/.test(app),
@@ -220,7 +223,18 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
       指標: /score100/.test(app),
       総合評価: /insight\/review/.test(app),
       グラフの動き: /insWipe/.test(ins) && /insDraw/.test(ins),
-      相関図: /scatter/.test(ins) && /sc-fit/.test(ins)
+      相関図: /scatter/.test(ins) && /sc-fit/.test(ins),
+      /* ── 2026-08-29 昼: 報告の 窓と 一覧からの 編集 ──
+         ★ 「システムの 窓を やめて アプリの 窓に」が 訴えだったので、
+           **理由の 選択が ある** ことと、**window.prompt が 無い** ことの 両方を 見る。
+           esbuild は 日本語を \uXXXX に 直すので、探すのは ASCII の 目印だけ。 */
+      報告の窓: /rp-send/.test(feed) && /rp-pick/.test(feed) && /selectedReason/.test(feed),
+      報告のその他: /otherReason/.test(feed),
+      報告は素の窓を使わない: !/window\.prompt|\bprompt\(/.test(feed),
+      一覧から編集: /quick-edit/.test(feed),
+      /* ── 窓が **開くとき**の 動き（訴え「閉じる時だけ 動いている」）── */
+      窓が開くとき動く: /vqWinBd/.test(素) && /vqWinCard/.test(素) && /vqWinUp/.test(素),
+      影の窓も動く: /vqfCard/.test(feed) && /vqfMenu/.test(feed)
     };
   });
   ok("書類の 見た目（docDesign）が 入っている", 今夜.書類の見た目, 今夜);
@@ -241,6 +255,12 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
   ok("インサイトの 総合評価の 口が ある（/api/insight/review）", 今夜.総合評価, 今夜);
   ok("グラフが 左から 出る 動きが 入っている", 今夜.グラフの動き, 今夜);
   ok("相関図が 入っている", 今夜.相関図, 今夜);
+  ok("報告は アプリの 窓（理由を えらぶ）に なっている", 今夜.報告の窓, 今夜);
+  ok("報告の「その他」の 中身も 送っている", 今夜.報告のその他, 今夜);
+  ok("報告に **システムの 窓（prompt）を 使っていない**", 今夜.報告は素の窓を使わない, 今夜);
+  ok("投稿の 一覧から そのまま 編集できる", 今夜.一覧から編集, 今夜);
+  ok("窓は **開くときにも** 動く（本体）", 今夜.窓が開くとき動く, 今夜);
+  ok("窓は **開くときにも** 動く（影の DOM）", 今夜.影の窓も動く, 今夜);
 
   節("⑤ 目安の 時間");
   const 分 = await pg.evaluate(() => {

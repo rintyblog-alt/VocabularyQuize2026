@@ -6083,7 +6083,7 @@ html[data-theme-mode="dark"] .liquid-loading-dots{ background:rgba(154,140,224,.
      合わせて 5.8MB＝全 JS の 53%。どれも ログイン画面には 1 つも要らない。
      受け取る側は window.○○ を 見てから 呼ぶ作りで、
      一覧（vq-screens）は VQ2.library が来るまで 150ms ごとに 見に来る。 */
-  var 道具 = ["/js/vq2-app.98d09c4e06.js", "/js/quick-sede.e9d63fce50.js", "/js/sede-redesign.588cafa4b5.js", "/vendor/lib/firebase-app-compat-10.13.2.87a1d26154.js", "/vendor/lib/firebase-auth-compat-10.13.2.444be4c9e8.js", "/vendor/lib/firebase-firestore-compat-10.13.2.b1e8bf63fa.js", "/vendor/lib/jsQR-1.4.0.bc40c8a151.js", "/vendor/lib/emailjs-browser-4.052f6916a2.js", "/vendor/lib/html2canvas-1.4.1.e87e550794.js", "/vendor/lib/marked-9.1.6.6002af6348.js", "/vendor/lib/dompurify-3.0.6.ea4b09082c.js", "/vendor/lib/highlight-11.9.0.837a6fa5b0.js", "/vendor/lib/jszip-3.10.1.acc7e41455.js"], 飾り = ["/vendor/lib/highlight-atom-one-dark-11.9.0.4237ffca7c.css"], 始めた = false;
+  var 道具 = ["/js/vq2-app.df09ace4cb.js", "/js/quick-sede.e9d63fce50.js", "/js/sede-redesign.588cafa4b5.js", "/vendor/lib/firebase-app-compat-10.13.2.87a1d26154.js", "/vendor/lib/firebase-auth-compat-10.13.2.444be4c9e8.js", "/vendor/lib/firebase-firestore-compat-10.13.2.b1e8bf63fa.js", "/vendor/lib/jsQR-1.4.0.bc40c8a151.js", "/vendor/lib/emailjs-browser-4.052f6916a2.js", "/vendor/lib/html2canvas-1.4.1.e87e550794.js", "/vendor/lib/marked-9.1.6.6002af6348.js", "/vendor/lib/dompurify-3.0.6.ea4b09082c.js", "/vendor/lib/highlight-11.9.0.837a6fa5b0.js", "/vendor/lib/jszip-3.10.1.acc7e41455.js"], 飾り = ["/vendor/lib/highlight-atom-one-dark-11.9.0.4237ffca7c.css"], 始めた = false;
   function 順に(i) {
     if (i >= 道具.length) { try { window.__vqLibsReady = true; } catch (e) {} return; }
     var s = document.createElement("script");
@@ -6129,6 +6129,123 @@ html[data-theme-mode="dark"] .liquid-loading-dots{ background:rgba(154,140,224,.
      **ここでは 読み込まない。** タブを 開いたときに 初めて 取りに行く。
      指紋つきの 名前なので vqrehash / vqsurvive が ここを 書き換える。 -->
 <script>window.__VQ_SURVIVE_SRC="/js/vq-survive.f5f6edf248.js";</script>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   窓が **出るとき**の 動き（2026-08-29・訴え
+   「モーダルを 開く時にも アニメーションを 入れて欲しい。
+     既存の モーダルは 閉じる時のみに 入れてるだけ」）
+
+   ★ なぜ 出るときだけ 動かなかったのか
+     動かない 窓は どれも **transition 頼み**だった。
+     transition は「前の 姿」と「次の 姿」が **別の コマ**に 無いと 走らない。
+     ところが 開く 側は だいたい
+       覆いを 出す → 同じ コマで 開いた 印を 付ける
+     と 書かれている。始まりの 姿が 記録されないので、いきなり 出る。
+     閉じるほうは すでに 出ている 姿からの 変化なので ちゃんと 走る。
+     → **transition ではなく animation（keyframes）に する。**
+       keyframes は display が 変わった その場から 走るので、
+       コマの すきまが 無くても 必ず 動く。
+
+   ★ 1.4MB の vq-ds.css へは 足さない（名前が 変わると 全員が もう一度 落とす）。
+     数行なので 毎回 取りに来る index.html に 置く。
+   ══════════════════════════════════════════════════════════════════════ */
+@keyframes vqWinBd{ from{ opacity:0; } to{ opacity:1; } }
+@keyframes vqWinCard{
+  from{ opacity:0; transform:translateY(14px) scale(.975); }
+  to{ opacity:1; transform:none; }
+}
+@keyframes vqWinUp{
+  from{ opacity:0; transform:translateY(26px); }
+  to{ opacity:1; transform:none; }
+}
+
+/* ── 幕（後ろの 暗がり）── */
+#presetOverlay:not(.hidden),
+#settingsOverlay:not(.hidden),
+#appNewsEditorOverlay:not(.hidden),
+#sedeUsageModalOverlay:not(.hidden),
+.app-qredit-overlay:not(.hidden),
+.app-qredit-card-overlay:not(.hidden),
+.app-preset-engine-overlay:not(.hidden),
+.app-preset-publish-overlay:not(.hidden),
+.scan-gen-overlay:not(.hidden),
+.maintenance-overlay:not(.hidden){
+  animation: vqWinBd .2s cubic-bezier(.22,1,.36,1) both !important;
+}
+
+/* ── 札（中身の 箱）── */
+#presetOverlay:not(.hidden) > .sheet,
+#appNewsEditorOverlay:not(.hidden) > .sheet,
+#sedeUsageModalOverlay:not(.hidden) > .sheet,
+#sedeUsageModalOverlay:not(.hidden) .ui-modal-card,
+.app-qredit-overlay:not(.hidden) > .sheet,
+.app-preset-engine-overlay:not(.hidden) > *,
+.app-preset-publish-overlay:not(.hidden) > *,
+.maintenance-overlay:not(.hidden) > *{
+  animation: vqWinCard .34s cubic-bezier(.22,1,.36,1) both !important;
+}
+
+/* 下から せり上がる 形の もの（全画面・下ぞろえ）は 上へ 動かす。 */
+#settingsOverlay:not(.hidden) .settings-fullsheet,
+.scan-gen-overlay:not(.hidden) .scan-gen-sheet,
+.app-qredit-card-overlay:not(.hidden) .app-qredit-card-shell,
+.app-qredit-card-overlay:not(.hidden) .app-qredit-card-onboarding{
+  animation: vqWinUp .36s cubic-bezier(.22,1,.36,1) both !important;
+}
+
+/* 中身の 札に まだ 動きが 決まっていなかった もの。 */
+#appNewsEditorOverlay:not(.hidden) .app-news-editor-modal,
+#appProfileAvatarLightbox:not(.hidden) img{
+  animation: vqWinCard .34s cubic-bezier(.22,1,.36,1) both !important;
+}
+
+/* 横から／薄れて 出る 2 枚は transition 頼みだった。
+   開く 側が コマを 空けずに 印を 付けると 何も 起きないので、
+   ここも keyframes に して 取りこぼしを なくす。 */
+@keyframes vqWinSlideL{ from{ opacity:0; transform:translateX(28px); } to{ opacity:1; transform:none; } }
+.skills-overlay.is-open{ animation: vqWinSlideL .3s cubic-bezier(.22,1,.36,1) both; }
+.vqboard-overlay.is-open{ animation: vqWinBd .25s cubic-bezier(.22,1,.36,1) both; }
+
+/* Quick Chat の 左パネルを 呼ぶ ときの 幕。 */
+@keyframes vqChatNavIn{ from{ opacity:0; } to{ opacity:1; } }
+body.vqchat-nav-on #vqChatNavBack{
+  animation: vqChatNavIn .16s ease both;
+}
+
+/* 動きを 減らす 設定の 人には 出さない。 */
+@media (prefers-reduced-motion: reduce){
+  #presetOverlay:not(.hidden),
+  #settingsOverlay:not(.hidden),
+  #appNewsEditorOverlay:not(.hidden),
+  #sedeUsageModalOverlay:not(.hidden),
+  .app-qredit-overlay:not(.hidden),
+  .app-qredit-card-overlay:not(.hidden),
+  .app-preset-engine-overlay:not(.hidden),
+  .app-preset-publish-overlay:not(.hidden),
+  .scan-gen-overlay:not(.hidden),
+  .maintenance-overlay:not(.hidden),
+  #presetOverlay:not(.hidden) > .sheet,
+  #appNewsEditorOverlay:not(.hidden) > .sheet,
+  #sedeUsageModalOverlay:not(.hidden) > .sheet,
+  #sedeUsageModalOverlay:not(.hidden) .ui-modal-card,
+  .app-qredit-overlay:not(.hidden) > .sheet,
+  .app-preset-engine-overlay:not(.hidden) > *,
+  .app-preset-publish-overlay:not(.hidden) > *,
+  .maintenance-overlay:not(.hidden) > *,
+  #settingsOverlay:not(.hidden) .settings-fullsheet,
+  .scan-gen-overlay:not(.hidden) .scan-gen-sheet,
+  .app-qredit-card-overlay:not(.hidden) .app-qredit-card-shell,
+  .app-qredit-card-overlay:not(.hidden) .app-qredit-card-onboarding,
+  #appNewsEditorOverlay:not(.hidden) .app-news-editor-modal,
+  #appProfileAvatarLightbox:not(.hidden) img,
+  .skills-overlay.is-open,
+  .vqboard-overlay.is-open,
+  body.vqchat-nav-on #vqChatNavBack{
+    animation: none !important;
+  }
+}
+</style>
+
 <style>
 /* VocabuSurvive の 器（2026-08-28）。
    ★ 1.4MB の vq-ds.css へは 足さない。あそこを 直すと 名前が 変わり、
@@ -9652,11 +9769,11 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
 
 </script>
 <script id="vq-shell" src="/js/vq-shell.43809ff367.js"></script>
-<script id="vq-feed" src="/js/vq-feed.f87ad2feb4.js"></script>
+<script id="vq-feed" src="/js/vq-feed.505aeaec50.js"></script>
 <!-- DM（1 対 1 のやりとり）。左のサイドパネルから 開く。
      相互フォローでない相手へは 3 件まで（サーバでも 止めている）。 -->
 <script id="vq-downtime" src="/js/vq-downtime.eb940603d4.js"></script>
-<script id="vq-dm" src="/js/vq-dm.5119a47881.js"></script>
+<script id="vq-dm" src="/js/vq-dm.00c176625c.js"></script>
 
 <script id="vq-news" src="/js/vq-news.cde9793aeb.js"></script>
 
