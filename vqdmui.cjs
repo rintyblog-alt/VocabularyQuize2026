@@ -115,12 +115,15 @@ const 中みんな = (sel) => `document.getElementById("vqDM").shadowRoot.queryS
       自分: last ? last.classList.contains("me") : false,
       時刻: last ? (last.querySelector(".ts") || {}).textContent : "",
       日付: (r.querySelector(".daysep") || {}).textContent || "",
-      帯: (r.querySelector(".limit") || {}).textContent || ""
+      帯: (r.querySelector(".limit") || {}).textContent || "",
+      /* 落ちた ときに 「余分な 1 件」が 何なのかを 見るため */
+      全部: ms.map((e) => ({ cls: e.className, mid: e.dataset.mid || "",
+        文: (e.textContent || "").replace(/\s+/g, " ").slice(0, 40) }))
     };
   });
   /* ★ 落ちた ときに **どちらが 違うのか**（数か 文か）が 分かるように 両方 出す。 */
   ok("吹き出しが 出る", 状.数 === 1 && 状.文 === "画面から送りました",
-    JSON.stringify({ 数: 状.数, 文: 状.文 }));
+    JSON.stringify({ 数: 状.数, 文: 状.文, 全部: 状.全部 }));
   ok("自分の側に 寄る", 状.自分 === true);
   ok("時刻が 付く", /^\d\d:\d\d$/.test(String(状.時刻 || "").trim()), 状.時刻);
   ok("日付の 区切りが 上に 出る", /今日/.test(状.日付), 状.日付);

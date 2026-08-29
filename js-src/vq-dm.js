@@ -840,7 +840,14 @@
     payload.threadId = st.部屋;
     if (st.返信先) payload.replyTo = st.返信先;
     return api("/api/dm/send", { method: "POST", body: payload }).then(function (j) {
-      if (j.message) st.便り.push(j.message);
+      /* ★ **同じ 便りが 2 つ 出る**（2026-08-29 実測）。
+         送りの 返事を 待っている あいだに、3 秒おきの 巡回が
+         先に 同じ ものを 拾って 並べる ことが ある。
+         重複よけは 巡回の 側にしか 無かったので、ここにも 置く。
+         （vqdmui.cjs ⑤⑥ が 同じ id の 吹き出しを 2 つ 見つけて 分かった） */
+      if (j.message && !st.便り.some(function (x) { return x.id === j.message.id; })) {
+        st.便り.push(j.message);
+      }
       st.上限 = j.limit || st.上限;
       st.返信先 = null; st.盤 = false;
       st.最後 = j.message ? j.message.ts : st.最後;
