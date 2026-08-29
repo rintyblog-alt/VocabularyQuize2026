@@ -25169,6 +25169,37 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
         return _appSocialState.profile;
       }
 
+      /* ══ 起動したら **1 回 だけ** プロフィールを 読む（2026-08-29・訴え）══
+         訴え「左パネル下の アイコンと、スマホ上の アイコンを、
+               ユーザーが 設定している ものに してほしい」（2 度目）
+
+         ★ ここが 真因だった。プロフィールを 読むのは これまで
+             ・ログインした ちょうど その とき（_authTransitionToHome）
+             ・**一覧（ライブラリ）の タブを 開いた とき**
+             ・プロフィール編集の 窓を 開いた とき
+           の 3 つだけ。
+           つまり **ログイン済みで アプリを 開き直して ホームに 居ると、
+           一度も 読まれない**。読まれないので avatarUrl は 空のまま で、
+           左パネルも スマホ上の バーも 頭文字に なる。
+           一覧を 開くと 直る ので「出る ときと 出ない ときが ある」に 見える。
+         ★ だから **起動しても 読む**。1 回だけ。ログインしていなければ 何もしない。
+         ★ 窓に 戻ったときも 見る（別の 端末で 変えた ぶんを 拾う）。 */
+      (function _appProfileBootBind(){
+        if (window.__vqProfileBootBound) return;
+        window.__vqProfileBootBound = true;
+        const 読む = () => {
+          try {
+            if (document.hidden) return;
+            if (!_appIsLoggedUser()) return;
+            _appLoadProfile(false).catch(() => {});
+          } catch (e) {}
+        };
+        setTimeout(読む, 1200);
+        try {
+          document.addEventListener("visibilitychange", () => { if (!document.hidden) 読む(); });
+        } catch (e) {}
+      })();
+
       async function _appSaveProfile(){
         if (!_appFeatureProfileOn()) return;
         if (!_appIsLoggedUser()){

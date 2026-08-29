@@ -30,6 +30,8 @@ const AVA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
   let 落 = 0;
   const 見 = (ok, 名) => { console.log((ok ? "✓ " : "✗ ") + 名); if (!ok) 落++; };
 
+  /* ★ **ホームに 居るだけ**で 出るか（一覧を 開かない）。
+     これが 訴えの 中身。前は 一覧を 開くまで 読まれず、頭文字の ままだった。 */
   for (const [名, 幅, 高] of [["パソコン", 1280, 900], ["スマホ", 390, 844]]) {
     const b = await chromium.launch();
     const page = await b.newPage({ viewport: { width: 幅, height: 高 } });
@@ -41,6 +43,9 @@ const AVA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
     }, token);
     await page.goto(BASE + "/?vqdev=1", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(9000);
+    /* 一覧を 開いていない ことを 確かめる（開くと 読まれてしまう） */
+    const タブ = await page.evaluate(() => document.body.getAttribute("data-app-tab") || "");
+    console.log("  いまの タブ:", タブ);
 
     const 出 = await page.evaluate(() => {
       const 絵 = (el) => {
@@ -67,10 +72,16 @@ const AVA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
         左パネル下: 見つけ("[data-avatar]"),
         スマホ上: 見つけ("[data-tb-ava]"),
         影の数: hosts.length,
-        覚え: String(localStorage.getItem("app.profile.avatar.v1") || "").slice(0, 30)
+        覚え: String(localStorage.getItem("app.profile.avatar.v1") || "").slice(0, 30),
+        タブ: document.body.getAttribute("data-app-tab") || ""
       };
     });
     console.log("── " + 名 + " ──", JSON.stringify(出, null, 1));
+    見(出.タブ !== "library", 名 + ": **一覧を 開いていない**（ホームのまま）", 出.タブ);
+    /* ★ ここが 訴えの 芯。ホームに 居るだけで **プロフィールが 読まれた**か。
+       読まれれば 端末に 覚えが 残る。残っていなければ 読まれていない。
+       （前は 一覧を 開くまで 読まれず、頭文字の ままだった） */
+    見(!!出.覚え, 名 + ": ホームに 居るだけで プロフィールが 読まれた", 出.覚え);
     見(/^img:data:image/.test(出.元), 名 + ": もとの アイコンが 絵に なっている");
     if (名 === "パソコン") 見(/^img:data:image/.test(出.左パネル下), "左パネルの 下が 絵に なっている");
     if (名 === "スマホ") 見(/^img:data:image/.test(出.スマホ上), "スマホの 上が 絵に なっている");

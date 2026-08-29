@@ -205,6 +205,9 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
         || /authBootSplash[^]{0,400}data-theme-mode="dark"/.test(css)
         || /prefers-color-scheme: ?dark/.test(document.documentElement.innerHTML),
       アイコンを覚える: /app\.profile\.avatar\.v1/.test(core),
+      /* ★ 2026-08-29 夕: **起動しても** プロフィールを 読む か。
+         これが 無いと ホームに 居るあいだ ずっと 頭文字の ままだった。 */
+      起動でも読む: /__vqProfileBootBound/.test(core),
       デザインの座標を覚える: /vq\.design\.recent\.v1/.test(core) || /vq\.design\.recent\.v1/.test(app),
       /* 2026-08-29 夜〜朝 */
       プリセットの置き場: /accountKeyBytes/.test(setJs),
@@ -224,6 +227,7 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
   ok("ロード画面に 題字が ある", 今夜.題字, 今夜);
   ok("ロード画面に 暗い 見た目が ある", 今夜.ロードの暗い見た目, 今夜);
   ok("プロフィールの 絵を この端末に 覚える", 今夜.アイコンを覚える, 今夜);
+  ok("**起動しても** プロフィールを 読む（ホームでも アイコンが 出る）", 今夜.起動でも読む, 今夜);
   ok("デザインの 座標を 覚える（毎回 変える ため）", 今夜.デザインの座標を覚える, 今夜);
   ok("プリセットの 本当の 枠を 出す（accountKeyBytes）", 今夜.プリセットの置き場, 今夜);
   ok("ストレージを 数え直せる", 今夜.数え直せる, 今夜);
