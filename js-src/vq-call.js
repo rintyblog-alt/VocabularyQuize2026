@@ -214,6 +214,7 @@
   };
   var host = null, root = null, ws = null, wsTimer = null, tick = null;
   var pc = null, 自分の音 = null, 相手の音El = null, 呼び出し音 = null;
+  var rtcあり = false;          /* 音の 通り道が できたか（土台に よらず） */
   var rtc = { sessionId: "", peerSessionId: "", 出した: false, 受けた: false, 名: "" };
   var lumiWs = null, lumiCtx = null, lumiNode = null, lumiStream = null, lumi開始 = 0, lumi無言 = null;
   var 自分のid = 0;
@@ -682,11 +683,14 @@
   function 片づける(訳) {
     呼び出し音を鳴らす(false);
     Lumiを止める(true);
+    RTKを閉じる();
     SFUを閉じる();
+    rtcあり = false;
     if (tick) { clearInterval(tick); tick = null; }
     st.call = null; st.経過 = 0; st.ミュート = false; st.接続 = "";
     st.lumi = { 状態: "", 相手待ち: false, 動いている: false, 呼んだのは: 0 };
     rtc = { sessionId: "", peerSessionId: "", 出した: false, 受けた: false, 名: "" };
+    つなぎ中 = false;
     if (訳) {
       st.err = 訳;
       開く("通話中");
@@ -710,11 +714,97 @@
     });
   }
 
+  /* ★ どの 土台で つなぐかは **サーバが 決める**。画面は 従う だけ。
+       rtk … Cloudflare RealtimeKit（会議に 参加札で 入る）
+       sfu … サーバーレス SFU（自分で 管を つなぐ）
+     どちらも 中継を 通すので、相手に IP は 見えない。 */
+  var つなぎ中 = false;
   function つなぎ始める() {
     var id = st.call && st.call.callId;
     if (!id) return;
+    /* ★ **二重に 始めない。**（実測 2026-08-29）
+       出た 側は 自分で 始め、さらに サーバからの「出ました」の 知らせでも
+       始めていた。RealtimeKit は 同時に 2 回 init すると
+       「Unsupported concurrent calls on method: Client.init」で 落ちる。 */
+    if (つなぎ中 || rtcあり) return;
+    つなぎ中 = true;
     st.接続 = "つないでいます…"; 描く();
-    navigator.mediaDevices.getUserMedia({
+    api("/api/call/rtc/join", { method: "POST", body: { callId: id } })
+      .then(function (j) {
+        if (j.driver === "rtk") return RTKでつなぐ(j);
+        return SFUでつなぐ();
+      })
+      .then(function () {
+        つなぎ中 = false;
+        st.err = "";           /* つながったら 前の 断りは 消す */
+        描く();
+      })
+      .catch(function (e) {
+        つなぎ中 = false;
+        st.err = 人の言葉に(e);
+        st.接続 = "つながりませんでした";
+        描く();
+      });
+  }
+
+  /* ── RealtimeKit ────────────────────────────────────────────────── */
+  var RTK_SDK = "https://cdn.jsdelivr.net/npm/@cloudflare/realtimekit/dist/browser.js";
+  var rtk = null, rtk読み = null;
+  function SDKを読む() {
+    if (window.RealtimeKitClient || window.RealtimeKit) return Promise.resolve();
+    if (rtk読み) return rtk読み;
+    rtk読み = new Promise(function (done, ng) {
+      var s2 = document.createElement("script");
+      s2.src = RTK_SDK;
+      s2.async = true;
+      s2.onload = function () { done(); };
+      s2.onerror = function () { rtk読み = null; ng(new Error("通話の 部品を 読み込めませんでした。")); };
+      document.head.appendChild(s2);
+    });
+    return rtk読み;
+  }
+  function RTKでつなぐ(j) {
+    return SDKを読む().then(function () {
+      var K = window.RealtimeKitClient || window.RealtimeKit;
+      if (!K || !K.init) throw new Error("通話の 部品が 使えません。");
+      /* ★ **映像は 作らない。** 音声だけの 機能。 */
+      return K.init({ authToken: j.authToken, defaults: { audio: true, video: false } });
+    }).then(function (m) {
+      rtk = m;
+      try {
+        m.participants.joined.on("participantLeft", function () {
+          if (st.call) 切る("peer-left");
+        });
+        m.self.on("roomLeft", function () { if (st.call) 片づける(""); });
+      } catch (e) {}
+      st.接続 = "つないでいます…"; 描く();
+      return m.join();
+    }).then(function () {
+      rtcあり = true;
+      st.接続 = "通話中";
+      描く();
+      /* 相手が まだ 来ていなければ、その ことを 出す（黙って 無音に しない）。 */
+      setTimeout(function () {
+        if (!rtk || !st.call) return;
+        try {
+          var n = rtk.participants && rtk.participants.joined
+            ? rtk.participants.joined.toArray().length : 0;
+          if (!n && st.接続 === "通話中") { st.接続 = "相手を 待っています…"; 描く(); }
+        } catch (e) {}
+      }, 2000);
+    });
+  }
+  function RTKを閉じる() {
+    if (!rtk) return;
+    try { rtk.leave(); } catch (e) {}
+    rtk = null;
+  }
+
+  /* ── サーバーレス SFU ───────────────────────────────────────────── */
+  function SFUでつなぐ() {
+    var id = st.call && st.call.callId;
+    if (!id) return;
+    return navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,      /* 反響を 消す */
         noiseSuppression: true,      /* 雑音を 抑える */
@@ -748,10 +838,7 @@
       return 音を出す();
     }).then(function () {
       受け取りを始める();
-    }).catch(function (e) {
-      st.err = 人の言葉に(e);
-      st.接続 = "つながりませんでした";
-      描く();
+      rtcあり = true;
     });
   }
 
@@ -857,6 +944,11 @@
   function ミュート切替() {
     st.ミュート = !st.ミュート;
     try {
+      if (rtk && rtk.self) {
+        if (st.ミュート) rtk.self.disableAudio(); else rtk.self.enableAudio();
+      }
+    } catch (e) {}
+    try {
       if (自分の音) 自分の音.getAudioTracks().forEach(function (t) { t.enabled = !st.ミュート; });
     } catch (e) {}
     描く();
@@ -958,8 +1050,23 @@
      2 人ぶんを 混ぜて 送ると 誰が 話したか 分からなくなる。
      だから **呼び出した 側の 声だけ**を 送る。
      Lumi の 声は この 端末で 鳴らし、SFU へ 出して 相手にも 届ける。 */
+  /* ★ RealtimeKit の ときは マイクを SDK が 握っていて、こちらに 生の 音が 無い。
+     Lumi へ 流す ぶんだけ **別に もう 1 本** 取る（同じ マイクを 2 本 取れる）。
+     終わったら 必ず 止める。 */
+  function Lumi用の音() {
+    if (自分の音) return Promise.resolve(自分の音);
+    if (lumiStream) return Promise.resolve(lumiStream);
+    return navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false
+    }).then(function (s2) { lumiStream = s2; return s2; });
+  }
   function Lumiを始める(j) {
-    if (!自分の音 || lumiWs) return;
+    if (lumiWs) return;
+    Lumi用の音().then(function () { Lumiを始める本体(j); })
+      .catch(function () { st.err = "Lumi に 声を 渡せませんでした。"; 描く(); });
+  }
+  function Lumiを始める本体(j) {
     lumi開始 = Date.now();
     var url = "wss://generativelanguage.googleapis.com/ws/"
       + "google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent"
@@ -1014,7 +1121,7 @@
     try {
       var C = window.AudioContext || window.webkitAudioContext;
       lumiCtx = new C({ sampleRate: 16000 });
-      var src = lumiCtx.createMediaStreamSource(自分の音);
+      var src = lumiCtx.createMediaStreamSource(自分の音 || lumiStream);
       lumiNode = lumiCtx.createScriptProcessor(4096, 1, 1);
       lumiNode.onaudioprocess = function (e) {
         if (!lumiWs || lumiWs.readyState !== 1) return;
@@ -1074,6 +1181,11 @@
     if (lumiNode) { try { lumiNode.disconnect(); } catch (e) {} lumiNode = null; }
     if (lumiCtx) { try { lumiCtx.close(); } catch (e) {} lumiCtx = null; }
     if (lumiWs) { try { lumiWs.close(); } catch (e) {} lumiWs = null; }
+    /* 別に 取った マイクは **必ず 止める**（録りっぱなしに しない）。 */
+    if (lumiStream) {
+      try { lumiStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+      lumiStream = null;
+    }
     鳴らす列 = []; 鳴らし中 = false;
     var 秒 = lumi開始 ? Math.round((Date.now() - lumi開始) / 1000) : 0;
     lumi開始 = 0;
@@ -1096,10 +1208,25 @@
         接続: st.接続,
         経過: Math.round(st.経過),
         lumi: st.lumi.動いている,
-        sfu: !!rtc.sessionId
+        sfu: rtcあり || !!rtc.sessionId,
+        土台: rtk ? "rtk" : (rtc.sessionId ? "sfu" : ""),
+        /* 合図の 通り道が 生きているか。0=つなぎ中 1=生きている 2/3=閉じた -1=無い */
+        ws: ws ? ws.readyState : -1
       };
     },
     設定: function () { return st.設定; },
+    /* 相手が 本当に 入っていて、音が 出ているか。
+       「つながっているのに 聞こえない」を 電話口で 切り分ける ため。 */
+    相手: function () {
+      if (!rtk) return { 土台: rtc.sessionId ? "sfu" : "", 参加者: 0 };
+      var 並 = [];
+      try { 並 = rtk.participants.joined.toArray().map(function (p) {
+        return { 名: String(p.name || ""), 音: p.audioEnabled !== false };
+      }); } catch (e) {}
+      var 自分 = true;
+      try { 自分 = rtk.self.audioEnabled !== false; } catch (e) {}
+      return { 土台: "rtk", 参加者: 並.length, 相手: 並, 自分の音: 自分 };
+    },
     /* 検証のため（画面を 触らずに 判定だけ 見る） */
     かけられるか: function (peerId) {
       return api("/api/call/can", { method: "POST", body: { peerId: Number(peerId) } });

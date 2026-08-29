@@ -28,17 +28,27 @@ const 見 = (ok, 名, 追) => {
 };
 const 待 = (ms) => new Promise((s) => setTimeout(s, ms));
 const j = (r) => r.json().catch(() => ({}));
+/* ★ 何度も 人を 作るので、たまに 通信が こける。3 回まで 試す
+   （測りたい ものと 関係ない ところで 落ちない ように）。 */
+async function 再fetch(u, o, n) {
+  let 最後 = null;
+  for (let i = 0; i < (n || 3); i++) {
+    try { return await fetch(u, o); }
+    catch (e) { 最後 = e; await new Promise((s) => setTimeout(s, 800 * (i + 1))); }
+  }
+  throw 最後;
+}
 
 async function 作る(名) {
   const 印 = Date.now().toString(36) + Math.floor(Math.random() * 9999);
-  const r = await fetch(BASE + "/api/auth/register/start", { method: "POST",
+  const r = await 再fetch(BASE + "/api/auth/register/start", { method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: "vqu" + 印 + "@gmail.com", gradePrefix: "H2",
       nickname: (名 + 印).slice(0, 14), password: "Passw0rd!z3" }) }).then(j);
-  const v = await fetch(BASE + "/api/auth/register/verify", { method: "POST",
+  const v = await 再fetch(BASE + "/api/auth/register/verify", { method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ challengeId: r.challengeId, code: r.devCode }) }).then(j);
-  const c = await fetch(BASE + "/api/auth/register/consent", { method: "POST",
+  const c = await 再fetch(BASE + "/api/auth/register/consent", { method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ registrationSession: v.registrationSession, agreeTerms: true,
       agreePrivacy: true, agreeAge: true, pin: "1379" }) }).then(j);
@@ -48,7 +58,7 @@ async function 作る(名) {
 async function api(path, tok, opts = {}) {
   const h = { "Content-Type": "application/json" };
   if (tok) h.Authorization = "Bearer " + tok;
-  const r = await fetch(BASE + path, { method: opts.method || "GET", headers: h,
+  const r = await 再fetch(BASE + path, { method: opts.method || "GET", headers: h,
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body) });
   return { status: r.status, j: await j(r) };
 }
@@ -138,7 +148,16 @@ const 状態 = (page) => page.evaluate(() => window.__vqCall.状態());
   const b = await 開く(browser, B.token, 375);   /* B は スマホの 幅で 見る（C-8） */
   a.page.on("pageerror", (e) => 例外.push("A:" + String(e.message).slice(0, 200)));
   b.page.on("pageerror", (e) => 例外.push("B:" + String(e.message).slice(0, 200)));
-  await 待(2500);
+  /* ★ **合図の 通り道が つながるまで 待つ。** ここを 待たずに かけると
+     「押し出しが 届かない」ように 見える（実測 2026-08-29 で 何度も だまされた）。
+     本物の 画面では 10 秒ごとの 拾いが 効くので 取りこぼしには ならない。 */
+  for (const pg of [a.page, b.page]) {
+    await pg.waitForFunction(() => window.__vqCall && window.__vqCall.状態().ws === 1,
+      null, { timeout: 30000 }).catch(() => {});
+  }
+  見(await b.page.evaluate(() => window.__vqCall.状態().ws) === 1,
+    "W-0 合図の 通り道が つながっている");
+  await 待(600);
 
   const t0 = Date.now();
   await a.page.evaluate((id) => window.__vqCall.かける(id), B.uid);
@@ -189,11 +208,28 @@ const 状態 = (page) => page.evaluate(() => window.__vqCall.状態());
   await b.page.evaluate(() => {
     document.getElementById("vqCall").shadowRoot.querySelector('[data-a="accept"]').click();
   });
-  await 待(3000);
-  const sa = await 状態(a.page), sb2 = await 状態(b.page);
+  /* 音の 通り道が できるまで 待つ（SDK の 読み込みと 入室に 時間が かかる）。 */
+  let sa = null, sb2 = null;
+  for (let i = 0; i < 40; i++) {
+    await 待(500);
+    sa = await 状態(a.page); sb2 = await 状態(b.page);
+    if (sa.sfu && sb2.sfu) break;
+  }
+  console.log("  つながるまで:", JSON.stringify({ A: { 接続: sa.接続, 土台: sa.土台, sfu: sa.sfu },
+    B: { 接続: sb2.接続, 土台: sb2.土台, sfu: sb2.sfu } }));
   見(sa.画面 === "通話中" && sb2.画面 === "通話中", "W-2 出ると 両方が 通話中に なる", { A: sa, B: sb2 });
-  見(!!sa.sfu && !!sb2.sfu, "W-2b 両方が SFU の 部屋を 取っている（P2P では ない）",
-    { A: sa.sfu, B: sb2.sfu });
+  見(!!sa.sfu && !!sb2.sfu, "W-2b 両方が 中継を 通っている（P2P では ない）",
+    { A: sa.土台 || "sfu", B: sb2.土台 || "sfu" });
+  /* ★ **音が 本当に 行き交っているか。** つながっただけでは 足りない。 */
+  const 相A = await a.page.evaluate(() => window.__vqCall.相手());
+  const 相B = await b.page.evaluate(() => window.__vqCall.相手());
+  console.log("  相手の 見えかた:", JSON.stringify({ A: 相A, B: 相B }));
+  見(相A.参加者 === 1 && 相B.参加者 === 1, "W-2c 互いに 相手が 1 人 見えている",
+    { A: 相A.参加者, B: 相B.参加者 });
+  見((相A.相手 || []).every((x) => x.音) && (相B.相手 || []).every((x) => x.音),
+    "W-2d 相手の マイクが 生きている（音が 来る）", { A: 相A.相手, B: 相B.相手 });
+  見(相A.自分の音 === true && 相B.自分の音 === true,
+    "W-2e 自分の マイクが 出ている", { A: 相A.自分の音, B: 相B.自分の音 });
 
   /* U-2 / U-3 通話中の 画面 */
   const 中身 = await a.page.evaluate(() => {
@@ -208,6 +244,17 @@ const 状態 = (page) => page.evaluate(() => window.__vqCall.状態());
     && 中身.ボタン.indexOf("lumi") >= 0, "U-2b ミュート・切る・Lumi も ある", 中身.ボタン);
   見(/タブを 閉じる/.test(中身.文) && /ロック/.test(中身.文),
     "U-3 タブを 閉じる・ロックで 切れる ことを 断っている");
+  /* 撮る 前に、あとから 出てくる 案内を どかす（通話の 画面が 隠れる）。 */
+  for (const pg of [a.page, b.page]) {
+    await pg.evaluate(() => {
+      Array.from(document.querySelectorAll("body > *")).forEach((h) => {
+        if (h.id === "vqCall") return;
+        const t = (h.shadowRoot ? h.shadowRoot.textContent : h.textContent) || "";
+        if (/はじめかた|声で話しかけてみよう|もう出さない|5 つだけ/.test(t)) h.remove();
+      });
+    });
+  }
+  await 待(500);
   await a.page.screenshot({ path: (process.argv[2] || ".") + "/call-talking.png" });
   await b.page.screenshot({ path: (process.argv[2] || ".") + "/call-talking-375.png" });
 

@@ -38,18 +38,28 @@ const 見 = (ok, 名, 追) => {
 };
 const 待 = (ms) => new Promise((s) => setTimeout(s, ms));
 const j = (r) => r.json().catch(() => ({}));
+/* ★ 何度も 人を 作るので、たまに 通信が こける。3 回まで 試す
+   （測りたい ものと 関係ない ところで 落ちない ように）。 */
+async function 再fetch(u, o, n) {
+  let 最後 = null;
+  for (let i = 0; i < (n || 3); i++) {
+    try { return await fetch(u, o); }
+    catch (e) { 最後 = e; await new Promise((s) => setTimeout(s, 800 * (i + 1))); }
+  }
+  throw 最後;
+}
 
 async function 作る(名) {
   const 印 = Date.now().toString(36) + Math.floor(Math.random() * 9999);
   const mail = "vqc" + 印 + "@gmail.com";
-  const r = await fetch(BASE + "/api/auth/register/start", { method: "POST",
+  const r = await 再fetch(BASE + "/api/auth/register/start", { method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: mail, gradePrefix: "H2", nickname: (名 + 印).slice(0, 14),
       password: "Passw0rd!z3" }) }).then(j);
-  const v = await fetch(BASE + "/api/auth/register/verify", { method: "POST",
+  const v = await 再fetch(BASE + "/api/auth/register/verify", { method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ challengeId: r.challengeId, code: r.devCode }) }).then(j);
-  const c = await fetch(BASE + "/api/auth/register/consent", { method: "POST",
+  const c = await 再fetch(BASE + "/api/auth/register/consent", { method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ registrationSession: v.registrationSession, agreeTerms: true,
       agreePrivacy: true, agreeAge: true, pin: "1379" }) }).then(j);
@@ -59,7 +69,7 @@ async function 作る(名) {
 async function api(path, tok, opts = {}) {
   const h = { "Content-Type": "application/json" };
   if (tok) h.Authorization = "Bearer " + tok;
-  const r = await fetch(BASE + path, { method: opts.method || "GET", headers: h,
+  const r = await 再fetch(BASE + path, { method: opts.method || "GET", headers: h,
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body) });
   return { status: r.status, j: await j(r) };
 }
@@ -322,6 +332,13 @@ function d1(sql) {
     const a2 = await callsSelfTest({ CALLS_FAKE: "1", AI_PROBE_ENABLED: "1" });
     見(a2.ok === true && a2.mode === "fake",
       "開発版の 作りもの → その ことを 言う", a2);
+    /* RealtimeKit の 鍵が この 端末に あれば、**本物へ** 1 回 つないで 見る。 */
+    if (process.env.RTK_API_TOKEN) {
+      const a4 = await callsSelfTest({ CF_ACCOUNT_ID: "1655c547a7bf146d63095abdc576ea50",
+        RTK_API_TOKEN: process.env.RTK_API_TOKEN });
+      console.log("  RealtimeKit へ つないだ 返事:", JSON.stringify(a4));
+      見(a4.ok === true && a4.mode === "rtk", "RealtimeKit に 実際に つながる", a4);
+    }
     const a3 = await callsSelfTest({ CALLS_APP_ID: "not-a-real-app", CALLS_APP_SECRET: "not-a-real-secret" });
     console.log("  でたらめな 鍵で 試した 返事:", JSON.stringify(a3));
     見(a3.ok === false && a3.code === "SFU_FAILED" && !!a3.ヒント,
@@ -337,6 +354,15 @@ function d1(sql) {
     + " AND (caller_session <> '' OR callee_session <> '')");
   見(Number(生き残り[0].n) === 0,
     "終わった 通話に SFU の 部屋が 残っていない（課金の 暴走を 止める）", 生き残り[0]);
+  /* RealtimeKit の ときは 会議が 自分で 畳む。**同じ 通話は 会議 1 つ**だけ、を 見る。 */
+  const 会議 = d1(
+    "SELECT COUNT(*) AS n FROM calls WHERE room_id <> '' AND room_id <> call_id"
+    + " AND state IN ('ended','rejected','missed','failed')");
+  const 二重 = d1(
+    "SELECT COUNT(*) AS n FROM (SELECT room_id, COUNT(*) c FROM calls"
+    + " WHERE room_id <> '' AND room_id <> call_id GROUP BY room_id HAVING c > 1)");
+  見(Number(二重[0].n) === 0,
+    "1 つの 会議を 2 つの 通話で 使い回していない", { 会議: 会議[0].n, 二重: 二重[0].n });
 
   console.log(`\n────────────────────────────────`);
   console.log(`  ok ${済} / NG ${落}`);

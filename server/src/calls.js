@@ -436,15 +436,139 @@ function にせSFUか(env) {
   return String(env?.CALLS_FAKE || "") === "1"
     && String(env?.AI_PROBE_ENABLED || "") === "1";
 }
+/* ══ 通話の 土台は 2 通り ══════════════════════════════════════════════
+   ★ どちらも **SFU（中継）**。P2P には しない（相手に IP を 見せない）。
+     鍵の 入りかたで 自動で 選ぶ。両方 入っていれば RealtimeKit を 先に 使う。
+
+     rtk … Cloudflare RealtimeKit（会議を 作って 参加札を 配る 上位の 作り）
+     sfu … Cloudflare Realtime サーバーレス SFU（自分で 管を つなぐ 作り）
+     fake … 開発版だけの 作りもの（音は 流れない。段取りだけ 測る ため）
+
+   ★ **どちらの 作りでも 判定・同意・通報・制限・Lumi は 同じ もの**を 通る。
+     変わるのは 「音の 通り道を どう 作るか」だけ。 */
+function 土台(env) {
+  const r = rtk設定(env);
+  if (r.ok) return "rtk";
+  const c = sfu設定(env);
+  if (c.ok) return "sfu";
+  if (c.にせ) return "fake";
+  return "";
+}
+
+/* ── RealtimeKit ────────────────────────────────────────────────────
+   POST /accounts/{acct}/realtime/kit/{app}/meetings              → 会議
+   POST /accounts/{acct}/realtime/kit/{app}/meetings/{id}/participants → 参加札
+   GET  /accounts/{acct}/realtime/kit/{app}/presets               → 役の 一覧
+   ★ App ID と 役の 名前は **入っていなければ 自分で 拾う**（人に 探させない）。 */
+const CF_API = "https://api.cloudflare.com/client/v4";
+function rtk設定(env) {
+  const acct = S(env?.CF_ACCOUNT_ID, 120).trim();
+  const token = S(env?.RTK_API_TOKEN, 400).trim();
+  return { acct, token, appId: S(env?.RTK_APP_ID, 120).trim(),
+           preset: S(env?.RTK_PRESET, 120).trim(), ok: !!(acct && token) };
+}
+async function cf(env, path, method, body) {
+  const r = rtk設定(env);
+  const res = await fetch(CF_API + "/accounts/" + encodeURIComponent(r.acct) + path, {
+    method: method || "GET",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + r.token },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const j = await res.json().catch(() => null);
+  return { ok: res.ok && j?.success !== false, status: res.status, json: j,
+           err: S(j?.errors?.[0]?.message || j?.error || (res.ok ? "" : "HTTP " + res.status), 300) };
+}
+/* ★ RealtimeKit の 返事は **data** に 入る（Cloudflare の 他の API の result では ない。
+   実測 2026-08-29: {"success":true,"data":[…],"paging":{…}}）。両方 見る。 */
+function 中身(j) {
+  if (!j) return null;
+  return j.data !== undefined ? j.data : j.result;
+}
+/* 拾った ものは 実体の 中で 10 分 持ち回す（毎回 聞きに行かない）。 */
+let _rtk覚え = { at: 0, appId: "", preset: "" };
+async function rtkアプリ(env) {
+  const r = rtk設定(env);
+  if (r.appId) return r.appId;
+  if (_rtk覚え.appId && 今() - _rtk覚え.at < 600000) return _rtk覚え.appId;
+  /* ★ 一覧の 口は「 /realtime/kit/apps 」。「 /realtime/kit 」では 無い（実測 2026-08-29）。
+     ここに ** で 囲む 書きかたを すると、閉じの 記号が 先に 来て 束ねが 落ちる。 */
+  const res = await cf(env, "/realtime/kit/apps", "GET");
+  const 一覧 = 中身(res.json);
+  const 並 = Array.isArray(一覧) ? 一覧 : (一覧?.apps || []);
+  const 先 = 並[0] || null;
+  const id = S(先?.id || 先?.app_id || 先?.uuid, 120);
+  if (id) _rtk覚え = { at: 今(), appId: id, preset: _rtk覚え.preset };
+  else console.warn("[call] rtk apps:", S(JSON.stringify(res.json), 300));
+  return id;
+}
+async function rtk役(env, appId) {
+  const r = rtk設定(env);
+  if (r.preset) return r.preset;
+  if (_rtk覚え.preset && 今() - _rtk覚え.at < 600000) return _rtk覚え.preset;
+  const res = await cf(env, "/realtime/kit/" + encodeURIComponent(appId) + "/presets", "GET");
+  const 一覧 = 中身(res.json);
+  const 並 = Array.isArray(一覧) ? 一覧 : (一覧?.presets || []);
+  const 名 = (x) => S(x?.name || x?.preset_name, 120);
+  /* ★ 選ぶ 順（実測 2026-08-29: 既定で group_call_guest / _host / _participant …）。
+     ・音声だけの 役が あれば いちばん 良い
+     ・次は participant。**guest は 待合室に 入る 作りの ことが ある**ので 後回し
+     ・それも 無ければ host（1 対 1 なので 権限が 広くても 困らない） */
+  const 音 = 並.find((x) => /audio|voice|音/i.test(名(x)));
+  const 参 = 並.find((x) => /participant/i.test(名(x)));
+  const 主 = 並.find((x) => /host/i.test(名(x)));
+  const 客 = 並.find((x) => !/guest|viewer|watch/i.test(名(x)));
+  const 出 = 名(音 || 参 || 主 || 客 || 並[0]);
+  if (出) _rtk覚え = { at: 今(), appId: _rtk覚え.appId || appId, preset: 出 };
+  return 出;
+}
+/* この 通話の 会議を 用意する。**先に 書いた 人が 勝つ**（二重に 作らない）。 */
+async function 会議を用意する(env, row) {
+  const callId = S(row.call_id, 64);
+  const いま = S(row.room_id, 120);
+  if (いま && いま !== callId) return { meetingId: いま };      /* もう ある */
+  const appId = await rtkアプリ(env);
+  if (!appId) return { err: "RTK_APP_NOT_FOUND" };
+  const res = await cf(env, "/realtime/kit/" + encodeURIComponent(appId) + "/meetings", "POST",
+    { title: "vq-" + callId.slice(-12) });
+  const d = 中身(res.json) || {};
+  const id = S(d.id || d.meeting_id || d.roomName, 120);
+  if (!res.ok || !id) {
+    console.warn("[call] rtk meeting:", S(JSON.stringify(res.json), 300));
+    return { err: res.err || "RTK_MEETING_FAILED" };
+  }
+  /* 相手が 先に 作っていたら そちらを 使う（自分の ぶんは 捨てる）。 */
+  const up = await env.DB.prepare(
+    "UPDATE calls SET room_id = ?2 WHERE call_id = ?1 AND room_id = ?3")
+    .bind(callId, id, callId).run().catch(() => null);
+  if (N(up?.meta?.changes, 0) > 0) return { meetingId: id };
+  const 後 = await 通話を引く(env, callId);
+  const 勝 = S(後?.room_id, 120);
+  return { meetingId: (勝 && 勝 !== callId) ? 勝 : id };
+}
+async function rtk参加札(env, meetingId, uid, 名) {
+  const appId = await rtkアプリ(env);
+  if (!appId) return { err: "RTK_APP_NOT_FOUND" };
+  const preset = await rtk役(env, appId);
+  if (!preset) return { err: "RTK_PRESET_NOT_FOUND" };
+  const res = await cf(env, "/realtime/kit/" + encodeURIComponent(appId)
+    + "/meetings/" + encodeURIComponent(meetingId) + "/participants", "POST",
+    { name: S(名, 60) || ("user" + uid), preset_name: preset,
+      custom_participant_id: "vq-" + N(uid, 0) });
+  const d = 中身(res.json) || {};
+  const t = S(d.token || d.auth_token || d.authToken, 4000);
+  if (!res.ok || !t) {
+    console.warn("[call] rtk participant:", S(JSON.stringify(res.json), 300));
+    return { err: res.err || "RTK_PARTICIPANT_FAILED" };
+  }
+  return { authToken: t, preset };
+}
+
 function sfu設定(env) {
   const appId = S(env?.CALLS_APP_ID, 120).trim();
   const secret = S(env?.CALLS_APP_SECRET, 400).trim();
   return { appId, secret, ok: !!(appId && secret), にせ: にせSFUか(env) };
 }
-export function callsConfigured(env) {
-  const c = sfu設定(env);
-  return c.ok || c.にせ;
-}
+export function callsConfigured(env) { return 土台(env) !== ""; }
 
 async function sfu(env, path, method, body) {
   const c = sfu設定(env);
@@ -494,6 +618,8 @@ async function iceServers(env) {
 async function sfuCloseCall(env, row) {
   const c = sfu設定(env);
   if (!row) return;
+  /* RealtimeKit は 会議が 自分で 畳む（人が 抜ければ 終わる）。閉じる 口は 要らない。 */
+  if (rtk設定(env).ok) return;
   if (!c.ok && !c.にせ) return;
   for (const sid of [S(row.caller_session, 120), S(row.callee_session, 120)]) {
     if (!sid) continue;
@@ -596,6 +722,36 @@ export async function handleCallRequest(request, env, ctx) {
     if (m === "POST" && path === "/api/call/report") return await 口の通報(env, uid, b);
     if (m === "GET" && path === "/api/call/history") return await 口の履歴(env, uid);
 
+    /* ★ **開発版だけ**の 覗き口。Cloudflare の 返事の 形を そのまま 見る。
+       本番では 立たない（AI_PROBE_ENABLED は 開発版の toml にしか 無い）。 */
+    if (m === "GET" && path === "/api/call/rtc/apps") {
+      if (String(env?.AI_PROBE_ENABLED || "") !== "1") return bad("NOT_FOUND", "ありません。", 404);
+      const a = await cf(env, "/realtime/kit/apps", "GET");
+      const 並 = 中身(a.json);
+      const one = Array.isArray(並) ? 並[0] : null;
+      const appId = S(one?.id || one?.app_id || one?.uuid, 120);
+      const pr = appId ? await cf(env, "/realtime/kit/" + encodeURIComponent(appId) + "/presets", "GET") : null;
+      /* 会議と 参加札も 1 回 作って、返事の 形を そのまま 見せる（開発版だけ）。 */
+      let mt = null, pt = null;
+      /* 会議を 作るのは ?deep=1 の ときだけ（毎回 作らない）。 */
+      const 深く = new URL(request.url).searchParams.get("deep") === "1";
+      if (appId && 深く) {
+        mt = await cf(env, "/realtime/kit/" + encodeURIComponent(appId) + "/meetings", "POST",
+          { title: "vq-shape-check" });
+        const mid = S((中身(mt.json) || {}).id, 120);
+        const pn = await rtk役(env, appId).catch(() => "");
+        if (mid && pn) {
+          pt = await cf(env, "/realtime/kit/" + encodeURIComponent(appId)
+            + "/meetings/" + encodeURIComponent(mid) + "/participants", "POST",
+            { name: "shape", preset_name: pn, custom_participant_id: "vq-shape" });
+        }
+      }
+      return json({ ok: true, appId, apps: a.json, presets: pr ? pr.json : null,
+        meeting: mt ? mt.json : null,
+        participant: pt ? { status: pt.status, keys: Object.keys((中身(pt.json) || {})),
+          長さ: S((中身(pt.json) || {}).token, 4000).length, 生: pt.ok ? undefined : pt.json } : null });
+    }
+    if (m === "POST" && path === "/api/call/rtc/join") return await 口の入場(env, uid, me, b);
     if (m === "POST" && path === "/api/call/rtc/session") return await 口のSFU部屋(env, uid, b);
     if (m === "POST" && path === "/api/call/rtc/tracks") return await 口のSFU管(env, uid, b);
     if (m === "PUT" && path === "/api/call/rtc/renegotiate") return await 口のSFU再交渉(env, uid, b);
@@ -791,6 +947,12 @@ async function 口の応答(env, uid, b) {
   await env.DB.prepare("UPDATE calls SET state='connected', connected_at=?2 WHERE call_id=?1")
     .bind(callId, t).run();
   await 記す(env, callId, "accept", uid, "");
+  /* RealtimeKit の ときは ここで 会議を 1 つ 作っておく（出る 人だけが 作る）。
+     失敗しても 通話は 続ける — 下の join が もう一度 作りに行く。 */
+  if (土台(env) === "rtk") {
+    const mk = await 会議を用意する(env, g.row).catch(() => ({ err: "x" }));
+    if (mk.err) console.warn("[call] 会議を 作れず:", mk.err);
+  }
   const L = await 制限(env);
   const 上限 = Math.max(1, N(L["call.max_minutes"], 60)) * 60 * 1000;
   await 両方へ(env, g.row, { type: "call.accept", callId, at: t, hardEndAt: t + 上限 });
@@ -892,6 +1054,35 @@ async function 口の履歴(env, uid) {
     endReason: S(x.end_reason, 40), lumiUsed: N(x.lumi_used, 0) === 1
   }));
   return json({ ok: true, calls: rows });
+}
+
+/* ── 入場（どの 土台で つなぐか を ここで 決めて 返す）──────────────
+   ★ 画面は 「どの 土台か」を 自分で 決めない。ここが 返した とおりに する。 */
+async function 口の入場(env, uid, me, b) {
+  const callId = S(b?.callId, 64);
+  const g = await 通話の関所(env, uid, callId, ["ringing", "connected"]);
+  if (g.err) return g.err;
+  const 種 = 土台(env);
+  if (!種) {
+    return json({ ok: false, code: "CALLS_NOT_CONFIGURED",
+      message: "通話の 準備が まだ できていません（管理者へ）。" }, 503);
+  }
+  if (種 !== "rtk") {
+    /* サーバーレス SFU（および 開発版の 作りもの）は これまでの 口を 使う。 */
+    return json({ ok: true, driver: "sfu" });
+  }
+  const mk = await 会議を用意する(env, g.row);
+  if (mk.err) {
+    return json({ ok: false, code: "RTK_FAILED",
+      message: "通話の 部屋を 作れませんでした。", detail: mk.err }, 502);
+  }
+  const 札 = await rtk参加札(env, mk.meetingId, uid, me && me.nickname);
+  if (札.err) {
+    return json({ ok: false, code: "RTK_FAILED",
+      message: "通話に 入れませんでした。", detail: 札.err }, 502);
+  }
+  return json({ ok: true, driver: "rtk", meetingId: mk.meetingId,
+    authToken: 札.authToken, preset: 札.preset });
 }
 
 /* ── SFU の 中継 ── */
@@ -1312,6 +1503,28 @@ export async function callsAdminSummary(env) {
      **画面から 一切 分からない**。実際に SFU へ 1 回だけ 部屋を 作って、
      Cloudflare の 返事を そのまま 見せる。作った 部屋は すぐ 閉じる。 */
 export async function callsSelfTest(env) {
+  if (rtk設定(env).ok) {
+    const appId = await rtkアプリ(env).catch(() => "");
+    if (!appId) {
+      return { ok: false, code: "RTK_APP_NOT_FOUND", mode: "rtk",
+        message: "RealtimeKit の アプリが 見つかりません。",
+        ヒント: "RTK_APP_ID を 入れるか、トークンに Realtime の 権限が あるか 確かめてください。" };
+    }
+    const preset = await rtk役(env, appId).catch(() => "");
+    const t0 = 今();
+    const res = await cf(env, "/realtime/kit/" + encodeURIComponent(appId) + "/meetings", "POST",
+      { title: "vq-selftest" }).catch((e) => ({ ok: false, status: 0, err: S(e?.message, 200) }));
+    const ms = 今() - t0;
+    if (!res.ok) {
+      return { ok: false, code: "RTK_FAILED", mode: "rtk", status: res.status, ms,
+        message: res.err || ("HTTP " + res.status),
+        ヒント: res.status === 401 || res.status === 403
+          ? "API トークンの 権限を 確かめてください（Realtime / Realtime Admin・編集）。"
+          : "Cloudflare 側の 返事です。RealtimeKit の アプリが 生きているか 確かめてください。" };
+    }
+    return { ok: true, mode: "rtk", ms, appId: appId.slice(0, 8) + "…", preset: preset || "(既定)",
+      message: "RealtimeKit に つながりました。通話を 始められます。" };
+  }
   const c = sfu設定(env);
   if (c.にせ && !c.ok) {
     return { ok: true, mode: "fake", message: "開発版の 作りものの SFU で 通っています（音は 流れません）。" };

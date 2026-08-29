@@ -246,7 +246,9 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
            流れは 開発版の vqcall.cjs / vqcallui.cjs で 測る。 */
       通話の口: 通話の口 === 401,
       通話の束: !!callSrc && /api\/call\/invite/.test(callJs),
-      通話はSFU: /rtc\/session/.test(callJs) && !/createDataChannel|直につなぐ/.test(callJs),
+      通話はSFU: /rtc\/join/.test(callJs) && /rtc\/session/.test(callJs)
+        && !/createDataChannel|直につなぐ/.test(callJs),
+      通話の土台: /realtimekit/i.test(callJs),
       通話は音だけ: /video\s*:\s*!1|video:!1/.test(callJs) || /video:\s*false/.test(callJs),
       受話器は土台しだい: /__vqCallUsable/.test(dmJs) && /__vqCallUsable/.test(callJs),
       通報の口: /api\/call\/report/.test(callJs)
@@ -279,6 +281,7 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
   ok("通話の 口が 生きている（札なしで 401）", 今夜.通話の口, 今夜);
   ok("通話の 束が 配られている", 今夜.通話の束, 今夜);
   ok("通話は **SFU を 通す**（P2P に しない）", 今夜.通話はSFU, 今夜);
+  ok("RealtimeKit の 口が 入っている", 今夜.通話の土台, 今夜);
   ok("通話は **音だけ**（映像を 作らない）", 今夜.通話は音だけ, 今夜);
   ok("受話器は 土台が 用意できて いなければ 出さない", 今夜.受話器は土台しだい, 今夜);
   ok("通話中に 通報できる 口が ある", 今夜.通報の口, 今夜);
