@@ -96,6 +96,34 @@
     /* グラフ */
     ".chart{position:relative;width:100%;}",
     ".chart svg{width:100%;height:auto;display:block;overflow:visible;}",
+
+    /* ── グラフの 動き（2026-08-29・訴え「左から 出てくる アニメーション」）──
+       ★ 切り替える たびに **やり直す**。data-tick が 変わると
+         要素ごと 作り直されるので、動きは 最初から 始まる。
+       ★ 3 つ 重ねている:
+           ① 面ぜんぶを 左から めくる（clip-path）
+           ② 折れ線は 左から **描かれる**（stroke-dasharray）
+           ③ 点は 少し ずつ 遅れて ふくらむ
+         ①だけだと 平板、②だけだと 目盛りが 先に 出て ちぐはぐに なる。
+       ★ 動きを 減らす 設定の 人には 出さない（下の prefers-reduced-motion）。 */
+    ".chart svg{clip-path:inset(0 100% 0 0);animation:insWipe .62s cubic-bezier(.22,1,.36,1) forwards;}",
+    "@keyframes insWipe{to{clip-path:inset(0 0 0 0)}}",
+    ".chart .ln-p{stroke-dasharray:2000;stroke-dashoffset:2000;"
+      + "animation:insDraw .78s .06s cubic-bezier(.22,1,.36,1) forwards;}",
+    "@keyframes insDraw{to{stroke-dashoffset:0}}",
+    ".chart .ln-d,.chart .sc-d{transform-box:fill-box;transform-origin:center;"
+      + "transform:scale(0);animation:insPop .34s cubic-bezier(.22,1,.36,1) forwards;}",
+    "@keyframes insPop{to{transform:scale(1)}}",
+    ".chart .sc-fit{stroke-dasharray:5 5;opacity:0;animation:insFade .5s .45s ease forwards;}",
+    "@keyframes insFade{to{opacity:1}}",
+    "@media (prefers-reduced-motion: reduce){"
+      + ".chart svg{clip-path:none;animation:none;}"
+      + ".chart .ln-p{stroke-dasharray:none;stroke-dashoffset:0;animation:none;}"
+      + ".chart .ln-d,.chart .sc-d{transform:none;animation:none;}"
+      + ".chart .sc-fit{opacity:1;animation:none;}}",
+    /* 相関図の 縦横えらび */
+    ".scax{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;"
+      + "font-size:12px;color:var(--vq-text-secondary,#686477);font-weight:600;}",
     ".legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--vq-text-secondary,#686477);font-weight:600;}",
     ".legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px;}",
     ".legend i.dash{background:repeating-linear-gradient(90deg,currentColor 0 5px,transparent 5px 9px);}",
@@ -211,7 +239,12 @@
   var host = null, root = null, mounted = false;
   var st = {
     range: null, subject: "", mode: "", metric: "accuracy",
-    compare: false, openSubject: "", showAllTypes: false, d: null, ready: false
+    compare: false, openSubject: "", showAllTypes: false, d: null, ready: false,
+    /* ★ グラフの 見せかた（2026-08-29・訴え「相関図として 表示させる 機能も」）。
+       line = これまでの 折れ線 ／ scatter = 相関図（1 回 ＝ 1 つの 点） */
+    view: "line", sx: "speed", sy: "accuracy",
+    /* 描き直した ことの 目印。これが 変わると 左から 出る 動きを やり直す。 */
+    tick: 0
   };
 
   function AN() { try { return (window.VQ2 && window.VQ2.analytics) || null; } catch (e) { return null; } }
@@ -610,21 +643,38 @@
   ];
   function trendHtml(d) {
     var t = d.trend;
+    var 相 = st.view === "scatter";
     var h = '<section class="card"><div class="card-h"><div><h2>学習の移り変わり</h2>'
-      + '<div class="sub">' + esc(grainLabel(t.grain)) + "ごとに、いまの絞り込みで見ています。</div></div>"
-      + '<div class="pills" role="tablist" aria-label="見る指標">';
-    METRICS.forEach(function (m) {
-      h += '<button class="pill" role="tab" data-a="metric" data-v="' + m.id + '" aria-selected="'
-        + (st.metric === m.id ? "true" : "false") + '">' + esc(m.label) + "</button>";
-    });
-    h += "</div></div>";
+      + '<div class="sub">'
+      + (相 ? "1 回を 1 つの 点にして、2 つの ものさしを 突き合わせています。"
+            : esc(grainLabel(t.grain)) + "ごとに、いまの絞り込みで見ています。")
+      + "</div></div>"
+      /* ★ 見せかたの 切り替え（2026-08-29・訴え「相関図として 表示させる 機能も」） */
+      + '<div class="pills" role="tablist" aria-label="グラフの 見せかた">'
+      + '<button class="pill" role="tab" data-a="view" data-v="line" aria-selected="'
+      + (相 ? "false" : "true") + '">折れ線</button>'
+      + '<button class="pill" role="tab" data-a="view" data-v="scatter" aria-selected="'
+      + (相 ? "true" : "false") + '">相関図</button>'
+      + "</div>";
+    if (!相) {
+      h += '<div class="pills" role="tablist" aria-label="見る指標">';
+      METRICS.forEach(function (m) {
+        h += '<button class="pill" role="tab" data-a="metric" data-v="' + m.id + '" aria-selected="'
+          + (st.metric === m.id ? "true" : "false") + '">' + esc(m.label) + "</button>";
+      });
+      h += "</div>";
+    }
+    h += "</div>";
+
+    if (相) return h + scatterHtml() + "</section>";
 
     var pts = (t.points || []).filter(function (p) { return p.hasValue; });
     if (!pts.length) {
       h += '<p class="none">この期間には、まだ線を引けるだけの記録がありません。</p></section>';
       return h;
     }
-    h += '<div class="chart" data-chart>' + chartSvg(t) + '<div class="tip" data-tip role="status"></div></div>';
+    h += '<div class="chart" data-chart data-tick="' + st.tick + '">' + chartSvg(t)
+      + '<div class="tip" data-tip role="status"></div></div>';
     h += '<div class="legend"><span><i style="background:var(--vq-accent,#756DB3)"></i>'
       + esc(metricOf().label) + "</span>";
     if (st.compare) h += '<span style="color:var(--vq-text-tertiary,#9994A8)"><i class="dash"></i>前の期間</span>';
@@ -672,6 +722,175 @@
   }
 
   var CW = 680, CH = 200, PL = 40, PR = 14, PT = 14, PB = 30;
+  /* ══ 相関図（2026-08-29・訴え「相関図として 表示させる 機能も」）════
+     ★ 1 回 ＝ 1 つの 点。折れ線は「いつ」を 横軸に 取るが、
+       ここは **2 つの ものさしを 突き合わせる**（例: 速さ と 正しさ）。
+     ★ 決めごと
+       ・**因果は 言わない。**「関係が ありそう」までしか 書かない。
+       ・点が 少ないと 何も 言わない（5 つ 未満は 数だけ 出す）。
+       ・r（つながりの 強さ）は −1〜1。**式は 決まっていて 毎回 同じ**。
+       ・値が 無い 回は **飛ばす**（0 として 置かない）。 */
+  var 軸 = [
+    { id: "accuracy", label: "正答率", unit: "%", get: function (s) {
+        return s.metrics && s.metrics.accuracy != null ? s.metrics.accuracy * 100 : null; } },
+    { id: "score", label: "総合点", unit: "", get: function (s) {
+        return s.metrics && typeof s.metrics.score100 === "number" ? s.metrics.score100 : null; } },
+    { id: "speed", label: "1 問あたりの 秒", unit: "秒", get: function (s) {
+        return s.metrics && s.metrics.medianSecPerQuestion != null ? s.metrics.medianSecPerQuestion : null; } },
+    { id: "count", label: "解いた 数", unit: "問", get: function (s) {
+        return s.metrics && s.metrics.questionCount ? s.metrics.questionCount : null; } },
+    { id: "minutes", label: "かけた 分", unit: "分", get: function (s) {
+        return s.durationSeconds ? Math.round(s.durationSeconds / 60 * 10) / 10 : null; } },
+    { id: "change", label: "答えを 変えた 割合", unit: "%", get: function (s) {
+        return s.metrics && s.metrics.changeRate != null ? s.metrics.changeRate * 100 : null; } },
+    { id: "skip", label: "飛ばした 割合", unit: "%", get: function (s) {
+        return s.metrics && s.metrics.skipRate != null ? s.metrics.skipRate * 100 : null; } },
+    { id: "hour", label: "始めた 時刻", unit: "時", get: function (s) {
+        return s.metrics && typeof s.metrics.hourOfDay === "number" ? s.metrics.hourOfDay : null; } }
+  ];
+  function 軸の(id) {
+    for (var i = 0; i < 軸.length; i++) if (軸[i].id === id) return 軸[i];
+    return 軸[0];
+  }
+  /* つながりの 強さ（ピアソンの r）。**式は これだけ。** */
+  function 相関(xs, ys) {
+    var n = xs.length;
+    if (n < 3) return null;
+    var mx = 0, my = 0, i;
+    for (i = 0; i < n; i++) { mx += xs[i]; my += ys[i]; }
+    mx /= n; my /= n;
+    var sxy = 0, sxx = 0, syy = 0;
+    for (i = 0; i < n; i++) {
+      var a = xs[i] - mx, b = ys[i] - my;
+      sxy += a * b; sxx += a * a; syy += b * b;
+    }
+    if (sxx <= 0 || syy <= 0) return null;
+    return sxy / Math.sqrt(sxx * syy);
+  }
+  function 相関の言い方(r, n, X, Y) {
+    if (n < 5) return "点が " + n + " つしか ありません。つながりを 言うには 足りません（5 つから 出します）。";
+    if (r === null) return "どちらかの 値が 動いていないので、つながりは 出せません。";
+    var a = Math.abs(r);
+    var 強 = a >= 0.7 ? "はっきりした" : a >= 0.4 ? "ゆるやかな" : a >= 0.2 ? "弱い" : "";
+    if (!強) return "いまの ところ、" + X.label + " と " + Y.label + " の あいだに 目立った つながりは ありません（r = " + r.toFixed(2) + "）。";
+    return X.label + " が " + (r > 0 ? "大きい" : "小さい") + "ほど " + Y.label + " が 高い、という "
+      + 強 + " つながりが 見えます（r = " + r.toFixed(2) + "・" + n + " 回）。"
+      + "※ どちらかが もう一方の 原因だとは 限りません。";
+  }
+
+  function scatterSvg(ss) {
+    var X = 軸の(st.sx), Y = 軸の(st.sy);
+    var 組 = [];
+    ss.forEach(function (s) {
+      var x = X.get(s), y = Y.get(s);
+      if (x === null || y === null || !isFinite(x) || !isFinite(y)) return;   /* 無い回は 飛ばす */
+      組.push({ x: x, y: y, s: s });
+    });
+    if (!組.length) return { svg: "", n: 0, r: null, X: X, Y: Y, 組: 組 };
+
+    var xs = 組.map(function (p) { return p.x; }), ys = 組.map(function (p) { return p.y; });
+    var 幅 = function (a) {
+      var lo = Math.min.apply(null, a), hi = Math.max.apply(null, a);
+      if (hi === lo) { lo = lo - 1; hi = hi + 1; }
+      var m = (hi - lo) * 0.12;
+      return { lo: lo - m, hi: hi + m };
+    };
+    var xr = (X.unit === "%" ) ? { lo: 0, hi: 100 } : 幅(xs);
+    var yr = (Y.unit === "%" ) ? { lo: 0, hi: 100 } : 幅(ys);
+    var px = function (v) { return PL + (CW - PL - PR) * (v - xr.lo) / (xr.hi - xr.lo); };
+    var py = function (v) { return PT + (CH - PT - PB) * (1 - (v - yr.lo) / (yr.hi - yr.lo)); };
+
+    var g = "", k;
+    for (k = 0; k <= 4; k++) {
+      var yv = yr.lo + (yr.hi - yr.lo) * k / 4, yy = py(yv);
+      g += '<line x1="' + PL + '" y1="' + yy.toFixed(1) + '" x2="' + (CW - PR) + '" y2="' + yy.toFixed(1)
+        + '" stroke="var(--vq-border-subtle,#EFEDF6)" stroke-width="1"/>'
+        + '<text x="' + (PL - 8) + '" y="' + (yy + 4).toFixed(1) + '" text-anchor="end" font-size="10" '
+        + 'fill="var(--vq-text-tertiary,#B0AAC0)">' + Math.round(yv) + "</text>";
+    }
+    for (k = 0; k <= 4; k++) {
+      var xv = xr.lo + (xr.hi - xr.lo) * k / 4;
+      g += '<text x="' + px(xv).toFixed(1) + '" y="' + (CH - 8) + '" text-anchor="middle" font-size="10" '
+        + 'fill="var(--vq-text-tertiary,#B0AAC0)">' + Math.round(xv) + "</text>";
+    }
+
+    /* 目安の 線（最小二乗）。**点が 5 つ 以上 ある ときだけ** 引く。 */
+    var r = 相関(xs, ys), 線 = "";
+    if (組.length >= 5 && r !== null) {
+      var n = 組.length, mx = 0, my = 0, i;
+      for (i = 0; i < n; i++) { mx += xs[i]; my += ys[i]; }
+      mx /= n; my /= n;
+      var sxy = 0, sxx = 0;
+      for (i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) * (xs[i] - mx); }
+      if (sxx > 0) {
+        var a = sxy / sxx, b = my - a * mx;
+        var x1 = xr.lo, x2 = xr.hi;
+        線 = '<line class="sc-fit" x1="' + px(x1).toFixed(1) + '" y1="' + py(a * x1 + b).toFixed(1)
+          + '" x2="' + px(x2).toFixed(1) + '" y2="' + py(a * x2 + b).toFixed(1)
+          + '" stroke="var(--vq-text-tertiary,#B0AAC0)" stroke-width="1.6" stroke-dasharray="5 5"/>';
+      }
+    }
+
+    /* 点。新しい ほど 濃く（いつの ものかが 分かる ように）。 */
+    var 点 = "";
+    組.forEach(function (p, i) {
+      var 濃 = 0.35 + 0.65 * (組.length <= 1 ? 1 : (組.length - 1 - i) / (組.length - 1));
+      点 += '<circle class="sc-d" data-si="' + i + '" cx="' + px(p.x).toFixed(1) + '" cy="' + py(p.y).toFixed(1)
+        + '" r="5" fill="var(--vq-accent,#756DB3)" opacity="' + 濃.toFixed(2) + '" '
+        + 'style="cursor:pointer;animation-delay:' + Math.min(600, i * 45) + 'ms"/>'
+        /* 指でも つかめる ように、見えない 大きめの 的を 重ねる。 */
+        + '<circle data-si="' + i + '" cx="' + px(p.x).toFixed(1) + '" cy="' + py(p.y).toFixed(1)
+        + '" r="14" fill="transparent" style="cursor:pointer"/>';
+    });
+
+    var svg = '<svg viewBox="0 0 ' + CW + " " + CH + '" role="img" aria-label="'
+      + esc(X.label + " と " + Y.label + " の 相関図。数字は 下の 表でも 見られます。") + '">'
+      + g + 線 + 点 + "</svg>";
+    return { svg: svg, n: 組.length, r: r, X: X, Y: Y, 組: 組 };
+  }
+
+  function scatterHtml() {
+    var ss = 期間のセッション().filter(function (x) { return x && x.metrics; });
+    var 出 = scatterSvg(ss);
+    /* 触ったときに 出す 中身は、**描いた ときの 並びを そのまま** 使う
+       （もう一度 数え直すと 並びが ずれる ことが ある）。 */
+    st.scatter = 出;
+    var X = 出.X, Y = 出.Y;
+    var 選 = function (a, いま) {
+      var h = '<span class="sel"><select data-a="' + a + '" aria-label="'
+        + (a === "sx" ? "横" : "縦") + 'の ものさし">';
+      軸.forEach(function (m) {
+        h += '<option value="' + m.id + '"' + (いま === m.id ? " selected" : "") + ">" + esc(m.label) + "</option>";
+      });
+      return h + "</select>" + ms("expand_more") + "</span>";
+    };
+    var h = '<div class="scax">よこ ' + 選("sx", st.sx) + " たて " + 選("sy", st.sy) + "</div>";
+    if (!出.n) {
+      return h + '<p class="none">この 2 つを 両方 記録できている 回が まだ ありません。</p>';
+    }
+    h += '<div class="chart" data-chart data-tick="' + st.tick + '">' + 出.svg
+      + '<div class="tip" data-tip role="status"></div></div>';
+    h += '<div class="legend"><span><i style="background:var(--vq-accent,#756DB3)"></i>1 回 ＝ 1 つの 点（濃いほど 新しい）</span>'
+      + (出.n >= 5 && 出.r !== null ? '<span style="color:var(--vq-text-tertiary,#9994A8)"><i class="dash"></i>目安の 線</span>' : "")
+      + "</div>";
+    h += '<p class="hint">' + esc(相関の言い方(出.r, 出.n, X, Y)) + "</p>";
+    /* グラフだけで 伝えない。同じ 数字を 表でも 出す。 */
+    h += '<details style="margin-top:10px"><summary class="link" style="cursor:pointer">数字で見る</summary>'
+      + '<div class="tblwrap" style="margin-top:8px"><table class="tbl"><thead><tr>'
+      + '<th scope="col">日</th><th scope="col">やったこと</th>'
+      + '<th scope="col" class="n">' + esc(X.label) + '</th>'
+      + '<th scope="col" class="n">' + esc(Y.label) + "</th></tr></thead><tbody>";
+    出.組.slice(0, 40).forEach(function (p) {
+      h += "<tr><td>" + esc(String(p.s.localDate || "").slice(5)) + "</td>"
+        + "<td>" + esc((p.s.title || "学習").slice(0, 20)) + "</td>"
+        + '<td class="n">' + (Math.round(p.x * 10) / 10) + esc(X.unit) + "</td>"
+        + '<td class="n">' + (Math.round(p.y * 10) / 10) + esc(Y.unit) + "</td></tr>";
+    });
+    h += "</tbody></table></div></details>";
+    return h;
+  }
+
+
   function chartSvg(t) {
     var pts = t.points || [];
     var vals = pts.filter(function (p) { return p.hasValue; }).map(function (p) { return p.value; });
@@ -697,9 +916,11 @@
       var px = x(i), py = y(p.value);
       dPath += (started ? "L" : "M") + px.toFixed(1) + " " + py.toFixed(1) + " ";
       started = true;
-      dots += '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="3.4" fill="var(--vq-accent,#756DB3)"/>';
+      dots += '<circle class="ln-d" cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1)
+        + '" r="3.4" fill="var(--vq-accent,#756DB3)" style="animation-delay:'
+        + Math.min(700, i * 55) + 'ms"/>';
     });
-    var line = '<path d="' + dPath + '" fill="none" stroke="var(--vq-accent,#756DB3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>';
+    var line = '<path class="ln-p" d="' + dPath + '" fill="none" stroke="var(--vq-accent,#756DB3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>';
 
     var xl = "";
     var step = Math.max(1, Math.ceil(pts.length / 7));
@@ -721,8 +942,36 @@
     var box = root && root.querySelector("[data-chart]");
     if (!box) return;
     var tip = box.querySelector("[data-tip]");
+    if (!tip) return;
+    /* ★ 相関図（2026-08-29）。点に 触れたら **どの回か**を 出す。
+       ここが 無いと 点が どの日の ものか 分からず、ただの 飾りに なる。 */
+    if (st.view === "scatter") {
+      var 組 = (st.scatter && st.scatter.組) || [];
+      var X = (st.scatter && st.scatter.X) || 軸の(st.sx);
+      var Y = (st.scatter && st.scatter.Y) || 軸の(st.sy);
+      var 出す = function (e) {
+        var el = e.target;
+        if (!el || !el.getAttribute || el.getAttribute("data-si") == null) return;
+        var p = 組[Number(el.getAttribute("data-si"))];
+        if (!p) return;
+        tip.innerHTML = "<b>" + esc(String(p.s.localDate || "").slice(5)) + "　"
+          + esc((p.s.title || "学習").slice(0, 16)) + "</b><br>"
+          + esc(X.label) + " " + (Math.round(p.x * 10) / 10) + esc(X.unit) + "<br>"
+          + esc(Y.label) + " " + (Math.round(p.y * 10) / 10) + esc(Y.unit);
+        var r = box.getBoundingClientRect(), br = el.getBoundingClientRect();
+        tip.style.left = Math.max(4, Math.min(r.width - 160, br.left - r.left - 70)) + "px";
+        tip.style.top = "6px";
+        tip.classList.add("on");
+      };
+      var 消す = function () { tip.classList.remove("on"); };
+      box.addEventListener("mousemove", 出す);
+      box.addEventListener("touchstart", 出す, { passive: true });
+      box.addEventListener("mouseleave", 消す);
+      box.addEventListener("touchend", 消す);
+      return;
+    }
     var t = st.d && st.d.trend;
-    if (!t || !tip) return;
+    if (!t) return;
     function show(e) {
       var el = e.target;
       if (!el || !el.getAttribute || el.getAttribute("data-i") == null) return;
@@ -975,12 +1224,18 @@
       if (!t.dataset || !t.dataset.a) return;
       if (t.dataset.a === "subject") { st.subject = t.value; st.openSubject = ""; refresh(); }
       if (t.dataset.a === "mode") { st.mode = t.value; refresh(); }
+      /* 相関図の 縦横（2026-08-29）。同じ ものを 両方に 選ばせない。 */
+      if (t.dataset.a === "sx") { st.sx = t.value; if (st.sy === st.sx) st.sy = st.sx === "accuracy" ? "speed" : "accuracy"; st.tick++; render(); }
+      if (t.dataset.a === "sy") { st.sy = t.value; if (st.sx === st.sy) st.sx = st.sy === "accuracy" ? "speed" : "accuracy"; st.tick++; render(); }
     });
   }
   function act(a, el) {
     var v = el && el.dataset ? el.dataset.v : "";
     if (a === "range") { st.range = v; st.openSubject = ""; refresh(); return; }
-    if (a === "metric") { st.metric = v; render(); return; }
+    if (a === "metric") { st.metric = v; st.tick++; render(); return; }
+    if (a === "view") { st.view = v === "scatter" ? "scatter" : "line"; st.tick++; render(); return; }
+    if (a === "sx") { st.sx = v; st.tick++; render(); return; }
+    if (a === "sy") { st.sy = v; st.tick++; render(); return; }
     if (a === "compare") { st.compare = !st.compare; render(); return; }
     if (a === "alltypes") { st.showAllTypes = !st.showAllTypes; render(); return; }
     if (a === "subject") { st.openSubject = st.openSubject === v ? "" : v; render(); return; }

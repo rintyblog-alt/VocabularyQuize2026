@@ -173,6 +173,8 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
     const live = document.querySelector('script[src*="/js/vq-live."]')
       ? await fetch(document.querySelector('script[src*="/js/vq-live."]').src).then((x) => x.text()) : "";
     const core = await fetch(document.querySelector('script[src*="/js/vq-core."]').src).then((x) => x.text());
+    const insSrc = [...document.querySelectorAll('script[src*="/js/vq-insight."]')].map((x) => x.src)[0];
+    const ins = insSrc ? await fetch(insSrc).then((x) => x.text()) : "";
     const setSrc = [...document.querySelectorAll('script[src*="/js/vq-settings."]')].map((x) => x.src)[0];
     const setJs = setSrc ? await fetch(setSrc).then((x) => x.text()) : "";
     const cssHref = [...document.querySelectorAll('link[href*="/css/vq-ds."]')].map((l) => l.href)[0];
@@ -194,7 +196,9 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
       数え直せる: /recount/.test(setJs),
       プリセットの節: /accountKeyBytes/.test(setJs),
       指標: /score100/.test(app),
-      総合評価: /insight\/review/.test(app)
+      総合評価: /insight\/review/.test(app),
+      グラフの動き: /insWipe/.test(ins) && /insDraw/.test(ins),
+      相関図: /scatter/.test(ins) && /sc-fit/.test(ins)
     };
   });
   ok("書類の 見た目（docDesign）が 入っている", 今夜.書類の見た目, 今夜);
@@ -210,6 +214,8 @@ const 節 = (t) => console.log("\n══ " + t + " ══");
   ok("ストレージを 数え直せる", 今夜.数え直せる, 今夜);
   ok("インサイトの 細かい 指標（score100）が 入っている", 今夜.指標, 今夜);
   ok("インサイトの 総合評価の 口が ある（/api/insight/review）", 今夜.総合評価, 今夜);
+  ok("グラフが 左から 出る 動きが 入っている", 今夜.グラフの動き, 今夜);
+  ok("相関図が 入っている", 今夜.相関図, 今夜);
 
   節("⑤ 目安の 時間");
   const 分 = await pg.evaluate(() => {

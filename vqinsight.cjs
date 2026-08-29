@@ -181,6 +181,115 @@ function 作る(id) {
   見(例外.length === 0, "⑦ 画面の 例外 0 件", 例外.slice(0, 3));
 
   await page.screenshot({ path: SP + "/insight.png", fullPage: false });
+
+  /* ── ⑧ グラフの 動き（左から 出てくる）── */
+  const 動 = await page.evaluate(() => {
+    const 器 = Array.from(document.querySelectorAll("*")).find(
+      (e) => e.shadowRoot && e.shadowRoot.querySelector("[data-chart] svg"));
+    if (!器) return { 無い: true };
+    const svg = 器.shadowRoot.querySelector("[data-chart] svg");
+    const cs = getComputedStyle(svg);
+    const 線 = 器.shadowRoot.querySelector(".ln-p");
+    const 点 = 器.shadowRoot.querySelector(".ln-d");
+    return {
+      名: cs.animationName, 秒: cs.animationDuration,
+      切り: cs.clipPath,
+      線の名: 線 ? getComputedStyle(線).animationName : "",
+      点の名: 点 ? getComputedStyle(点).animationName : "",
+      点の遅れ: 点 ? getComputedStyle(点).animationDelay : ""
+    };
+  });
+  console.log("動き:", JSON.stringify(動));
+  見(動.名 === "insWipe", "⑧ グラフが 左から めくれる（clip-path）", 動.名);
+  見(動.線の名 === "insDraw", "⑧ 折れ線が 左から 描かれる", 動.線の名);
+  見(動.点の名 === "insPop", "⑧ 点が ふくらんで 出る", 動.点の名);
+
+  /* 切り替える たびに **やり直す**（data-tick が 変わる） */
+  const 前tick = await page.evaluate(() => {
+    const 器 = Array.from(document.querySelectorAll("*")).find(
+      (e) => e.shadowRoot && e.shadowRoot.querySelector("[data-chart]"));
+    return 器.shadowRoot.querySelector("[data-chart]").getAttribute("data-tick");
+  });
+  await page.evaluate(() => {
+    const 器 = Array.from(document.querySelectorAll("*")).find(
+      (e) => e.shadowRoot && e.shadowRoot.querySelector('[data-a="metric"][data-v="minutes"]'));
+    器.shadowRoot.querySelector('[data-a="metric"][data-v="minutes"]').click();
+  });
+  await page.waitForTimeout(400);
+  const 後tick = await page.evaluate(() => {
+    const 器 = Array.from(document.querySelectorAll("*")).find(
+      (e) => e.shadowRoot && e.shadowRoot.querySelector("[data-chart]"));
+    const c = 器.shadowRoot.querySelector("[data-chart]");
+    const svg = c.querySelector("svg");
+    return { tick: c.getAttribute("data-tick"),
+             途中: getComputedStyle(svg).clipPath };
+  });
+  見(後tick.tick !== 前tick, "⑧ 切り替えると 動きを やり直す（tick " + 前tick + " → " + 後tick.tick + "）");
+
+  /* ── ⑨ 相関図 ── */
+  await page.evaluate(() => {
+    const 器 = Array.from(document.querySelectorAll("*")).find(
+      (e) => e.shadowRoot && e.shadowRoot.querySelector('[data-a="view"][data-v="scatter"]'));
+    器.shadowRoot.querySelector('[data-a="view"][data-v="scatter"]').click();
+  });
+  await page.waitForTimeout(900);
+  const 相 = await page.evaluate(() => {
+    const 器 = Array.from(document.querySelectorAll("*")).find(
+      (e) => e.shadowRoot && e.shadowRoot.querySelector(".scax, [data-chart]"));
+    const r = 器.shadowRoot;
+    const t = (r.textContent || "").replace(/\s+/g, " ");
+    return {
+      軸えらび: !!r.querySelector('[data-a="sx"]') && !!r.querySelector('[data-a="sy"]'),
+      点の数: r.querySelectorAll(".sc-d").length,
+      目安の線: !!r.querySelector(".sc-fit"),
+      言い方: (r.querySelector(".hint") || {}).textContent || "",
+      表: !!r.querySelector(".tbl"),
+      因果を言わない: !/が原因|のせいで|だから必ず/.test(t)
+    };
+  });
+  console.log("相関図:", JSON.stringify(相));
+  見(相.軸えらび, "⑨ よこ・たての ものさしを 選べる");
+  見(相.点の数 >= 5, "⑨ 1 回 ＝ 1 つの 点が 出る（" + 相.点の数 + " 点）", 相.点の数);
+  見(相.目安の線, "⑨ 目安の 線が 引かれる（5 点 以上）");
+  見(/r = |つながり|足りません/.test(相.言い方), "⑨ つながりの 強さを 言葉で 出す", 相.言い方);
+  見(/原因だとは 限りません|足りません|目立った つながりは/.test(相.言い方),
+     "⑨ **因果だと 言い切らない**", 相.言い方);
+  見(相.言い方.indexOf("**") < 0, "⑨ 画面に 記号（**）が そのまま 出ていない", 相.言い方);
+  見(相.表, "⑨ 同じ 数字を 表でも 出す");
+  /* 点に 触れたら どの回か 出るか */
+  const 触 = await page.evaluate(() => {
+    const 器 = Array.from(document.querySelectorAll("*")).find(
+      (e) => e.shadowRoot && e.shadowRoot.querySelector(".sc-d"));
+    if (!器) return { 無い: true };
+    const r = 器.shadowRoot;
+    const d = r.querySelector(".sc-d");
+    const box = d.closest("[data-chart]");
+    const rect = d.getBoundingClientRect();
+    box.dispatchEvent(new MouseEvent("mousemove", { bubbles: true,
+      clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }));
+    /* 実際の 的（透明な 丸）へ 直接 送る */
+    const 的 = r.querySelectorAll('circle[data-si="0"]');
+    的.forEach((x) => x.dispatchEvent(new MouseEvent("mousemove", { bubbles: true })));
+    const tip = r.querySelector("[data-tip]");
+    return { 出た: !!(tip && tip.classList.contains("on")),
+             文: tip ? (tip.textContent || "").replace(/\s+/g, " ").slice(0, 60) : "" };
+  });
+  console.log("触れたとき:", JSON.stringify(触));
+  見(触.出た && /正答率|秒/.test(触.文), "⑨ 点に 触れると どの回か 出る", 触);
+
+  /* グラフの ところだけを 撮る（下の ほうに あるため） */
+  try {
+    const 箱 = await page.evaluateHandle(() => {
+      const 器 = Array.from(document.querySelectorAll("*")).find(
+        (e) => e.shadowRoot && e.shadowRoot.querySelector("[data-chart]"));
+      const c = 器.shadowRoot.querySelector("[data-chart]");
+      return c.closest("section") || c;
+    });
+    const el = 箱.asElement();
+    if (el) { await el.scrollIntoViewIfNeeded(); await page.waitForTimeout(300);
+              await el.screenshot({ path: SP + "/insight-scatter.png" }); }
+    else await page.screenshot({ path: SP + "/insight-scatter.png" });
+  } catch (e) { await page.screenshot({ path: SP + "/insight-scatter.png" }); }
   await b.close();
   console.log(`\n落ち ${落} 件`);
   process.exit(落 ? 1 : 0);
