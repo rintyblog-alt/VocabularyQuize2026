@@ -877,8 +877,14 @@ tailwind.config = {
       var out = "";
       if (!sm.configured) {
         out += alertBox("err", "Cloudflare Realtime が未設定です（CALLS_APP_ID / CALLS_APP_SECRET）。"
-          + "設定するまで発信は 503 で断られます。");
+          + "設定するまで発信は 503 で断られます。DM に受話器も出しません。");
       }
+      /* ★ 鍵を入れても動かないとき、503 だけでは理由が読めない。
+         実際に SFU へ 1 回つないで、Cloudflare の返事をそのまま出す。 */
+      out += '<div class="mt-6 flex flex-wrap items-center gap-4">'
+        + '<button type="button" data-act="callselftest" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">土台を確かめる</button>'
+        + '<span class="text-sm text-slate-500 lead">SFU に 1 回だけつないで、すぐ閉じます。</span></div>'
+        + '<div id="callSelfTest" class="mt-4"></div>';
       if (!sm.lumiConfigured) {
         out += alertBox("warn", "通話中の Lumi 用の有料キーが未設定です（GEMINI_PAID_API_KEY）。"
           + "未設定のあいだ Lumi は起動しません（無料枠へは流しません）。");
@@ -895,10 +901,10 @@ tailwind.config = {
         + stat("Lumi 介入", fmt((sm.lumi || {}).calls), "件")
         + stat("帯域の見積り", (bw.estimatedGbWeek || 0) + " / " + fmt(bw.freeGb), "GB")
         + "</div>";
-      out += '<div class="mt-6">' + alertBox("info", esc(bw.note || "")) + "</div>";
+      out += '<div class="mt-6">' + alertBox("info", bw.note || "") + "</div>";
 
       out += '<div class="mt-10">' + h2("通報") + '<div class="mb-4">'
-        + alertBox("info", esc(d.note || "")) + "</div>"
+        + alertBox("info", d.note || "") + "</div>"
         + table(["日時", "通報者", "相手", "理由", "記述", "通話時間", "状態", ""],
           (d.reports || []).map(function (r) {
             return [when(r.createdAt ? new Date(r.createdAt).toISOString() : ""),
@@ -1449,6 +1455,20 @@ tailwind.config = {
           show($("pageAlert"), "保存しました。30 秒以内にアプリへ反映されます。", "ok");
           draw();
         });
+    }
+    if (act === "callselftest") {
+      show($("pageAlert"), "確かめています…", "info");
+      apiGuarded("calls/selftest", { method: "POST", body: {} }).then(function (j) {
+        var box = $("callSelfTest");
+        if (!j.ok) { show($("pageAlert"), j.message || "できませんでした。"); return; }
+        var d = j.data || {};
+        show($("pageAlert"), d.ok ? "つながりました。" : "つながりませんでした。", d.ok ? "ok" : "err");
+        /* alertBox は 中で esc する。ここで もう一度 かけない（&amp; が 出る）。 */
+        box.innerHTML = alertBox(d.ok ? "ok" : "err",
+          (d.message || "") + (d.ヒント ? "　" + d.ヒント : "")
+          + (d.status ? "（HTTP " + num(d.status) + "）" : "")
+          + (d.ms ? "　" + num(d.ms) + "ms" : ""));
+      });
     }
     if (act === "callrep") {
       var v = t.getAttribute("data-v") || "";

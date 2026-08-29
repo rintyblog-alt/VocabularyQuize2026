@@ -1306,6 +1306,47 @@ export async function callsAdminSummary(env) {
   };
 }
 
+/* ══ 土台の 自己診断（2026-08-29）══════════════════════════════════════
+   ★ 鍵を 入れても 動かない とき、いまは 503 が 返るだけで
+     「鍵が 無い」のか「鍵が 違う」のか「アカウントが まだ 有効でない」のかが
+     **画面から 一切 分からない**。実際に SFU へ 1 回だけ 部屋を 作って、
+     Cloudflare の 返事を そのまま 見せる。作った 部屋は すぐ 閉じる。 */
+export async function callsSelfTest(env) {
+  const c = sfu設定(env);
+  if (c.にせ && !c.ok) {
+    return { ok: true, mode: "fake", message: "開発版の 作りものの SFU で 通っています（音は 流れません）。" };
+  }
+  if (!c.ok) {
+    return { ok: false, code: "NOT_CONFIGURED",
+      message: "CALLS_APP_ID / CALLS_APP_SECRET が 入っていません。",
+      appId: !!c.appId, secret: !!c.secret };
+  }
+  const t0 = 今();
+  const r = await sfu(env, "/sessions/new", "POST", {}).catch((e) => ({
+    ok: false, status: 0, json: { errorDescription: S(e?.message, 200) } }));
+  const ms = 今() - t0;
+  if (!r.ok || !r.json?.sessionId) {
+    /* Cloudflare の 言い分を そのまま 出す（**鍵は 出さない**）。 */
+    return { ok: false, code: "SFU_FAILED", status: r.status, ms,
+      message: S(r.json?.errorDescription || r.json?.errors?.[0]?.message
+        || ("HTTP " + r.status), 300),
+      ヒント: r.status === 401 || r.status === 403
+        ? "鍵が 違うか、まだ 権限が ありません。App ID と App Secret を 見直してください。"
+        : r.status === 404
+          ? "その App ID が 見つかりません。Realtime の SFU アプリを 作り直してください。"
+          : r.status === 0
+            ? "Cloudflare へ 届いていません。少し あとで もう一度。"
+            : "Cloudflare 側の 返事です。アカウントの 有効化が 済んでいるか 確かめてください。" };
+  }
+  const sid = S(r.json.sessionId, 120);
+  /* 作った 部屋は **必ず 閉じる**（開けっぱなしは 課金に つながる）。 */
+  await sfu(env, "/sessions/" + encodeURIComponent(sid) + "/tracks/close", "PUT",
+    { tracks: [], force: true }).catch(() => {});
+  return { ok: true, mode: "live", ms,
+    message: "SFU に つながりました。通話を 始められます。",
+    sessionId: sid.slice(0, 8) + "…" };
+}
+
 /* Admin の 通報一覧に 出す ための 1 件分（**音声は 無い** ことも 一緒に 返す）。 */
 export async function callsReportDetail(env, callId) {
   await ensureCallSchema(env).catch(() => {});

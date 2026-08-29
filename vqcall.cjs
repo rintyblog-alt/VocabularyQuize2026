@@ -310,6 +310,26 @@ function d1(sql) {
     console.log("  ※ SFU 未設定のため 測れません。");
   }
 
+  /* ══ 土台の 自己診断（2026-08-29）══
+     鍵を 入れても 動かない とき、503 だけでは 理由が 読めない。
+     3 通りの 場合を **そのまま 呼んで** 確かめる（Admin の 札は 要らない）。 */
+  節("土台の 自己診断（Admin の「土台を確かめる」）");
+  {
+    const { callsSelfTest } = await import("./server/src/calls.js");
+    const a1 = await callsSelfTest({});
+    見(a1.ok === false && a1.code === "NOT_CONFIGURED",
+      "鍵が 無い → 何が 足りないかを 言う", a1);
+    const a2 = await callsSelfTest({ CALLS_FAKE: "1", AI_PROBE_ENABLED: "1" });
+    見(a2.ok === true && a2.mode === "fake",
+      "開発版の 作りもの → その ことを 言う", a2);
+    const a3 = await callsSelfTest({ CALLS_APP_ID: "not-a-real-app", CALLS_APP_SECRET: "not-a-real-secret" });
+    console.log("  でたらめな 鍵で 試した 返事:", JSON.stringify(a3));
+    見(a3.ok === false && a3.code === "SFU_FAILED" && !!a3.ヒント,
+      "鍵が 違う → Cloudflare の 返事と 次の 一手を 出す", { status: a3.status, ヒント: a3.ヒント });
+    見(!JSON.stringify(a3).includes("not-a-real-secret"),
+      "**鍵そのものは 返さない**");
+  }
+
   /* ══ 後始末の 確かめ ══ */
   節("SFU の 部屋の 後始末");
   const 生き残り = d1(

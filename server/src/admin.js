@@ -22,7 +22,7 @@
 
 /* ★ 通話（2026-08-29）。控えを 捨てる 口と、数だけの 集計を 借りる。
    calls.js は 何も import しないので、ここから 読んでも 輪に ならない。 */
-import { forgetCallLimitCache, callsAdminSummary, callsReportDetail } from "./calls.js";
+import { forgetCallLimitCache, callsAdminSummary, callsReportDetail, callsSelfTest } from "./calls.js";
 
 /* ══ 1. 権限 ══════════════════════════════════════════════════════════════
    ロールではなく **権限の集合**で持つ。ロールはその詰め合わせにすぎない。
@@ -2405,6 +2405,14 @@ async function route(request, env, url, sub, method, adm, ip) {
         value: N(l.value), unit: S(l.unit), defaultValue: N(l.default_value) })),
       note: "通話の 音声は 保存していません。内容は 確認できません。"
     } });
+  }
+  /* 土台の 自己診断。**実際に SFU へ 1 回 つないで**、返事を そのまま 出す。 */
+  if (sub === "calls/selftest" && method === "POST") {
+    const g = guard(adm, "metrics.view"); if (g) return g;
+    const d = await callsSelfTest(env);
+    await audit(env, adm, { action: "call.selftest", targetType: "call", targetId: "sfu",
+      after: { ok: !!d.ok, code: S(d.code) }, ip });
+    return ok({ data: d });
   }
   if ((m = /^calls\/reports\/([^/]+)\/(handle|dismiss)$/.exec(sub)) && method === "POST") {
     const g = guard(adm, "content.hide", { destructive: true }); if (g) return g;
