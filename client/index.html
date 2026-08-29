@@ -10446,7 +10446,7 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
 </script>
 <script id="vq-screens" src="/js/vq-screens.eabd0c8de9.js"></script>
 <script id="vq-settings-store" src="/js/vq-settings-store.7d8033cf78.js"></script>
-<script id="vq-settings" src="/js/vq-settings.82ffafacbe.js"></script>
+<script id="vq-settings" src="/js/vq-settings.bd398d944c.js"></script>
 <script id="vq-newsflash">
 /* ══════════════════════════════════════════════════════════════════════════
    vq-newsflash — 新しいお知らせ（NEWS）を、起動したときだけ知らせる
@@ -11449,7 +11449,15 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
       }
       api("/api/auth/pin/set", { method: "POST", body: body }).then(function (r) {
         st.busy = false;
-        if (r.status === 200) { st.acc = r.j; st.curPin = ""; next(); return; }
+        if (r.status === 200) {
+          st.acc = r.j; st.curPin = "";
+          /* ★ 決まった ことを 知らせる（2026-08-29・訴え
+             「決めているのに『まだです』が 消えない」）。
+             設定の 画面は 一度 読んだら 読み直さない ので、
+             ここで 言わないと 古い ままに なる。 */
+          知らせる(r.j);
+          next(); return;
+        }
         st.first = ""; st.step = (s === "set2") ? "set" : "change2";
         shake(r.j.message || "決められませんでした。");
       });
@@ -11628,6 +11636,7 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
       if (r.status !== 200) return false;
       var a = r.j;
       st.acc = a;
+      決まっている = !!a.hasPin;
       st.reload = !!opt.reload;
       /* 残っている手続きの数（画面に「1 / 3」を出すため） */
       st.total = (a.needsPin ? 1 : 0) + (a.needsEmail ? 1 : 0) + (a.needsConsent ? 1 : 0);
@@ -11662,13 +11671,37 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
     if (!token()) return Promise.resolve(false);
     return api("/api/auth/pin/status").then(function (r) {
       st.acc = r.j || {}; st.total = 0; st.idx = 0;
+      決まっている = !!st.acc.hasPin;
       build();
       open(st.acc.hasPin ? "change1" : "set");
       return true;
     });
   }
 
-  root.__vqPin = { gate: gate, askNew: askNew, change: change, isOpen: isOpen, close: close };
+  /* ★ 決まっているか どうかを **覚えておく**（2026-08-29）。
+     設定の 画面は 同期で 描くので、その場で 聞けない。
+     分からない ときは **null**（false に しない。
+     false に すると「決めていない」と 言い切る ことに なる）。 */
+  var 決まっている = null;
+  function 知らせる(a) {
+    if (a && typeof a === "object" && "hasPin" in a) 決まっている = !!a.hasPin;
+    try { root.dispatchEvent(new CustomEvent("vq-pin-changed", { detail: { hasPin: 決まっている } })); }
+    catch (e) {}
+  }
+  function isSet() { return 決まっている; }
+  function status(force) {
+    if (!token()) { 決まっている = null; return Promise.resolve(null); }
+    if (!force && 決まっている !== null) return Promise.resolve(決まっている);
+    return api("/api/auth/pin/status").then(function (r) {
+      if (r.status !== 200) return 決まっている;
+      決まっている = !!r.j.hasPin;
+      return 決まっている;
+    }).catch(function () { return 決まっている; });
+  }
+
+  root.__vqPin = { gate: gate, askNew: askNew, change: change, isOpen: isOpen, close: close,
+                   /* ★ 設定の 画面が 呼ぶ。前は **この 2 つが 無いのに 呼ばれていた**。 */
+                   isSet: isSet, status: status };
 
   /* ── いつ動くか ───────────────────────────────────────────────
      ・起動して少ししてから 1 回

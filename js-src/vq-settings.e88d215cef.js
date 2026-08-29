@@ -405,7 +405,14 @@
   function acctToken() {
     try { return String(localStorage.getItem("app.auth.token.v1") || "").trim(); } catch (e) { return ""; }
   }
-  var ACCT = { state: "idle", email: "", hasEmail: false, hasPassword: false, links: [], err: "" };
+  /* ★ hasPin は **サーバに 聞く**（2026-08-29・訴え「暗証番号を 決めたのに
+     『まだです』が 消えない」）。
+     真因は window.__vqPin.isSet を 呼んでいた こと。**そんな 口は 無い**
+     （__vqPin が 出しているのは gate / askNew / change / isOpen / close の 5 つ）。
+     undefined を 呼ぼうとして try が 拾い、いつも false に なっていた。
+     ＝ どれだけ 決めても ずっと「まだです」。 */
+  var ACCT = { state: "idle", email: "", hasEmail: false, hasPassword: false, links: [],
+               hasPin: null, err: "" };
   function acctLoad(force) {
     if (!force && (ACCT.state === "loading" || ACCT.state === "ready")) return;
     var tok = acctToken();
@@ -416,18 +423,36 @@
       return fetch(acctApi() + path, { headers: hd })
         .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
     };
-    Promise.all([g("/api/auth/me"), g("/api/auth/social/list")]).then(function (r) {
-      var me = r[0] || {}, li = r[1] || {};
+    Promise.all([g("/api/auth/me"), g("/api/auth/social/list"), g("/api/auth/pin/status")])
+      .then(function (r) {
+      var me = r[0] || {}, li = r[1] || {}, pin = r[2] || null;
       var a = me.account || {};
       ACCT.hasEmail = !a.needsEmail;
       ACCT.email = String(a.email || "");
       ACCT.hasPassword = !!li.hasPassword;
       ACCT.links = Array.isArray(li.identities) ? li.identities : [];
+      /* 聞けなかった ときは **null のまま**（false に しない）。
+         false に すると「決めていない」と 言い切る ことに なる。 */
+      ACCT.hasPin = pin ? !!pin.hasPin : null;
       ACCT.state = (r[0] || r[1]) ? "ready" : "error";
       if (ACCT.state === "error") ACCT.err = "いまの状態を読み取れませんでした。";
       if (cur === "account") renderMain();
     });
   }
+  /* ★ 暗証番号を 決め直したら **読み直す**（2026-08-29・訴え）。
+     設定の 画面は 一度 読んだら 読み直さない ので、
+     決めて 戻ってきても 古い ままだった。 */
+  try {
+    window.addEventListener("vq-pin-changed", function (e) {
+      try {
+        var v = e && e.detail ? e.detail.hasPin : null;
+        if (v === true || v === false) ACCT.hasPin = v;
+      } catch (x) {}
+      acctLoad(true);
+      if (cur === "account") renderMain();
+    });
+  } catch (e) {}
+
   function acctUnlink(provider) {
     var tok = acctToken();
     if (!tok) return;
@@ -1119,13 +1144,14 @@
     /* ── 2. 戻る道 ──
        いくつ用意できているかを先に数える。0 なら赤く出す。 */
     var hasMail = !busy && ACCT.hasEmail;
-    var hasPin = false;
-    try { hasPin = !!(window.__vqPin && window.__vqPin.isSet && window.__vqPin.isSet()); } catch (e) {}
+    /* 聞けていない あいだは null。数にも 入れないし「まだです」とも 言わない。 */
+    var hasPin = ACCT.hasPin;
     var hasLink = !busy && ACCT.links.length > 0;
-    var ways = (hasMail ? 1 : 0) + (hasPin ? 1 : 0) + (hasLink ? 1 : 0);
+    var ways = (hasMail ? 1 : 0) + (hasPin === true ? 1 : 0) + (hasLink ? 1 : 0);
+    var 分かっている = !busy && ACCT.hasPin !== null;
 
     var warn = "";
-    if (!busy && ways === 0) {
+    if (分かっている && ways === 0) {
       warn = '<div class="acard" style="border-color:#E9B4A8;background:#FDF3F0">'
         + '<div class="acard__t" style="color:#B4321F">戻る道がありません</div>'
         + '<div class="acard__m">いまパスワードを忘れると、このアカウントへ入れなくなります。'
@@ -1133,23 +1159,26 @@
     }
 
     function wayRow(on, label, desc, act, extra) {
+      /* on が null ＝ **まだ 分からない**。「まだです」と 言い切らない。 */
+      var 未 = on === null || on === undefined || busy;
       return '<button class="row tap" ' + act + '>'
         + '<span class="row__main"><span class="row__label">' + label + "</span>"
         + '<span class="row__desc">' + esc(desc) + "</span></span>"
         + '<span class="rval" style="margin-right:8px;color:'
-        + (on ? "var(--vq-success-text,#2E7D5B)" : "var(--vq-text-tertiary,#9A96AA)") + '">'
-        + (busy ? "確認中…" : (on ? "できています" : "まだです")) + "</span>"
-        + '<span class="btn">' + (extra || (on ? "変える" : "する")) + "</span></button>";
+        + (on === true ? "var(--vq-success-text,#2E7D5B)" : "var(--vq-text-tertiary,#9A96AA)") + '">'
+        + (未 ? "確認中…" : (on ? "できています" : "まだです")) + "</span>"
+        + '<span class="btn">' + (extra || (on === true ? "変える" : "する")) + "</span></button>";
     }
 
     var back = '<div class="gttl" style="margin-top:18px;">入れなくなったときに戻る道'
-      + (busy ? "" : "（" + ways + " / 3）") + "</div><div class=\"grp\">"
+      + (分かっている ? "（" + ways + " / 3）" : "") + "</div><div class=\"grp\">"
       + wayRow(hasMail, "メールアドレス",
           hasMail ? (ACCT.email || "登録済み") + " へ確認コードを送って戻せます"
                   : "登録しておくと、確認コードで自分で戻せます",
           'data-emailsetup="1"')
       + wayRow(hasPin, "暗証番号",
-          hasPin ? "4 桁か 6 桁の数字で戻せます" : "4 桁か 6 桁の数字を決めておくと戻せます",
+          hasPin === true ? "4 桁か 6 桁の数字で戻せます"
+                          : "4 桁か 6 桁の数字を決めておくと戻せます",
           'data-pin="1"')
       + wayRow(hasLink, "Google と結ぶ",
           hasLink ? (ACCT.links.map(function (x) { return x.providerLabel || x.provider; }).join("・")
