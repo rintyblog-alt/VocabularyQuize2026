@@ -125,7 +125,15 @@ async function api(path, token, opts = {}) {
 
   /* ── ① 開いた ときに いちばん下 ── */
   await page.evaluate((t) => window.__vqDM.開く(t), tid);
-  await page.waitForTimeout(4000);
+  /* 便りが 62 件 あるので 描き終わるまで 待つ（4 秒では 間に合わなかった）。 */
+  await page.waitForFunction(() => {
+    const 器 = Array.from(document.querySelectorAll("*")).find(
+      (e) => e.shadowRoot && e.shadowRoot.querySelector(".msgs"));
+    if (!器) return false;
+    const m = 器.shadowRoot.querySelector(".msgs");
+    return m.scrollHeight > m.clientHeight + 40;
+  }, null, { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(1500);
   const 状 = await page.evaluate(() => window.__vqDM.状態());
   console.log("DM の 状態:", JSON.stringify(状));
   let p = await 位置();
