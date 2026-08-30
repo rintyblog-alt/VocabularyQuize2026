@@ -257,6 +257,9 @@
       sectionCount: 5, questionCount: 0,
       difficulty: "mixed",
       types: t,
+      /* 資料問題（図・表・グラフ）。既定で 入れる。
+         試験は 表や グラフを 読ませる 問題が 出る ものなので。 */
+      materials: true,
       instruction: "",
       layoutMode: "current", answerSheetMode: "current"
     };
@@ -487,6 +490,17 @@
     h += '<div class="row"><label>資料（任意）</label>' + 資料の中身()
       + '<div class="hint">PDF・画像・文書を そのまま 渡します（要点だけを 抜き出しません）。'
       + "資料を 付けると <b>資料読解</b>の 問題を 作れます。合わせて 20MB まで。</div></div>";
+
+    /* 図・表・グラフ（資料問題）─────────────────────────────
+       ★ AI に SVG は 書かせない。数と 名前だけ 出させて、線は こちらが 引く。 */
+    h += '<div class="row"><label>図・表・グラフ</label>'
+      + '<button type="button" class="chip' + (c.materials ? " on" : "") + '" data-a="mat"'
+      + ' aria-pressed="' + (c.materials ? "true" : "false") + '">'
+      + (c.materials ? "付ける" : "付けない") + "</button>"
+      + '<div class="hint">表・グラフ（棒／折れ線／円／散布図）・図形（三角形・円・角・数直線・座標）を、'
+      + "<b>問題用紙に そのまま 描きます</b>。目盛りは きりの よい 数に そろえ、"
+      + "白黒 印刷でも 見分けが 付くよう 模様で 分けます。"
+      + "資料の 要らない 問題には 付きません。</div></div>";
 
     /* 指示 */
     h += '<div class="row"><label for="vm-inst">ほかに 伝えること（任意）</label>'
@@ -932,6 +946,7 @@
         return;
       }
       if (a === "diff") { st.条件.difficulty = el.dataset.v; 描く(); return; }
+      if (a === "mat") { st.条件.materials = !st.条件.materials; 描く(); return; }
       if (a === "type") {
         var id = el.dataset.v;
         st.条件.types[id] = !st.条件.types[id];
@@ -1159,6 +1174,9 @@
           count: (req.slots || []).length,
           questionTypes: types.length ? types : undefined,
           questionPlan: Object.keys(plan2).length ? plan2 : undefined,
+          /* 図・表・グラフ。サーバは 頼まれたときだけ 語彙を 教える。
+             既定で 付けると 要らない ところに 飾りの 表が 出る。 */
+          materials: c.materials === true ? true : undefined,
           files: 資料.length ? 資料 : undefined
         };
         var 呼 = G.generateQuestionsTracked ? G.generateQuestionsTracked(頼み) : G.generateQuestions(頼み);

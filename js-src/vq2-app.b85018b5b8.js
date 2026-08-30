@@ -11481,6 +11481,167 @@
      opts: { title, subject, grade, audience, durationMinutes, totalPoints,
              paper, sourceMode, instructions, ownerId }
      ══════════════════════════════════════════════════════════════════ */
+  /* ══════════════════════════════════════════════════════════════
+     資料（図・グラフ・図形・表）を 問題へ 付ける — 2026-08-30
+
+     訴え「資料問題（フリー画像・SVG・表や図形の 正確な 描画）」
+
+     ★ **AI に 紙面を 自由に 作らせない。**
+       受けるのは 下の 語彙だけ。知らない 種類・知らない 鍵は 捨てる。
+       描くのは vq-fig.js（線を 引くのは コード）。
+     ★ 数は ここで 丸める。AI が 出した 桁を そのまま 信じない。
+     ★ 絵は **住所を 作らない**。data: と /api/media/ だけ 通す。
+       外の 住所は 印刷で 取りに 行けず 白い 四角に なる。
+     ══════════════════════════════════════════════════════════════ */
+  var 資料の種類 = { table: 1, chart: 1, diagram: 1, numberline: 1, figure: 1, svg: 1 };
+  var グラフの型 = { bar: 1, line: 1, scatter: 1, pie: 1 };
+  var 図形の型 = { point: 1, segment: 1, line: 1, ray: 1, arrow: 1, polygon: 1, polyline: 1,
+                   circle: 1, label: 1, text: 1, angle: 1, rightangle: 1, tick: 1 };
+
+  function 資料の数(v) { var n = Number(v); return (typeof n === "number" && isFinite(n)) ? Math.round(n * 1e4) / 1e4 : null; }
+  function 資料の文(v, n) { return str(v).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, n || 80); }
+
+  function 一つの資料(b) {
+    if (!b || typeof b !== "object") return null;
+    var t = str(b.type || b.kind).toLowerCase();
+    /* 種類が 書いていなくても、中身から 分かることが ある。 */
+    if (!t) {
+      if (Array.isArray(b.rows)) t = "table";
+      else if (b.series || b.values || b.chartType) t = "chart";
+      else if (b.items || b.shapes || b.diagramType) t = "diagram";
+      else if (b.svg) t = "svg";
+      else if (b.src || b.url) t = "figure";
+    }
+    if (!資料の種類[t]) return null;
+    var out = { type: t };
+    if (b.caption) out.caption = 資料の文(b.caption, 120);
+    var w = 資料の数(b.widthMm || b.maxWidthMm);
+    if (w !== null) out.widthMm = Math.max(20, Math.min(170, w));
+
+    if (t === "table") {
+      var rows = (Array.isArray(b.rows) ? b.rows : []).slice(0, 30).map(function (r) {
+        return (Array.isArray(r) ? r : [r]).slice(0, 12).map(function (c) { return 資料の文(c, 60); });
+      }).filter(function (r) { return r.length; });
+      if (!rows.length) return null;
+      out.rows = rows;
+      if (b.header === false) out.header = false;
+      if (b.headerColumn === true || b.rowHeader === true) out.headerColumn = true;
+      if (Array.isArray(b.align)) out.align = b.align.slice(0, 12).map(function (a) { return 資料の文(a, 8); });
+      if (b.note) out.note = 資料の文(b.note, 160);
+      return out;
+    }
+    if (t === "chart") {
+      var ct = str(b.chartType || b.chart || b.variant).toLowerCase();
+      out.chartType = グラフの型[ct] ? ct : "bar";
+      var 系 = Array.isArray(b.series) ? b.series
+        : (Array.isArray(b.values) ? [{ name: b.name, values: b.values }] : []);
+      out.series = 系.slice(0, 6).map(function (x, i) {
+        return { name: 資料の文(x && x.name, 20) || ("系列" + (i + 1)),
+                 values: (Array.isArray(x && x.values) ? x.values : []).slice(0, 40).map(資料の数) };
+      }).filter(function (x) { return x.values.length; });
+      if (!out.series.length) return null;
+      if (Array.isArray(b.labels)) out.labels = b.labels.slice(0, 40).map(function (l) { return 資料の文(l, 16); });
+      if (b.xLabel) out.xLabel = 資料の文(b.xLabel, 24);
+      if (b.yLabel) out.yLabel = 資料の文(b.yLabel, 24);
+      if (Array.isArray(b.x)) out.x = b.x.slice(0, 40).map(資料の数);
+      return out;
+    }
+    if (t === "numberline" || str(b.diagramType).toLowerCase() === "numberline") {
+      out.type = "numberline";
+      out.min = 資料の数(b.min); out.max = 資料の数(b.max);
+      if (out.min === null || out.max === null || out.max <= out.min) return null;
+      var st2 = 資料の数(b.step); if (st2 !== null && st2 > 0) out.step = st2;
+      out.marks = (Array.isArray(b.marks) ? b.marks : []).slice(0, 12).map(function (m) {
+        var at = 資料の数(m && (m.at !== undefined ? m.at : m.value));
+        if (at === null) return null;
+        return { at: at, open: m.open === true, label: 資料の文(m && m.label, 12) };
+      }).filter(Boolean);
+      return out;
+    }
+    if (t === "diagram") {
+      var dt = str(b.diagramType || b.variant).toLowerCase();
+      if (dt === "grid" || dt === "coordinate") {
+        out.diagramType = "grid";
+        ["xMin", "xMax", "yMin", "yMax", "step"].forEach(function (k) {
+          var v = 資料の数(b[k]); if (v !== null) out[k] = v;
+        });
+        out.points = (Array.isArray(b.points) ? b.points : []).slice(0, 24).map(function (p) {
+          var x = 資料の数(Array.isArray(p) ? p[0] : p && p.x);
+          var y = 資料の数(Array.isArray(p) ? p[1] : p && p.y);
+          if (x === null || y === null) return null;
+          return { x: x, y: y, label: 資料の文(Array.isArray(p) ? p[2] : p && p.label, 8) };
+        }).filter(Boolean);
+        return out;
+      }
+      var items = (Array.isArray(b.items || b.shapes || b.elements) ? (b.items || b.shapes || b.elements) : [])
+        .slice(0, 40).map(function (it) {
+          if (!it || typeof it !== "object") return null;
+          var k = str(it.type).toLowerCase();
+          if (!図形の型[k]) return null;
+          var o = { type: k };
+          ["x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "size", "radius",
+           "from", "to", "count", "width", "dx1", "dy1", "dx2", "dy2"].forEach(function (n) {
+            var v = 資料の数(it[n]); if (v !== null) o[n] = v;
+          });
+          if (it.label || it.text) o.label = 資料の文(it.label || it.text, 16);
+          if (k === "label" || k === "text") o.text = 資料の文(it.text || it.label, 24);
+          if (it.dashed === true) o.dashed = true;
+          if (it.hollow === true) o.hollow = true;
+          if (Array.isArray(it.points)) {
+            o.points = it.points.slice(0, 24).map(function (p) {
+              var x = 資料の数(Array.isArray(p) ? p[0] : p && p.x);
+              var y = 資料の数(Array.isArray(p) ? p[1] : p && p.y);
+              return (x === null || y === null) ? null : [x, y];
+            }).filter(Boolean);
+            if (!o.points.length) return null;
+          }
+          return o;
+        }).filter(Boolean);
+      if (!items.length) return null;
+      out.items = items;
+      return out;
+    }
+    if (t === "svg") {
+      var sv = str(b.svg || b.source || b.markup);
+      /* 中身の 見張りは VQFIG／VQSVG が する。ここでは 大きさだけ。 */
+      if (!sv || sv.length > 200 * 1024 || !/^\s*<svg[\s>]/i.test(sv)) return null;
+      out.svg = sv;
+      return out;
+    }
+    /* figure … 住所は 作らない。 */
+    var src = str(b.src || b.url);
+    if (!/^data:image\//.test(src) && !/^\/api\/media\//.test(src)) return null;
+    out.src = src;
+    if (b.credit && typeof b.credit === "object") {
+      out.credit = {
+        author: 資料の文(b.credit.author, 60), license: 資料の文(b.credit.license, 40),
+        licenseUrl: 資料の文(b.credit.licenseUrl, 200), page: 資料の文(b.credit.page, 200),
+        source: 資料の文(b.credit.source, 40)
+      };
+    }
+    return out;
+  }
+
+  function 資料ブロック(q) {
+    if (!q || typeof q !== "object") return [];
+    /* 置き場所の ゆれ。どれで 来ても 受ける。 */
+    var 生 = [];
+    ["contentBlocks", "materials", "figures", "資料"].forEach(function (k) {
+      if (Array.isArray(q[k])) 生 = 生.concat(q[k]);
+    });
+    ["figure", "table", "chart", "diagram"].forEach(function (k) {
+      if (q[k] && typeof q[k] === "object" && !Array.isArray(q[k])) {
+        生.push(Object.assign({ type: k }, q[k]));
+      }
+    });
+    var 出 = [];
+    for (var i = 0; i < 生.length && 出.length < 4; i++) {
+      var b = 一つの資料(生[i]);
+      if (b) 出.push(b);
+    }
+    return 出;
+  }
+
   function fromDraft(draft, opts) {
     opts = opts || {};
     draft = draft || {};
@@ -11546,7 +11707,11 @@
           prompt: str(q.question),
           promptRichText: null,
           media: [],
-          contentBlocks: [],
+          /* ★ 資料（図・グラフ・図形・表）を 問題に 付ける（2026-08-30）。
+             ここが ずっと [] だったので、AI が 表や グラフを 返しても
+             **紙面へ 一つも 出ていなかった**。
+             受けるのは 決まった 形だけ。知らない ものは 捨てる。 */
+          contentBlocks: 資料ブロック(q),
           choices: choices,
           correctAnswer: choices.length ? null : correctText,
           acceptedAnswers: choices.length ? [] : (correctText ? [correctText] : []),
@@ -19024,6 +19189,9 @@
       questionPlan: o.questionPlan || undefined,
       maxRounds: o.maxRounds || undefined,
       maxCalls: o.maxCalls || undefined,
+      /* 資料（図・表・グラフ）を 付けてもらうか。
+         ここへ 通していないと、画面で「付ける」に しても サーバは 知らない。 */
+      materials: o.materials === true ? true : undefined,
       files: o.files || undefined
     };
     var t0 = Date.now();
@@ -19266,6 +19434,8 @@
            **資料つきの 注文が 資料なしで 作られて** いた。
            サーバ側は track のときも files を 読む（同じ 入口）。 */
         files: o.files || undefined,
+        /* 図・表・グラフ。ここも 通す（片方だけ 通すと 台帳経由で 消える）。 */
+        materials: o.materials === true ? true : undefined,
         track: true,
         /* ★ **同じ注文の 目印**（2026-08-29）。1 回の「作って」は 中で
            2〜3 回に 分けて 頼まれる。画面を 閉じたまま 終わったとき、

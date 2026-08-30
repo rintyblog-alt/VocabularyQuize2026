@@ -46779,6 +46779,35 @@ function aigenLengthLimits(text) {
 }
 
 /* 字数の注文を、AI へ渡す文にする。無ければ空。 */
+/* ══ 資料（図・表・グラフ）を 付けて もらう — 2026-08-30 ═══════════
+   訴え「資料問題（フリー画像・SVG・表や図形の 正確な 描画）」
+
+   ★ **SVG も 組版も 書かせない。** 出させるのは 数と 名前だけ。
+     線を 引くのは 画面側（vq-fig.js）。こうしないと 目盛りが 合わず、
+     軸が ずれ、印刷で はみ出す（Workplace の グラフで 実際に 踏んだ）。
+   ★ 画像も 頼まない。住所を 作り話で 書いてくるだけで、印刷で 取りに
+     行けず 白い 四角に なる。絵は 利用者が 選んだ ものだけ 使う。
+   ★ 付けられない ときは **付けない**。飾りの 表を 作らせない。 */
+function aigenMaterialsNote(on) {
+  if (!on) return "";
+  return [
+    "【資料（図・表・グラフ）】",
+    "資料を 見ないと 解けない 問題には、その 資料を **数で** 付けてください。",
+    "問題の オブジェクトに materials という配列を足します（0〜2 個）。使えるのは次の 3 つだけです。",
+    '\u3000表:     {"type":"table","caption":"…","rows":[["年","人口"],["2020","1250"]],"headerColumn":false}',
+    '\u3000グラフ: {"type":"chart","chartType":"bar|line|pie|scatter","caption":"…",'
+      + '"labels":["1月","2月"],"series":[{"name":"A","values":[12,34]}],"xLabel":"","yLabel":""}',
+    '\u3000図形:   {"type":"diagram","caption":"…","items":['
+      + '{"type":"polygon","points":[[0,0],[4,0],[0,3]]},{"type":"point","x":0,"y":0,"label":"A"},'
+      + '{"type":"rightangle","x":0,"y":0,"dx1":1,"dy1":0,"dx2":0,"dy2":1}]}',
+    "\u3000\u3000図形で 使えるのは point / segment / line / ray / arrow / polygon / polyline /",
+    "\u3000\u3000circle / label / angle / rightangle / tick だけ。座標は 数学の 向き（y が 大きいほど 上）。",
+    "★ **SVG・HTML・LaTeX の 絵・画像の URL は 書かないでください。** 上の 形以外は 捨てられます。",
+    "★ 問題文は 資料を 指して 書きます（「表 1 から…」「図の \u25b3ABC で…」）。",
+    "★ 資料が 要らない 問題には 付けません。飾りの 表は 作らないでください。"
+  ].join("\n");
+}
+
 function aigenLengthNote(lim) {
   if (!lim) return "";
   const rows = [];
@@ -47873,6 +47902,8 @@ async function aigenAskMulti(env, want, o = {}) {
     blocks,
     /* 字数の注文（「解説は60字以内で」）。読めたときだけ入る。 */
     aigenLengthNote(o.lengths),
+    /* 資料（図・表・グラフ）。頼まれたときだけ入る。 */
+    aigenMaterialsNote(o.materials),
     /* **「根拠は○○です」だけの解説は役に立たない。**
        何が正しいか・なぜそうなるか・ほかがなぜ違うかまで書かせる。
        ★ 字数の注文があるときは、その字数で書かせる（aigenExplainNote）。 */
@@ -48079,6 +48110,8 @@ async function aigenAskOnce(env, engineId, n, o = {}) {
     specRule,
     /* 字数の注文（「解説は60字以内で」）。読めたときだけ入る。 */
     aigenLengthNote(o.lengths),
+    /* 資料（図・表・グラフ）。頼まれたときだけ入る。 */
+    aigenMaterialsNote(o.materials),
     /* **「根拠は○○です」だけの解説は役に立たない。**
        何が正しいか・なぜそうなるか・ほかがなぜ違うかまで書かせる。
        ★ 字数の注文があるときは、その字数で書かせる（aigenExplainNote）。
@@ -49513,6 +49546,8 @@ async function aigenGenerate(env, contract, o = {}) {
         avoid: (o.avoidSeed || [])
           .concat(accepted.slice(-12).map((q) => String(q.question || "").slice(0, 60)).filter(Boolean))
           .slice(-40),
+        /* 資料（図・表・グラフ）。頼まれたときだけ。 */
+        materials: !!o.materials,
         files: o.files, forceProvider: o.forceProvider, forceModel: o.forceModel,
         /* 天井が近いときは、控えへ回り込まない（0 問で落ちるのを防ぐ） */
         narrow: metrics.aiCalls >= Math.max(2, Math.floor(maxCalls / 2))
@@ -51258,6 +51293,9 @@ async function handleAiGenQuestions(request, env, ctx) {
   const dev = String(env?.AI_PROBE_ENABLED || "") === "1";
   const genOpts = {
     topic: prompt + 時事の材料, files, maxRounds: body?.maxRounds, maxCalls: body?.maxCalls,
+    /* 資料（図・表・グラフ）を 付けるか。画面が はっきり 頼んだ ときだけ。
+       既定で 付けると、要らない ところに 飾りの 表が 出る。 */
+    materials: body?.materials === true,
     forceProvider: dev ? toSafeString(body?.provider || "", 20) || undefined : undefined,
     forceModel: dev ? toSafeString(body?.model || "", 120) || undefined : undefined
   };
