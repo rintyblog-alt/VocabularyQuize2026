@@ -11694,6 +11694,26 @@
       .slice(0, n || 4000);
   }
 
+  /* 傍線の 指定を そろえる。**本文の 一部**と **記号**だけを 受ける。
+     何文字目、のような 位置は 受けない（ずれると 別の ところに 線が 引かれる）。 */
+  var 傍線の型 = { solid: 1, wave: 1, wavy: 1, double: 1 };
+  function 傍線をそろえる(v) {
+    if (!Array.isArray(v) || !v.length) return null;
+    var 出 = [];
+    v.slice(0, 12).forEach(function (u) {
+      if (!u || typeof u !== "object") return;
+      var t = 資料の文(u.text || u.excerpt || u.target, 200).trim();
+      if (t.length < 2) return;
+      var 型 = str(u.style || u.kind || "solid").toLowerCase();
+      出.push({
+        marker: 資料の文(u.marker || u.label || "", 4).trim(),
+        style: 傍線の型[型] ? (型 === "wavy" ? "wave" : 型) : "solid",
+        text: t
+      });
+    });
+    return 出.length ? 出 : null;
+  }
+
   function 一つの資料(b) {
     if (!b || typeof b !== "object") return null;
     var t = str(b.type || b.kind).toLowerCase();
@@ -11712,6 +11732,8 @@
     if (w !== null) out.widthMm = Math.max(20, Math.min(170, w));
 
     if (t === "table") {
+      var 表傍 = 傍線をそろえる(b.underlines || b.underline || b.marks);
+      if (表傍) out.underlines = 表傍;
       var rows = (Array.isArray(b.rows) ? b.rows : []).slice(0, 30).map(function (r) {
         return (Array.isArray(r) ? r : [r]).slice(0, 12).map(function (c) { return 資料の文(c, 60); });
       }).filter(function (r) { return r.length; });
@@ -11798,6 +11820,9 @@
       /* 会話文・資料。**表の 形**（ラベル｜中身）でも 受ける。 */
       var o2 = { type: (t === "text" ? "passage" : t) };
       if (b.caption) o2.caption = 資料の文(b.caption, 120);
+      /* ★ 傍線部（2026-08-30）。引く 場所は **本文の 一部**で 指す。 */
+      var 傍 = 傍線をそろえる(b.underlines || b.underline || b.marks);
+      if (傍) o2.underlines = 傍;
       if (Array.isArray(b.entries)) {
         o2.entries = b.entries.slice(0, 12).map(function (e) {
           if (!e) return null;
@@ -28902,6 +28927,10 @@
         /* 共通テストは 見出しと 指示文を **1 行**に 組む（実物）。 */
         style: (lprofile && lprofile.sectionStyle && lprofile.sectionStyle.oneLine === true)
           ? "common-test" : null,
+        /* ★ 「次の問い（問1〜6）に答えよ。」の **6**（2026-08-30・訴え
+           「第n問を 入れて 大枠に してから、そこに 問n を 入れたら」）。
+           実物は 大問の 見出しに 中の 小問の 数が 必ず 書いてある。 */
+        questionCount: (sec.questions || []).length,
         showPoints: lprofile ? lprofile.sectionStyle.showPoints !== false : true
       });
 
@@ -28968,6 +28997,10 @@
         blocks.push({
           type: "question", id: q.id, questionId: q.id, sectionId: sec.id,
           number: q.number, text: q.prompt, points: q.points,
+          /* ★ 設問文そのものにも 傍線を 引ける（2026-08-30）。
+             「傍線部① と あるが」の ような 言い方の ほかに、
+             設問文の 一部に 線を 引く 出しかたも 実物に ある。 */
+          underlines: q.underlines,
           answerBindingId: q.answerBindingId, questionType: q.type,
           marker: pq ? pq.marker : null,
           /* ★ 共通テストは 設問の 末尾に「解答番号は ｜1｜。」が 付く（実物）。
@@ -29642,7 +29675,43 @@
     } catch (e) { return h; }
   }
 
-  function rich(text, vertical) {
+  /* ══ 傍線部・波線部（2026-08-30・訴え）════════════════════════════
+     訴え「下線部や棒線部、波線など（棒線部①、ⅰ、A、a など 記号も 入れつつ
+           複数 入れてみたり 単数でも いいし）の 問題が 1 つも 見当たらない」
+
+     ★ **AI に タグを 書かせない。** 引く 場所は
+         underlines: [{ marker:"①", style:"solid|wave|double", text:"本文の 一部" }]
+       で 出させ、**本文の 中の その 文字列を 探して**線を 引く。
+       見つからない ときは **引かない**（違う ところに 線を 引くと 別の 問題に なる）。
+     ★ 記号は 本文の 直前に 小さく 乗せる（実物と 同じ）。
+     ★ 本文でも 表の マスでも 同じ 関数を 通す。 */
+  var 傍線の記号 = /^[\u2460-\u2473\u2170-\u217f\u2160-\u216fA-Za-zア-ンぁ-んｉⅰ0-9（）()]{1,4}$/;
+  function 傍線を引く(h, 並) {
+    if (!Array.isArray(並) || !並.length) return h;
+    var 出 = h;
+    並.slice(0, 12).forEach(function (u) {
+      if (!u || typeof u !== "object") return;
+      var 元 = String(u.text || u.excerpt || "").trim();
+      if (元.length < 2) return;
+      var 印 = String(u.marker || u.label || "").trim();
+      if (印 && !傍線の記号.test(印)) 印 = "";
+      var 型 = String(u.style || u.kind || "solid").toLowerCase();
+      var cls = "ub" + (型 === "wave" || 型 === "wavy" || 型 === "波" ? " is-wave"
+              : (型 === "double" || 型 === "二重" ? " is-double" : ""));
+      /* esc 済みの 中を 探すので、探す ほうも 同じ 手で 逃がす。 */
+      var 探 = esc(元);
+      var at = 出.indexOf(探);
+      if (at < 0) return;
+      /* すでに 線の 中なら 引かない（入れ子に しない）。 */
+      var 前 = 出.slice(0, at);
+      if ((前.split('<span class="ub').length - 1) > (前.split("</span>").length - 1)) return;
+      var 札 = 印 ? '<span class="ubm">' + esc(印) + "</span>" : "";
+      出 = 前 + 札 + '<span class="' + cls + '">' + 探 + "</span>" + 出.slice(at + 探.length);
+    });
+    return 出;
+  }
+
+  function rich(text, vertical, 下線) {
     /* ★ 先に 参照記号だけを 取り分けておく。esc() を通すと
        記号は そのままだが、SVG を先に入れると タグが壊れる。
        だから **エスケープしてから** 差し込む（下の 数式を差し込む）。 */
@@ -29675,6 +29744,8 @@
       return '<span class="' + cls + '">' + k + "</span>";
     });
     h = h.replace(/_{3,}/g, '<span class="blank"></span>');
+    /* 傍線は 改行へ 変える 前に 引く（<br> を またぐ 線も ある）。 */
+    h = 傍線を引く(h, 下線);
     h = h.replace(/\n/g, "<br>");
     /* ★ いちばん最後に 数式を差し込む。**エスケープのあと**でないと
        SVG のタグが esc() に潰される。 */
@@ -30080,13 +30151,18 @@
       ".ct-run-s { font-size: " + (base - 1) + "pt; margin-top: 1.5mm; }",
 
       /* ══ 大問の 見出し（1 行に 第n問 ＋ 指示 ＋ 配点）══════════════ */
-      ".sec.is-ct { display: flex; align-items: baseline; gap: 3mm;",
-      "             margin: 0 0 5mm; font-size: " + base + "pt; }",
+      /* ══ 第n問の 見出し（実物・地理A の 紙面に そろえた・2026-08-30）
+         第1問␣␣本文…（2 行目からは 本文の 頭に そろう）
+         「（配点 20）」は 右へ 飛ばさず、本文の 続きに 置く。 */
+      ".sec.is-ct { display: flex; align-items: baseline; gap: 2mm;",
+      "             margin: 0 0 5mm; font-size: " + base + "pt; line-height: 1.75; }",
       ".sec.is-ct .sec-no { flex: 0 0 auto; font-family: " + GOTHIC + "; font-weight: 700;",
-      "                     font-size: " + (base + 1) + "pt; }",
-      ".sec.is-ct .sec-ct-i { flex: 1 1 auto; }",
-      ".sec.is-ct .sec-pts { flex: 0 0 auto; margin-left: auto; white-space: nowrap;",
-      "                      font-size: " + (base - 0.5) + "pt; }",
+      "                     font-size: " + (base + 0.5) + "pt; letter-spacing: .02em; }",
+      ".sec.is-ct .sec-ct-i { flex: 1 1 auto; text-align: justify; }",
+      ".sec.is-ct .sec-pts { float: none; margin-left: .6em; white-space: nowrap;",
+      "                      font-weight: 400; font-size: " + (base - 0.5) + "pt; }",
+      /* 第n問の かたまり。ここで 切ると 大問ごとに ページが 分かれる。 */
+      ".ct-sec { break-inside: auto; }",
 
       /* ══ 設問の 末尾の「解答番号は ｜1｜。」════════════════════════ */
       ".q-ano { white-space: nowrap; margin-left: .4em; }",
@@ -30200,6 +30276,18 @@
       "      font-family: " + GOTHIC + "; letter-spacing: .12em; margin: 0 .15em;",
       "      vertical-align: baseline; }",
       ".bx.is-again { border-width: 0.4pt; }",
+      /* ── 傍線部・波線部（2026-08-30）──────────────────────────
+         実物は 本文の 上に 細い 線、記号は 線の 手前に 小さく 乗る。
+         印刷でも 出るよう、border-bottom で 引く
+         （text-decoration は 縦書きで 位置が ずれる）。 */
+      ".ub { border-bottom: 0.6pt solid #000; padding-bottom: 0.3mm; }",
+      ".ub.is-wave { border-bottom: 0; text-decoration: underline wavy #000;",
+      "              text-decoration-thickness: 0.5pt; text-underline-offset: 2px; }",
+      ".ub.is-double { border-bottom: 0.5pt double #000; }",
+      ".ubm { font-size: .74em; font-family: " + GOTHIC + "; vertical-align: super;",
+      "       margin-right: .1em; letter-spacing: 0; }",
+      vertical ? ".ub { border-bottom: 0; border-right: 0.6pt solid #000; padding-right: 0.3mm; }" : "",
+      vertical ? ".ub.is-wave { border-right: 0; text-decoration: underline wavy #000; }" : "",
       ".bx.is-wide { min-width: 10.8mm; }",
       ".bx.is-sup { font-size: .78em; min-width: 3.6mm; }",
 
@@ -30610,12 +30698,23 @@
         /* ★ 共通テストは **1 行**に「第1問　次の…に答えよ。」＋ 右端に「（配点 20）」
            （実物・情報 I100）。見出しと 指示文を 段に 分けない。 */
         if (b.style === "common-test") {
+          /* ══ 実物の 組みかた（2026-08-30・訴え／地理A の 紙面を 見て 直した）
+             第1問␣␣地図の読み取りと活用，および日本の…に関する次の問い
+             　　　　（問1〜6）に答えよ。（配点 20）
+             ・「第1問」は 太ゴシック。**次の 行から 下は 頭が そろう**（ぶら下げ）
+             ・「（問1〜6）に答えよ。」は 本文の 続きに 入れる
+             ・「（配点 20）」は その あとに 続けて 置く（右へ 飛ばさない） */
+          var 問数 = Number(b.questionCount) || 0;
+          var 本 = b.text ? rich(b.text, vertical, b.underlines) : esc(b.title || "");
+          if (問数 >= 1) {
+            本 += "次の問い（問1〜" + 問数 + "）に答えよ。";
+          }
+          if (b.points != null && b.showPoints !== false) {
+            本 += '<span class="sec-pts">（配点　' + b.points + "）</span>";
+          }
           return '<div class="sec is-ct"' + (b.pageBreakBefore ? ' style="page-break-before:always;break-before:page"' : "") + ">"
             + '<span class="sec-no">' + esc(b.marker || ("第" + b.number + "問")) + "</span>"
-            + '<span class="sec-ct-i">' + (b.text ? rich(b.text, vertical) : esc(b.title || "")) + "</span>"
-            + (b.points != null && b.showPoints !== false
-                ? '<span class="sec-pts">（配点　' + b.points + "）</span>" : "")
-            + "</div>";
+            + '<span class="sec-ct-i">' + 本 + "</span></div>";
         }
         return '<div class="sec"' + (b.pageBreakBefore ? ' style="page-break-before:always;break-before:page"' : "") + ">"
           + '<span class="sec-no' + (b.markerVariant === "boxed" ? " is-boxed" : "") + '">'
@@ -30629,20 +30728,21 @@
           return '<table class="src-tb" data-block="' + esc(b.id) + '">'
             + b.entries.slice(0, 12).map(function (e) {
                 return "<tr><th>" + esc(e.label || "") + "</th><td>"
-                  + rich(e.text || "", vertical) + "</td></tr>";
+                  + rich(e.text || "", vertical, b.underlines) + "</td></tr>";
               }).join("") + "</table>";
         }
         return '<div class="src' + (b.round ? " is-round" : "") + '" data-block="' + esc(b.id) + '">'
-          + rich(b.text, vertical)
+          + rich(b.text, vertical, b.underlines)
           + (b.caption ? '<div class="src-cap">' + esc(b.caption) + "</div>" : "") + "</div>";
 
       case "passage":
-        return '<div class="src" data-block="' + esc(b.id) + '">' + rich(b.text, vertical) + "</div>";
+        return '<div class="src" data-block="' + esc(b.id) + '">'
+          + rich(b.text, vertical, b.underlines) + "</div>";
 
       case "dialogue":
         /* 会話文は 角丸の 枠（実物の 第1問）。 */
         return '<div class="dlg' + (b.round === false ? "" : " is-round") + '" data-block="'
-          + esc(b.id) + '">' + rich(b.text, vertical) + "</div>";
+          + esc(b.id) + '">' + rich(b.text, vertical, b.underlines) + "</div>";
 
       /* ── 資料（図・グラフ・図形・表）─────────────────────────
          描くのは vq-fig.js（VQFIG）。読めていない ときだけ、
@@ -30677,7 +30777,7 @@
         if (kind === "answer-key") return renderAnswerKey(b, vertical);
         return '<div class="q" data-question="' + esc(b.questionId) + '" data-binding="' + esc(b.answerBindingId || "") + '">'
           + '<div class="q-head"><span class="q-no">' + esc(b.marker || ("問" + b.number)) + "</span>"
-          + '<span class="q-text">' + rich(b.text, vertical)
+          + '<span class="q-text">' + rich(b.text, vertical, b.underlines)
           /* ★ 共通テストは 末尾に「解答番号は ｜1｜。」（実物・情報 I100）。
              欄が どこに 当たるかを 受験者に 示す ためのもの。 */
           + (b.answerNo != null
@@ -30793,6 +30893,13 @@
      幅は Planner が決めている。ここでは受け取った幅をそのまま使い、広げない。
      図の縦横比は変えない（object-fit しない・height を指定しない）。 */
   function oneFigure(f) {
+    /* ★ 傍線の ある 表は SVG に しない（線を 引く 場所を 指せない）。
+       図まとめの 道も 通るので、ここでも 同じ 判断を する（2026-08-30）。 */
+    if (f && f.type === "table" && Array.isArray(f.underlines) && f.underlines.length) {
+      return '<div class="fgi" data-block="' + esc(f.id) + '">'
+        + (f.title ? '<div class="fgi-t">' + esc(f.title) + "</div>" : "")
+        + renderTable(Object.assign({}, f, { id: f.id + "-t" })) + "</div>";
+    }
     var 図 = 資料を描く(f);
     if (図) {
       return '<div class="fgi" data-block="' + esc(f.id) + '">'
@@ -31370,22 +31477,35 @@
     return h + "</div></div>";
   }
 
+  /* ★ 表の マスにも 傍線を 引く（2026-08-30・訴え「表に 棒線部などを 入れたり」）。
+     キャプションと 注も 実物どおり 表の 下に 置く。 */
+  function 素の表(b, rows) {
+    var h = '<table class="tbl" data-block="' + esc(b.id) + '">'
+      + rows.map(function (r, i) {
+          var tag = i === 0 && b.header !== false ? "th" : "td";
+          return "<tr>" + (Array.isArray(r) ? r : [r]).map(function (c) {
+            return "<" + tag + ">" + rich(c, false, b.underlines) + "</" + tag + ">";
+          }).join("") + "</tr>";
+        }).join("") + "</table>";
+    if (b.caption) h += '<div class="src-cap">' + esc(b.caption) + "</div>";
+    if (b.note) h += '<div class="fig-note">' + esc(b.note) + "</div>";
+    return h;
+  }
+
   function renderTable(b) {
     var rows = Array.isArray(b.rows) ? b.rows : [];
     if (!rows.length) return "";
+    /* ★ 傍線の ある 表は **HTML の 表**で 組む（2026-08-30）。
+       VQFIG は SVG で 描くので、線を 引く 場所を 指せない。
+       線が 要る ときだけ こちらへ 落とす（ふつうの 表は これまでどおり）。 */
+    if (Array.isArray(b.underlines) && b.underlines.length) return 素の表(b, rows);
     /* 表も VQFIG が 正（列ごとの 寄せ・見出しの 列・うめる マス）。 */
     var t = 資料を描く({ type: "table", id: b.id, rows: rows, header: b.header,
                         headerColumn: b.headerColumn || b.rowHeader, align: b.align,
                         columnWidths: b.columnWidths, caption: b.caption, note: b.note,
                         credit: b.credit, widthMm: b.widthMm });
     if (t) return t;
-    return '<table class="tbl" data-block="' + esc(b.id) + '">'
-      + rows.map(function (r, i) {
-          var tag = i === 0 && b.header !== false ? "th" : "td";
-          return "<tr>" + (Array.isArray(r) ? r : [r]).map(function (c) {
-            return "<" + tag + ">" + esc(c) + "</" + tag + ">";
-          }).join("") + "</tr>";
-        }).join("") + "</table>";
+    return 素の表(b, rows);
   }
 
   function renderAnswerKey(b, vertical) {
