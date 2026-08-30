@@ -14290,9 +14290,226 @@
     return { total: total, byType: byType };
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     試験は **プリセットの 一種**（器の 統合・2026-08-30）
+
+     これまで 試験は vq2.mocks.v1 という 別の 置き場に あった。
+     そのせいで、プリセットが 当たり前に 持っている ものが 全部 効かなかった:
+       ・一覧に 並ばない（一覧は プリセットの DOM から 作られる）
+       ・公開・共有できない ・編集の 画面が 使えない
+       ・お気に入り・検索・絞り込みが 効かない
+     中身は もともと **問題の 集まり**で、プリセットと 同じもの。
+     違うのは「大問に 分かれている」「表紙が ある」「解答用紙が ある」だけ。
+     だから **preset.exam に その 3 つを 足す**形へ 寄せた。
+
+       preset {
+         id, name, questions[]   ← 試験の 全設問。ここは これまでどおり
+         exam: {                 ← 試験の ときだけ 付く
+           cover, sections[{ id, number, title, points, questionIds[] }],
+           answerBindings[], paper, layout,
+           durationMinutes, totalPoints, subject, grade, sourceMode
+         }
+       }
+
+     ★ sections は **questionIds で 指す**。問題の 実体を 2 か所に 置かない。
+       2 か所に 置くと、片方だけ 直したときに 静かに ずれる。
+     ★ 下流（紙面・受験・採点）は MockSpec の 形しか 知らない。
+       読み替えは **examOf の 1 か所**だけ。各所で 形を 見ない。
+     ══════════════════════════════════════════════════════════════════ */
+  /* この 節でしか 使わない 小道具（この 束の 中に 同じ 名前が 無いので ここで 作る）。 */
+  function 文(v) { return v === undefined || v === null ? "" : String(v); }
+  function 数か(v) { return typeof v === "number" && isFinite(v); }
+
+  function isExam(p2) {
+    return !!(p2 && p2.exam && Array.isArray(p2.exam.sections) && p2.exam.sections.length);
+  }
+
+  /* preset → MockSpec。紙面も 受験も 採点も この 形を 見る。 */
+  function examOf(p2) {
+    if (!isExam(p2)) return null;
+    var e = p2.exam;
+    var byId = Object.create(null);
+    (p2.questions || []).forEach(function (q) { if (q && q.id) byId[q.id] = q; });
+    var sections = [];
+    (e.sections || []).forEach(function (sec) {
+      var qs = [];
+      (sec.questionIds || []).forEach(function (qid) {
+        var q = byId[qid];
+        if (q) qs.push(q);
+      });
+      /* 設問が 1 つも 引けない 大問は 出さない（空の 大問は 紙面を 壊す）。 */
+      if (!qs.length) return;
+      sections.push({
+        id: 文(sec.id) || ("s" + (sections.length + 1)),
+        number: 数か(sec.number) ? sec.number : (sections.length + 1),
+        title: 文(sec.title),
+        instructions: 文(sec.instructions),
+        points: 数か(sec.points) ? sec.points
+          : qs.reduce(function (a, q) { return a + (Number(q.points) || 0); }, 0),
+        questions: qs
+      });
+    });
+    var 満点 = 数か(e.totalPoints) ? e.totalPoints
+      : sections.reduce(function (a, x) { return a + (Number(x.points) || 0); }, 0);
+    return {
+      id: p2.id,
+      schemaVersion: p2.schemaVersion || S.SCHEMA_VERSION,
+      ownerId: p2.ownerId || "",
+      title: 文(p2.name) || 文(e.cover && e.cover.examName) || "試験",
+      subject: 文(e.subject || (e.cover && e.cover.subject)),
+      grade: 文(e.grade),
+      audience: 文(e.audience),
+      durationMinutes: 数か(e.durationMinutes) ? e.durationMinutes : 50,
+      totalPoints: 満点,
+      instructions: 文(e.instructions),
+      sourceMode: 文(e.sourceMode) || "open",
+      sourceReferences: Array.isArray(e.sourceReferences) ? e.sourceReferences : [],
+      cover: e.cover || null,
+      sections: sections,
+      answerBindings: Array.isArray(e.answerBindings) ? e.answerBindings : [],
+      paper: e.paper || { size: "A4", orientation: "portrait", columns: 1,
+                          writingDirection: "horizontal",
+                          margins: { top: 20, bottom: 20, left: 18, right: 18 } },
+      layout: e.layout || {},
+      gradingPolicy: e.gradingPolicy || null,
+      layoutManifest: e.layoutManifest || null,
+      createdAt: p2.createdAt || nowIso(),
+      updatedAt: p2.updatedAt || nowIso()
+    };
+  }
+
+  /* MockSpec → preset。作る側（vq-make）と 引っ越しの 両方が ここを 通る。 */
+  function presetFromSpec(spec, o) {
+    o = o || {};
+    if (!spec || !Array.isArray(spec.sections)) return null;
+    var questions = [];
+    var sections = (spec.sections || []).map(function (sec, i) {
+      var ids = [];
+      (sec.questions || []).forEach(function (q) {
+        if (!q || !q.id) return;
+        questions.push(q);
+        ids.push(q.id);
+      });
+      return {
+        id: 文(sec.id) || ("s" + (i + 1)),
+        number: 数か(sec.number) ? sec.number : (i + 1),
+        title: 文(sec.title),
+        instructions: 文(sec.instructions),
+        points: 数か(sec.points) ? sec.points : null,
+        questionIds: ids
+      };
+    }).filter(function (x) { return x.questionIds.length; });
+    /* 設問が 1 問も 無い ものは 試験に しない。
+       空の 試験を 置くと、一覧に 出るのに 開けない 札に なる。 */
+    if (!questions.length || !sections.length) return null;
+    var 前 = o.base || null;
+    return {
+      id: 文(spec.id) || S.newId("preset"),
+      schemaVersion: S.SCHEMA_VERSION,
+      name: 文(spec.title) || "試験",
+      description: (前 && 文(前.description)) || "",
+      /* 見た目は 表紙で 見せるので、絵は 付けない（表紙の 縮小見本が 出る）。 */
+      appearance: (前 && 前.appearance) || null,
+      visibility: (前 && 文(前.visibility)) || "private",
+      tags: (前 && Array.isArray(前.tags)) ? 前.tags : [],
+      questions: questions,
+      exam: {
+        cover: spec.cover || null,
+        sections: sections,
+        answerBindings: Array.isArray(spec.answerBindings) ? spec.answerBindings : [],
+        paper: spec.paper || null,
+        layout: spec.layout || null,
+        layoutManifest: o.manifest || spec.layoutManifest || null,
+        gradingPolicy: spec.gradingPolicy || null,
+        durationMinutes: 数か(spec.durationMinutes) ? spec.durationMinutes : 50,
+        totalPoints: 数か(spec.totalPoints) ? spec.totalPoints : null,
+        subject: 文(spec.subject),
+        grade: 文(spec.grade),
+        audience: 文(spec.audience),
+        instructions: 文(spec.instructions),
+        sourceMode: 文(spec.sourceMode) || "open",
+        sourceReferences: Array.isArray(spec.sourceReferences) ? spec.sourceReferences : [],
+        /* 直しきれていない ところ。開き直したとき どこが 未完成か 分かるように。 */
+        requiresReview: o.requiresReview === true,
+        openIssues: Array.isArray(o.openIssues) ? o.openIssues.slice(0, 50) : []
+      },
+      createdAt: (前 && 前.createdAt) || spec.createdAt || nowIso(),
+      updatedAt: nowIso()
+    };
+  }
+
+  function listExams(opts) {
+    引っ越す();
+    return listPresets(opts).filter(isExam);
+  }
+  function getExam(id) {
+    引っ越す();
+    var p2 = getPreset(id);
+    return isExam(p2) ? examOf(p2) : null;
+  }
+  function getExamPreset(id) {
+    引っ越す();
+    var p2 = getPreset(id);
+    return isExam(p2) ? p2 : null;
+  }
+  function saveExam(spec, opts) {
+    opts = opts || {};
+    var 前 = getPreset(文(spec && spec.id));
+    var p2 = presetFromSpec(spec, { base: 前, manifest: opts.manifest,
+      requiresReview: opts.requiresReview, openIssues: opts.openIssues });
+    if (!p2) return { ok: false, error: "BAD_SPEC", message: "試験の形になっていません。" };
+    /* 試験は 作りかけでも 置いておけないと 困る（1 回で 完成しない）。
+       指摘は 一緒に 残して、force で 通す。何が 残っているかは 呼び側が 出す。 */
+    return savePreset(p2, { ownerId: opts.ownerId, force: opts.force !== false });
+  }
+
+  /* 昔の 置き場（vq2.mocks.v1）から 引っ越す。1 回だけ・取りこぼさない。
+     ★ 昔の ぶんは **消さない**。引っ越しが 間違っていたときに 戻せなくなる。
+       同じ id が プリセットに 在れば、以後 そちらが 正。 */
+  var 引っ越し済み = false;
+  function 引っ越す() {
+    if (引っ越し済み) return 0;
+    引っ越し済み = true;
+    var 数 = 0;
+    try {
+      if (readAll(K.presets).some(function (x) { return x && x.__examMigrated; })) {
+        /* 目印だけ 見て 済ませない。取りこぼしが あるかも しれないので 続ける。 */
+      }
+      var 並 = mine(readAll(K.mocks));
+      if (!並.length) return 0;
+      var 在る = Object.create(null);
+      readAll(K.presets).forEach(function (x) { if (x && x.id) 在る[String(x.id)] = 1; });
+      並.forEach(function (r) {
+        var sp = r && (r.spec || r);
+        if (!sp || !Array.isArray(sp.sections) || !sp.sections.length) return;
+        var id = String(r.id || sp.id || "");
+        if (!id || 在る[id]) return;
+        var p2 = presetFromSpec(Object.assign({}, sp, { id: id }), {
+          manifest: r.manifest, requiresReview: r.requiresReview === true,
+          openIssues: r.openIssues
+        });
+        if (!p2) return;
+        p2.__examMigrated = true;
+        p2.createdAt = r.createdAt || p2.createdAt;
+        var w = savePreset(p2, { ownerId: r.ownerId, force: true, mirrorToV1: false });
+        if (w && w.ok) 数++;
+      });
+    } catch (e) {}
+    return 数;
+  }
+
   VQ2.store = {
     KEYS: K,
     LEGACY_PRESETS_KEY: LEGACY_PRESETS_KEY,
+    /* 試験（器は preset。読み替えは examOf の 1 か所だけ） */
+    isExam: isExam,
+    examOf: examOf,
+    presetFromSpec: presetFromSpec,
+    listExams: listExams,
+    getExam: getExam,
+    getExamPreset: getExamPreset,
+    saveExam: saveExam,
+    migrateExams: 引っ越す,
     currentOwnerId: currentOwnerId,
     listPresets: listPresets,
     getPreset: getPreset,
@@ -55134,8 +55351,13 @@
         app.toast("紙面の部品が読み込まれていません。", "warning"); return;
       }
       var mockId = result.mockId || result.presetId;
-      var rec = mockId && ST.mocks ? ST.mocks.get(mockId) : null;
-      var spec = rec && (rec.spec || rec);
+      /* 器は preset（2026-08-30）。昔の 置き場にしか 無い ものも 拾う。 */
+      var spec = null;
+      try { spec = mockId && ST.getExam ? ST.getExam(mockId) : null; } catch (e) {}
+      if (!spec && mockId && ST.mocks) {
+        var rec = ST.mocks.get(mockId);
+        spec = rec && (rec.spec || rec);
+      }
       if (!spec || !spec.sections) {
         app.toast("元の試験が見つかりません（消されたか、別の端末で作られたものです）。", "warning");
         return;
@@ -56597,9 +56819,12 @@
     }
 
     if (o.mockId) {
-      var loaded = ST.mocks.get(o.mockId);
+      /* 器は preset（2026-08-30）。無ければ 昔の 置き場も 見る。 */
+      var loaded = null;
+      try { loaded = ST.getExam ? ST.getExam(o.mockId) : null; } catch (e) {}
+      if (!loaded) { var 旧 = ST.mocks.get(o.mockId); loaded = 旧 && (旧.spec || 旧); }
       if (loaded) {
-        st.spec = loaded.spec || loaded; st.step = "review"; st.tab = "questions"; st.settings = settingsFromSpec(st.spec);
+        st.spec = loaded; st.step = "review"; st.tab = "questions"; st.settings = settingsFromSpec(st.spec);
         /* 開いた時点で不備を見ておく。押さないと出ない、では気づけない。 */
         refreshAudit();
         revalidate();
@@ -58561,16 +58786,14 @@
       var issues = (st.finalizeResult && st.finalizeResult.issues) || [];
       var errs = issues.filter(function (x) { return x.severity === "error"; });
       var structProbs = (st.structure && !st.structure.ok && st.structure.problems) || [];
-      var rec = ST.mocks.put({
-        id: st.spec.id, kind: "mock", title: st.spec.title,
-        spec: st.spec, manifest: st.manifest || null,
-        createdAt: st.spec.createdAt,
-        /* 残っている指摘。あとから開いたときに、どこが未完成か分かるように。 */
+      /* 器は preset（2026-08-30）。これで 一覧・公開・共有・お気に入りが
+         そのまま 効く。書くのは ST.saveExam の 1 か所だけ。 */
+      var rec = ST.saveExam(st.spec, {
+        manifest: st.manifest || null,
         requiresReview: errs.length > 0 || structProbs.length > 0,
         openIssues: errs.slice(0, 50).map(function (x) {
           return { code: x.code || "", path: x.path || "", message: x.message || "" };
-        }),
-        structureProblems: structProbs.slice(0, 20)
+        })
       });
       if (!rec.ok) { app.alert({ title: "保存できません", body: rec.message || "保存に失敗しました。" }); return null; }
       st.dirty = false;
@@ -61275,7 +61498,10 @@
 
   function open(o) {
     o = o || {};
-    var spec = o.spec || (o.mockId ? (ST.mocks.get(o.mockId) || {}).spec : null);
+    /* 器は preset（2026-08-30）。読み替えは ST.examOf の 1 か所だけ。
+       昔の 置き場（mocks）に しか 無い ものは 引っ越しが 拾う。 */
+    var spec = o.spec || (o.mockId ? (ST.getExam ? ST.getExam(o.mockId) : null) : null);
+    if (!spec && o.mockId && ST.mocks) spec = (ST.mocks.get(o.mockId) || {}).spec || null;
     if (!spec) return null;
     var plan = o.plan || L.buildPlan(spec);
     var manifest = o.manifest || spec.layoutManifest || L.buildManifest(spec, plan, null);
@@ -65362,7 +65588,7 @@
         + '<div class="vq2-card"><div class="vq2-sec-t">保存されているデータ</div>'
         + '<div class="vq2-stats">'
         + stat("プリセット", ST.listPresets({ includeLegacy: false }).length)
-        + stat("試験", ST.mocks.list().length)
+        + stat("試験", (ST.listExams ? ST.listExams() : []).length)
         + stat("結果", ST.results.list().length)
         + stat("中断中のクイズ", ST.quizzes.list().filter(function (s) { return ["in_progress", "paused"].indexOf(s.state) >= 0; }).length)
         + stat("中断中の受験", ST.mockSessions.list().filter(function (s) { return ["in_progress", "paused"].indexOf(s.state) >= 0; }).length)

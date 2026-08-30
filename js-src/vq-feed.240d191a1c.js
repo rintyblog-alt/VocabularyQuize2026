@@ -1629,7 +1629,8 @@
     try {
       var ST = window.VQ2 && window.VQ2.store;
       if (kind === "preset" && ST && ST.listPresets) list = ST.listPresets() || [];
-      if (kind === "mock" && ST && ST.mocks && ST.mocks.list) list = ST.mocks.list() || [];
+      /* 器は preset（2026-08-30）。試験も プリセットの 一種。 */
+      if (kind === "mock" && ST && ST.listExams) list = ST.listExams() || [];
     } catch (e) { list = []; }
     var h = '<div class="pick" data-a="pick-bd"><div class="pick-c" role="dialog" aria-modal="true">'
       + '<div class="pick-h">' + (kind === "preset" ? "プリセットを選ぶ" : "試験を選ぶ")
@@ -1639,10 +1640,16 @@
         + "</p>";
     } else {
       list.slice(0, 60).forEach(function (x) {
-        var sp = x.spec || x;
+        /* 試験も いまは preset（2026-08-30）。中身は x.exam に ある。
+           x.spec を 見ていたころの 形も 一応 受ける（古い 端末の 残り）。 */
+        var ex = (x && x.exam) || null;
+        var sp = x.spec || (ex ? {
+          title: x.name, subject: ex.subject || (ex.cover && ex.cover.subject),
+          sections: ex.sections, totalPoints: ex.totalPoints
+        } : x);
         var id = String(x.id || sp.id || "");
         var t = kind === "preset" ? String(x.name || x.title || "名前なし")
-                                  : String(sp.title || x.title || "名前なし");
+                                  : String(sp.title || x.name || x.title || "名前なし");
         var qn = ((x.questions || x.items || x.words || []) || []).length;
         var s2 = kind === "preset"
           ? [qn ? qn + " 問" : "",
@@ -2535,10 +2542,10 @@
           itemCount: ((x.questions || x.items || x.words || []) || []).length,
           isPublic: x.visibility === "public" || x.isPublic === true
         };
-      } else if (kind === "mock" && ST && ST.mocks && ST.mocks.get) {
-        var m = ST.mocks.get(id), sp = (m && (m.spec || m)) || null;
+      } else if (kind === "mock" && ST && ST.getExam) {
+        var sp = ST.getExam(id);
         if (sp) st.draftCard = {
-          type: "mock", mockId: String(m.id || id),
+          type: "mock", mockId: String(sp.id || id),
           title: String(sp.title || "名前なし"),
           subjectLabel: String(sp.subject || ""),
           gradeLabel: String(sp.grade || ""),

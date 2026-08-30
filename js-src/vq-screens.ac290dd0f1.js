@@ -290,16 +290,16 @@
      ★ 同じ id が すでに 並んでいるなら 足さない（二重に 出さない）。 */
   function 試験の札(すでに) {
     var ST = window.VQ2 && window.VQ2.store;
-    if (!ST || !ST.mocks || !ST.mocks.list) return [];
+    if (!ST || !ST.listExams) return [];
     var 済 = Object.create(null);
     (すでに || []).forEach(function (c) { if (c && c.id) 済[String(c.id)] = 1; });
     var 私 = "";
     try { 私 = String(ST.currentOwnerId ? ST.currentOwnerId() : ""); } catch (e) {}
     var 出 = [];
-    (ST.mocks.list() || []).forEach(function (r) {
-      var sp = r && (r.spec || r);
+    (ST.listExams() || []).forEach(function (rec) {
+      var sp = ST.examOf(rec);
       if (!sp || !sp.sections || !sp.sections.length) return;
-      var id = String(r.id || sp.id || "");
+      var id = String(rec.id || sp.id || "");
       if (!id || 済[id]) return;
       var 問 = 0, 内訳 = {};
       sp.sections.forEach(function (sec) {
@@ -322,8 +322,8 @@
         isOwnedByCurrentUser: true, isOfficial: false,
         isFavoritedByCurrentUser: false, isSavedByCurrentUser: false,
         ownerName: "", ownerHandle: "",
-        createdAt: r.createdAt || sp.createdAt || null,
-        updatedAt: r.updatedAt || sp.updatedAt || null,
+        createdAt: rec.createdAt || sp.createdAt || null,
+        updatedAt: rec.updatedAt || sp.updatedAt || null,
         publishedAt: null, lastPlayedAt: null,
         favoriteCount: 0, viewCount: 0,
         /* 一覧の ボタンは 試験用の ものへ 差し替わるので actions は 使わない。 */
@@ -1170,11 +1170,11 @@
     var out = {};
     try {
       var ST = window.VQ2 && window.VQ2.store;
-      var 並 = (ST && ST.mocks && ST.mocks.list) ? ST.mocks.list() : [];
-      (並 || []).forEach(function (r) {
-        var sp = r && (r.spec || r);
+      var 並 = (ST && ST.listExams) ? ST.listExams() : [];
+      (並 || []).forEach(function (rec) {
+        var sp = ST.examOf(rec);
         if (!sp || !sp.sections) return;
-        out[String(r.id || sp.id)] = {
+        out[String(rec.id || sp.id)] = {
           大問: (sp.sections || []).length,
           満点: sp.totalPoints || null,
           分: sp.durationMinutes || null,
@@ -1202,7 +1202,7 @@
   function 試験の道具(){
     try {
       var V = window.VQ2;
-      return (V && V.examWorkspace && V.examWorkspace.open && V.store && V.store.mocks) ? V : null;
+      return (V && V.examWorkspace && V.examWorkspace.open && V.store && V.store.getExam) ? V : null;
     } catch (e) { return null; }
   }
   function 受験へ(id) {
@@ -1221,14 +1221,13 @@
     }, 150);
   }
   function 受験を開く(V, id) {
-    var rec = null;
-    try { rec = V.store.mocks.get(String(id)); } catch (e) {}
-    var spec = rec && (rec.spec || rec);
+    var spec = null;
+    try { spec = V.store.getExam(String(id)); } catch (e) {}
     if (!spec || !spec.sections) {
       try { window.__vqToast && window.__vqToast("この試験を 読み込めませんでした。", "warning"); } catch (e) {}
       return;
     }
-    try { V.examWorkspace.open({ spec: spec, manifest: rec.manifest || null }); }
+    try { V.examWorkspace.open({ spec: spec }); }
     catch (e) {
       try { window.__vqToast && window.__vqToast("受験の 画面を 開けませんでした。", "warning"); } catch (e2) {}
     }

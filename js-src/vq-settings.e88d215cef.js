@@ -1265,7 +1265,7 @@
       if (ST) {
         var n = [
           ["プリセット", ST.listPresets({ includeLegacy: false }).length],
-          ["試験", ST.mocks.list().length],
+          ["試験", (ST.listExams ? ST.listExams() : []).length],
           ["結果", ST.results.list().length]
         ];
         if (n.some(function (x) { return x[1] > 0; })) {

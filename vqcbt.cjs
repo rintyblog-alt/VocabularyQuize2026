@@ -89,8 +89,10 @@ const 試験を置く = () => {
              margins: { top: 20, bottom: 20, left: 18, right: 18 } },
     layout: {}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
   };
-  const r = window.VQ2.store.mocks.put({ id: spec.id, kind: "mock", title: spec.title, spec: spec });
-  return { ok: !!(r && r.ok !== false), id: spec.id };
+  /* 器は preset（2026-08-30）。試験も プリセットの 一種として 置く。 */
+  const r = window.VQ2.store.saveExam(spec, {});
+  return { ok: !!(r && r.ok), id: spec.id, なぜ: (r && r.message) || "",
+           試験か: !!window.VQ2.store.isExam(window.VQ2.store.getPreset(spec.id)) };
 };
 
 (async () => {
@@ -166,6 +168,18 @@ const 試験を置く = () => {
     見(札状.ボタン && 札状.文 === "受験する", "ボタンが「受験する」に なる", 札状.文);
     見(札状.表紙, "カードの 絵は 表紙の 縮小見本");
     見(!札状.旧開始, "**旧い data-preset-start が 付いていない**（横取りされない）");
+    /* 器の 統合（2026-08-30）。試験も プリセットの 一覧・検索に 乗る。 */
+    const 器 = await page.evaluate(() => {
+      const ST = window.VQ2.store;
+      const p = ST.getPreset("cbt-test-1");
+      return { preset: !!p, 試験: !!(p && ST.isExam(p)),
+               一覧: ST.listPresets().some((x) => x.id === "cbt-test-1"),
+               試験一覧: ST.listExams().some((x) => x.id === "cbt-test-1"),
+               問: p ? (p.questions || []).length : 0 };
+    });
+    見(器.preset && 器.試験, "試験は preset として 置かれている", JSON.stringify(器));
+    見(器.一覧 && 器.試験一覧, "プリセットの 一覧にも 試験の 一覧にも 出る");
+    見(器.問 === 6, "設問が preset.questions に 入っている", 器.問);
 
     if (札状.ボタン) {
       await page.evaluate(() => {

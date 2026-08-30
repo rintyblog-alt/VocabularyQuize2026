@@ -1268,9 +1268,11 @@
   function 保存する() {
     var V = VQ2(), ST = V && V.store;
     if (!st.spec) { st.err = "保存する 試験が ありません。"; 描く(); return; }
-    if (!ST || !ST.mocks) { st.err = "保存の 部品が ありません。"; 描く(); return; }
+    if (!ST || !ST.saveExam) { st.err = "保存の 部品が ありません。"; 描く(); return; }
     try {
-      var r = ST.mocks.put({ id: st.spec.id, ownerId: ST.currentOwnerId(), spec: st.spec });
+      /* 器は preset（2026-08-30）。試験も プリセットの 一種として 置く。
+         こうすると 一覧・検索・お気に入り・公開・共有が そのまま 効く。 */
+      var r = ST.saveExam(st.spec, { ownerId: ST.currentOwnerId() });
       if (r && r.ok === false) { st.err = r.message || "保存できませんでした。"; 描く(); return; }
       st.保存した = true; st.err = "";
       記す("done", "保存しました");
