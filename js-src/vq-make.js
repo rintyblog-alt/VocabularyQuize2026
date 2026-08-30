@@ -107,10 +107,20 @@
     ".chip{min-height:44px;padding:0 16px;border-radius:999px;font-size:13.5px;",
       "display:inline-flex;align-items:center;",
       "border:1px solid var(--vq-border,#E7E4EF);background:var(--vq-surface,#fff)}",
-    ".chip[aria-pressed='true']{background:var(--vq-accent-subtle,#EAE8F7);",
+    ".chip[aria-pressed='true'],.chip.is-on{background:var(--vq-accent-subtle,#EAE8F7);",
       "border-color:var(--vq-border-focus,#9A8CE0);color:var(--vq-accent-text,#5F5691);font-weight:650}",
 
     /* 表紙の下書き */
+    /* 型の 札は 2 行（名前＋目安）。 */
+    ".chip small{display:block;font-size:10.5px;font-weight:400;opacity:.72;margin-top:1px}",
+    ".chip:has(small){flex-direction:column;align-items:flex-start;justify-content:center;",
+      "padding:6px 14px;line-height:1.35}",
+    "select{width:100%;font:inherit;font-size:15px;padding:10px 12px;",
+      "border:1px solid var(--vq-border,#E7E4EF);border-radius:12px;",
+      "background:var(--vq-surface,#fff);color:var(--vq-text,#2B2836);min-height:44px}",
+    "input[type=number]{min-height:44px}",
+    ".hint b{font-weight:700;color:var(--vq-text,#2B2836)}",
+
     ".prev{margin-top:4px;border:1px solid var(--vq-border,#E7E4EF);border-radius:14px;",
       "padding:16px 18px;background:var(--vq-surface-sunken,#F9F8FD);",
       "display:flex;flex-direction:column;gap:8px;min-height:150px}",
@@ -141,13 +151,73 @@
     "}"
   ].join("");
 
-  /* ── 状態 ──────────────────────────────────────────────────────── */
-  var st = {
-    画面: "",              /* "" | 選ぶ | 表紙 */
-    err: "",
-    表紙: 既定の表紙()
-  };
-  var host = null, root = null;
+  var host = null, root = null, 描けなかった = "";
+
+  /* ══ 試験の 型（Quick Mock の KINDS と 同じ 中身）════════════════
+     ★ 数字は **向こうと そろえる**。ここで 勝手な 値を 作ると、
+       同じ「定期考査」を 選んでも 画面ごとに 別の 試験に なる。
+     ★ 試験は 標準で 頭を使う 問題に する（2026-08-30・訴え）ので、
+       どの 型でも 記述・空欄補充・資料読解 を 入れる。
+       正誤は 一問一答に いちばん 寄りやすいので 既定では 外す。 */
+  var 型 = [
+    { id: "quiz",    label: "小テスト",   note: "15分・50点",
+      apply: { durationMinutes: 15, totalPoints: 50,  sectionCount: 2, questionCount: 10 } },
+    { id: "regular", label: "定期考査",   note: "50分・100点",
+      apply: { durationMinutes: 50, totalPoints: 100, sectionCount: 5, questionCount: 0 } },
+    { id: "trial",   label: "実力テスト", note: "80分・100点",
+      apply: { durationMinutes: 80, totalPoints: 100, sectionCount: 6, questionCount: 0 } },
+    { id: "custom",  label: "自分で決める", note: "細かく決める", apply: null }
+  ];
+  /* 出す 形式。**試験の 標準**は 考えて 書かせる ものを 入れる。 */
+  var 形式 = [
+    { id: "multiple_choice_single", label: "選択",       既定: true },
+    { id: "fill_blank",             label: "空欄補充",   既定: true },
+    { id: "short_answer",           label: "短答",       既定: true },
+    { id: "long_answer",            label: "記述",       既定: true },
+    { id: "source_analysis",        label: "資料読解",   既定: true },
+    { id: "ordering",               label: "並べ替え",   既定: true },
+    { id: "matching",               label: "組み合わせ", 既定: true },
+    { id: "true_false",             label: "正誤",       既定: false },
+    { id: "numeric",                label: "数値",       既定: false }
+  ];
+  var 難易 = [
+    { id: "easy",   label: "やさしめ" },
+    { id: "mixed",  label: "混ぜる" },
+    { id: "hard",   label: "難しめ" }
+  ];
+
+  function 既定の条件() {
+    var t = {};
+    形式.forEach(function (x) { t[x.id] = x.既定; });
+    return {
+      kind: "regular",
+      durationMinutes: 50, totalPoints: 100,
+      sectionCount: 5, questionCount: 0,
+      difficulty: "mixed",
+      types: t,
+      instruction: "",
+      layoutMode: "current", answerSheetMode: "current"
+    };
+  }
+  /* 紙面の 型。**実際に 組めるものだけ** 並べる（動くふりを しない）。 */
+  function 紙面の型() {
+    try {
+      var LP = window.VQ2 && window.VQ2.layoutProfiles;
+      if (!LP || !LP.visibleLayoutModes) return [{ id: "current", label: "現在の形式" }];
+      return LP.visibleLayoutModes()
+        .filter(function (m) { return m.ready; })
+        .map(function (m) { return { id: m.id, label: m.label }; });
+    } catch (e) { return [{ id: "current", label: "現在の形式" }]; }
+  }
+  function 解答用紙の型() {
+    try {
+      var LP = window.VQ2 && window.VQ2.layoutProfiles;
+      var 並 = (LP && LP.ANSWER_SHEET_MODES) || null;
+      if (!並) return [{ id: "current", label: "現在の形式" }];
+      return 並.filter(function (m) { return m.ready; })
+        .map(function (m) { return { id: m.id, label: m.label }; });
+    } catch (e) { return [{ id: "current", label: "現在の形式" }]; }
+  }
 
   function 既定の表紙() {
     return {
@@ -164,6 +234,14 @@
       return d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日";
     } catch (e) { return ""; }
   }
+
+  /* ── 状態 ──────────────────────────────────────────────────────── */
+  var st = {
+    画面: "",              /* "" | 選ぶ | 表紙 | 条件 */
+    err: "",
+    表紙: 既定の表紙(),
+    条件: 既定の条件()
+  };
 
   /* ── 器 ──────────────────────────────────────────────────────── */
   function 建てる() {
@@ -186,7 +264,19 @@
     if (!box) return;
     if (!st.画面) { box.innerHTML = ""; return; }
     var h = '<div class="bd" data-a="bd"></div><div class="w" role="dialog" aria-modal="true">';
-    h += st.画面 === "選ぶ" ? 選ぶ中身() : 表紙の中身();
+    /* ★ 描けなかったら **黙って 閉じない。** 何が 起きたかを 残す。
+       画面が 空に なるのが いちばん 分かりにくい 落ちかた。 */
+    try {
+      h += st.画面 === "選ぶ" ? 選ぶ中身()
+         : st.画面 === "表紙" ? 表紙の中身()
+         : 条件の中身();
+      描けなかった = "";
+    } catch (e) {
+      描けなかった = String((e && e.message) || e).slice(0, 200);
+      h += '<div class="ttl">画面を 出せませんでした</div>'
+        + '<div class="err">' + esc(描けなかった) + "</div>"
+        + '<div class="ft"><button class="btn" data-a="close">閉じる</button></div>';
+    }
     box.innerHTML = h + "</div>";
   }
 
@@ -252,6 +342,100 @@
     return h;
   }
 
+  /* ══ ③ 条件 ═══════════════════════════════════════════════════════
+     「決めるところ」を ここで 全部 決める。ここまでが 新しい画面。
+     押したあとは 作業場（生成・検証・紙面）へ 行く。 */
+  function 条件の中身() {
+    var c = st.条件;
+    var h = '<div class="hd">'
+      + '<button class="ib" data-a="back-cover" aria-label="表紙へ戻る">' + svg("back") + "</button>"
+      + '<div><div class="ttl">どんな試験にしますか</div>'
+      + '<div class="sub">ここまで 決めれば あとは 作るだけです。'
+      + "あとから 直せます。</div></div>"
+      + '<div class="sp"></div>'
+      + '<button class="ib" data-a="close" aria-label="閉じる">' + svg("x") + "</button></div>";
+
+    h += '<div class="form">';
+
+    /* 型 */
+    h += '<div class="row"><label>試験の型</label><div class="chips">'
+      + 型.map(function (k) {
+          var on = c.kind === k.id;
+          return '<button type="button" class="chip' + (on ? " is-on" : "") + '" data-a="kind" data-v="'
+            + esc(k.id) + '" aria-pressed="' + (on ? "true" : "false") + '">'
+            + esc(k.label) + '<small>' + esc(k.note) + "</small></button>";
+        }).join("")
+      + "</div></div>";
+
+    /* 数 */
+    h += '<div class="row two">'
+      + 数欄("試験時間（分）", "durationMinutes", c.durationMinutes, 5, 300)
+      + 数欄("満点", "totalPoints", c.totalPoints, 1, 1000)
+      + "</div>"
+      + '<div class="row two">'
+      + 数欄("大問の数", "sectionCount", c.sectionCount, 1, 20)
+      + 数欄("問題の数（0 = おまかせ）", "questionCount", c.questionCount, 0, 200)
+      + "</div>"
+      + '<p class="hint">配点は 満点に ぴったり 合うよう 自動で 割り振ります。</p>';
+
+    /* 難易度 */
+    h += '<div class="row"><label>難しさ</label><div class="chips">'
+      + 難易.map(function (d) {
+          var on = c.difficulty === d.id;
+          return '<button type="button" class="chip' + (on ? " is-on" : "") + '" data-a="diff" data-v="'
+            + esc(d.id) + '" aria-pressed="' + (on ? "true" : "false") + '">' + esc(d.label) + "</button>";
+        }).join("")
+      + "</div></div>";
+
+    /* 形式 */
+    var 選 = 形式.filter(function (x) { return c.types[x.id]; }).length;
+    h += '<div class="row"><label>出す形式（' + 選 + ' 種類）</label><div class="chips">'
+      + 形式.map(function (t) {
+          var on = !!c.types[t.id];
+          return '<button type="button" class="chip' + (on ? " is-on" : "") + '" data-a="type" data-v="'
+            + esc(t.id) + '" aria-pressed="' + (on ? "true" : "false") + '">' + esc(t.label) + "</button>";
+        }).join("")
+      + '</div><div class="hint">試験の 標準は <b>考えて 書かせる 問題</b>です。'
+      + "選択だけに すると ただの 一問一答に なります。</div></div>";
+
+    /* 紙面 */
+    h += '<div class="row two">'
+      + 選び欄("問題用紙の型", "layoutMode", c.layoutMode, 紙面の型())
+      + 選び欄("解答用紙の型", "answerSheetMode", c.answerSheetMode, 解答用紙の型())
+      + "</div>"
+      + '<p class="hint">「共通テスト風」は B5・丸数字・第 n 問。'
+      + "ここに 出ているのは <b>実際に 組める型だけ</b>です。</p>";
+
+    /* 指示 */
+    h += '<div class="row"><label for="vm-inst">ほかに 伝えること（任意）</label>'
+      + '<textarea id="vm-inst" data-f="instruction" maxlength="1200" placeholder="例）配った授業プリントの範囲だけで。記述は 40 字以内でまとめさせる問題を 2 問。">'
+      + esc(c.instruction) + "</textarea>"
+      + '<div class="hint">範囲・出したい形式の 比率・字数の 指定などを 書くと そのとおりに 寄せます。</div></div>';
+
+    h += "</div>";
+
+    if (st.err) h += '<div class="err">' + esc(st.err) + "</div>";
+    h += '<div class="ft">'
+      + '<button class="btn" data-a="back-cover">表紙へ戻る</button>'
+      + '<button class="btn pri" data-a="run">この条件で 作る</button></div>';
+    return h;
+  }
+
+  function 数欄(名, key, v, 小, 大) {
+    return '<div class="row"><label for="vm-' + esc(key) + '">' + esc(名) + "</label>"
+      + '<input id="vm-' + esc(key) + '" type="number" inputmode="numeric" data-n="' + esc(key)
+      + '" min="' + 小 + '" max="' + 大 + '" value="' + esc(v) + '"></div>';
+  }
+  function 選び欄(名, key, v, 並) {
+    return '<div class="row"><label for="vm-' + esc(key) + '">' + esc(名) + "</label>"
+      + '<select id="vm-' + esc(key) + '" data-s="' + esc(key) + '">'
+      + 並.map(function (o) {
+          return '<option value="' + esc(o.id) + '"' + (o.id === v ? " selected" : "") + ">"
+            + esc(o.label) + "</option>";
+        }).join("")
+      + "</select></div>";
+  }
+
   /* 表紙の 下書き。**入れたものだけ**を 出す（空の枠を 見せない）。 */
   function 下書き() {
     var c = st.表紙;
@@ -294,10 +478,50 @@
         描く();
         return;
       }
-      if (a === "go") { 試験へ(); return; }
+      if (a === "go") { 条件へ(); return; }
+      if (a === "back-cover") { st.err = ""; 開く("表紙"); return; }
+      if (a === "kind") {
+        var k = 型.filter(function (x) { return x.id === el.dataset.v; })[0];
+        st.条件.kind = el.dataset.v;
+        if (k && k.apply) {
+          st.条件.durationMinutes = k.apply.durationMinutes;
+          st.条件.totalPoints = k.apply.totalPoints;
+          st.条件.sectionCount = k.apply.sectionCount;
+          st.条件.questionCount = k.apply.questionCount;
+        }
+        描く();
+        return;
+      }
+      if (a === "diff") { st.条件.difficulty = el.dataset.v; 描く(); return; }
+      if (a === "type") {
+        var id = el.dataset.v;
+        st.条件.types[id] = !st.条件.types[id];
+        /* **全部 外させない**（0 種類だと 何も 作れない）。 */
+        var 残 = 形式.filter(function (x) { return st.条件.types[x.id]; }).length;
+        if (!残) { st.条件.types[id] = true; st.err = "形式は 1 つ以上 選んでください。"; }
+        else st.err = "";
+        描く();
+        return;
+      }
+      if (a === "run") { 作りに行く(); return; }
+    });
+    root.addEventListener("change", function (e) {
+      var t = e.target;
+      if (t && t.dataset && t.dataset.s) { st.条件[t.dataset.s] = String(t.value || ""); return; }
     });
     root.addEventListener("input", function (e) {
       var t = e.target;
+      if (t && t.dataset && t.dataset.n) {
+        var v = parseInt(t.value, 10);
+        if (!isFinite(v)) v = 0;
+        var 小 = parseInt(t.getAttribute("min"), 10), 大 = parseInt(t.getAttribute("max"), 10);
+        if (isFinite(小) && v < 小) v = 小;
+        if (isFinite(大) && v > 大) v = 大;
+        st.条件[t.dataset.n] = v;
+        /* 数を 打っている 最中に 型の 札を 光らせ直さない（打ちにくく なる）。 */
+        st.条件.kind = "custom";
+        return;
+      }
       if (!t || !t.dataset || !t.dataset.f) return;
       var f = t.dataset.f;
       if (f === "instructions") {
@@ -326,20 +550,22 @@
     try { V.presetStudio.open({}); } catch (e) {}
   }
 
-  function 試験へ() {
+  /* 表紙 → 条件 へ。名前だけは 必ず 要る（表紙の 見出しに なる）。 */
+  function 条件へ() {
     var c = st.表紙;
     if (!String(c.examName || "").trim()) {
       st.err = "試験の 名前を 入れてください。表紙の 見出しに なります。";
       描く();
       return;
     }
-    var V = VQ2();
-    if (!V || !V.quickMock || !V.quickMock.open) {
-      st.err = "まだ 準備が できていません。少し 待ってから もう一度 押してください。";
-      描く();
-      return;
-    }
-    var 表紙 = {
+    /* 教科は 条件でも 使うので、ここで そろえておく。 */
+    st.err = "";
+    開く("条件");
+  }
+
+  function 表紙を固める() {
+    var c = st.表紙;
+    return {
       examName: String(c.examName).trim(),
       subject: String(c.subject || "").trim(),
       examDate: String(c.examDate || "").trim(),
@@ -347,14 +573,49 @@
       studentFields: (c.studentFields || []).slice(0, 6),
       sealNote: c.sealNote !== false
     };
+  }
+
+  /* ══ 条件を 持って 作りに 行く ═════════════════════════════════════
+     ★ ここから先（構成案・生成・検証・紙面・受験）は **作業場**が やる。
+       作業場は Quick Mock の 仕組みを そのまま 使う。作り直すと
+       作りかけの 保存・巡回・資料の 受け渡し・台帳が 落ちるため。
+     ★ **決めたことは 全部 持って行く。** 向こうで もう一度 聞かせない。 */
+  function 作りに行く() {
+    var V = VQ2();
+    if (!V || !V.quickMock || !V.quickMock.open) {
+      st.err = "まだ 準備が できていません。少し 待ってから もう一度 押してください。";
+      描く();
+      return;
+    }
+    var c = st.条件;
+    var 選 = 形式.filter(function (x) { return c.types[x.id]; }).length;
+    if (!選) { st.err = "形式は 1 つ以上 選んでください。"; 描く(); return; }
+
+    var 表紙 = 表紙を固める();
+    var 設定 = {
+      title: 表紙.examName,
+      subject: 表紙.subject,
+      kind: c.kind,
+      durationMinutes: c.durationMinutes,
+      totalPoints: c.totalPoints,
+      sectionCount: c.sectionCount,
+      questionCount: c.questionCount,
+      difficulty: c.difficulty,
+      types: JSON.parse(JSON.stringify(c.types)),
+      layoutMode: c.layoutMode,
+      answerSheetMode: c.answerSheetMode,
+      examStandard: true
+    };
     閉じる();
     try {
       V.quickMock.open({
-        /* ★ 試験として 開く。標準の 出題を 頭を使う 側へ 寄せる合図（2026-08-30）。 */
         kind: "exam",
         cover: 表紙,
-        /* 表紙で 決めたものは、条件の 段にも 入れておく（二度 打たせない）。 */
-        settings: { title: 表紙.examName, subject: 表紙.subject }
+        settings: 設定,
+        instruction: String(c.instruction || ""),
+        /* 資料を 付けたい人が いるので、**勝手には 作り始めない**。
+           向こうの 画面で「作る」を 押してもらう。ただし 条件は 全部 入っている。 */
+        autoRun: false
       });
     } catch (e) {}
   }
@@ -371,7 +632,10 @@
     閉じる: 閉じる,
     /* 検証のため（画面を 触らずに 中を 見る） */
     状態: function () {
-      return { 画面: st.画面, err: st.err, 表紙: JSON.parse(JSON.stringify(st.表紙)) };
+      return { 画面: st.画面, err: st.err,
+               表紙: JSON.parse(JSON.stringify(st.表紙)),
+               条件: JSON.parse(JSON.stringify(st.条件)),
+               描けなかった: 描けなかった };
     },
     表紙を入れる: function (c) {
       st.表紙 = Object.assign(既定の表紙(), c || {});

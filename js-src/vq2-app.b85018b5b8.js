@@ -56164,9 +56164,37 @@
           d.choiceRatio = 35;
           d.writtenRatio = 35;
         }
+        /* ★ 入口（vq-make）の 条件の段で 決めたものを **全部** 受け取る
+           （2026-08-30）。ここで 取りこぼすと、向こうで 決めたのに
+           こちらで 既定に 戻る＝二度 打たせることに なる。
+           数は 範囲で 挟む（画面から 来る値を そのまま 信じない）。 */
         if (o.settings && typeof o.settings === "object") {
-          if (o.settings.title) d.title = String(o.settings.title).slice(0, 80);
-          if (o.settings.subject) d.subject = String(o.settings.subject).slice(0, 40);
+          var os = o.settings;
+          var 数 = function (v, 小, 大, 既) {
+            var n = Number(v);
+            if (!isFinite(n)) return 既;
+            return Math.max(小, Math.min(大, Math.round(n)));
+          };
+          if (os.title) d.title = String(os.title).slice(0, 80);
+          if (os.subject) d.subject = String(os.subject).slice(0, 40);
+          if (os.grade) d.grade = String(os.grade).slice(0, 40);
+          if (os.kind) d.kind = String(os.kind).slice(0, 20);
+          if (os.durationMinutes !== undefined) d.durationMinutes = 数(os.durationMinutes, 5, 300, d.durationMinutes);
+          if (os.totalPoints !== undefined) d.totalPoints = 数(os.totalPoints, 1, 1000, d.totalPoints);
+          if (os.sectionCount !== undefined) d.sectionCount = 数(os.sectionCount, 1, 20, d.sectionCount);
+          if (os.questionCount !== undefined) d.questionCount = 数(os.questionCount, 0, 200, d.questionCount);
+          if (os.difficulty) d.difficulty = String(os.difficulty).slice(0, 20);
+          if (os.types && typeof os.types === "object") {
+            /* 知らない形式は 入れない（保存前の検証で 弾かれる）。 */
+            var t2 = {};
+            Object.keys(os.types).forEach(function (k) {
+              if (mockTypeIds().indexOf(k) >= 0) t2[k] = !!os.types[k];
+            });
+            if (Object.keys(t2).length) d.types = t2;
+          }
+          if (os.layoutMode) d.layoutMode = String(os.layoutMode).slice(0, 40);
+          if (os.answerSheetMode) d.answerSheetMode = String(os.answerSheetMode).slice(0, 40);
+          if (os.examStandard === true) d.examStandard = true;
         }
         if (o.cover && typeof o.cover === "object") d.cover = o.cover;
         return d;
@@ -56177,7 +56205,8 @@
       upSession: null,
       upJobId: null,
       upRows: [],            /* 送信中のようす（画面に出すためだけ） */
-      instruction: "",
+      /* 入口で 書いた「ほかに 伝えること」を 引き継ぐ（2026-08-30）。 */
+      instruction: String((o && o.instruction) || "").slice(0, 1200),
       blueprintText: "",
       blueprint: null,
       spec: null,

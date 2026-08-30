@@ -180,10 +180,72 @@ const 打つ = (page, f, v) => page.evaluate(([f2, v2]) => {
   s = await 状態(a.page);
   見(s.画面 === "表紙" && /名前/.test(s.err), "M-7 空のままでは進めず、理由が出る", s.err);
 
-  節("段⑥ 表紙を持って Quick Mock へ");
+  節("段⑤b 条件の段（③）");
   await 打つ(a.page, "examName", "2026年度 2学期 中間考査");
   await 待(300);
   await 押す(a.page, "go");
+  await 待(900);
+  s = await 状態(a.page);
+  見(s.画面 === "条件", "C-1 表紙のあと **条件の段**へ行く（Quick Mock ではない）", s.画面);
+  const 条 = await 影(a.page);
+  ["試験の型", "試験時間", "満点", "大問の数", "難しさ", "出す形式",
+   "問題用紙の型", "解答用紙の型"].forEach((t) => {
+    見(条.indexOf(t) >= 0, "C-2 条件に「" + t + "」がある");
+  });
+  /* 型を 押すと 数が 変わる */
+  await a.page.evaluate(() => {
+    const r = document.getElementById("vqMake").shadowRoot;
+    const b = r.querySelector('[data-a="kind"][data-v="quiz"]'); if (b) b.click();
+  });
+  await 待(400);
+  let cc = await a.page.evaluate(() => window.__vqMake.状態().条件);
+  見(cc.durationMinutes === 15 && cc.totalPoints === 50,
+     "C-3 型を押すと 時間と満点が 変わる", { 分: cc.durationMinutes, 点: cc.totalPoints });
+  await a.page.evaluate(() => {
+    const r = document.getElementById("vqMake").shadowRoot;
+    const b = r.querySelector('[data-a="kind"][data-v="regular"]'); if (b) b.click();
+  });
+  await 待(400);
+  cc = await a.page.evaluate(() => window.__vqMake.状態().条件);
+  見(cc.durationMinutes === 50 && cc.totalPoints === 100 && cc.sectionCount === 5,
+     "C-3b 定期考査に 戻せる", { 分: cc.durationMinutes, 点: cc.totalPoints, 大問: cc.sectionCount });
+
+  /* 形式の 標準（頭を使う 側） */
+  見(cc.types.long_answer === true, "C-4 記述が 既定で 入っている", cc.types);
+  見(cc.types.fill_blank === true, "C-4b 空欄補充が 既定で 入っている");
+  見(cc.types.source_analysis === true, "C-4c 資料読解が 既定で 入っている");
+  見(cc.types.true_false === false, "C-4d 正誤は 既定で 外れている");
+
+  /* 形式を 全部 外させない */
+  const 全外 = await a.page.evaluate(() => {
+    const r = document.getElementById("vqMake").shadowRoot;
+    r.querySelectorAll('[data-a="type"]').forEach((b) => {
+      if (b.getAttribute("aria-pressed") === "true") b.click();
+    });
+    return window.__vqMake.状態();
+  });
+  const 残 = Object.keys(全外.条件.types).filter((k) => 全外.条件.types[k]).length;
+  見(残 >= 1, "C-5 形式を 全部は 外せない（1 つは 残る）", { 残: 残, err: 全外.err });
+
+  /* 紙面の型に 共通テスト風が ある */
+  const 型一覧 = await a.page.evaluate(() => {
+    const r = document.getElementById("vqMake").shadowRoot;
+    const sel = r.querySelector('[data-s="layoutMode"]');
+    return sel ? Array.from(sel.options).map((o) => o.value) : [];
+  });
+  見(型一覧.indexOf("common-test") >= 0, "C-6 紙面に「共通テスト風」が選べる", 型一覧.slice(0, 8));
+
+  節("段⑥ 条件を持って 作業場へ");
+  /* 形式を 選び直してから 作りに 行く */
+  await a.page.evaluate(() => {
+    const r = document.getElementById("vqMake").shadowRoot;
+    ["long_answer", "fill_blank", "multiple_choice_single"].forEach((id) => {
+      const b = r.querySelector('[data-a="type"][data-v="' + id + '"]');
+      if (b && b.getAttribute("aria-pressed") !== "true") b.click();
+    });
+  });
+  await 待(400);
+  await 押す(a.page, "run");
   await 待(3500);
   s = await 状態(a.page);
   見(s.画面 === "", "M-8 入口は閉じる", s.画面);
