@@ -452,6 +452,26 @@
        point / segment / line / ray / polygon / circle / arc /
        label / angle / tick / rightangle / arrow / axis / grid
      ══════════════════════════════════════════════════════════════ */
+  /* ══ 塗り（2026-08-30・訴え「資料の 図形や 図も この くらいの ものを」）
+     実物（共通テスト・情報Ⅰ 図2/図3）は **黒と 白の 塗り分け**で できている。
+     これまでは fill が 真偽値で、模様（灰の 網）しか 塗れなかった。
+     black / white / none と 模様の 名前を 受ける。 */
+  function 塗りを決める(it) {
+    var v = it && it.fill;
+    if (v === undefined || v === null || v === false || v === "" || v === "none") return "none";
+    if (v === true) return 塗り(数(it.fillIndex, 1));
+    var t = 文(v).toLowerCase();
+    if (t === "black" || t === "黒") return "#000";
+    if (t === "white" || t === "白") return "#fff";
+    if (t === "gray" || t === "grey" || t === "灰") return "#bdbdbd";
+    if (t === "diagonal" || t === "斜線") return "url(#hp0)";
+    if (t === "grid" || t === "網") return "url(#hp1)";
+    if (t === "dot" || t === "点") return "url(#hp2)";
+    var n = Number(v);
+    if (isFinite(n)) return 塗り(n);
+    return 塗り(数(it.fillIndex, 1));
+  }
+
   function 図形を描く(b) {
     /* 種類は block の type からも 決まる（type:"numberline" で 来る）。
        ここを 見ていなかった ので 数直線が 「描くものが ありません」に なっていた。 */
@@ -478,6 +498,9 @@
         xs.push(数(it.cx) - rr, 数(it.cx) + rr);
         ys.push(数(it.cy) - rr, 数(it.cy) + rr);
       }
+      /* 四角・比の帯は 右上の 角も 数える（w,h を 見ないと 枠から はみ出す）。 */
+      if (isFinite(数(it.w, NaN)) && isFinite(数(it.x, NaN))) xs.push(数(it.x) + 数(it.w));
+      if (isFinite(数(it.h, NaN)) && isFinite(数(it.y, NaN))) ys.push(数(it.y) + 数(it.h));
       配列(it.points).forEach(function (p) {
         if (Array.isArray(p)) 見る(数(p[0], NaN), 数(p[1], NaN));
         else if (p) 見る(数(p.x, NaN), 数(p.y, NaN));
@@ -525,13 +548,13 @@
         });
         if (点.length < 2) return;
         g.push("<" + (t === "polyline" ? "polyline" : "polygon") + ' points="' + 点.join(" ")
-          + '" fill="' + (it.fill ? 塗り(数(it.fillIndex, 1)) : "none")
+          + '" fill="' + 塗りを決める(it)
           + '" stroke="#000" stroke-width="' + 太 + '"' + 破 + "/>");
       } else if (t === "circle" || t === "円") {
         var rx = Math.abs(X(数(it.cx) + 数(it.r)) - X(数(it.cx)));
         g.push('<ellipse cx="' + X(数(it.cx)) + '" cy="' + Y(数(it.cy)) + '" rx="' + c(rx)
           + '" ry="' + c(Math.abs(Y(数(it.cy) + 数(it.r)) - Y(数(it.cy))))
-          + '" fill="' + (it.fill ? 塗り(数(it.fillIndex, 1)) : "none")
+          + '" fill="' + 塗りを決める(it)
           + '" stroke="#000" stroke-width="' + 太 + '"' + 破 + "/>");
         if (it.label) g.push('<text x="' + X(数(it.cx)) + '" y="' + c(Y(数(it.cy)) - rx - 4) + '" text-anchor="middle" font-size="10">' + esc(it.label) + "</text>");
       } else if (t === "label" || t === "text" || t === "字") {
@@ -627,6 +650,51 @@
           g.push('<text x="' + c(lx + 15) + '" y="' + c(yy + 2) + '" font-size="9">'
             + esc((e2 && (e2.label || e2.text)) || "") + "</text>");
         });
+      } else if (t === "rect" || t === "四角" || t === "長方形") {
+        /* ══ 四角（2026-08-30・訴え）。実物の 位置検出の 目印は
+           **黒 → 白 → 黒 の 入れ子の 四角**。円と 多角形だけでは 組めなかった。
+           x,y は 左下（数学の 向き）。w,h は その 幅・高さ。 */
+        var rx0 = X(数(it.x)), ry0 = Y(数(it.y) + 数(it.h, 1));
+        var rw = Math.abs(X(数(it.x) + 数(it.w, 1)) - rx0);
+        var rh = Math.abs(Y(数(it.y)) - ry0);
+        g.push('<rect x="' + c(rx0) + '" y="' + c(ry0) + '" width="' + c(rw) + '" height="' + c(rh)
+          + '" fill="' + 塗りを決める(it) + '" stroke="'
+          + (it.stroke === false ? "none" : "#000") + '" stroke-width="' + 太 + '"' + 破 + "/>");
+        if (it.label) {
+          g.push('<text x="' + c(rx0 + rw / 2) + '" y="' + c(ry0 - 4)
+            + '" text-anchor="middle" font-size="10">' + esc(it.label) + "</text>");
+        }
+      } else if (t === "ratiobar" || t === "比の帯" || t === "帯") {
+        /* ══ 比の帯（2026-08-30・訴え）。実物の 図2 に ある
+           「1 1 3 1 1」の 黒白の 帯。数を 帯の 上に 並べる。
+           parts に 比を 並べ、黒から 始めるか 白から 始めるかを 決める。 */
+        var 比 = 配列(it.parts).map(function (v) { return Math.max(0, 数(v, 0)); })
+          .filter(function (v) { return v > 0; }).slice(0, 12);
+        if (!比.length) return;
+        var 和 = 比.reduce(function (a2, v) { return a2 + v; }, 0);
+        var bx0 = X(数(it.x)), by1 = Y(数(it.y));
+        var bw = Math.abs(X(数(it.x) + 数(it.w, 5)) - bx0);
+        var bh = Math.abs(Y(数(it.y) + 数(it.h, 0.6)) - by1);
+        if (bh < 5) bh = 5;
+        var by0 = by1 - bh;
+        var 黒から = 文(it.start || "black").toLowerCase() !== "white" && it.start !== "白";
+        var pos = 0;
+        比.forEach(function (v, i5) {
+          var w5 = bw * (v / 和);
+          var 黒 = (i5 % 2 === 0) === 黒から;
+          g.push('<rect x="' + c(bx0 + pos) + '" y="' + c(by0) + '" width="' + c(w5)
+            + '" height="' + c(bh) + '" fill="' + (黒 ? "#000" : "#fff")
+            + '" stroke="#000" stroke-width="0.7"/>');
+          if (it.showRatio !== false) {
+            g.push('<text x="' + c(bx0 + pos + w5 / 2) + '" y="' + c(by0 - 3)
+              + '" text-anchor="middle" font-size="9">' + esc(String(v)) + "</text>");
+          }
+          pos += w5;
+        });
+        if (it.label) {
+          g.push('<text x="' + c(bx0 - 5) + '" y="' + c(by0 + bh / 2 + 3)
+            + '" text-anchor="end" font-size="10">' + esc(it.label) + "</text>");
+        }
       } else if (t === "tick" || t === "等しい印") {
         /* 線分の 真ん中に 「等しい」の 印を 入れる。 */
         var mx2 = (X(数(it.x1)) + X(数(it.x2))) / 2, my2 = (Y(数(it.y1)) + Y(数(it.y2))) / 2;

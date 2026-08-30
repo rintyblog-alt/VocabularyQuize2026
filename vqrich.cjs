@@ -146,7 +146,11 @@ const 見 = (ok, 名, 追) => {
       return String(R.buildHtml(sp, plan, { bookletId: bk.id })).replace(/<style[\s\S]*?<\/style>/g, "");
     });
     見(/class="dlg is-round"/.test(h), "★ 会話文が 枠で 囲まれる（共通テスト以外でも）");
-    見((h.match(/class="spk"/g) || []).length >= 3, "★ 話し手（生徒A：）が 立つ",
+    /* ★ 発言は 2 列に 組む（2026-08-30）。話し手は .dlg-s、中身は .dlg-t。
+       前は 1 本の 流し込みに <span class="spk"> を 混ぜていたので、
+       折り返した 2 行目が 話し手の 下に 潜り込んでいた。 */
+    見(/class="dlg-b"/.test(h), "★ 発言が 2 列に 組まれる");
+    見((h.match(/class="dlg-s"/g) || []).length >= 3, "★ 話し手（生徒A：）が 立つ",
        (h.match(/class="spk"/g) || []).length + " 人");
     見(/class="ob-t"/.test(h), "★ 並び替えの 枠に 札が 乗る");
     見(/class="ob-l"/.test(h), "並び替えの 選択肢が 枠の 中");

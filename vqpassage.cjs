@@ -116,13 +116,17 @@ const h = 本体(String(R.buildHtml(spec, plan, { bookletId: 問冊.id })));
 {
   見(/class="dlg/.test(h), "★ 会話文が 角丸の 枠で 出る");
   見(h.indexOf("生徒A") >= 0, "会話の 話し手が 残る");
-  見(/生徒A[\s\S]{0,60}<br>/.test(h) || h.indexOf("<br>") >= 0, "★ 発言ごとに 改行される");
+  /* ★ 発言は **2 列の 升**に なった（2026-08-30・実物の 組み）。
+     <br> で 1 本に 流していた ときは、折り返した 2 行目が
+     話し手の 下へ 潜り込んでいた。 */
+  見((h.match(/class="dlg-s"/g) || []).length >= 3, "★ 発言ごとに 行が 分かれる",
+     (h.match(/class="dlg-s"/g) || []).length + " 発言");
   見(h.indexOf("標本調査では") >= 0, "本文が 出る");
 }
 
 節("③ 同じ 本文を 何度も 刷らない");
 {
-  const 会話数 = (h.match(/class="dlg/g) || []).length;
+  const 会話数 = (h.match(/class="dlg is-round"/g) || []).length;
   const 本文数 = (h.match(/標本調査では/g) || []).length;
   見(会話数 === 1, "★ 会話文は 大問で 1 回だけ", 会話数 + " 回");
   見(本文数 === 1, "★ 本文も 1 回だけ", 本文数 + " 回");

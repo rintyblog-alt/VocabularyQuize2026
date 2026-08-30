@@ -11697,7 +11697,13 @@
                    /* ★ 地図・略図の 道具（2026-08-30・訴え
                       「SVG などを 駆使して 正確な 図を 作ってみたり（地図、絵、様子）」）。
                       方位記号・縮尺の 帯・模様の 塗り分け・凡例。 */
-                   north: 1, scalebar: 1, hatch: 1, legend: 1 };
+                   north: 1, scalebar: 1, hatch: 1, legend: 1,
+                   /* ★ 実物の 水準の 図（2026-08-30・訴え「資料の 図形や 図も
+                      この くらいの ものを 入れないと 意味 ないやろ」）。
+                      共通テスト・情報Ⅰ の 図2/図3 は
+                      **入れ子の 四角**と **黒白の 比の 帯**で できている。
+                      円と 多角形だけでは 組めなかった。 */
+                   rect: 1, ratiobar: 1 };
 
   function 資料の数(v) { var n = Number(v); return (typeof n === "number" && isFinite(n)) ? Math.round(n * 1e4) / 1e4 : null; }
   function 資料の文(v, n) { return str(v).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, n || 80); }
@@ -11809,9 +11815,26 @@
           if (!図形の型[k]) return null;
           var o = { type: k };
           ["x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "size", "radius",
-           "from", "to", "count", "width", "dx1", "dy1", "dx2", "dy2"].forEach(function (n) {
+           "from", "to", "count", "width", "dx1", "dy1", "dx2", "dy2",
+           /* 四角・比の帯の 大きさ。ここで 拾わないと 幅 1 の 四角に なる。 */
+           "w", "h"].forEach(function (n) {
             var v = 資料の数(it[n]); if (v !== null) o[n] = v;
           });
+          /* ★ 塗りは **文字でも** 受ける（black / white / diagonal …）。
+             真偽値しか 受けていなかったので、黒 1 色の 図が 描けなかった。 */
+          if (it.fill !== undefined && it.fill !== null) {
+            o.fill = (typeof it.fill === "string") ? 資料の文(it.fill, 12)
+              : (it.fill === true ? true : (資料の数(it.fill) !== null ? 資料の数(it.fill) : undefined));
+            if (o.fill === undefined) delete o.fill;
+          }
+          if (it.stroke === false) o.stroke = false;
+          if (k === "ratiobar") {
+            o.parts = (Array.isArray(it.parts) ? it.parts : []).slice(0, 12)
+              .map(資料の数).filter(function (v) { return v !== null && v > 0; });
+            if (!o.parts.length) return null;
+            o.start = 資料の文(it.start, 8) || "black";
+            if (it.showRatio === false) o.showRatio = false;
+          }
           if (it.label || it.text) o.label = 資料の文(it.label || it.text, 16);
           if (k === "label" || k === "text") o.text = 資料の文(it.text || it.label, 24);
           if (it.dashed === true) o.dashed = true;
@@ -29041,15 +29064,21 @@
          同じ 会話文が 3 回 刷られる。**大問の 中で 1 回だけ**に する
          （2 問目からは、上に 出ている ものを 見て 解く）。 */
       var 出した本文 = Object.create(null);
+      /* ★ **少し 書き換わっても 同じ 本文と 見る**（2026-08-30）。
+         丸ごと 一致だけを 見ていたので、AI が 2 問目の 会話文の
+         語尾を 1 字 変えただけで **同じ 会話文が 2 回 刷られて**いた。
+         頭 100 字が 同じ ものは 同じ 本文と 見る。
+         別の 本文が 頭 100 字まで 同じ ことは まず 無い。 */
       function 本文の鍵(cb) {
         var t = String(cb && cb.type || "");
-        if (t !== "passage" && t !== "dialogue" && t !== "source" && t !== "text") return "";
+        if (t !== "passage" && t !== "dialogue" && t !== "source" && t !== "text") return null;
         var 中 = cb.text || "";
         if (!中 && Array.isArray(cb.entries)) {
           中 = cb.entries.map(function (e) { return (e && e.label) + "\u0001" + (e && e.text); }).join("\u0002");
         }
         中 = String(中).replace(/\s+/g, "");
-        return 中.length >= 20 ? (t + "\u0003" + 中) : "";
+        if (中.length < 20) return null;
+        return [t + "\u0003" + 中, t + "\u0004" + 中.slice(0, 100)];
       }
 
       (sec.questions || []).forEach(function (q0) {
@@ -29062,8 +29091,8 @@
           var 残 = q0.contentBlocks.filter(function (cb) {
             var 鍵 = 本文の鍵(cb);
             if (!鍵) return true;
-            if (出した本文[鍵]) return false;
-            出した本文[鍵] = 1;
+            for (var k5 = 0; k5 < 鍵.length; k5++) if (出した本文[鍵[k5]]) return false;
+            鍵.forEach(function (x) { 出した本文[x] = 1; });
             return true;
           });
           if (残.length !== q0.contentBlocks.length) q = Object.assign({}, q0, { contentBlocks: 残 });
@@ -30048,6 +30077,17 @@
       ".dlg.is-round { border-radius: 3mm; }",
       /* 話し手（生徒A：／先生：）は ゴシックで 少し 目立たせる。 */
       ".dlg .spk { font-family: " + GOTHIC + "; }",
+      /* ══ 発言は **2 列に 組む**（2026-08-30・訴え／情報Ⅰ 第2問 の 紙面）
+         実物は
+           先生：二次元コードといってもいろいろ種類があるけれど、日ごろよく目にす
+           　　　るものは日本の企業が考えたんだよ。
+         のように、折り返した 2 行目が **話し手の 右**に そろう。
+         1 本の 流し込みでは これが 出せない（text-indent は 段の 頭にしか 効かない）。
+         話し手の 列は 会話文の 中で **1 つの 幅**に そろえる（max-content）。 */
+      ".dlg-b { display: grid; grid-template-columns: max-content 1fr; column-gap: 0; }",
+      ".dlg-b > .dlg-s { white-space: nowrap; font-family: " + GOTHIC + "; }",
+      ".dlg-b > .dlg-t { min-width: 0; }",
+      ".dlg-b > .dlg-t.is-cont { grid-column: 2; }",
       "table.tbl { border-collapse: collapse; margin: 2mm 0; font-size: .9em; }",
       "table.tbl th, table.tbl td { border: 0.4pt solid #000; padding: 1mm 2mm; }",
       "pre.code { font-family: 'SFMono-Regular', Consolas, monospace; font-size: .85em; border: 0.4pt solid #000; padding: 2mm; white-space: pre-wrap; }",
@@ -31028,16 +31068,33 @@
           + rich(b.text, vertical, b.underlines) + "</div>";
 
       case "dialogue": {
-        /* 会話文は 角丸の 枠（実物の 第1問）。**どの 型でも 囲む**。
-           行頭の「生徒A：」「先生：」は ゴシックで 少し 立たせる。 */
-        var 会 = rich(b.text, vertical, b.underlines);
-        会 = 会.replace(/(^|<br>)\s*([^\s<：:]{1,12})\s*([：:])/g,
-          function (m, 頭, 名, 印) { return 頭 + '<span class="spk">' + 名 + 印 + "</span>"; });
+        /* ══ 会話文（2026-08-30・訴え／情報Ⅰ 第2問 の 紙面を 見て 組み直した）
+           ★ **発言ごとに 2 列**に する。話し手を 左、中身を 右。
+             折り返した 2 行目が 話し手の 右に そろう（実物と 同じ）。
+             1 本の 流し込みに <br> を 並べる 前の 組みかたでは、
+             2 行目が 話し手の 下に 潜り込んで 読みにくかった。
+           ★ 傍線は **発言ごと**に 引く。発言を またぐ 傍線は 実物にも 無い。 */
+        var 行ら = String(b.text || "").split("\n");
+        var 中 = [];
+        行ら.forEach(function (行) {
+          var t = String(行);
+          if (!t.trim()) return;
+          var m = /^\s*([^\s<：:]{1,12})\s*[：:]\s*([\s\S]*)$/.exec(t);
+          if (m) {
+            中.push('<span class="dlg-s">' + esc(m[1]) + "\uff1a</span>"
+              + '<span class="dlg-t">' + rich(m[2], vertical, b.underlines) + "</span>");
+          } else {
+            /* 話し手の 無い 行（続き・ト書き）は 中身の 列へ 入れる。 */
+            中.push('<span class="dlg-t is-cont">' + rich(t, vertical, b.underlines) + "</span>");
+          }
+        });
         return '<div class="dlg' + (b.round === false ? "" : " is-round") + '" data-block="'
           + esc(b.id) + '">'
           + (b.caption ? '<div class="src-cap" style="text-align:left;margin:0 0 1.5mm">'
               + esc(b.caption) + "</div>" : "")
-          + 会 + "</div>";
+          + (中.length ? '<div class="dlg-b">' + 中.join("") + "</div>"
+                       : rich(b.text, vertical, b.underlines))
+          + "</div>";
       }
 
       /* ── 資料（図・グラフ・図形・表）─────────────────────────
