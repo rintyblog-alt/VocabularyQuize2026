@@ -306,7 +306,45 @@ const 試験を置く = () => {
     見(戻.戻 < 0.8, "★ 「%」を 押すと 幅に 合わせ直す（拡大しすぎて 戻れない、が 無い）", 戻);
   }
 
-  節("⑦ 例外");
+  節("⑦ PC は いつも 100%（2026-08-31・訴え）");
+  {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await 待(1500);
+    const p1 = await page.evaluate(() => {
+      const r = __vqew();
+      const f = r.querySelector("#examPaper iframe");
+      const d = f && f.contentDocument;
+      return { 倍率: d ? (getComputedStyle(d.body).zoom || "") : "",
+               表示: Array.from(r.querySelectorAll(".vq2-mono")).map((e) => e.textContent.trim())
+                 .filter((t) => /%/.test(t))[0] || "",
+               折り返しボタン: !!r.querySelector('[data-act="reflow"]') };
+    });
+    見(Number(p1.倍率 || 1) === 1, "★ PC に すると 倍率が 100% に なる", p1);
+    見(p1.表示 === "100%", "バーの 表示も 100%", p1.表示);
+    見(!p1.折り返しボタン, "PC では 折り返しの ボタンを 出さない");
+    /* 「%」を 押した ときだけ 幅に 合わせる。 */
+    const p2 = await page.evaluate(async () => {
+      const r = __vqew();
+      const b = r.querySelector('[data-act="zoom-fit"]');
+      if (b) b.click();
+      await new Promise((z) => setTimeout(z, 500));
+      const d = r.querySelector("#examPaper iframe").contentDocument;
+      return Number(getComputedStyle(d.body).zoom || 1);
+    });
+    見(Math.abs(p2 - 1) > 0.02, "★ 「%」を 押した ときは PC でも 幅に 合わせる", p2);
+    /* 画面の 大きさを 変えても、自分で 決めた 倍率は 触らない。 */
+    const p3 = await page.evaluate(async () => {
+      window.dispatchEvent(new Event("resize"));
+      await new Promise((z) => setTimeout(z, 500));
+      const d = __vqew().querySelector("#examPaper iframe").contentDocument;
+      return Number(getComputedStyle(d.body).zoom || 1);
+    });
+    見(Math.abs(p3 - p2) < 0.02, "★ 幅が 変わっても 自分で 決めた 倍率を 戻さない", { 前: p2, 後: p3 });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await 待(1200);
+  }
+
+  節("⑦b 例外");
   見(例外.length === 0, "画面の 例外 0 件", 例外.slice(0, 3));
 
   console.log("\n────────────────────────────────");

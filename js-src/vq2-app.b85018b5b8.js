@@ -64649,6 +64649,8 @@
       zoomAuto: true,
       /* スマホは はじめから 折り返して 読む（紙のままだと 文字が 5pt に なる）。 */
       reflow: U.isMobile ? U.isMobile() : false,
+      /* PC で「%」を 押して 幅に 合わせている あいだだけ true（2026-08-31）。 */
+      pcFit: false,
       /* 試験の 結果画面（2026-08-30・依頼）。プリセットの 結果とは 別。 */
       結果: null, xrTab: "answer", xrSub: "reason", xrPane: "paper",
       モバイルだった: null,
@@ -66229,6 +66231,9 @@
     function mountPaper(表紙前) {
       var host = app.root.querySelector("#examPaper");
       if (!host) return;
+      /* ★ PC は 100% で 組む（2026-08-31・訴え）。
+         狭い 画面で 縮めた 値の まま 組むと、一瞬 小さい 紙が 見える。 */
+      if (!app.isMobile() && st.reflow !== true && st.zoomAuto !== false && st.pcFit !== true) st.zoom = 1;
       /* ★ 数式を SVG に する 用意（2026-08-30・訴え）。1 度だけ。
          できてから 組み直す。できなくても 紙面は 出す（式は そのまま 出る）。 */
       if (!数式ようい) {
@@ -66432,6 +66437,7 @@
          0.6 止まりだったので、**紙が 画面から はみ出したまま**だった。 */
       st.zoom = Math.max(0.25, Math.min(2, Math.round(z * 100) / 100));
       st.zoomAuto = false;                 /* 自分で 決めた。もう 勝手に 変えない */
+      st.pcFit = false;                    /* PC の 幅合わせも 止める */
       紙に倍率を当てる();
       renderPaperBar();
     }
@@ -66453,7 +66459,18 @@
     }
     function 幅に合わせる(強制) {
       if (st.reflow === true) return;     /* 折り返しは もう 幅に 収まっている */
+      /* ══ PC は **いつも 100%**（2026-08-31・訴え）════════════════════
+         訴え「拡大縮小の PC の 場合は 常に 100% に してて」
+         ★ 幅に 合わせる のは **画面が 狭い とき だけ**。
+           PC で 勝手に 88% などに すると、紙の 大きさが 毎回 変わって
+           読みかたが 定まらない。
+         ★ 自分で「%」を 押した ときは PC でも 合わせる（強制）。
+           −／＋ での 拡大縮小も これまでどおり 効く。 */
+      if (!強制 && !app.isMobile() && st.pcFit !== true) { PCは百に戻す(); return; }
       if (!強制 && st.zoomAuto === false) return;
+      /* PC で 自分から「%」を 押した ときは、そのあと 幅が 変わっても 合わせ続ける
+         （−／＋ で 決め直したら 止まる）。 */
+      if (強制 && !app.isMobile()) st.pcFit = true;
       var host = app.root.querySelector("#examPaper");
       if (!host) return;
       /* ★ offsetParent は **影の DOM では 常に null**（境界を またぐ ため）。
@@ -66466,6 +66483,15 @@
       if (Math.abs(z - st.zoom) < 0.02) return;
       st.zoom = z;
       st.zoomAuto = true;
+      紙に倍率を当てる();
+      renderPaperBar();
+    }
+    /* 狭い 画面で 縮めた まま PC の 幅へ 戻った ときは 100% へ 戻す。
+       自分で 倍率を 決めた あと（zoomAuto === false）は 触らない。 */
+    function PCは百に戻す() {
+      if (st.zoomAuto === false) return;
+      if (Math.abs(st.zoom - 1) < 0.001) return;
+      st.zoom = 1;
       紙に倍率を当てる();
       renderPaperBar();
     }
