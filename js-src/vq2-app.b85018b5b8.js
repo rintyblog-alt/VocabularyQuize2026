@@ -23621,20 +23621,25 @@
     /* ── 仕様 §39 の 12 レイアウト ─────────────────────────── */
     { id: "standard-exam",     label: "一般試験・標準",     profileId: "exam-standard-a4",      ready: true,  printable: true },
     { id: "compact-exam",      label: "短問大量・高密度",   profileId: "exam-compact-dense",    ready: true,  printable: true },
-    { id: "two-column",        label: "2 カラム",           profileId: "exam-two-column",       ready: false, printable: true,
-      note: "紙面を 2 段に割る処理がまだありません（選ぶと現在の形式で出します）。" },
+    /* ★ 2 段に 割る 処理を 書いた（2026-08-30・依頼「準備中の 型も 作り込む」）。
+       列の 幅で 測ってから 分ける（全幅で 測ると 下の 段が はみ出す）。 */
+    { id: "two-column",        label: "2 カラム",           profileId: "exam-two-column",       ready: true,  printable: true },
     { id: "spacious-worksheet", label: "授業プリント・余白広め", profileId: "worksheet-spacious", ready: true, printable: true },
     { id: "entrance-exam",     label: "入試・模試風",       profileId: "exam-entrance-mock",    ready: true,  printable: true },
     { id: "source-based-exam", label: "資料読解",           profileId: "exam-source-based",     ready: true,  printable: true },
     { id: "english-test",      label: "英語",               profileId: "exam-english",          ready: true,  printable: true },
     { id: "math-test",         label: "数学",               profileId: "exam-math",             ready: true,  printable: true },
-    { id: "vocabulary-test",   label: "語彙・一問一答（表）", profileId: "test-vocabulary-table", ready: false, printable: true,
-      note: "問題と解答欄を表に並べる処理がまだありません（選ぶと現在の形式で出します）。" },
-    { id: "booklet",           label: "冊子（表紙・見開き）", profileId: "booklet-spread",       ready: false, printable: true,
-      note: "表紙とのど（見開きの内側余白）を作る処理がまだありません（選ぶと現在の形式で出します）。" },
+    /* ★ 1 行 1 問の 表に 並べる 処理を 書いた（2026-08-30）。 */
+    { id: "vocabulary-test",   label: "語彙・一問一答（表）", profileId: "test-vocabulary-table", ready: true, printable: true },
+    /* ★ 表紙・注意事項の ページ・のどの 入れ替えを 書いた（2026-08-30）。 */
+    { id: "booklet",           label: "冊子（表紙・見開き）", profileId: "booklet-spread",       ready: true,  printable: true },
     { id: "minimal-premium",   label: "ミニマル（余白重視）", profileId: "premium-minimal",      ready: true,  printable: true },
+    /* ★ 受験の 画面（左＝問題冊子／右＝解答欄）は もう ある。
+       ただし これは **紙の 型では ない**ので、紙面としては 選ばせない
+       （選ぶと 現在の 形式で 刷る）。2026-08-30 に 言い回しだけ 直した。 */
     { id: "digital-mock",      label: "画面受験（紙ではない）", profileId: "digital-mock-screen", ready: false, printable: false,
-      note: "画面で 1 問ずつ解くための設定です。紙には印刷しません。画面そのものはまだ作っていません。" },
+      note: "画面で 解くための 設定です。受験の 画面（左＝問題／右＝解答欄）は すでに 動きます。"
+        + "紙には 刷らないので、印刷する ときは ほかの 型を 選んでください。" },
 
     /* ── 実画像から起こした校正済みの紙面（先にあったもの）──── */
     { id: "school-science-figure",  label: "学校試験・図表重視", profileId: "school-science-figure-classic", ready: true, printable: true },
@@ -23652,9 +23657,11 @@
        （2026-08-30）。ID は保存済みデータのために変えない。 */
     { id: "common-test",            label: "共通テスト風",     profileId: "exam-common-test",
       ready: true, printable: true, deprecated: false, supersededBy: null },
-    /* 縦書きは HTML では組めない（TeX が要る）。置き換え先も無い。 */
-    { id: "vertical-japanese",      label: "縦書き国語",       profileId: null, ready: false, printable: true,
-      deprecated: false, supersededBy: null },
+    /* ★ 縦書きも 組めるように した（2026-08-30）。
+       足りなかったのは プロファイルと 幅で 数える ページ分けの 2 つだけで、
+       本文の CSS は 前から writing-mode: vertical-rl を 見ていた。 */
+    { id: "vertical-japanese",      label: "縦書き国語",       profileId: "exam-vertical-japanese",
+      ready: true, printable: true, deprecated: false, supersededBy: null },
 
     { id: "auto",                   label: "AI おまかせ",      profileId: null, ready: true, printable: true }
   ];
@@ -23730,6 +23737,7 @@
       id: "school-science-figure-classic",
       name: "学校試験・図表重視",
       documentType: "question-paper",
+      paperStyle: "figure",
       /* typst / tex はまだ組めないので互換に入れない（入れると使えるふりになる） */
       compatibleEngines: ["current"],
       /* いまの HTML Renderer がこの紙面の何を実際に出せるか。
@@ -23869,6 +23877,7 @@
       id: "school-answer-grid-dense",
       name: "学校試験・罫線型解答用紙",
       documentType: "answer-sheet",
+      asStyle: "griddense",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["可変グリッド", "大問の枠と縦書きラベル", "配点による罫線の太さ",
@@ -24045,6 +24054,7 @@
       id: "exam-standard-a4",
       name: "一般試験・標準",
       documentType: "question-paper",
+      paperStyle: "standard",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["用紙・余白", "本文の書体と大きさ", "行間", "設問どうしの空き",
@@ -24144,6 +24154,7 @@
       id: "exam-compact-dense",
       name: "短問大量・高密度",
       documentType: "question-paper",
+      paperStyle: "compact",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["狭い余白", "小さめの本文", "詰めた行間", "狭い設問間隔",
@@ -24232,10 +24243,13 @@
       id: "exam-two-column",
       name: "2 カラム",
       documentType: "question-paper",
+      paperStyle: "twocol",
       compatibleEngines: ["current"],
-      rendererSupport: { current: { level: "partial",
-        honored: ["用紙・余白", "本文の大きさ", "行間", "設問間隔", "選択肢の段数"],
-        pending: ["本文を 2 段に割る組み方（段の高さ合わせ・段またぎの禁止）"] } },
+      rendererSupport: { current: { level: "full",
+        honored: ["用紙・余白", "本文の大きさ", "行間", "設問間隔", "選択肢の段数",
+                  "本文を 2 段に割る組み方（列の幅で測ってから分ける・段またぎの禁止）",
+                  "見出しは段にかけない", "列の間の罫線"],
+        pending: [] } },
       supportedSubjects: ["英語", "国語", "社会", "理科", "汎用"],
       supportedQuestionTypes: ["multiple_choice_single", "multiple_choice_multiple", "true_false",
                                "short_answer", "fill_blank", "numeric", "matching", "ordering"],
@@ -24314,6 +24328,7 @@
       id: "worksheet-spacious",
       name: "授業プリント・余白広め",
       documentType: "question-paper",
+      paperStyle: "worksheet",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["広い余白", "大きめの本文", "広い行間",
@@ -24386,6 +24401,7 @@
       id: "exam-entrance-mock",
       name: "入試・模試風",
       documentType: "question-paper",
+      paperStyle: "entrance",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["B5 の用紙", "余白", "大問ごとの改ページ", "「第 n 問」の見出し",
@@ -24590,6 +24606,7 @@
       id: "exam-source-based",
       name: "資料読解",
       documentType: "question-paper",
+      paperStyle: "source",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["広い左右余白", "大きな資料の帯", "資料と設問を同じ枠に入れる",
@@ -24670,6 +24687,7 @@
       id: "exam-english",
       name: "英語",
       documentType: "question-paper",
+      paperStyle: "english",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["広い左右余白", "広い行間", "選択肢の記号（A. B. C.）",
@@ -24751,6 +24769,7 @@
       id: "exam-math",
       name: "数学",
       documentType: "question-paper",
+      paperStyle: "math",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["大きめの本文", "広い行間（数式が重ならない）",
@@ -24835,10 +24854,14 @@
       id: "test-vocabulary-table",
       name: "語彙・一問一答（表）",
       documentType: "question-paper",
+      paperStyle: "vocab",
       compatibleEngines: ["current"],
-      rendererSupport: { current: { level: "partial",
-        honored: ["用紙・余白", "小さめの本文", "詰めた行間", "ほぼ空きなしの設問間隔"],
-        pending: ["問題と解答欄を 1 行にそろえる表組み", "表を 2 列に分けて流すこと"] } },
+      rendererSupport: { current: { level: "full",
+        honored: ["用紙・余白", "小さめの本文", "詰めた行間", "ほぼ空きなしの設問間隔",
+                  "問題と解答欄を 1 行にそろえる表組み（番号・問題・解答の 3 列）",
+                  "大問ごとの見出しと表の頭", "行の途中でページを割らない"],
+        /* ★ 表は 1 行 1 要素で 組む。本物の <table> だと ページ分けが 割れない。 */
+        pending: ["表を 2 列に分けて流すこと（1 列で 組む）"] } },
       supportedSubjects: ["英語", "国語", "社会", "理科", "汎用"],
       supportedQuestionTypes: ["short_answer", "fill_blank", "numeric",
                                "multiple_choice_single", "multiple_choice_multiple", "true_false",
@@ -24922,10 +24945,13 @@
       id: "booklet-spread",
       name: "冊子（表紙・見開き）",
       documentType: "question-paper",
+      paperStyle: "booklet",
       compatibleEngines: ["current"],
-      rendererSupport: { current: { level: "partial",
-        honored: ["B5 の用紙", "余白", "行間", "大問ごとの改ページ", "ページ番号"],
-        pending: ["表紙のページ", "注意事項のページ", "見開きでのど側の余白を入れ替えること"] } },
+      rendererSupport: { current: { level: "full",
+        honored: ["B5 の用紙", "余白", "行間", "大問ごとの改ページ", "ページ番号",
+                  "表紙のページ", "注意事項のページ（表紙の次に 1 枚）",
+                  "見開きでのど側の余白を入れ替えること"],
+        pending: [] } },
       supportedSubjects: ["国語", "数学", "英語", "理科", "社会", "汎用"],
       supportedQuestionTypes: ALL_QUESTION_TYPES.slice(),
       unsupportedQuestionTypes: {},
@@ -24999,10 +25025,93 @@
        ※ 仕様には「紫のアクセント」とあるが、いまの Renderer は
           紙面に色を出さない。色だけの違いを作るのは §55 の禁止でもあるので、
           この定義に色は入れない（出せない色を書かない）。 */
+    /* ══ 縦書き国語（2026-08-30・依頼「既存の 全ての 種類を 作り込む」）════
+       ★ ここは 長く「HTML では 組めない（TeX が 要る）」として 名前だけ 残り、
+         profileId が 空だった。だが 本文の CSS は 前から
+         writing-mode: vertical-rl を 見ている（傍線の 向きまで 書いてある）。
+         足りなかったのは **プロファイルと ページ分け**の 2 つだけ。
+       ★ 縦書きは 紙を **右から 左**へ 使う。ページ分けは 高さではなく
+         **幅**で 数える（下の 縦書き() が やる）。
+       ★ ルビ・縦中横（.tcy）・傍線の 向きは 本文の CSS が すでに 持っている。 */
+    "exam-vertical-japanese": {
+      id: "exam-vertical-japanese",
+      name: "縦書き国語",
+      documentType: "question-paper",
+      paperStyle: "vertical",
+      compatibleEngines: ["current"],
+      rendererSupport: { current: { level: "full",
+        honored: ["B5 の用紙", "縦書き（右から左）", "余白", "行間", "漢数字の大問",
+                  "ルビ", "縦中横", "傍線・波線（縦向き）", "幅で数えるページ分け"],
+        pending: ["禁則処理の 細かい 調整（ブラウザ任せ）"] } },
+      supportedSubjects: ["国語", "汎用"],
+      supportedQuestionTypes: ALL_QUESTION_TYPES.slice(),
+      unsupportedQuestionTypes: {
+        english_writing: "縦書きの 紙面に 英作文の 欄は 置きません。",
+        formula: "数式は 横に 組むので、縦書きの 本文には 置きません。"
+      },
+
+      paper: { size: "B5", orientation: "portrait", writingDirection: "vertical", spread: false },
+      margins: { top: 20, bottom: 20, left: 18, right: 18 },
+
+      typography: {
+        bodyFamily: "mincho", headingFamily: "gothic",
+        basePt: 10.5, minimumFontSize: 9.5, lineHeight: 1.95, numberStyle: "kanji"
+      },
+
+      header: { align: "center", rule: false, showMeta: false, showNameBox: false,
+                variants: ["centered-simple"] },
+
+      sectionStyle: {
+        marker: "{n}", numberStyle: "kanji",
+        markerFamily: "gothic", markerPt: 12,
+        showPoints: true, rule: "none", gapBeforeMm: 8, startsNewPageFrom: 1
+      },
+      subQuestionStyle: {
+        markers: ["問一", "問二", "問三", "問四", "問五", "問六", "問七", "問八",
+                  "問九", "問十", "問十一", "問十二", "問十三", "問十四", "問十五", "問十六"],
+        markerFamily: "gothic", indentMm: 4, showPoints: true
+      },
+
+      questionFlow: {
+        columns: 1, gapMmRange: [7, 10],
+        keepQuestionWithChoices: true, keepQuestionWithFigure: true
+      },
+
+      choiceLayout: {
+        marker: "circled", variants: ["vertical"],
+        twoColumnMaxChars: 0, fourColumnMaxChars: 0, indentMm: 6
+      },
+
+      figureRules: {
+        variants: ["figure-below-centered"],
+        rightWidthPct: 0, belowWidthPct: 60, centeredWidthPct: 60, rowWidthPct: 80,
+        minGapMm: 6, maxWidthPct: 80, captionPosition: "below",
+        treatAsPartOfQuestion: true, minItemWidthMm: 30, maxRowItems: 1,
+        keepGroupTogether: true, preserveAspectRatio: true
+      },
+
+      answerCellRules: { inline: false },
+      scoreArea: { onQuestionPaper: false },
+      studentFields: [],
+
+      variationRules: {
+        spacing: ["standard", "relaxed"],
+        choiceLayout: ["vertical"],
+        figureLayout: ["figure-below-centered"],
+        sectionMarker: ["plain"]
+      },
+      safetyConstraints: {
+        minFontPt: 9.5, minGapMm: 6, maxFigureWidthPct: 80, maxColumns: 1,
+        minQuestionGapMm: 6, forbidFigureOverlap: true, forbidOrphanHeading: true
+      },
+      version: "1.0.0"
+    },
+
     "premium-minimal": {
       id: "premium-minimal",
       name: "ミニマル（余白重視）",
       documentType: "question-paper",
+      paperStyle: "minimal",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["とても広い余白", "大きめのゴシック本文", "広い行間",
@@ -25185,6 +25294,7 @@
       id: "school-answer-grid-standard",
       name: "罫線型・標準",
       documentType: "answer-sheet",
+      asStyle: "gridstd",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["可変グリッド", "大問の枠", "得点欄", "氏名欄"], pending: [] } },
@@ -25316,6 +25426,7 @@
       id: "school-answer-written",
       name: "記述欄重視",
       documentType: "answer-sheet",
+      asStyle: "written",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["可変グリッド", "背の高い記述行", "1 問 1 行", "得点欄", "氏名欄"], pending: [] } },
@@ -25444,6 +25555,7 @@
       id: "school-answer-math-work",
       name: "数学・計算欄つき",
       documentType: "answer-sheet",
+      asStyle: "mathwork",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["可変グリッド", "背の高い計算欄", "得点欄", "氏名欄"], pending: [] } },
@@ -25584,6 +25696,7 @@
       id: "school-answer-english",
       name: "英語・連続マス",
       documentType: "answer-sheet",
+      asStyle: "engbox",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["可変グリッド", "連続マス", "英作文の罫線欄", "得点欄", "氏名欄"], pending: [] } },
@@ -25729,6 +25842,7 @@
       id: "exam-common-test-answer",
       name: "共通テスト・マークシート",
       documentType: "answer-sheet",
+      asStyle: "ctmark",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["A4 横", "受験番号欄（縦積み）", "氏名欄", "解答科目欄",
@@ -25775,6 +25889,7 @@
       id: "school-answer-mark",
       name: "マーク中心",
       documentType: "answer-sheet",
+      asStyle: "markonly",
       compatibleEngines: ["current"],
       rendererSupport: { current: { level: "full",
         honored: ["可変グリッド", "丸で囲む記号欄", "1 行に 3 問", "得点欄", "氏名欄"], pending: [] } },
@@ -26022,6 +26137,13 @@
                                       LEGACY_AUTO_LAYOUT_PROFILE),
       answerSheetProfileId: savedProfileId(l.answerSheetProfileId, asMode, "answer-sheet",
                                            LEGACY_AUTO_ANSWER_PROFILE),
+      /* ★ **本人が 選んだ 型か、受け皿か**（2026-08-30）。
+         「おまかせ」で 紙面が 書かれていない ときは 受け皿の ID が 入る。
+         これを 見分けないと、おまかせが いつも 同じ 紙面に なる。 */
+      layoutProfilePinned: !!(PROFILES[l.layoutProfileId]
+        && PROFILES[l.layoutProfileId].documentType === "question-paper"),
+      answerProfilePinned: !!(PROFILES[l.answerSheetProfileId]
+        && PROFILES[l.answerSheetProfileId].documentType === "answer-sheet"),
       layoutSeed: typeof l.layoutSeed === "string" && l.layoutSeed ? l.layoutSeed.slice(0, 40) : null,
       layoutPlan: (l.layoutPlan && typeof l.layoutPlan === "object") ? l.layoutPlan : null
     };
@@ -26079,6 +26201,10 @@
   /* 新レイアウト処理へ入るかどうか。ここが唯一の関門。 */
   function isEnabled(settings) {
     if (!settings) return false;
+    /* ★ 解答用紙だけ 選んだ ときも 通す（2026-08-30）。
+       ここで 問題用紙だけを 見ていたので、解答用紙の 型が 死んでいた。 */
+    if (resolveAnswerProfileId(settings.answerSheetMode, settings.answerSheetProfileId)
+        && settings.answerSheetMode && settings.answerSheetMode !== "current") return true;
     if (settings.layoutMode === "current" || !settings.layoutMode) return false;
     return !!(resolveLayoutProfileId(settings.layoutMode, settings.layoutProfileId));
   }
@@ -26129,9 +26255,58 @@
     var qpId = resolveLayoutProfileId(settings.layoutMode, settings.layoutProfileId);
     var asId = resolveAnswerProfileId(opts.answerSheetMode || settings.answerSheetMode,
                                       settings.answerSheetProfileId);
+    /* ══ 「AI おまかせ」は **問題の 中身から 選ぶ**（2026-08-30）════════
+       ★ これまでは 一覧の いちばん 上の 型を 返すだけで、
+         教科も 形式も 見ていなかった（実測: 数学でも 英語でも 同じ 紙面）。
+       ★ 点数づけ（scoreLayouts / scoreAnswerSheets）は 前から あった。
+         呼んでいなかっただけ。同点なら 一覧の 並び順で 決まる（決定論）。 */
+    if (settings.layoutMode === "auto" || (opts.answerSheetMode || settings.answerSheetMode) === "auto") {
+      var おすすめ = null;
+      try { おすすめ = recommendLayouts(spec, { limit: 4 }); } catch (e) { おすすめ = null; }
+      if (おすすめ) {
+        if (settings.layoutMode === "auto" && !settings.layoutProfilePinned) {
+          var 一 = (おすすめ.candidates || []).filter(function (x) {
+            return x && x.profileId && PROFILES[x.profileId]
+              && PROFILES[x.profileId].documentType === "question-paper";
+          })[0];
+          if (一) qpId = 一.profileId;
+        }
+        if ((opts.answerSheetMode || settings.answerSheetMode) === "auto" && !settings.answerProfilePinned) {
+          var 二 = (おすすめ.answerCandidates || []).filter(function (x) {
+            return x && x.profileId && PROFILES[x.profileId]
+              && PROFILES[x.profileId].documentType === "answer-sheet";
+          })[0];
+          if (二) asId = 二.profileId;
+        }
+      }
+    }
     var qp = qpId ? PROFILES[qpId] : null;
     var as = asId ? PROFILES[asId] : null;
-    if (!qp) return null;                          /* 準備中の形式 → 現在の経路へ戻す */
+    /* ══ 解答用紙 **だけ** 選ばれた ときも 効かせる（2026-08-30）════════
+       ★ 画面は「問題用紙の 型」と「解答用紙の 型」を 別々に 選ばせるのに、
+         ここで 問題用紙が「現在の形式」だと **丸ごと 帰って**いた。
+         そのため 解答用紙を どれに しても 中身が 1 文字も 変わらなかった
+         （実測: 9 種類 すべて 同じ 1,624 字）。
+       ★ 問題用紙は これまでどおり 現在の 形。解答用紙だけ 組む。 */
+    if (!qp) {
+      if (!as) return null;                        /* どちらも 無い → 現在の経路へ戻す */
+      var 種 = settings.layoutSeed || newSeed();
+      var pw0 = { A4: 210, A3: 297, B4: 257, B5: 182 }[(as.paper || {}).size] || 210;
+      if ((as.paper || {}).orientation === "landscape") {
+        pw0 = { A4: 297, A3: 420, B4: 364, B5: 257 }[(as.paper || {}).size] || 297;
+      }
+      return {
+        解答だけ: true,
+        layoutProfileId: null, layoutProfileVersion: null,
+        answerSheetProfileId: asId, answerSheetProfileVersion: as.version,
+        seed: 種, requestedEngine: engine.engine,
+        variants: {}, typography: null, questionGapMm: null,
+        sections: [], notices: notices, coverPlan: null,
+        answerSheet: planAnswerSheet(spec, as, rng(種), {
+          contentWidthMm: pw0 - ((as.margins || {}).left || 16) - ((as.margins || {}).right || 16)
+        })
+      };
+    }
 
     var notices = [];
     if (engine.fellBack) notices.push(engine.reason);
@@ -26165,10 +26340,15 @@
       return {
         sectionId: sec.id,
         number: sec.number,
-        marker: (qp.sectionStyle.marker || "{n}").replace("{n}", String(sec.number)),
+        marker: (qp.sectionStyle.marker || "{n}")
+          .replace("{n}", qp.sectionStyle.numberStyle === "kanji"
+            ? 漢数字(sec.number) : String(sec.number)),
         markerVariant: v.sectionMarker || "plain",
+        /* ★ **1 つ目の 大問では 紙を 変えない**（2026-08-30）。
+           変えると 見出しだけの 8mm の 紙が 1 枚 できる（実測）。
+           2 つ目から 変える。 */
         startsNewPage: qp.sectionStyle.startsNewPageFrom
-          ? (si + 1) >= qp.sectionStyle.startsNewPageFrom : false,
+          ? (si > 0 && (si + 1) >= qp.sectionStyle.startsNewPageFrom) : false,
         questions: (sec.questions || []).map(function (q, qi) {
           return planQuestion(q, qi, qp, rand, { contentWidthMm: contentWidthMm });
         })
@@ -26463,6 +26643,17 @@
      ・問題形式 → 解答欄 の対応はプロファイルの answerCellRules だけが決める。
      ・欄の数は設問の数と必ず一致させる（不足・重複・余りを出さない）。
      ══════════════════════════════════════════════════════════════════ */
+  /* 一 二 三 …（縦書きの 大問は 漢数字が 決まり）。 */
+  function 漢数字(n) {
+    var 数 = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+    n = Number(n) || 0;
+    if (n <= 0) return String(n);
+    if (n < 10) return 数[n];
+    if (n < 20) return "十" + (n % 10 ? 数[n % 10] : "");
+    if (n < 100) return 数[Math.floor(n / 10)] + "十" + (n % 10 ? 数[n % 10] : "");
+    return String(n);
+  }
+
   function planAnswerSheet(spec, profile, rand, opts) {
     opts = opts || {};
     var rules = profile.answerCellRules || {};
@@ -26548,7 +26739,17 @@
         position: profile.scoreArea.position || "right"
       },
       studentFields: (profile.studentFields || []).slice(),
-      studentFieldsPosition: profile.studentFieldsPosition || "bottom"
+      studentFieldsPosition: profile.studentFieldsPosition || "bottom",
+      /* ★ 解答用紙は **自分の 用紙で 組む**（2026-08-30）。
+         これまで 用紙・余白・書体を 返していなかったので、
+         解答用紙は いつも **問題用紙の 紙**に 乗っていた。
+         共通テストの マークシートは A4 横だが B5 縦に 出ていた（実測）。 */
+      paper: Object.assign({}, profile.paper || {}),
+      margins: Object.assign({}, profile.margins || {}),
+      typography: Object.assign({}, profile.typography || {}),
+      sheetStyle: profile.sheetStyle || null,
+      asStyle: profile.asStyle || null,
+      name: profile.name || ""
     };
     /* このプロファイルが可変グリッドを持っているときは、そちらも組む。
        1 問 1 行の作り方（sections）は残したまま、grid を足す形にする。 */
@@ -28907,7 +29108,10 @@
     var lp = null, lprofile = null;
     if (LP && LP.isEnabled(lset)) {
       lp = LP.planLayout(spec, { settings: lset });
-      if (lp) {
+      if (lp && lp.解答だけ) {
+        /* 解答用紙だけ 選ばれた。問題用紙は これまでどおりの 紙で 組む。 */
+        lprofile = null;
+      } else if (lp) {
         lprofile = LP.getProfile(lp.layoutProfileId);
         /* プロファイルの紙・余白・書体を、この計画の土台にする。 */
         paper = Object.assign({}, paper, {
@@ -28953,7 +29157,19 @@
 
     /* プロファイルが選ばれているときは、その値で紙面の呼吸を上書きする。
        未選択なら lp は null なので、ここは丸ごと素通りする。 */
-    if (lp) {
+    if (lp && lp.解答だけ) {
+      /* 解答用紙の ぶんだけ 持たせる（問題用紙の 見出し・表紙は 触らない）。 */
+      plan.layoutProfile = {
+        layoutProfileId: null, layoutProfileVersion: null,
+        answerSheetProfileId: lp.answerSheetProfileId,
+        answerSheetProfileVersion: lp.answerSheetProfileVersion,
+        seed: lp.seed, requestedEngine: lp.requestedEngine,
+        variants: {}, typography: null, header: null,
+        coverStyle: null, coverPlan: null, notices: lp.notices,
+        解答だけ: true
+      };
+      (lp.notices || []).forEach(function (n) { plan.warnings.push(n); });
+    } else if (lp) {
       plan.layoutProfile = {
         layoutProfileId: lp.layoutProfileId,
         layoutProfileVersion: lp.layoutProfileVersion,
@@ -28967,6 +29183,18 @@
         /* ★ 表紙の 組みかた（2026-08-30）。共通テスト風は まるごと 別の 組み。
            ここへ 通していないと renderCover が ふつうの 表紙を 出す。 */
         coverStyle: lprofile ? (lprofile.coverStyle || null) : null,
+        /* 冊子は 注意事項を **表紙の 次の 1 ページ**に 置く（実物の 冊子）。 */
+        coverNotesPage: !!(lprofile && lprofile.cover && lprofile.cover.notesPage),
+        /* ★ 型ごとの **見た目の 名札**（2026-08-30・依頼「1 つ 1 つ 丁寧に」）。
+           これまで 型の 違いは 余白と 文字の 大きさ だけで、
+           組みかたは 全部 同じ だった。ここから 型ごとの CSS を 当てる。 */
+        paperStyle: lprofile ? (lprofile.paperStyle || null) : null,
+        /* 段数（2 カラムの 紙面）。ページ分けの script が これを 見る。
+           ★ 語彙の 表は questionFlow.columns が「表の 列数」なので 数えない
+             （数えて しまい、一問一答の 表が 2 段に 割れていた）。 */
+        columns: (lprofile && lprofile.questionFlow
+                  && lprofile.questionFlow.mode !== "table"
+                  && lprofile.questionFlow.columns) || 1,
         coverPlan: lp.coverPlan || null,
         notices: lp.notices
       };
@@ -28987,6 +29215,24 @@
       kind: "question",
       blocks: questionBlocks(spec, tpl, tuning, lp, lprofile)
     });
+
+    /* ★ 解答用紙は **自分の 用紙**で 組む（2026-08-30）。
+       共通テストの マークシートは A4 横。問題用紙（B5 縦）に 乗せない。 */
+    if (lp && lp.answerSheet && lp.answerSheet.paper && lp.answerSheet.paper.size) {
+      var ap = lp.answerSheet.paper, am = lp.answerSheet.margins || {};
+      var asz = TPL.paperSizeMm({ size: ap.size, orientation: ap.orientation });
+      plan.answerPaper = {
+        size: ap.size, orientation: ap.orientation || "portrait",
+        widthMm: asz.w, heightMm: asz.h,
+        margins: { top: am.top != null ? am.top : 16, right: am.right != null ? am.right : 14,
+                   bottom: am.bottom != null ? am.bottom : 16, left: am.left != null ? am.left : 14 },
+        writingDirection: ap.writingDirection || "horizontal",
+        typography: lp.answerSheet.typography || null,
+        sheetStyle: lp.answerSheet.sheetStyle || null,
+        asStyle: lp.answerSheet.asStyle || null,
+        name: lp.answerSheet.name || ""
+      };
+    }
 
     /* 2) 解答用紙（別紙のときだけ） */
     if ((paper.bookletMode || "separate-answer-sheet") !== "single") {
@@ -29953,19 +30199,365 @@
   /* ══════════════════════════════════════════════════════════════════
      ページ CSS
      ══════════════════════════════════════════════════════════════════ */
-  function pageCss(plan) {
-    var p = plan.paper;
+  /* ══════════════════════════════════════════════════════════════════
+     紙面の 型ごとの 組みかた（2026-08-30・依頼「1 つ 1 つ 丁寧に 作り込む」）
+
+     ★ ここまで、型の 違いは **用紙・余白・文字の 大きさ・行間** だけだった。
+       組みかた（見出し・氏名欄・大問・資料・図・選択肢の 置きかた）は
+       12 種類 とも まったく 同じ で、刷り上がりを 並べても 見分けが
+       つかなかった（実測: class の 並びが 共通テスト 以外 全部 同じ）。
+     ★ 型ごとに **本物が そう 組まれている 理由**を 1 つずつ 入れる。
+     ★ 色は 使わない（白黒 印刷で 消える）。線の 太さ・余白・書体で 分ける。
+       0.4pt 未満の 線は 家庭用の プリンタで 消えるので 使わない。
+     ══════════════════════════════════════════════════════════════════ */
+  function 型ごとのCSS(型, base, MINCHO, GOTHIC) {
+    if (!型) return [];
+    var C = {
+
+      /* ── ① 一般試験・標準 ─────────────────────────────────
+         学校の 定期考査。中央に 試験名、下に 太い 罫線。
+         氏名欄は **右上に まとめて 1 枠**（実物は ここで 回収する）。
+         大問は 左の 太い 縦線で 立てる（番号だけでは 埋もれる）。 */
+      standard: [
+        ".ps-standard .exam-head { border-bottom: 1.1pt solid #000; padding-bottom: 3mm; }",
+        ".ps-standard .exam-title { font-family: " + GOTHIC + "; letter-spacing: .18em; font-size: 1.45em; }",
+        ".ps-standard .exam-meta { font-size: .8em; letter-spacing: .04em; }",
+        ".ps-standard .name-box { display: block; width: 84mm; margin: 3mm 0 0 auto;",
+        "    text-align: left; border: 0.5pt solid #000; padding: 2.2mm 3mm; }",
+        ".ps-standard .sec { border-left: 1.2mm solid #000; padding: 0 0 0 3mm; }",
+        ".ps-standard .sec-no { min-width: 0; margin-right: 1.5mm; }"
+      ],
+
+      /* ── ② 短問大量・高密度 ───────────────────────────────
+         小テスト。**紙 1 枚に 詰める**のが 目的。
+         見出しは 1 行（試験名・教科・氏名を 横に 並べる）。
+         大問は 段落の 頭に 小さく。設問どうしの 空きは 最小。 */
+      compact: [
+        ".ps-compact .exam-head { display: flex; align-items: baseline; gap: 4mm;",
+        "    text-align: left; border-bottom: 0.5pt solid #000; padding-bottom: 1.5mm; margin-bottom: 3.5mm; }",
+        ".ps-compact .exam-title { font-size: 1.12em; font-family: " + GOTHIC + "; flex: 0 0 auto; }",
+        ".ps-compact .exam-meta { margin: 0; font-size: .76em; flex: 1 1 auto; }",
+        ".ps-compact .exam-meta span { margin: 0 .6em 0 0; }",
+        ".ps-compact .name-box { margin: 0 0 0 auto; padding: .8mm 2mm; font-size: .76em; flex: 0 0 auto; }",
+        ".ps-compact .sec { font-size: 1em; margin-top: 4mm; margin-bottom: 1.5mm; }",
+        ".ps-compact .q { margin-bottom: .4mm; }",
+        ".ps-compact .ch { margin-top: .6mm; margin-left: 6mm; }",
+        ".ps-compact .ch-i { margin: .3mm 0; }"
+      ],
+
+      /* ── ③ 2 カラム ───────────────────────────────────────
+         短い 設問を 2 列に 流す。列の 間に 細い 線を 引く（実物の 模試）。
+         列に 分ける ところは ページ分けの script が 作る。 */
+      twocol: [
+        /* ★ すきまは **padding だけ**で 作る（2026-08-30）。
+           gap と padding を 両方 付けると、2 列目の 中身の 幅だけが
+           狭くなり、測った 高さより 背が 伸びて 紙から はみ出す（実測 291mm/259mm）。
+           align-items も stretch に しない（低い 列が 引き伸ばされる）。 */
+        ".ps-twocol .cols { display: flex; gap: 0; align-items: flex-start; }",
+        ".ps-twocol .col { flex: 1 1 0; min-width: 0; }",
+        ".ps-twocol .col:first-child { padding-right: 8mm; }",
+        ".ps-twocol .col + .col { border-left: 0.4pt solid #000; padding-left: 8mm; }",
+        ".ps-twocol .col:empty { border-left: 0; }",
+        ".ps-twocol .exam-head { margin-bottom: 5mm; }",
+        ".ps-twocol .sec { margin-top: 0; }",
+        ".ps-twocol .col > :first-child { margin-top: 0; }",
+        ".ps-twocol .fig, .ps-twocol table.tbl { max-width: 100%; }"
+      ],
+
+      /* ── ④ 授業プリント・余白広め ─────────────────────────
+         配って その場で 書き込む 紙。**書く ところが 見える**ことが 大事。
+         見出しは 帯（左に 太い 縦棒）。設問の 下に 書き込みの 罫線を 敷く。 */
+      worksheet: [
+        ".ps-worksheet .exam-head { border-bottom: 0; text-align: left; margin-bottom: 4mm; }",
+        ".ps-worksheet .exam-title { font-family: " + GOTHIC + "; font-size: 1.35em;",
+        "    border-left: 2mm solid #000; padding-left: 3.5mm; letter-spacing: .06em; }",
+        ".ps-worksheet .exam-meta { text-align: left; margin-top: 2mm; padding-left: 5.5mm; }",
+        ".ps-worksheet .exam-meta span { margin: 0 1.4em 0 0; }",
+        ".ps-worksheet .name-box { display: block; width: 88mm; margin: 3mm 0 0 auto;",
+        "    border: 0; border-bottom: 0.5pt solid #000; padding: 1mm 2mm 1.5mm; }",
+        ".ps-worksheet .sec { background: none; border-bottom: 0.6pt solid #000;",
+        "    padding-bottom: 1.2mm; font-family: " + GOTHIC + "; }",
+        /* ★ 書き込む 空きの **下**に 線を 引く（2026-08-30）。
+           設問の 直後に 引くと、選択肢が 線の 下に 落ちて
+           「問い ─ 線 ─ 選択肢」に 見える（実測）。
+           次の 設問の 上に 引けば、前の 設問の 答えを 書く 空きの 底に なる。 */
+        ".ps-worksheet .q + .q, .ps-worksheet .ch + .q, .ps-worksheet .src + .q,",
+        ".ps-worksheet .qfg + .q, .ps-worksheet .agr + .q, .ps-worksheet .ans + .q,",
+        ".ps-worksheet .dlg + .q, .ps-worksheet .fig + .q, .ps-worksheet .ob + .q {",
+        "    border-top: 0.3pt dotted #666; padding-top: 6mm; }",
+        ".ps-worksheet .ch { margin-top: 2mm; }"
+      ],
+
+      /* ── ⑤ 入試・模試風 ───────────────────────────────────
+         配られる 冊子。**氏名欄は 表紙にしか 無い**（本文には 出さない）。
+         大問は 白抜きの 番号。柱（ページ番号）は「― 1 ―」。 */
+      entrance: [
+        ".ps-entrance .exam-head { border-bottom: 0; text-align: left; margin-bottom: 7mm; }",
+        ".ps-entrance .exam-title { font-size: 1.1em; letter-spacing: .5em; text-align: center;",
+        "    font-family: " + MINCHO + "; font-weight: 400; }",
+        ".ps-entrance .exam-meta { display: none; }",
+        ".ps-entrance .name-box { display: none; }",
+        ".ps-entrance .sec { margin-top: 9mm; }",
+        ".ps-entrance .sec-no { background: #000; color: #fff; padding: .6mm 2.4mm;",
+        "    min-width: 0; margin-right: 2.5mm; font-family: " + GOTHIC + "; }",
+        ".ps-entrance .sec-no.is-boxed { background: #000; color: #fff; border: 0; }",
+        ".ps-entrance .q-no { font-family: " + GOTHIC + "; }",
+        ".ps-entrance .src { border-width: 0.7pt; }"
+      ],
+
+      /* ── ⑥ 資料読解 ───────────────────────────────────────
+         資料を 読ませる 紙。**資料が 本文より 目立つ**ように 組む。
+         資料は 太い 枠、見出しの 札を 枠の 線に 乗せる。図は 大きく。 */
+      source: [
+        ".ps-source .src { border: 0.7pt solid #000; padding: 3.5mm 4mm 3mm; margin: 3mm 0 3mm 2mm;",
+        "    position: relative; font-size: .92em; }",
+        ".ps-source .src-cap { text-align: left; font-family: " + GOTHIC + "; font-size: .8em;",
+        "    border-top: 0.3pt solid #000; padding-top: 1.2mm; margin-top: 2.5mm; }",
+        ".ps-source table.src-tb { border: 0.7pt solid #000; width: 100%; }",
+        ".ps-source table.src-tb th { background: #eee; font-family: " + GOTHIC + "; }",
+        ".ps-source .fig { margin: 3mm auto 1mm; }",
+        ".ps-source .fig svg { max-width: 100%; }",
+        ".ps-source .sec { border-bottom: 0.8pt solid #000; padding-bottom: 1.5mm; }",
+        ".ps-source .q-text { text-align: justify; }"
+      ],
+
+      /* ── ⑦ 英語 ───────────────────────────────────────────
+         英文は **両端そろえに しない**（単語の 間が 伸びて 読みにくい）。
+         長文は 枠で 囲まず 左の 縦線。選択肢は 1 列（英文は 長い）。 */
+      english: [
+        ".ps-english body, .ps-english .q-text, .ps-english .src { text-align: left; }",
+        ".ps-english .src { border: 0; border-left: 0.8pt solid #000; padding: 0 0 0 4mm;",
+        "    margin: 3mm 0 4mm 2mm; font-size: .96em; line-height: 2.0; }",
+        ".ps-english .dlg { border: 0; border-left: 0.8pt solid #000; border-radius: 0;",
+        "    padding: 0 0 0 4mm; }",
+        ".ps-english .ch { column-count: 1 !important; margin-left: 7mm; }",
+        ".ps-english .ch-i { margin: 1.4mm 0; }",
+        ".ps-english .exam-title { font-family: " + GOTHIC + "; letter-spacing: .06em; }",
+        ".ps-english .q-no { font-family: " + GOTHIC + "; }"
+      ],
+
+      /* ── ⑧ 数学 ───────────────────────────────────────────
+         計算する 紙。設問の 下に **書く ところ**を 空ける。
+         大問は ［1］。図は 右に 置いて 本文を 回り込ませない（式が 崩れる）。 */
+      math: [
+        ".ps-math .sec-no.is-boxed, .ps-math .sec-no { border: 0.4mm solid #000; min-width: 0;",
+        "    padding: .4mm 2mm; margin-right: 2.5mm; font-family: " + GOTHIC + "; }",
+        ".ps-math .q { padding-bottom: 5mm; }",
+        ".ps-math .ch { margin-left: 9mm; }",
+        ".ps-math .fig { margin: 3mm auto; }",
+        ".ps-math .vqm-b { margin: 2.5mm 0; }",
+        ".ps-math .exam-head { border-bottom: 0.5pt solid #000; }",
+        ".ps-math .q-text { text-align: left; }"
+      ],
+
+      /* ── ⑨ 語彙・一問一答（表）─────────────────────────────
+         1 行 1 問の 表。左に 番号、真ん中に 問い、右に 書く 欄。
+         組み立ては renderBooklet が 表に する。ここは 見た目だけ。 */
+      vocab: [
+        /* ★ 表に 見えるが **1 行 1 要素**で 組む（2026-08-30）。
+           本物の <table> だと ページ分けが 表を 割れず、1 ページ目から
+           はみ出す。行を .sheet の 直下に 並べれば、これまでの
+           ページ分けが そのまま 効く。 */
+        ".ps-vocab .vt-h, .ps-vocab .vt-r { display: flex; align-items: stretch;",
+        "    border-left: 0.5pt solid #000; border-right: 0.5pt solid #000;",
+        "    border-bottom: 0.5pt solid #000; break-inside: avoid; page-break-inside: avoid; }",
+        ".ps-vocab .vt-h { border-top: 0.5pt solid #000; background: #eee;",
+        "    font-family: " + GOTHIC + "; font-size: .8em; }",
+        ".ps-vocab .vt-r + .vt-r, .ps-vocab .vt-h + .vt-r { margin-top: 0; }",
+        ".ps-vocab .vt-n { flex: 0 0 11mm; text-align: center; padding: 1.8mm 1mm;",
+        "    border-right: 0.5pt solid #000; font-family: " + GOTHIC + "; }",
+        ".ps-vocab .vt-q { flex: 1 1 auto; min-width: 0; padding: 1.8mm 2.4mm;",
+        "    border-right: 0.5pt solid #000; }",
+        ".ps-vocab .vt-a { flex: 0 0 48mm; padding: 1.8mm 2.4mm; }",
+        ".ps-vocab .vt-q .ch { margin: 1mm 0 0 0; font-size: .92em; }",
+        ".ps-vocab .vt-q .ch-i { margin: .3mm 0; }",
+        ".ps-vocab .vt-q .q-head { display: block; }",
+        ".ps-vocab .vt-q .q-no { display: none; }",
+        ".ps-vocab .vt-q .q-pts { float: right; }",
+        ".ps-vocab .sec { margin-top: 6mm; margin-bottom: 2mm; }",
+        ".ps-vocab .exam-head { border-bottom: 0.8pt solid #000; }"
+      ],
+
+      /* ── ⑩ 冊子（表紙・見開き）─────────────────────────────
+         綴じる 紙。**のど（内側）の 余白を 広く**とる（綴じ代）。
+         偶数・奇数ページで 左右を 入れ替える。 */
+      booklet: [
+        ".ps-booklet .sheet { padding: 0 0 0 8mm; }",
+        ".page.ps-booklet.is-verso .sheet { padding: 0 8mm 0 0; }",
+        ".ps-booklet .exam-head { border-bottom: 0.4pt solid #000; padding-bottom: 2mm; }",
+        ".ps-booklet .exam-title { font-family: " + MINCHO + "; font-size: 1.2em; letter-spacing: .3em; }",
+        ".ps-booklet .exam-meta { display: none; }",
+        ".ps-booklet .name-box { display: none; }",
+        ".ps-booklet .sec { margin-top: 8mm; }",
+        ".ps-booklet .cv-notes.is-page { margin-top: 0; }",
+        ".ps-booklet .cv-notes.is-page ol { line-height: 2.0; }"
+      ],
+
+      /* ── ⑪ ミニマル（余白重視）─────────────────────────────
+         罫線を 引かない。空きと 書体の 太さだけで 段を 作る。 */
+      minimal: [
+        ".ps-minimal .exam-head { border-bottom: 0; padding-bottom: 0; margin-bottom: 12mm;",
+        "    text-align: left; }",
+        ".ps-minimal .exam-title { font-family: " + GOTHIC + "; font-weight: 400; font-size: 1.3em;",
+        "    letter-spacing: .22em; }",
+        ".ps-minimal .exam-meta { margin-top: 3mm; font-size: .74em; letter-spacing: .1em; }",
+        ".ps-minimal .exam-meta span { margin: 0 1.6em 0 0; }",
+        ".ps-minimal .name-box { border: 0; border-bottom: 0.4pt solid #000; padding: 0 2mm 1mm;",
+        "    display: block; width: 76mm; margin: 6mm 0 0 auto; }",
+        ".ps-minimal .sec { font-weight: 400; font-size: 1.18em; letter-spacing: .16em;",
+        "    font-family: " + GOTHIC + "; }",
+        ".ps-minimal .sec-pts { letter-spacing: 0; }",
+        ".ps-minimal .src { border: 0; border-left: 0.4pt solid #000; padding-left: 4mm; }",
+        ".ps-minimal .q-no { font-weight: 400; }"
+      ],
+
+      /* ── ⑬ 縦書き国語 ────────────────────────────────────
+         右から 左へ 読む 紙。大問は 漢数字。選択肢も 縦に 並べる。
+         枠（資料・会話文）は 縦書きの まま 中身が 回るように する。 */
+      vertical: [
+        /* 表紙は 横に 組む（実物の 国語も 表紙は 横）。 */
+        ".page.ps-vertical[data-cover] { writing-mode: horizontal-tb; }",
+        ".ps-vertical .sheet.cover { writing-mode: horizontal-tb; height: auto; }",
+        ".ps-vertical .exam-head { border-bottom: 0; text-align: center; margin: 0 0 0 6mm;",
+        "    padding: 0; }",
+        ".ps-vertical .exam-title { font-family: " + MINCHO + "; font-weight: 400;",
+        "    font-size: 1.15em; letter-spacing: .4em; }",
+        ".ps-vertical .exam-meta, .ps-vertical .name-box { display: none; }",
+        ".ps-vertical .sec { margin: 0 0 0 6mm; font-family: " + GOTHIC + "; }",
+        ".ps-vertical .sec-no { min-width: 0; margin-bottom: 1.5mm; }",
+        ".ps-vertical .sec-pts { float: none; display: block; font-size: .8em; }",
+        ".ps-vertical .q { margin: 0 0 0 2mm; }",
+        ".ps-vertical .q + .q, .ps-vertical .ch + .q, .ps-vertical .src + .q,",
+        ".ps-vertical .dlg + .q { margin-top: 0; margin-left: 7mm; }",
+        ".ps-vertical .q-head { display: block; }",
+        ".ps-vertical .q-no { display: block; margin-bottom: 1.5mm; }",
+        ".ps-vertical .ch { margin: 0 0 0 4mm; column-count: 1 !important; }",
+        ".ps-vertical .ch-i { display: block; margin: 0 0 0 2mm; }",
+        ".ps-vertical .src, .ps-vertical .dlg { margin: 0 0 0 4mm; }",
+        ".ps-vertical .dlg-b { display: block; }",
+        ".ps-vertical .dlg-s, .ps-vertical .dlg-t { display: inline; }",
+        /* 図・表は 横に 組む（縦に すると 目盛りが 読めない）。
+           ★ **幅を 決めて おく**。縦書きの 中に 横組みを 置くと、
+             幅が 中身なりに 伸びて 紙から はみ出す（実測 356mm／上限 146mm）。 */
+        ".ps-vertical .fig, .ps-vertical .fgi, .ps-vertical table.tbl, .ps-vertical .ft,",
+        ".ps-vertical .qfg-f {",
+        "    writing-mode: horizontal-tb; margin: 0 0 0 4mm;",
+        "    width: 62mm !important; max-width: 62mm !important; }",
+        /* 図の 本体（SVG）も 枠に 収める。ここを 開けると 中身なりに 伸びる。 */
+        ".ps-vertical .fig svg, .ps-vertical .fig img,",
+        ".ps-vertical .fgi svg, .ps-vertical .fgi img,",
+        ".ps-vertical .vf svg { max-width: 100%; height: auto; }",
+        ".ps-vertical .qfg { display: block; }",
+        ".ps-vertical .qfg.is-side, .ps-vertical .qfg.is-row { display: block; }",
+        /* 資料・会話文の 枠も 幅を 決める（縦書きは 高さが 幅に なる）。 */
+        ".ps-vertical .src, .ps-vertical .dlg { max-height: 100%; }"
+      ],
+
+      /* ── ⑫ 学校試験・図表重視 ─────────────────────────────
+         図が 主役。図に 枠を 付け、見出しを 図の 下に 置く。
+         本文は 図から 離す（くっつくと どの 図の 話か 分からない）。 */
+      figure: [
+        ".ps-figure .fig { border: 0.4pt solid #000; padding: 2.5mm; margin: 3mm auto; }",
+        ".ps-figure .fig .src-cap { text-align: center; font-family: " + GOTHIC + ";",
+        "    font-size: .8em; margin-top: 2mm; }",
+        ".ps-figure .qfg { gap: 5mm; }",
+        ".ps-figure table.tbl { margin: 3mm auto; }",
+        ".ps-figure table.tbl th { background: #eee; font-family: " + GOTHIC + "; }",
+        ".ps-figure .sec { border-bottom: 0.6pt solid #000; padding-bottom: 1.2mm; }",
+        ".ps-figure .exam-head { border-bottom: 0; }"
+      ]
+    };
+    return C[型] || [];
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     解答用紙の 型ごとの 組みかた（2026-08-30・依頼「1 つ 1 つ 丁寧に」）
+
+     ★ 中身（欄の 種類・数・高さ）は プロファイルが すでに 決めている。
+       ここで 足すのは **見た目の 芯**だけ。
+     ★ 色は 使わない。線の 太さ・すきま・書体で 分ける。
+     ══════════════════════════════════════════════════════════════════ */
+  function 解答用紙のCSS(型, GOTHIC) {
+    if (!型) return [];
+    var C = {
+      /* 罫線型・標準。いちばん よく 見る 学校の 解答用紙。
+         外枠は 太く、中は 細く。大問の 札は 縦書きで 目立たせる。 */
+      gridstd: [
+        ".as-gridstd .agbt { --agb-out: 0.5mm; --agb-in: 0.2mm; }",
+        ".as-gridstd .agb-sec { font-size: 1.15em; letter-spacing: .1em; }",
+        ".as-gridstd .agb-ql { font-size: .84em; }",
+        ".as-gridstd .agf { margin-top: 5mm; }"
+      ],
+      /* 罫線型・高密度。1 枚に 詰める。線を 細く、行を 低く。 */
+      griddense: [
+        ".as-griddense .agbt { --agb-out: 0.4mm; --agb-in: 0.15mm; }",
+        ".as-griddense .agbt th, .as-griddense .agbt td { padding: 0.4mm 0.8mm; }",
+        ".as-griddense .agb-ql { font-size: .76em; }",
+        ".as-griddense .agb { margin-bottom: 3mm; }",
+        ".as-griddense .agf { margin-top: 3mm; }"
+      ],
+      /* 記述欄重視。書く 行を **はっきり 見せる**。行の 間を 空ける。 */
+      written: [
+        ".as-written .agc-lines .agc-line { border-bottom: 0.25mm solid #000; }",
+        ".as-written .agc-lines .agc-line + .agc-line { margin-top: 1.2mm; }",
+        ".as-written .agc-wide { border-bottom: 0.25mm solid #000; }",
+        ".as-written .agbt { --agb-out: 0.6mm; }",
+        ".as-written .agb-ql { font-size: .86em; }"
+      ],
+      /* 数学・計算欄つき。計算する ところに 札を 置き、罫線は 薄く
+         （式は 罫線に 沿って 書かない ので、濃いと じゃま）。 */
+      mathwork: [
+        ".as-mathwork .agc-lines { position: relative; }",
+        ".as-mathwork .agc-lines::before { content: '計算'; position: absolute;",
+        "    top: -0.6mm; left: 0; font-size: .62em; letter-spacing: .1em;",
+        "    font-family: " + GOTHIC + "; color: #444; }",
+        ".as-mathwork .agc-lines .agc-line { border-bottom: 0.15mm dotted #555; }",
+        ".as-mathwork .agc-lines .agc-line:last-child { border-bottom: 0.2mm solid #000; }",
+        ".as-mathwork .agbt { --agb-out: 0.6mm; }"
+      ],
+      /* 英語・連続マス。1 字 1 マス。マスは **正方形**に そろえる。 */
+      engbox: [
+        ".as-engbox .agc-seq { gap: 0; row-gap: 1mm; }",
+        ".as-engbox .agc-sq { border: 0.18mm solid #000; }",
+        ".as-engbox .agc-lines .agc-line { border-bottom: 0.2mm solid #000; }",
+        ".as-engbox .agbt th, .as-engbox .agbt td { padding: 0.8mm 1mm; }",
+        ".as-engbox .agb-ql { font-size: .8em; }"
+      ],
+      /* マーク中心。塗る 丸を 大きく、線を 濃く（薄いと 塗り残しが 見えない）。 */
+      markonly: [
+        ".as-markonly .agc-mark { border-width: 0.3mm; }",
+        ".as-markonly .agc-mark.is-circle { border-radius: 50%; }",
+        ".as-markonly .agbt { --agb-out: 0.5mm; --agb-in: 0.2mm; }",
+        ".as-markonly .agb-ql { font-size: .8em; }"
+      ],
+      /* 共通テストの マークシート。見た目は ms-* が 全部 持っている。 */
+      ctmark: []
+    };
+    return C[型] || [];
+  }
+
+  function pageCss(plan, 冊子ら) {
+    /* ══ 解答用紙は **自分の 用紙**で 組む（2026-08-30）════════════════
+       ★ これまで @page は いつも 問題用紙の 紙だった。
+         共通テストの マークシート（A4 横）が B5 縦に 乗り、はみ出していた。
+       ★ この 1 回で 出すのが 解答用紙だけ なら、その 紙で 組む
+         （1 つの 文書に 2 つの @page は 置けない）。 */
+    var 解答のみ = Array.isArray(冊子ら) && 冊子ら.length
+      && 冊子ら.every(function (b) { return b && b.kind === "answer-sheet"; });
+    var ap = 解答のみ ? (plan.answerPaper || null) : null;
+    var p = ap || plan.paper;
     var m = p.margins || { top: 20, bottom: 20, left: 18, right: 18 };
     var vertical = p.writingDirection === "vertical";
     /* 紙面プロファイルが本文の大きさ・書体を決めているときはそれに従う。
        選ばれていなければ、これまでどおり 10.5pt の明朝。 */
     var lprof = plan.layoutProfile || null;
-    var basePt = (lprof && lprof.typography && lprof.typography.basePt) || 10.5;
+    var typo = (ap && ap.typography) || (lprof && lprof.typography) || null;
+    var basePt = (typo && typo.basePt) || 10.5;
     var base = basePt * (plan.fontScale || 1);
     var MINCHO = "'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif";
     var GOTHIC = "'Hiragino Sans', 'Yu Gothic', 'Noto Sans JP', sans-serif";
-    var bodyFont = (lprof && lprof.typography && lprof.typography.bodyFamily === "gothic") ? GOTHIC : MINCHO;
-    var headFont = (lprof && lprof.typography && lprof.typography.headingFamily === "mincho") ? MINCHO : GOTHIC;
+    var bodyFont = (typo && typo.bodyFamily === "gothic") ? GOTHIC : MINCHO;
+    var headFont = (typo && typo.headingFamily === "mincho") ? MINCHO : GOTHIC;
 
     return [
       "@page {",
@@ -29977,16 +30569,21 @@
       "body {",
       "  font-family: " + bodyFont + ";",
       "  font-size: " + base.toFixed(2) + "pt;",
-      "  line-height: " + (plan.lineHeight || 1.85) + ";",
+      "  line-height: " + ((typo && typo.lineHeight) || plan.lineHeight || 1.85) + ";",
       "  color: #000; background: #fff;",
       "  text-align: justify;",
-      vertical ? "  writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl;" : "",
       "}",
       ".sheet {",
       "  width: " + (p.widthMm - m.left - m.right) + "mm;",
       "  min-height: " + (p.heightMm - m.top - m.bottom) + "mm;",
       "  margin: 0 auto; position: relative;",
+      /* ★ 縦書きは **紙の 中だけ**（2026-08-30）。
+         body ごと 縦に すると、ページ（.page）まで 右から 左へ 積まれ、
+         1 枚の 大きさが 決まらなく なる（実測: B5 182mm の 紙が 112mm に なった）。
+         紙は これまでどおり 上から 下へ 並べ、**中身だけ** 縦に 流す。 */
+      vertical ? "  writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl;" : "",
       vertical ? "  height: " + (p.heightMm - m.top - m.bottom) + "mm;" : "",
+      vertical ? "  text-align: justify;" : "",
       "}",
       ".page { page-break-after: always; break-after: page; position: relative; }",
       /* 1 ページに収まらないブロック。隠さず、そのまま出す（測れば分かる状態にする）。 */
@@ -30204,13 +30801,22 @@
       ".agb-den { position: absolute; right: 1mm; bottom: 0.5mm; font-size: .82em; line-height: 1; }",
       ".agf-t .agb-slash { position: absolute; inset: 0; }",
       ".agf-t .agb-den { position: absolute; right: 1.5mm; bottom: 1mm; font-size: .9em; }",
+      ".agf-tl { position: absolute; left: 1.5mm; top: 0.8mm; font-size: .74em;",
+      "          font-family: " + headFont + "; letter-spacing: .08em; }",
       ".agb-rl { font-size: .7em; writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl; }",
       ".agc-mark { display: inline-block; border: 0.2mm solid #000; margin-right: 1mm; max-width: 100%; }",
       ".agc-mark:last-child { margin-right: 0; }",
       ".agc-wide { display: block; border-bottom: 0.2mm solid #000; width: 100%; }",
       ".agc-wide + .agc-wide { margin-top: 1mm; }",
-      ".agc-seq { display: inline-flex; gap: 0; max-width: 100%; }",
-      ".agc-sq { display: inline-block; border: 0.2mm solid #000; margin-left: -0.2mm; min-width: 0; flex: 0 1 auto; }",
+      /* ★ 連続マスは **縮ませない**（2026-08-30）。
+         flex: 0 1 auto だと マスの 数が 多い ときに 幅 0 まで 潰れ、
+         罫線だけが 重なって **黒い 帯**に なっていた（実測・英語の 解答用紙）。
+         入りきらない ときは 次の 行へ 折り返す。 */
+      ".agc-seq { display: inline-flex; gap: 0; max-width: 100%; flex-wrap: wrap; }",
+      /* ★ 少しだけ 縮んでよい（升の 内側の 余白ぶん）。ただし 4mm より
+         細くは しない（0 まで 潰れて 黒い 帯に なる のを 防ぐ）。 */
+      ".agc-sq { display: inline-block; border: 0.2mm solid #000; margin-left: -0.2mm;",
+      "          flex: 0 1 auto; min-width: 4mm; box-sizing: border-box; }",
       ".agc-lines { display: block; }",
       ".agc-lines .agc-line { display: block; border-bottom: 0.2mm solid #000; }",
       /* 配点の凡例 */
@@ -30453,6 +31059,13 @@
       ".agr-i { display: flex; align-items: flex-start; gap: 2mm;",
       "         font-size: " + (base - 0.5) + "pt; line-height: 1.75; }",
       ".agr-m { flex: 0 0 auto; font-family: " + GOTHIC + "; }",
+      /* ★ 語群・選択肢の 中では **語の 途中で 折らない**（2026-08-30）。
+         本文は 両端そろえ（justify）なので、狭い 列に 入れると
+         「相 対 度／数」の ように 1 字だけ 次の 行へ 落ちる（実測・2 カラム）。 */
+      ".agr-i, .ob-i, .mp-i, .cg-l > * { word-break: keep-all; line-break: strict;",
+      "    text-align: left; }",
+      ".agr-l, .ob-l, .mp-c, .cg-l { text-align: left; }",
+      ".ch-i { text-align: left; }",
 
       /* ══ 共通テストの マークシート ════════════════════════════
          寸法は プロファイルが 持ち、--ms-* で 入ってくる
@@ -30540,7 +31153,13 @@
       /* 資料（図・グラフ・図形・表）の 見た目は vq-fig.js が 持つ。
          描く所と 見た目を 別々に すると 必ず ずれるので、同じ 所から 取る。 */
       資料のCSS()
-    ].filter(Boolean).join("\n");
+    ]
+      /* ★ 型ごとの 組みかたは **いちばん 最後**に 置く（2026-08-30）。
+         先に 置くと、上の 共通の 決まりに 打ち消される。 */
+      .concat(型ごとのCSS(
+        解答のみ ? "" : ((lprof && lprof.paperStyle) || ""), base, MINCHO, GOTHIC))
+      .concat(解答用紙のCSS((plan.answerPaper && plan.answerPaper.asStyle) || "", GOTHIC))
+      .filter(Boolean).join("\n");
   }
 
   function 資料のCSS() {
@@ -30820,7 +31439,8 @@
     /* 共通テスト風は 組みかたが まるごと 違う。 */
     var style = (plan && plan.layoutProfile && plan.layoutProfile.coverStyle) || "";
     if (style === "common-test") return 共通テストの表紙(spec, c, plan);
-    var h = '<div class="page" data-cover="1"><div class="sheet cover">';
+    var h = '<div class="page' + 紙の型(plan) + '" data-cover="1"><div class="sheet cover'
+      + 紙の型(plan) + '">';
     h += '<div class="cv-head">';
     if (c.examName) h += '<div class="cv-title">' + esc(c.examName) + "</div>";
     if (c.subject) h += '<div class="cv-sub">' + esc(c.subject) + "</div>";
@@ -30839,7 +31459,11 @@
       h += "</div>";
     }
 
-    if (c.instructions.length) {
+    /* ★ 冊子は 注意事項を **別の ページ**に する（2026-08-30・実物の 冊子）。
+       表紙は 試験名と 記入欄だけ。めくると 注意事項が 1 ページ 出る。 */
+    var 別紙 = !!(plan && plan.layoutProfile && plan.layoutProfile.coverNotesPage)
+      && c.instructions.length;
+    if (c.instructions.length && !別紙) {
       h += '<div class="cv-notes"><div class="cv-notes-t">注意事項</div><ol>';
       c.instructions.forEach(function (t) { h += "<li>" + esc(t) + "</li>"; });
       h += "</ol></div>";
@@ -30856,12 +31480,72 @@
 
     if (c.sealNote) h += '<div class="cv-seal">開始の指示があるまで開かないこと</div>';
     h += "</div></div>";
+    if (別紙) {
+      h += '<div class="page' + 紙の型(plan) + '" data-cover="1"><div class="sheet cover'
+        + 紙の型(plan) + '"><div class="cv-notes is-page"><div class="cv-notes-t">注意事項</div><ol>';
+      c.instructions.forEach(function (t) { h += "<li>" + esc(t) + "</li>"; });
+      h += "</ol></div></div></div>";
+    }
     return h;
   }
 
+  /* 1 行 1 問の 表。番号・問い・解答欄の 3 列。 */
+  function 一問一答の表(booklet, plan, vertical) {
+    var out = [], 行 = null, 頭を出した = false;
+    function 閉じる() {
+      if (!行) return;
+      out.push('<div class="vt-r"><span class="vt-n">' + esc(行.no) + "</span>"
+        + '<span class="vt-q">' + 行.q.join("") + "</span>"
+        + '<span class="vt-a">' + (行.a || "") + "</span></div>");
+      行 = null;
+    }
+    function 表の頭() {
+      if (頭を出した) return "";
+      頭を出した = true;
+      return '<div class="vt-h"><span class="vt-n">番号</span>'
+        + '<span class="vt-q">問題</span><span class="vt-a">解答</span></div>';
+    }
+    (booklet.blocks || []).forEach(function (b) {
+      var t = b.type;
+      if (t === "instructions" || t === "notice") {
+        閉じる(); 頭を出した = false;
+        out.push(renderBlock(b, plan, vertical, booklet.kind));
+        return;
+      }
+      /* ★ 図の ある 設問は **figure-group** で 来る（2026-08-30）。
+         question だけを 見ていたので、図つきの 設問が 前の 行に
+         入り込み、行の 番号が 1 つ 飛んでいた（実測: 1,2,4,5,6）。 */
+      if (t === "question" || t === "figure-group") {
+        閉じる();
+        out.push(表の頭());
+        行 = { no: String(b.marker || ("問" + b.number)).replace(/^問/, ""),
+               q: [renderBlock(b, plan, vertical, booklet.kind)], a: "" };
+        return;
+      }
+      /* 解答欄は 右の 列。問題用紙に 欄を 置く 型でも 二重に 出さない。 */
+      if (t === "answer-area") return;
+      var 中 = renderBlock(b, plan, vertical, booklet.kind);
+      if (行) 行.q.push(中);
+      else if (中) { out.push(表の頭()); out.push(中); }
+    });
+    閉じる();
+    return out.join("");
+  }
+
+  function 紙の型(plan) {
+    var v = (plan && plan.layoutProfile && plan.layoutProfile.paperStyle) || "";
+    return v ? " ps-" + v : "";
+  }
   function renderBooklet(spec, plan, booklet) {
     var vertical = plan.paper.writingDirection === "vertical";
-    var h = '<div class="page"><div class="sheet" data-booklet="' + esc(booklet.id) + '">';
+    var 型 = booklet.kind === "question" ? 紙の型(plan)
+      : (booklet.kind === "answer-sheet" && plan.answerPaper && plan.answerPaper.asStyle
+          ? " as-" + plan.answerPaper.asStyle : "");
+    var 段 = (booklet.kind === "question"
+      && plan.layoutProfile && Number(plan.layoutProfile.columns) > 1)
+      ? Number(plan.layoutProfile.columns) : 1;
+    var h = '<div class="page' + 型 + '"><div class="sheet' + 型 + '" data-booklet="'
+      + esc(booklet.id) + '"' + (段 > 1 ? ' data-cols="' + 段 + '"' : "") + ">";
 
     /* 見出し。紙面プロファイルが選ばれていれば、その指定に従う。
        実画像の問題用紙は「試験名 1 行だけ」で、科目・時間・満点の行も氏名欄も無い。
@@ -30883,6 +31567,19 @@
     var showMeta = hp ? hp.showMeta !== false : true;
     var showName = hp ? hp.showNameBox !== false : (booklet.kind !== "answer-key");
     if (plan.layoutProfile && booklet.kind === "answer-sheet") { showMeta = false; showName = false; }
+    /* ★ 型のある 解答用紙は **自分の 見出し**（agh／マークシートの 上段）を 持つ。
+       上に もう 1 本 試験名を 出すと 二重に なる（2026-08-30）。 */
+    var 自前の見出し = booklet.kind === "answer-sheet"
+      && (booklet.blocks || []).some(function (x) {
+        return x && (x.type === "answer-grid-head" || x.type === "ct-mark-sheet");
+      });
+    if (自前の見出し) {
+      (booklet.blocks || []).forEach(function (b) {
+        h += renderBlock(b, plan, vertical, booklet.kind);
+      });
+      h += renderGradedSummary(spec);
+      return h + "</div></div>";
+    }
     h += '<div class="exam-head">'
       + '<div class="exam-title">' + esc(booklet.title) + "</div>"
       + (showMeta
@@ -30903,6 +31600,17 @@
         + (名欄 || "組　　　番　　　氏名　　　　　　　　　　") + "</div>";
     }
     h += "</div>";
+
+    /* ══ 語彙・一問一答（表）（2026-08-30・依頼「準備中の 型も 作り込む」）
+       ★ 1 行 1 問。左に 番号、真ん中に 問い（選択肢も ここ）、右に 書く 欄。
+         **本物の <table> は 使わない。** ページ分けは 表を 割れないので、
+         1 ページ目から あふれる。行を .sheet の 直下に 並べる。
+       ★ 資料・図・記述の 本体は 行の 中へ 入れる（枠から こぼさない）。 */
+    if (型 === " ps-vocab" && booklet.kind === "question") {
+      h += 一問一答の表(booklet, plan, vertical);
+      h += "</div></div>";
+      return h;
+    }
 
     (booklet.blocks || []).forEach(function (b) {
       h += renderBlock(b, plan, vertical, booklet.kind);
@@ -30932,7 +31640,13 @@
     var p = plan.paper;
     var m = p.margins || { top: 20, bottom: 20, left: 18, right: 18 };
     var contentMm = p.heightMm - m.top - m.bottom;
+    /* ★ 縦書きは 紙を **右から 左**へ 使う。1 ページに 入るのは
+       高さでは なく **幅**（2026-08-30・縦書き国語）。 */
+    var 縦 = p.writingDirection === "vertical";
+    var 横幅Mm = p.widthMm - m.left - m.right;
     return "<script>(function(){"
+      + "var 縦=" + (縦 ? "1" : "0") + ";"
+      + "var 横幅Mm=" + 横幅Mm + ";"
       + "var contentMm=" + contentMm + ";"
       /* mm → px は端末で変わる。実物を測って換算する。 */
       + "var probe=document.createElement('div');"
@@ -30944,19 +31658,49 @@
       + "var limit=contentMm*mmPx;"
       + "var pages=Array.prototype.slice.call(document.querySelectorAll('.page'));"
       + "pages.forEach(function(page){"
+      /* ★ 表紙は 割らない（2026-08-30）。表紙は 1 枚に 収まる ように
+         組んである。ここを 通すと 縦書きで 9mm の 空ページが 何枚も 出た。 */
+      + "if(page.getAttribute('data-cover')==='1')return;"
       + "var sheet=page.querySelector('.sheet');if(!sheet)return;"
       + "var kids=Array.prototype.slice.call(sheet.children);"
       + "if(!kids.length)return;"
-      /* 高さ（下マージンを含む）を先に測っておく */
-      + "var hs=kids.map(function(k){var cs=getComputedStyle(k);"
-      + "return k.getBoundingClientRect().height+(parseFloat(cs.marginBottom)||0);});"
+      /* ══ 2 カラム（2026-08-30・依頼「準備中の 型も 作り込む」）════════
+         ★ **列の 幅で 測ってから 分ける。** 全幅で 測って あとから 半分に
+           すると、文字が 折り返して 背が 伸び、下の 段が はみ出す。
+         ★ 見出し（exam-head）は 段に かけない。上に そのまま 残す。
+         ★ 1 ページ ＝ 2 列。列が 3 本 できたら 2 ページ目へ。 */
+      + "if(縦){縦書き(page,sheet,kids,横幅Mm*mmPx);return;}"
+      + "if(sheet.getAttribute('data-cols')==='2'){二段(page,sheet,kids,limit);return;}"
+      /* ══ 高さは **場所の 差**で 測る（2026-08-30・依頼「1 つ 1 つ 丁寧に」）
+         ★ これまで「要素の 高さ ＋ 下マージン」で 積んでいた。
+           設問どうしの 空きは **上マージン**で 付いているので、
+           その ぶんが まるごと 抜け落ち、1 ページに 詰め込みすぎていた
+           （実測: 積み上げ 851px に 対し 実際は 1,029px。22% 足りない）。
+         ★ 次の 要素の 上端との 差を 取れば、マージンの 相殺も
+           そのまま 効いた 実寸に なる（.sheet は position:relative なので
+           offsetTop が そのまま 使える）。 */
+      + "var n=kids.length;"
+      + "var tops=kids.map(function(k){return k.offsetTop;});"
+      + "var lastCs=getComputedStyle(kids[n-1]);"
+      + "var lastB=tops[n-1]+kids[n-1].getBoundingClientRect().height"
+      + "+(parseFloat(lastCs.marginBottom)||0);"
+      + "var hs=kids.map(function(k,i){return (i+1<n?tops[i+1]:lastB)-tops[i];});"
+      /* ★ **ページの 最後の 空きは 数えない**（2026-08-30）。
+         hs は 次の かたまりまでの 差なので、設問どうしの 空き（余白の 広い
+         型では 26mm）が 付いている。ページの 終わりに その 空きは 出ないのに
+         数えていたので、1 ページ あたり 空きの ぶんだけ 紙を 捨てていた。
+         入るかどうかは **中身の 高さ**で 見る。 */
+      + "var 実=kids.map(function(k){return k.getBoundingClientRect().height;});"
       + "var groups=[[]],acc=0;"
       + "for(var i=0;i<kids.length;i++){"
       + "var h=hs[i];"
       + "var isHead=kids[i].classList.contains('sec');"
       /* 見出しは単独で置かない。次のブロックとまとめて考える。 */
-      + "var pairH=isHead&&i+1<kids.length?h+hs[i+1]:h;"
-      + "if(acc>0&&acc+pairH>limit){groups.push([]);acc=0;}"
+      + "var pairH=isHead&&i+1<n?h+実[i+1]:実[i];"
+      /* ★ 「ここから 次の ページ」と 書いてある ものは 必ず 変える
+         （2026-08-30。入試・冊子は 大問ごとに 紙を 変えるのが 決まり）。 */
+      + "if(acc>0&&kids[i].getAttribute('data-break')==='1'){groups.push([]);acc=0;}"
+      + "else if(acc>0&&acc+pairH>limit){groups.push([]);acc=0;}"
       + "groups[groups.length-1].push(kids[i]);acc+=h;"
       + "if(h>limit){kids[i].setAttribute('data-overflowing','1');}"
       + "}"
@@ -30972,6 +31716,105 @@
       + "});"
       + "if(page.parentNode)page.parentNode.insertBefore(frag,page.nextSibling);"
       + "});"
+      + "function 二段(page,sheet,kids,limit){"
+      + "var head=kids.filter(function(k){return k.classList.contains('exam-head')});"
+      + "var body=kids.filter(function(k){return !k.classList.contains('exam-head')});"
+      + "if(!body.length)return;"
+      /* ① 列の 幅で 測る。仮の 箱に 入れて 実寸を 取る。 */
+      + "var w=sheet.getBoundingClientRect().width;"
+      + "var gapPx=8*mmPx;"
+      + "var colW=(w-gapPx*2)/2;"
+      + "var probe2=document.createElement('div');"
+      /* ★ 高さは **入れ物の 伸びぶん**で 測る（2026-08-30）。
+         要素の 高さ ＋ 下マージン だけを 足すと、設問どうしの 空きが
+         **上マージン**で 付いている ぶん まるごと 抜け落ちる。
+         実測: 積み上げ 851px に 対し 実際は 1,029px（22% 足りない）。
+         入れ物に 1 つずつ 入れて 伸びた ぶんを 取れば、
+         マージンの 相殺も そのまま 効いた 値が 取れる。
+         上下に 0.1px の 詰めを 置くのは、マージンが 外へ 逃げないように するため。 */
+      + "probe2.style.cssText='position:absolute;left:-99999px;top:0;padding:0.1px 0;width:'+colW+'px';"
+      + "sheet.parentNode.appendChild(probe2);"
+      + "var prev2=0;"
+      + "var hs2=body.map(function(k){probe2.appendChild(k);"
+      + "var t=probe2.getBoundingClientRect().height;"
+      + "var h=t-prev2;prev2=t;return h;});"
+      /* ② 見出しの ぶんを 引いた 高さで 列に 分ける。 */
+      + "var headH=0;head.forEach(function(k){headH+=k.getBoundingClientRect().height"
+      + "+(parseFloat(getComputedStyle(k).marginBottom)||0);});"
+      + "var lim1=Math.max(40,limit-headH);"
+      + "var cols=[[]],acc=0,first=true;"
+      + "for(var i=0;i<body.length;i++){"
+      + "var h=hs2[i];"
+      + "var isHead=body[i].classList.contains('sec');"
+      + "var pairH=isHead&&i+1<body.length?h+hs2[i+1]:h;"
+      + "var cap=(first&&cols.length<=2)?lim1:limit;"
+      + "if(acc>0&&acc+pairH>cap){cols.push([]);acc=0;if(cols.length>2)first=false;}"
+      + "cols[cols.length-1].push(body[i]);acc+=h;"
+      + "if(h>cap)body[i].setAttribute('data-overflowing','1');}"
+      /* ★ 最後の ページの 列を そろえる（balanceColumns）。
+         片方だけ 埋まって 右が 真っ白、を 出さない。実物も そう 組む。 */
+      + "if(cols.length%2===1&&cols[cols.length-1].length>1){"
+      + "var last=cols.pop();"
+      + "var idx={};body.forEach(function(k,i){idx[i]=hs2[i];});"
+      + "var hOf=function(el){return hs2[body.indexOf(el)]||0;};"
+      + "var tot=last.reduce(function(a,e){return a+hOf(e);},0),half=tot/2,a1=[],a2=[],ac=0;"
+      + "last.forEach(function(e){if(ac<half||!a1.length){a1.push(e);ac+=hOf(e);}else a2.push(e);});"
+      + "cols.push(a1);cols.push(a2);}"
+      + "probe2.parentNode.removeChild(probe2);"
+      /* ③ 2 列ずつ 1 ページに 詰める。 */
+      + "var tpl=page.cloneNode(false),sheetTpl=sheet.cloneNode(false);"
+      + "var frag=document.createDocumentFragment();"
+      + "sheet.innerHTML='';head.forEach(function(k){sheet.appendChild(k);});"
+      + "for(var pi=0;pi*2<cols.length;pi++){"
+      + "var pg=pi===0?page:tpl.cloneNode(false);"
+      + "var sh=pi===0?sheet:sheetTpl.cloneNode(false);"
+      + "if(pi>0){sh.innerHTML='';pg.appendChild(sh);frag.appendChild(pg);}"
+      + "var wrap=document.createElement('div');wrap.className='cols';"
+      + "for(var ci=0;ci<2;ci++){"
+      + "var c=document.createElement('div');c.className='col';"
+      + "(cols[pi*2+ci]||[]).forEach(function(el){c.appendChild(el);});"
+      + "wrap.appendChild(c);}"
+      + "sh.appendChild(wrap);}"
+      + "if(page.parentNode)page.parentNode.insertBefore(frag,page.nextSibling);"
+      + "}"
+      /* ══ 縦書きの ページ分け（2026-08-30）══════════════════════════
+         ★ 中身は **右から 左**へ 積まれる。1 ページに 入る 量は 幅で 決まる。
+           高さで 数えると、どれだけ 書いても 1 ページに 収まった ことに なる。
+         ★ 実寸は 仮の 箱（高さ ＝ 版面の 高さ・縦書き）に 1 つずつ 入れて、
+           **横に 伸びた ぶん**で 取る。マージンの 相殺も そのまま 効く。 */
+      + "function 縦書き(page,sheet,kids,limitW){"
+      + "var pr=document.createElement('div');"
+      + "pr.style.cssText='position:absolute;left:-99999px;top:0;padding:0 0.1px;'"
+      + "+'writing-mode:vertical-rl;height:'+(contentMm*mmPx)+'px';"
+      + "sheet.parentNode.appendChild(pr);"
+      + "var prev=0;"
+      + "var ws=kids.map(function(k){pr.appendChild(k);"
+      + "var t=pr.getBoundingClientRect().width;var d=t-prev;prev=t;return d;});"
+      + "pr.parentNode.removeChild(pr);"
+      + "var gs=[[]],acc=0;"
+      + "for(var i=0;i<kids.length;i++){var w2=ws[i];"
+      + "var isH=kids[i].classList.contains('sec');"
+      + "var pw=isH&&i+1<kids.length?w2+ws[i+1]:w2;"
+      + "if(acc>0&&kids[i].getAttribute('data-break')==='1'){gs.push([]);acc=0;}"
+      + "else if(acc>0&&acc+pw>limitW){gs.push([]);acc=0;}"
+      + "gs[gs.length-1].push(kids[i]);acc+=w2;"
+      + "if(w2>limitW)kids[i].setAttribute('data-overflowing','1');}"
+      + "var tpl=page.cloneNode(false),stpl=sheet.cloneNode(false);"
+      + "var frag=document.createDocumentFragment();"
+      + "sheet.innerHTML='';"
+      + "gs.forEach(function(g,gi){"
+      + "var pg=gi===0?page:tpl.cloneNode(false);"
+      + "var sh=gi===0?sheet:stpl.cloneNode(false);"
+      + "if(gi>0){sh.innerHTML='';pg.appendChild(sh);frag.appendChild(pg);}"
+      + "g.forEach(function(el){sh.appendChild(el);});});"
+      + "if(page.parentNode)page.parentNode.insertBefore(frag,page.nextSibling);"
+      + "}"
+      /* ══ 冊子の のど（2026-08-30・依頼「準備中の 型も 作り込む」）════
+         綴じる 側の 余白を 広く とる。奇数ページは 左、偶数ページは 右。
+         CSS の :nth-of-type では ページを 数え違えるので、ここで 付ける。 */
+      + "var bkp=document.querySelectorAll('.page.ps-booklet');"
+      + "for(var bi=0;bi<bkp.length;bi++){"
+      + "if(bi%2===1)bkp[bi].classList.add('is-verso');}"
       + "})();<\/script>";
   }
 
@@ -31040,11 +31883,11 @@
           if (b.points != null && b.showPoints !== false) {
             本 += '<span class="sec-pts">（配点　' + b.points + "）</span>";
           }
-          return '<div class="sec is-ct"' + (b.pageBreakBefore ? ' style="page-break-before:always;break-before:page"' : "") + ">"
+          return '<div class="sec is-ct"' + (b.pageBreakBefore ? ' data-break="1" style="page-break-before:always;break-before:page"' : "") + ">"
             + '<span class="sec-no">' + esc(b.marker || ("第" + b.number + "問")) + "</span>"
             + '<span class="sec-ct-i">' + 本 + "</span></div>";
         }
-        return '<div class="sec"' + (b.pageBreakBefore ? ' style="page-break-before:always;break-before:page"' : "") + ">"
+        return '<div class="sec"' + (b.pageBreakBefore ? ' data-break="1" style="page-break-before:always;break-before:page"' : "") + ">"
           + '<span class="sec-no' + (b.markerVariant === "boxed" ? " is-boxed" : "") + '">'
           + esc(b.marker || numberKanji(b.number)) + "</span>" + esc(b.title || "")
           + (b.points != null && b.showPoints !== false ? '<span class="sec-pts">（' + b.points + " 点）</span>" : "")
@@ -31483,8 +32326,15 @@
   function gridCell(c) {
     var span = ' colspan="' + (c.colSpan || 1) + '"' + (c.rowSpan > 1 ? ' rowspan="' + c.rowSpan + '"' : "");
     var st = [];
-    if (c.widthMm != null) st.push("width:" + c.widthMm + "mm");
-    if (c.minWidthMm != null) st.push("min-width:" + c.minWidthMm + "mm");
+    /* ★ **升が 何個 並ぶかを 数えて 幅を 出す**（2026-08-30）。
+       widthMm は「升 1 つ」の 幅なのに、表の セル そのものへ 当てていた。
+       table-layout: fixed なので 13 列ぶん またいでいても 7mm に 潰れ、
+       10 個の 升が 縦に 積み上がって いた（実測: td 7mm／升 10 個）。 */
+    var 個 = (c.type === "small-box" || c.type === "box-sequence") ? Math.max(1, c.cells || 1) : 1;
+    /* 升の 内側の 余白と 罫線ぶん、少しだけ 広く 取る（1 つ 折り返すのを 防ぐ）。 */
+    var 幅 = (c.widthMm != null) ? (c.widthMm * 個 + (個 > 1 ? 2.5 : 0)) : null;
+    if (幅 != null) st.push("width:" + Math.round(幅 * 100) / 100 + "mm");
+    if (c.minWidthMm != null) st.push("min-width:" + Math.round(c.minWidthMm * 個 * 100) / 100 + "mm");
     if (c.borderWidth != null) st.push("border-width:" + c.borderWidth + "mm");
     if (c.align) st.push("text-align:" + c.align);
     if (c.fontSizePt) st.push("font-size:" + c.fontSizePt + "pt");
@@ -31566,8 +32416,11 @@
             + '<span class="ags-l">' + esc(f.label) + '</span><span class="ags-b"></span></span>';
         }).join("")
       + "</div>"
+      /* ★ 「合計」の 札を 付ける（2026-08-30・依頼「1 つ 1 つ 丁寧に」）。
+         斜線と 満点だけ 置いてあり、**何の 欄か 書いていなかった**。 */
       + (t.show
           ? '<div class="agf-t" style="min-width:' + (t.widthMm || 30) + 'mm">'
+            + '<span class="agf-tl">' + esc(t.label || "合計") + "</span>"
             + slashCell(t.denominator) + "</div>"
           : "")
       + "</div>";
@@ -32026,7 +32879,7 @@
     受験者印字 = null;
     return "<!doctype html><html lang=\"ja\"><head><meta charset=\"utf-8\">"
       + "<title>" + esc(spec.title || "試験") + "</title>"
-      + "<style>" + pageCss(plan) + mathCss() + "</style></head><body>" + body
+      + "<style>" + pageCss(plan, booklets) + mathCss() + "</style></head><body>" + body
       /* 先に本物のページへ分けてから、ページ番号を入れる。順番が逆だと
          「1 / 1」しか出せない（実際は何ページあるか分からないまま）。 */
       + paginateScript(plan) + pageNumberScript(plan, spec) + "</body></html>";
