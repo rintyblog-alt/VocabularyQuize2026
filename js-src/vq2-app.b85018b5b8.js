@@ -63683,7 +63683,18 @@
       title: spec.title,
       onEscape: function () { requestExit(); return false; },
       onClose: o.onClose,
-      onResize: function () { render(); }
+      /* ══ 幅が 変わっても 紙を 作り直さない（2026-08-30・訴え）════════
+         訴え「いちいち 上に 戻ると スクロールが めんどくさい」
+         ★ これまでは 幅が 1px 変わる たびに render()。
+           スマホは **文字を 打つと 鍵盤が 出て** 高さが 変わるので、
+           答えを 打つ たびに 紙が 組み直され、いちばん 上へ 戻っていた。
+         ★ 組み方（横並び ⇄ タブ）が 変わった ときだけ 作り直す。
+           それ以外は 紙の 倍率を 合わせ直すだけ。 */
+      onResize: function (m) {
+        if (st.モバイルだった === null || st.モバイルだった === undefined) st.モバイルだった = m;
+        if (m !== st.モバイルだった) { st.モバイルだった = m; render(); return; }
+        幅に合わせる();
+      }
     });
 
     var questions = [];
@@ -63697,6 +63708,12 @@
       currentQid: questions.length ? questions[0].id : null,
       page: 1,
       zoom: 1,
+      /* 倍率は はじめ **画面の 幅に 合わせる**（自分で 拡大したら もう 触らない）。 */
+      zoomAuto: true,
+      /* スマホは はじめから 折り返して 読む（紙のままだと 文字が 5pt に なる）。 */
+      reflow: U.isMobile ? U.isMobile() : false,
+      モバイルだった: null,
+      紙の位置: 0, 解の位置: 0,
       mobileTab: "paper",     /* paper | answers */
       paused: false,
       finished: false,
@@ -64117,7 +64134,8 @@
         + "</div></div>";
       var 右 = '<div class="vq2-pane vq2-pane-r" id="answerPane"'
         + (mobile && st.mobileTab !== "answers" ? " hidden" : "")
-        + ' style="width:420px">'
+        /* ★ モバイルでは 幅を 書かない（書くと 画面から はみ出す）。 */
+        + (mobile ? ">" : ' style="width:420px;max-width:44vw">')
         + '<div class="vq2-pane-h">受験する人<div class="vq2-top-sp"></div>'
         + '<span class="vq2-muted">' + 欄.filter(function (k) { return String(v[k] || "").trim(); }).length
         + " / " + 欄.length + "</span></div>"
@@ -64183,6 +64201,58 @@
       if (sc2 && 位置) sc2.scrollTop = 位置;
       highlightAnswerRow(st.currentQid);
       renderProgress();
+    }
+
+    /* ══ タブは **描き直さずに** 切り替える（2026-08-30・訴え）══════════
+       訴え「いちいち 上に 戻ると スクロールが めんどくさいから これも なしに」
+       ★ これまでは タブを 押すたび render() を 呼んでいた。
+         render() は app.root.innerHTML を 書き換えるので **紙の iframe が 消える**。
+         組み直した 紙は いちばん 上から 始まるので、
+         問題用紙 ⇄ 解答用紙 を 行き来する たびに 読んでいた ところを 見失っていた。
+       ★ 出し入れ するだけに する。iframe は そのまま 残り、
+         スクロールした ところも、拡大した ところも 保たれる。 */
+    function タブへ(tab) {
+      if (tab !== "paper" && tab !== "answers") return;
+      st.mobileTab = tab;
+      var p = app.root.querySelector("#paperPane"), a = app.root.querySelector("#answerPane");
+      if (!p || !a) { render(); return; }
+      /* ★ **隠す 前に 位置を 覚える**（2026-08-30）。
+         display:none に すると 中の スクロールは 0 に 戻る。
+         iframe を 残しても、これを しないと 上へ 飛ぶ。 */
+      if (!p.hidden) st.紙の位置 = 紙のスクロール();
+      var ab = a.querySelector(".vq2-pane-b");
+      if (!a.hidden && ab) st.解の位置 = ab.scrollTop;
+      p.hidden = (tab !== "paper");
+      a.hidden = (tab !== "answers");
+      var tabs = app.root.querySelectorAll("[data-etab]");
+      for (var i = 0; i < tabs.length; i++) {
+        tabs[i].setAttribute("aria-selected",
+          tabs[i].getAttribute("data-etab") === tab ? "true" : "false");
+      }
+      /* 隠れている 間は 幅が 測れない。出した ところで 合わせ直し、
+         読んでいた ところへ 戻す。 */
+      if (tab === "paper") { 幅に合わせる(); 紙へ戻す(st.紙の位置); }
+      else if (ab && st.解の位置) ab.scrollTop = st.解の位置;
+    }
+    function 紙の書類() {
+      var f = app.root.querySelector("#examPaper iframe");
+      try { return f && (f.contentDocument || (f.contentWindow && f.contentWindow.document)); }
+      catch (e) { return null; }
+    }
+    function 紙のスクロール() {
+      var d = 紙の書類();
+      if (!d) return 0;
+      try { return d.documentElement.scrollTop || d.body.scrollTop || 0; } catch (e) { return 0; }
+    }
+    function 紙へ戻す(位置) {
+      if (!位置) return;
+      var 回 = 0;
+      (function 置く() {
+        var d = 紙の書類();
+        if (d) { try { d.documentElement.scrollTop = 位置; d.body.scrollTop = 位置; } catch (e) {} }
+        /* 出した 直後は まだ 組み上がっていない ことが ある。数回 やり直す。 */
+        if (++回 < 4) root.setTimeout(置く, 40);
+      })();
     }
 
     function renderPaperBar() {
@@ -64308,7 +64378,11 @@
         + '<div id="examPaper" style="flex:1 1 auto;min-height:0;overflow:hidden"></div>'
         + "</div>"
         + (mobile ? "" : '<div class="vq2-resizer" id="rzE"></div>')
-        + '<div class="vq2-pane vq2-pane-r" id="answerPane"' + (mobile && st.mobileTab !== "answers" ? " hidden" : "") + ' style="width:420px">'
+        /* ★ 幅は **広い画面のときだけ** 書く（2026-08-30・訴え「スマホに 最適化して」）。
+           style は CSS に 勝つので、モバイルでも 420px の まま だった。
+           390px の 画面に 420px の 板が 入り、右端が 30px 切れていた。 */
+        + '<div class="vq2-pane vq2-pane-r" id="answerPane"' + (mobile && st.mobileTab !== "answers" ? " hidden" : "")
+        + (mobile ? "" : ' style="width:420px;max-width:44vw"') + ">"
         + answerSheetHtml() + "</div></div>";
     }
 
@@ -64319,9 +64393,20 @@
         + '<span class="vq2-mono">' + st.page + " / " + pageCount + "</span>"
         + btn({ icon: "chevronR", iconOnly: true, size: "sm", variant: "quiet", action: "page-next", disabled: st.page >= pageCount, aria: "次のページ" })
         + '<div class="vq2-top-sp"></div>'
-        + btn({ label: "－", size: "sm", variant: "quiet", action: "zoom-out", aria: "縮小" })
-        + '<span class="vq2-mono">' + Math.round(st.zoom * 100) + "%</span>"
-        + btn({ label: "＋", size: "sm", variant: "quiet", action: "zoom-in", aria: "拡大" })
+        + (st.reflow ? "" : btn({ label: "－", size: "sm", variant: "quiet", action: "zoom-out", aria: "縮小" }))
+        /* ★ 押すと **幅に 合わせ直す**（2026-08-30）。拡大しすぎて 戻れない、を なくす。 */
+        + (st.reflow ? "" :
+            '<button type="button" class="vq2-mono" data-act="zoom-fit" title="幅に 合わせる"'
+            + ' aria-label="幅に 合わせる" style="border:0;background:none;cursor:pointer;'
+            + 'min-height:var(--vq-tap-min,44px);padding:0 6px">'
+            + Math.round(st.zoom * 100) + "%</button>"
+            + btn({ label: "＋", size: "sm", variant: "quiet", action: "zoom-in", aria: "拡大" }))
+        /* ★ スマホは 折り返しと 紙のままを 行き来できる（2026-08-30・訴え）。 */
+        + (app.isMobile()
+            ? btn({ label: st.reflow ? "紙のまま" : "読みやすく", size: "sm",
+                    variant: "quiet", action: "reflow",
+                    title: st.reflow ? "紙の 見た目に 戻す" : "画面の 幅で 折り返す" })
+            : "")
         + btn({ icon: "eye", iconOnly: true, size: "sm", variant: "quiet", action: "fullscreen", aria: "全画面", title: "全画面" })
         + "</div>";
     }
@@ -64639,7 +64724,9 @@
         } catch (e) {}
       }
       var v = 受験者();
-      var 鍵 = [表紙前 === true ? "cover" : "full", st.zoom, spec.id,
+      /* ★ 倍率は 鍵に **入れない**（2026-08-30）。倍率は 生の body へ 直に 当てるので、
+         入れると 拡大の たびに 紙を 組み直し、読んでいた ところへ 戻れなく なる。 */
+      var 鍵 = [表紙前 === true ? "cover" : "full", st.reflow === true ? "flow" : "paper", spec.id,
                 記入の欄().map(function (k) { return v[k] || ""; }).join("\u0001")].join("|");
       var 前 = host.querySelector("iframe");
       if (前 && 紙の鍵 === 鍵) {
@@ -64670,10 +64757,29 @@
         examinee: 受験者()
       });
       /* 受験中の強調表示と、設問クリックの受け口を足す */
+      /* ══ スマホは **折り返して 読む**（2026-08-30・訴え）════════════
+         訴え「スマホに 最適化して欲しい。今のままだと 左の 問題欄が 大きすぎる」
+         ★ A4（210mm ＝ 794px）を 390px の 画面に 出すと、幅に 合わせても
+           倍率 0.48 ＝ 本文 5pt。**収まっても 読めない。**
+         ★ 紙の 幅を 外して、画面の 幅で 折り返す。文字は そのままの 大きさ。
+           ページの 切れ目は 消えるが、読んで 答えるには こちらが 正しい。
+         ★ 紙のまま 見たい ときは バーの ボタンで 戻せる。
+           **刷る ときの 紙面は 触らない**（ここは 画面の 見え方だけ）。 */
+      var 折 = st.reflow === true
+        ? "@media screen{"
+          + "body{padding:8px!important;zoom:1!important}"
+          + ".page{width:auto!important;min-height:0!important;margin:0 0 10px!important;"
+          + "padding:12px 12px 16px!important;box-shadow:0 1px 4px rgba(0,0,0,.12)!important}"
+          + ".sheet{width:auto!important;min-height:0!important;height:auto!important}"
+          + "table,.tbl,pre{max-width:100%}"
+          + ".fig svg,.fig img{max-width:100%;height:auto}"
+          + "}"
+        : "";
       html = html.replace("</head>",
         "<style>.vq2-hl{outline:2px solid #756DB3;outline-offset:3px;border-radius:3px}"
         + "[data-question]{cursor:pointer}[data-question]:hover{background:#F4F2FB}"
-        + "body{zoom:" + st.zoom + "}</style></head>");
+        + "body{zoom:" + (st.reflow === true ? 1 : st.zoom) + "}"
+        + 折 + "</style></head>");
       html = html.replace("</body>",
         "<script>document.addEventListener('click',function(e){var t=e.target.closest('[data-question]');"
         + "if(t)parent.postMessage({vq2:'pick',qid:t.getAttribute('data-question')},'*');});<\/script></body>");
@@ -64690,6 +64796,9 @@
         } else {
           syncPaperToQuestion(st.currentQid, true);
         }
+        /* ★ 組み上がってから 幅に 合わせる（2026-08-30）。
+           A4（794px）を 390px の 画面に そのまま 出すと 半分しか 見えない。 */
+        幅に合わせる();
       });
     }
 
@@ -64698,7 +64807,7 @@
       if (!e.data || e.data.vq2 !== "pick") return;
       if (st.finished) return;
       selectQuestion(e.data.qid, true);
-      if (app.isMobile()) { st.mobileTab = "answers"; render(); }
+      if (app.isMobile()) タブへ("answers");
     }
 
     /* ── 結線 ─────────────────────────────────────────────── */
@@ -64723,8 +64832,7 @@
       U.on(r, "click", '[data-act="pause"]', function () { togglePause(); });
       U.on(r, "click", '[data-act="submit"]', function () { requestSubmit(); });
       U.on(r, "click", "[data-etab]", function (e, t) {
-        st.mobileTab = t.getAttribute("data-etab");
-        render();
+        タブへ(t.getAttribute("data-etab"));
       });
       U.on(r, "click", '[data-act="act-toggle"]', function () { if (activity) activity.toggle(); });
     }
@@ -64738,6 +64846,14 @@
       U.on(r, "click", '[data-act="page-next"]', function () { gotoPage(st.page + 1); });
       U.on(r, "click", '[data-act="zoom-in"]', function () { setZoom(st.zoom + 0.1); });
       U.on(r, "click", '[data-act="zoom-out"]', function () { setZoom(st.zoom - 0.1); });
+      U.on(r, "click", '[data-act="zoom-fit"]', function () { 幅に合わせる(true); });
+      U.on(r, "click", '[data-act="reflow"]', function () {
+        st.reflow = !st.reflow;
+        st.zoom = 1; st.zoomAuto = true;
+        紙の鍵 = "";                       /* 組み方が 変わる。作り直す */
+        mountPaper(false);
+        renderPaperBar();
+      });
       U.on(r, "click", '[data-act="fullscreen"]', function () {
         var p = r.querySelector("#paperPane");
         if (!p) return;
@@ -64759,10 +64875,44 @@
       renderPaperBar();
     }
     function setZoom(z) {
-      st.zoom = Math.max(0.6, Math.min(2, Math.round(z * 10) / 10));
+      /* ★ 下限を 0.6 → 0.25 に する（2026-08-30・訴え「スマホに 最適化して」）。
+         A4 は 794px。390px の 画面に 収めるには 0.45 が 要る。
+         0.6 止まりだったので、**紙が 画面から はみ出したまま**だった。 */
+      st.zoom = Math.max(0.25, Math.min(2, Math.round(z * 100) / 100));
+      st.zoomAuto = false;                 /* 自分で 決めた。もう 勝手に 変えない */
+      紙に倍率を当てる();
+      renderPaperBar();
+    }
+    function 紙に倍率を当てる() {
       var iframe = app.root.querySelector("#examPaper iframe");
       var d = iframe && iframe.contentDocument;
       if (d && d.body) d.body.style.zoom = st.zoom;
+    }
+    /* ══ 紙の 幅を 画面に 合わせる（2026-08-30・訴え）════════════════
+       訴え「今のままだと、左の 問題欄が 大きすぎる」
+       ★ A4 は 210mm ＝ 794px。倍率 1 の まま 390px の 画面に 出していたので、
+         **紙の 半分しか 見えていなかった**（横に スクロールしないと 読めない）。
+       ★ 画面の 幅から 倍率を 計算して 当てる。自分で 拡大した あとは 触らない。 */
+    function 紙の幅px() {
+      var mm = (plan && plan.paper && plan.paper.widthMm) || 210;
+      return mm * (96 / 25.4);
+    }
+    function 幅に合わせる(強制) {
+      if (st.reflow === true) return;     /* 折り返しは もう 幅に 収まっている */
+      if (!強制 && st.zoomAuto === false) return;
+      var host = app.root.querySelector("#examPaper");
+      if (!host) return;
+      /* ★ offsetParent は **影の DOM では 常に null**（境界を またぐ ため）。
+         これで 見張ると 1 度も 合わせられない。幅そのもので 見る
+         （隠れて いれば 0 に なる）。 */
+      var w = host.clientWidth || 0;
+      if (w < 80) return;
+      var z = Math.round(((w - 10) / 紙の幅px()) * 100) / 100;
+      z = Math.max(0.25, Math.min(2, z));
+      if (Math.abs(z - st.zoom) < 0.02) return;
+      st.zoom = z;
+      st.zoomAuto = true;
+      紙に倍率を当てる();
       renderPaperBar();
     }
 
@@ -64770,7 +64920,7 @@
       var r = app.root;
       U.on(r, "click", "[data-jumpq]", function (e, t) {
         selectQuestion(t.getAttribute("data-jumpq"), false);
-        if (app.isMobile()) { st.mobileTab = "paper"; render(); setTimeout(function () { syncPaperToQuestion(st.currentQid, false); }, 80); }
+        if (app.isMobile()) { タブへ("paper"); syncPaperToQuestion(st.currentQid, true); }
       });
       U.on(r, "click", "[data-arow]", function (e, t) {
         if (e.target.closest("button") || e.target.closest("input") || e.target.closest("textarea")) return;
