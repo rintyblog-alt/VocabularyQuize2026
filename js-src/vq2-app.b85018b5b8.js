@@ -20019,9 +20019,14 @@
   function followJob(jobId, o) {
     o = o || {};
     var t0 = Date.now();
+    /* ★ 待ちの 上限（2026-08-30・訴え「いきなり動かなくなった」）。
+       既定は 15 分。1 回の 頼みが そんなに かかると、画面は
+       **15 分 まるごと 止まって 見える**。呼び側が 短くできるように する。
+       打ち切っても、できた ぶんは 仕事の 台帳に 残る。 */
+    var 上限 = (typeof o.maxWaitMs === "number" && o.maxWaitMs > 0) ? o.maxWaitMs : POLL_MAX_MS;
     return new Promise(function (resolve, reject) {
       var tick = function () {
-        if (Date.now() - t0 > POLL_MAX_MS) {
+        if (Date.now() - t0 > 上限) {
           return reject(Object.assign(new Error("TIMEOUT"),
             { userMessage: "時間内に終わりませんでした。アクティビティから続きを確認できます。", jobId: jobId }));
         }

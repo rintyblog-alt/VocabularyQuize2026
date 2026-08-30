@@ -611,6 +611,11 @@
   }
 
   /* ══ ⑤ 生成 ═══════════════════════════════════════════════════════ */
+  function 経った(t0) {
+    var s2 = Math.max(0, Math.round((Date.now() - t0) / 1000));
+    if (s2 < 60) return s2 + " 秒";
+    return Math.floor(s2 / 60) + " 分 " + (s2 % 60) + " 秒";
+  }
   function 生成の中身() {
     var pr = st.進み || { done: 0, total: 1, made: 0, madeTotal: 0, stage: "" };
     var 割 = pr.madeTotal ? Math.round((pr.made / pr.madeTotal) * 100) : 0;
@@ -618,8 +623,11 @@
       + '<div class="sub">' + esc(pr.stage || "はじめています…") + "</div></div>"
       + '<div class="sp"></div></div>';
     h += '<div class="bar"><i style="width:' + 割 + '%"></i></div>'
+      /* ★ 「（0 / 24 回）」は **回数では なかった**（2026-08-30）。
+         中で 使っている 数を そのまま 出していたので、いつも 0 で、
+         止まっているように 見えていた。経った 時間を 出す ほうが 役に立つ。 */
       + '<div class="barn">' + esc(pr.made) + " / " + esc(pr.madeTotal) + " 問"
-      + (pr.total > 1 ? "　（" + esc(pr.done) + " / " + esc(pr.total) + " 回）" : "") + "</div>";
+      + (st.始めた ? "　（" + esc(経った(st.始めた)) + "）" : "") + "</div>";
     h += '<div class="log">'
       + st.記録.slice(-14).map(function (r) {
           return '<div class="log-' + esc(r.k) + '">' + esc(r.t) + "</div>";
@@ -1482,6 +1490,7 @@
     st.走っている = true; st.止めたい = false; st.err = "";
     if (!o.refill) { st.記録 = []; st.結果 = null; st.spec = null; st.保存した = false; }
     st.進み = { done: 0, total: 1, made: 0, madeTotal: p2.totalQuestions, stage: "枠を 決めました" };
+    st.始めた = Date.now();
     記す("step", "大問 " + p2.sections.length + " ・ 全 " + p2.totalQuestions
       + " 問の 枠を 先に 決めました（配点の 合計 " + p2.totalPoints + " 点）");
     開く("生成");
@@ -1540,6 +1549,25 @@
         + "\n\u3000★ 要らない 問題には 貼りません。";
     }
     var 資料を言った = false;
+    /* ★ **いま 向こうで 何が 起きているか**（2026-08-30・訴え
+       「ここまでは 順調な ペースだったのに、いきなり 動かなくなった」）。
+       これまで バーは「受け取れた 問題の 数」でしか 動かず、
+       頼んでから 返るまでの 数十秒〜数分は **完全に 止まって 見えた**。
+       走っている 仕事の 進みを そのまま 受けて 出す。 */
+    var 向こう = {};
+    function 向こうの様子() {
+      var 鍵 = Object.keys(向こう);
+      if (!鍵.length) return "";
+      var 済 = 0, 全 = 0, 走 = 0;
+      鍵.forEach(function (k) {
+        var x = 向こう[k];
+        済 += Number(x.made) || 0; 全 += Number(x.planned) || 0;
+        if (x.status === "running" || x.status === "queued") 走++;
+      });
+      if (!全) return "";
+      return "向こうで " + 済 + " / " + 全 + " 問"
+        + (走 ? "（" + 走 + " 本 走っています）" : "");
+    }
     /* ★ **同じ注文の 目印**。1 回の「作って」は 中で 何回にも 分けて 頼まれる。
        これが 無いと、画面を 閉じたまま 終わったとき **仕事の 数だけ
        試験が できる**（20 問なら 4 つ）。 */
@@ -1644,12 +1672,30 @@
           kind: "exam",
           selfManaged: true
         };
+        /* 走っている 間の 様子を そのまま 受ける。 */
+        頼み.onProgress = function (pr) {
+          if (!pr || !pr.jobId) return;
+          向こう[pr.jobId] = { made: pr.made, planned: pr.planned, status: pr.status };
+          var 様 = 向こうの様子();
+          if (st.進み && 様) { st.進み.stage = 様; 描く(); }
+        };
+        頼み.onStart = function (jobId) {
+          if (jobId) 向こう[jobId] = { made: 0, planned: 頼み.count || 0, status: "running" };
+        };
+        /* ★ 1 回の 頼みを **4 分**で 見切る（既定は 15 分）。
+           そんなに かかる ときは 向こうが 詰まっている。
+           打ち切って 残りの 枠を 頼み直した ほうが 早く 終わる。 */
+        頼み.maxWaitMs = 4 * 60 * 1000;
         var 呼 = G.generateQuestionsTracked ? G.generateQuestionsTracked(頼み) : G.generateQuestions(頼み);
         return 呼.then(function (r) {
           (r.warnings || []).forEach(function (w) { if (w) 記す("warn", w); });
           if (r.status === "contradictory" || r.status === "unsupported") 記す("warn", r.reason || "");
           /* 「画像1」を 本物の 中身へ 差し替える（知らない 住所は 落とす）。 */
           try { 画像を差し替える(r.questions, 絵); } catch (e2) {}
+          /* この 頼みは 終わり。様子の 一覧から 外す。 */
+          Object.keys(向こう).forEach(function (k) {
+            if (向こう[k] && 向こう[k].status !== "running" && 向こう[k].status !== "queued") delete 向こう[k];
+          });
           /* ★ 根拠の 名前を そろえる（2026-08-30）。
              AI は fileName を 落としたり、source / title と 書いたりする。
              名前が 無いと「資料の どこか」を 指せず、確認あつかいに なる。
