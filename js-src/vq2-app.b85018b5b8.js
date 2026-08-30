@@ -5519,7 +5519,16 @@
   function mk(correct, score, maxScore, method, detail) {
     return { correct: !!correct, score: score, maxScore: maxScore, method: method, detail: detail || null };
   }
-  function roundScore(v) { return Math.round(v * 100) / 100; }
+  /* ══ 点は **整数**で 出す（2026-08-30・訴え）════════════════════
+     訴え「小数点は 切り捨てて、四捨五入して 素点、観点別点数を 出してほしい」
+     部分点は 割り算で 出るので 3.33 点 の ような 数に なる。
+     答案に 3.33 と 書いてある 試験は 無い。四捨五入して 整数に する。
+     ★ 満点は 触らない（配点は もともと 整数）。
+     ★ 合計も 各問も 同じ 決まりで 丸める（片方だけ だと 足し算が 合わない）。 */
+  function roundScore(v) {
+    if (typeof v !== "number" || !isFinite(v)) return v;
+    return Math.round(v);
+  }
   function textOf(answer) {
     if (answer == null) return "";
     if (isStr(answer)) return answer;
@@ -6128,7 +6137,8 @@
       isCorrect: o.isCorrect === true ? true : (o.isCorrect === false ? false : null),
       /* 既存コードは correct を見る。両方持たせる。 */
       correct: o.isCorrect === true ? true : (o.isCorrect === false ? false : null),
-      score: score === null ? null : r2(score),
+      /* ★ 点は 整数（2026-08-30・訴え）。similarity などの 比は r2 のまま。 */
+      score: score === null ? null : Math.round(score),
       maxScore: max,
       partialCredit: o.partialCredit === true,
       normalizedAnswer: o.normalizedAnswer !== undefined ? o.normalizedAnswer : null,
@@ -6739,7 +6749,7 @@
 
     return {
       items: items, pendingAi: pendingAi,
-      deterministicScore: r2(score), totalMax: r2(max),
+      deterministicScore: Math.round(score), totalMax: r2(max),
       correctCount: correct, wrongCount: wrong,
       unansweredCount: unanswered, pendingCount: pendingAi.length,
       complete: pendingAi.length === 0
@@ -6790,7 +6800,7 @@
 
     [byEngine, byGroup].forEach(function (m) {
       Object.keys(m).forEach(function (k) {
-        m[k].score = r2(m[k].score);
+        m[k].score = Math.round(m[k].score);
         m[k].rate = m[k].max > 0 ? m[k].score / m[k].max : null;
         m[k].accuracy = m[k].count > 0 ? m[k].correct / m[k].count : null;
       });
@@ -12899,6 +12909,46 @@
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function str(v) { return v === undefined || v === null ? "" : String(v); }
 
+  /* ══ 種から 決まる 乱数（2026-08-30）════════════════════════════
+     ★ Math.random を 直に 使わない。種を 渡せば **同じ 並びを 作り直せる**
+       （作り直しの たびに 形が 変わると、直しているのか 別物に なったのかが
+        分からなくなる）。種を 渡さなければ 毎回 変わる。 */
+  function 種の乱数(seed) {
+    var h = 2166136261 >>> 0;
+    var t = str(seed);
+    for (var i = 0; i < t.length; i++) {
+      h ^= t.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return function () {
+      h += 0x6D2B79F5;
+      var x = h;
+      x = Math.imul(x ^ (x >>> 15), 1 | x);
+      x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function 混ぜる(a, 乱) {
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(乱() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  /* n 問を 形式へ **均等に**配る。余りだけ 種で 決める。 */
+  function 形式を配る(types, n, 乱) {
+    if (!types.length || n <= 0) return [];
+    var 基 = Math.floor(n / types.length);
+    var 余 = n - 基 * types.length;
+    var out = [];
+    types.forEach(function (t) { for (var i = 0; i < 基; i++) out.push(t); });
+    /* 余りは **形式を 混ぜてから** 先頭へ配る（いつも 同じ 形式が
+       得を する のを 防ぐ）。 */
+    var 順 = 混ぜる(types.slice(), 乱);
+    for (var k = 0; k < 余; k++) out.push(順[k % 順.length]);
+    return 混ぜる(out, 乱);
+  }
+
   /* ══════════════════════════════════════════════════════════
      1) plan — ここで試験の形が確定する
 
@@ -12951,17 +13001,39 @@
     /* 構成案（AI）があれば題名だけ借りる。数と点は借りない。 */
     var bpTitles = blueprintTitles(req.blueprint, sectionCount);
 
-    /* 1 問ずつの枠を作る。形式は TYPE_ORDER の順に巡回して割り当てる
-       （毎回同じ入力なら同じ出力になる＝再現できる）。 */
+    /* ══ 形式の 配りかた（2026-08-30・訴え）════════════════════════
+       訴え「毎回 おんなじ 出題傾向に なってる 気がするから、
+             ちゃんと 均等に ランダムに 慎重に AI が 振り分けるように」
+
+       これまでは types[ti % types.length] の **単純な 巡回**だった。
+       しかも types は 決まった 順（正誤 → 4択 → 複数選択 → 空欄 → …）に
+       並べ直してあるので、**何度 作っても 問1 は 正誤、問2 は 4択**。
+       出題の 傾向が 毎回 そっくりに なるのは これが 原因。
+
+       いまの 配りかた:
+         ① **均等に**配る（形式の 数で 割り、余りだけ 種で 決める）
+         ② **種つきで 混ぜる**（種は 呼び側が 渡す。渡さなければ 毎回 変わる）
+         ③ 記述・論述は **大問の 後ろ**へ 寄せる
+            （いきなり 問1 が 400 字 記述 では 試験に ならない）
+       ★ 種を 渡せば 同じ 並びを 作り直せる（作り直しで 形が 変わらない）。 */
+    var 種 = str(req.seed || "") || String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8);
+    var 乱 = 種の乱数(種);
+    var 配 = 形式を配る(types, counts.reduce(function (a, n) { return a + n; }, 0), 乱);
+
     var slots = [];
     var ti = 0;
     for (var si = 0; si < counts.length; si++) {
+      /* この 大問ぶんを 取り出し、記述系を 後ろへ 寄せる。 */
+      var 束 = 配.slice(ti, ti + counts[si]);
+      ti += counts[si];
+      束 = 束.slice().sort(function (a, b) {
+        return (WRITTEN[a] ? 1 : 0) - (WRITTEN[b] ? 1 : 0);
+      });
       for (var qi = 0; qi < counts[si]; qi++) {
-        var type = types[ti % types.length]; ti++;
         slots.push({
           sectionIndex: si,
           numberInSection: qi + 1,
-          type: type,
+          type: 束[qi] || types[0],
           difficulty: difficultyFor(req.difficulty, qi, counts[si])
         });
       }
@@ -63773,7 +63845,8 @@
           if (it && typeof it.score === "number") score += it.score;
         });
         return { sectionId: sec.id, number: sec.number, title: sec.title,
-                 score: Math.round(score * 10) / 10, max: max };
+                 /* ★ 点は 整数（2026-08-30・訴え）。 */
+                 score: Math.round(score), max: max };
       });
     }
     function snapshot(q) {
@@ -63789,7 +63862,7 @@
     function recompute(result) {
       var score = 0;
       result.items.forEach(function (i) { if (typeof i.score === "number") score += i.score; });
-      result.score = Math.round(score * 10) / 10;
+      result.score = Math.round(score);
       result.pendingAiCount = result.items.filter(function (i) { return i.score === null; }).length;
       result.aggregate = G.aggregate(questions, result.items);
       result.sectionScores = sectionScores(result.items);
@@ -63931,6 +64004,24 @@
       var n = app.root.querySelector("#curQ");
       if (n) n.textContent = currentLabel();
     }
+    /* ══ 右の 解答欄だけを 描き直す（2026-08-30・訴え）════════════
+       訴え「更新されるたびに 問題用紙が 一番上に スクロールするのを やめて」
+       ★ これまでは 1 つ 選ぶ たびに **画面ぜんぶ**を 作り直していた。
+         左の 紙面（iframe）も 作り直しに なるので、読んでいた ところが
+         毎回 いちばん上へ 戻っていた。
+       ★ 解答に かかわる 操作は ここを 呼ぶ。紙面には 触らない。 */
+    function renderAnswers() {
+      var pane = app.root.querySelector("#answerPane");
+      if (!pane) { render(); return; }
+      var sc = pane.querySelector(".vq2-pane-b");
+      var 位置 = sc ? sc.scrollTop : 0;
+      pane.innerHTML = answerSheetHtml();
+      var sc2 = pane.querySelector(".vq2-pane-b");
+      if (sc2 && 位置) sc2.scrollTop = 位置;
+      highlightAnswerRow(st.currentQid);
+      renderProgress();
+    }
+
     function renderPaperBar() {
       var b = app.root.querySelector("#paperBar");
       if (b) { b.outerHTML = paperBarHtml(); wirePaper(); }
@@ -64360,9 +64451,36 @@
     }
 
     /* ── 紙面の描画 ───────────────────────────────────────── */
+    /* ══ 紙面は **要るときだけ 組み直す**（2026-08-30・訴え）════════
+       訴え「更新されるたびに 問題用紙が 一番上に スクロールするのを やめて」
+
+       これまでは 描き直しの たびに iframe を **作り直して**いた。
+       解答欄へ 1 文字 打つ たびに 紙面が まっさらに なり、
+       読んでいた ところが 分からなくなる。
+       ★ 中身が 同じなら 組み直さない（そのまま 置いておく）。
+       ★ 組み直すのは 中身が 変わった ときだけ（表紙 → 本編、拡大、記入）。
+         そのときも **見ていた ところへ 戻す**。 */
+    var 紙の鍵 = "";
     function mountPaper(表紙前) {
       var host = app.root.querySelector("#examPaper");
       if (!host) return;
+      var v = 受験者();
+      var 鍵 = [表紙前 === true ? "cover" : "full", st.zoom, spec.id,
+                記入の欄().map(function (k) { return v[k] || ""; }).join("\u0001")].join("|");
+      var 前 = host.querySelector("iframe");
+      if (前 && 紙の鍵 === 鍵) {
+        /* 中身は そのまま。いま 選んでいる 設問へ 印だけ 付け直す。
+           **スクロールは 動かさない**（勝手に 飛ばさない）。 */
+        syncPaperToQuestion(st.currentQid, false);
+        return;
+      }
+      /* 見ていた ところを 覚えておく（組み直した あとに 戻す）。 */
+      var 位置 = 0;
+      try {
+        var d0 = 前 && (前.contentDocument || (前.contentWindow && 前.contentWindow.document));
+        if (d0) 位置 = (d0.documentElement.scrollTop || d0.body.scrollTop || 0);
+      } catch (e) { 位置 = 0; }
+      紙の鍵 = 鍵;
       var iframe = doc.createElement("iframe");
       iframe.setAttribute("title", "問題冊子");
       iframe.style.cssText = "width:100%;height:100%;border:0;background:#eceaf3";
@@ -64387,7 +64505,17 @@
         + "if(t)parent.postMessage({vq2:'pick',qid:t.getAttribute('data-question')},'*');});<\/script></body>");
 
       R.renderToIframe(iframe, html).then(function () {
-        syncPaperToQuestion(st.currentQid, true);
+        /* 組み直した ときは、見ていた ところへ 戻す。
+           初めて 開いた ときだけ 今の 設問へ 寄せる。 */
+        if (位置 > 0) {
+          try {
+            var d1 = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
+            if (d1) { d1.documentElement.scrollTop = 位置; d1.body.scrollTop = 位置; }
+          } catch (e) {}
+          syncPaperToQuestion(st.currentQid, false);
+        } else {
+          syncPaperToQuestion(st.currentQid, true);
+        }
       });
     }
 
@@ -64516,12 +64644,12 @@
         if (i >= 0) seq.splice(i, 1); else seq.push(String(iid));
         setAnswer(qid, seq);
         selectQuestion(qid, false);
-        render();
+        renderAnswers();
       });
       U.on(r, "click", "[data-ordclear]", function (e, t) {
         var qid = t.getAttribute("data-ordclear");
         setAnswer(qid, []);
-        render();
+        renderAnswers();
       });
       /* ══ 組み合わせ ══ 右の 一覧から 選ぶ。保存するのは { 左id: 右id }。 */
       U.on(r, "change", "[data-pairsel]", function (e, t) {
@@ -64578,7 +64706,7 @@
         並[i3] = 語;
         setAnswer(qid, 並.slice(0, n3));
         selectQuestion(qid, false);
-        render();
+        renderAnswers();
       });
       /* ══ 分類 ══ 保存するのは { items: { 語id: 箱id } }。 */
       U.on(r, "change", "[data-clssel]", function (e, t) {
