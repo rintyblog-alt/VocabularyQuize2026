@@ -302,11 +302,98 @@
   function 既定の表紙() {
     return {
       examName: "", subject: "", examDate: 今日(),
-      instructions: ["解答はすべて解答用紙に記入すること。",
-                     "筆記用具以外の持ち込みは禁止。"],
+      /* ★ 注意事項は **書かせない**（2026-08-30・訴え
+         「注意事項は 基本的に 設定する 必要は 無いんじゃない？」）。
+         中身は アプリが すでに 知っている ことで 決まる。下の 注意を書く() 参照。 */
+      注意は自動: true,
+      instructions: [],
       studentFields: ["年", "組", "番", "氏名"],
       sealNote: true
     };
+  }
+
+  /* ══ 注意事項は **こちらが 書く**（2026-08-30・訴え）════════════════
+     訴え「注意事項は 基本的に 設定する 必要は 無いんじゃない？
+           だって AI が そこも 作れば いい話なんだから。
+           ユーザーには 書かせる 必要 なくね？」
+
+     ★ 本物の 注意事項の 中身は、ほとんどが **アプリが すでに 知っている こと**。
+       試験時間・満点・大問の 数・解答用紙が マークか どうか・記入する 欄。
+       ここを AI に 書かせると、45 分の 試験に「試験時間は 50 分です」と
+       書かれる。事実の 行は **コードが 書く**（AI に 数字を 触らせない）。
+     ★ 教科ならではの 一言（数学の 分数の 書きかた・英語の 辞書 など）だけ
+       AI に 足させる。作りに 行くのと **同時に** 頼むので 待ち時間は 増えない。
+     ★ 言い回しは 実物（共通テスト・定期考査）に そろえる。 */
+  function マーク式か(c) {
+    var a = String((c && c.answerSheetMode) || "");
+    var l = String((c && c.layoutMode) || "");
+    return a === "mark-sheet" || a === "common-test-mark"
+      || (a === "current" && /common-test/.test(l));
+  }
+  /* 教科ならではの 一言。**AI が 返らなかった ときの 受け皿**でもある。 */
+  var 教科の一言 = [
+    { 当: /数学|算数|数Ⅰ|数Ⅱ|数Ａ|数Ｂ|数学Ⅲ/, 文: [
+      "計算は 問題冊子の 余白を 使いなさい。",
+      "分数で 答える ときは、それ以上 約分できない 形で 答えなさい。"] },
+    { 当: /英語|English|リーディング|ライティング/i, 文: [
+      "辞書・電子辞書の 使用は 認めません。"] },
+    { 当: /リスニング|聞き取り/, 文: [
+      "音声は 2 回 流します。メモは 問題冊子に 取ってかまいません。"] },
+    { 当: /国語|現代文|古典|古文|漢文/, 文: [
+      "字数を 指定した 設問は、句読点も 1 字に 数えます。"] },
+    { 当: /理科|物理|化学|生物|地学/, 文: [
+      "計算は 問題冊子の 余白を 使いなさい。",
+      "数値で 答える 設問は、指示が なければ 有効数字 2 桁で 答えなさい。"] },
+    { 当: /地理|歴史|公民|日本史|世界史|政治|経済|倫理/, 文: [
+      "統計・地図・資料は、問題冊子に 示した ものだけを 使いなさい。"] }
+  ];
+  function 教科から足す(subject) {
+    var s = String(subject || "");
+    if (!s) return [];
+    for (var i = 0; i < 教科の一言.length; i++) {
+      if (教科の一言[i].当.test(s)) return 教科の一言[i].文.slice();
+    }
+    return [];
+  }
+  /* p2（枠）が あれば 実際の 数で 書く。無ければ 条件の 数で 書く。 */
+  function 注意を書く(表紙, c, p2) {
+    c = c || {};
+    var 分 = Number(c.durationMinutes) || 0;
+    var 点 = (p2 && p2.totalPoints) || Number(c.totalPoints) || 0;
+    var 大 = (p2 && p2.sections && p2.sections.length) || Number(c.sectionCount) || 0;
+    var 記 = (表紙 && 表紙.studentFields) || [];
+    var マ = マーク式か(c);
+    var 出 = [];
+
+    出.push("開始の 合図が あるまで、この 問題冊子を 開いては いけません。");
+    if (分) 出.push("試験時間は " + 分 + " 分です。");
+    if (記.length) {
+      出.push("解答用紙に、" + 記.join("・") + "を "
+        + (マ ? "記入し、受験番号は 該当する 数字を マークしなさい。" : "記入しなさい。"));
+    }
+    if (大 > 1) 出.push("問題は 第 1 問から 第 " + 大 + " 問まで あります。");
+    出.push(マ
+      ? "解答は、解答用紙の 解答番号に 対応する 解答欄を マークしなさい。"
+      : "解答は、すべて 解答用紙の 解答欄に 記入しなさい。"
+        + "問題冊子に 書いた 解答は 採点しません。");
+    if (マ) {
+      出.push("マークは HB の 黒鉛筆で、○の 中を 濃く 塗りつぶしなさい。");
+      出.push("訂正する ときは、消しゴムで きれいに 消し、消しくずを 残しては いけません。");
+    }
+    if (点) 出.push("配点は 各問に 示して あります。満点は " + 点 + " 点です。");
+    出.push("問題冊子の 余白は、下書きに 使って かまいません。");
+    出.push("印刷が 不鮮明な ところ、ページの 抜け落ちや 順序の 乱れが あった ときは、"
+      + "手を 挙げて 監督者に 知らせなさい。");
+    出.push("試験終了後、問題冊子と 解答用紙は 机の 上に 置いたまま 退室しなさい。");
+
+    /* 教科ならではの 一言。AI が 返っていれば そちらを 先に 使う。
+       ★ **教科が 変わったら 使わない**（2026-08-30）。持ち越すと、
+         生物で 頼んだ 一言が 数学の 表紙に 出る。 */
+    var 教 = String((表紙 && 表紙.subject) || "").trim();
+    var A = st.AI注意;
+    var 足 = (A && A.subject === 教 && A.notes && A.notes.length) ? A.notes.slice() : 教科から足す(教);
+    足.forEach(function (t) { if (出.indexOf(t) < 0) 出.push(t); });
+    return 出.slice(0, 14);
   }
   function 今日() {
     try {
@@ -331,7 +418,8 @@
     読取中: false,
     読取り: null,
     止めたい: false,
-    保存した: false
+    保存した: false,
+    AI注意: null          /* 教科ならではの 一言（返って きたときだけ） */
   };
 
   /* ── 器 ──────────────────────────────────────────────────────── */
@@ -416,10 +504,26 @@
       + '<input id="vm-date" data-f="examDate" maxlength="30" placeholder="2026年8月30日" value="'
       + esc(c.examDate) + '"></div>'
       + "</div>"
-      + '<div class="row"><label for="vm-notes">注意事項（1 行に 1 つ）</label>'
-      + '<textarea id="vm-notes" data-f="instructions" maxlength="1200">'
-      + esc((c.instructions || []).join("\n")) + "</textarea>"
-      + '<div class="hint">空の行は 出しません。書いたものだけが 表紙に 並びます。</div></div>'
+      /* ★ 注意事項は **書かせない**（2026-08-30・訴え）。
+         試験時間・満点・大問の 数・マーク式か どうか・記入する 欄は
+         アプリが 知っている。書いたものが 出るのではなく、
+         **決めた 条件が そのまま 注意事項に なる**。 */
+      + '<div class="row"><label>注意事項</label><div class="chips">'
+      + '<button type="button" class="chip' + (c.注意は自動 !== false ? " is-on" : "")
+      + '" data-a="notes-auto" aria-pressed="' + (c.注意は自動 !== false ? "true" : "false")
+      + '">おまかせ<small>条件から 書きます</small></button>'
+      + '<button type="button" class="chip' + (c.注意は自動 === false ? " is-on" : "")
+      + '" data-a="notes-mine" aria-pressed="' + (c.注意は自動 === false ? "true" : "false")
+      + '">自分で 書く</button></div>'
+      + (c.注意は自動 === false
+          ? '<textarea id="vm-notes" data-f="instructions" maxlength="1200">'
+            + esc((c.instructions || []).join("\n")) + "</textarea>"
+            + '<div class="hint">1 行に 1 つ。空の行は 出しません。</div>'
+          : '<div class="hint">試験時間・満点・大問の 数・マーク式か どうか・'
+            + "記入する 欄から <b>次の 段で 決めた とおりに</b> 書きます。"
+            + "教科ならではの 一言（数学の 約分・英語の 辞書 など）は 作る ときに 足します。"
+            + "下の 下書きは いまの 条件で 書いた ものです。</div>")
+      + "</div>"
       + '<div class="row"><label>記入欄</label><div class="chips">'
       + ["年", "組", "番", "氏名", "受験番号"].map(function (f) {
           var on = (c.studentFields || []).indexOf(f) >= 0;
@@ -510,18 +614,27 @@
             var on = (c.資料の渡し || "はやい") === id;
             return '<button type="button" class="chip' + (on ? " is-on" : "") + '" data-a="pass" data-v="'
               + id + '" aria-pressed="' + (on ? "true" : "false") + '">'
-              + (id === "はやい" ? "本文の 文字だけ<small>速い</small>"
-                                 : "そのまま 読ませる<small>図も 読める・遅い</small>") + "</button>";
+              + (id === "はやい" ? "先に 1 回 読み取る<small>速い</small>"
+                                 : "毎回 そのまま 読ませる<small>図も 見える・遅い</small>") + "</button>";
           }).join("")
         + "</div><div class=\"hint\">"
         + ((c.資料の渡し || "はやい") === "そのまま"
-            ? "全部を <b>そのまま 読ませます</b>（図や 写真も 読めますが、時間が かかります）。"
-            : (文件
-                ? "本文の 取れた <b>" + 文件 + " 件</b>は 文字で 渡します"
-                  + "（要点に していません。<b>本文 そのもの</b>です）。読み直させないので 速いです。"
-                  + (生件 ? " 本文の 取れなかった <b>" + 生件 + " 件</b>だけ そのまま 読ませます。" : "")
-                : "本文が 1 件も 取れていないので、<b>そのまま 読ませます</b>"
-                  + "（写真や スキャンの ページ）。時間が かかります。"))
+            ? "頼むたびに <b>資料 そのものを 送って 読ませます</b>。図・写真・レイアウトまで "
+              + "AI が 目で 見ますが、20 問なら <b>4 回 送り直す</b>ので とても 遅くなります。"
+            : (function () {
+                var 絵件 = 読み取る資料().length;
+                var 絵頁 = 読み取る資料().reduce(function (n, f) { return n + f.pageImages.length; }, 0);
+                var 済件 = st.資料.filter(function (f) { return String(f.ocrText || "").trim(); }).length;
+                var 言 = [];
+                if (文件) 言.push("本文の 取れた <b>" + 文件 + " 件</b>は そのまま 文字で 渡します");
+                if (済件) 言.push("読み取り済み <b>" + 済件 + " 件</b>");
+                if (絵件) 言.push("文字の 無い <b>" + 絵件 + " 件</b>（" + 絵頁
+                  + " ページ）は <b>作る 前に 1 回だけ</b> 読み取ります");
+                if (!言.length) return "資料から 中身を 取り出せていません。";
+                return 言.join("／") + "。"
+                  + "要点に していません（<b>本文 そのもの</b>）。"
+                  + "一度 文字に すれば 何回 頼んでも 送り直さないので、ここが いちばん 速い 道です。";
+              }()))
         + "</div></div>";
     }
     h += '<div class="row"><label>資料（任意）</label>' + 資料の中身()
@@ -894,6 +1007,40 @@
     return "";
   }
 
+  /* 送るときの 頭。**1 か所**に する（3 か所で 書き分けていた）。 */
+  function 頭() {
+    var h = { "Content-Type": "application/json" };
+    try {
+      var tok = window.localStorage.getItem("app.auth.token.v1");
+      if (tok) h.Authorization = "Bearer " + String(tok).replace(/^"|"$/g, "");
+    } catch (e) {}
+    return h;
+  }
+
+  /* ══ 教科ならではの 一言だけ AI に 足させる（2026-08-30・訴え）════
+     ★ 事実の 行（時間・満点・大問の 数・マーク）は **コードが 書く**。
+       ここで 頼むのは 教科ならではの 一言だけ。数字が 混ざったら 落とす。
+     ★ **作りに 行くのと 同時に** 走らせる。返事を 待たない。
+       間に合わなければ 教科の 受け皿（教科から足す）が そのまま 残る。 */
+  function 注意をAIに足す(表紙) {
+    st.AI注意 = null;
+    if (!表紙 || 表紙.注意は自動 === false) return;
+    var 教 = String(表紙.subject || "").trim();
+    if (!教 && !String(表紙.examName || "").trim()) return;
+    try {
+      window.fetch(apiBase() + "/api/aigen/cover", {
+        method: "POST", headers: 頭(),
+        body: JSON.stringify({
+          task: "examNotes", subject: 教, examName: 表紙.examName || "",
+          have: 表紙.instructions || []
+        })
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        var 並 = (j && Array.isArray(j.notes)) ? j.notes : [];
+        if (並.length) st.AI注意 = { subject: 教, notes: 並 };
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
   function 形式名(id) {
     var f = 形式.filter(function (x) { return x.id === id; })[0];
     if (f) return f.label;
@@ -932,6 +1079,10 @@
       return {
         id: x.id, name: x.name, size: x.size, mimeType: x.mimeType || "",
         file: x.file || null,
+        /* ★ 読み取った 文字は **持ち越す**（2026-08-30）。読取器は これを
+           知らないので、ここで 写し直すと 1 回 読んだ ものが 消える。 */
+        ocrText: (a && a.ocrText) || "",
+        ocr頁: (a && a.ocr頁) || 0,
         /* aigen 側は extractedText という 名前で 読む。ここで そろえる。 */
         extractedText: x.text || "",
         pageImages: x.pageImages || null,
@@ -958,7 +1109,11 @@
     var 状 = "", cls = "";
     if (f.status === "extracting" || f.status === "queued") { 状 = "読み取っています…"; cls = " is-busy"; }
     else if (f.status === "failed") { 状 = f.error || "読み取れませんでした"; cls = " is-bad"; }
-    else if ((f.pageImages || []).length) 状 = "文字が 入っていないので " + f.pageImages.length + " ページを 絵で 渡します";
+    else if (String(f.ocrText || "").trim())
+      状 = (f.ocr頁 || 0) + " ページを 読み取りました（"
+        + Math.round(String(f.ocrText).length / 100) / 10 + " 千字）";
+    else if ((f.pageImages || []).length)
+      状 = "文字が 入っていないので、作る ときに " + f.pageImages.length + " ページを 読み取ります";
     else if (f.extractedText) 状 = Math.round(f.extractedText.length / 100) / 10 + " 千字を 読み取りました"
       + (f.truncated ? "（長いので 途中まで）" : "");
     else if (f.kind === "image") 状 = "画像として 渡します";
@@ -1140,8 +1295,22 @@
        ・絵にした ページ（pageImages）が ある → 写真の 資料。ファイルで 渡す
        ・読み取れなかった ページ（ocr）が 半分 以上 → 同じく ファイルで
        ・1 ページ あたり 100 字 未満 → 中身が 薄い。ファイルで */
+  function 本文(f) {
+    if (!f) return "";
+    var a = String(f.extractedText || "").trim();
+    var b = String(f.ocrText || "").trim();
+    if (a && b) return a + "\n\n" + b;
+    return a || b;
+  }
   function 文字で足りるか(f) {
     if (!f) return false;
+    /* ★ **1 回 読み取った ものは 文字で 渡す**（2026-08-30・訴え
+       「ありえんくらい 作成が 遅い」）。
+       絵の ページを 毎回 送り直すより、1 回 文字に した ほうが
+       速いだけでなく **中身も 同じ**（同じ 絵を 同じ AI が 読む）。
+       ページ数で 割った 濃さは ここでは 見ない。読み取れた ページが
+       資料の 一部でも、それが いま 手元に ある 全部だから。 */
+    if (String(f.ocrText || "").trim().length > 200) return true;
     var t = String(f.extractedText || "").trim();
     if (t.length < 200) return false;
     if ((f.pageImages || []).length) return false;
@@ -1160,7 +1329,7 @@
   function 資料の文字() {
     var 束 = [];
     文字の資料().forEach(function (f) {
-      束.push("■ " + (f.name || "資料") + "\n" + String(f.extractedText).trim());
+      束.push("■ " + (f.name || "資料") + "\n" + 本文(f));
     });
     if (!束.length) return [];
     var 全 = 束.join("\n\n");
@@ -1184,6 +1353,116 @@
     if (!st.資料.length) return [];
     if (st.条件 && st.条件.資料の渡し === "そのまま") return st.資料.slice();
     return 生の資料();
+  }
+
+  /* ══ 資料は **1 回だけ** 読む（2026-08-30・訴え）════════════════════
+     訴え「115MB の ファイルを 添付して 作らせたら、ありえんくらい 作成が
+           遅い。プリセット AI とか Lumi の スキャンは もっと 早かった」
+
+     ★ **遅い 理由は 1 つ。同じ 資料を 何回も 読ませていた。**
+       20 問の 試験は 4 回に 分けて 頼む。文字の 入っていない PDF は
+       ページを 絵に して 送るので、24MB の 絵を **4 回** 送り、
+       向こうも **4 回** 同じ 絵を 読み直していた（合わせて 約 100MB）。
+       プリセット AI が 速いのは 1 回しか 頼まないから。
+     ★ Lumi の スキャン（/api/scan/read）は 同じ 絵を **1.5 秒**で 文字に する。
+       先に 1 回 文字に して しまえば、あとは 文字だけで 作れる。
+       送るのは 数十 KB。同時に 3 本 走らせられる。
+     ★ 読み取った 文字は **要点では ない。書いてある ことを そのまま**。
+       図・表は〔図: …〕と 1 行 書き添えさせる（消さない）。
+     ★ 図そのものを 読ませたい ときは 「そのまま 読ませる」を 選ぶ。
+       そちらは これまでどおり 絵を 送る（遅いが 図が 見える）。 */
+  var OCR一度に = 4;        /* 1 回に 送る ページ数（向こうの 上限は 8） */
+  var OCR同時 = 3;          /* 同時に 走らせる 本数 */
+  var OCR長辺 = 1600;       /* 送る 前に 縮める 長辺（文字は これで 読める） */
+
+  function 読み取る資料() {
+    return st.資料.filter(function (f) {
+      return (f.pageImages || []).length && !String(f.ocrText || "").trim();
+    });
+  }
+  /* 送る 前に 縮める。2048px の まま 送ると 1 枚 2MB。1600px で 十分 読める。 */
+  function 縮める(dataUrl) {
+    return new Promise(function (done) {
+      try {
+        var im = new Image();
+        im.onload = function () {
+          try {
+            var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
+            var s = Math.min(1, OCR長辺 / Math.max(w, h));
+            if (s >= 1 && dataUrl.length < 700000) { done(dataUrl); return; }
+            var cv = doc.createElement("canvas");
+            cv.width = Math.max(1, Math.round(w * s));
+            cv.height = Math.max(1, Math.round(h * s));
+            var cx = cv.getContext("2d");
+            cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height);
+            cx.drawImage(im, 0, 0, cv.width, cv.height);
+            done(cv.toDataURL("image/jpeg", 0.72));
+          } catch (e) { done(dataUrl); }
+        };
+        im.onerror = function () { done(dataUrl); };
+        im.src = dataUrl;
+      } catch (e) { done(dataUrl); }
+    });
+  }
+  function 一束読む(名, 束) {
+    var 番 = 束.map(function (b) { return b.p; }).filter(Boolean);
+    var 前 = "これは「" + 名 + "」の "
+      + (番.length ?番.join("・") + " ページ目" : "ページ") + "です。\n"
+      + "ページごとに 【p.番号】 と 見出しを 付けて、その ページの 文字を"
+      + " **そのまま** 書き起こしてください。\n"
+      + "図・表・グラフは 消さずに 〔図: 何が 描かれているか〕〔表: 何の 表か・数値〕"
+      + " と 書き添えてください。\n"
+      + "要約しないでください。読めない ところは 〔読めません〕と 書きます。";
+    return window.fetch(apiBase() + "/api/scan/read", {
+      method: "POST", headers: 頭(),
+      body: JSON.stringify({ task: "ocr", prompt: 前,
+                             images: 束.map(function (b) { return b.u; }) })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      return (j && j.ok && j.text) ? String(j.text) : "";
+    }).catch(function () { return ""; });
+  }
+  /* 全部 読む。**読めなかった ぶんは 黙って 進まない**（数で 言う）。 */
+  function 絵を文字にする(進む) {
+    var 並 = 読み取る資料();
+    if (!並.length) return Promise.resolve(0);
+    var 全 = 並.reduce(function (n, f) { return n + f.pageImages.length; }, 0);
+    var 済 = 0;
+    function 知らせる() { try { 進む(済, 全); } catch (e) {} }
+    知らせる();
+    return 並.reduce(function (待, f) {
+      return 待.then(function () {
+        var 頁 = f.pageImages.slice();
+        return Promise.all(頁.map(function (pi) {
+          return 縮める(String(pi.dataUrl || "")).then(function (u) {
+            return { p: pi.pageNumber || 0, u: u };
+          });
+        })).then(function (絵) {
+          var 束 = [];
+          for (var i = 0; i < 絵.length; i += OCR一度に) 束.push(絵.slice(i, i + OCR一度に));
+          var 出 = new Array(束.length);
+          var 次 = 0;
+          function 走る() {
+            if (次 >= 束.length) return Promise.resolve();
+            var k = 次++;
+            return 一束読む(f.name || "資料", 束[k]).then(function (t) {
+              出[k] = t;
+              済 += 束[k].length;
+              知らせる();
+              return 走る();
+            });
+          }
+          var 本 = [];
+          for (var j = 0; j < Math.min(OCR同時, 束.length); j++) 本.push(走る());
+          return Promise.all(本).then(function () {
+            var t = 出.filter(Boolean).join("\n\n").trim();
+            f.ocrText = t;
+            f.ocr頁 = t ? 絵.length : 0;
+          });
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      return 並.reduce(function (n, f) { return n + (f.ocr頁 || 0); }, 0);
+    });
   }
 
   /* ══ 外から 画像を 持ってくる（2026-08-30・訴え）════════════════
@@ -1307,7 +1586,8 @@
   /* 表紙の 下書き。**入れたものだけ**を 出す（空の枠を 見せない）。 */
   function 下書き() {
     var c = st.表紙;
-    var 行 = (c.instructions || []).filter(function (x) { return String(x).trim(); });
+    var 行 = (c.注意は自動 === false ? (c.instructions || []) : 注意を書く(c, st.条件, null))
+      .filter(function (x) { return String(x).trim(); });
     var h = '<div class="prev">';
     h += '<div class="pt">' + esc(c.examName || "（試験の名前）") + "</div>";
     if (c.subject) h += '<div class="ps">' + esc(c.subject) + "</div>";
@@ -1317,8 +1597,9 @@
     h += '<div class="pm">' + m.map(esc).join("</div><div class=\"pm\">") + "</div>";
     if (行.length) {
       h += "<ol>";
-      行.slice(0, 6).forEach(function (t) { h += "<li>" + esc(t) + "</li>"; });
+      行.slice(0, 9).forEach(function (t) { h += "<li>" + esc(t) + "</li>"; });
       h += "</ol>";
+      if (行.length > 9) h += '<div class="pm">ほか ' + (行.length - 9) + " 行</div>";
     }
     h += '<div class="pf">';
     (c.studentFields || []).forEach(function (f) { h += "<b>" + esc(f) + "</b><span></span>"; });
@@ -1343,6 +1624,18 @@
         var i = list.indexOf(v);
         if (i >= 0) list.splice(i, 1); else list.push(v);
         st.表紙.studentFields = list;
+        描く();
+        return;
+      }
+      /* 注意事項。おまかせ ⇄ 自分で 書く。
+         ★ 自分で 書くに した ときは、**いまの 下書きを 入れて 渡す**。
+           空の 欄を 出すと、そこから 書き始める ことに なる。 */
+      if (a === "notes-auto") { st.表紙.注意は自動 = true; 描く(); return; }
+      if (a === "notes-mine") {
+        if (st.表紙.注意は自動 !== false && !(st.表紙.instructions || []).length) {
+          st.表紙.instructions = 注意を書く(st.表紙, st.条件, null);
+        }
+        st.表紙.注意は自動 = false;
         描く();
         return;
       }
@@ -1477,7 +1770,9 @@
       examName: String(c.examName).trim(),
       subject: String(c.subject || "").trim(),
       examDate: String(c.examDate || "").trim(),
-      instructions: (c.instructions || []).filter(function (x) { return String(x).trim(); }),
+      注意は自動: c.注意は自動 !== false,
+      instructions: (c.注意は自動 === false ? (c.instructions || []) : 注意を書く(c, st.条件, null))
+        .filter(function (x) { return String(x).trim(); }),
       studentFields: (c.studentFields || []).slice(0, 6),
       sealNote: c.sealNote !== false
     };
@@ -1580,6 +1875,8 @@
     if (!p2) { st.err = "構成案が ありません。"; 描く(); return; }
 
     st.走っている = true; st.止めたい = false; st.err = "";
+    /* 教科ならではの 一言は **走りながら** 頼む（待たない）。 */
+    注意をAIに足す(表紙);
     if (!o.refill) { st.記録 = []; st.結果 = null; st.spec = null; st.保存した = false; }
     st.進み = { done: 0, total: 1, made: 0, madeTotal: p2.totalQuestions, stage: "枠を 決めました" };
     st.始めた = Date.now();
@@ -1593,21 +1890,52 @@
     /* ★ **押した 瞬間に 何を しているか 出す**（2026-08-30・訴え
        「試験が 作り始まらない」）。写真の 資料は 先に 預けるので、
        ここで 1 分ほど かかる。黙っていると 固まったように 見える。 */
-    var 預ける件 = ファイルで渡すぶん().length;
-    if (預ける件) {
-      st.進み.stage = "資料を 預けています（0 / " + 預ける件 + "）";
-      記す("step", "写真・図の 資料 " + 預ける件 + " 件を 先に 預けます。"
-        + "1 回 預ければ、あとは 何回 頼んでも 送り直しません。");
-    } else if (st.資料.length) {
-      st.進み.stage = "資料を 用意しています";
+    /* ★ 絵の ページは **先に 1 回だけ 文字に する**（2026-08-30・訴え
+       「ありえんくらい 遅い」）。ここが 速さの 芯。
+       これを しないと、同じ 絵を 頼む 回数だけ（20 問なら 4 回）送り直す。 */
+    var 読む件 = (c.資料の渡し === "そのまま") ? 0 : 読み取る資料().length;
+    var 読む頁 = 0;
+    if (読む件) {
+      読む頁 = 読み取る資料().reduce(function (n, f) { return n + f.pageImages.length; }, 0);
+      st.進み.stage = "資料を 読み取っています（0 / " + 読む頁 + " ページ）";
+      記す("step", "文字の 入っていない 資料 " + 読む件 + " 件（" + 読む頁 + " ページ）を "
+        + "**先に 1 回だけ** 読み取ります。ここで 文字に して しまえば、"
+        + "あとは 何回 頼んでも 送り直しません。");
     }
     描く();
-    資料を送れる形に(function (済, 全) {
-      /* ★ 預けている 間も 動きを 見せる（2026-08-30）。
-         14 件だと ここで 1 分近く かかるので、黙っていると
-         「止まった」と 見える。 */
-      if (st.進み) st.進み.stage = "資料を 預けています（" + 済 + " / " + 全 + "）";
+    var 読み = 読む件
+      ? 絵を文字にする(function (済, 全) {
+          if (st.進み) st.進み.stage = "資料を 読み取っています（" + 済 + " / " + 全 + " ページ）";
+          描く();
+        })
+      : Promise.resolve(0);
+    読み.then(function (頁) {
+      if (読む件) {
+        if (頁) {
+          var 字 = 読み取れた字数();
+          記す("note", 頁 + " ページを 読み取りました（" + Math.round(字 / 1000) + " 千字）。"
+            + "ここから 先は **文字だけ**で 作ります。絵を 送り直しません。");
+        } else {
+          記す("warn", "資料の 絵を 読み取れませんでした。これまでどおり 絵を 送って 読ませます"
+            + "（時間が かかります）。");
+        }
+      }
+      var 預ける件 = ファイルで渡すぶん().length;
+      if (預ける件) {
+        st.進み.stage = "資料を 預けています（0 / " + 預ける件 + "）";
+        記す("step", "写真・図の 資料 " + 預ける件 + " 件を 先に 預けます。"
+          + "1 回 預ければ、あとは 何回 頼んでも 送り直しません。");
+      } else if (st.資料.length) {
+        st.進み.stage = "資料を 用意しています";
+      }
       描く();
+      return 資料を送れる形に(function (済, 全) {
+        /* ★ 預けている 間も 動きを 見せる（2026-08-30）。
+           14 件だと ここで 1 分近く かかるので、黙っていると
+           「止まった」と 見える。 */
+        if (st.進み) st.進み.stage = "資料を 預けています（" + 済 + " / " + 全 + "）";
+        描く();
+      });
     }).then(function (用意) {
       走らせる(o, c, 表紙, p2, MC, MR, G, 用意);
     }, function (e) {
@@ -1616,6 +1944,9 @@
       記す("err", st.err);
       描く();
     });
+  }
+  function 読み取れた字数() {
+    return st.資料.reduce(function (n, f) { return n + String(f.ocrText || "").length; }, 0);
   }
 
   function 走らせる(o, c, 表紙, p2, MC, MR, G, 用意) {
@@ -1952,6 +2283,14 @@
     var sp = res.spec;
     if (!sp) { st.err = "作れた 問題を 試験に できませんでした。"; 描く(); return; }
     /* 表紙・紙面の 型・時間を 載せる（ここでしか 入らない）。 */
+    /* ★ 注意事項は **できあがった 数で 書き直す**（2026-08-30）。
+       表紙の 段では 大問の 数も 満点も「これから 決める 数」だった。
+       ここでは 実際に できた 枠（res.plan）が あるので、
+       第 1 問〜第 N 問・満点 N 点が 紙面と 必ず 合う。
+       走っている 間に AI から 返った 一言も ここで 入る。 */
+    if (表紙 && 表紙.注意は自動 !== false) {
+      表紙.instructions = 注意を書く(表紙, st.条件, res.plan);
+    }
     sp.cover = 表紙;
     sp.durationMinutes = st.条件.durationMinutes;
     if (st.条件.layoutMode !== "current" || st.条件.answerSheetMode !== "current") {
@@ -2174,6 +2513,8 @@
                  return { name: f.name, size: f.size, mimeType: f.mimeType,
                           状態: f.status || "", 文字数: (f.extractedText || "").length,
                           絵: (f.pageImages || []).length,
+                          読み取り字数: String(f.ocrText || "").length,
+                          読み取り頁: f.ocr頁 || 0,
                           頁: f.pageCount || 0, 読めない頁: f.ocr || 0,
                           文字で足りる: 文字で足りるか(f) };
                }),
@@ -2204,6 +2545,8 @@
                  data: String(f.data || ""), size: Number(f.size) || 0,
                  status: String(f.status || "ready"),
                  extractedText: String(f.extractedText || ""),
+                 ocrText: String(f.ocrText || ""), ocr頁: Number(f.ocr頁) || 0,
+                 pageCount: Number(f.pageCount) || 0, ocr: Number(f.ocr) || 0,
                  pageImages: f.pageImages || null };
       });
       if (st.画面) 描く();
@@ -2213,11 +2556,27 @@
     資料を読ませる: function (並) { return 資料を足す(Array.prototype.slice.call(並 || [])); },
     /* 送るときの 形。**何が どう 渡るか**を そのまま 見られるようにする。 */
     資料の送り形: function () { return 資料を送れる形に(); },
+    /* 速さの 芯。**絵を 1 回だけ 文字に する**ところを 単体で 確かめる。 */
+    絵を文字にする: function (進む) { return 絵を文字にする(進む || function () {}); },
+    読み取る資料: function () { return 読み取る資料().map(function (f) { return f.name; }); },
+    文字で渡すぶん: function () { return 文字の資料().map(function (f) { return f.name; }); },
+    ファイルで渡すぶん: function () { return ファイルで渡すぶん().map(function (f) { return f.name; }); },
+    渡す本文: function () { return 資料の文字(); },
+    /* 注意事項。**書かせずに 書く**ところ。 */
+    注意を書く: function (p2) { return 注意を書く(st.表紙, st.条件, p2 || null); },
     読み取り: function () { return st.読取り; },
     表紙を入れる: function (c) {
       st.表紙 = Object.assign(既定の表紙(), c || {});
       if (st.画面) 描く();
       return st.表紙;
-    }
+    },
+    条件を入れる: function (c) {
+      Object.assign(st.条件, c || {});
+      if (st.画面) 描く();
+      return JSON.parse(JSON.stringify(st.条件));
+    },
+    /* 構成案 → 生成 を 画面を 触らずに 走らせる（検証のため）。 */
+    作りに行く: function () { return 作りに行く(); },
+    生成する: function (o) { return 生成する(o || {}); }
   };
 })();

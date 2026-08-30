@@ -140,7 +140,6 @@ const 打つ = (page, f, v) => page.evaluate(([f2, v2]) => {
   await 打つ(a.page, "examName", "2026年度 2学期 中間考査");
   await 打つ(a.page, "subject", "物理基礎");
   await 打つ(a.page, "examDate", "2026年10月8日");
-  await 打つ(a.page, "instructions", "解答はすべて解答用紙に。\n電卓の使用を認める。\n\n");
   await 待(400);
   const 下 = await a.page.evaluate(() => {
     const r = document.getElementById("vqMake").shadowRoot;
@@ -150,9 +149,39 @@ const 打つ = (page, f, v) => page.evaluate(([f2, v2]) => {
   見(下.indexOf("2026年度 2学期 中間考査") >= 0, "M-5 名前が下書きに出る", 下.slice(0, 90));
   見(下.indexOf("物理基礎") >= 0, "M-5b 教科名が下書きに出る");
   見(下.indexOf("2026年10月8日") >= 0, "M-5c 受験日が下書きに出る");
-  見(下.indexOf("電卓の使用を認める") >= 0, "M-5d 注意事項が下書きに出る");
+  /* ★ 注意事項は **打たない**（2026-08-30・訴え「ユーザーには 書かせる 必要 なくね？」）。
+     条件から こちらが 書くので、何も 打っていなくても 下書きに 並ぶ。 */
+  見(下.indexOf("開始の 合図が あるまで") >= 0, "M-5d 打たなくても 注意事項が 下書きに 出る",
+     下.slice(0, 160));
+  見(下.indexOf("試験時間は 50 分") >= 0, "M-5d2 条件の 数が そのまま 入る");
   s = await 状態(a.page);
-  見(s.表紙.instructions.length === 2, "M-5e 空の行は捨てる", s.表紙.instructions);
+  見((s.表紙.instructions || []).length === 0, "M-5e 打った ものは 1 つも 無い",
+     s.表紙.instructions);
+  見(s.表紙.注意は自動 === true, "M-5f おまかせに なっている");
+  /* 「自分で 書く」を 押すと、いまの 下書きが 入った 欄が 出る。 */
+  await a.page.evaluate(() => {
+    const r = document.getElementById("vqMake").shadowRoot;
+    const b = r.querySelector('[data-a="notes-mine"]');
+    if (b) b.click();
+  });
+  await 待(300);
+  const 欄あり = await a.page.evaluate(() => {
+    const r = document.getElementById("vqMake").shadowRoot;
+    const t = r.querySelector("#vm-notes");
+    return t ? String(t.value || "").split("\n").length : 0;
+  });
+  見(欄あり >= 8, "M-5g 自分で 書くに すると 下書きが 入った 欄が 出る", 欄あり);
+  await 打つ(a.page, "instructions", "解答はすべて解答用紙に。\n電卓の使用を認める。\n\n");
+  await 待(300);
+  s = await 状態(a.page);
+  見(s.表紙.instructions.length === 2, "M-5h 自分で 書けば その とおり・空の行は 捨てる",
+     s.表紙.instructions);
+  await a.page.evaluate(() => {
+    const r = document.getElementById("vqMake").shadowRoot;
+    const b = r.querySelector('[data-a="notes-auto"]');
+    if (b) b.click();
+  });
+  await 待(300);
 
   節("段④ 記入欄の 出し入れ");
   await a.page.evaluate(() => {

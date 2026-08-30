@@ -50760,10 +50760,93 @@ function coverCleanName(v) {
   return s.replace(/\s{2,}/g, " ").slice(0, 30);
 }
 
+/* 教科ならではの 注意事項を 数行だけ 書く。**数字・時間・配点は 書かせない。** */
+async function aigenExamNotes(request, env, body) {
+  const subject = toSafeString(body?.subject || "", 40);
+  const examName = toSafeString(body?.examName || "", 80);
+  const already = (Array.isArray(body?.have) ? body.have : [])
+    .slice(0, 16).map((x) => toSafeString(x, 160)).filter(Boolean);
+  if (!subject && !examName) {
+    return json({ ok: true, notes: [], warnings: ["教科が 分かりません。"] }, 200, request);
+  }
+  const sys = [
+    "あなたは 学校の 試験の 表紙に 載せる **注意事項**を 書く 人です。",
+    '次の形の JSON だけを 返してください: {"notes":["",""]}',
+    "",
+    "・**その 教科ならではの 一言だけ**を 1〜3 行 書きます。",
+    "・日本語。1 行 40 字まで。命令形（「〜しなさい」「〜してはいけません」）。",
+    "・**数字は 一切 書かないでください。**",
+    "　 試験時間・満点・配点・問題数・大問の 数・ページ数は こちらで 書きます。",
+    "　 これらを 書くと 実際の 試験と 食い違うので、必ず 落としてください。",
+    "・持ち物・道具・答えかたの 決まりなど、**その 教科だけの 話**にします。",
+    "　 例）数学「分数は それ以上 約分できない 形で 答えなさい。」",
+    "　 例）英語「辞書・電子辞書の 使用は 認めません。」",
+    "　 例）国語「字数を 指定した 設問は、句読点も 1 字に 数えます。」",
+    "・どの 教科にも 当てはまる 一般論（「見直しをしなさい」など）は 書かない。",
+    "・思いつかない ときは notes を 空の 配列に します。**作り話を しない。**"
+  ].join("\n");
+  const user = [
+    "教科: " + (subject || "（不明）"),
+    examName ? "試験名: " + examName : "",
+    already.length ? "すでに 書いてある 注意事項（重ねない）:\n"
+      + already.map((s) => "・" + s).join("\n") : "",
+    "",
+    "この 試験の 注意事項に 足す 一言を 書いてください。"
+  ].filter(Boolean).join("\n");
+
+  let text = "";
+  const providers = aigenProviders(env);
+  try {
+    if (providers.indexOf("groq") >= 0) {
+      for (const gmodel of coverGroqModels(env)) {
+        const r = await aigenCallGroq(env, gmodel, {
+          messages: [{ role: "system", content: sys }, { role: "user", content: user }],
+          max_tokens: 400, temperature: 0.4, timeoutMs: 20000,
+          response_format: null, noWait: true,
+          reasoning_effort: /gpt-oss/.test(gmodel) ? "low" : undefined
+        });
+        if (!r.err) { text = String(r.out?.choices?.[0]?.message?.content || ""); break; }
+      }
+    }
+    if (!text && aigenGeminiKeys(env).length) {
+      const run = await aigenGeminiTry(env, aigenGeminiKeys(env),
+        [aigenModelFor(env, "gemini", "fast")],
+        { sys, user, files: [], max_tokens: 500, temperature: 0.4, noThink: true })
+        .catch(() => null);
+      if (run && run.r && !run.r.err) text = aigenGeminiText(run.r.out).text || "";
+    }
+  } catch (e) { text = ""; }
+
+  const parsed = aigenParseJson(text);
+  const raw = Array.isArray(parsed?.notes) ? parsed.notes : [];
+  /* ★ **数字の 入った 行は 落とす。** 頼んでも 書いてくることがある。
+     ここを 通すと 表紙の 事実と 食い違う。 */
+  const notes = raw.map((x) => toSafeString(x, 160).trim())
+    .filter(Boolean)
+    .filter((s) => !/[0-9０-９]/.test(s))
+    .filter((s) => already.indexOf(s) < 0)
+    .slice(0, 3);
+  return json({ ok: true, notes, warnings: notes.length ? [] : ["足す 一言は ありませんでした。"] },
+    200, request);
+}
+
 async function handleAigenCover(request, env) {
   const uid = await aiJobRequireUser(request, env);
   if (!uid) return json({ code: "UNAUTHORIZED", message: "ログインが必要です。" }, 401, request);
   const body = await readJsonBody(request, 32 * 1024);
+
+  /* ══ 試験の 注意事項の「教科ならではの 一言」だけ 書く（2026-08-30・訴え）
+     訴え「注意事項は 基本的に 設定する 必要は 無いんじゃない？
+           だって AI が そこも 作れば いい話なんだから」
+
+     ★ **数字は 書かせない。** 試験時間・満点・大問の 数・マークの 有無は
+       画面が 知っている ので、そちらが 書く。ここで AI に 書かせると
+       45 分の 試験に「試験時間は 50 分です」と 書かれる。
+     ★ ここで 頼むのは 教科ならではの 一言だけ（数学の 約分・英語の 辞書）。
+     ★ 返らなくても 困らない。画面には 教科ごとの 受け皿が ある。 */
+  if (String(body?.task || "") === "examNotes") {
+    return await aigenExamNotes(request, env, body);
+  }
 
   const instruction = toSafeString(body?.instruction || "", 600);
   const subject = toSafeString(body?.subject || "", 40);
