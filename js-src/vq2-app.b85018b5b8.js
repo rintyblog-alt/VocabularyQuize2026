@@ -63856,8 +63856,13 @@
       var v = 受験者();
       var 欄 = 記入の欄();
       var 埋 = 欄.every(function (k) { return String(v[k] || "").trim(); });
-      var 右 = '<div class="vq2-pane vq2-pane-r"><div class="vq2-pane-h">'
-        + '<span class="vq2-pane-t">解答欄</span></div><div class="vq2-pane-b">'
+      /* ★ 左右の 組みかたは **解いている ときと 同じ**に する（2026-08-30）。
+         ここだけ 別の 書きかたに していたので、右の 欄に 幅が 無く、
+         左の 紙面に 被っていた（訴え「右側の解答欄が少し被ってしまってる」）。
+           左 … vq2-pane-c ＋ #paperPane（紙面。中は 高さいっぱい）
+           間 … vq2-resizer（つまんで 幅を 変えられる）
+           右 … vq2-pane-r ＋ #answerPane ＋ width:420px */
+      var 中 = '<div class="vq2-pane-b" style="padding:14px">'
         + '<div class="vq2-card"><div class="vq2-card-t">受験する人</div>'
         + '<p class="vq2-hint" style="margin:0 0 10px">'
         + "ここに 書いた ことは、あとで 刷る 問題用紙と 解答用紙にも 入ります。</p>"
@@ -63873,17 +63878,24 @@
         + "</div>"
         + (埋 ? "" : '<p class="vq2-hint" style="margin:8px 0 0">'
             + "すべて 記入すると 押せます。</p>")
-        + "</div></div></div>";
-      if (mobile) {
-        return '<div class="vq2-body">'
-          + (st.mobileTab === "answers" ? 右
-             : '<div class="vq2-pane vq2-pane-l"><div class="vq2-pane-b" id="examPaper"></div></div>')
-          + "</div>";
-      }
-      return '<div class="vq2-body">'
-        + '<div class="vq2-pane vq2-pane-l"><div class="vq2-pane-h">'
-        + '<span class="vq2-pane-t">問題冊子</span></div>'
-        + '<div class="vq2-pane-b" id="examPaper"></div></div>'
+        + "</div></div>";
+      var 右 = '<div class="vq2-pane vq2-pane-r" id="answerPane"'
+        + (mobile && st.mobileTab !== "answers" ? " hidden" : "")
+        + ' style="width:420px">'
+        + '<div class="vq2-pane-h">受験する人<div class="vq2-top-sp"></div>'
+        + '<span class="vq2-muted">' + 欄.filter(function (k) { return String(v[k] || "").trim(); }).length
+        + " / " + 欄.length + "</span></div>"
+        + 中 + "</div>";
+      var 左 = '<div class="vq2-pane vq2-pane-c" id="paperPane"'
+        + (mobile && st.mobileTab !== "paper" ? " hidden" : "")
+        + ' style="background:#eceaf3">'
+        + '<div class="vq2-pane-h" style="background:var(--vq-bg-elevated)">表紙'
+        + '<div class="vq2-top-sp"></div>'
+        + '<span class="vq2-muted">開始するまで 中は 開きません</span></div>'
+        + '<div id="examPaper" style="flex:1 1 auto;min-height:0;overflow:hidden"></div>'
+        + "</div>";
+      return '<div class="vq2-body">' + 左
+        + (mobile ? "" : '<div class="vq2-resizer" id="rzE"></div>')
         + 右 + "</div>";
     }
     function 始まっているか() {

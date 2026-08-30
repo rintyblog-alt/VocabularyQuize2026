@@ -111,7 +111,26 @@ async function 札() {
   見(/受験する人/.test(開.本体 || ""), "表紙の 段だと 分かる（「受験する人」の 見出し）",
      (開.本体 || "").slice(0, 60));
 
-  節("② 右に 記入の 欄");
+  節("①b 左右が 重ならない（訴え「右側の解答欄が少し被ってしまってる」）");
+{
+  const 幅 = await page.evaluate(() => {
+    const L = window.__深("#paperPane")[0], R = window.__深("#answerPane")[0];
+    if (!L || !R) return { なし: true };
+    const a = L.getBoundingClientRect(), b = R.getBoundingClientRect();
+    return { 左: { x: Math.round(a.left), 右端: Math.round(a.right), 幅: Math.round(a.width) },
+             右: { x: Math.round(b.left), 右端: Math.round(b.right), 幅: Math.round(b.width) },
+             被り: Math.round(a.right - b.left),
+             紙: (() => { const p2 = window.__深("#examPaper")[0];
+               return p2 ? Math.round(p2.getBoundingClientRect().height) : 0; })() };
+  });
+  見(!幅.なし, "左右の 枠が どちらも ある", 幅);
+  見(!幅.なし && 幅.被り <= 1, "★ 左の 紙面に 右の 欄が 被らない", "被り " + 幅.被り + "px");
+  見(!幅.なし && 幅.右.幅 >= 380 && 幅.右.幅 <= 460, "★ 右の 幅は 解いている ときと 同じ（420px）", 幅.右.幅 + "px");
+  見(!幅.なし && 幅.左.幅 > 200, "★ 左に 紙面の 幅が 残る", 幅.左.幅 + "px");
+  見(!幅.なし && 幅.紙 > 100, "★ 紙面の 高さが つぶれない", 幅.紙 + "px");
+}
+
+節("② 右に 記入の 欄");
   見(JSON.stringify(開.欄) === JSON.stringify(["年","組","番","氏名","受験番号"]),
      "★ 年組番氏名 ＋ 受験番号", 開.欄);
 
