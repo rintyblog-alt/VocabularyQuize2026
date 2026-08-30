@@ -14726,6 +14726,11 @@
       appearance: (前 && 前.appearance) || null,
       visibility: (前 && 文(前.visibility)) || "private",
       tags: (前 && Array.isArray(前.tags)) ? 前.tags : [],
+      /* ★ 注文の 目印を 残す（2026-08-30）。うしろの 拾い上げが
+         「この 注文は もう 一覧に ある」と 分かるための 印。
+         落とすと、同じ 注文から **もう一度 プリセットが 作られる**。 */
+      sourceOrderId: 文(spec.sourceOrderId) || (前 && 文(前.sourceOrderId)) || "",
+      sourceJobId: 文(spec.sourceJobId) || (前 && 文(前.sourceJobId)) || "",
       questions: questions,
       exam: {
         cover: spec.cover || null,

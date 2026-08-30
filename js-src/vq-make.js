@@ -1544,6 +1544,7 @@
        これが 無いと、画面を 閉じたまま 終わったとき **仕事の 数だけ
        試験が できる**（20 問なら 4 つ）。 */
     var 注文番号 = "vqmk-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    st.注文番号 = 注文番号;
     /* ★ 何件を どう 渡すのかを **数で** 言う（2026-08-30・訴え）。
        前は「資料 14 件を そのまま 渡します」と 出しながら、
        中では 8 件に 切って いた（残り 6 件は 黙って 落ちていた）。 */
@@ -1733,6 +1734,12 @@
     }
     st.spec = sp;
     記す("done", got + " 問 できました（配点の 合計 " + res.plan.totalPoints + " 点）");
+    /* ★ **できたら その場で 一覧へ 入れる**（2026-08-30・訴え
+       「全然プリセット欄にできた試験が追加されない」）。
+       前は 確認の 画面で「保存する」を 押すまで どこにも 残らなかった。
+       途中で 画面を 閉じたり、押す前に 落ちたりすると 全部 消えていた。
+       押すのを 待たない。あとから 直しても 上書きで 保存する。 */
+    保存する({ 黙って: true });
     if (got < want) 記す("warn", want + " 問のうち " + got + " 問できました。");
     (res.issues || []).filter(function (i) { return i.severity === "high"; })
       .forEach(function (i) { 記す("err", i.message); });
@@ -1741,18 +1748,30 @@
   }
 
   /* ⑥ 保存 */
-  function 保存する() {
+  function 保存する(o) {
+    o = o || {};
     var V = VQ2(), ST = V && V.store;
-    if (!st.spec) { st.err = "保存する 試験が ありません。"; 描く(); return; }
-    if (!ST || !ST.saveExam) { st.err = "保存の 部品が ありません。"; 描く(); return; }
+    if (!st.spec) { if (!o.黙って) { st.err = "保存する 試験が ありません。"; 描く(); } return; }
+    if (!ST || !ST.saveExam) { if (!o.黙って) { st.err = "保存の 部品が ありません。"; 描く(); } return; }
     try {
       /* 器は preset（2026-08-30）。試験も プリセットの 一種として 置く。
          こうすると 一覧・検索・お気に入り・公開・共有が そのまま 効く。 */
+      /* 注文の 目印を 押す。うしろの 拾い上げが「もう ある」と 分かるため。 */
+      if (st.注文番号) st.spec.sourceOrderId = st.注文番号;
       var r = ST.saveExam(st.spec, { ownerId: ST.currentOwnerId() });
-      if (r && r.ok === false) { st.err = r.message || "保存できませんでした。"; 描く(); return; }
+      if (r && r.ok === false) {
+        if (!o.黙って) { st.err = r.message || "保存できませんでした。"; 描く(); }
+        else 記す("warn", "一覧へ 入れられませんでした：" + (r.message || "理由不明"));
+        return;
+      }
       st.保存した = true; st.err = "";
-      記す("done", "保存しました");
-    } catch (e) { st.err = "保存できませんでした：" + String((e && e.message) || e).slice(0, 100); }
+      記す("done", "一覧に 入れました（「" + (st.spec.title || "試験") + "」）");
+      /* 一覧を その場で 描き直す（開いた ままでも 出る ように）。 */
+      try { window.dispatchEvent(new CustomEvent("vq:presets:changed")); } catch (e2) {}
+    } catch (e) {
+      var m = "保存できませんでした：" + String((e && e.message) || e).slice(0, 100);
+      if (!o.黙って) st.err = m; else 記す("warn", m);
+    }
     描く();
   }
 

@@ -53215,6 +53215,24 @@ async function handleAiJobList(request, env, url) {
   const limit = Math.max(1, Math.min(50, qreditSafeInt(url.searchParams.get("limit"), 20)));
   const live = url.searchParams.get("live") === "1";
   const liveList = AI_JOB_LIVE.map((s) => "'" + s + "'").join(",");
+  /* ══ 止まったままの 仕事を、ここでも 畳む（2026-08-30・訴え
+     「ずっと処理が 終わってるはずなのに クラウド表示は 4/4」）════════
+     これまで 畳んでいたのは **1 件ずつ 開いた とき**だけ（/api/aijob/get）。
+     画面が その 仕事を もう 開かない ときは 誰も 畳まないので、
+     「作成中」の 帯が **永遠に 残って**いた。
+     一覧を 引く この 口でも 同じ 決まりで 畳む。 */
+  const 止まった = 300 * 1000;
+  try {
+    const 古 = Date.now() - 止まった;
+    await env.DB.prepare(
+      `UPDATE ai_jobs
+         SET status = CASE WHEN made_count > 0 THEN 'partial' ELSE 'failed' END,
+             error_code = 'STALLED',
+             error_message = '途中で止まりました。できているぶんは残しています。',
+             completed_at = ?1, updated_at = ?1
+       WHERE user_id = ?2 AND status = 'running' AND updated_at < ?3`
+    ).bind(Date.now(), uid, 古).run();
+  } catch (e) { /* 畳めなくても 一覧は 返す */ }
   const sql = live
     ? `SELECT * FROM ai_jobs WHERE user_id = ?1 AND status IN (${liveList})
        ORDER BY created_at DESC LIMIT ?2`
