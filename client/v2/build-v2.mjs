@@ -18,6 +18,81 @@ const TARGET = join(ROOT, "client", "index.html");
 const BLOCK_ID = "vq2-app";
 const REMOVE = process.argv.includes("--remove");
 
+/* ══════════════════════════════════════════════════════════════════════
+   ★★ 関門 — この道具は もう 使われていない（2026-08-30 に 気づいた）★★
+
+   何が 起きているか:
+     配っているのは js-src/vq2-app.<指紋>.js（＝ index.html の <script id="vq2-app">）。
+     2026-08-19 ごろから **js-src の ほうを 直に 編集する 作りかた**へ 移っていて、
+     client/v2/** は そこで 止まっている。
+     いま client/v2/** を 全部 つないでも、配っている ものより **1MB 以上 少ない**。
+
+   だから この道具を そのまま 走らせると:
+     つないだ 古い 中身で 配布物を 上書きし、**8/19 以降の 作業が まるごと 消える**。
+     しかも 消えたことは 画面を 開くまで 分からない。
+
+   直しかた:
+     ・vq2-app の 中身を 直すなら **js-src/vq2-app.<指紋>.js を 直す**
+       （js-src/README.md の 手順。esbuild → client/js/ → node vqrehash.cjs）
+     ・新しい 機能は vq2-app に 足さず、**自分の ファイル**を 作る
+       （vq-call.js / vq-dm.js と 同じ 作法）
+     ・client/v2/** を 正に 戻すのは 別の 仕事。**そのときは 差分を 取ってから**
+
+   それでも 走らせたい ときだけ:  VQ2_ALLOW_STALE_BUILD=1 node client/v2/build-v2.mjs
+   ══════════════════════════════════════════════════════════════════════ */
+function 食い違いを測る() {
+  /* client/v2/** を つないだ 大きさ と、配っている ものの 大きさ を くらべる。
+     FILES を 読む前に 呼ばれるので、ここでは ディレクトリを 素直に たどる。 */
+  const 数える = (d) => {
+    let n = 0;
+    for (const f of readdirSync(d, { withFileTypes: true })) {
+      if (f.name === "dist" || f.name === "tests") continue;
+      const p = join(d, f.name);
+      if (f.isDirectory()) n += 数える(p);
+      else if (f.name.endsWith(".js")) n += readFileSync(p, "utf8").length;
+    }
+    return n;
+  };
+  let src = 0;
+  try { src = 数える(HERE); } catch (e) { return null; }
+  /* 配っている もの（js-src の 圧縮前）。名前は 指紋つきなので さがす。 */
+  let live = 0, 名 = "";
+  try {
+    const d = join(ROOT, "js-src");
+    for (const f of readdirSync(d)) {
+      if (!/^vq2-app\.[0-9a-f]+\.js$/.test(f)) continue;
+      const n = readFileSync(join(d, f), "utf8").length;
+      if (n > live) { live = n; 名 = f; }
+    }
+  } catch (e) { return null; }
+  if (!live) return null;
+  return { src, live, 名, 差: live - src };
+}
+
+if (!REMOVE && process.env.VQ2_ALLOW_STALE_BUILD !== "1") {
+  const m = 食い違いを測る();
+  /* 5 万文字より 大きく 離れていたら 止める（誤差では 説明できない差）。 */
+  if (m && m.差 > 50000) {
+    console.error("");
+    console.error("══ 止めました ══════════════════════════════════════════");
+    console.error("  client/v2/** は 配っている ものより 古いままです。");
+    console.error("");
+    console.error("    client/v2/**        " + m.src.toLocaleString() + " 文字");
+    console.error("    js-src/" + m.名 + "  " + m.live.toLocaleString() + " 文字");
+    console.error("    差                  " + m.差.toLocaleString() + " 文字 ぶん 足りない");
+    console.error("");
+    console.error("  このまま 走らせると、その ぶんが **まるごと 消えます**。");
+    console.error("  vq2-app を 直すなら js-src/vq2-app.*.js を 直してください");
+    console.error("  （js-src/README.md の 手順）。");
+    console.error("");
+    console.error("  それでも 走らせるなら:");
+    console.error("    VQ2_ALLOW_STALE_BUILD=1 node client/v2/build-v2.mjs");
+    console.error("════════════════════════════════════════════════════════");
+    console.error("");
+    process.exit(2);
+  }
+}
+
 /* ── 読み込み順。依存の順序をここが唯一の正とする。 ── */
 const FILES = [
   /* V3 の形式レジストリ。依存が無く、schema.js が形式の一覧を

@@ -82,7 +82,12 @@
     flag: '<path ' + P + ' d="M5 3v18M5 4h11l-1.5 3L16 10H5"/>',
     spark: '<path ' + P + ' d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/>',
     x: '<path ' + P + ' d="M6 6l12 12M18 6L6 18"/>',
-    shield: '<path ' + P + ' d="M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6z"/>'
+    shield: '<path ' + P + ' d="M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6z"/>',
+    /* 画面の 同席（映像では ないので 画面の 枠だけ） */
+    screen: '<path ' + P + ' d="M3.5 5h17v10.5h-17zM9 19h6M12 15.5V19"/>',
+    /* 畳む／戻す */
+    fold: '<path ' + P + ' d="M6 9l6 6 6-6"/>',
+    unfold: '<path ' + P + ' d="M6 15l6-6 6 6"/>'
   };
   function svg(n, cls) {
     return '<svg viewBox="0 0 24 24" class="' + (cls || "i") + '" aria-hidden="true">' + (ICON[n] || "") + "</svg>";
@@ -184,6 +189,62 @@
     ".btn.dan{background:var(--vq-danger,#C0392B);border-color:var(--vq-danger,#C0392B);color:#fff}",
     ".btn[disabled]{opacity:.5;cursor:default}",
 
+    /* ══ 畳んだ 姿 ═══════════════════════════════════════════════════════
+       ★ 通話の 窓は 画面 いっぱいの 幕。**このままだと アプリが 使えない**ので、
+         画面を 同席する ときは 必ず 畳める ように する。
+         畳んだ ときは 幕を 消し、押せる ところ以外は 触りが 下へ 通り抜ける。 */
+    ":host([data-open='1'][data-min='1']){display:block;inset:auto;left:0;right:0;",
+      "top:calc(env(safe-area-inset-top,0px) + 8px);padding:0 8px;",
+      "pointer-events:none;z-index:2147483200}",
+    ":host([data-min='1']) .bd,:host([data-min='1']) .w{display:none}",
+    /* 幅の 狭い 端末の 上書き（下の @media より 後ろに 置けないので 詳細度で 勝つ） */
+    /* ★ 幅に vw を 使わない（実測 375px で 右が 10px はみ出した）。
+       器は left:0/right:0＋左右の 余白 なので、100% が いつでも 正しい。 */
+    ".mini{pointer-events:auto;width:100%;max-width:420px;margin:0 auto;",
+      "display:grid;gap:6px}",
+    /* ★ 押すところは **44×44 より 小さくしない**（この 器の 決めごと）。
+       細くしたい 気持ちが 出る ところだが、指では 押せなく なる。 */
+    ".pill{display:flex;align-items:center;gap:4px;height:52px;padding:0 4px 0 13px;",
+      "border-radius:999px;background:var(--vq-surface,#fff);",
+      "border:1px solid var(--vq-border,#E7E4EF);",
+      "box-shadow:0 10px 30px rgba(16,14,26,.20)}",
+    ".pill .dot{width:8px;height:8px;border-radius:50%;background:#2FA96B;flex:0 0 auto;",
+      "animation:vqcPulse 1.8s ease-in-out infinite}",
+    ".pill .who{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;",
+      "white-space:nowrap;min-width:0;flex:1 1 auto}",
+    ".pill .el{font-size:12.5px;font-variant-numeric:tabular-nums;",
+      "color:var(--vq-text-secondary,#6B6480);flex:0 0 auto}",
+    ".mb{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;",
+      "color:var(--vq-text,#2B2836)}",
+    ".mb .i{width:18px;height:18px}",
+    ".mb.on{background:var(--vq-accent-subtle,#EAE8F7);color:var(--vq-accent-text,#5F5691)}",
+    ".mb.ng{background:#D9445F;color:#fff}",
+    ".mb:active{transform:scale(.92)}",
+
+    /* ══ 同席の 帯（相手の 画面）════════════════════════════════════════ */
+    ".co{pointer-events:auto;border-radius:18px;padding:11px 13px;",
+      "background:var(--vq-surface,#fff);border:1px solid var(--vq-border,#E7E4EF);",
+      "box-shadow:0 10px 30px rgba(16,14,26,.16);",
+      "animation:vqcUp .22s cubic-bezier(.22,1,.36,1) both}",
+    ".co .hd{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;",
+      "color:var(--vq-accent-text,#5F5691)}",
+    ".co .hd .i{width:15px;height:15px}",
+    ".co .hd .sp{flex:1 1 auto}",
+    ".co .wh{margin-top:6px;font-size:14.5px;font-weight:750;line-height:1.5}",
+    ".co .tt{margin-top:2px;font-size:12.5px;color:var(--vq-text-secondary,#6B6480)}",
+    ".co .ln{margin-top:8px;max-height:38vh;overflow:auto;display:grid;gap:4px;",
+      "font-size:13px;line-height:1.7;-webkit-overflow-scrolling:touch}",
+    ".co .ln div{color:var(--vq-text,#2B2836);overflow-wrap:anywhere}",
+    ".co .ln div:first-child{font-weight:700}",
+    ".co .ft2{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap}",
+    ".co .tb{height:44px;padding:0 14px;border-radius:12px;font-size:13px;font-weight:650;",
+      "display:inline-flex;align-items:center;gap:5px;",
+      "border:1px solid var(--vq-border,#E7E4EF);background:var(--vq-surface,#fff)}",
+    ".co .tb.pri{background:var(--vq-accent,#756DB3);border-color:var(--vq-accent,#756DB3);color:#fff}",
+    ".co .old{opacity:.55}",
+    /* 自分が 出している ときの 印 */
+    ".co.me .hd{color:#2FA96B}",
+
     "@media (max-width:420px){",
       ":host([data-open='1']){padding:8px}",
       ".w{width:calc(100vw - 16px)}",
@@ -210,7 +271,16 @@
     経過: 0,
     lumi: { 状態: "", 相手待ち: false, 動いている: false, 呼んだのは: 0 },
     通報: { 理由: "", 詳細: "", busy: false },
-    注意を出した: false
+    注意を出した: false,
+    畳んだ: false,     /* 通話の 窓を 小さくして アプリを 使える 状態 */
+    共有: {
+      出している: false,   /* 自分の 画面を 送っている */
+      受けている: false,   /* 相手が 送ってきている */
+      追う: true,          /* 相手と 同じ タブへ 自動で 移る */
+      最新: null,          /* 相手から 届いた いちばん 新しい 画面 */
+      届いた時: 0,
+      err: ""
+    }
   };
   var host = null, root = null, ws = null, wsTimer = null, tick = null;
   var pc = null, 自分の音 = null, 相手の音El = null, 呼び出し音 = null;
@@ -218,6 +288,8 @@
   var rtc = { sessionId: "", peerSessionId: "", 出した: false, 受けた: false, 名: "" };
   var lumiWs = null, lumiCtx = null, lumiNode = null, lumiStream = null, lumi開始 = 0, lumi無言 = null;
   var 自分のid = 0;
+  var 共有タイマ = null, 前に送った = "", 共有の連続失敗 = 0;
+  var Lumiへ送った = "";
 
   /* ── 器 ─────────────────────────────────────────────────────────── */
   function 建てる() {
@@ -260,7 +332,27 @@
     if (!root) return;
     var box = root.querySelector("[data-box]");
     if (!box) return;
-    if (!st.画面) { box.innerHTML = ""; return; }
+    if (!st.画面) { box.innerHTML = ""; box.removeAttribute("data-min-key"); 畳みを反映(); return; }
+    /* ★ 畳んでいる ときは 幕を 出さない（アプリを 触れなく しない）。
+       畳めるのは 通話中だけ。着信や 同意は 見落とされたら 困る。 */
+    if (st.畳んだ && st.画面 === "通話中") {
+      var mh = 畳んだ中身();
+      /* ★ 1 秒ごとに 全部 描き直すと **相手の 画面の スクロールが 毎秒 戻る**。
+         経過時間の 字だけが 違う ときは、その 1 か所だけ 直す。 */
+      var 印 = mh.replace(/<span class="el">[^<]*<\/span>/, "");
+      if (box.getAttribute("data-min-key") === 印) {
+        var 字el = box.querySelector(".pill .el");
+        if (字el) 字el.textContent = 分秒(st.経過);
+        畳みを反映();
+        return;
+      }
+      box.setAttribute("data-min-key", 印);
+      box.innerHTML = mh;
+      畳みを反映();
+      return;
+    }
+    box.removeAttribute("data-min-key");
+    畳みを反映();
     var h = '<div class="bd" data-a="bd"></div><div class="w" role="dialog" aria-modal="true">';
     if (st.画面 === "同意") h += 同意の中身();
     else if (st.画面 === "発信中") h += 発信の中身();
@@ -268,6 +360,72 @@
     else if (st.画面 === "通話中") h += 通話の中身();
     else if (st.画面 === "通報") h += 通報の中身();
     box.innerHTML = h + "</div>";
+  }
+
+  /* 畳んでいるか どうかを 器へ 反映する（CSS が これを 見る）。 */
+  function 畳みを反映() {
+    if (!host) return;
+    var 畳 = st.畳んだ && st.画面 === "通話中";
+    if (畳) host.setAttribute("data-min", "1");
+    else host.removeAttribute("data-min");
+  }
+
+  /* ══ 畳んだ 姿 ═══════════════════════════════════════════════════════
+     細い 帯 1 本＋（同席していれば）相手の 画面。
+     ここだけで 切る・ミュート・戻すが できる（窓を 開き直さなくて よい）。 */
+  function 畳んだ中身() {
+    var p = (st.call && st.call.peer) || {};
+    var h = '<div class="mini">'
+      + '<div class="pill">'
+      + '<span class="dot" aria-hidden="true"></span>'
+      + '<span class="who">' + esc(p.displayName || "利用者") + "</span>"
+      + '<span class="el">' + 分秒(st.経過) + "</span>"
+      + '<button class="mb' + (st.ミュート ? " on" : "") + '" data-a="mute"'
+      + ' aria-label="' + (st.ミュート ? "ミュートを 解く" : "ミュートする") + '">'
+      + svg(st.ミュート ? "micoff" : "mic") + "</button>"
+      + '<button class="mb' + (st.共有.出している ? " on" : "") + '" data-a="share"'
+      + ' aria-label="' + (st.共有.出している ? "画面の 同席を やめる" : "画面を 同席する") + '">'
+      + svg("screen") + "</button>"
+      + '<button class="mb ng" data-a="hangup" aria-label="切る">' + svg("hangup") + "</button>"
+      + '<button class="mb" data-a="unfold" aria-label="通話の 画面を 開く">' + svg("unfold") + "</button>"
+      + "</div>";
+    h += 同席の帯();
+    return h + "</div>";
+  }
+
+  /* 相手の 画面（同席）。自分が 出している ときは その 印だけ。 */
+  function 同席の帯() {
+    if (st.共有.出している && !st.共有.受けている) {
+      return '<div class="co me"><div class="hd">' + svg("screen", "i")
+        + "<span>あなたの 画面を 同席中</span><span class=\"sp\"></span>"
+        + '</div><div class="tt">VocabuQuiz の 中だけが 相手に 見えています。'
+        + "ほかの アプリも 通知も 写りません。</div>"
+        + '<div class="ft2"><button class="tb" data-a="share-off">やめる</button></div></div>';
+    }
+    if (!st.共有.受けている) return "";
+    var f = st.共有.最新;
+    var p = (st.call && st.call.peer) || {};
+    var 古い = f && (Date.now() - st.共有.届いた時 > 12000);
+    var h = '<div class="co"><div class="hd">' + svg("screen", "i")
+      + "<span>" + esc(p.displayName || "相手") + " の 画面</span><span class=\"sp\"></span>"
+      + (st.共有.追う ? "<span>追従中</span>" : "") + "</div>";
+    if (!f) {
+      h += '<div class="tt">画面を 受け取っています…</div>';
+    } else {
+      h += '<div class="wh' + (古い ? " old" : "") + '">' + esc(f.where || "VocabuQuiz") + "</div>";
+      if (f.title) h += '<div class="tt' + (古い ? " old" : "") + '">' + esc(f.title) + "</div>";
+      if (f.lines && f.lines.length) {
+        h += '<div class="ln' + (古い ? " old" : "") + '">';
+        for (var i = 0; i < f.lines.length; i++) h += "<div>" + esc(f.lines[i]) + "</div>";
+        h += "</div>";
+      }
+    }
+    h += '<div class="ft2">';
+    var 行ける = f && f.go && f.go.tab && f.go.tab !== 今のタブ();
+    if (行ける) h += '<button class="tb pri" data-a="co-go">同じ 画面へ</button>';
+    h += '<button class="tb" data-a="co-follow">' + (st.共有.追う ? "追従を やめる" : "追従する") + "</button>"
+      + "</div></div>";
+    return h;
   }
 
   function 同意の中身() {
@@ -326,7 +484,13 @@
     } else if (st.lumi.相手待ち) {
       h += '<div class="lumi">' + svg("spark", "i s") + "相手の 返事を 待っています…</div>";
     }
+    if (st.共有.出している) {
+      h += '<div class="lumi">' + svg("screen", "i s") + "あなたの 画面を 同席中です</div>";
+    } else if (st.共有.受けている) {
+      h += '<div class="lumi">' + svg("screen", "i s") + "相手が 画面を 同席しています</div>";
+    }
     if (st.lumi.状態) h += '<div class="st">' + esc(st.lumi.状態) + "</div>";
+    if (st.共有.err) h += '<div class="err">' + esc(st.共有.err) + "</div>";
     if (st.err) h += '<div class="err">' + esc(st.err) + "</div>";
     h += '<div class="rowb">'
       + '<div class="bcol"><button class="rb sm' + (st.ミュート ? " on" : "") + '" data-a="mute"'
@@ -340,6 +504,14 @@
     }
     h += '<div class="bcol"><button class="rb ng" data-a="hangup" aria-label="切る">' + svg("hangup") + "</button>"
       + '<span class="cap">切る</span></div>'
+      /* ★ 画面の 同席。押すと 自動で 窓を 畳む（畳まないと アプリが 見えない）。 */
+      + '<div class="bcol"><button class="rb sm' + (st.共有.出している ? " on" : "") + '" data-a="share"'
+      + ' aria-label="' + (st.共有.出している ? "画面の 同席を やめる" : "画面を 同席する") + '">'
+      + svg("screen") + "</button>"
+      + '<span class="cap">' + (st.共有.出している ? "やめる" : "画面") + "</span></div>"
+      + '<div class="bcol"><button class="rb sm" data-a="fold" aria-label="通話を 小さくして アプリを 使う">'
+      + svg("fold") + "</button>"
+      + '<span class="cap">畳む</span></div>'
       + '<div class="bcol"><button class="rb sm" data-a="lumi" aria-label="Lumi を 呼ぶ">' + svg("spark") + "</button>"
       + '<span class="cap">Lumi</span></div>'
       + '<div class="bcol"><button class="rb sm" data-a="report" aria-label="この 通話を 報告する">' + svg("flag") + "</button>"
@@ -420,6 +592,18 @@
       if (a === "rp") { 通報を控える(); st.通報.理由 = el.dataset.v || ""; st.err = ""; 描く(); return; }
       if (a === "rp-cancel") { 開く("通話中"); return; }
       if (a === "rp-send") { 通報を送る(); return; }
+      /* 画面の 同席 */
+      if (a === "fold") { 畳む(true); return; }
+      if (a === "unfold") { 畳む(false); return; }
+      if (a === "share") { st.共有.出している ? 共有をやめる("手動") : 共有を始める(); return; }
+      if (a === "share-off") { 共有をやめる("手動"); return; }
+      if (a === "co-go") { 同じ画面へ(true); return; }
+      if (a === "co-follow") {
+        st.共有.追う = !st.共有.追う;
+        if (st.共有.追う) 同じ画面へ(false);
+        描く();
+        return;
+      }
     });
     root.addEventListener("input", function (e) {
       var t = e.target;
@@ -520,6 +704,26 @@
     if (t === "call.rtc.peer") {
       rtc.peerSessionId = String(d.sessionId || "");
       受け取りを始める();
+      return;
+    }
+    if (t === "call.share.state") {
+      if (!st.call) return;
+      if (d.by === 自分のid) return;             /* 自分が 出した 合図の 折り返し */
+      if (d.on) {
+        st.共有.受けている = true;
+        if (st.画面 === "通話中" && !st.畳んだ) 畳む(true);
+      } else {
+        st.共有.受けている = false;
+        st.共有.最新 = null;
+        st.共有.届いた時 = 0;
+      }
+      描く();
+      return;
+    }
+    if (t === "call.share.frame") {
+      if (!st.call) return;
+      if (d.by === 自分のid) return;
+      相手の画面を受けた(d.frame || null);
       return;
     }
     if (t === "call.lumi.ask") {
@@ -677,11 +881,16 @@
       if (st.call.hardEndAt && Date.now() > st.call.hardEndAt) { 切る("maxtime"); return; }
       var el = root && root.querySelector(".tm");
       if (el) el.textContent = 分秒(st.経過);
+      /* 畳んでいる ときは 帯の ほうに 出ている。 */
+      var el2 = root && root.querySelector(".pill .el");
+      if (el2) el2.textContent = 分秒(st.経過);
     }, 1000);
   }
 
   function 片づける(訳) {
     呼び出し音を鳴らす(false);
+    /* ★ 共有は **通話より 先に** 止める（止め忘れると 次の 通話へ 持ち越す）。 */
+    共有を片づける();
     Lumiを止める(true);
     RTKを閉じる();
     SFUを閉じる();
@@ -1081,6 +1290,10 @@
         } }));
       } catch (e) {}
       Lumiへ音を流す();
+      /* 同席していれば、いまの 画面を 1 回 渡しておく
+         （「これ 何？」と 聞かれた ときに 材料が 無いと 答えられない）。 */
+      Lumiへ送った = "";
+      Lumiへ今の画面を渡す();
       Lumi無言を見張る(j.maxSeconds || 300);
     };
     lumiWs.onmessage = function (ev) {
@@ -1197,6 +1410,329 @@
     }
   }
 
+  /* ══ 画面の 同席（VocabuQuiz の 中だけ）══════════════════════════════
+     ★ **映像は 撮らない。** getDisplayMedia は 使わない。理由は 2 つ:
+       ① iOS Safari に そもそも 無い（iPhone で 使えない 機能に なる）
+       ② 画面ごと 撮ると **アプリの 外**（通知・他のタブ・写真）まで 写る
+     ★ 代わりに「いま どの 画面の どこを 見ているか」を **文字で** 送る。
+       1 回 2KB 未満・遅れ なし・アプリの 外は 原理的に 写らない。
+     ★ 相手の 手は 奪わない。追従は 切れるし、クイズ中や 入力中は 動かさない。 */
+
+  var タブの名 = {
+    home: "ホーム", library: "プリセット", inbox: "Feed", news: "NEWS",
+    insight: "Insights", notifications: "通知", chat: "Quick Chat",
+    qredit: "Qredit", subscription: "Subscription", settings: "設定",
+    survive: "VocabuSurvive", survival3: "VocabuSurvival"
+  };
+  var 画面の名 = {
+    viewQuiz: "クイズ", viewResult: "結果", viewSwitch: "切り替え",
+    viewStart: "スタート", viewTitle: "ホーム"
+  };
+  /* 中身では ない 覆い。これを 相手に 見せても 意味が ない。 */
+  var 見せない窓 = { globalLoadingOverlay: 1, maintenanceOverlay: 1, quizExitOverlay: 1 };
+
+  function 非力か() {
+    try {
+      if (document.documentElement.getAttribute("data-low-perf") === "1") return true;
+      if (Number(navigator.deviceMemory || 8) < 4) return true;
+      if (Number(navigator.hardwareConcurrency || 8) <= 4) return true;
+    } catch (e) {}
+    return false;
+  }
+  function 今のタブ() {
+    try { return document.body.getAttribute("data-app-tab") || "home"; } catch (e) { return "home"; }
+  }
+  function 見えているか(el) {
+    if (!el) return false;
+    try {
+      var r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return false;
+      var s = getComputedStyle(el);
+      return s.display !== "none" && s.visibility !== "hidden" && Number(s.opacity) > 0.05;
+    } catch (e) { return false; }
+  }
+  /* いま 開いている 窓（いちばん 後ろに 書かれた ものを 最前面と みなす）。 */
+  function 開いている窓() {
+    var 出 = null;
+    try {
+      var ov = document.querySelectorAll(".overlay:not(.hidden)");
+      for (var i = 0; i < ov.length; i++) {
+        if (見せない窓[ov[i].id]) continue;
+        if (見えているか(ov[i])) 出 = ov[i];
+      }
+    } catch (e) {}
+    return 出;
+  }
+  /* ★ 入れものは **決め打ちに しない**。タブの名前から 素直に 引き、
+     無ければ 出ている .view へ 落ちる。画面が 増えても ここは 直さなくてよい。 */
+  function 今の入れもの() {
+    var v = null;
+    try { v = document.querySelector(".view.active"); } catch (e) {}
+    /* クイズ・結果などは タブより こちらが 本体。 */
+    if (v && v.id !== "viewTitle" && 見えているか(v)) return v;
+    var tab = 今のタブ();
+    var 名 = tab.charAt(0).toUpperCase() + tab.slice(1);
+    var 候補 = ["app" + 名 + "Page", "app" + 名 + "sPage"];
+    for (var i = 0; i < 候補.length; i++) {
+      var e = document.getElementById(候補[i]);
+      if (e && 見えているか(e)) return e;
+    }
+    if (v && 見えているか(v)) return v;
+    /* ★ 本文の 列（.stage）。左の パネルも 覆いも 入っていないので、
+       body へ 落ちる 前に ここで 受ける。 */
+    var st2 = document.querySelector(".stage");
+    if (st2 && 見えているか(st2)) return st2;
+    return document.querySelector("main") || document.body;
+  }
+  function 窓の名(w) {
+    var a = w.getAttribute("aria-label");
+    if (a) return String(a).trim();
+    var h = w.querySelector("h1,h2,h3,.ttl,.modal-title,.sheet-title");
+    var t = h ? String(h.textContent || "").trim() : "";
+    return t || "ウィンドウ";
+  }
+  function 字(id) {
+    var e = document.getElementById(id);
+    return e ? String(e.textContent || "").replace(/\s+/g, " ").trim() : "";
+  }
+  /* 見えている 文を 上から 拾う。**アイコンの 字は 拾わない**
+     （.ms / .vq2-ms は アイコン書体。中身は "school" などの 名前で、
+       そのまま 送ると 相手には 意味不明な 英単語が 並ぶ）。 */
+  /* 自分たち（通話の 窓・左の パネル・旧タブ）は 中身では ない。拾わない。 */
+  var 拾わない = "#vqCall,#vqShell,#appTabBar,#vqLiveBar,.vqs-item";
+  /* この 節を 拾ってよいか。だめなら **枝ごと** 見ない。 */
+  function 通してよい(n) {
+    var tag = n.tagName || "";
+    if (/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|OPTION|SVG|CANVAS|AUDIO|VIDEO|IFRAME)$/i.test(tag)) return false;
+    if (n.hidden || n.getAttribute("aria-hidden") === "true") return false;
+    /* アイコン書体（.ms / .vq2-ms）の 中身は "school" などの 名前。
+       そのまま 送ると 相手には 意味不明な 英単語が 並ぶ。 */
+    var cn = " " + String(n.className && n.className.baseVal !== undefined
+      ? n.className.baseVal : (n.className || "")) + " ";
+    if (/\s(hidden|ms|vq2-ms|material-symbols[\w-]*)\s/.test(cn)) return false;
+    try { if (n.matches(拾わない)) return false; } catch (e) {}
+    var r = null;
+    try { r = n.getBoundingClientRect(); } catch (e) { return false; }
+    if (r.width < 1 && r.height < 1) return false;
+    /* ★ **横に 逃がしてある 引き出し**は 拾わない。閉じた 引き出し（Apps など）は
+       .hidden が 付かず、画面の 外へ ずらして あるだけ。ここを 見落とすと
+       「相手は Insights を 見ている」のに 中身が Apps に なる。
+       下へ 続く ぶん（縦）は 画面の 一部なので 残す。 */
+    var 幅 = window.innerWidth || 0;
+    if (r.right <= 0 || (幅 && r.left >= 幅)) return false;
+    return true;
+  }
+  /* ★ **影の DOM へ 潜る**（2026-08-30 に 踏んだ）。
+     NEWS / Feed / Insights の 中身は vq-news・vq-feed・vq-insight という
+     影つきの 部品の **中**に ある。TreeWalker は 影に 入れないので、
+     入れもの を 正しく 選んでいても **0 行**に なっていた
+     （そして 逃げ道で 画面ぜんたいを 拾い、関係ない 窓の 字を 相手へ 送っていた）。 */
+  function 潜る(親, 出, 見た, 上限, 数) {
+    if (!親 || 出.length >= 上限 || 数.n > 6000) return;
+    var 子 = 親.childNodes;
+    for (var i = 0; i < 子.length; i++) {
+      if (出.length >= 上限 || 数.n > 6000) return;
+      var n = 子[i];
+      数.n++;
+      if (n.nodeType === 3) {
+        var t = String(n.nodeValue || "").replace(/\s+/g, " ").trim();
+        if (t.length < 2) continue;
+        t = t.slice(0, 200);
+        if (見た[t]) continue;
+        見た[t] = 1;
+        出.push(t);
+        continue;
+      }
+      if (n.nodeType !== 1) continue;
+      if (!通してよい(n)) continue;
+      if (n.shadowRoot) 潜る(n.shadowRoot, 出, 見た, 上限, 数);
+      潜る(n, 出, 見た, 上限, 数);
+    }
+  }
+  function 文を抜く(範囲, 上限) {
+    var 出 = [];
+    if (!範囲) return 出;
+    try { 潜る(範囲, 出, {}, 上限, { n: 0 }); } catch (e) {}
+    return 出;
+  }
+  /** いま 見えている ものを **短い 文**に する。ここが 送る すべて。 */
+  function 画面を写す() {
+    var tab = 今のタブ();
+    var v = null;
+    try { v = document.querySelector(".view.active"); } catch (e) {}
+    var view = (v && v.id) || "";
+    var 窓 = 開いている窓();
+    var 入 = 窓 || 今の入れもの();
+    var where = 窓 ? 窓の名(窓)
+      : (view && view !== "viewTitle" ? (画面の名[view] || view) : (タブの名[tab] || "ホーム"));
+    var title = "";
+    /* クイズは 進み具合が いちばん 大事なので 名指しで 拾う。 */
+    if (!窓 && view === "viewQuiz") {
+      title = [字("progressText"), 字("quizSubjectText"), 字("modePill")]
+        .filter(function (x) { return x && x !== "—"; }).join(" ・ ");
+    }
+    /* ★ 入れものを 取り違えると **中身が 空の 帯**が 相手に 出る（実測 2026-08-30:
+       Insights で 0 行だった）。名前で 引いた 入れものが 空なら、
+       画面 まるごとから 拾い直す（左の パネルなどは 拾わない ので 混ざらない）。 */
+    var 行 = 文を抜く(入, 12);
+    /* ★ 空の ときの 逃げ道は **本文の 列（.stage）まで**。
+       画面ぜんたい（body）へ 広げると、閉じている 窓や 覆いの 字を
+       拾って **相手に 嘘の 画面**を 見せる（実測 2026-08-30:
+       「Insights を 見ている」のに 中身が Apps や Quick Board に なった）。
+       ここで 何も 取れなければ **何も 送らない**。画面の 名前だけで 正しい。 */
+    if (!行.length) {
+      var 次 = document.querySelector(".stage");
+      if (次 && 次 !== 入) 行 = 文を抜く(次, 12);
+    }
+    return {
+      v: 1, tab: tab, view: view,
+      where: String(where).slice(0, 80),
+      title: title.slice(0, 80),
+      lines: 行,
+      /* 追従の 手がかりは **タブだけ**。窓の 中まで 開けに いかない
+         （相手の 作りかけを 壊さない ため）。 */
+      go: { tab: 窓 ? "" : tab }
+    };
+  }
+
+  function 畳む(に) {
+    if (st.画面 !== "通話中") return;
+    st.畳んだ = !!に;
+    描く();
+  }
+
+  function 共有を始める() {
+    var id = st.call && st.call.callId;
+    if (!id || st.共有.出している) return;
+    st.共有.err = "";
+    api("/api/call/share/start", { method: "POST", body: { callId: id } })
+      .then(function () {
+        st.共有.出している = true;
+        前に送った = ""; 共有の連続失敗 = 0;
+        /* ★ 畳まないと **自分の 画面が 見えない**。押した 意味が なくなる。 */
+        畳む(true);
+        if (共有タイマ) clearInterval(共有タイマ);
+        /* ★ 非力な 端末では ゆっくりに する。写すのは 画面ぜんたいを
+           たどる 仕事なので、毎秒 やると 弱い 端末で 引っかかる。 */
+        共有タイマ = setInterval(共有を送る, 非力か() ? 2400 : 1200);
+        共有を送る();
+        描く();
+      })
+      .catch(function (e) {
+        st.共有.err = e.message || "画面を 同席できませんでした。";
+        描く();
+      });
+  }
+  function 共有をやめる(訳) {
+    if (共有タイマ) { clearInterval(共有タイマ); 共有タイマ = null; }
+    前に送った = "";
+    var 出していた = st.共有.出している;
+    st.共有.出している = false;
+    var id = st.call && st.call.callId;
+    if (出していた && id) {
+      api("/api/call/share/stop", { method: "POST", body: { callId: id, reason: String(訳 || "") } })
+        .catch(function () {});
+    }
+    描く();
+  }
+  function 共有を送る() {
+    if (!st.共有.出している || !st.call) return;
+    var f = null;
+    try { f = 画面を写す(); } catch (e) { return; }
+    if (!f) return;
+    Lumiへ画面を渡す(f);
+    /* 変わっていなければ 送らない（毎秒 同じ ものを 流さない）。 */
+    var 印 = JSON.stringify([f.tab, f.view, f.where, f.title, f.lines]);
+    if (印 === 前に送った) return;
+    前に送った = 印;
+    api("/api/call/share/frame", { method: "POST", body: { callId: st.call.callId, frame: f } })
+      .then(function () { 共有の連続失敗 = 0; })
+      .catch(function () {
+        共有の連続失敗++;
+        /* ★ 送れない まま 回し続けない。5 回 続けて 落ちたら 止める。 */
+        if (共有の連続失敗 >= 5) {
+          st.共有.err = "画面を 送れませんでした。同席を 止めます。";
+          共有をやめる("失敗");
+        }
+      });
+  }
+
+  function 相手の画面を受けた(f) {
+    if (!f) return;
+    st.共有.受けている = true;
+    st.共有.最新 = f;
+    st.共有.届いた時 = Date.now();
+    /* 幕の 下では 何も 見えない。届いたら 自動で 畳む。 */
+    if (st.画面 === "通話中" && !st.畳んだ) 畳む(true);
+    if (st.共有.追う) 同じ画面へ(false);
+    Lumiへ画面を渡す(f);
+    描く();
+  }
+  /* ★ 相手の 都合で **人の 手を 奪わない**。
+     クイズ中・文字を 打っている 最中は 勝手に 動かさない
+     （押した ときだけ 動く）。 */
+  function 移ってよいか() {
+    try {
+      var v = document.querySelector(".view.active");
+      if (v && v.id === "viewQuiz") return false;
+      var a = document.activeElement;
+      if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return false;
+      if (a && a.isContentEditable) return false;
+    } catch (e) {}
+    return true;
+  }
+  function 同じ画面へ(手で) {
+    var f = st.共有.最新;
+    var t = f && f.go && String(f.go.tab || "");
+    if (!t || !/^[a-zA-Z0-9_-]+$/.test(t)) return false;
+    if (t === 今のタブ()) return false;
+    if (!手で && !移ってよいか()) return false;
+    var b = document.querySelector('#appTabBar [data-app-tab="' + t + '"]');
+    if (!b) return false;
+    try { b.click(); } catch (e) { return false; }
+    if (手で) 描く();
+    return true;
+  }
+
+  /* ── Lumi に 画面を 見せる ──────────────────────────────────────────
+     ★ Live は 音の ほかに 文字も 受け取れる。**turnComplete を 立てない**ので
+       これだけでは Lumi は しゃべらない（＝ 画面が 変わる たびに
+       勝手に 実況を 始めたり しない）。聞かれた ときに 使える 材料に なる。 */
+  function 画面を文に(f) {
+    var a = ["【いまの 画面】" + String(f.where || "")];
+    if (f.title) a.push(f.title);
+    if (f.lines && f.lines.length) a.push(f.lines.join(" / "));
+    return a.join("\n").slice(0, 1200);
+  }
+  function Lumiへ画面を渡す(f) {
+    if (!lumiWs || lumiWs.readyState !== 1 || !f) return;
+    var 文 = 画面を文に(f);
+    if (!文 || 文 === Lumiへ送った) return;
+    Lumiへ送った = 文;
+    try {
+      lumiWs.send(JSON.stringify({ clientContent: {
+        turns: [{ role: "user", parts: [{ text: 文 }] }],
+        turnComplete: false
+      } }));
+    } catch (e) {}
+  }
+  /* Lumi が 入った 直後は、まだ 何も 渡していない。いまの 画面を 1 回 渡す。 */
+  function Lumiへ今の画面を渡す() {
+    if (st.共有.受けている && st.共有.最新) { Lumiへ画面を渡す(st.共有.最新); return; }
+    if (!st.共有.出している) return;
+    try { Lumiへ画面を渡す(画面を写す()); } catch (e) {}
+  }
+
+  /* 通話が 終わった ときの 後始末（共有も 必ず 止める）。 */
+  function 共有を片づける() {
+    if (共有タイマ) { clearInterval(共有タイマ); 共有タイマ = null; }
+    前に送った = ""; Lumiへ送った = ""; 共有の連続失敗 = 0;
+    st.共有 = { 出している: false, 受けている: false, 追う: true,
+                最新: null, 届いた時: 0, err: "" };
+    st.畳んだ = false;
+    畳みを反映();
+  }
+
   /* ── 外へ 出す 口 ─────────────────────────────────────────────────── */
   window.__vqCall = {
     かける: かける,
@@ -1215,6 +1751,25 @@
       };
     },
     設定: function () { return st.設定; },
+    /* ── 画面の 同席（検証と 外からの 操作）────────────────────────── */
+    畳む: function (に) { 畳む(に !== false); return st.畳んだ; },
+    共有: function (に) {
+      if (に === false) { 共有をやめる("外から"); return false; }
+      if (に === true || に === undefined) { 共有を始める(); return true; }
+      return st.共有.出している;
+    },
+    同席: function () {
+      return {
+        出している: st.共有.出している,
+        受けている: st.共有.受けている,
+        追う: st.共有.追う,
+        畳んだ: st.畳んだ,
+        最新: st.共有.最新,
+        err: st.共有.err
+      };
+    },
+    /* 送る 前の 中身を そのまま 見る（画面を 触らずに 中身だけ 確かめる）。 */
+    画面を写す: function () { try { return 画面を写す(); } catch (e) { return null; } },
     /* 相手が 本当に 入っていて、音が 出ているか。
        「つながっているのに 聞こえない」を 電話口で 切り分ける ため。 */
     相手: function () {

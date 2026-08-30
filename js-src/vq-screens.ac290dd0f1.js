@@ -550,6 +550,22 @@
     ".pc__byh{color:var(--vq-text-tertiary,#9994A8);font-weight:550;flex:0 1 auto;min-width:0;}" +
     ".pc__bym{flex:0 0 auto;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;background:var(--vq-accent-subtle,#EFEBFA);color:var(--vq-accent-text,#5F579E);}" +
     ".pc__meta{font-size:11.5px;color:var(--vq-text-tertiary,#9994A8);font-weight:550;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;}" +
+    /* ══ 試験の見分け（2026-08-30）══════════════════════════════
+       同じ一覧のまま、**表紙の縮小見本**で 試験だと 分かるようにする。
+       プリセットは これまでの 表紙（アイコン・バナー）の まま。 */
+    ".pc-exam{aspect-ratio:16/9;background:#fff;border-bottom:1px solid var(--vq-border-subtle,#ECEAF4);" +
+      "display:flex;flex-direction:column;align-items:center;justify-content:flex-start;" +
+      "padding:14px 16px 10px;gap:5px;position:relative;overflow:hidden;}" +
+    ".pc-exam__t{font-size:11.5px;font-weight:750;color:#2B2836;text-align:center;line-height:1.4;" +
+      "max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}" +
+    ".pc-exam__s{font-size:9.5px;color:#6B6480;}" +
+    ".pc-exam__r{width:64%;height:3px;border-radius:2px;background:#EDEBF3;margin-top:4px;}" +
+    ".pc-exam__r.s{width:44%;}" +
+    ".pc-exam__f{margin-top:auto;display:flex;gap:6px;width:78%;}" +
+    ".pc-exam__f i{flex:1 1 auto;height:8px;border-bottom:1px solid #D7D2E4;}" +
+    ".pc__badge{align-self:flex-start;font-size:10.5px;font-weight:750;letter-spacing:.04em;" +
+      "padding:3px 8px;border-radius:6px;margin-bottom:6px;" +
+      "background:var(--vq-accent-subtle,#EAE8F7);color:var(--vq-accent-text,#5F5691);}" +
     /* 「英語・20 問・約 12 分」を中黒でつなぐと 1 本の長い文字列になり、
        どこが問題数でどこが時間か、目で拾えない。区切って絵を添える。 */
     ".pc__m{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;}" +
@@ -1077,9 +1093,55 @@
       + '" aria-label="' + esc(c.title) + ' をお気に入り">' + ms("star") + "</button>"
       + "</div>";
   }
+  /* ══ この id は 試験か（2026-08-30）════════════════════════════
+     訴え:「プリセット一覧からその両方の違いをどう一覧で見せるかも決めないと」
+     決めたのは「**同じ一覧のまま。表紙で見分ける**」。
+
+     ★ いま 試験は VQ2.store.mocks に 入っている。器を preset へ 寄せる
+       段になったら、**ここ 1 か所だけ**を 直せばよいように 分けてある。
+     ★ 分からないときは **試験ではない** と 答える（勝手に 札を 付けない）。 */
+  var 試験の控え = null, 試験を見た = 0;
+  function 試験の表() {
+    var 今 = Date.now();
+    if (試験の控え && 今 - 試験を見た < 4000) return 試験の控え;
+    var out = {};
+    try {
+      var ST = window.VQ2 && window.VQ2.store;
+      var 並 = (ST && ST.mocks && ST.mocks.list) ? ST.mocks.list() : [];
+      (並 || []).forEach(function (r) {
+        var sp = r && (r.spec || r);
+        if (!sp || !sp.sections) return;
+        out[String(r.id || sp.id)] = {
+          大問: (sp.sections || []).length,
+          満点: sp.totalPoints || null,
+          分: sp.durationMinutes || null,
+          表紙: sp.cover || null,
+          題: sp.title || "",
+          科: sp.subject || ""
+        };
+      });
+    } catch (e) {}
+    試験の控え = out; 試験を見た = 今;
+    return out;
+  }
+  function 試験か(id) { return 試験の表()[String(id)] || null; }
+
+  /* 表紙の 縮小見本。**実際の 表紙の 中身**から 描く（絵を でっち上げない）。 */
+  function 試験の表紙HTML(e) {
+    var c = e.表紙 || {};
+    var 題 = String(c.examName || e.題 || "");
+    var 科 = String(c.subject || e.科 || "");
+    return '<div class="pc-exam" aria-hidden="true">'
+      + '<div class="pc-exam__t">' + esc(題) + "</div>"
+      + (科 ? '<div class="pc-exam__s">' + esc(科) + "</div>" : "")
+      + '<div class="pc-exam__r"></div><div class="pc-exam__r s"></div>'
+      + '<div class="pc-exam__f"><i></i><i></i><i></i></div></div>';
+  }
+
   function pcHTML(c) {
     var L = LIB();
     var act = activeId() && c.id === activeId();
+    var 試 = 試験か(c.id);
     /* ══ 中黒でつながず、区切って絵を添える（2026-08-13）══════════
        もとは「英語・20 問・約 12 分」の 1 本の文字列。
        どこが問題数でどこが時間か、目で拾えなかった。
@@ -1126,11 +1188,18 @@
     return '<div class="pc' + (act ? " is-active" : "") + '" data-preset-select="' + esc(c.id) + '"'
       + ' style="' + esc(fb.style) + '"'
       + ' role="button" tabindex="0" aria-label="' + esc(c.title) + ' の詳細を開く">'
-      + bannerHTML(c)
-      + '<div class="pc__body">' + icoHTML(c)
+      + (試 ? 試験の表紙HTML(試) : bannerHTML(c))
+      + '<div class="pc__body">' + (試 ? "" : icoHTML(c))
+      + (試 ? '<span class="pc__badge">試験</span>' : "")
       + '<div class="pc__title">' + esc(c.title) + "</div>"
       + byHTML(c)
-      + (metaHtml ? '<div class="pc__meta">' + metaHtml + "</div>" : "")
+      + (試
+          ? '<div class="pc__meta">'
+            + (試.満点 ? '<span class="pc__m">' + ms("workspace_premium") + 試.満点 + " 点</span>" : "")
+            + (試.分 ? '<span class="pc__m">' + ms("schedule") + 試.分 + " 分</span>" : "")
+            + (試.大問 ? '<span class="pc__m">' + ms("list") + "大問 " + 試.大問 + "</span>" : "")
+            + "</div>"
+          : (metaHtml ? '<div class="pc__meta">' + metaHtml + "</div>" : ""))
       + (types ? '<div class="pc__types" title="' + esc(types) + '">' + ms("category") + " " + esc(types) + "</div>" : "")
       + ((c.tags || []).length ? '<div class="pc__tags">'
           + c.tags.slice(0, 3).map(function (t) { return '<span class="pc__tag">' + esc(t) + "</span>"; }).join("")

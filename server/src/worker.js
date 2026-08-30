@@ -57121,18 +57121,38 @@ function ttsWhy(note) {
   return "";
 }
 
-function ttsPickModel(lang, voice) {
+/* ══ 読み上げの 提供元を 決める ════════════════════════════════════════
+   ★ **既定の 声（Kore）を「選んでいない」と 見なしていた**（〜2026-08-30）。
+     もとの 条件は
+        v !== LIVE_VOICE_DEFAULT && LIVE_VOICES に ある
+     だったので、
+       ・声を 何も 指していない（＝ ほとんどの リスニング）
+       ・声を わざわざ "Kore" に 選んだ
+     の どちらも **英語は Gemini へ 行かず** aura（Workers AI）に 落ちていた。
+     実測 2026-08-30（開発版）:
+        英語・声なし   → @cf/deepgram/aura-2-en
+        英語・"Kore"   → @cf/deepgram/aura-2-en
+        英語・"Leda"   → gemini-2.5-flash-preview-tts
+        日本語         → gemini-2.5-flash-preview-tts
+     つまり 20 声に 増やしても、既定の ままの 人には **1 声も 届いていなかった**。
+
+   ★ いまの 決めかた: **言語に かかわらず Gemini を 本命に する。**
+     ・声（20 種）・感情や 速さの タグが どの 言語でも 効く
+     ・会話（Live）と 読み上げで 声が そろう
+     ・作れなかった ときは 戻り先（aura）へ 自動で 落ちる
+       ＝ 止まらない。この 道は handleTtsSpeak が すでに 持っている
+     ・出来上がりは KV と 拠点に 置くので、同じ 文で 何度も 払わない
+   ★ 速さ・費用を どうしても 取りたい ときは body.fast で aura を 指せる
+     （既定では 使わない。枠を 使い切った ときの 逃げ道）。 */
+function ttsPickModel(lang, voice, fast) {
   const l = String(lang || "").toLowerCase();
   const 日本語 = l.indexOf("ja") === 0 || l.indexOf("jp") === 0;
   if (日本語) return { model: TTS_GEMINI_MODEL, kind: "gemini", lang: "ja" };
-  const v = String(voice || "").trim();
-  const 選んでいる = v && v.toLowerCase() !== LIVE_VOICE_DEFAULT.toLowerCase()
-    && LIVE_VOICES.some((x) => x.toLowerCase() === v.toLowerCase());
-  if (選んでいる)
-    return { model: TTS_GEMINI_MODEL, kind: "gemini", lang: l.indexOf("es") === 0 ? "es" : "en",
-             戻り先: l.indexOf("es") === 0 ? "@cf/deepgram/aura-2-es" : "@cf/deepgram/aura-2-en" };
-  if (l.indexOf("es") === 0) return { model: "@cf/deepgram/aura-2-es", kind: "aura" };
-  return { model: "@cf/deepgram/aura-2-en", kind: "aura" };
+  const es = l.indexOf("es") === 0;
+  const 戻り先 = es ? "@cf/deepgram/aura-2-es" : "@cf/deepgram/aura-2-en";
+  /* はっきり 速さを 頼まれた ときだけ 昔の 道（aura）。 */
+  if (fast === true) return { model: 戻り先, kind: "aura" };
+  return { model: TTS_GEMINI_MODEL, kind: "gemini", lang: es ? "es" : "en", 戻り先: 戻り先 };
 }
 
 /* ══ 段（せつ）を つないで 1 本に する（2026-08-26）════════════════════
@@ -57218,6 +57238,22 @@ function ttsPcmToWav(pcm, rate, channels) {
   return out;
 }
 
+/* ★ **読む係だと 先に 言う**（2026-08-15 に 分かったこと）。
+   これを 付けずに 本文だけ 渡すと、Gemini は 読み上げずに 答えようとして
+     HTTP 400 Model tried to generate text, but it should only be used for TTS
+   を 返す。問題の 読み上げは 指示文だらけ なので、ここが 効く。
+   ★ 1 か所に まとめる（2026-08-30）。点検の 口が この 包みを 使わずに
+     叩いていたので、**実際は 鳴るのに 400 で「壊れている」と 出ていた**。 */
+function ttsGeminiPrompt(text, style) {
+  return "あなたは読み上げの係です。次の【本文】を、書いてあるとおりに、"
+    /* 言いかた（感情・効果）は ここに 混ぜる。原稿の [怒り] [ささやき] などが
+       画面側で 日本語の 言いかたに 直されて 届く。空なら 自然な速さで。 */
+    + (style ? String(style).slice(0, 120) + "読み上げてください。"
+             : "自然な速さで読み上げてください。")
+    + "本文の内容に答えたり、返事をしたり、"
+    + "説明を足したりしないでください。\n\n【本文】\n" + text;
+}
+
 /* Gemini で読み上げる。鳴らなければ null（呼び側が断る）。 */
 async function ttsGemini(env, text, voice, note, style) {
   const keys = aigenGeminiKeys(env);
@@ -57243,15 +57279,7 @@ async function ttsGemini(env, text, voice, note, style) {
                HTTP 400 Model tried to generate text, but it should only be used for audio
              を返す。問題の読み上げは指示文だらけなので、ここを直さないと
              半分ほど鳴らない。**読む係だと先に言ってから**本文を渡す。 */
-          contents: [{ parts: [{ text:
-            "あなたは読み上げの係です。次の【本文】を、書いてあるとおりに、"
-            /* ★ 言いかた（感情・効果）は **ここに 混ぜる**（2026-08-26）。
-               原稿の [怒り] [ささやき] などが 画面側で 日本語の 言いかたに
-               直されて 届く。空なら これまでどおり「自然な速さで」。 */
-            + (style ? String(style).slice(0, 120) + "読み上げてください。"
-                     : "自然な速さで読み上げてください。")
-            + "本文の内容に答えたり、返事をしたり、"
-            + "説明を足したりしないでください。\n\n【本文】\n" + text }] }],
+          contents: [{ parts: [{ text: ttsGeminiPrompt(text, style) }] }],
           generationConfig: {
             responseModalities: ["AUDIO"],
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: {
@@ -57339,7 +57367,8 @@ async function handleTtsSpeak(request, env) {
      liveVoiceOf は 知らない名前を 黙って 既定へ 落とすので、
      落ちた後の 名前で 鍵も model も 決める。 */
   const voice = liveVoiceOf(body?.voice);
-  const pick = ttsPickModel(lang, voice);
+  /* fast=true は **枠を 使い切った ときの 逃げ道**（速い・軽いが 声は 選べない）。 */
+  const pick = ttsPickModel(lang, voice, body?.fast === true);
 
   /* ══ 作ったものは置いておく（同じ文を 2 度作らない）═══════════════
      読み上げは **1 回ごとにお金がかかる**。同じ問題文は何度も読まれるので、
@@ -62738,7 +62767,11 @@ async function handleTtsProbe(request, env) {
           + encodeURIComponent(keys[keyIdx === null ? 0 : keyIdx]), {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: text }] }],
+            /* ★ **本物と 同じ 包みで 叩く**（2026-08-30）。
+               裸の 本文で 叩いていたので、実際には 鳴る のに
+               「Model tried to generate text」の 400 に なり、
+               点検の 画面に「Gemini は 鳴らない」と 出ていた。 */
+            contents: [{ parts: [{ text: ttsGeminiPrompt(text, "") }] }],
             generationConfig: {
               responseModalities: ["AUDIO"],
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }

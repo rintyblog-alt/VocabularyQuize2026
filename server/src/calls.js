@@ -675,7 +675,16 @@ const LUMI_CALL_SYS = [
   "・2 人の 会話を 遮らないでください。聞かれた ことにだけ 答えます。",
   "・個人情報を 聞き出さない。連絡先や 住所を 尋ねない。",
   "・「ありがとう」「もう いいよ」と 言われたら 「はい、抜けますね」と 言って 終わります。",
-  "・日本語で 話します。"
+  "・日本語で 話します。",
+  "",
+  "【画面の 同席について】",
+  "・2 人が 画面を 同席している ときは、いま 見えている ものが",
+  "  『いまの 画面』として 文字で 渡されます。渡された ときは 黙って 受け取り、",
+  "  **それに ついて 聞かれた ときだけ** 答えます。",
+  "・画面が 変わっただけで 話しかけない。読み上げも しない。",
+  "・『これ』『この 問題』『いま 見えてる やつ』は **いちばん 新しい 画面**の ことです。",
+  "・画面に 書いていない ことを 推測で 言わない。分からなければ 分からないと 言う。",
+  "・クイズの 画面の ときは **答えを 先に 言わない**。聞かれたら ヒントから 出す。"
 ].join("\n");
 
 /* ══ ③ 口（REST）════════════════════════════════════════════════════════ */
@@ -756,6 +765,11 @@ export async function handleCallRequest(request, env, ctx) {
     if (m === "POST" && path === "/api/call/rtc/tracks") return await 口のSFU管(env, uid, b);
     if (m === "PUT" && path === "/api/call/rtc/renegotiate") return await 口のSFU再交渉(env, uid, b);
     if (m === "POST" && path === "/api/call/rtc/close") return await 口のSFU閉じ(env, uid, b);
+
+    /* 画面の 同席（VocabuQuiz の 中だけ。映像は 送らない） */
+    if (m === "POST" && path === "/api/call/share/start") return await 口の共有開始(env, uid, b);
+    if (m === "POST" && path === "/api/call/share/stop") return await 口の共有終い(env, uid, b);
+    if (m === "POST" && path === "/api/call/share/frame") return await 口の共有フレーム(env, uid, b);
 
     if (m === "POST" && path === "/api/call/lumi/request") return await 口のLumi呼ぶ(env, uid, b);
     if (m === "POST" && path === "/api/call/lumi/consent") return await 口のLumi同意(env, uid, b);
@@ -1302,6 +1316,103 @@ async function 口のLumi終い(env, uid, b) {
   return json({ ok: true });
 }
 
+/* ══ ⑤ 画面の 同席（VocabuQuiz の 中だけ）══════════════════════════════
+   ★ **映像は 一切 送らない。** 送るのは「いま どの 画面の どこを 見ているか」
+     という **短い 文だけ**。だから
+       ・iPhone でも 動く（iOS Safari に getDisplayMedia は 無い）
+       ・通信量が ほぼ ゼロ（1 回 2KB 未満）
+       ・**アプリの 外は 原理的に 漏れない**（他のタブも 通知も 写らない）
+   ★ ここでも 保存しない。中身は 中継するだけで 表に 書かない
+     （start / stop の 事実だけ call_events に 残す）。 */
+
+/* 送ってよい 大きさ。越えたら 捨てる（好きな 量を 押し込ませない）。 */
+const 共有の上限 = { 行: 12, 行の字: 200, 名: 80, 生: 6000 };
+
+/** 相手の 画面へ そのまま 出す 文なので、ここで 削り落とす。
+ *  ★ 描く 側でも 逃がして いるが、**山かっこは ここでも 落とす**。 */
+function 共有の一行(s) {
+  return S(s, 共有の上限.行の字)
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+/** 受け取った 画面の 要約を **決めた 形へ 削り落とす**。知らない key は 捨てる。 */
+function 画面を清める(o) {
+  if (!o || typeof o !== "object") return null;
+  const 行 = Array.isArray(o.lines) ? o.lines : [];
+  const g = (o.go && typeof o.go === "object") ? o.go : {};
+  const 出 = {
+    v: 1,
+    at: 今(),
+    tab: S(o.tab, 32).replace(/[^a-zA-Z0-9_-]/g, ""),
+    view: S(o.view, 32).replace(/[^a-zA-Z0-9_-]/g, ""),
+    where: 共有の一行(o.where).slice(0, 共有の上限.名),
+    title: 共有の一行(o.title).slice(0, 共有の上限.名),
+    lines: 行.slice(0, 共有の上限.行).map(共有の一行).filter((x) => x.length > 0),
+    go: { tab: S(g.tab, 32).replace(/[^a-zA-Z0-9_-]/g, "") }
+  };
+  /* 中身が 何も 無い ものは 送らない（空の 帯を 相手に 出さない）。 */
+  if (!出.where && !出.title && !出.lines.length) return null;
+  return 出;
+}
+
+/** 合図の たびの 重い 決め直し（通話の関所）は start / stop だけ。
+ *  フレームは 毎秒 来るので **1 回の 読みだけ**で 通す。
+ *  ★ それで 安全が 崩れない 理由: ブロックも 通報も 切断も
+ *    **通話そのものを 終わらせる**（state が connected でなくなる）。
+ *    だから state を 見れば 止まる。 */
+async function 軽い関所(env, uid, callId) {
+  const row = await 通話を引く(env, callId);
+  if (!row) return { err: bad("NOT_FOUND", "その 通話は ありません。", 404) };
+  const a = N(row.caller_id, 0), b2 = N(row.callee_id, 0);
+  if (uid !== a && uid !== b2) return { err: bad("FORBIDDEN", "この 通話には 入れません。", 403) };
+  if (S(row.state) !== "connected") {
+    return { err: json({ ok: false, code: "BAD_STATE", message: "いまの 状態では できません。",
+      state: S(row.state) }, 409) };
+  }
+  return { row, peer: uid === a ? b2 : a };
+}
+
+async function 口の共有開始(env, uid, b) {
+  const callId = S(b?.callId, 64);
+  const g = await 通話の関所(env, uid, callId, ["connected"]);
+  if (g.err) return g.err;
+  await 記す(env, callId, "share.start", uid, "");
+  await 押す(env, g.peer, { type: "call.share.state", callId, on: true, by: uid });
+  return json({ ok: true, on: true });
+}
+
+async function 口の共有終い(env, uid, b) {
+  const callId = S(b?.callId, 64);
+  const row = await 通話を引く(env, callId);
+  if (!row) return json({ ok: true, on: false });
+  if (N(row.caller_id, 0) !== uid && N(row.callee_id, 0) !== uid) {
+    return bad("FORBIDDEN", "この 通話には 入れません。", 403);
+  }
+  /* ★ 終わりは **通話が どんな 状態でも 通す**。
+     止められない 共有を 作らない（これが いちばん 怖い）。 */
+  await 記す(env, callId, "share.stop", uid, S(b?.reason, 40));
+  await 両方へ(env, row, { type: "call.share.state", callId, on: false, by: uid });
+  return json({ ok: true, on: false });
+}
+
+async function 口の共有フレーム(env, uid, b) {
+  const callId = S(b?.callId, 64);
+  /* 大きすぎる ものは **読む前に** 捨てる。 */
+  let 生 = "";
+  try { 生 = JSON.stringify(b?.frame || {}); } catch (e) { 生 = ""; }
+  if (生.length > 共有の上限.生) {
+    return bad("TOO_LARGE", "画面の 中身が 大きすぎます。", 413);
+  }
+  const g = await 軽い関所(env, uid, callId);
+  if (g.err) return g.err;
+  const f = 画面を清める(b?.frame);
+  if (!f) return json({ ok: true, skipped: true });
+  const 届 = await 押す(env, g.peer, { type: "call.share.frame", callId, by: uid, frame: f });
+  return json({ ok: true, delivered: 届 });
+}
+
 /* ══ ④ 合図の 通り道 ════════════════════════════════════════════════════ */
 async function wsつなぐ(request, env) {
   if (S(request.headers.get("Upgrade"), 40).toLowerCase() !== "websocket") {
@@ -1480,6 +1591,10 @@ export async function callsAdminSummary(env) {
     SELECT COUNT(*) AS n, SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) AS open FROM call_reports`);
   const lumi = await q(`
     SELECT COUNT(*) AS n, COALESCE(SUM(lumi_seconds),0) AS sec FROM calls WHERE lumi_used = 1 AND started_at >= ?1`, 週);
+  /* 画面の 同席。**中身は 残していない**ので 回数だけ（call_events から 数える）。 */
+  const 同席 = await q(`
+    SELECT COUNT(*) AS n, COUNT(DISTINCT call_id) AS calls
+      FROM call_events WHERE kind = 'share.start' AND at >= ?1`, 週);
   const 件 = Math.max(1, N(今日分?.n, 0));
   /* SFU の 帯域は 実測できないので **音声の 実測ビットレートから 見積もる**。
      Opus 32kbps を 2 本（上り・下り）× 2 人 = 1 秒 あたり およそ 16KB。 */
@@ -1490,6 +1605,8 @@ export async function callsAdminSummary(env) {
     week: { calls: N(週分?.n, 0), seconds: N(週分?.sec, 0) },
     reports: { total: N(通報?.n, 0), open: N(通報?.open, 0) },
     lumi: { calls: N(lumi?.n, 0), seconds: N(lumi?.sec, 0) },
+    share: { starts: N(同席?.n, 0), calls: N(同席?.calls, 0),
+             note: "画面の 同席は 映像を 送らず、中身も 残していません（回数だけ）。" },
     bandwidth: { estimatedGbWeek: Math.round(見積GB * 1000) / 1000, freeGb: 1000,
                  note: "見積もりです（音声 32kbps × 2 方向 で 計算）。実測は Cloudflare の 画面で 確かめてください。" },
     configured: callsConfigured(env),

@@ -46194,6 +46194,13 @@ actionタイプ:
                  q1('#appTabBar [data-v2-action="create-quiz"]').click()
                でこちらを叩き、旧エンジンが開いていた（2026-08-13 報告）。
                入口ごとに直すと漏れるので、**受け口のここで**振り分ける。 */
+            /* ★ 「作る」の入口を 1 つにした（2026-08-30）。
+               まず vq-make（プリセット / 試験 を 選ぶ 1 枚）へ 行く。
+               試験を 選ぶと 表紙から 作る。
+               vq-make が まだ 読めていない ときだけ、これまでの道へ 落ちる。 */
+            try {
+              if (window.__vqMake && window.__vqMake.open) { window.__vqMake.open(); return; }
+            } catch (eMk) {}
             if (_v2OpenPresetStudio()) return;
             _presetEngineOpen();
             return;

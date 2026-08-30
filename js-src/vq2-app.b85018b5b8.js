@@ -22445,8 +22445,12 @@
       deprecated: true, supersededBy: "standard-exam" },
     { id: "school-english-reading", label: "学校試験・英語長文", profileId: null, ready: false, printable: true,
       deprecated: true, supersededBy: "english-test" },
-    { id: "common-test",            label: "共通テスト風",     profileId: null, ready: false, printable: true,
-      deprecated: true, supersededBy: "entrance-exam" },
+    /* ★ 「共通テスト風」は **名前だけで実体が無かった**（profileId: null）。
+       選んでも現在の形式で出るので、誰も本物の紙面を見られなかった。
+       実物を調べて exam-common-test を起こしたので、ここを本物へつなぐ
+       （2026-08-30）。ID は保存済みデータのために変えない。 */
+    { id: "common-test",            label: "共通テスト風",     profileId: "exam-common-test",
+      ready: true, printable: true, deprecated: false, supersededBy: null },
     /* 縦書きは HTML では組めない（TeX が要る）。置き換え先も無い。 */
     { id: "vertical-japanese",      label: "縦書き国語",       profileId: null, ready: false, printable: true,
       deprecated: false, supersededBy: null },
@@ -23242,6 +23246,109 @@
       },
       safetyConstraints: {
         minFontPt: 9, minGapMm: 4, maxFigureWidthPct: 92, maxColumns: 2,
+        minQuestionGapMm: 6, forbidFigureOverlap: true, forbidOrphanHeading: true
+      },
+      version: "1.0.0"
+    },
+
+    /* ── 5b. 共通テスト風 ────────────────────────────────────
+       これまで「共通テスト風」は **名前だけ**で、profileId が null・
+       ready:false だった（選んでも現在の形式で出ていた）。実物を調べて起こす。
+
+       調べたこと（2026-08-30・大学入試センターの公開情報）:
+       ・問題冊子は B5 の冊子。拡大文字版は 14pt / 22pt の 2 種で、
+         14pt 版は **一般の冊子とレイアウトが同じ**。B4 で刷ると原寸大になる
+         → 一般版の本文はおよそ 10pt、B5 という裏づけ
+       ・大問は「第 1 問」、小問は「問 1」。選択肢は **丸数字（①②③④）**
+       ・解答は **通し番号**（第何問かに関わらず 1 から続く「解答番号」）で、
+         解答用紙のマーク欄と一対一で対応する
+       ・地歴公民・理科は解答用紙が 3 種あり、解答科目欄・出題範囲欄・
+         上下の太線の有無で区別する
+       ・情報は 0〜9・a〜f の 16 択（令和 8 年度）
+       出どころ: dnc.ac.jp の「拡大文字問題冊子」「問題冊子の表紙」
+                 「試験問題冊子の注意事項及び解答用紙の様式について」
+
+       ★ 1 対 1 の複製ではない。**考え方を写したもの。** */
+    "exam-common-test": {
+      id: "exam-common-test",
+      name: "共通テスト風",
+      documentType: "question-paper",
+      compatibleEngines: ["current"],
+      rendererSupport: { current: { level: "full",
+        honored: ["B5 の用紙", "余白", "「第 n 問」の見出しと配点", "小問「問 n」",
+                  "丸数字の選択肢", "大問ごとの改ページ", "表紙", "ページ番号"],
+        pending: ["解答番号の通し番号を四角で囲む形（いまは番号だけ）"] } },
+      supportedSubjects: ["国語", "数学", "理科", "社会", "英語", "情報", "汎用"],
+      supportedQuestionTypes: ["multiple_choice_single", "multiple_choice_multiple", "true_false",
+                               "short_answer", "fill_blank", "numeric", "formula", "matching",
+                               "ordering", "source_analysis"],
+      unsupportedQuestionTypes: {
+        long_answer: "共通テストに記述はありません（記述を入れるなら「一般試験・標準」を使ってください）。",
+        essay: "共通テストに論述はありません。",
+        english_writing: "共通テストに英作文はありません。"
+      },
+
+      /* B5・冊子。左右は綴じを考えてやや広め。 */
+      paper: { size: "B5", orientation: "portrait", writingDirection: "horizontal", spread: false },
+      margins: { top: 22, bottom: 20, left: 18, right: 18 },
+
+      typography: {
+        bodyFamily: "mincho", headingFamily: "gothic",
+        basePt: 10, minimumFontSize: 9, lineHeight: 1.9, numberStyle: "arabic"
+      },
+
+      /* 表紙を別に持つので、本文の頭に試験名や氏名欄は出さない。 */
+      header: { align: "center", rule: false, showMeta: false, showNameBox: false,
+                variants: ["centered-plain"] },
+
+      sectionStyle: {
+        marker: "第{n}問", markerFamily: "gothic", markerPt: 13,
+        showPoints: true, rule: "none", gapBeforeMm: 8,
+        startsNewPageFrom: 1              /* 大問は必ずページの頭から */
+      },
+      subQuestionStyle: {
+        markers: ["問1", "問2", "問3", "問4", "問5", "問6", "問7", "問8",
+                  "問9", "問10", "問11", "問12", "問13", "問14", "問15", "問16"],
+        markerFamily: "gothic", indentMm: 4, showPoints: true
+      },
+
+      questionFlow: {
+        columns: 1, gapMmRange: [7, 11],
+        keepQuestionWithChoices: true, keepQuestionWithFigure: true
+      },
+
+      /* ★ ここが共通テストらしさの芯。選択肢は丸数字。 */
+      choiceLayout: {
+        marker: "circled", variants: ["vertical", "two-column-short-only"],
+        twoColumnMaxChars: 14, fourColumnMaxChars: 6, indentMm: 7
+      },
+
+      figureRules: {
+        variants: ["figure-below-centered", "figure-right", "multi-figure-centered",
+                   "figure-table-row", "text-above-figures-below"],
+        rightWidthPct: 40, belowWidthPct: 78, centeredWidthPct: 72, rowWidthPct: 94,
+        minGapMm: 5, maxWidthPct: 94, captionPosition: "below",
+        treatAsPartOfQuestion: true, minItemWidthMm: 32, maxRowItems: 3,
+        keepGroupTogether: true, preserveAspectRatio: true
+      },
+
+      answerCellRules: { inline: false },
+      scoreArea: { onQuestionPaper: false },
+      studentFields: [],
+      /* 解答はマークシート。既定の相手をはっきりさせておく。 */
+      defaultAnswerSheetMode: "mark-sheet",
+      /* 解答番号は大問をまたいで 1 から続ける（共通テストの決まり）。 */
+      answerNumbering: { continuous: true, label: "解答番号" },
+
+      variationRules: {
+        spacing:       ["standard", "relaxed"],
+        choiceLayout:  ["vertical", "two-column-short-only"],
+        figureLayout:  ["figure-below-centered", "figure-right", "multi-figure-centered",
+                        "figure-table-row", "text-above-figures-below"],
+        sectionMarker: ["plain"]
+      },
+      safetyConstraints: {
+        minFontPt: 9, minGapMm: 4, maxFigureWidthPct: 94, maxColumns: 2,
         minQuestionGapMm: 6, forbidFigureOverlap: true, forbidOrphanHeading: true
       },
       version: "1.0.0"
@@ -28502,6 +28609,64 @@
       ".pgno-top-right { bottom: auto; top: 0; text-align: right; }",
       vertical ? ".pgno { bottom: auto; top: 0; left: 0; right: auto; height: 100%; writing-mode: horizontal-tb; }" : "",
 
+      /* ── 採点の印（2026-08-30）────────────────────────────────
+         解答欄の上に重ねる。**欄そのものは動かさない**（罫線がずれると
+         書いた答えと印が合わなくなる）。印刷でも出るよう線で描く。 */
+      ".agb-c { position: relative; }",
+      ".as-field { position: relative; }",
+      ".gwrap { position: absolute; inset: 0; display: flex; align-items: center;",
+      "         justify-content: center; gap: 1.5mm; pointer-events: none;",
+      "         color: #d0342c; z-index: 2; }",
+      ".gm { width: 8mm; height: 8mm; flex: 0 0 auto; opacity: .92;",
+      "      transform: rotate(-4deg); }",
+      '.gwrap[data-graded="batsu"] .gm { transform: rotate(2deg); }',
+      '.gwrap[data-graded="sankaku"] .gm { transform: rotate(-2deg); width: 7mm; height: 7mm; }',
+      ".gpt { font-size: " + (base - 1.5) + "pt; font-weight: 700; line-height: 1;",
+      "       font-family: " + GOTHIC + "; }",
+      ".gwrap.is-review { color: #6b6480; }",
+      ".gtxt { font-size: " + (base - 2) + "pt; font-family: " + GOTHIC + "; }",
+      /* 合計と観点別（解答用紙の下） */
+      ".gsum { margin-top: 6mm; border: 0.6pt solid #000; padding: 3mm 4mm;",
+      "        display: flex; flex-wrap: wrap; align-items: flex-end; gap: 3mm 8mm; }",
+      ".gsum-t { font-family: " + GOTHIC + "; font-weight: 700; font-size: " + (base + 1) + "pt; }",
+      ".gsum-total { font-size: " + (base + 6) + "pt; font-weight: 700; margin-left: auto; }",
+      ".gsum-total small { font-size: " + base + "pt; font-weight: 400; }",
+      ".gsum-c { display: flex; align-items: baseline; gap: 2mm; font-size: " + base + "pt; }",
+      ".gsum-c b { font-weight: 700; }",
+      ".gsum-note { flex: 1 0 100%; font-size: " + (base - 1.5) + "pt; color: #444; }",
+
+      /* ── 表紙（2026-08-30）──────────────────────────────────────
+         Typst / TeX の側には表紙があったのに、**HTML の紙面には無かった**。
+         組版は手元の Bridge でしか走らないので、実際にはほとんどの人に
+         表紙が出ていなかった。ここで同じ意味のものを HTML でも出す。
+         載せる項目は coverPlan が決める。**値が無い項目は出さない**
+         （空の枠だけ並べて、あるように見せない）。 */
+      ".cover { display: flex; flex-direction: column; height: 100%; min-height: " +
+        (p.heightMm - m.top - m.bottom) + "mm; }",
+      ".cv-head { text-align: center; margin-top: 14mm; }",
+      ".cv-title { font-size: " + (base + 8) + "pt; font-weight: 700; line-height: 1.5;",
+      "            letter-spacing: .04em; }",
+      ".cv-sub { font-size: " + (base + 3) + "pt; margin-top: 4mm; }",
+      ".cv-meta { margin: 12mm auto 0; display: table; border-collapse: collapse; }",
+      ".cv-meta > div { display: table-row; }",
+      ".cv-meta span, .cv-meta b { display: table-cell; padding: 1.6mm 4mm; font-weight: 400;",
+      "                            font-size: " + base + "pt; }",
+      ".cv-meta span { color: #000; text-align: right; white-space: nowrap; }",
+      ".cv-meta b { font-weight: 700; }",
+      ".cv-notes { margin: 12mm 4mm 0; border: 0.4pt solid #000; padding: 4mm 5mm; }",
+      ".cv-notes-t { font-weight: 700; margin-bottom: 2.5mm; font-size: " + base + "pt; }",
+      ".cv-notes ol { margin: 0; padding-left: 6mm; }",
+      ".cv-notes li { margin: 1.2mm 0; line-height: 1.7; }",
+      ".cv-fields { margin: auto 4mm 0; display: flex; flex-wrap: wrap; gap: 4mm 6mm;",
+      "             padding-top: 10mm; }",
+      ".cv-f { display: flex; align-items: flex-end; gap: 2mm; flex: 1 1 auto; }",
+      ".cv-f > span { white-space: nowrap; font-size: " + base + "pt; }",
+      ".cv-f > i { display: block; border-bottom: 0.6pt solid #000; height: 8mm; min-width: 18mm;",
+      "            flex: 1 1 auto; font-style: normal; }",
+      ".cv-f.is-name { flex: 2 1 60mm; }",
+      ".cv-seal { margin-top: 10mm; text-align: center; font-size: " + (base + 2) + "pt;",
+      "           font-weight: 700; letter-spacing: .1em; }",
+
       /* 画面プレビュー用（印刷では消す） */
       "@media screen {",
       "  body { background: #eceaf3; padding: 12px; }",
@@ -28517,6 +28682,128 @@
   /* ══════════════════════════════════════════════════════════════════
      冊子ごとの本文
      ══════════════════════════════════════════════════════════════════ */
+  /* ══════════════════════════════════════════════════════════════════
+     表紙（2026-08-30）
+
+     ★ **値が無い項目は出さない。** 空の枠だけ並べて「あるように」見せない
+       （Typst / TeX 側と同じ規則。coverBlock を見ること）。
+     ★ 出どころは 2 つ。
+        ① spec.cover … 試験そのものが持つ表紙（作る画面で入れたもの）
+        ② coverPlan  … 紙面の型が「何を載せるか」だけ決めたもの
+       ① が 優先。無ければ ② と spec の値から組む。
+     ══════════════════════════════════════════════════════════════════ */
+  function coverDataOf(spec, plan) {
+    /* このモジュールに str は無い（esc だけ）。ここで持つ。 */
+    var 文 = function (v) { return String(v == null ? "" : v); };
+    var c = spec && spec.cover;
+    if (c === false) return null;                       /* はっきり切っている */
+    var lp = (plan && (plan.coverPlan || (plan.layoutProfile && plan.layoutProfile.coverPlan))) || null;
+    /* 型も試験も表紙を求めていなければ出さない。 */
+    if (!c && !(lp && lp.enabled)) return null;
+    if (c && c.enabled === false) return null;
+    c = c || {};
+    var want = {};
+    var fields = (c.fields && c.fields.length) ? c.fields
+      : (lp && lp.fields && lp.fields.length) ? lp.fields : null;
+    if (fields) fields.forEach(function (f) { want[f] = true; });
+    var 出す = function (k) { return !fields || want[k] === true; };
+    var sf = (c.studentFields && c.studentFields.length) ? c.studentFields
+      : (lp && lp.studentFields && lp.studentFields.length) ? lp.studentFields
+      : ["年", "組", "番", "氏名"];
+    return {
+      examName: 文(c.examName || c.title || (spec && spec.title) || ""),
+      subject: 出す("subject") ? 文(c.subject || (spec && spec.subject) || "") : "",
+      grade: 出す("grade") ? 文(c.grade || (spec && spec.grade) || "") : "",
+      examDate: 出す("dateTime") ? 文(c.examDate || c.dateText || "") : "",
+      duration: 出す("duration") && spec && spec.durationMinutes ? spec.durationMinutes + " 分" : "",
+      totalPoints: 出す("totalPoints") && spec && spec.totalPoints ? spec.totalPoints + " 点" : "",
+      instructions: 出す("notes")
+        ? (Array.isArray(c.instructions) ? c.instructions : []).map(文).filter(Boolean).slice(0, 12)
+        : [],
+      studentFields: sf.slice(0, 6).map(function (x) { return 文(x).slice(0, 8); }),
+      sealNote: c.sealNote !== undefined ? c.sealNote !== false : (lp ? lp.sealNote !== false : true)
+    };
+  }
+
+  /* 解答用紙の下に置く「合計と観点別」。
+     ★ 数はすべて **採点結果から**。ここで計算し直さない（食い違いの元）。
+     ★ 観点は知識・技能／思考・判断・表現の 2 つ（S.CRITERIA）。 */
+  function renderGradedSummary(spec) {
+    if (!採点 || !採点.graded) return "";
+    var g = 採点.graded;
+    var 満点 = (typeof g.totalMax === "number") ? g.totalMax
+      : (typeof spec.totalPoints === "number" ? spec.totalPoints : null);
+    var 得点 = (typeof g.totalScore === "number") ? g.totalScore
+      : (typeof g.deterministicScore === "number" ? g.deterministicScore : null);
+    var 観点 = (g.aggregate && g.aggregate.byCriterion) || null;
+    if (得点 === null && !観点) return "";
+    var h = '<div class="gsum"><span class="gsum-t">採点結果</span>';
+    if (観点) {
+      (S.CRITERIA || []).forEach(function (c) {
+        var v = 観点[c.id];
+        if (!v) return;
+        h += '<span class="gsum-c">' + esc(c.label) + "<b>" + esc(v.score) + "</b>"
+          + "<small>/ " + esc(v.max) + "</small></span>";
+      });
+    }
+    if (得点 !== null) {
+      h += '<span class="gsum-total">' + esc(得点)
+        + (満点 !== null ? "<small> / " + esc(満点) + "</small>" : "") + "</span>";
+    }
+    /* まだ採点できていないものがあるなら、**黙って合計に混ぜない。** */
+    var 待ち = (g.items || []).filter(function (it) {
+      return it && (it.requiresReview === true || it.score === null || it.score === undefined);
+    }).length;
+    if (待ち) h += '<span class="gsum-note">※ ' + 待ち
+      + " 問は確認待ちです（この合計にはまだ入っていません）。</span>";
+    h += "</div>";
+    return h;
+  }
+
+  function renderCover(spec, plan) {
+    var c = coverDataOf(spec, plan);
+    if (!c) return "";
+    /* 名前も教科も日付も無いなら、表紙にする中身が無い。出さない。 */
+    if (!c.examName && !c.subject && !c.instructions.length) return "";
+    var h = '<div class="page" data-cover="1"><div class="sheet cover">';
+    h += '<div class="cv-head">';
+    if (c.examName) h += '<div class="cv-title">' + esc(c.examName) + "</div>";
+    if (c.subject) h += '<div class="cv-sub">' + esc(c.subject) + "</div>";
+    h += "</div>";
+
+    var 行 = [];
+    if (c.grade) 行.push(["学年", c.grade]);
+    if (c.examDate) 行.push(["実施日", c.examDate]);
+    if (c.duration) 行.push(["試験時間", c.duration]);
+    if (c.totalPoints) 行.push(["満点", c.totalPoints]);
+    if (行.length) {
+      h += '<div class="cv-meta">';
+      行.forEach(function (r) {
+        h += "<div><span>" + esc(r[0]) + "</span><b>" + esc(r[1]) + "</b></div>";
+      });
+      h += "</div>";
+    }
+
+    if (c.instructions.length) {
+      h += '<div class="cv-notes"><div class="cv-notes-t">注意事項</div><ol>';
+      c.instructions.forEach(function (t) { h += "<li>" + esc(t) + "</li>"; });
+      h += "</ol></div>";
+    }
+
+    if (c.studentFields.length) {
+      h += '<div class="cv-fields">';
+      c.studentFields.forEach(function (f) {
+        var 名 = /氏名|名前/.test(f);
+        h += '<div class="cv-f' + (名 ? " is-name" : "") + '"><span>' + esc(f) + "</span><i></i></div>";
+      });
+      h += "</div>";
+    }
+
+    if (c.sealNote) h += '<div class="cv-seal">開始の指示があるまで開かないこと</div>';
+    h += "</div></div>";
+    return h;
+  }
+
   function renderBooklet(spec, plan, booklet) {
     var vertical = plan.paper.writingDirection === "vertical";
     var h = '<div class="page"><div class="sheet" data-booklet="' + esc(booklet.id) + '">';
@@ -28544,6 +28831,9 @@
     (booklet.blocks || []).forEach(function (b) {
       h += renderBlock(b, plan, vertical, booklet.kind);
     });
+
+    /* 採点済みなら、解答用紙の下に 合計と観点別を 置く（2026-08-30）。 */
+    if (booklet.kind === "answer-sheet") h += renderGradedSummary(spec);
 
     h += "</div></div>";
     return h;
@@ -28825,6 +29115,82 @@
   /* ── 可変グリッドの解答用紙（実画像 2 枚目の構造）──────────────
      大問ごとの枠。左端は縦に結合した大問セル。
      セルの種類と数値は Planner が決めたものだけを使う。 */
+  /* ══════════════════════════════════════════════════════════════════
+     採点済みの解答用紙（2026-08-30）
+
+     解き終わると Lumi が裏で採点する。その結果を **解答用紙の上に
+     そのまま書き込む**（丸・バツ・三角と点数）。別紙の成績表にしない。
+     解答用紙が「返ってきた答案」になる。
+
+     ★ 印は 3 つだけ。
+        ○ 正解 ／ × 不正解 ／ △ 部分点
+     ★ **採点が終わっていない問題には印を付けない。**
+        記述で AI の自信（confidence）が低いと requiresReview が立つ。
+        そこを勝手に丸にしないこと。「確認待ち」と出す。
+     ★ 印刷しても出るように、色は塗りではなく **線**で描く
+        （-webkit-print-color-adjust: exact は上で全体に効かせてある）。
+     ══════════════════════════════════════════════════════════════════ */
+  var 採点 = null;          /* buildHtml の間だけ入る。数式表と同じ作法。 */
+
+  function 採点表を作る(spec, graded) {
+    if (!graded || !Array.isArray(graded.items)) return null;
+    var byQ = {};
+    graded.items.forEach(function (it) { if (it && it.questionId) byQ[it.questionId] = it; });
+    /* 解答欄 → 設問 の対応。**新しい対応表は作らない**（answerBindings をそのまま使う）。 */
+    var byB = {};
+    (spec.answerBindings || []).forEach(function (b) { if (b && b.id) byB[b.id] = b.questionId; });
+    return { byQ: byQ, byB: byB, graded: graded };
+  }
+
+  /* この欄に何を書くか。分からなければ null（何も書かない）。 */
+  function 欄の採点(questionId, bindingId) {
+    if (!採点) return null;
+    var qid = questionId || (bindingId ? 採点.byB[bindingId] : "");
+    if (!qid) return null;
+    var it = 採点.byQ[qid];
+    if (!it) return null;
+    /* まだ採点できていない。**印を付けない。** */
+    if (it.requiresReview === true || it.score === null || it.score === undefined) {
+      return { kind: "review", score: null, max: it.maxScore };
+    }
+    var max = (typeof it.maxScore === "number") ? it.maxScore : null;
+    var s = (typeof it.score === "number") ? it.score : 0;
+    var kind = it.correct === true ? "maru"
+      : (max !== null && s > 0 && s < max) ? "sankaku"
+      : (s > 0 && it.correct !== true) ? "sankaku" : "batsu";
+    return { kind: kind, score: s, max: max };
+  }
+
+  function 採点の印SVG(kind) {
+    /* 手で書いたように、線の始めと終わりをそろえない。 */
+    if (kind === "maru")
+      return '<svg class="gm" viewBox="0 0 40 40" aria-hidden="true">'
+        + '<path d="M29 8C18 2 6 9 5 19c-1 11 9 18 18 16 10-2 14-12 11-20-1-4-5-7-9-8"'
+        + ' fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
+    if (kind === "batsu")
+      return '<svg class="gm" viewBox="0 0 40 40" aria-hidden="true">'
+        + '<path d="M8 6 34 33M34 7 7 34" fill="none" stroke="currentColor"'
+        + ' stroke-width="3" stroke-linecap="round"/></svg>';
+    if (kind === "sankaku")
+      return '<svg class="gm" viewBox="0 0 40 40" aria-hidden="true">'
+        + '<path d="M20 5 35 33 5 33.5Z" fill="none" stroke="currentColor"'
+        + ' stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+    return "";
+  }
+
+  /* 解答欄へ重ねる印と点。欄そのものは動かさない（上に置くだけ）。 */
+  function 採点の重ね(questionId, bindingId) {
+    var g = 欄の採点(questionId, bindingId);
+    if (!g) return "";
+    if (g.kind === "review")
+      return '<span class="gwrap is-review" data-graded="review">'
+        + '<span class="gtxt">確認待ち</span></span>';
+    var 点 = (g.score === null) ? ""
+      : '<span class="gpt">' + esc(g.score) + (g.max !== null ? "/" + esc(g.max) : "") + "</span>";
+    return '<span class="gwrap" data-graded="' + g.kind + '">'
+      + 採点の印SVG(g.kind) + 点 + "</span>";
+  }
+
   function renderGridBlock(b) {
     var sl = b.sectionLabel || {};
     var h = '<div class="agb" data-block="' + esc(b.id) + '" data-section="' + esc(b.sectionId) + '"'
@@ -28871,6 +29237,8 @@
     var style = st.length ? ' style="' + st.join(";") + '"' : "";
     var data = (c.questionId ? ' data-question="' + esc(c.questionId) + '"' : "")
       + (c.answerBindingId ? ' data-binding="' + esc(c.answerBindingId) + '"' : "");
+    /* 採点済みなら、この欄の上へ 印と点を 重ねる（欄そのものは動かさない）。 */
+    var 印 = 採点の重ね(c.questionId, c.answerBindingId);
 
     switch (c.type) {
       case "question-label":
@@ -28878,29 +29246,29 @@
       case "fixed-label":
         return '<td class="agb-fx"' + span + style + data + ">" + esc(c.text || "") + "</td>";
       case "small-box":
-        return '<td class="agb-c"' + span + style + data + ">"
+        return '<td class="agb-c"' + span + style + data + ">" + 印
           + repeat(c.cells || 1, function () {
               return '<span class="agc agc-mark' + (c.cellStyle === "circle" ? " is-circle" : "") + '"'
                 + ' style="width:' + (c.widthMm || 16) + "mm;min-height:" + (c.heightMm || 9) + 'mm"></span>';
             }) + "</td>";
       case "box-sequence":
-        return '<td class="agb-c"' + span + style + data + '><span class="agc-seq">'
+        return '<td class="agb-c"' + span + style + data + ">" + 印 + '<span class="agc-seq">'
           + repeat(c.cells || 1, function () {
               return '<span class="agc-sq" style="width:' + (c.widthMm || 7)
                 + "mm;min-height:" + (c.heightMm || 9) + 'mm"></span>';
             }) + "</span></td>";
       case "wide-answer":
-        return '<td class="agb-c"' + span + style + data + ">"
+        return '<td class="agb-c"' + span + style + data + ">" + 印
           + repeat(c.cells || 1, function () {
               return '<span class="agc agc-wide" style="min-height:' + (c.heightMm || 10) + 'mm"></span>';
             }) + "</td>";
       case "lined-answer":
-        return '<td class="agb-c"' + span + style + data + '><span class="agc-lines">'
+        return '<td class="agb-c"' + span + style + data + ">" + 印 + '<span class="agc-lines">'
           + repeat(c.rows || 1, function () {
               return '<span class="agc-line" style="height:' + (c.heightMm || 9) + 'mm"></span>';
             }) + "</span></td>";
       case "merged-answer":
-        return '<td class="agb-c"' + span + style + data + '><span class="agc agc-wide"'
+        return '<td class="agb-c"' + span + style + data + ">" + 印 + '<span class="agc agc-wide"'
           + ' style="min-height:' + (c.heightMm || 11) + 'mm"></span></td>';
       case "spacer":
         return '<td class="agb-sp"' + span + style + "></td>";
@@ -29044,9 +29412,12 @@
   function renderAnswerArea(b, kind) {
     var inner = answerField(b);
     if (kind === "answer-sheet") {
+      /* 採点済みなら、この欄の上へ 印と点を 重ねる（2026-08-30）。
+         **欄そのものは動かさない**（罫線がずれると 書いた答えと 合わなくなる）。 */
+      var 印 = 採点の重ね(b.questionId, b.answerBindingId);
       return '<div class="as-row" data-binding="' + esc(b.answerBindingId) + '" data-question="' + esc(b.questionId) + '">'
         + '<div class="as-no">' + esc(b.number || "") + "</div>"
-        + '<div class="as-field">' + inner + "</div>"
+        + '<div class="as-field">' + inner + 印 + "</div>"
         + (b.points != null ? '<div class="as-pts">' + b.points + "</div>" : "")
         + "</div>";
     }
@@ -29121,9 +29492,18 @@
        1 つも届かない。だから数式は **SVG として本文に埋め込む**。
        rich() が参照記号を見つけて、ここから SVG を取り出す。 */
     数式表 = (spec && spec.__math) || null;
+    /* 採点済みの解答用紙。opts.graded があるときだけ 印と点を 書き込む。
+       数式表と同じで、**この 1 回のあいだだけ** 開く。 */
+    採点 = 採点表を作る(spec, opts.graded);
     var booklets = (plan.booklets || []).filter(function (b) { return !only || b.id === only; });
-    var body = booklets.map(function (b) { return renderBooklet(spec, plan, b); }).join("");
+    /* ★ 表紙は **問題冊子の先頭にだけ** 付ける（2026-08-30）。
+       解答用紙・解答例に付けると、解く人の手元が 1 枚ずつ増えてしまう。 */
+    var body = booklets.map(function (b) {
+      var 頭 = (b.kind === "question" && opts.cover !== false) ? renderCover(spec, plan) : "";
+      return 頭 + renderBooklet(spec, plan, b);
+    }).join("");
     数式表 = null;
+    採点 = null;
     return "<!doctype html><html lang=\"ja\"><head><meta charset=\"utf-8\">"
       + "<title>" + esc(spec.title || "試験") + "</title>"
       + "<style>" + pageCss(plan) + mathCss() + "</style></head><body>" + body
@@ -29223,6 +29603,31 @@
     var b = (plan.booklets || []).find(function (x) { return x.id === bookletId; });
     if (!b) return { ok: false, error: "NOT_FOUND" };
     return print(buildHtml(spec, plan, { bookletId: bookletId }), b.title);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     採点済みの解答用紙を出す（2026-08-30）
+
+     訴え:「ルミは解答用紙で採点し、丸バツ三角を表示させる。点数も入れる」
+     成績表を別に作らない。**答案そのものが返ってくる**形にする。
+     ══════════════════════════════════════════════════════════════════ */
+  function printGradedAnswerSheet(spec, plan, result) {
+    var b = (plan.booklets || []).filter(function (x) { return x.kind === "answer-sheet"; })[0];
+    if (!b) return { ok: false, error: "NO_ANSWER_SHEET" };
+    var html = buildHtml(spec, plan, { bookletId: b.id, graded: gradedOf(result) });
+    return print(html, (spec.title || "試験") + "（採点済み）");
+  }
+  /* 結果（result）を、紙面が読める形へそろえる。
+     ★ ここで点を計算し直さない。**結果に入っている数だけ**を渡す
+       （画面と紙で数が食い違う、をいちばん起こしやすいところ）。 */
+  function gradedOf(result) {
+    if (!result) return null;
+    return {
+      items: result.items || [],
+      totalScore: (typeof result.score === "number") ? result.score : null,
+      totalMax: (typeof result.maxScore === "number") ? result.maxScore : null,
+      aggregate: result.aggregate || null
+    };
   }
 
   function downloadArtifact(art) {
@@ -29340,6 +29745,8 @@
     print: print,
     printBooklet: printBooklet,
     printResultReport: printResultReport,
+    printGradedAnswerSheet: printGradedAnswerSheet,
+    gradedOf: gradedOf,
     downloadArtifact: downloadArtifact,
     adapter: adapter,
     adapters: adapters,
@@ -53943,6 +54350,12 @@
         + '<div class="vq2-top-actions">'
         + btn({ icon: "share", iconOnly: true, variant: "quiet", action: "share", aria: "共有", title: "FEED へ共有" })
         + btn({ icon: "print", iconOnly: true, variant: "quiet", action: "export", aria: "レポート", title: "レポートを出力" })
+        /* ★ 試験のときは **採点済みの解答用紙**を出せる（2026-08-30）。
+           成績表とは別。丸バツ三角と点が書き込まれた答案そのもの。 */
+        + (result.kind === "mock"
+            ? btn({ icon: "doc", iconOnly: true, variant: "quiet", action: "graded-sheet",
+                    aria: "採点済みの解答用紙", title: "採点済みの解答用紙を出す" })
+            : "")
         + "</div></div>";
     }
 
@@ -54445,6 +54858,7 @@
         else app.toast("共有機能が読み込まれていません。", "warning");
       });
       U.on(r, "click", '[data-act="export"]', function () { exportReport(); });
+    U.on(r, "click", '[data-act="graded-sheet"]', function () { 採点済みの解答用紙(); });
       U.on(r, "click", '[data-act="advice-retry"]', function () { runAdvice(); });
       /* 分析を開いたときに 1 回だけ作る（開かない人の端末を働かせない）。
          設定で自動生成を切っているときは、押されるまで作らない。 */
@@ -54479,6 +54893,32 @@
     function exportReport() {
       if (!VQ2.pdfRenderer) { app.toast("レポート機能が読み込まれていません。", "warning"); return; }
       VQ2.pdfRenderer.printResultReport({ result: result, questions: questions, preset: preset });
+    }
+
+    /* ══ 採点済みの解答用紙（2026-08-30）═══════════════════════════
+       訴え:「ルミは解答用紙で採点し、丸バツ三角を表示させる。点数も入れる」
+       成績表とは別に、**答案そのもの**を返す。
+       ★ 元の試験（MockSpec）が要る。無ければ **黙って別のものを出さない**。 */
+    function 採点済みの解答用紙() {
+      var R2 = VQ2.pdfRenderer, L2 = VQ2.layout;
+      if (!R2 || !L2 || !R2.printGradedAnswerSheet) {
+        app.toast("紙面の部品が読み込まれていません。", "warning"); return;
+      }
+      var mockId = result.mockId || result.presetId;
+      var rec = mockId && ST.mocks ? ST.mocks.get(mockId) : null;
+      var spec = rec && (rec.spec || rec);
+      if (!spec || !spec.sections) {
+        app.toast("元の試験が見つかりません（消されたか、別の端末で作られたものです）。", "warning");
+        return;
+      }
+      var plan;
+      try { plan = L2.buildPlan(spec); }
+      catch (e) { app.toast("紙面を組めませんでした。", "error"); return; }
+      var out = R2.printGradedAnswerSheet(spec, plan, result);
+      if (out && out.ok === false) {
+        app.toast(out.error === "NO_ANSWER_SHEET"
+          ? "この試験には解答用紙がありません。" : "解答用紙を出せませんでした。", "warning");
+      }
     }
 
     return app;
@@ -55094,9 +55534,33 @@
   function withSourcePolicy(prompt, settings) {
     var base = String(prompt == null ? "" : prompt);
     var ph = includePhraseFor(settings);
-    if (!ph) return base;
-    return base + "\n\n【資料のあつかい】" + ph + "ください。"
-      + "すべてのページを出題の候補にしてください。";
+    if (ph) {
+      base = base + "\n\n【資料のあつかい】" + ph + "ください。"
+        + "すべてのページを出題の候補にしてください。";
+    }
+    return withExamPolicy(base, settings);
+  }
+
+  /* ══ 試験の 標準は「頭を使う問題」（2026-08-30）══════════════════
+     訴え:「試験モードでは、プリセット作成よりも、さらに頭を使う問題を標準に。
+     ただの一問一答にだけは標準ではならないように」
+
+     ★ **「難しくしろ」とは 言わない。** それだと 語が 難しくなるだけで、
+       考えさせる 問題には ならない。**何を 問うかの 形**を 指す。
+     ★ 利用者が 自分で 形式や 難易度を 書いていれば そちらが 勝つ
+       （その ときは examStandard を 切る）。ここは あくまで 既定。 */
+  function withExamPolicy(base, settings) {
+    if (!settings || settings.examStandard !== true) return base;
+    return base + "\n\n【この試験の作りかた】"
+      + "単語や年号を 1 問 1 答で 答えるだけの 問題に 寄せないでください。"
+      + "次のような、考えて 書かせる 問題を 必ず 混ぜてください。\n"
+      + "・本文（または資料）の 空欄を 複数 補う 問題。"
+      + "語群から 選ばせるものと、語群なしで 自分で 書かせるものの 両方を 作ること。\n"
+      + "・「〜字以内で まとめよ」「筆者の 考えを 説明せよ」のように、"
+      + "字数を 指定して 書かせる 記述。\n"
+      + "・資料（図・表・グラフ・文章）を 読み取って 考えさせる 問題。\n"
+      + "・並べ替え・組み合わせなど、関係を 問う 問題。\n"
+      + "記述には 採点の 基準（何が 書けていれば 何点か）を 必ず 付けてください。";
   }
 
   /* ══════════════════════════════════════════════════════════
@@ -55676,7 +56140,37 @@
 
     var st = {
       step: "setup",         /* setup | blueprint | generating | review | artifacts */
-      settings: defaultSettings(),
+      /* ★ 入口（vq-make）が 表紙で 決めたものを 引き継ぐ（2026-08-30）。
+         同じことを 2 回 打たせない。渡って こなければ これまでどおり。 */
+      settings: (function () {
+        var d = defaultSettings();
+        /* ★ **試験の 標準は プリセットより 頭を使う**（2026-08-30・訴え）。
+           入口から 試験として 来たときだけ、既定の 形式を 入れ替える。
+           ・正誤（true_false）は 外す … いちばん 一問一答に なりやすい
+           ・複数穴埋め・記述・資料読解・並べ替え・組み合わせ を 既定で 入れる
+           ・4 択の 比率を 下げ、書かせる ぶんを 増やす
+           利用者が あとから 選び直せば そちらが 勝つ（ここは 出発点）。 */
+        if (o.kind === "exam" || (o.settings && o.settings.examStandard)) {
+          d.examStandard = true;
+          d.types = {
+            multiple_choice_single: true,
+            fill_blank: true,
+            short_answer: true,
+            long_answer: true,
+            source_analysis: true,
+            ordering: true,
+            matching: true
+          };
+          d.choiceRatio = 35;
+          d.writtenRatio = 35;
+        }
+        if (o.settings && typeof o.settings === "object") {
+          if (o.settings.title) d.title = String(o.settings.title).slice(0, 80);
+          if (o.settings.subject) d.subject = String(o.settings.subject).slice(0, 40);
+        }
+        if (o.cover && typeof o.cover === "object") d.cover = o.cover;
+        return d;
+      })(),
       attachments: [],
       attachBusy: false,
       /* 分割アップロード。資料を選んだ時点で送り始め、要求には ID だけを載せる。 */
@@ -57160,6 +57654,17 @@
          現在の形式のままなら layout は付けない（古い保存データと同じ形）。 */
       var lay = layoutFromSettings();
       if (lay) spec.layout = lay;
+
+      /* ★ 表紙（2026-08-30）。**試験は表紙から作る**ので、
+         入口（vq-make）が集めた表紙をそのまま載せる。
+         入口を通らずに開いたときは、いまの設定から最低限を組む
+         （教科・時間・満点は設定に在る。無いものは出さない）。 */
+      spec.cover = st.settings.cover || o.cover || {
+        examName: st.settings.title || spec.title,
+        subject: st.settings.subject || "",
+        examDate: "",
+        instructions: []
+      };
 
       /* 機械で直せる不備はここで直す（正誤の選択肢・正解の書き当て・採点基準）。
          直せないものは audit に残し、画面で伝える。 */
