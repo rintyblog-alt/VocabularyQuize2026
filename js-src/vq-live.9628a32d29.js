@@ -9441,8 +9441,8 @@
     var MB = null, ST2 = null, QM = null;
     try { MB = root.VQ2 && VQ2.mockBuilder; ST2 = root.VQ2 && VQ2.store;
           QM = root.VQ2 && VQ2.quickMock; } catch (e) {}
-    if (!MB || !MB.fromDraft || !ST2 || !ST2.mocks || !ST2.mocks.put)
-      return { だめ: "Quick Mock へ 渡せません。" };
+    if (!MB || !MB.fromDraft || !ST2 || !ST2.saveExam)
+      return { だめ: "試験へ 渡せません。" };
     var 題 = String(a.title || "").trim() || "カメラで読んだ問題の試験";
     /* Quick Mock の 下書きの形に そろえる（作りは 向こうが 決める）。 */
     var draft = {
@@ -9470,15 +9470,18 @@
     if (!spec || !spec.sections) return { だめ: "試験の形に できませんでした。**何も 作っていません。**" };
     spec.title = 題;
     try {
-      /* ★ 入れ物の口は save ではなく **put**（実測で 分かった。
-         save だと「そんな関数は 無い」で 落ちていた）。 */
-      var rec = ST2.mocks.put({ id: spec.id, title: 題, spec: spec },
-        { ownerId: ST2.currentOwnerId ? ST2.currentOwnerId() : "local" });
-      var id = (rec && rec.id) || spec.id;
+      /* ★ 器は preset（2026-08-30）。試験も プリセットの 一種として 置く。
+         前は ST.mocks.put だった。そのままだと 一覧にも 同期にも 乗らない。 */
+      var rec = ST2.saveExam(spec, { ownerId: ST2.currentOwnerId ? ST2.currentOwnerId() : "local" });
+      if (!rec || !rec.ok) {
+        return { だめ: "置けませんでした（" + String((rec && rec.message) || "").slice(0, 80) + "）"
+                   + "**何も 作っていません。**" };
+      }
+      var id = (rec.preset && rec.preset.id) || spec.id;
       if (QM && QM.open) QM.open({ mockId: id });
       st.拾い物 = [];
-      return { やった: "「" + 題 + "」を Quick Mock で 開きました（" + 箱.length + " 問）",
-               つぎ: "紙面や 配点は Quick Mock の画面で 直せます。"
+      return { やった: "「" + 題 + "」を 試験として 置きました（" + 箱.length + " 問）",
+               つぎ: "紙面や 配点は 試験の画面で 直せます。"
                  + "**そのままでは 配点も 紙面も 決まっていません。**" };
     } catch (e4) {
       return { だめ: "渡せませんでした（" + String(e4 && e4.message).slice(0, 80) + "）" };

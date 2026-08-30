@@ -1250,6 +1250,12 @@
     if (b) b.click();
   }
   function openMock() {
+    /* ★ 作るの 入口は 1 つ（2026-08-30）。まず vq-make（プリセット / 試験 を
+       選ぶ 1 枚）へ。ここだけ 旧 Quick Mock へ 行っていたので、
+       同じ「試験を 作る」でも 出る 画面が 違っていた。 */
+    try {
+      if (window.__vqMake && window.__vqMake.open) { window.__vqMake.open({ kind: "exam" }); return; }
+    } catch (e) {}
     try {
       if (window.VQ2 && VQ2.open && VQ2.open.quickMock) { VQ2.open.quickMock({}); return; }
     } catch (e) {}

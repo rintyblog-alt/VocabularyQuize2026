@@ -22887,6 +22887,12 @@
     { id: "math-work",     label: "数学・計算欄つき", profileId: "school-answer-math-work",   ready: true },
     { id: "english-boxes", label: "英語・連続マス", profileId: "school-answer-english",       ready: true },
     { id: "mark-sheet",    label: "マーク中心",     profileId: "school-answer-mark",          ready: true },
+    /* ★ 本物の 共通テストの マークシート（2026-08-30）。
+       A4 横・受験番号・解答科目・解答番号ごとに ⓪〜⑨ の 丸。
+       寸法は 実物と TeX の 再現（Qiita）から: 1 行 5.05mm、
+       番号の 欄 4.35mm、マークの 帯 67.5mm。 */
+    { id: "common-test-mark", label: "共通テスト・マークシート",
+      profileId: "exam-common-test-answer", ready: true },
     { id: "auto",          label: "AI おまかせ",    profileId: null, ready: true }
   ];
   /* ── 保存前の検証が見る ID の一覧 ───────────────────────────
@@ -23739,10 +23745,13 @@
         keepQuestionWithChoices: true, keepQuestionWithFigure: true
       },
 
-      /* ★ ここが共通テストらしさの芯。選択肢は丸数字。 */
+      /* ★ ここが共通テストらしさの芯。
+         ・丸数字は **⓪ から**（実物で 確かめた）
+         ・選択肢は 枠で 囲み、上の 線に ［セ］の解答群 の 札を 乗せる */
       choiceLayout: {
-        marker: "circled", variants: ["vertical", "two-column-short-only"],
-        twoColumnMaxChars: 14, fourColumnMaxChars: 6, indentMm: 7
+        marker: "circled-zero", variants: ["vertical", "two-column-short-only"],
+        twoColumnMaxChars: 14, fourColumnMaxChars: 6, indentMm: 7,
+        groupBox: true, groupTail: "の解答群"
       },
 
       figureRules: {
@@ -23757,8 +23766,21 @@
       answerCellRules: { inline: false },
       scoreArea: { onQuestionPaper: false },
       studentFields: [],
+
+      /* ★ 表紙は **本物の 共通テストの 組みかた**で 出す（2026-08-30）。
+         実物（情報 I100 の 問題冊子 1 ページ目・数学② の 表紙）を 見て 決めた:
+           ・いちばん上に 全幅の 枠 →「試験開始の指示があるまで、
+             この問題冊子の中を見てはいけません。」
+           ・中央に 教科名（字間を 大きく 空ける）＋ 丸数字
+           ・右上に 小さな 枠 → 満点 / 試験時間 の 2 行
+           ・Ⅰ 注意事項（番号つき。表を 入れられる）
+           ・Ⅱ 解答上の注意
+           ・下は 中央に「— 1 —」、右下に 冊子の 記号
+         ふつうの 表紙（cv-*）とは 別物なので、印で 切り替える。 */
+      coverStyle: "common-test",
+
       /* 解答はマークシート。既定の相手をはっきりさせておく。 */
-      defaultAnswerSheetMode: "mark-sheet",
+      defaultAnswerSheetMode: "common-test-mark",
       /* 解答番号は大問をまたいで 1 から続ける（共通テストの決まり）。 */
       answerNumbering: { continuous: true, label: "解答番号" },
 
@@ -24910,6 +24932,60 @@
     /* ── マーク中心 ──────────────────────────────────────────
        記号を丸で囲ませる答案。1 行に 3 問までまとめ、行を低くする。
        記述もまったく置けないわけではないが、面積は最小限になる。 */
+    /* ══ 共通テストの マークシート（2026-08-30）════════════════════
+       実物と、TeX で 再現した 記事（Qiita・KKTeX）から 寸法を とった。
+         用紙        A4 横
+         1 行の 高さ  5.05mm
+         番号の 欄    4.35mm
+         マークの 帯  67.5mm
+       ★ 中身（受験番号・氏名・解答科目・解答番号の 行）は 決まりきった 形。
+         **AI に 作らせない。** ここが 唯一の 出どころ。 */
+    "exam-common-test-answer": {
+      id: "exam-common-test-answer",
+      name: "共通テスト・マークシート",
+      documentType: "answer-sheet",
+      compatibleEngines: ["current"],
+      rendererSupport: { current: { level: "full",
+        honored: ["A4 横", "受験番号欄（縦積み）", "氏名欄", "解答科目欄",
+                  "解答番号ごとの ⓪〜⑨ のマーク", "1 行 5.05mm"],
+        pending: ["数学の − / a / b のマーク（いまは 0〜9 だけ）"] } },
+      supportedSubjects: ["汎用"],
+      supportedQuestionTypes: ["multiple_choice_single", "multiple_choice_multiple",
+                               "true_false", "fill_blank", "numeric"],
+      unsupportedQuestionTypes: {
+        long_answer: "マークシートに 記述の 欄は ありません。",
+        essay: "マークシートに 論述の 欄は ありません。",
+        english_writing: "マークシートに 英作文の 欄は ありません。",
+        short_answer: "マークシートは 記号を 塗るだけです。短答は 書けません。",
+        source_analysis: "マークシートに 記述の 欄は ありません。"
+      },
+      paper: { size: "A4", orientation: "landscape", writingDirection: "horizontal", spread: false },
+      margins: { top: 10, bottom: 10, left: 10, right: 10 },
+      typography: { bodyFamily: "gothic", headingFamily: "gothic",
+                    basePt: 7.5, minimumFontSize: 6, lineHeight: 1.2, numberStyle: "arabic" },
+      header: { showSubject: true, showGrade: false, showExamName: true, showDuration: false,
+                variants: ["top-bar"] },
+      sectionStyle: { marker: "{n}", rule: "thin", ruleWidthMm: 0.4, gapBeforeMm: 2, labelColumnMm: 8 },
+      subQuestionStyle: { markers: [], labelColumnMm: 8 },
+      questionFlow: { columns: 3, gapMmRange: [0, 0], keepSectionTogether: false },
+      choiceLayout: { variants: [] },
+      figureRules: { variants: [] },
+      answerCellRules: { inline: true, byType: {} },
+      scoreArea: { onAnswerSheet: false },
+      studentFields: [],
+      /* ★ これが 印。紙面の 側が この 値を 見て 本物の 形に 組む。 */
+      sheetStyle: "common-test-mark",
+      markSheet: {
+        rowHeightMm: 5.05, labelWidthMm: 4.35, markAreaWidthMm: 67.5,
+        rowsPerColumn: 30, columns: 3,
+        marks: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+        examineeDigits: 8, subjectColumn: true
+      },
+      variationRules: { spacing: ["standard"] },
+      safetyConstraints: { minFontPt: 6, minGapMm: 0, maxColumns: 3 },
+      version: "1.0.0"
+    },
+
     "school-answer-mark": {
       id: "school-answer-mark",
       name: "マーク中心",
@@ -27996,8 +28072,11 @@
        BLOCK_TYPES に 無いものを return している）。
        描くのは vq-fig.js。AI が 出すのは 数と 名前だけ。 */
     "chart", "diagram", "numberline", "svg",
+    /* 共通テストの 解答群（語群）。枠の 上に ［セ］の解答群 の 札が 乗る。 */
+    "answer-group",
     /* 紙面プロファイルを選んだときだけ使う部品。
        AI が指定できるのは相変わらずこの語彙の中だけ。 */
+    "ct-mark-sheet",
     "figure-group", "answer-grid-head", "answer-grid-section", "answer-grid-block",
     "answer-grid-legend", "answer-grid-foot",
     "answer-grid-total", "answer-grid-student",
@@ -28100,6 +28179,10 @@
         variants: lp.variants,
         typography: lp.typography,
         header: lprofile ? lprofile.header : null,
+        /* ★ 表紙の 組みかた（2026-08-30）。共通テスト風は まるごと 別の 組み。
+           ここへ 通していないと renderCover が ふつうの 表紙を 出す。 */
+        coverStyle: lprofile ? (lprofile.coverStyle || null) : null,
+        coverPlan: lp.coverPlan || null,
         notices: lp.notices
       };
       plan.questionGapMm = lp.questionGapMm;
@@ -28129,7 +28212,7 @@
         /* プロファイルの解答用紙が選ばれていればそちらを使う。
            選ばれていなければ、これまでの解答用紙をそのまま作る。 */
         blocks: (lp && lp.answerSheet)
-          ? profileAnswerSheetBlocks(spec, lp.answerSheet)
+          ? profileAnswerSheetBlocks(spec, lp.answerSheet, LP)
           : answerSheetBlocks(spec, tpl, tuning)
       });
     }
@@ -28190,7 +28273,7 @@
           blocks.push(figureGroupBlock(q, sec, pq, lprofile));
           /* 本文の左に選択肢まで入れる形（実画像の（ウ））のときは、
              選択肢は枠の中へ入れてあるので、ここでは出さない。 */
-          if ((q.choices || []).length && !pq.choicesInBody) blocks.push(choiceBlock(q, sec, pq));
+          if ((q.choices || []).length && !pq.choicesInBody) blocks.push(choiceBlock(q, sec, pq, lprofile));
           return;
         }
 
@@ -28216,7 +28299,7 @@
           showPoints: lprofile ? lprofile.subQuestionStyle.showPoints !== false : true
         });
 
-        if ((q.choices || []).length) blocks.push(choiceBlock(q, sec, pq));
+        if ((q.choices || []).length) blocks.push(choiceBlock(q, sec, pq, lprofile));
         /* 形式そのものの中身（並べる語・対応表・分類の箱・うめる表）。
            **これが無いと解けない紙になる。** */
         var body = formBodyBlock(q, sec);
@@ -28375,7 +28458,19 @@
 
   /* 選択肢のブロック。プロファイルが段数を決めていればそれに従う。
      決めていなければ、これまでどおり文字数から決める。 */
-  function choiceBlock(q, sec, pq) {
+  function choiceBlock(q, sec, pq, profile) {
+    /* ★ 共通テストは 選択肢を **解答群の 枠**で 出す（2026-08-30）。
+       枠の 上の 線を 切って ［セ］の解答群 の 札を 乗せる（実物の 組みかた）。
+       札は 設問が 持っている 空欄の 記号。無ければ 札は 出さず 枠だけ。 */
+    var cl = (profile && profile.choiceLayout) || null;
+    if (cl && cl.groupBox === true) {
+      return {
+        type: "answer-group", id: q.id + "-ag", questionId: q.id, sectionId: sec.id,
+        marker: 空欄の記号(q),
+        tailLabel: cl.groupTail || "の解答群",
+        items: q.choices.map(function (c) { return String(c.text == null ? "" : c.text); })
+      };
+    }
     return {
       type: "choices", id: q.id + "-ch", questionId: q.id, sectionId: sec.id,
       /* 記号はプロファイルが決める。選ばれていなければ、これまでどおり丸数字。 */
@@ -28424,8 +28519,49 @@
     };
   }
 
-  /* 選択肢の記号。実画像は「1.」。丸数字はプロファイルが指定したときだけ。 */
+  /* この設問が 指している 空欄の 記号（ア イ ウ …）。
+     本文に 【ア】 と 書いてあれば それ。無ければ 札は 出さない
+     （勝手な 記号を 作ると、本文と 解答群が 食い違う）。 */
+  function 空欄の記号(q) {
+    var m = String((q && q.prompt) || "").match(/[【\[]([ア-ンA-Za-z0-9]{1,4})[】\]]/);
+    return m ? m[1] : "";
+  }
+
+  /* ══ 共通テストの マークシート 1 枚ぶん ═══════════════════════════
+     行の 数は **解答番号の 数**（＝設問の 数）で 決める。
+     余った 行も 出す（本物は 30 行 × 3 列で 決まっている）。 */
+  function マークシートの枠(spec, ms) {
+    var 番 = [];
+    (spec.sections || []).forEach(function (sec) {
+      (sec.questions || []).forEach(function () { 番.push(番.length + 1); });
+    });
+    /* 行の 数は **解答番号の 数**で 決め、列の 切りの よい ところまで 伸ばす。
+       いつも 60 行 出すと、8 問の 試験でも 空の 丸が 52 行 並ぶ。
+       本物は 決まった 枚数だが、こちらは 刷って 使うので 短いほうが よい。 */
+    var 毎 = ms.rowsPerColumn || 30;
+    var 全 = Math.max(毎, Math.ceil(Math.max(1, 番.length) / 毎) * 毎);
+    return {
+      type: "ct-mark-sheet", id: "ct-ms",
+      examName: spec.title || "", subject: spec.subject || "",
+      rows: 全, used: 番.length,
+      rowsPerColumn: ms.rowsPerColumn || 30,
+      columns: ms.columns || 3,
+      marks: ms.marks || ["0","1","2","3","4","5","6","7","8","9"],
+      examineeDigits: ms.examineeDigits || 8,
+      subjectColumn: ms.subjectColumn !== false,
+      rowHeightMm: ms.rowHeightMm || 5.05,
+      labelWidthMm: ms.labelWidthMm || 4.35,
+      markAreaWidthMm: ms.markAreaWidthMm || 67.5
+    };
+  }
+
+  /* 選択肢の記号。実画像は「1.」。丸数字はプロファイルが指定したときだけ。
+     ★ 共通テストの 丸数字は **⓪ から**（① からでは ない）。実物で 確かめた
+       （情報 I100 の 解答群は ⓪①②③④⑤⑥⑦）。circled-zero で 切り替える。 */
+  var CIRC_ZERO = ["\u24EA", "\u2460", "\u2461", "\u2462", "\u2463", "\u2464",
+                   "\u2465", "\u2466", "\u2467", "\u2468", "\u2469", "\u246A"];
   function choiceLabel(marker, i) {
+    if (marker === "circled-zero") return CIRC_ZERO[i] || ("(" + i + ")");
     if (marker === "circled") return circled(i + 1);
     if (marker === "alpha") return String.fromCharCode(65 + i);
     return (i + 1) + ".";
@@ -28434,7 +28570,20 @@
   /* ── プロファイルの解答用紙 ──────────────────────────────────
      問題形式から作った行を、そのまま罫線の表として並べる。
      欄の数は Planner が設問の数と一致させている（検証でも確かめる）。 */
-  function profileAnswerSheetBlocks(spec, sheet) {
+  function profileAnswerSheetBlocks(spec, sheet, LP) {
+    /* ★ 本物の 共通テストの マークシートは、罫線の 表とは まるで 別物
+       （受験番号を 縦に 積み、解答番号ごとに ⓪〜⑨ の 丸が 並ぶ）。
+       ここで 1 枚ぶんの 決まりきった 形を 作る。AI には 作らせない。 */
+    var prof = null;
+    try { prof = LP && LP.getProfile ? LP.getProfile(sheet.answerSheetProfileId || sheet.profileId) : null; } catch (e) {}
+    if (!prof && LP && LP.getProfile) {
+      try { prof = LP.getProfile("exam-common-test-answer"); } catch (e) {}
+      if (prof && sheet.sheetStyle !== "common-test-mark") prof = null;
+    }
+    var ms = (prof && prof.sheetStyle === "common-test-mark") ? prof.markSheet
+           : (sheet.sheetStyle === "common-test-mark" ? sheet.markSheet : null);
+    if (ms) return [マークシートの枠(spec, ms)];
+
     var blocks = [{
       type: "answer-grid-head", id: "asg-head",
       variant: (sheet.variants && sheet.variants.header) || "top-bar",
@@ -28771,6 +28920,20 @@
     } else {
       h = h.replace(/\^\^([0-9A-Za-z]{1,4})\^\^/g, "$1");
     }
+    /* ══ 穴埋め枠（共通テスト・2026-08-30）══════════════════════
+       本文に 【ア】 / 【アイ】 / [ア] と 書いてあれば 四角い 枠に する。
+       本物の 組みかた（TeX の 作法に そろえた）:
+         ・枠と 字の 間は 1pt
+         ・初めて 出る 枠は 太く（1pt）、同じ 記号が 2 度目からは 細く（0.4pt）
+         ・2 字までは 決まった 幅、3 字以上は 中身なりの 幅
+       ★ 記号を 勝手に 作らない。**書いてあるものだけ** 枠に する。 */
+    var 出た = Object.create(null);
+    h = h.replace(/[【\[]([ア-ンA-Za-z0-9]{1,4})[】\]]/g, function (m, k) {
+      var 二度目 = !!出た[k];
+      出た[k] = 1;
+      var cls = "bx" + (二度目 ? " is-again" : "") + (k.length >= 2 ? " is-wide" : "");
+      return '<span class="' + cls + '">' + k + "</span>";
+    });
     h = h.replace(/_{3,}/g, '<span class="blank"></span>');
     h = h.replace(/\n/g, "<br>");
     /* ★ いちばん最後に 数式を差し込む。**エスケープのあと**でないと
@@ -29107,6 +29270,119 @@
       "}",
       "@media print { body { background: #fff; padding: 0; } .page { box-shadow: none; margin: 0; width: auto; min-height: 0; padding: 0; } }",
 
+      /* ══ 共通テスト風（2026-08-30）══════════════════════════
+         実物（情報 I100 の 冊子・数学② の 表紙）を 見て 数値を 決めた。
+         ★ 線は 0.4pt 以上（それ 未満は 印刷で 消える）。
+         ★ 枠と 中身の 間は 1pt（TeX の \fboxsep 1pt に そろえた）。 */
+      /* 表紙 */
+      ".ct-cover { font-family: " + MINCHO + "; font-size: " + base + "pt; line-height: 1.75; }",
+      ".ct-seal { border: 0.8pt solid #000; padding: 2.2mm 3mm; margin: 0 0 12mm;",
+      "           font-size: " + (base - 0.5) + "pt; }",
+      ".ct-titlebar { position: relative; min-height: 16mm; margin: 0 0 6mm; }",
+      ".ct-title { text-align: center; font-family: " + MINCHO + "; font-weight: 700;",
+      "            font-size: " + (base + 8) + "pt; padding-right: 24mm; }",
+      /* 教科名は 1 字ずつ 大きく 空ける（本物は「数　学」）。 */
+      ".ct-sp { letter-spacing: .5em; margin-right: -.5em; }",
+      ".ct-no { font-size: " + (base + 6) + "pt; margin-left: .5em; letter-spacing: normal; }",
+      ".ct-sub { font-size: " + (base + 0.5) + "pt; font-weight: 400; margin-left: 1.2em;",
+      "          letter-spacing: normal; }",
+      /* 満点・時間の 小さな 枠は 右上。 */
+      ".ct-pts { position: absolute; right: 0; top: 0; border: 0.8pt solid #000;",
+      "          padding: 1.5mm 3mm; text-align: center; font-size: " + (base - 0.5) + "pt;",
+      "          line-height: 1.5; min-width: 14mm; }",
+      ".ct-lead { margin: 0 0 7mm; text-indent: 1em; font-size: " + (base - 0.5) + "pt; }",
+      ".ct-h { font-family: " + GOTHIC + "; font-weight: 700; margin: 7mm 0 3mm;",
+      "        font-size: " + (base + 0.5) + "pt; }",
+      ".ct-ol { margin: 0 0 0 6mm; padding: 0; list-style: none; counter-reset: ctn; }",
+      ".ct-ol > li { counter-increment: ctn; position: relative; padding-left: 6mm;",
+      "              margin: 0 0 2.5mm; font-size: " + (base - 0.5) + "pt; }",
+      ".ct-ol > li::before { content: counter(ctn) '.'; position: absolute; left: 0; }",
+      ".ct-p { margin: 0 0 0 6mm; text-indent: 1em; font-size: " + (base - 0.5) + "pt; }",
+      /* 注意事項の 中の 表。 */
+      ".ct-tb { border-collapse: collapse; margin: 2.5mm 0 3mm; font-size: " + (base - 1) + "pt; }",
+      ".ct-tb th, .ct-tb td { border: 0.5pt solid #000; padding: 1.2mm 3mm; text-align: center; }",
+      ".ct-tb th { font-weight: 400; }",
+      ".ct-fields { display: flex; gap: 6mm; margin: 12mm 0 0; }",
+      ".ct-f { display: flex; align-items: flex-end; gap: 2mm; flex: 1 1 auto;",
+      "        font-size: " + (base - 0.5) + "pt; }",
+      ".ct-f > i { display: block; border-bottom: 0.6pt solid #000; height: 7mm; flex: 1 1 auto; }",
+      ".ct-foot { position: absolute; left: 0; right: 0; bottom: 0; text-align: center;",
+      "           font-size: " + (base - 1.5) + "pt; }",
+      ".ct-pg { }",
+      ".ct-code { position: absolute; right: 0; bottom: 0; }",
+      "@media print { .ct-cover { position: relative; min-height: 100%; } }",
+      ".ct-cover { position: relative; min-height: " + Math.max(120, p.heightMm - m.top - m.bottom - 8) + "mm; }",
+
+      /* ══ 解答群（語群）════════════════════════════════════════
+         本物は「枠の 上の 線を 切って、そこに ［セ］の解答群 の 札を 置く」。
+         札の 左右だけ 線を 引き、真ん中を 空けて 札を 乗せる。 */
+      ".agr { position: relative; border: 0.6pt solid #000; padding: 5mm 4mm 3.5mm;",
+      "       margin: 3mm 0 4mm; break-inside: avoid; page-break-inside: avoid; }",
+      ".agr-t { position: absolute; top: 0; left: 8mm; transform: translateY(-50%);",
+      "         background: #fff; padding: 0 2mm; display: inline-flex; align-items: center;",
+      "         gap: 1.5mm; font-size: " + (base - 0.5) + "pt; white-space: nowrap; }",
+      ".agr-k { display: inline-block; border: 0.8pt solid #000; padding: 0.3mm 2.2mm;",
+      "         min-width: 6mm; text-align: center; font-family: " + GOTHIC + "; }",
+      ".agr-l { display: grid; gap: 1.5mm 3mm; }",
+      ".agr-l.c4 { grid-template-columns: repeat(4, 1fr); }",
+      ".agr-l.c3 { grid-template-columns: repeat(3, 1fr); }",
+      ".agr-l.c2 { grid-template-columns: repeat(2, 1fr); }",
+      ".agr-l.c1 { grid-template-columns: 1fr; }",
+      ".agr-i { display: flex; align-items: flex-start; gap: 2mm;",
+      "         font-size: " + (base - 0.5) + "pt; line-height: 1.75; }",
+      ".agr-m { flex: 0 0 auto; font-family: " + GOTHIC + "; }",
+
+      /* ══ 共通テストの マークシート ════════════════════════════
+         寸法は プロファイルが 持ち、--ms-* で 入ってくる
+         （1 行 5.05mm ／ 番号の 欄 4.35mm ／ マークの 帯 67.5mm）。 */
+      ".ms { font-family: " + GOTHIC + "; font-size: 7.5pt; line-height: 1.15; }",
+      ".ms-top { display: flex; gap: 3mm; align-items: stretch; margin: 0 0 3mm; }",
+      ".ms-bx { border: 0.6pt solid #000; padding: 1.2mm 1.6mm; }",
+      ".ms-bt { font-size: 6.5pt; margin-bottom: 0.8mm; }",
+      ".ms-sub { border: 0.4pt solid #000; min-width: 22mm; height: 6mm; line-height: 6mm;",
+      "          text-align: center; font-size: 8pt; }",
+      ".ms-note { font-size: 5.5pt; margin-top: 0.8mm; }",
+      ".ms-ex { flex: 0 0 auto; }",
+      ".ms-exg { display: flex; gap: 1mm; }",
+      ".ms-exc { display: flex; flex-direction: column; align-items: center; gap: 0.3mm; }",
+      ".ms-exh { width: 5mm; height: 5mm; border: 0.4pt solid #000; margin-bottom: 0.6mm; }",
+      /* 塗る 丸。線だけで 描く（塗りは 印刷で 潰れる）。 */
+      ".ms-o { display: inline-flex; align-items: center; justify-content: center;",
+      "        width: 4.6mm; height: 2.8mm; border: 0.4pt solid #000; border-radius: 999px;",
+      "        font-size: 5pt; }",
+      ".ms-nm { flex: 1 1 auto; display: flex; flex-direction: column; }",
+      ".ms-nml { border-bottom: 0.5pt solid #000; height: 8mm; margin-bottom: 1.5mm; }",
+      ".ms-nmv { font-size: 8pt; }",
+      ".ms-cols { display: flex; gap: 4mm; align-items: flex-start; }",
+      ".ms-col { border: 0.6pt solid #000; }",
+      ".ms-ch { display: flex; border-bottom: 0.6pt solid #000; font-size: 6pt; text-align: center; }",
+      ".ms-ch > span:first-child { flex: 0 0 var(--ms-l); border-right: 0.4pt solid #000;",
+      "                            padding: 0.6mm 0; line-height: 1.1; }",
+      ".ms-ch > span:last-child { flex: 0 0 var(--ms-w); padding: 1.2mm 0; letter-spacing: .4em; }",
+      ".ms-r { display: flex; height: var(--ms-h); align-items: center;",
+      "        border-bottom: 0.3pt solid #000; }",
+      ".ms-r:last-child { border-bottom: 0; }",
+      ".ms-n { flex: 0 0 var(--ms-l); text-align: center; font-size: 6pt;",
+      "        border-right: 0.4pt solid #000; align-self: stretch; line-height: var(--ms-h); }",
+      ".ms-m { flex: 0 0 var(--ms-w); display: flex; justify-content: space-around;",
+      "        align-items: center; }",
+      ".ms-m > i { display: inline-flex; align-items: center; justify-content: center;",
+      "            width: 4.4mm; height: 2.6mm; border: 0.4pt solid #000; border-radius: 999px;",
+      "            font-style: normal; font-size: 5pt; }",
+      /* 使っていない 行は 薄くしない（本物は 全部 同じ）。印だけ 付ける。 */
+      ".ms-r.is-spare .ms-n { color: #000; }",
+
+      /* ══ 穴埋め枠（アイウエ）════════════════════════════════
+         TeX の 作法に そろえた: 枠と 字の 間 1pt、
+         初めて 出るときは 太く（1pt）、2 度目からは 細く（0.4pt）。 */
+      ".bx { display: inline-block; border: 1pt solid #000; padding: 0 1pt;",
+      "      min-width: 5.4mm; text-align: center; line-height: 1.5;",
+      "      font-family: " + GOTHIC + "; letter-spacing: .12em; margin: 0 .15em;",
+      "      vertical-align: baseline; }",
+      ".bx.is-again { border-width: 0.4pt; }",
+      ".bx.is-wide { min-width: 10.8mm; }",
+      ".bx.is-sup { font-size: .78em; min-width: 3.6mm; }",
+
       /* 資料（図・グラフ・図形・表）の 見た目は vq-fig.js が 持つ。
          描く所と 見た目を 別々に すると 必ず ずれるので、同じ 所から 取る。 */
       資料のCSS()
@@ -29201,11 +29477,121 @@
     return h;
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     共通テスト風の 表紙（2026-08-30）
+
+     実物を 見て 組んだ。参考にしたのは
+       ・情報 I100 の 問題冊子 1 ページ目（PDF）
+       ・数学② の 表紙（画像）
+     ★ **無い 値は 出さない。** 空の 枠を 並べて「あるように」見せない。
+     ★ 注意事項の 中に 表を 入れられる（出題科目 / ページ / 選択方法）。
+     ══════════════════════════════════════════════════════════════════ */
+  var CT_開封 = "試験開始の指示があるまで、この問題冊子の中を見てはいけません。";
+  var CT_解答上 = "解答上の注意は、裏表紙に記載してあります。問題冊子を裏返して必ず読みなさい。";
+
+  function 共通テストの表紙(spec, c, plan) {
+    var cv = (spec && spec.cover) || {};
+    var h = '<div class="page" data-cover="1"><div class="sheet ct-cover">';
+
+    /* ① いちばん上の 枠。ここは **必ず 出す**（本物は 例外なく ある）。 */
+    h += '<div class="ct-seal">' + esc(cv.openNote || CT_開封) + "</div>";
+
+    /* ② 題名の 段。中央に 教科名、右に 満点と 時間の 小さな 枠。 */
+    var 番 = 文2(cv.paperNumber || "");          /* ①②… 冊子の 番号 */
+    var 副 = 文2(cv.subjectDetail || "");        /* 『情報Ⅰ』『数学Ⅱ，数学B，数学C』 */
+    var 名 = c.subject || c.examName || "";
+    h += '<div class="ct-titlebar">'
+      + '<div class="ct-title">' + 字間(名)
+      + (番 ? '<span class="ct-no">' + esc(番) + "</span>" : "")
+      + (副 ? '<span class="ct-sub">' + esc(副) + "</span>" : "")
+      + "</div>";
+    if (c.totalPoints || c.duration) {
+      h += '<div class="ct-pts">'
+        + (c.totalPoints ? "<div>" + esc(c.totalPoints) + "</div>" : "")
+        + (c.duration ? "<div>" + esc(c.duration) + "</div>" : "")
+        + "</div>";
+    }
+    h += "</div>";
+
+    /* ③ リード文（あれば）。 */
+    if (cv.lead) h += '<div class="ct-lead">' + esc(cv.lead) + "</div>";
+
+    /* ④ Ⅰ 注意事項。番号つき。表を 挟める。 */
+    var 注 = c.instructions || [];
+    if (注.length || cv.noticeTable) {
+      h += '<div class="ct-h">' + 字間("Ⅰ　注意事項") + "</div>";
+      h += '<ol class="ct-ol">';
+      注.forEach(function (t, i) {
+        h += "<li>" + esc(t);
+        /* 表は「何番目の 注意の 下に 置くか」で 指す（既定は 1 つ目）。 */
+        var tb = cv.noticeTable;
+        if (tb && (Number(tb.after || 1) - 1) === i) h += 注意の表(tb);
+        h += "</li>";
+      });
+      if (!注.length && cv.noticeTable) h += "<li>" + 注意の表(cv.noticeTable) + "</li>";
+      h += "</ol>";
+    }
+
+    /* ⑤ Ⅱ 解答上の注意。 */
+    var 解 = Array.isArray(cv.answerNotes) ? cv.answerNotes.map(文2).filter(Boolean) : [];
+    if (解.length || cv.answerNotesText !== false) {
+      h += '<div class="ct-h">' + 字間("Ⅱ　解答上の注意") + "</div>";
+      if (解.length) {
+        h += '<ol class="ct-ol">';
+        解.forEach(function (t) { h += "<li>" + esc(t) + "</li>"; });
+        h += "</ol>";
+      } else {
+        h += '<p class="ct-p">' + esc(cv.answerNotesText || CT_解答上) + "</p>";
+      }
+    }
+
+    /* ⑥ 記入欄（本物の 表紙には 無いが、校内の 模試では 要る）。
+       表紙に 欄を 求めた ときだけ 出す。 */
+    if ((c.studentFields || []).length && cv.studentFieldsOnCover === true) {
+      h += '<div class="ct-fields">';
+      c.studentFields.forEach(function (f) {
+        h += '<span class="ct-f">' + esc(f) + "<i></i></span>";
+      });
+      h += "</div>";
+    }
+
+    /* ⑦ 下。中央に ページ、右に 冊子の 記号。 */
+    h += '<div class="ct-foot"><span class="ct-pg">— 1 —</span>'
+      + (cv.bookletCode ? '<span class="ct-code">' + esc(cv.bookletCode) + "</span>" : "")
+      + "</div>";
+    return h + "</div></div>";
+  }
+
+  function 文2(v) { return String(v == null ? "" : v); }
+  /* 教科名は 1 字ずつ 空ける（本物は「数　学」のように 大きく 空いている）。 */
+  function 字間(t) {
+    return '<span class="ct-sp">' + esc(文2(t)) + "</span>";
+  }
+  function 注意の表(tb) {
+    var 頭 = Array.isArray(tb.header) ? tb.header : ["出題科目", "ページ", "選択方法"];
+    var 行 = Array.isArray(tb.rows) ? tb.rows : [];
+    if (!行.length) return "";
+    var h = '<table class="ct-tb"><tr>';
+    頭.forEach(function (x) { h += "<th>" + esc(字を割る(x)) + "</th>"; });
+    h += "</tr>";
+    行.forEach(function (r) {
+      h += "<tr>";
+      (Array.isArray(r) ? r : [r]).forEach(function (x) { h += "<td>" + esc(x) + "</td>"; });
+      h += "</tr>";
+    });
+    return h + "</table>";
+  }
+  /* 「出 題 科 目」のように 見出しの 字を 割る（本物の 組みかた）。 */
+  function 字を割る(t) { return String(t == null ? "" : t).split("").join(" "); }
+
   function renderCover(spec, plan) {
     var c = coverDataOf(spec, plan);
     if (!c) return "";
     /* 名前も教科も日付も無いなら、表紙にする中身が無い。出さない。 */
     if (!c.examName && !c.subject && !c.instructions.length) return "";
+    /* 共通テスト風は 組みかたが まるごと 違う。 */
+    var style = (plan && plan.layoutProfile && plan.layoutProfile.coverStyle) || "";
+    if (style === "common-test") return 共通テストの表紙(spec, c, plan);
     var h = '<div class="page" data-cover="1"><div class="sheet cover">';
     h += '<div class="cv-head">';
     if (c.examName) h += '<div class="cv-title">' + esc(c.examName) + "</div>";
@@ -29408,6 +29794,12 @@
           + (b.caption ? '<div class="src-cap">' + esc(b.caption) + "</div>" : "") + "</div>";
       }
 
+      /* ══ 解答群（語群）━ 共通テスト（2026-08-30）════════════════
+         本物は 枠の 上の 線を 切って ［セ］の解答群 の 札を 乗せる。
+         選択肢は 丸数字（⓪ から）。短い ものは 4 列、長い ものは 1 列。 */
+      case "answer-group":
+        return renderAnswerGroup(b, vertical);
+
       case "table":
         return renderTable(b);
 
@@ -29495,6 +29887,8 @@
       /* ── 紙面プロファイルを選んだときだけ出る部品 ────────────── */
       case "figure-group":
         return renderFigureGroup(b, vertical);
+      case "ct-mark-sheet":
+        return renderCtMarkSheet(b);
       case "answer-grid-head":
         return renderGridHead(b);
       case "answer-grid-section":
@@ -29765,6 +30159,58 @@
 
   /* ── 罫線型の解答用紙 ────────────────────────────────────────
      問題数と形式から毎回組み立てる。固定の画像は使わない。 */
+  /* ══ 共通テストの マークシート ═══════════════════════════════════
+     実物の 作り:
+       上   … 解答科目 の 欄 ／ 受験番号（数字を 縦に 積んで 塗る）／ 氏名
+       本体 … 解答番号ごとに 1 行。左に 番号、右に ⓪〜⑨ の 丸。
+               30 行で 1 列。列を 横に 並べる。
+     ★ 寸法は プロファイルが 持つ（1 行 5.05mm など）。ここで 決めない。 */
+  function renderCtMarkSheet(b) {
+    var 丸 = b.marks || ["0","1","2","3","4","5","6","7","8","9"];
+    var 列数 = Math.max(1, b.columns || 3);
+    var 行毎 = Math.max(1, b.rowsPerColumn || 30);
+    var 全 = Math.max(1, b.rows || 30);
+
+    var h = '<div class="ms" style="--ms-h:' + b.rowHeightMm + "mm;--ms-l:" + b.labelWidthMm
+      + "mm;--ms-w:" + b.markAreaWidthMm + 'mm">';
+
+    /* ── 上の 帯 ─────────────────────────────────────── */
+    h += '<div class="ms-top">';
+    if (b.subjectColumn) {
+      h += '<div class="ms-bx"><div class="ms-bt">解答科目</div>'
+        + '<div class="ms-sub">' + esc(b.subject || "") + "</div>"
+        + '<div class="ms-note">※ 解答する科目を1つマークしなさい。</div></div>';
+    }
+    /* 受験番号。桁ごとに 0〜9 を 縦に 積む（本物の 形）。 */
+    h += '<div class="ms-bx ms-ex"><div class="ms-bt">受験番号</div><div class="ms-exg">';
+    for (var d = 0; d < (b.examineeDigits || 8); d++) {
+      h += '<div class="ms-exc"><div class="ms-exh"></div>';
+      for (var v = 0; v <= 9; v++) h += '<span class="ms-o">' + v + "</span>";
+      h += "</div>";
+    }
+    h += "</div></div>";
+    h += '<div class="ms-bx ms-nm"><div class="ms-bt">氏名</div><div class="ms-nml"></div>'
+      + '<div class="ms-bt">試験名</div><div class="ms-nmv">' + esc(b.examName || "") + "</div></div>";
+    h += "</div>";
+
+    /* ── 解答番号の 行 ─────────────────────────────────── */
+    h += '<div class="ms-cols">';
+    for (var c = 0; c < 列数; c++) {
+      var 始 = c * 行毎 + 1;
+      if (始 > 全) break;
+      h += '<div class="ms-col"><div class="ms-ch"><span>解答<br>番号</span><span>解　答　欄</span></div>';
+      for (var r = 始; r < 始 + 行毎 && r <= 全; r++) {
+        h += '<div class="ms-r' + (r > b.used ? " is-spare" : "") + '">'
+          + '<span class="ms-n">' + r + '</span><span class="ms-m">';
+        丸.forEach(function (x) { h += '<i>' + esc(x) + "</i>"; });
+        h += "</span></div>";
+      }
+      h += "</div>";
+    }
+    h += "</div>";
+    return h + "</div>";
+  }
+
   function renderGridHead(b) {
     return '<div class="agh' + (b.variant === "top-bar-with-rule" ? " is-ruled" : "") + '" data-block="' + esc(b.id) + '">'
       + '<div class="agh-l">'
@@ -29845,6 +30291,49 @@
       if (!F || typeof F.描く !== "function") return "";
       return String(F.描く(b) || "");
     } catch (e) { return ""; }
+  }
+
+  /* 丸数字。共通テストは **⓪ から** 始まる（① からでは ない）。 */
+  var CIRC0 = ["\u24EA", "\u2460", "\u2461", "\u2462", "\u2463", "\u2464",
+               "\u2465", "\u2466", "\u2467", "\u2468", "\u2469", "\u246A"];
+  function 丸数字(i) { return CIRC0[i] || ("(" + (i) + ")"); }
+  /* 見た目の 幅。全角は 2、半角は 1 で 数える。 */
+  function 幅を数える(t) {
+    var s2 = String(t == null ? "" : t), n = 0;
+    for (var i = 0; i < s2.length; i++) {
+      n += /[\u0020-\u007e\uff61-\uff9f]/.test(s2[i]) ? 1 : 2;
+    }
+    return n;
+  }
+
+  function renderAnswerGroup(b, vertical) {
+    var items = (b.items || b.choices || []).map(function (x) {
+      return (x && typeof x === "object") ? String(x.text || x.label || "") : String(x == null ? "" : x);
+    }).filter(function (x) { return x !== ""; }).slice(0, 12);
+    if (!items.length) return "";
+    /* 列の 数は 中身の 長さで 決める。長い 文を 4 列に すると 読めない。 */
+    /* 列の 数。実物（情報 I100 の 解答群）で 数えた:
+         「A / C / Q / a」 1 字      → 4 列
+         「0111011」    7 字        → 4 列
+         「文字コードの上位3ビットが101である」 → 1 列
+       全角は 2 字ぶんの 幅を とるので、幅で 数える。 */
+    var 最長 = 0;
+    items.forEach(function (t) { var w = 幅を数える(t); if (w > 最長) 最長 = w; });
+    var 列 = 最長 <= 9 ? 4 : (最長 <= 20 ? 2 : 1);
+    if (items.length <= 2) 列 = Math.min(列, 2);
+    if (items.length === 3) 列 = Math.min(列, 3);
+    var 札 = String(b.marker || b.label || "");
+    var h = '<div class="agr" data-block="' + esc(b.id || "") + '">';
+    if (札) {
+      h += '<div class="agr-t"><span class="agr-k">' + esc(札) + "</span>"
+        + esc(b.tailLabel || "の解答群") + "</div>";
+    }
+    h += '<div class="agr-l c' + 列 + '">';
+    items.forEach(function (t, i) {
+      h += '<div class="agr-i"><span class="agr-m">' + 丸数字(i) + "</span>"
+        + "<span>" + rich(t, vertical) + "</span></div>";
+    });
+    return h + "</div></div>";
   }
 
   function renderTable(b) {
@@ -65003,7 +65492,14 @@
     },
     quickMock: function (o) {
       if (!F.isOn("quickMockV2")) return warnOff("quickMockV2");
-      return VQ2.quickMock.open(o || {});
+      o = o || {};
+      /* ★ **新しく 作る**ときは vq-make へ（2026-08-30）。
+         すでに ある 試験を 開き直す（mockId）・作成中を 見る（genRunId）は
+         まだ こちらにしか 無いので、そのときは 旧い 作業場を 開く。 */
+      if (!o.mockId && !o.genRunId && !o.spec) {
+        try { if (root.__vqMake && root.__vqMake.open) return root.__vqMake.open({ kind: "exam" }); } catch (e) {}
+      }
+      return VQ2.quickMock.open(o);
     },
     exam: function (o) {
       if (!F.isOn("quickMockDigitalExam")) return warnOff("quickMockDigitalExam");

@@ -228,7 +228,29 @@ const 試験を置く = () => {
     }
   }
 
-  節("④ 赤い字（例外）");
+  節("④ 旧い 作業場でも 同じ 試験が 開ける（器を 変えても 落とさない）");
+  {
+    /* CBT を 閉じてから。 */
+    await page.evaluate(() => {
+      const h = [...document.querySelectorAll("[id^='vq2-']")].filter((e) => /exam-workspace/.test(e.id))[0];
+      if (h && h.__vq2 && h.__vq2.forceClose) h.__vq2.forceClose("test");
+    });
+    await 待(800);
+    const 旧 = await page.evaluate(async () => {
+      if (!window.VQ2.quickMock || !window.VQ2.quickMock.open) return { なし: true };
+      window.VQ2.quickMock.open({ mockId: "cbt-test-1" });
+      await new Promise((r) => setTimeout(r, 1200));
+      const h = [...document.querySelectorAll("[id^='vq2-']")].filter((e) => /quick-mock|mock/.test(e.id))[0];
+      const sr = h && h.shadowRoot;
+      const 文 = sr ? (sr.textContent || "").replace(/\s+/g, " ") : "";
+      return { 開いた: !!sr, 題: /CBT の たしかめ/.test(文), 大問: /大問/.test(文),
+               先頭: 文.slice(0, 120) };
+    });
+    見(!旧.なし && 旧.開いた, "旧い 作業場が 開く（消していない）", JSON.stringify(旧).slice(0, 200));
+    見(!!旧.題, "★ preset に 移した 試験が **旧い 画面でも 読める**", 旧.先頭);
+  }
+
+  節("⑤ 赤い字（例外）");
   見(例外.length === 0, "例外が 出ていない", 例外);
 
   await browser.close();
