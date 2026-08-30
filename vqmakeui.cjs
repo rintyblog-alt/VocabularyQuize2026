@@ -297,8 +297,11 @@ const 打つ = (page, f, v) => page.evaluate(([f2, v2]) => {
     const 組 = await a.page.evaluate(() => {
       try {
         const V = window.VQ2, ST = V.store;
-        const 並 = ST.mocks.list() || [];
-        const 本 = 並[0]; const sp = 本 && (本.spec || 本);
+        /* ★ 器は preset（2026-08-30）。試験は プリセットの 一種として 置かれる。
+           昔の 置き場（mocks）しか 見ていなかったので 空だった。 */
+        const 並 = (ST.listExams ? ST.listExams() : []) || [];
+        const sp = 並.length ? ST.examOf(並[0])
+          : ((ST.mocks.list() || [])[0] || {}).spec || null;
         if (!sp) return { ok: false, why: "保存された 試験が 無い" };
         const plan = V.layout.buildPlan(sp);
         const html = V.pdfRenderer.buildHtml(sp, plan, {});

@@ -11564,13 +11564,20 @@
      ★ 絵は **住所を 作らない**。data: と /api/media/ だけ 通す。
        外の 住所は 印刷で 取りに 行けず 白い 四角に なる。
      ══════════════════════════════════════════════════════════════ */
-  var 資料の種類 = { table: 1, chart: 1, diagram: 1, numberline: 1, figure: 1, svg: 1 };
+  var 資料の種類 = { table: 1, chart: 1, diagram: 1, numberline: 1, figure: 1, svg: 1,
+                     passage: 1, source: 1, dialogue: 1, text: 1 };
   var グラフの型 = { bar: 1, line: 1, scatter: 1, pie: 1 };
   var 図形の型 = { point: 1, segment: 1, line: 1, ray: 1, arrow: 1, polygon: 1, polyline: 1,
                    circle: 1, label: 1, text: 1, angle: 1, rightangle: 1, tick: 1 };
 
   function 資料の数(v) { var n = Number(v); return (typeof n === "number" && isFinite(n)) ? Math.round(n * 1e4) / 1e4 : null; }
   function 資料の文(v, n) { return str(v).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, n || 80); }
+  /* 会話文・資料の 本文は **改行を 残す**（rich が <br> に する）。
+     ここで 空白に 潰すと、生徒A・生徒B が 1 行に つながって 読めない。 */
+  function 資料の本文(v, n) {
+    return str(v).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, " ")
+      .slice(0, n || 4000);
+  }
 
   function 一つの資料(b) {
     if (!b || typeof b !== "object") return null;
@@ -11671,6 +11678,24 @@
       if (!items.length) return null;
       out.items = items;
       return out;
+    }
+    if (t === "passage" || t === "source" || t === "dialogue" || t === "text") {
+      /* 会話文・資料。**表の 形**（ラベル｜中身）でも 受ける。 */
+      var o2 = { type: (t === "text" ? "passage" : t) };
+      if (b.caption) o2.caption = 資料の文(b.caption, 120);
+      if (Array.isArray(b.entries)) {
+        o2.entries = b.entries.slice(0, 12).map(function (e) {
+          if (!e) return null;
+          return { label: 資料の文(e.label || e.name, 24), text: 資料の本文(e.text || e.body, 600) };
+        }).filter(function (e) { return e && (e.label || e.text); });
+        if (!o2.entries.length) delete o2.entries;
+      }
+      if (!o2.entries) {
+        o2.text = 資料の本文(b.text || b.body || b.content, 4000);
+        if (!o2.text) return null;
+      }
+      if (b.round !== false) o2.round = true;
+      return o2;
     }
     if (t === "svg") {
       var sv = str(b.svg || b.source || b.markup);
@@ -12889,6 +12914,12 @@
           topic: str(d.topic),
           expectedChars: slot.expectedChars || undefined,
           sourceReferences: Array.isArray(d.sourceReferences) ? d.sourceReferences : [],
+          /* ★ 資料（図・表・グラフ・会話文）を **落とさない**（2026-08-30）。
+             ここで 拾わないと、AI が 返した 資料は fromDraft へ 届かず、
+             紙面に 1 つも 出ない（実測で 空だった）。
+             中身の 清めは fromDraft の 資料ブロック が する。 */
+          materials: d.materials, contentBlocks: d.contentBlocks,
+          figure: d.figure, table: d.table, chart: d.chart, diagram: d.diagram,
           requiresReview: d.requiresReview === true
         });
         answerKey.push({
@@ -19477,6 +19508,10 @@
       questionPlan: o.questionPlan || undefined,
       maxRounds: o.maxRounds || undefined,
       maxCalls: o.maxCalls || undefined,
+      /* ★ 試験モード（2026-08-30）。プリセット作成とは **頼みかたが 違う**。
+         一問一答に 寄せない・ひっかけを 作る・教科を またがない。 */
+      exam: o.exam === true ? true : undefined,
+      subject: o.subject || undefined,
       /* 資料（図・表・グラフ）を 付けてもらうか。
          ここへ 通していないと、画面で「付ける」に しても サーバは 知らない。 */
       materials: o.materials === true ? true : undefined,
@@ -19722,7 +19757,9 @@
            **資料つきの 注文が 資料なしで 作られて** いた。
            サーバ側は track のときも files を 読む（同じ 入口）。 */
         files: o.files || undefined,
-        /* 図・表・グラフ。ここも 通す（片方だけ 通すと 台帳経由で 消える）。 */
+        /* 試験モード・図表。ここも 通す（片方だけ だと 台帳経由で 消える）。 */
+        exam: o.exam === true ? true : undefined,
+        subject: o.subject || undefined,
         materials: o.materials === true ? true : undefined,
         track: true,
         /* ★ **同じ注文の 目印**（2026-08-29）。1 回の「作って」は 中で
@@ -23803,6 +23840,8 @@
       sectionStyle: {
         marker: "第{n}問", markerFamily: "gothic", markerPt: 13,
         showPoints: true, rule: "none", gapBeforeMm: 8,
+        /* ★ 実物は「第1問　次の…に答えよ。　　　　（配点　20）」の **1 行**。 */
+        oneLine: true,
         startsNewPageFrom: 1              /* 大問は必ずページの頭から */
       },
       subQuestionStyle: {
@@ -23819,9 +23858,13 @@
       /* ★ ここが共通テストらしさの芯。
          ・丸数字は **⓪ から**（実物で 確かめた）
          ・選択肢は 枠で 囲み、上の 線に ［セ］の解答群 の 札を 乗せる */
+      /* ★ 実物（情報 I100 の 問1〜問5）で 数えた:
+           ふつうの 設問の 選択肢は **①②③④⑤**（丸数字・1 から）。
+           **⓪ から**に なるのは 本文の 空欄を 指す「解答群の 枠」だけ。 */
       choiceLayout: {
-        marker: "circled-zero", variants: ["vertical", "two-column-short-only"],
-        twoColumnMaxChars: 14, fourColumnMaxChars: 6, indentMm: 7,
+        marker: "circled", variants: ["vertical"],
+        twoColumnMaxChars: 0, fourColumnMaxChars: 0, indentMm: 7,
+        hangingIndent: true,
         groupBox: true, groupTail: "の解答群"
       },
 
@@ -28311,6 +28354,8 @@
 
   /* ── 問題冊子の Content Block ─────────────────────────────── */
   function questionBlocks(spec, tpl, tuning, lp, lprofile) {
+    /* 解答番号の 通し。大問を またいで 1 から（共通テストの 決まり）。 */
+    var 通し番号 = 1;
     var blocks = [];
     if (spec.instructions) blocks.push({ type: "notice", id: "notice-main", text: spec.instructions });
 
@@ -28331,6 +28376,9 @@
         pageBreakBefore: sp ? !!sp.startsNewPage : sec.number > 1,
         marker: sp ? sp.marker : null,
         markerVariant: sp ? sp.markerVariant : null,
+        /* 共通テストは 見出しと 指示文を **1 行**に 組む（実物）。 */
+        style: (lprofile && lprofile.sectionStyle && lprofile.sectionStyle.oneLine === true)
+          ? "common-test" : null,
         showPoints: lprofile ? lprofile.sectionStyle.showPoints !== false : true
       });
 
@@ -28367,6 +28415,10 @@
           number: q.number, text: q.prompt, points: q.points,
           answerBindingId: q.answerBindingId, questionType: q.type,
           marker: pq ? pq.marker : null,
+          /* ★ 共通テストは 設問の 末尾に「解答番号は ｜1｜。」が 付く（実物）。
+             通し番号は 大問を またいで 1 から 続く。 */
+          answerNo: 解答番号(lprofile, 通し番号++),
+          answerNoLabel: (lprofile && lprofile.answerNumbering && lprofile.answerNumbering.label) || "解答番号",
           showPoints: lprofile ? lprofile.subQuestionStyle.showPoints !== false : true
         });
 
@@ -28382,6 +28434,13 @@
       });
     });
     return blocks;
+  }
+
+  /* 解答番号（共通テスト）。大問を またいで 1 から 続ける と 決めた 型のときだけ。 */
+  function 解答番号(profile, n) {
+    var an = profile && profile.answerNumbering;
+    if (!an || an.continuous !== true) return null;
+    return n;
   }
 
   var FIGURE_BLOCK_TYPES = ["figure", "table", "chart", "diagram", "svg", "numberline"];
@@ -28534,10 +28593,15 @@
        枠の 上の 線を 切って ［セ］の解答群 の 札を 乗せる（実物の 組みかた）。
        札は 設問が 持っている 空欄の 記号。無ければ 札は 出さず 枠だけ。 */
     var cl = (profile && profile.choiceLayout) || null;
-    if (cl && cl.groupBox === true) {
+    /* ★ 実物（情報 I100）を 見て 直した（2026-08-30）。
+       解答群の **枠**が 出るのは「本文の 空欄（【セ】など）を 指す」ときだけ。
+       ふつうの 設問（問1〜問5）は **枠なしの ①〜⑤ の ぶら下げ**で 並ぶ。
+       前は 全部を 枠に していたので、実物と 別の 紙に なっていた。 */
+    var 空 = 空欄の記号(q);
+    if (cl && cl.groupBox === true && 空) {
       return {
         type: "answer-group", id: q.id + "-ag", questionId: q.id, sectionId: sec.id,
-        marker: 空欄の記号(q),
+        marker: 空,
         tailLabel: cl.groupTail || "の解答群",
         items: q.choices.map(function (c) { return String(c.text == null ? "" : c.text); })
       };
@@ -28549,7 +28613,8 @@
         return { id: c.id, text: c.text,
                  label: pq ? choiceLabel(pq.choiceMarker, i) : circled(i + 1) };
       }),
-      columns: pq ? (pq.choiceColumns || 1) : choiceColumns(q.choices),
+      columns: (cl && cl.hangingIndent) ? 1 : (pq ? (pq.choiceColumns || 1) : choiceColumns(q.choices)),
+      hanging: !!(cl && cl.hangingIndent),
       choiceLayout: pq ? pq.choiceLayout : null
     };
   }
@@ -29269,6 +29334,8 @@
       /* ページ番号。位置は文書ファミリーが決める。 */
       ".pgno { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: .78em; }",
       ".pgno-bottom-right { text-align: right; }",
+      ".pgno-code { position: absolute; right: 0; bottom: 0; }",
+      ".pgno { position: relative; }",
       ".pgno-bottom-left { text-align: left; }",
       ".pgno-bottom-outer { text-align: right; }",
       ".pgno-top-center { bottom: auto; top: 0; text-align: center; }",
@@ -29403,6 +29470,51 @@
       ".ct-code { position: absolute; right: 0; bottom: 0; }",
       "@media print { .ct-cover { position: relative; min-height: 100%; } }",
       ".ct-cover { position: relative; min-height: " + Math.max(120, p.heightMm - m.top - m.bottom - 8) + "mm; }",
+
+      /* ══ 本文の 柱（実物・情報 I100 の 5 ページ目）════════════════ */
+      ".ct-run { text-align: center; margin: 0 0 8mm; }",
+      ".ct-run-t { font-family: " + MINCHO + "; font-weight: 700;",
+      "            font-size: " + (base + 5) + "pt; }",
+      ".ct-run-s { font-size: " + (base - 1) + "pt; margin-top: 1.5mm; }",
+
+      /* ══ 大問の 見出し（1 行に 第n問 ＋ 指示 ＋ 配点）══════════════ */
+      ".sec.is-ct { display: flex; align-items: baseline; gap: 3mm;",
+      "             margin: 0 0 5mm; font-size: " + base + "pt; }",
+      ".sec.is-ct .sec-no { flex: 0 0 auto; font-family: " + GOTHIC + "; font-weight: 700;",
+      "                     font-size: " + (base + 1) + "pt; }",
+      ".sec.is-ct .sec-ct-i { flex: 1 1 auto; }",
+      ".sec.is-ct .sec-pts { flex: 0 0 auto; margin-left: auto; white-space: nowrap;",
+      "                      font-size: " + (base - 0.5) + "pt; }",
+
+      /* ══ 設問の 末尾の「解答番号は ｜1｜。」════════════════════════ */
+      ".q-ano { white-space: nowrap; margin-left: .4em; }",
+      ".bx.is-ano { min-width: 9mm; font-weight: 700; border-width: 0.8pt; }",
+
+      /* ══ 選択肢（1 列・ぶら下げ）════════════════════════════════
+         2 行目が 記号の 下へ 潜らない。実物は どの 設問も この 形。 */
+      ".ch.is-hang { display: block; margin: 2.5mm 0 4mm; }",
+      ".ch.is-hang .ch-i { display: flex; align-items: flex-start; gap: 2mm;",
+      "                    margin: 0 0 2mm; padding-left: 6mm;",
+      "                    font-size: " + (base - 0.5) + "pt; line-height: 1.85; }",
+      ".ch.is-hang .ch-l { flex: 0 0 auto; font-family: " + GOTHIC + "; }",
+      ".ch.is-hang .ch-i > span:last-child { flex: 1 1 auto; }",
+
+      /* ══ 会話文・リードの 角丸の 枠（実物の 第1問）═══════════════ */
+      ".src.is-round, .dlg.is-round { border: 0.6pt solid #000; border-radius: 4mm;",
+      "                               padding: 4mm 5mm; margin: 3mm 0 4mm;",
+      "                               border-left-width: 0.6pt; }",
+
+      /* ══ 資料の 表（ラベル｜中身）══════════════════════════════ */
+      ".src-tb { border-collapse: collapse; width: 100%; margin: 3mm 0 4mm;",
+      "          font-size: " + (base - 1) + "pt; }",
+      ".src-tb th, .src-tb td { border: 0.5pt solid #000; padding: 2mm 3mm;",
+      "                         vertical-align: top; text-align: left; }",
+      ".src-tb th { width: 22mm; font-weight: 400; white-space: nowrap; }",
+
+      /* ══ 下（－ 7 － と (I100－7)）════════════════════════════ */
+      ".ct-pgno { position: absolute; left: 0; right: 0; bottom: 0;",
+      "           text-align: center; font-size: " + (base - 1.5) + "pt; }",
+      ".ct-pgno .code { position: absolute; right: 0; bottom: 0; }",
 
       /* ══ 解答群（語群）════════════════════════════════════════
          本物は「枠の 上の 線を 切って、そこに ［セ］の解答群 の 札を 置く」。
@@ -29732,6 +29844,19 @@
        実画像の問題用紙は「試験名 1 行だけ」で、科目・時間・満点の行も氏名欄も無い。
        解答用紙は自分の見出し（answer-grid-head）と氏名欄を持つので、ここでは出さない。 */
     var hp = (plan.layoutProfile && plan.layoutProfile.header) || null;
+    /* ★ 共通テストの 本文 1 ページ目は 柱が「情　報　Ⅰ」＋「（全問必答）」
+       （実物・情報 I100 の 5 ページ目）。試験名では ない。 */
+    var ct = (plan.layoutProfile && plan.layoutProfile.coverStyle) === "common-test";
+    if (ct && booklet.kind === "question") {
+      var cv0 = spec.cover || {};
+      var 名 = String(cv0.subjectDetail || spec.subject || spec.title || "");
+      h += '<div class="ct-run"><div class="ct-run-t"><span class="ct-sp">'
+        + esc(名.replace(/[『』]/g, "")) + "</span></div>"
+        + '<div class="ct-run-s">（' + esc(cv0.answerScope || "全問必答") + "）</div></div>";
+      return h + booklet.blocks.map(function (b) {
+        return renderBlock(b, plan, vertical, booklet.kind);
+      }).join("") + "</div></div>";
+    }
     var showMeta = hp ? hp.showMeta !== false : true;
     var showName = hp ? hp.showNameBox !== false : (booklet.kind !== "answer-key");
     if (plan.layoutProfile && booklet.kind === "answer-sheet") { showMeta = false; showName = false; }
@@ -29822,7 +29947,7 @@
   /* ── ページ番号 ──────────────────────────────────────────────
      描いたあとに、実際にできたページ数を見てから入れる。
      ページ数が分からないうちに「1 / 6」と書かない（嘘の数を出さない）。 */
-  function pageNumberScript(plan) {
+  function pageNumberScript(plan, spec) {
     var G = VQ2.layoutGrammar;
     /* 紙面プロファイルを選んでいれば文書ファミリーの指定に従う。
        選んでいない（current 経路）ときは、これまでどおり
@@ -29831,20 +29956,33 @@
       || ((plan.paper && plan.paper.pageNumbering === false) ? null
           : (G ? G.normalizePageNumber(null) : null));
     if (!pn || !pn.enabled) return "";
+    /* 共通テスト風は「－ 5 －」＋ 右下に「(I100－5)」（実物）。 */
+    if ((plan.layoutProfile && plan.layoutProfile.coverStyle) === "common-test") {
+      var cv2 = (spec && spec.cover) || {};
+      pn = Object.assign({}, pn, { style: "ct", position: "bottom-center",
+                                   code: String(cv2.bookletCode || "") });
+    }
     var cfg = JSON.stringify(pn);
     return "<script>(function(){"
       + "var pn=" + cfg + ";"
       + "var pages=document.querySelectorAll('.page');"
       + "var total=pages.length;"
       + "function text(i){var n=(pn.startNumber||1)+i;var c;"
-      + "if(pn.style==='dash')c='- '+n+' -';"
+      /* ★ 共通テストは 全角の ダッシュ「－ 5 －」（実物）。
+         半角の「- 5 -」とは 見た目が はっきり 違う。 */
+      + "if(pn.style==='ct')c='\u2500 '+n+' \u2500';"
+      + "else if(pn.style==='dash')c='- '+n+' -';"
       + "else if(pn.style==='slash')c=n+' / '+total;"
       + "else if(pn.style==='labeled')c='ページ '+n;else c=String(n);"
       + "return (pn.prefix?pn.prefix+' ':'')+c+(pn.suffix?' '+pn.suffix:'');}"
       + "for(var i=0;i<total;i++){"
       + "if(!pn.coverIncluded&&pages[i].getAttribute('data-cover')==='1')continue;"
       + "var e=document.createElement('div');e.className='pgno pgno-'+pn.position;"
-      + "e.textContent=text(i);pages[i].appendChild(e);}"
+      + "e.textContent=text(i);"
+      /* 右下の 冊子の 記号（(I100\u25004)）。あるときだけ。 */
+      + "if(pn.code){var c2=document.createElement('span');c2.className='pgno-code';"
+      + "c2.textContent='('+pn.code+'\u2500'+((pn.startNumber||1)+i)+')';e.appendChild(c2);}"
+      + "pages[i].appendChild(e);}"
       + "})();<\/script>";
   }
 
@@ -29854,6 +29992,16 @@
         return '<div class="notice"><div class="notice-t">注意</div>' + rich(b.text, vertical) + "</div>";
 
       case "instructions":
+        /* ★ 共通テストは **1 行**に「第1問　次の…に答えよ。」＋ 右端に「（配点 20）」
+           （実物・情報 I100）。見出しと 指示文を 段に 分けない。 */
+        if (b.style === "common-test") {
+          return '<div class="sec is-ct"' + (b.pageBreakBefore ? ' style="page-break-before:always;break-before:page"' : "") + ">"
+            + '<span class="sec-no">' + esc(b.marker || ("第" + b.number + "問")) + "</span>"
+            + '<span class="sec-ct-i">' + (b.text ? rich(b.text, vertical) : esc(b.title || "")) + "</span>"
+            + (b.points != null && b.showPoints !== false
+                ? '<span class="sec-pts">（配点　' + b.points + "）</span>" : "")
+            + "</div>";
+        }
         return '<div class="sec"' + (b.pageBreakBefore ? ' style="page-break-before:always;break-before:page"' : "") + ">"
           + '<span class="sec-no' + (b.markerVariant === "boxed" ? " is-boxed" : "") + '">'
           + esc(b.marker || numberKanji(b.number)) + "</span>" + esc(b.title || "")
@@ -29861,14 +30009,25 @@
           + "</div>" + (b.text ? '<div class="sec-inst">' + rich(b.text, vertical) + "</div>" : "");
 
       case "source":
-        return '<div class="src" data-block="' + esc(b.id) + '">' + rich(b.text, vertical)
+        /* 資料が 「ラベル｜中身」の 並びの ときは 表に する（実物の 資料1〜4）。 */
+        if (Array.isArray(b.entries) && b.entries.length) {
+          return '<table class="src-tb" data-block="' + esc(b.id) + '">'
+            + b.entries.slice(0, 12).map(function (e) {
+                return "<tr><th>" + esc(e.label || "") + "</th><td>"
+                  + rich(e.text || "", vertical) + "</td></tr>";
+              }).join("") + "</table>";
+        }
+        return '<div class="src' + (b.round ? " is-round" : "") + '" data-block="' + esc(b.id) + '">'
+          + rich(b.text, vertical)
           + (b.caption ? '<div class="src-cap">' + esc(b.caption) + "</div>" : "") + "</div>";
 
       case "passage":
         return '<div class="src" data-block="' + esc(b.id) + '">' + rich(b.text, vertical) + "</div>";
 
       case "dialogue":
-        return '<div class="dlg" data-block="' + esc(b.id) + '">' + rich(b.text, vertical) + "</div>";
+        /* 会話文は 角丸の 枠（実物の 第1問）。 */
+        return '<div class="dlg' + (b.round === false ? "" : " is-round") + '" data-block="'
+          + esc(b.id) + '">' + rich(b.text, vertical) + "</div>";
 
       /* ── 資料（図・グラフ・図形・表）─────────────────────────
          描くのは vq-fig.js（VQFIG）。読めていない ときだけ、
@@ -29903,12 +30062,22 @@
         if (kind === "answer-key") return renderAnswerKey(b, vertical);
         return '<div class="q" data-question="' + esc(b.questionId) + '" data-binding="' + esc(b.answerBindingId || "") + '">'
           + '<div class="q-head"><span class="q-no">' + esc(b.marker || ("問" + b.number)) + "</span>"
-          + '<span class="q-text">' + rich(b.text, vertical) + "</span>"
+          + '<span class="q-text">' + rich(b.text, vertical)
+          /* ★ 共通テストは 末尾に「解答番号は ｜1｜。」（実物・情報 I100）。
+             欄が どこに 当たるかを 受験者に 示す ためのもの。 */
+          + (b.answerNo != null
+              ? '<span class="q-ano">' + esc(b.answerNoLabel || "解答番号") + "は"
+                + '<span class="bx is-ano">' + esc(b.answerNo) + "</span>。</span>"
+              : "")
+          + "</span>"
           + (b.points != null && b.showPoints !== false ? '<span class="q-pts">（' + b.points + "）</span>" : "")
           + "</div></div>";
 
       case "choices":
-        return '<div class="ch c' + (b.columns || 1) + '" data-block="' + esc(b.id) + '">'
+        /* ★ 共通テストは **1 列・ぶら下げ**（2 行目が 記号の 下に 潜らない）。
+           実物の 問1〜問5 は どれも この 形。 */
+        return '<div class="ch c' + (b.columns || 1) + (b.hanging ? " is-hang" : "")
+          + '" data-block="' + esc(b.id) + '">'
           + (b.choices || []).map(function (c) {
               return '<div class="ch-i"><span class="ch-l">' + esc(c.label) + '</span><span>' + rich(c.text, vertical) + "</span></div>";
             }).join("") + "</div>";
@@ -30655,7 +30824,7 @@
       + "<style>" + pageCss(plan) + mathCss() + "</style></head><body>" + body
       /* 先に本物のページへ分けてから、ページ番号を入れる。順番が逆だと
          「1 / 1」しか出せない（実際は何ページあるか分からないまま）。 */
-      + paginateScript(plan) + pageNumberScript(plan) + "</body></html>";
+      + paginateScript(plan) + pageNumberScript(plan, spec) + "</body></html>";
   }
 
   /* ══════════════════════════════════════════════════════════════════

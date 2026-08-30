@@ -1224,6 +1224,10 @@
           count: (req.slots || []).length,
           questionTypes: types.length ? types : undefined,
           questionPlan: Object.keys(plan2).length ? plan2 : undefined,
+          /* ★ ここは **試験**。プリセット作成とは 頼みかたを 変える（2026-08-30）。
+             サーバが 聞かれ方の 型・ひっかけの 型・教科の 縛りを 足す。 */
+          exam: true,
+          subject: (表紙 && 表紙.subject) || undefined,
           /* 図・表・グラフ。サーバは 頼まれたときだけ 語彙を 教える。
              既定で 付けると 要らない ところに 飾りの 表が 出る。 */
           materials: c.materials === true ? true : undefined,

@@ -44410,6 +44410,24 @@ function aigenProviders(env) {
    その本数だけ丸ごと増える。 */
 function aigenModelFor(env, provider, tier) {
   if (provider === "gemini") {
+    /* ══ 試験（Mock）だけ **Flash 本体**を 使う（2026-08-30）════════
+       Rinty さん「Mock の方は Gemini Flash 3 に作らせた方がいいよな」。
+
+       ★ Flash は Lite の 25 分の 1 の 枠（1 日 20 回ほど）。
+         **だから 本数の 多い プリセットには 使えない。**
+         試験は 1 日に 数本 なので、そこだけに 使うのが 合う。
+       ★ 枠を 使い切ったら、下の 控え（flash-lite ×3）へ 自動で 落ちる
+         （aigenAskVia の pool）。止まらない。
+       ★ 実測（2026-08-30・dev で ID を 1 つずつ 叩いた）:
+           gemini-3.5-flash        → **そのまま 通る**
+           gemini-3-flash          → 3.1-flash-lite-preview へ 落ちる
+           gemini-flash-latest     → 同上
+           gemini-3.1-flash        → 同上
+           gemini-2.5-flash        → 同上
+         つまり 本物の Flash は **gemini-3.5-flash** だけ。 */
+    if (tier === "exam") {
+      return String(env?.GEMINI_MODEL_EXAM || "").trim() || "gemini-3.5-flash";
+    }
     /* 無料枠で 1 日に意味のある回数を使えるのは Flash Lite だけ（実測）。
        ほかの Flash は 1 日 20 回、Pro 系は 0 回で、資料の読み取りには足りない。 */
     if (tier === "strong") {
@@ -44418,7 +44436,8 @@ function aigenModelFor(env, provider, tier) {
     return String(env?.GEMINI_MODEL_FAST || "").trim() || "gemini-3.1-flash-lite";
   }
   if (provider === "groq") {
-    if (tier === "strong") {
+    /* Groq には Flash に あたる ものが 無いので、試験も 強いほうを 使う。 */
+    if (tier === "strong" || tier === "exam") {
       return String(env?.GROQ_MODEL_STRONG || "").trim() || "openai/gpt-oss-120b";
     }
     return String(env?.GROQ_MODEL_FAST || "").trim() || "openai/gpt-oss-20b";
@@ -46779,6 +46798,113 @@ function aigenLengthLimits(text) {
 }
 
 /* 字数の注文を、AI へ渡す文にする。無ければ空。 */
+/* ══════════════════════════════════════════════════════════════════
+   試験モードの 作りかた — 2026-08-30
+
+   訴え（Rinty さん）
+     「プリセットAI作成の器と、試験モードのAI作成の器は違う。
+       試験モードは もう試験だから、一問一答レベルを標準にしたらダメ。
+       もっと聞かれ方を変えていかないと。
+       選択肢がわかりやすすぎる。ひっかけとかも作れるようにしないと。
+       違う教科が入っていたり… コレまじ論外」
+
+   ★ 見本は 本物の 共通テスト（情報 I100・第1問）。読んで 分かったこと:
+     ・設問は「用語を 答える」では ない。**場面と 資料を 読んで、
+       どこまで 言えるかを 判断させる**。
+     ・選択肢は 5 つとも 同じ 長さの 文で、どれも もっともらしい。
+       誤答は「事実が 違う」のでは なく **考えかたが ずれている**。
+     ・だから 誤答は **名前の ついた 誤り**で 作る（下の 5 つ）。
+
+   ★ ここは プリセット作成とは **別の 頼みかた**。
+     プリセットは 覚えるための 一問一答で よい。試験は そうでは ない。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* 聞かれ方の 型。実物から 抜き出した。名前で 指すと ぶれない。 */
+const AIGEN_EXAM_FORMS = [
+  ["場面判断", "短い 場面（会話・やり取り・事例）を 示し、そこでの 判断として"
+    + "最も 適当な ものを 選ばせる。用語を 答えさせない。"],
+  ["資料の突き合わせ", "資料を 2 つ以上 示し、**どこまでが 確かめられ、どこからが"
+    + "確かめられないか**を 選ばせる。1 つの 資料だけでは 決まらないように する。"],
+  ["表のうめ", "要点を まとめた 表を 示し、1 マスを 空欄に して 何が 入るかを 選ばせる。"],
+  ["発言への説明", "登場人物の ある 発言を 取り上げ、それに対する 説明として"
+    + "最も 適当な ものを 選ばせる。"],
+  ["考えかたの理解", "その 分野の 考えかた・用語の 意味を、**言い換えた 文**で 問う。"
+    + "定義を そのまま 書いた 選択肢を 正解に しない。"],
+  ["複数空欄", "本文の 空欄を 2 つ以上 補わせる。語群あり と 語群なしの 両方を 作る。"],
+  ["字数指定の記述", "「〜字以内で まとめよ」「なぜか 説明せよ」。採点の 基準を 必ず 付ける。"]
+];
+
+/* 誤答（ひっかけ）の 型。実物の 5 択を 読んで 抜き出した。 */
+const AIGEN_EXAM_TRAPS = [
+  ["言い過ぎ", "確かめられた 一部から、全体まで 広げて 断言している"],
+  ["足りない", "確かめられる ことまで 否定する／触れない方が よいと する"],
+  ["すり替え", "別の 出どころ・別の 基準を 持ち出して 答えている"],
+  ["基準ちがい", "もっともらしいが、判断の 基準が ずれている"
+    + "（気持ち・共有された 数・時刻の 早さ などを 根拠に する）"],
+  ["逆", "正しい 考えかたを ちょうど 裏返している"]
+];
+
+function aigenExamNote(on, o) {
+  if (!on) return "";
+  const 教科 = String((o && o.subject) || "").trim();
+  const 形 = AIGEN_EXAM_FORMS.map(([n, d]) => "\u3000・【" + n + "】" + d).join("\n");
+  const 罠 = AIGEN_EXAM_TRAPS.map(([n, d]) => "\u3000・【" + n + "】" + d).join("\n");
+  return [
+    "【これは 試験です（覚えるための 問題集では ありません）】",
+    "★ **一問一答に しないでください。**"
+      + "用語や 年号を そのまま 答えさせる 問題は、全体の 2 割までです。",
+    "残りは 次の 聞かれ方から 選んで 作ります。同じ 型ばかりに しないでください。",
+    形,
+    "",
+    "【選択肢（ここが いちばん 大事）】",
+    "★ **正解が ひと目で 分かる 選択肢を 作らないでください。**",
+    "・誤りの 選択肢は「事実が ちがう」のでは なく、"
+      + "**考えかたが ずれている**ものに します。次の 型から 選びます。",
+    罠,
+    "・5 つ（または 4 つ）とも **同じくらいの 長さ**の 文に します。"
+      + "正解だけ 長い／短いは だめです。",
+    "・★ 誤答に **「すべて」「必ず」「絶対」「一切」「決して」「例外なく」を 使わないでください。**"
+      + "これらが あると、読まずに 消せて しまいます。"
+      + "『〜は 確認できない』『〜として 扱う』のように、**程度を 言わない 言い方**に します。",
+    "・★ 選択肢の 文の 先頭に **①②③ や 1. を 書かないでください。**"
+      + "番号は 紙面が 付けます。書くと 二重に なります。",
+    "・どれも もっともらしく、**読まないと 選べない**ようにします。",
+    "・explanation は **選択肢の 数だけ** 書きます。"
+      + "「①…（型）／②…（型）／③正解。理由／④…（型）／⑤…（型）」の ように、"
+      + "**どれが なぜ 誤りか**を 1 つずつ 型の 名前を 添えて 書いてください。",
+    "",
+    "【見本（本物の 共通テスト・情報Ⅰ 第1問）】",
+    "★ **この 水準を 目指してください。** 下の 5 つは どれも もっともらしく、"
+      + "読まないと 選べません。「明らかに だめな 行動」は 1 つも ありません。",
+    "問：会話文の内容を踏まえ、情報を確認するときの分類として最も適当なものを選べ。",
+    "\u3000① 不安を感じる情報、安心できる情報、友人が必要としている情報に分け、"
+      + "受け取る人の感情を基準に判断する。　←【基準ちがい】",
+    "\u3000② 公式発表がまだ「確認中」の段階では、写真付きの投稿や共有数の多い投稿を"
+      + "暫定的な根拠として扱い、後から公式情報が出た時点で訂正する。　←【基準ちがい】",
+    "\u3000③ 確認済み情報、未確認情報、推測を区別し、公式情報や画像検索の結果を用いて、"
+      + "どこまで言えるかを整理する。　←【正解】",
+    "\u3000④ 自治体の発表を最も重視し、交通機関や消防の情報は補助的に扱う。ただし、"
+      + "自治体の更新があるまで、交通機関が示した一部閉鎖も未確認として扱う。　←【足りない】",
+    "\u3000⑤ 画像検索で似た写真が見つかった場合、写真の撮影場所が異なる可能性を示す"
+      + "有力な根拠になるため、投稿本文の内容も一度すべて否定してから考える。　←【言い過ぎ】",
+    "★ **やってはいけない 作りかた**（いまの AI が やりがちな もの）:",
+    "\u3000× 正解 1 つが「ちゃんと 確かめる」で、残りが「確かめずに 拡散する」"
+      + "「数が 多いから 正しいと 決める」「発信者を 非難する」のように"
+      + "**誰が 見ても だめな 行動**。これでは 読まずに 選べます。",
+    "\u3000× 誤答が「事実として 間違っている」だけ。"
+      + "**考えかたの ずれ**に してください。",
+    "",
+    "【教科】",
+    教科
+      ? "★ この 試験は **" + 教科 + "** です。"
+        + "**" + 教科 + " 以外の 教科の 問題を 1 問も 入れないでください。**"
+        + "ほかの 教科の 用語・題材・計算を 混ぜては いけません。"
+        + "作れない ときは **数を 減らして ください**。混ぜるより ずっと ましです。"
+      : "★ 1 つの 試験の 中で 教科を またがないでください。",
+    "★ 迷ったら「この 問題は " + (教科 || "この 教科") + " の 授業で 出るか」で 決めます。"
+  ].filter(Boolean).join("\n");
+}
+
 /* ══ 資料（図・表・グラフ）を 付けて もらう — 2026-08-30 ═══════════
    訴え「資料問題（フリー画像・SVG・表や図形の 正確な 描画）」
 
@@ -47902,6 +48028,8 @@ async function aigenAskMulti(env, want, o = {}) {
     blocks,
     /* 字数の注文（「解説は60字以内で」）。読めたときだけ入る。 */
     aigenLengthNote(o.lengths),
+    /* 試験モード。プリセット作成とは **別の 頼みかた**（2026-08-30）。 */
+    aigenExamNote(o.exam, o),
     /* 資料（図・表・グラフ）。頼まれたときだけ入る。 */
     aigenMaterialsNote(o.materials),
     /* **「根拠は○○です」だけの解説は役に立たない。**
@@ -47944,8 +48072,23 @@ async function aigenAskMulti(env, want, o = {}) {
     "内訳の数をそのまま守ってください。多くも少なくもしないでください。"
   ].filter(Boolean).join("\n");
 
-  const chain = o.forceProvider ? [o.forceProvider]
+  let chain = o.forceProvider ? [o.forceProvider]
     : (hasFiles ? aigenProviders(env).filter((p) => AIGEN_DOC_PROVIDERS.has(p)) : aigenProviders(env));
+  /* ══ 試験モードは **強い モデルへ**（2026-08-30・実測）════════════
+     訴え「問題の質が今のだとプリセット作成AIと大差ないよまじで」。
+
+     実測して 分かったのは、**指示の 問題では なく モデルの 問題**だった。
+     いちばん 手前の openai/gpt-aoss-20b は 小さく、
+     「どれも もっともらしい 5 択」を 作れない。
+     見本を 足したら むしろ 短く なった（指示を 持ちきれていない）。
+
+     試験は プリセットより 本数が 少なく、少し 遅くても よい。
+     ★ 順を 入れ替えるだけ。**枠が 尽きたら これまでどおり 下へ 落ちる。** */
+  if (o.exam && !o.forceProvider) {
+    const 好み = ["gemini", "groq", "workers"];
+    chain = 好み.filter((x) => chain.indexOf(x) >= 0)
+      .concat(chain.filter((x) => 好み.indexOf(x) < 0));
+  }
   /* ★ まとめ頼みに **書けないモデルがある形式**が混ざったら、
      その形式が書けるモデルだけで回す（グラフが混ざると 0 問になるため）。
      縛りのある形式が 2 つ以上あれば、両方が書けるものだけを残す。 */
@@ -47968,7 +48111,7 @@ async function aigenAskMulti(env, want, o = {}) {
      数を埋めにいく終盤は、**いちばん確かな 1 つだけ**を試す。 */
   const useChain = o.narrow ? chain.slice(0, 1) : chain;
   for (const provider of useChain) {
-    const model = o.forceModel || aigenModelFor(env, provider, "strong");
+    const model = o.forceModel || aigenModelFor(env, provider, o.exam ? "exam" : "strong");
     const r = await aigenAskVia(env, provider, model,
       { sys, user, maxTokens, files: o.files || [], groqModels });
     if (r.ok) return r;
@@ -48110,6 +48253,8 @@ async function aigenAskOnce(env, engineId, n, o = {}) {
     specRule,
     /* 字数の注文（「解説は60字以内で」）。読めたときだけ入る。 */
     aigenLengthNote(o.lengths),
+    /* 試験モード。プリセット作成とは **別の 頼みかた**（2026-08-30）。 */
+    aigenExamNote(o.exam, o),
     /* 資料（図・表・グラフ）。頼まれたときだけ入る。 */
     aigenMaterialsNote(o.materials),
     /* **「根拠は○○です」だけの解説は役に立たない。**
@@ -48168,12 +48313,21 @@ async function aigenAskOnce(env, engineId, n, o = {}) {
      **資料が付いているときは、資料を読める提供元しか使えない。**
      読めないところへ回すと、資料を見ずに作ってしまう（＝作り話になる）。 */
   const files = Array.isArray(o.files) ? o.files : [];
-  const chain = o.forceProvider ? [o.forceProvider]
+  let chain = o.forceProvider ? [o.forceProvider]
     : (files.length ? aigenProviders(env).filter((p) => AIGEN_DOC_PROVIDERS.has(p))
                     : aigenProviders(env));
+  /* ★ 試験モードは 強い モデルへ（2026-08-30）。まとめ頼みと 同じ 決め。
+     1 形式だけの ときは こちらを 通るので、両方に 入れないと 効かない。 */
+  if (o.exam && !o.forceProvider) {
+    const 好み = ["gemini", "groq", "workers"];
+    chain = 好み.filter((x) => chain.indexOf(x) >= 0)
+      .concat(chain.filter((x) => 好み.indexOf(x) < 0));
+  }
   let last = null;
   for (const provider of chain) {
-    const model = o.forceModel || aigenModelFor(env, provider, eng.tier);
+    /* 試験は 少し 遅くても よい。**いつも 強いほう**を 使う。 */
+    const model = o.forceModel
+      || aigenModelFor(env, provider, o.exam ? "exam" : eng.tier);
     const r = await aigenAskVia(env, provider, model,
       { sys, user, maxTokens, files, groqModels: eng.groqModels || null });
     if (r.ok) return r;
@@ -48460,6 +48614,18 @@ function aigenCoerceQuestion(q, engineId) {
      逆に、{id,text} や {text} で来たときだけ文字列へ開く。 */
   if (Array.isArray(q.choices) && q.choices.length && typeof q.choices[0] === "object") {
     q.choices = q.choices.map((c) => str(c && (c.text || c.label || c.value || c.id)));
+  }
+  /* ★ 選択肢の 頭に 付いた 番号を 落とす（2026-08-30・実測）。
+     AI が「①投稿文に…」と 書いてくると、紙面が 付ける ① と 合わせて
+     **①①投稿文に…** に なる（実際に そう 出た）。
+     ★ 落とすのは **先頭の 1 個だけ**。本文の 中の 丸数字は 触らない
+     （「①〜③ の うち」のように 中身として 使う ことが ある）。 */
+  if (Array.isArray(q.choices)) {
+    q.choices = q.choices.map((c) => {
+      if (typeof c !== "string") return c;
+      /* 「①〜③ のうち」のように **範囲**を 書いている ときは 落とさない。 */
+      return c.replace(/^\s*(?:[\u2460-\u2473\u24EA]|[(（]?\d{1,2}[)）.．、]|[(（][ア-ンa-zA-Z][)）]|[ア-ン][.．、])\s*(?![〜～\-–—])/, "");
+    });
   }
 
   /* 解説の置き場所のゆれ。**答えの処理より先に**（形式によっては
@@ -48978,7 +49144,8 @@ function aigenReviewDigest(q, i) {
   return o;
 }
 
-async function aigenReviewBatch(env, list, base, 題) {
+async function aigenReviewBatch(env, list, base, 題, 試験) {
+  試験 = 試験 || null;
   const sys = "あなたは作題の点検係です。問題を作り直さず、○か×かだけを判定します。出力は JSON だけ。";
   const 頼み = String(題 || "").replace(/\s+/g, " ").slice(0, 300);
   const user = [
@@ -49010,7 +49177,26 @@ async function aigenReviewBatch(env, list, base, 題) {
       + "その分野を少しでも知っていれば考えずに答えられ、学習にならない"
       + "（例:「日本の首都は？」「1+1は？」）。ただし語彙や暗記カードのように"
       + "**覚えること自体が目的の形式は、短くても ok は true**",
+    /* ══ 試験モードの ときだけ 見る 2 つ（2026-08-30・訴え）════════
+       ・「違う教科が入っていたりだとか… コレまじ論外」
+       ・「選択肢がわかりやすすぎる。ひっかけとかも作れるようにしないと」
+       この 2 つは 上の 1〜10 の どれにも 当たらず、素通りしていた。 */
+    ...(試験 && 試験.subject ? [
+      "　11) **" + 試験.subject + " の 問題では ない**。"
+        + "ほかの 教科の 用語・題材・計算が 中心に なっている。"
+        + "★ ここは **厳しく** 見ます。迷ったら false。"
+        + "教科ちがいが 1 問 混ざるほうが、1 問 足りないより ずっと 困ります（利用者の言葉）。"
+    ] : []),
+    ...(試験 ? [
+      "　12) **選択肢が わかりやすすぎる**。次の どれかに 当てはまる:"
+        + "（a）正解だけが 明らかに 長い／短い"
+        + "（b）誤答が 明らかに 的外れで、読まなくても 消せる"
+        + "（c）「すべて」「必ず」「絶対」など 言い切りの 語だけで 誤答と 分かる"
+        + "（d）誤答が 事実として 明白に 間違っているだけで、考えかたの 誤りに なっていない"
+        + "★ 覚えることが 目的の 語彙・暗記の 形式は これで false に しません。"
+    ] : []),
     "**迷ったら ok は true。** 言い回しの好みや、もっと良くできる、では false にしません。",
+    ...(試験 && 試験.subject ? ["★ **11)（教科ちがい）も 別**です。迷ったら false。"] : []),
     ...(頼み ? ["★ ただし **9)（注文と関係がない）だけは別**です。"
       + "注文の題に当てはまるかどうか迷ったら、**false にしてください。**"
       + "関係ない問題が 1 問混ざるほうが、1 問足りないより ずっと困ります（利用者の言葉）。"] : []),
@@ -49115,7 +49301,7 @@ function aigenReviewMap(list, rows, base) {
 }
 
 /* まとめて点検する。返る配列は list と同じ長さ・同じ順。 */
-async function aigenReview(env, list, metrics, 題) {
+async function aigenReview(env, list, metrics, 題, 試験) {
   const out = new Array(list.length);
   const batches = [];
   for (let i = 0; i < list.length; i += AIGEN_REVIEW_BATCH) {
@@ -49123,7 +49309,7 @@ async function aigenReview(env, list, metrics, 題) {
   }
   for (let s = 0; s < batches.length; s += AIGEN_REVIEW_LANES) {
     const wave = batches.slice(s, s + AIGEN_REVIEW_LANES);
-    const rs = await Promise.all(wave.map((b) => aigenReviewBatch(env, b.part, b.at, 題)
+    const rs = await Promise.all(wave.map((b) => aigenReviewBatch(env, b.part, b.at, 題, 試験)
       .catch(() => ({ ok: false, verdicts: b.part.map(() => ({ ok: true })) }))));
     wave.forEach((b, k) => {
       const r = rs[k];
@@ -49472,7 +49658,9 @@ async function aigenGenerate(env, contract, o = {}) {
       if (!filled) return;
     }
     const fresh = accepted.slice(before);
-    const verdicts = await aigenReview(env, fresh, metrics, o.topic);
+    /* 試験モードなら 教科ちがい と「わかりやすすぎる 選択肢」も 見る。 */
+      const verdicts = await aigenReview(env, fresh, metrics, o.topic,
+        o.exam ? { subject: o.subject || "" } : null);
     for (let k = fresh.length - 1; k >= 0; k--) {
       if (!verdicts[k] || verdicts[k].ok !== false) continue;
       const at = before + k;
@@ -49546,6 +49734,8 @@ async function aigenGenerate(env, contract, o = {}) {
         avoid: (o.avoidSeed || [])
           .concat(accepted.slice(-12).map((q) => String(q.question || "").slice(0, 60)).filter(Boolean))
           .slice(-40),
+        /* 試験モード（聞かれ方・ひっかけ・教科の 縛り）。 */
+        exam: !!o.exam, subject: o.subject,
         /* 資料（図・表・グラフ）。頼まれたときだけ。 */
         materials: !!o.materials,
         files: o.files, forceProvider: o.forceProvider, forceModel: o.forceModel,
@@ -49639,6 +49829,9 @@ async function aigenGenerate(env, contract, o = {}) {
         avoid: (o.avoidSeed || []).concat(jb.made).slice(-40),
         truncs: jb.prev && jb.prev.truncs ? jb.prev.truncs : 0,
         files: o.files,
+        /* 試験モード（強い モデル・聞かれ方・ひっかけ・教科の 縛り）。
+           ここを 通していないと、形式ごとに 分けて 頼む 道で 効かない。 */
+        exam: !!o.exam, subject: o.subject, materials: !!o.materials,
         forceProvider: o.forceProvider, forceModel: o.forceModel,
         narrow: metrics.aiCalls >= Math.max(2, Math.floor(maxCalls / 2))
       }).catch((e) => ({ ok: false, error: String(e && e.message || e).slice(0, 160), questions: [], ms: 0 }))));
@@ -51293,6 +51486,10 @@ async function handleAiGenQuestions(request, env, ctx) {
   const dev = String(env?.AI_PROBE_ENABLED || "") === "1";
   const genOpts = {
     topic: prompt + 時事の材料, files, maxRounds: body?.maxRounds, maxCalls: body?.maxCalls,
+    /* 試験モードか（2026-08-30）。プリセット作成とは 頼みかたが 違う。
+       一問一答に 寄せない・ひっかけを 作る・教科を またがない。 */
+    exam: body?.exam === true,
+    subject: toSafeString(body?.subject || "", 40),
     /* 資料（図・表・グラフ）を 付けるか。画面が はっきり 頼んだ ときだけ。
        既定で 付けると、要らない ところに 飾りの 表が 出る。 */
     materials: body?.materials === true,

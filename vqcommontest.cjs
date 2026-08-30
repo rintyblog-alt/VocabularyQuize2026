@@ -39,8 +39,13 @@ function 試験(o) {
   let i = 0;
   p.sections.forEach((s) => s.questions.forEach((q) => {
     const k = 記[i++ % 記.length];
-    filled[q.id] = { question: "空欄【" + k + "】に入るものを一つ選べ。なお【" + k + "】は再掲である。",
-      type: "multiple_choice_single", answer: 語[0].text, explanation: "かいせつ", choices: 語 };
+    /* ★ 既定は **空欄を 指さない** ふつうの 設問（実物の 問1〜問5 と 同じ）。
+       空欄を 指す ものは 下で わざと 作る。 */
+    filled[q.id] = o.空欄
+      ? { question: "空欄【" + k + "】に入るものとして最も適当なものを選べ。なお【" + k + "】は再掲である。",
+          type: "multiple_choice_single", answer: 語[0].text, explanation: "かいせつ", choices: 語 }
+      : { question: "会話文の内容を踏まえ、情報を確認するときの分類として最も適当なものを選べ。",
+          type: "multiple_choice_single", answer: 語[0].text, explanation: "かいせつ", choices: 語 };
   }));
   const a = MC.assemble(p, filled, {});
   const spec = a.spec;
@@ -112,7 +117,7 @@ function 組む(spec, kind) {
 /* ══ ③ 解答群 ══════════════════════════════════════════════ */
 節("③ 解答群 — 枠の 上の 線を 切って 札を 乗せる");
 {
-  const spec = 試験();
+  const spec = 試験({ 空欄: true });
   const { html } = 組む(spec);
   見(/class="agr"/.test(html), "解答群の 枠が 出る");
   見(/class="agr-t"><span class="agr-k">セ<\/span>の解答群/.test(html),
@@ -122,13 +127,13 @@ function 組む(spec, kind) {
   見(!/class="ch c/.test(html), "ふつうの 選択肢の 並びには しない");
 
   /* 列の 数は 中身の 長さで 決める（実物で 数えた）。 */
-  const 短 = 組む(試験({ choices: [{text:"A"},{text:"C"},{text:"Q"},{text:"a"},
+  const 短 = 組む(試験({ 空欄: true, choices: [{text:"A"},{text:"C"},{text:"Q"},{text:"a"},
     {text:"w"},{text:"4"},{text:"8"},{text:"#"}] })).html;
   見(/agr-l c4/.test(短), "★ 1 字の 選択肢は 4 列", (短.match(/agr-l c\d/) || [])[0]);
-  const 中 = 組む(試験({ choices: ["0111011","0110001","0100001","0111111",
+  const 中 = 組む(試験({ 空欄: true, choices: ["0111011","0110001","0100001","0111111",
     "1100001","1011001","1010110","1011100"].map((t) => ({ text: t })) })).html;
   見(/agr-l c4/.test(中), "★ 7 字の 2 進数も 4 列（実物と 同じ）", (中.match(/agr-l c\d/) || [])[0]);
-  const 長 = 組む(試験({ choices: [
+  const 長 = 組む(試験({ 空欄: true, choices: [
     { text: "文字コードの先頭から5ビットが10100である" },
     { text: "文字コードの上位3ビットが101である" },
     { text: "文字コードから0011を引くと1010000になる" },
@@ -139,7 +144,7 @@ function 組む(spec, kind) {
 /* ══ ④ 穴埋め枠 ════════════════════════════════════════════ */
 節("④ 穴埋め枠 — 初めては 太く、2 度目からは 細く");
 {
-  const spec = 試験();
+  const spec = 試験({ 空欄: true });
   const { html } = 組む(spec);
   const 枠 = html.match(/<span class="bx[^"]*">[^<]+<\/span>/g) || [];
   見(枠.length >= 2, "本文の【ア】が 枠に なる", 枠.length + " 個");
@@ -149,7 +154,43 @@ function 組む(spec, kind) {
   const 無 = 試験();
   無.sections.forEach((s) => s.questions.forEach((q) => { q.prompt = "枠の 無い 問題文です。"; }));
   const h3 = 組む(無).html;
-  見(!/class="bx/.test(h3), "★ 書いていなければ 枠を 作らない");
+  /* 解答番号の 枠（bx is-ano）は 本文とは 別物。そちらは いつも 出る。 */
+  見(!/class="bx"|class="bx is-again"|class="bx is-wide/.test(h3),
+     "★ 書いていなければ 本文に 枠を 作らない");
+  見(/class="bx is-ano"/.test(h3), "解答番号の 枠は 出る（本文の 枠とは 別）");
+}
+
+/* ══ ④b 実物と 同じ 組み（情報 I100 を 見て 直した）══════════════ */
+節("④b 実物の 組みかた（情報 I100・第1問）");
+{
+  const spec = 試験();
+  const { html } = 組む(spec);
+  /* 柱 … 情 報 Ⅰ ＋（全問必答） */
+  見(/class="ct-run"/.test(html), "★ 本文の 柱が 出る（試験名では ない）");
+  見(/（全問必答）/.test(html), "（全問必答）が 付く");
+  /* 大問の 見出しは 1 行 ＋ 右端に（配点 20） */
+  見(/class="sec is-ct"/.test(html), "★ 大問の 見出しは 1 行");
+  見(/class="sec-pts">（配点　/.test(html), "★ 右端に「（配点　n）」",
+     (html.match(/（配点　\d+）/) || [])[0]);
+  /* 解答番号の 枠 */
+  見(/解答番号は<span class="bx is-ano">1<\/span>。/.test(html),
+     "★ 設問の 末尾に「解答番号は ｜1｜。」");
+  const 番 = [...html.matchAll(/class="bx is-ano">(\d+)</g)].map((m) => +m[1]);
+  見(番.length === 6 && 番[0] === 1 && 番[5] === 6,
+     "★ 解答番号は 大問を またいで 1 から 続く", 番.join(","));
+  /* 選択肢は 枠なし・①から・1 列ぶら下げ */
+  見(/class="ch c1 is-hang"/.test(html), "★ 選択肢は 1 列・ぶら下げ");
+  見(/class="ch-l">①</.test(html), "★ ふつうの 設問は **① から**（⓪ では ない）");
+  見(!/<div class="agr" /.test(html),
+     "★ 空欄を 指していない 設問は 解答群の 枠に しない（実物と 同じ）");
+  /* 空欄を 指す 設問だけ 解答群の 枠 */
+  const 空 = 試験();
+  空.sections[0].questions[0].prompt = "空欄【セ】に入るものとして最も適当なものを選べ。";
+  const h4 = 組む(空).html;
+  見(/<div class="agr" /.test(h4), "★ 空欄を 指す 設問だけ 枠に なる");
+  見((h4.match(/<div class="agr" /g) || []).length === 1, "枠は その 1 問だけ",
+     (h4.match(/<div class="agr" /g) || []).length);
+  見(/class="agr-m">⓪</.test(h4), "枠の 中は **⓪ から**");
 }
 
 /* ══ ⑤ マークシート ════════════════════════════════════════ */
