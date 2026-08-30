@@ -172,6 +172,11 @@
     ".log-done{color:#2FA96B;font-weight:650}",
     ".log-warn{color:#8A5A00}",
     ".log-err{color:var(--vq-danger-text,#B23A55)}",
+    /* 組版の 読み込みの 帯 */
+    ".tyb{height:8px;border-radius:999px;background:var(--vq-border,#E7E4EF);overflow:hidden;margin:6px 0}",
+    ".tyb-i{height:100%;background:var(--vq-accent,#6C5CE7);transition:width .2s ease}",
+    ".ok2{margin-top:8px;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.7;",
+    "     background:var(--vq-ok-subtle,#E8F6EE);color:var(--vq-ok,#1B7F4B)}",
     /* 出す札 */
     ".outs{margin-top:16px;display:grid;gap:10px}",
     ".out{display:flex;align-items:center;gap:12px;text-align:left;padding:14px 16px;",
@@ -689,12 +694,56 @@
       + 出す札("解答例", "答えと 解説", "print-k")
       + "</div>";
 
+    /* ── PDF ファイルとして 保存（組版・2026-08-30）──────────────
+       上の 3 つは ブラウザの 印刷の 窓を 通る。窓を 通ると
+       余白と 縮尺が **ブラウザまかせ**に なるので、紙面が 少し ずれる。
+       こちらは Typst が この端末の 中で 組み、PDF を そのまま 渡す。
+       ★ 20MB を 読む。押したときに 初めて 取りに 行く。 */
+    h += 組版の欄();
+
     if (st.err) h += '<div class="err">' + esc(st.err) + "</div>";
     h += '<div class="ft">'
       + '<button class="btn" data-a="save">' + (st.保存した ? "保存ずみ" : "保存する") + "</button>"
       + '<button class="btn pri" data-a="take-exam">受験する</button></div>';
     return h;
   }
+  /* 組版（Typst）の 欄。**大きさを 先に 言う。** */
+  function 組版の欄() {
+    var T = window.VQTYPST;
+    if (!T) return "";
+    var 用意 = false, 状 = null;
+    try { 用意 = T.用意ができているか(); 状 = T.状態(); } catch (e) {}
+    var 大 = null;
+    try { 大 = T.大きさ(); } catch (e) {}
+
+    if (st.組版 && st.組版.進み && !st.組版.終わった) {
+      var pct = Math.round((st.組版.進み.割合 || 0) * 100);
+      return '<div class="row"><label>PDF ファイルとして 保存</label>'
+        + '<div class="tyb"><div class="tyb-i" style="width:' + pct + '%"></div></div>'
+        + '<div class="hint">' + esc(st.組版.進み.段 || "読み込んでいます")
+        + "… " + pct + "%（" + (大 ? 大.MB : 21) + "MB／一度だけ）</div></div>";
+    }
+    var 中 = '<div class="row"><label>PDF ファイルとして 保存</label>';
+    if (状 && 状.済み && !状.使える) {
+      /* ★ 使えるふりを しない。理由を 出す。 */
+      中 += '<div class="warn">この端末では 組版を 使えません：' + esc(状.なぜ || "理由が 分かりません") + "</div>"
+        + '<div class="hint">上の 3 つ（印刷の 窓から PDF）は これまでどおり 使えます。</div>';
+      return 中 + "</div>";
+    }
+    中 += '<div class="outs">'
+      + 出す札("問題用紙を PDF で 保存", 用意 ? "そのまま 保存します" : "はじめだけ 約 " + (大 ? 大.MB : 21) + "MB を 読み込みます", "pdf-q")
+      + 出す札("解答用紙を PDF で 保存", "同じ 組版で 出します", "pdf-a")
+      + "</div>"
+      + '<div class="hint">印刷の 窓を 通さないので、<b>余白と 縮尺が ずれません</b>。'
+      + (用意 ? "用意は できています。"
+             : "組版の 道具（約 " + (大 ? 大.MB : 21) + "MB）を 一度だけ 読み込みます。"
+               + "2 回目からは 何も 流れません。細い 回線だと 数分 かかります。")
+      + "</div>";
+    if (st.組版 && st.組版.err) 中 += '<div class="err">' + esc(st.組版.err) + "</div>";
+    if (st.組版 && st.組版.出した) 中 += '<div class="ok2">' + esc(st.組版.出した) + "</div>";
+    return 中 + "</div>";
+  }
+
   function 出す札(名, 説, act) {
     return '<button class="out" data-a="' + esc(act) + '">' + svg("paper", "i")
       + '<span><b>' + esc(名) + "</b><small>" + esc(説) + "</small></span></button>";
@@ -976,6 +1025,7 @@
       if (a === "save") { 保存する(); return; }
       if (a === "paper") { st.err = ""; 開く("紙面"); return; }
       if (a === "print-q" || a === "print-a" || a === "print-k") { 紙面を出す(a); return; }
+      if (a === "pdf-q" || a === "pdf-a") { 組版で出す(a === "pdf-a"); return; }
       /* ★ ここは 長いあいだ **死んでいた**（2026-08-30 に 気づいた）。
          合図が "exam" で、選ぶ画面の「試験」の 札と 同じだった。
          上の `if (a === "exam") { …表紙を 開く… return; }` で 必ず 止まるので、
@@ -1303,6 +1353,67 @@
     描く();
   }
 
+  /* ⑦ 組版（Typst）で PDF を 出す。
+     ★ 原稿を 作るのは VQ2.pdfRenderer.adapters.typst.build。
+       走らせるのは window.VQTYPST。ここは 押されたときの 段取りだけ。 */
+  function 組版で出す(解答用紙か) {
+    var V = VQ2();
+    var T = window.VQTYPST;
+    var R = V && V.pdfRenderer;
+    if (!st.spec) { st.err = "試験が ありません。"; 描く(); return; }
+    if (!T || !R || !R.adapter) { st.err = "組版の 部品が ありません。"; 描く(); return; }
+    var A = R.adapter("typst");
+    st.組版 = { 進み: { 段: "はじめます", 割合: 0 }, 終わった: false, err: "", 出した: "" };
+    描く();
+
+    T.用意する(function (pr) {
+      st.組版.進み = pr;
+      /* 毎回 全部 描き直すと 重いので、帯だけ 差し替える。 */
+      try {
+        var bar = root.querySelector(".tyb-i");
+        var 文 = root.querySelector(".tyb") && root.querySelector(".tyb").nextElementSibling;
+        if (bar) bar.style.width = Math.round((pr.割合 || 0) * 100) + "%";
+        if (文) 文.textContent = (pr.段 || "読み込んでいます") + "… "
+          + Math.round((pr.割合 || 0) * 100) + "%（一度だけ）";
+      } catch (e) {}
+    }).then(function (r) {
+      st.組版.終わった = true;
+      if (!r || !r.ok) {
+        st.組版.err = "組版を 用意できませんでした：" + (r && r.なぜ ? r.なぜ : "理由が 分かりません");
+        描く(); return;
+      }
+      /* 選んだ 型を 反映してから 原稿を 作る。 */
+      var 出 = A.build(st.spec, null, {
+        cover: true,
+        vertical: (st.条件 && st.条件.縦書き) === true,
+        seed: (st.spec.layout && st.spec.layout.layoutSeed) || undefined
+      });
+      if (!出 || !出.ok) {
+        st.組版.err = (出 && 出.message) || "原稿を 作れませんでした。";
+        描く(); return;
+      }
+      var 原稿 = 解答用紙か ? 出.answerSheet : 出.questionPaper;
+      st.組版.進み = { 段: "組んでいます", 割合: 1 };
+      描く();
+      return A.compile(原稿).then(function (c) {
+        st.組版.進み = null;
+        if (!c || !c.ok) {
+          st.組版.err = (c && c.message) || "組めませんでした。";
+          描く(); return;
+        }
+        var 名 = (st.spec.title || "試験") + (解答用紙か ? "-解答用紙" : "-問題用紙");
+        T.保存する(c.pdf, 名);
+        st.組版.出した = 名 + ".pdf を 保存しました（"
+          + (Math.round(c.bytes / 1024)) + "KB）";
+        描く();
+      });
+    }).catch(function (e) {
+      st.組版.終わった = true; st.組版.進み = null;
+      st.組版.err = String((e && e.message) || e).slice(0, 160);
+      描く();
+    });
+  }
+
   /* ⑦ 受験する */
   function 受験する() {
     if (!st.spec) { st.err = "受験する 試験が ありません。"; 描く(); return; }
@@ -1347,6 +1458,15 @@
       開く("選ぶ");
     },
     閉じる: 閉じる,
+    /* 検証のため。できあがった 試験を 差し込んで 紙面の 段へ 飛ばす。 */
+    試験を入れる: function (spec) {
+      if (!spec || !spec.sections) return false;
+      st.spec = spec;
+      st.表紙 = spec.cover || st.表紙;
+      st.保存した = true;
+      開く("紙面");
+      return true;
+    },
     /* 検証のため（画面を 触らずに 中を 見る） */
     状態: function () {
       return { 画面: st.画面, err: st.err,

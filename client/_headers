@@ -31,3 +31,9 @@
 #   ここには 入れない（差し替えたのに 届かない、を 避ける）。
 /vq-lumi-think.*.m4a
   Cache-Control: public, max-age=31536000, immutable
+
+# 組版（Typst）の 道具。20MB あるが **押したときにしか 取りに行かない**。
+# 中身が 変わらない（版を上げるときは 名前を変える）ので 1 年 溜めてよい。
+# 溜めないと 開くたびに 20MB 流れる。
+/typst/*
+  Cache-Control: public, max-age=31536000, immutable

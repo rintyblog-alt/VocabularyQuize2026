@@ -22758,6 +22758,29 @@
   function engineStatus() {
     var t = ENGINE_CAPABILITY.typst || {};
     var x = ENGINE_CAPABILITY.tex || {};
+    /* ★ Typst は **この端末の ブラウザ**で 走る（2026-08-30）。
+       Bridge（Mac）の 答えを 待たなくても よい。
+       ただし **一度 組んでみて 通った ときだけ** available に する
+       （vq-typst.js の 自己点検）。使えるふりを しない。 */
+    try {
+      var T = root.VQTYPST;
+      if (T) {
+        var 状 = T.状態();
+        if (状.使える) {
+          t = { available: true, verified: true, version: "wasm（ブラウザ）",
+                reason: "" };
+        } else if (!状.済み) {
+          var 大 = T.大きさ();
+          t = { available: false, verified: false, version: null,
+                installable: true, sizeMB: 大.MB,
+                reason: "組版の 道具（約 " + 大.MB + "MB）を まだ 読み込んでいません。"
+                  + "「PDF ファイルとして 保存」を 押すと、一度だけ 読み込みます。" };
+        } else {
+          t = { available: false, verified: false, version: null,
+                reason: "この端末では 組版を 使えません：" + (状.なぜ || "理由が 分かりません") };
+        }
+      }
+    } catch (e) {}
     return {
       current: { id: "current", label: "現在の Quick Mock", available: true, verified: true,
                  note: "HTML/CSS の Paged Media で組み、ブラウザの印刷から PDF にします。" },
@@ -22766,9 +22789,13 @@
                  available: !!(t.available && t.verified),
                  verified: !!t.verified,
                  version: t.version || null,
+                 /* 読み込めば 使えるか。まだ 読んでいないだけ なのか、
+                    この端末では 無理なのかを 分けて 言う。 */
+                 installable: !!t.installable,
+                 sizeMB: t.sizeMB || null,
                  note: t.available
                    ? (t.verified
-                       ? "Typst " + (t.version || "") + " で PDF を作ります。"
+                       ? "Typst（" + (t.version || "") + "）で PDF を作ります。印刷の窓を通さないので余白がずれません。"
                        : "Typst " + (t.version || "") + " はありますが、コンパイルと検証がまだ通っていません（準備中）。")
                    : (t.reason || "Typst の実行環境が導入されていないため、まだ出力できません（準備中）。") },
       /* TeX も Typst と同じ扱いにする。実行環境があり、かつ組んで
@@ -30168,10 +30195,64 @@
       build: function (spec, plan, opts) { return { ok: true, html: buildHtml(spec, plan, opts) }; },
       compile: function () { return Promise.resolve({ ok: true, via: "browser-print", note: "ブラウザの印刷から PDF にします。" }); }
     },
+    /* ★ Typst は **この端末の ブラウザ**で 走る（2026-08-30）。
+       走らせるのは vq-typst.js（window.VQTYPST）。原稿を 作るのは
+       VQ2.typstRenderer。ここは その 2 つを つなぐだけ。
+       ★ 読み込みは 20MB。押したときに 初めて 取りに 行く。
+       ★ **使えるふりを しない。** 一度 組んでみて 成功した ときだけ true。 */
     typst: {
-      id: "typst", available: function () { return false; },
-      build: function () { return { ok: false, error: "ENGINE_UNAVAILABLE", message: "Typst の実行環境が導入されていません。" }; },
-      compile: function () { return Promise.resolve({ ok: false, error: "ENGINE_UNAVAILABLE", message: "Typst の実行環境が導入されていません。" }); }
+      id: "typst",
+      available: function () {
+        try { return !!(root.VQTYPST && root.VQTYPST.用意ができているか()); } catch (e) { return false; }
+      },
+      /* 読み込む 前でも「これから 使えるか」は 答えられる。 */
+      installable: function () { return !!root.VQTYPST; },
+      size: function () {
+        try { return root.VQTYPST ? root.VQTYPST.大きさ() : null; } catch (e) { return null; }
+      },
+      prepare: function (onProgress) {
+        if (!root.VQTYPST) return Promise.resolve({ ok: false, なぜ: "組版の 部品が ありません。" });
+        return root.VQTYPST.用意する(onProgress);
+      },
+      build: function (spec, plan, opts) {
+        opts = opts || {};
+        var TR = VQ2.typstRenderer, LG = VQ2.layoutGrammar, LPF = VQ2.layoutProfiles;
+        if (!TR || !LG) return { ok: false, error: "ENGINE_UNAVAILABLE", message: "Typst の 原稿を 作る 部品が ありません。" };
+        var seed = opts.seed || (spec.layout && spec.layout.layoutSeed) || (LPF && LPF.newSeed ? LPF.newSeed() : "vq");
+        var sem;
+        try {
+          sem = LG.buildSemanticPlan(spec, {
+            rng: (LPF && LPF.rng) ? LPF.rng(seed + "|semantic") : undefined,
+            documentFamily: opts.documentFamily || null,
+            subject: opts.subject || null,
+            cover: opts.cover !== false
+          });
+        } catch (e) {
+          return { ok: false, error: "SEMANTIC_FAILED", message: "版面を 決められませんでした：" + String((e && e.message) || e).slice(0, 120) };
+        }
+        if (opts.vertical === true) sem.writingDirection = "vertical";
+        var out;
+        try { out = TR.buildAll(spec, sem, { showExplanation: !!opts.showExplanation }); }
+        catch (e) {
+          return { ok: false, error: "SOURCE_FAILED", message: "原稿を 作れませんでした：" + String((e && e.message) || e).slice(0, 120) };
+        }
+        if (!out || !out.ok) {
+          return { ok: false, error: "SOURCE_FAILED",
+                   message: (out && out.questionPaper && out.questionPaper.message) || "原稿を 作れませんでした。" };
+        }
+        return { ok: true, seed: seed, semantic: sem, warnings: out.warnings || [],
+                 questionPaper: out.questionPaper.source,
+                 answerSheet: out.answerSheet.source,
+                 answerKey: out.answerKey.source };
+      },
+      compile: function (source) {
+        if (!root.VQTYPST) return Promise.resolve({ ok: false, error: "ENGINE_UNAVAILABLE", message: "組版の 部品が ありません。" });
+        return root.VQTYPST.組む(source).then(function (u8) {
+          return { ok: true, pdf: u8, bytes: u8.length, via: "browser-wasm" };
+        }, function (e) {
+          return { ok: false, error: "COMPILE_FAILED", message: String((e && e.message) || e).slice(0, 200) };
+        });
+      }
     },
     latex: {
       id: "latex", available: function () { return false; },
