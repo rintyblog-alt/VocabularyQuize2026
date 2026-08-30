@@ -5394,8 +5394,22 @@
         var blanks = Array.isArray(question.blanks) ? question.blanks : null;
         var given = Array.isArray(answer) ? answer : (answer && Array.isArray(answer.blanks) ? answer.blanks : [textOf(answer)]);
         if (!blanks) {
-          var a2 = normalizeAnswer(textOf(answer), norm);
+          /* ★ 空欄の 一覧が 無い 試験（2026-08-30 より 前に 作った もの）。
+             受験の 画面は blankCount のぶん **配列**で 答えを 作るので、
+             ここで 文字列として 見ると **必ず 不正解**に なっていた。
+             配列で 来たら つないで 見る（1 つなら その まま）。 */
+          var 生 = Array.isArray(answer) ? answer.filter(function (x) { return String(x || "").trim(); })
+                                          : null;
+          var a2 = 生 && 生.length
+            ? normalizeAnswer(生.length === 1 ? 生[0] : 生.join(""), norm)
+            : normalizeAnswer(textOf(answer), norm);
           var acc2 = acceptedList(question).map(function (x) { return normalizeAnswer(x, norm); });
+          /* 「東京　大阪」のように 区切って 書いてある 正解とも 見比べる。 */
+          if (生 && 生.length > 1) {
+            acc2 = acc2.concat(acceptedList(question).map(function (x) {
+              return normalizeAnswer(String(x).replace(/[\s、,／\/]+/g, ""), norm);
+            }));
+          }
           var ok5 = a2.length > 0 && acc2.indexOf(a2) >= 0;
           return mk(ok5, ok5 ? max : 0, max, "exact", { normalized: a2 });
         }
@@ -11738,6 +11752,37 @@
     return 出;
   }
 
+  /* 空欄の 中身を そろえる。
+     AI は blanks: [{answer}] でも blanks: ["東京"] でも 返す。
+     無いときは answer が 配列なら そこから 作る。
+     ★ 作れない ときは **null**（作り話の 空欄を 足さない）。 */
+  function 空欄を整える(q, q2) {
+    var b = Array.isArray(q.blanks) ? q.blanks : null;
+    if (!b || !b.length) {
+      var a = q.answer !== undefined ? q.answer : q.correctAnswer;
+      if (Array.isArray(a) && a.length) b = a.map(function (x) { return { answer: x }; });
+    }
+    if (!b || !b.length) return null;
+    var 出 = b.slice(0, 空欄の上限).map(function (x, i) {
+      var v = (x && typeof x === "object") ? (x.answer !== undefined ? x.answer : x.text) : x;
+      return {
+        id: "bl" + (i + 1),
+        answer: str(v),
+        acceptedAnswers: (x && Array.isArray(x.acceptedAnswers))
+          ? x.acceptedAnswers.map(str).filter(Boolean) : []
+      };
+    }).filter(function (x) { return x.answer !== ""; });
+    return 出.length ? 出 : null;
+  }
+
+  /* 1 問の 空欄の 数。多すぎる ものは 切る（黙って 75 個 並べない）。 */
+  var 空欄の上限 = 10;
+  function 空欄の数(blanks) {
+    var n = Array.isArray(blanks) ? blanks.length : 0;
+    if (!n) return undefined;
+    return Math.min(空欄の上限, n);
+  }
+
   function fromDraft(draft, opts) {
     opts = opts || {};
     draft = draft || {};
@@ -11828,6 +11873,13 @@
           validationIssues: []
         };
 
+        /* ★ 空欄（blanks）を **落とさない**（2026-08-30）。
+           前は ここで 捨てていたので、採点は「1 つの 文字列」として 見ていた。
+           受験の 画面は blankCount のぶん **配列**で 答えを 作るので、
+           文字列として 見られると **必ず 不正解**に なっていた（実測）。 */
+        var 空 = 空欄を整える(q, q2);
+        if (空) q2.blanks = 空;
+
         /* 記述式には採点基準を用意する。無いと採点根拠を示せない（§25）。 */
         if (AI_TYPES.indexOf(type) >= 0) {
           q2.scoringRubric = buildRubric(q, q2.points);
@@ -11842,7 +11894,10 @@
         bindings.push({
           id: bid, questionId: qid, number: String(qNo),
           inputType: type, points: q2.points,
-          blankCount: (q.blanks || []).length || undefined,
+          /* ★ 上限を 付ける（2026-08-30・訴え「同じ問題で 75 個くらい 入力欄が」）。
+             AI が blanks を 文の 数だけ 返すと、その 数だけ 欄が 並ぶ。
+             1 問の 空欄が 10 を 超える 試験は 無い。超えたぶんは 切る。 */
+          blankCount: 空欄の数(q2.blanks || q.blanks),
           expectedChars: q2.expectedChars,
           answerLines: AI_TYPES.indexOf(type) >= 0 ? Math.max(2, Math.ceil((q2.expectedChars || 120) / 35)) : undefined
         });
@@ -28971,6 +29026,12 @@
   }
 
   VQ2.layout = {
+    /* ★ 受験の 画面（CBT）が **紙面と 同じ 記号**を 出すのに 要る（2026-08-30）。
+       紙は「ア イ ウ」で 散らして 出しているのに、右の 解答欄が
+       別の 並びだと、受験者は どれを 指しているか 分からない。
+       同じ 種（設問 id）を 渡せば 同じ 並びに なる。 */
+    stableShuffle: stableShuffle,
+    kana: kana,
     BLOCK_TYPES: BLOCK_TYPES,
     TUNABLES: TUNABLES,
     buildPlan: buildPlan,
@@ -63072,7 +63133,11 @@
       if (t === "fill_blank") {
         var vals = Array.isArray(value) ? value : [];
         var b = (spec.answerBindings || []).find(function (x) { return x.id === q.answerBindingId; });
-        var n = (b && b.blankCount) || (q.blanks || []).length || 1;
+        /* ★ ここでも 止める（2026-08-30）。
+           前に 作った 試験には 大きい blankCount が 残っている。
+           上限を 付けないと、開いた 瞬間に 欄が 75 個 並ぶ。 */
+        var n = Math.max(1, Math.min(10,
+          (b && b.blankCount) || (q.blanks || []).length || 1));
         var out = '<div style="display:flex;flex-direction:column;gap:6px">';
         for (var i = 0; i < n; i++) {
           out += '<div class="vq2-field is-inline"><span class="vq2-label" style="min-width:56px">空欄' + (i + 1) + "</span>"
@@ -63080,19 +63145,103 @@
         }
         return out + "</div>";
       }
+      /* ══ 並べ替え（2026-08-30 に 作り直した）════════════════════
+         前は「3,1,4,2」と **文字で 打たせていた**。
+         ・紙には ア イ ウ … で 散らして 出ているのに、右は 数字だった
+         ・打った 文字を そのまま 保存していたので、採点は
+           項目の id と 見比べて **必ず 不正解**に なっていた（実測）
+         いまは 紙と 同じ 記号の 札を 押して 並べる。保存するのは id。 */
       if (t === "ordering") {
-        var seq = Array.isArray(value) ? value : [];
-        return '<div class="vq2-hint">正しい順に番号を入れます。</div>'
-          + '<input type="text" class="vq2-input" data-order="' + esc(q.id) + '" value="' + esc(seq.join(",")) + '" placeholder="例: 3,1,4,2">';
+        var 並 = 札を並べる(q);
+        if (!並.length) return fallbackInputHtml(q, value, "この問題は並べる語が用意されていません。文字で解答してください。");
+        var 選ばれ = Array.isArray(value) ? value.map(String) : [];
+        var 名 = {};
+        並.forEach(function (x) { 名[x.id] = x; });
+        var h = '<div class="vq2-hint">正しい順に押します。もう一度押すと外れます。</div>'
+          + '<div class="vq2-row" style="gap:6px;flex-wrap:wrap;margin:6px 0">';
+        並.forEach(function (x) {
+          var i = 選ばれ.indexOf(String(x.id));
+          h += '<button type="button" class="vq2-btn sz-sm' + (i >= 0 ? " is-primary" : "") + '"'
+            + ' data-ord="' + esc(q.id) + "|" + esc(x.id) + '" title="' + esc(x.text) + '"'
+            + ' aria-pressed="' + (i >= 0 ? "true" : "false") + '" style="min-width:44px">'
+            + esc(x.label) + (i >= 0 ? '<small style="margin-left:3px">' + (i + 1) + "</small>" : "")
+            + "</button>";
+        });
+        h += "</div>";
+        h += '<div class="vq2-hint">いまの順：'
+          + (選ばれ.length
+              ? 選ばれ.map(function (id2) { return esc((名[id2] || {}).label || "?"); }).join(" → ")
+              : "（まだ ありません）")
+          + "</div>";
+        if (選ばれ.length) {
+          h += '<button type="button" class="vq2-btn sz-sm" data-ordclear="' + esc(q.id) + '">すべて外す</button>';
+        }
+        return h;
       }
+      /* ══ 組み合わせ（同じく 作り直した）══════════════════════════
+         前は 右の 中身を **文字で 打たせて** いた。
+         右の 選びものは 紙にしか 出ておらず、id を 打てる はずが 無い。
+         いまは 紙と 同じ 記号つきの 一覧から 選ばせる。 */
       if (t === "matching") {
-        var pairs = (value && typeof value === "object" && !Array.isArray(value)) ? value : {};
-        var lefts = Object.keys(q.correctAnswer || {});
-        if (!lefts.length) return '<input type="text" class="vq2-input" data-text="' + esc(q.id) + '" value="' + esc(textOf(value)) + '">';
-        return lefts.map(function (k) {
-          return '<div class="vq2-field is-inline" style="margin-bottom:4px"><span class="vq2-label" style="min-width:56px">' + esc(k) + "</span>"
-            + '<input type="text" class="vq2-input" data-pair="' + esc(q.id) + "|" + esc(k) + '" value="' + esc(pairs[k] || "") + '"></div>';
+        var 対 = (value && typeof value === "object" && !Array.isArray(value)) ? value : {};
+        var 左右 = 組み合わせの札(q);
+        if (!左右.left.length || !左右.right.length) {
+          return fallbackInputHtml(q, value, "この問題は対応する語が用意されていません。文字で解答してください。");
+        }
+        return 左右.left.map(function (l) {
+          return '<div class="vq2-field is-inline" style="margin-bottom:6px">'
+            + '<span class="vq2-label" style="min-width:120px">' + esc(l.label) + "　"
+            + esc(String(l.text).slice(0, 22)) + "</span>"
+            + '<select class="vq2-input" data-pairsel="' + esc(q.id) + "|" + esc(l.id) + '">'
+            + '<option value="">（選ぶ）</option>'
+            + 左右.right.map(function (r2) {
+                return '<option value="' + esc(r2.id) + '"'
+                  + (String(対[l.id] || "") === String(r2.id) ? " selected" : "") + ">"
+                  + esc(r2.label) + "　" + esc(String(r2.text).slice(0, 30)) + "</option>";
+              }).join("")
+            + "</select></div>";
         }).join("");
+      }
+      /* ══ 分類 ══ 紙には 箱と 語が 出る。ここでも 箱から 選ばせる。 */
+      if (t === "classification") {
+        var c2 = q.classification || {};
+        var 箱 = Array.isArray(c2.groups) ? c2.groups : [];
+        var 語 = 分類の札(q);
+        if (!箱.length || !語.length) return fallbackInputHtml(q, value, "この問題は分類する語が用意されていません。");
+        var いま = (value && typeof value === "object" && value.items) ? value.items : {};
+        return 語.map(function (x) {
+          return '<div class="vq2-field is-inline" style="margin-bottom:6px">'
+            + '<span class="vq2-label" style="min-width:120px">' + esc(x.label) + "　"
+            + esc(String(x.text).slice(0, 22)) + "</span>"
+            + '<select class="vq2-input" data-clssel="' + esc(q.id) + "|" + esc(x.id) + '">'
+            + '<option value="">（選ぶ）</option>'
+            + 箱.map(function (g) {
+                return '<option value="' + esc(g.id) + '"'
+                  + (String(いま[x.id] || "") === String(g.id) ? " selected" : "") + ">"
+                  + esc(String(g.label || "")) + "</option>";
+              }).join("")
+            + "</select></div>";
+        }).join("");
+      }
+      /* ══ 表うめ ══ 紙の 表と 同じ 並びで、うめる マスだけ 入れさせる。 */
+      if (t === "table_fill") {
+        var t3 = q.table || {};
+        var 行 = Array.isArray(t3.rows) ? t3.rows : [];
+        if (!行.length) return fallbackInputHtml(q, value, "この問題は表が用意されていません。");
+        var セ = (value && typeof value === "object" && value.cells) ? value.cells : {};
+        var h2 = "";
+        行.forEach(function (r3, ri) {
+          (Array.isArray(r3.cells) ? r3.cells : []).forEach(function (cell, ci) {
+            if (!cell || !cell.editable) return;
+            var k2 = ri + ":" + ci;
+            h2 += '<div class="vq2-field is-inline" style="margin-bottom:4px">'
+              + '<span class="vq2-label" style="min-width:120px">' + esc(String(r3.header || "")) + "　"
+              + esc(String((t3.columns || [])[ci] && (t3.columns[ci].text || t3.columns[ci]) || (ci + 1))) + "</span>"
+              + '<input type="text" class="vq2-input" data-cell="' + esc(q.id) + "|" + k2 + '"'
+              + ' value="' + esc(セ[k2] || "") + '"></div>';
+          });
+        });
+        return h2 || fallbackInputHtml(q, value, "うめる マスが ありません。");
       }
       if (t === "long_answer" || t === "essay" || t === "english_writing" || t === "source_analysis") {
         var txt = textOf(value);
@@ -63110,6 +63259,47 @@
       return '<input type="' + (t === "numeric" ? "text" : "text") + '" class="vq2-input" data-text="' + esc(q.id) + '"'
         + ' inputmode="' + (t === "numeric" ? "decimal" : "text") + '" value="' + esc(textOf(value)) + '" placeholder="解答を入力します">';
     }
+    /* 紙面と **同じ 並び・同じ 記号**にする。種は 設問 id（紙面と 同じ）。
+       ここを そろえないと、紙の「ア」と 画面の「ア」が 別物に なる。 */
+    function 散らす(list, seed) {
+      try {
+        if (L && L.stableShuffle) return L.stableShuffle(list, seed);
+      } catch (e) {}
+      return list.slice();
+    }
+    function カナ(i) {
+      try { if (L && L.kana) return L.kana(i); } catch (e) {}
+      return "アイウエオカキクケコサシスセソタチツテト"[i] || String(i + 1);
+    }
+    function 札を並べる(q) {
+      var it = Array.isArray(q.orderItems) ? q.orderItems : [];
+      it = it.filter(function (x) { return x && String(x.text || "").trim(); });
+      if (it.length < 2) return [];
+      /* 並べる 語が 20 を 超える 設問は 無い。多すぎる ものは 切る。 */
+      it = it.slice(0, 20);
+      return 散らす(it, q.id).map(function (x, i) {
+        return { id: x.id, label: カナ(i), text: String(x.text) };
+      });
+    }
+    function 組み合わせの札(q) {
+      var p2 = q.pairs || {};
+      var l = Array.isArray(p2.left) ? p2.left : [];
+      var r2 = Array.isArray(p2.right) ? p2.right : [];
+      return {
+        left: l.map(function (x, i) { return { id: x.id, label: カナ(i), text: String(x.text || "") }; }),
+        right: 散らす(r2, q.id + "R").map(function (x, i) {
+          return { id: x.id, label: String(i + 1), text: String(x.text || "") };
+        })
+      };
+    }
+    function 分類の札(q) {
+      var c3 = q.classification || {};
+      var it2 = Array.isArray(c3.items) ? c3.items : [];
+      return 散らす(it2, q.id + "C").map(function (x, i) {
+        return { id: x.id, label: カナ(i), text: String(x.text || "") };
+      });
+    }
+
     function textOf(v) {
       if (v == null) return "";
       if (typeof v === "string") return v;
@@ -63264,6 +63454,58 @@
         vals[parseInt(p[1], 10)] = t.value;
         setAnswer(p[0], vals);
       });
+      /* ══ 並べ替え（2026-08-30）════════════════════════════════
+         札を 押した 順に 並べる。保存するのは **項目の id**。
+         前は 打った 文字（"3,1,4,2"）を そのまま 保存していたので、
+         採点は id と 見比べて **必ず 不正解**に なっていた。 */
+      U.on(r, "click", "[data-ord]", function (e, t) {
+        var p = t.getAttribute("data-ord").split("|");
+        var qid = p[0], iid = p[1];
+        var a = answerFor(qid);
+        var seq = (a && Array.isArray(a.value)) ? a.value.map(String) : [];
+        var i = seq.indexOf(String(iid));
+        if (i >= 0) seq.splice(i, 1); else seq.push(String(iid));
+        setAnswer(qid, seq);
+        selectQuestion(qid, false);
+        render();
+      });
+      U.on(r, "click", "[data-ordclear]", function (e, t) {
+        var qid = t.getAttribute("data-ordclear");
+        setAnswer(qid, []);
+        render();
+      });
+      /* ══ 組み合わせ ══ 右の 一覧から 選ぶ。保存するのは { 左id: 右id }。 */
+      U.on(r, "change", "[data-pairsel]", function (e, t) {
+        var p = t.getAttribute("data-pairsel").split("|");
+        var a = answerFor(p[0]);
+        var o = (a && a.value && typeof a.value === "object" && !Array.isArray(a.value))
+          ? Object.assign({}, a.value) : {};
+        if (t.value) o[p[1]] = t.value; else delete o[p[1]];
+        setAnswer(p[0], o);
+        refreshRow(p[0]);
+      });
+      /* ══ 分類 ══ 保存するのは { items: { 語id: 箱id } }。 */
+      U.on(r, "change", "[data-clssel]", function (e, t) {
+        var p = t.getAttribute("data-clssel").split("|");
+        var a = answerFor(p[0]);
+        var v = (a && a.value && typeof a.value === "object" && !Array.isArray(a.value))
+          ? Object.assign({}, a.value) : {};
+        var items = Object.assign({}, v.items || {});
+        if (t.value) items[p[1]] = t.value; else delete items[p[1]];
+        setAnswer(p[0], Object.assign({}, v, { items: items }));
+        refreshRow(p[0]);
+      });
+      /* ══ 表うめ ══ 保存するのは { cells: { "行:列": 文字 } }。 */
+      U.on(r, "input", "[data-cell]", function (e, t) {
+        var p = t.getAttribute("data-cell").split("|");
+        var a = answerFor(p[0]);
+        var v = (a && a.value && typeof a.value === "object" && !Array.isArray(a.value))
+          ? Object.assign({}, a.value) : {};
+        var cells = Object.assign({}, v.cells || {});
+        cells[p[1]] = t.value;
+        setAnswer(p[0], Object.assign({}, v, { cells: cells }));
+      });
+      /* 昔の 打ち込み欄も 残す（保存済みの 答えが ある 端末のため）。 */
       U.on(r, "input", "[data-order]", function (e, t) {
         setAnswer(t.getAttribute("data-order"), t.value.split(/[,\s、]+/).filter(Boolean));
       });
