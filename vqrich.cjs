@@ -97,13 +97,65 @@ const 見 = (ok, 名, 追) => {
     見(!/\*\*太字\*\*|~~波線~~|__下線__/.test(h), "★ 印が そのまま 残らない");
   }
 
-  節("④ 知らない 札は 消さない");
+  節("④ 札の 剥き出しは 禁止（中身は 消さない）");
   {
-    const h = await 紙("<blink>知らない札</blink>の 中身。", "ふつうの 文。");
-    見(/知らない札/.test(h), "★ 中身は 消えない（黙って 落とさない）");
+    const h = await 紙("1 行目<br>2 行目<BR />3 行目<p>段落</p><div>箱</div><span class=\"x\">span</span><blink>札</blink>。",
+                       "数学記号: a < b、x > 0、5 <= 6。");
+    const 本文 = h.replace(/<[^>]*>/g, "");
+    const 残 = (本文.match(/&lt;\/?[a-zA-Z][a-zA-Z0-9]{0,14}[^&]{0,40}&gt;/g) || []);
+    見(残.length === 0, "★ 札が 1 つも 剥き出しに ならない", 残.join(" / ") || "なし");
+    見(["段落", "箱", "span", "札"].every((k) => 本文.indexOf(k) >= 0),
+       "★ 中身は 消えない（札だけ 取る）");
+    見((h.match(/<br>/g) || []).length >= 3, "★ <br> <BR /> は 改行に なる",
+       (h.match(/<br>/g) || []).length + " 個");
+    見(/a &lt; b/.test(h) && /x &gt; 0/.test(h),
+       "★ 数学記号（a < b ／ x > 0）は そのまま 残る");
   }
 
-  節("⑤ 選択肢・語群の 質（AI への 頼み）");
+  節("⑤ 会話文・語群・並び替えを 丁寧に 囲む");
+  {
+    const h = await page.evaluate(async () => {
+      const V = window.VQ2, MC = V.mockCompiler, L = V.layout, R = V.pdfRenderer, AG = V.aigen;
+      await R.数式の用意();
+      const pl = MC.plan({ seed: "kakomi", title: "t", subject: "情報", durationMinutes: 60,
+        totalPoints: 30, sectionCount: 1, questionCount: 3,
+        types: { fill_blank: true, ordering: true, matching: true },
+        difficulty: "mixed", allowExternalKnowledge: true, requireSources: false });
+      const qs = pl.sections.reduce((x, s) => x.concat(s.questions), []);
+      const f = {};
+      qs.forEach((q, i) => {
+        const base = { id: "x" + i, explanation: "e",
+          materials: [{ type: "dialogue", caption: "次の 会話文を 読め。",
+            text: "生徒A：どう 思う？\n生徒B：こう 思う。\n先生：なるほど。" }] };
+        if (q.type === "ordering") f[q.id] = Object.assign(base, { type: "reorder",
+          question: "古い順に 並べよ。", choices: ["あ", "い", "う", "え"],
+          answer: ["あ", "い", "う", "え"] });
+        else if (q.type === "matching") f[q.id] = Object.assign(base, { type: "matching",
+          question: "組み合わせよ。", answer: [["A", "1"], ["B", "2"], ["C", "3"]] });
+        else f[q.id] = Object.assign(base, { type: "fill_blank",
+          question: "本文の 【ア】・【イ】 に 入る 語を 選べ。",
+          answer: ["母集団", "標本"], blanks: [{ answer: "母集団" }, { answer: "標本" }],
+          choices: ["母集団", "標本", "度数", "階級", "中央値", "相対度数"] });
+        f[q.id] = AG.toClientShape(f[q.id], i);
+      });
+      const sp = MC.assemble(pl, f, {}).spec;
+      sp.cover = { examName: "t", subject: "情報" };
+      /* 共通テスト **以外**の 型で 見る（訴え「共通テスト以外でも」）。 */
+      const plan = L.buildPlan(sp);
+      const bk = (plan.booklets || []).filter((x) => x.kind === "question")[0];
+      return String(R.buildHtml(sp, plan, { bookletId: bk.id })).replace(/<style[\s\S]*?<\/style>/g, "");
+    });
+    見(/class="dlg is-round"/.test(h), "★ 会話文が 枠で 囲まれる（共通テスト以外でも）");
+    見((h.match(/class="spk"/g) || []).length >= 3, "★ 話し手（生徒A：）が 立つ",
+       (h.match(/class="spk"/g) || []).length + " 人");
+    見(/class="ob-t"/.test(h), "★ 並び替えの 枠に 札が 乗る");
+    見(/class="ob-l"/.test(h), "並び替えの 選択肢が 枠の 中");
+    見(/class="mp-c"/.test(h), "★ 組み合わせの 左右が それぞれ 枠の 中");
+    見(/class="agr"/.test(h), "★ 語群が 枠で 囲まれる",
+       (h.match(/class="agr-k">([^<]*)</) || [])[1] || "");
+  }
+
+  節("⑥ 選択肢・語群の 質（AI への 頼み）");
   {
     const fs = require("fs");
     const w = fs.readFileSync("server/src/worker.js", "utf8");

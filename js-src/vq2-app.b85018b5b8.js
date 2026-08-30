@@ -29854,7 +29854,8 @@
     出 = 出.replace(/&lt;sub&gt;([\s\S]*?)&lt;\/sub&gt;/g, "<sub>$1</sub>");
     出 = 出.replace(/&lt;sup&gt;([\s\S]*?)&lt;\/sup&gt;/g, "<sup>$1</sup>");
     出 = 出.replace(/&lt;mark&gt;([\s\S]*?)&lt;\/mark&gt;/g, '<span class="ub is-wave">$1</span>');
-    出 = 出.replace(/&lt;br\s*\/?&gt;/g, "\n");
+    出 = 出.replace(/&lt;br\s*\/?&gt;/gi, "\n");
+    出 = 出.replace(/&lt;\/?(p|div|li)&gt;/gi, "\n");
     /* 印の 書きかた。**太字** ／ ~~波線~~ ／ __下線__ */
     出 = 出.replace(/\*\*([^*\n]+?)\*\*/g, "<b>$1</b>");
     出 = 出.replace(/~~([^~\n]+?)~~/g, '<span class="ub is-wave">$1</span>');
@@ -29862,6 +29863,15 @@
     /* 上付き・下付き（化学式・指数）。H_2O → H₂O のような 書きかたも 受ける。 */
     出 = 出.replace(/\^\{([^}\n]{1,8})\}/g, "<sup>$1</sup>");
     出 = 出.replace(/_\{([^}\n]{1,8})\}/g, "<sub>$1</sub>");
+    /* ══ 札の 剥き出しは **禁止**（2026-08-30・訴え）════════════════
+       訴え「まだ <br> とかが タグが 出てる とこ あるから、
+             これ タグ剥き出しは 禁止に したい」
+       ★ 上で 効かせた もの 以外の 札は、**札だけ 取って 中身は 残す**。
+         消さずに 残すと 「&lt;p&gt;」が 紙に 出る。中身まで 消すと 問題が 消える。
+       ★ 消すのは **札の 形に なっている もの だけ**。
+         「a < b」「x > 0」のような 数学記号は そのまま 残る
+         （閉じ >(&gt;) と 名前が そろって いないので 当たらない）。 */
+    出 = 出.replace(/&lt;\/?[a-zA-Z][a-zA-Z0-9]{0,14}(?:\s[^&<>]{0,200})?\/?&gt;/g, "");
     return 出;
   }
 
@@ -29992,21 +30002,25 @@
       /* ── 形式そのものの中身 ────────────────────────────────
          白黒印刷でも読めるよう、色は使わず罫線と余白だけで分ける。 */
       /* 並べる語（語群） */
-      ".ob { margin: 2mm 0 0 8mm; break-inside: avoid; }",
-      ".ob-t { font-size: .86em; margin-bottom: 1.2mm; }",
-      ".ob-l { border: 0.5pt solid #000; padding: 2mm 2.5mm; display: flex;",
+      /* ══ 並び替え・組み合わせ・分類は **丁寧に 囲む**（2026-08-30・訴え）
+         見出しの 札を 枠の 上の 線に 乗せる（解答群と 同じ 組みかた）。 */
+      ".ob { margin: 3mm 0 1mm 8mm; break-inside: avoid; position: relative; }",
+      ".ob-t { position: absolute; top: 0; left: 4mm; transform: translateY(-50%);",
+      "        background: #fff; padding: 0 1.5mm; font-size: .8em;",
+      "        font-family: " + GOTHIC + "; white-space: nowrap; }",
+      ".ob-l { border: 0.5pt solid #000; padding: 3.5mm 2.5mm 2.5mm; display: flex;",
       "        flex-wrap: wrap; gap: 2mm 4mm; }",
       ".ob-i { break-inside: avoid; white-space: nowrap; }",
       ".ob-k { display: inline-block; min-width: 4.5mm; }",
       /* 組み合わせ（左右 2 列） */
-      ".mp { margin: 2mm 0 0 8mm; display: flex; gap: 6mm; break-inside: avoid; }",
+      ".mp { margin: 3mm 0 1mm 8mm; display: flex; gap: 6mm; break-inside: avoid; }",
       ".mp-c { flex: 1 1 0; border: 0.5pt solid #000; padding: 2mm 2.5mm; }",
       ".mp-h { font-size: .82em; text-align: center; border-bottom: 0.5pt solid #000;",
       "        margin: -2mm -2.5mm 1.5mm; padding: 1mm 0; }",
       ".mp-i { margin: 1mm 0; display: flex; gap: 1.5mm; break-inside: avoid; }",
       ".mp-k { flex: 0 0 auto; min-width: 4.5mm; }",
       /* 分類（語の並び ＋ 分類の箱） */
-      ".cg { margin: 2mm 0 0 8mm; break-inside: avoid; }",
+      ".cg { margin: 3mm 0 1mm 8mm; break-inside: avoid; }",
       ".cg-l { border: 0.5pt solid #000; padding: 2mm 2.5mm; display: flex;",
       "        flex-wrap: wrap; gap: 2mm 4mm; }",
       ".cg-g { display: flex; gap: 4mm; margin-top: 2mm; }",
@@ -30026,7 +30040,14 @@
       ".src-cap { font-size: .82em; margin-top: 1.5mm; text-align: right; }",
       ".fig { margin: 2mm auto; text-align: center; }",
       ".fig img { max-width: 100%; }",
-      ".dlg { margin: 2mm 0 2mm 4mm; padding: 2mm 3mm; border-left: 1.5pt solid #000; }",
+      /* ══ 会話文は **どの 型でも 枠で 囲む**（2026-08-30・訴え）════════
+         訴え「共通テスト以外でも そうなんだけど、会話文を 囲ってみたり」
+         前は 左に 線を 引くだけ だったので、本文と 見分けが つかなかった。 */
+      ".dlg { margin: 3mm 0 3mm 4mm; padding: 3mm 3.5mm; border: 0.6pt solid #000;",
+      "       border-radius: 1.5mm; break-inside: avoid; }",
+      ".dlg.is-round { border-radius: 3mm; }",
+      /* 話し手（生徒A：／先生：）は ゴシックで 少し 目立たせる。 */
+      ".dlg .spk { font-family: " + GOTHIC + "; }",
       "table.tbl { border-collapse: collapse; margin: 2mm 0; font-size: .9em; }",
       "table.tbl th, table.tbl td { border: 0.4pt solid #000; padding: 1mm 2mm; }",
       "pre.code { font-family: 'SFMono-Regular', Consolas, monospace; font-size: .85em; border: 0.4pt solid #000; padding: 2mm; white-space: pre-wrap; }",
@@ -31006,10 +31027,18 @@
         return '<div class="src" data-block="' + esc(b.id) + '">'
           + rich(b.text, vertical, b.underlines) + "</div>";
 
-      case "dialogue":
-        /* 会話文は 角丸の 枠（実物の 第1問）。 */
+      case "dialogue": {
+        /* 会話文は 角丸の 枠（実物の 第1問）。**どの 型でも 囲む**。
+           行頭の「生徒A：」「先生：」は ゴシックで 少し 立たせる。 */
+        var 会 = rich(b.text, vertical, b.underlines);
+        会 = 会.replace(/(^|<br>)\s*([^\s<：:]{1,12})\s*([：:])/g,
+          function (m, 頭, 名, 印) { return 頭 + '<span class="spk">' + 名 + 印 + "</span>"; });
         return '<div class="dlg' + (b.round === false ? "" : " is-round") + '" data-block="'
-          + esc(b.id) + '">' + rich(b.text, vertical, b.underlines) + "</div>";
+          + esc(b.id) + '">'
+          + (b.caption ? '<div class="src-cap" style="text-align:left;margin:0 0 1.5mm">'
+              + esc(b.caption) + "</div>" : "")
+          + 会 + "</div>";
+      }
 
       /* ── 資料（図・グラフ・図形・表）─────────────────────────
          描くのは vq-fig.js（VQFIG）。読めていない ときだけ、
@@ -31071,7 +31100,10 @@
         /* 指示は問題文が持っている。ここで重ねて書くと同じことが 2 行出る
            （実測: 「次の語を並べ替えて英文を完成させなさい。」の下に
             「次の語句を並べ替えなさい。」が並んでいた）。 */
+        /* ★ 枠の 上の 線に 札を 乗せる（2026-08-30・訴え「丁寧に 囲って」）。
+           解答群と 同じ 組みかた。何を 並べる 札なのかが ひと目で 分かる。 */
         return '<div class="ob" data-block="' + esc(b.id) + '">'
+          + '<div class="ob-t">' + esc(b.label || "並べる語") + "</div>"
           + '<div class="ob-l">'
           + (b.items || []).map(function (it) {
               return '<span class="ob-i"><span class="ob-k">' + esc(it.label) + '</span>'
