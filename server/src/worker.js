@@ -46975,6 +46975,19 @@ function aigenMaterialsNote(on) {
       + '{"type":"rightangle","x":0,"y":0,"dx1":1,"dy1":0,"dx2":0,"dy2":1}]}',
     "\u3000\u3000図形で 使えるのは point / segment / line / ray / arrow / polygon / polyline /",
     "\u3000\u3000circle / label / angle / rightangle / tick だけ。座標は 数学の 向き（y が 大きいほど 上）。",
+    "\u3000地図・略図: 上の 図形に 次を 足せます（白黒 印刷でも 見分けが つきます）",
+    '\u3000\u3000{"type":"north","x":0,"y":3,"label":"N"} … 方位記号',
+    '\u3000\u3000{"type":"scalebar","x":5,"y":0,"length":3,"unit":"km","steps":2} … 縮尺の 帯',
+    '\u3000\u3000{"type":"hatch","points":[[0,0],[4,0],[4,3]],"pattern":"diagonal|grid|dot","label":"低地"} … 塗り分け',
+    '\u3000\u3000{"type":"legend","x":6,"y":3,"items":[{"mark":"triangle","label":"火山山頂"}]} … 凡例',
+    "\u3000\u3000\u3000mark は triangle / box / arrow / line。**色は 使いません**（模様で 分けます）。",
+    "",
+    "★ **写真は 探す 言葉だけ 書いてください。**（2026-08-30）",
+    '\u3000{"type":"figure","imageQuery":"扇状地 空中写真","caption":"図1 ○○川の 扇状地"}',
+    "\u3000\u3000imageQuery … こちらで Wikimedia Commons から 探して 貼ります。",
+    "\u3000\u3000\u3000\u3000\u3000\u3000 **URL は 書かないでください。**書かれた 住所は 使いません。",
+    "\u3000\u3000\u3000\u3000\u3000\u3000 許諾の 読めない 写真は 使わないので、見つからなければ 図は 出ません。",
+    "\u3000\u3000英語の 言葉の ほうが 見つかります（例: alluvial fan aerial）。",
     "★ **SVG・HTML・LaTeX の 絵・画像の URL は 書かないでください。** 上の 形以外は 捨てられます。",
     "★ 問題文は 資料を 指して 書きます（「表 1 から…」「図の \u25b3ABC で…」）。",
     "★ 資料が 要らない 問題には 付けません。飾りの 表は 作らないでください。"
@@ -62432,6 +62445,120 @@ function 外へ出てよい(url) {
   return { ok: true, url: u.toString() };
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   資料の 画像を 外から 持ってくる（2026-08-30・訴え）
+
+   訴え「AI が 外部から 画像を 持ってきて、画像資料として 出題できる
+         ものも 作ったり」
+
+   ★ **AI に 画像の 住所を 書かせない。** 作り話の URL を 書いてくるだけで、
+     印刷では 取りに 行けず 白い 四角に なる（前に 踏んだ）。
+     AI が 出すのは **探す 言葉**だけ。取ってくるのは ここ。
+   ★ 取り先は **Wikimedia Commons だけ**（鍵が 要らず、出典と 許諾が
+     機械で 読める。ほかの 画像検索は 許諾が 分からないので 使わない）。
+   ★ **許諾が 読めない 画像は 使わない。** 出典・作者・許諾を 必ず 持ち帰り、
+     紙面に 添える（VQFIG の credit）。
+   ★ 大きさは 1.5MB まで。それ以上は 取らない（紙面が 重くなる）。
+   ══════════════════════════════════════════════════════════════════════ */
+const 画像の上限 = 1.5 * 1024 * 1024;
+const 画像の許諾 = /^(cc[ -]?by([ -]sa)?([ -][0-9.]+)?|cc0|public domain|pd-|copyrighted free use)/i;
+
+async function 資料の画像をさがす(env, 語, o = {}) {
+  const q = String(語 || "").trim().slice(0, 80);
+  if (!q) return { ok: false, なぜ: "探す言葉がありません" };
+  const 件 = Math.max(1, Math.min(6, Number(o.limit) || 3));
+  /* Commons の 一覧＋そのまま 画像の 情報（1 回で 済む）。 */
+  const u = "https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*"
+    + "&generator=search&gsrnamespace=6&gsrlimit=" + 件
+    + "&gsrsearch=" + encodeURIComponent(q + " filetype:bitmap")
+    + "&prop=imageinfo&iiprop=url|size|mime|extmetadata"
+    + "&iiurlwidth=1000";
+  const 関 = 外へ出てよい(u);
+  if (!関.ok) return { ok: false, なぜ: 関.なぜ };
+  let j = null;
+  try {
+    const r = await fetch(関.url, {
+      headers: { Accept: "application/json", "User-Agent": LUMI_UA },
+      signal: AbortSignal.timeout(o.timeoutMs || 9000)
+    });
+    if (!r.ok) return { ok: false, なぜ: "commons " + r.status };
+    j = await r.json();
+  } catch (e) {
+    return { ok: false, なぜ: String((e && e.message) || e).slice(0, 120) };
+  }
+  const 頁 = (j && j.query && j.query.pages) ? Object.values(j.query.pages) : [];
+  const 出 = [];
+  for (const pg of 頁) {
+    const ii = (pg && Array.isArray(pg.imageinfo)) ? pg.imageinfo[0] : null;
+    if (!ii) continue;
+    const m = ii.extmetadata || {};
+    const 許 = String((m.LicenseShortName && m.LicenseShortName.value) || "").trim();
+    /* ★ 許諾が 読めない／使えない ものは **落とす**（黙って 使わない）。 */
+    if (!許 || !画像の許諾.test(許.replace(/\s+/g, " "))) continue;
+    出.push({
+      title: String(pg.title || "").replace(/^File:/, ""),
+      url: String(ii.thumburl || ii.url || ""),
+      page: String(ii.descriptionurl || ""),
+      width: Number(ii.thumbwidth || ii.width) || 0,
+      height: Number(ii.thumbheight || ii.height) || 0,
+      mime: String(ii.mime || ""),
+      author: String((m.Artist && m.Artist.value) || "").replace(/<[^>]*>/g, "").slice(0, 80),
+      license: 許.slice(0, 40),
+      source: "Wikimedia Commons"
+    });
+  }
+  return { ok: true, items: 出 };
+}
+
+/* 1 枚を 取ってきて data: に する（紙面に そのまま 貼れる 形）。 */
+async function 資料の画像をとる(url, o = {}) {
+  const 関 = 外へ出てよい(url);
+  if (!関.ok) return { ok: false, なぜ: 関.なぜ };
+  /* 取り先は Commons の 配信元だけに 絞る（別の 所へは 行かない）。 */
+  const h = new URL(関.url).hostname.toLowerCase();
+  if (!/(^|\.)wikimedia\.org$|(^|\.)wikipedia\.org$/.test(h))
+    return { ok: false, なぜ: "この住所からは取りません" };
+  let r;
+  try {
+    r = await fetch(関.url, { headers: { "User-Agent": LUMI_UA },
+      signal: AbortSignal.timeout(o.timeoutMs || 12000) });
+  } catch (e) { return { ok: false, なぜ: String((e && e.message) || e).slice(0, 120) }; }
+  if (!r.ok) return { ok: false, なぜ: "取れません（" + r.status + "）" };
+  const mime = String(r.headers.get("content-type") || "").split(";")[0].trim();
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(mime)) return { ok: false, なぜ: "画像ではありません" };
+  const buf = await r.arrayBuffer();
+  if (buf.byteLength > 画像の上限)
+    return { ok: false, なぜ: "大きすぎます（" + Math.round(buf.byteLength / 1024) + "KB）" };
+  const u8 = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < u8.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  }
+  return { ok: true, dataUrl: "data:" + mime + ";base64," + btoa(bin), bytes: buf.byteLength, mime };
+}
+
+async function handleExamImage(request, env) {
+  const uid = await aiJobRequireUser(request, env);
+  if (!uid) return json({ code: "UNAUTHORIZED", message: "ログインが必要です。" }, 401, request);
+  const body = await request.json().catch(() => ({}));
+  const 語ら = Array.isArray(body?.queries) ? body.queries.slice(0, 4)
+    : (body?.query ? [body.query] : []);
+  if (!語ら.length) return json({ code: "NO_QUERY", message: "探す言葉がありません。" }, 400, request);
+  const 出 = [];
+  for (const 語 of 語ら) {
+    const s2 = await 資料の画像をさがす(env, 語, { limit: 3 });
+    if (!s2.ok || !s2.items.length) { 出.push({ query: String(語), ok: false, なぜ: s2.なぜ || "見つかりません" }); continue; }
+    let 決 = null;
+    for (const it of s2.items) {
+      const g = await 資料の画像をとる(it.url);
+      if (g.ok) { 決 = Object.assign({}, it, { dataUrl: g.dataUrl, bytes: g.bytes }); break; }
+    }
+    出.push(決 ? { query: String(語), ok: true, image: 決 }
+                : { query: String(語), ok: false, なぜ: "取ってこられませんでした" });
+  }
+  return json({ ok: true, results: 出 }, 200, request);
+}
+
 /* ══ 提供元（§15）════════════════════════════════════════════════
    共通の形: search(q, o) → [{title, url, description, published}]
    足すときは ここに 1 つ増やすだけ。Lumi 側は書き換えない。 */
@@ -65724,6 +65851,10 @@ export default {
 
       /* ══ AI Activity — 仕事の台帳と、資料の読み取り置き場 ══
          Preset / Quick Mock / これから作る Worker が共通で使う口。 */
+      /* 資料の 画像を 外から 持ってくる（2026-08-30）。 */
+      if (request.method === "POST" && path === "/api/exam/image") {
+        return await handleExamImage(request, env);
+      }
       if (request.method === "POST" && path === "/api/aigen/questions") {
         stage = "aigen.questions"; return respond(await handleAiGenQuestions(request, env, ctx));
       }
@@ -66240,6 +66371,8 @@ export default {
           || path === "/api/aigen/layout"
           || path === "/api/aigen/revise"
           || path === "/api/aigen/cover"
+          /* 資料の 画像を 外から 持ってくる（2026-08-30）。 */
+          || path === "/api/exam/image"
           || path === "/api/lumi/usage"
           || path === "/api/ai/narrate"
           || path === "/api/ai/probe"

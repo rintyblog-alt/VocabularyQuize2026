@@ -562,6 +562,71 @@
           g.push('<text x="' + c(ox + (r2 + 9) * Math.cos(am)) + '" y="' + c(oy - (r2 + 9) * Math.sin(am) + 4)
             + '" text-anchor="middle" font-size="10">' + esc(it.label) + "</text>");
         }
+      } else if (t === "north" || t === "方位" || t === "方位記号") {
+        /* ══ 方位記号（2026-08-30・訴え「地図、絵、様子などを 描くために」）
+           実物の 地形図と 同じで、左上に 丸の 中の 北向きの 矢。 */
+        var nx0 = X(数(it.x, 0)), ny0 = Y(数(it.y, 0)), nr = 数(it.size, 11);
+        g.push('<circle cx="' + c(nx0) + '" cy="' + c(ny0) + '" r="' + c(nr)
+          + '" fill="#fff" stroke="#000" stroke-width="0.9"/>');
+        g.push('<path d="M' + c(nx0) + "," + c(ny0 - nr * 0.72)
+          + " L" + c(nx0 + nr * 0.34) + "," + c(ny0 + nr * 0.56)
+          + " L" + c(nx0) + "," + c(ny0 + nr * 0.2)
+          + " L" + c(nx0 - nr * 0.34) + "," + c(ny0 + nr * 0.56)
+          + ' Z" fill="#000"/>');
+        g.push('<text x="' + c(nx0) + '" y="' + c(ny0 - nr - 3)
+          + '" text-anchor="middle" font-size="9">' + esc(it.label || "N") + "</text>");
+      } else if (t === "scalebar" || t === "縮尺" || t === "スケール") {
+        /* ══ 縮尺の 帯。実物は 白黒の 交互＋端に 数と 単位。 */
+        var sx = X(数(it.x, 0)), sy = Y(数(it.y, 0));
+        var 長 = Math.abs(X(数(it.x, 0) + 数(it.length, 3)) - sx);
+        var 段 = 挟む(数(it.steps, 2), 1, 6);
+        var h2 = 数(it.height, 5);
+        for (var k4 = 0; k4 < 段; k4++) {
+          g.push('<rect x="' + c(sx + (長 / 段) * k4) + '" y="' + c(sy) + '" width="' + c(長 / 段)
+            + '" height="' + c(h2) + '" fill="' + (k4 % 2 ? "#fff" : "#000")
+            + '" stroke="#000" stroke-width="0.7"/>');
+        }
+        g.push('<text x="' + c(sx) + '" y="' + c(sy + h2 + 10) + '" text-anchor="middle" font-size="9">0</text>');
+        g.push('<text x="' + c(sx + 長) + '" y="' + c(sy + h2 + 10) + '" text-anchor="middle" font-size="9">'
+          + esc(String(数(it.length, 3)) + (it.unit || "km")) + "</text>");
+      } else if (t === "hatch" || t === "ハッチ" || t === "塗り分け") {
+        /* ══ 模様で 塗り分ける（白黒 印刷で 見分けが つくように）。
+           色は 使わない。斜線・網・点の 3 種類。 */
+        var 点2 = 配列(it.points).map(function (p) {
+          var px = Array.isArray(p) ? p[0] : (p && p.x), py = Array.isArray(p) ? p[1] : (p && p.y);
+          return X(数(px)) + "," + Y(数(py));
+        });
+        if (点2.length < 3) return;
+        var 柄 = 文(it.pattern || "diagonal").toLowerCase();
+        var pid = "hp" + (柄 === "grid" ? 1 : 柄 === "dot" ? 2 : 0);
+        g.push('<polygon points="' + 点2.join(" ") + '" fill="url(#' + pid + ')"'
+          + ' stroke="#000" stroke-width="' + 太 + '"/>');
+        if (it.label) {
+          var cx4 = 点2.reduce(function (a2, x2) { return a2 + Number(x2.split(",")[0]); }, 0) / 点2.length;
+          var cy4 = 点2.reduce(function (a2, x2) { return a2 + Number(x2.split(",")[1]); }, 0) / 点2.length;
+          g.push('<text x="' + c(cx4) + '" y="' + c(cy4) + '" text-anchor="middle" font-size="10">'
+            + esc(it.label) + "</text>");
+        }
+      } else if (t === "legend" || t === "凡例") {
+        /* ══ 凡例。実物の 地形図と 同じで 右下に 並べる。 */
+        var lx = X(数(it.x, 0)), ly = Y(数(it.y, 0));
+        配列(it.items).slice(0, 6).forEach(function (e2, i4) {
+          var yy = ly + i4 * 13;
+          var 形 = 文(e2 && e2.mark || "line");
+          if (形 === "triangle" || 形 === "▲") {
+            g.push('<path d="M' + c(lx + 5) + "," + c(yy - 5) + " L" + c(lx + 10) + "," + c(yy + 3)
+              + " L" + c(lx) + "," + c(yy + 3) + ' Z" fill="#000"/>');
+          } else if (形 === "box" || 形 === "■") {
+            g.push('<rect x="' + c(lx) + '" y="' + c(yy - 5) + '" width="10" height="8" fill="url(#hp0)" stroke="#000" stroke-width="0.7"/>');
+          } else if (形 === "arrow" || 形 === "→") {
+            g.push('<line x1="' + c(lx) + '" y1="' + c(yy - 1) + '" x2="' + c(lx + 11) + '" y2="' + c(yy - 1)
+              + '" stroke="#000" stroke-width="1" marker-end="url(#nlr)"/>');
+          } else {
+            g.push('<path d="M' + c(lx) + "," + c(yy - 1) + " q3,-5 6,0 t6,0" + '" fill="none" stroke="#000" stroke-width="1"/>');
+          }
+          g.push('<text x="' + c(lx + 15) + '" y="' + c(yy + 2) + '" font-size="9">'
+            + esc((e2 && (e2.label || e2.text)) || "") + "</text>");
+        });
       } else if (t === "tick" || t === "等しい印") {
         /* 線分の 真ん中に 「等しい」の 印を 入れる。 */
         var mx2 = (X(数(it.x1)) + X(数(it.x2))) / 2, my2 = (Y(数(it.y1)) + Y(数(it.y2))) / 2;
@@ -645,12 +710,29 @@
   }
 
   /* 図の 外枠。ここで **紙の 幅に 合わせる**。中身は 100% で 伸びる。 */
+  /* ══ 塗り分けの 模様（2026-08-30）══════════════════════════════
+     **色は 使わない。** 白黒 印刷でも 見分けが つくよう 模様で 分ける。
+     斜線（hp0）／網（hp1）／点（hp2）の 3 種類。
+     矢印の 先（nlr）も ここで 1 度だけ 決める。 */
+  var 模様 = '<defs>'
+    + '<pattern id="hp0" width="6" height="6" patternUnits="userSpaceOnUse">'
+    + '<path d="M0,6 L6,0" stroke="#000" stroke-width="0.7"/></pattern>'
+    + '<pattern id="hp1" width="6" height="6" patternUnits="userSpaceOnUse">'
+    + '<path d="M0,0 L0,6 M0,0 L6,0" stroke="#000" stroke-width="0.6"/></pattern>'
+    + '<pattern id="hp2" width="6" height="6" patternUnits="userSpaceOnUse">'
+    /* 点の 模様は **円で 描かない**。図の 中の 点（circle）と 混ざって、
+       「点が いくつ あるか」を 数える ところが 狂う（実測で 狂った）。 */
+    + '<rect x="2.2" y="2.2" width="1.6" height="1.6" fill="#000"/></pattern>'
+    + '<marker id="nlr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">'
+    + '<path d="M0,0 L7,3 L0,6 z" fill="#000"/></marker>'
+    + "</defs>";
+
   function 図で包む(b, W, H, 中) {
     return '<div class="vf" style="max-width:' + 幅mm(b) + 'mm">'
       + '<div class="vf-svg"><svg viewBox="0 0 ' + c(W) + " " + c(H)
       + '" width="100%" preserveAspectRatio="xMidYMid meet" '
       + 'font-family="inherit" role="img" aria-label="' + esc(b.caption || "図") + '">'
-      + 中 + "</svg></div>"
+      + 模様 + 中 + "</svg></div>"
       + (b.caption ? '<div class="vf-cap">' + esc(b.caption) + "</div>" : "")
       + 出典(b) + "</div>";
   }

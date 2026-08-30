@@ -11683,7 +11683,11 @@
                      passage: 1, source: 1, dialogue: 1, text: 1 };
   var グラフの型 = { bar: 1, line: 1, scatter: 1, pie: 1 };
   var 図形の型 = { point: 1, segment: 1, line: 1, ray: 1, arrow: 1, polygon: 1, polyline: 1,
-                   circle: 1, label: 1, text: 1, angle: 1, rightangle: 1, tick: 1 };
+                   circle: 1, label: 1, text: 1, angle: 1, rightangle: 1, tick: 1,
+                   /* ★ 地図・略図の 道具（2026-08-30・訴え
+                      「SVG などを 駆使して 正確な 図を 作ってみたり（地図、絵、様子）」）。
+                      方位記号・縮尺の 帯・模様の 塗り分け・凡例。 */
+                   north: 1, scalebar: 1, hatch: 1, legend: 1 };
 
   function 資料の数(v) { var n = Number(v); return (typeof n === "number" && isFinite(n)) ? Math.round(n * 1e4) / 1e4 : null; }
   function 資料の文(v, n) { return str(v).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, n || 80); }
@@ -11802,6 +11806,21 @@
           if (k === "label" || k === "text") o.text = 資料の文(it.text || it.label, 24);
           if (it.dashed === true) o.dashed = true;
           if (it.hollow === true) o.hollow = true;
+          /* 凡例の 中身（記号と 名前）。ここで 拾わないと 空の 凡例に なる。 */
+          if (k === "legend" && Array.isArray(it.items)) {
+            o.items = it.items.slice(0, 6).map(function (e) {
+              if (!e || typeof e !== "object") return null;
+              return { mark: 資料の文(e.mark || e.symbol, 12),
+                       label: 資料の文(e.label || e.text, 24) };
+            }).filter(function (e) { return e && e.label; });
+            if (!o.items.length) return null;
+          }
+          if (k === "hatch") o.pattern = 資料の文(it.pattern, 12) || "diagonal";
+          if (k === "scalebar") {
+            o.length = 資料の数(it.length); o.steps = 資料の数(it.steps);
+            o.unit = 資料の文(it.unit, 6) || "km";
+          }
+          if (k === "north") o.size = 資料の数(it.size);
           if (Array.isArray(it.points)) {
             o.points = it.points.slice(0, 24).map(function (p) {
               var x = 資料の数(Array.isArray(p) ? p[0] : p && p.x);
@@ -11846,8 +11865,17 @@
     }
     /* figure … 住所は 作らない。 */
     var src = str(b.src || b.url);
-    if (!/^data:image\//.test(src) && !/^\/api\/media\//.test(src)) return null;
+    /* ★ 外から 持ってくる 画像（2026-08-30・訴え）。
+       AI が 出すのは **探す 言葉**だけ。住所は 書かせない。
+       取ってくるのは サーバ（/api/exam/image・Wikimedia Commons）。
+       ここでは 言葉を そのまま 持ち回り、あとで 中身と 差し替える。 */
+    var 探 = 資料の文(b.imageQuery || b.query || b.searchQuery, 80).trim();
+    if (!/^data:image\//.test(src) && !/^\/api\/media\//.test(src)) {
+      if (探) { out.imageQuery = 探; return out; }
+      return null;
+    }
     out.src = src;
+    if (探) out.imageQuery = 探;
     if (b.credit && typeof b.credit === "object") {
       out.credit = {
         author: 資料の文(b.credit.author, 60), license: 資料の文(b.credit.license, 40),
@@ -30129,6 +30157,23 @@
       "              margin: 0 0 2.5mm; font-size: " + (base - 0.5) + "pt; }",
       ".ct-ol > li::before { content: counter(ctn) '.'; position: absolute; left: 0; }",
       ".ct-p { margin: 0 0 0 6mm; text-indent: 1em; font-size: " + (base - 0.5) + "pt; }",
+      /* ── 子項目（不正行為について ①②③）──────────────────── */
+      ".ct-ol2 { margin: 2mm 0 1mm 0; padding: 0; list-style: none; }",
+      ".ct-ol2 > li { position: relative; padding-left: 6mm; margin: 0 0 1.5mm; }",
+      ".ct-mn { position: absolute; left: 0; }",
+      /* ── マークの 例（実物の 表）──────────────────────────
+         解答番号 ｜ 解　答　欄（⓪〜⑨、1 つだけ 塗る） */
+      ".ct-mk { border-collapse: collapse; margin: 2.5mm 0 3mm 0;",
+      "         font-size: " + (base - 1) + "pt; }",
+      ".ct-mk th, .ct-mk td { border: 0.5pt solid #000; padding: 1mm 2mm; text-align: center; }",
+      ".ct-mk th { font-weight: 400; }",
+      ".ct-mk-h { letter-spacing: .3em; }",
+      ".ct-mk-n { font-weight: 700; letter-spacing: .2em; }",
+      ".ct-mk-r { letter-spacing: .12em; }",
+      ".ct-mk-r > i { font-style: normal; display: inline-block; }",
+      /* 塗った 丸は 実物と 同じで 黒く 塗り、字は 白抜き。 */
+      ".ct-mk-r > i.is-on { background: #000; color: #fff; border-radius: 999px;",
+      "                     padding: 0 .05em; }",
       /* 注意事項の 中の 表。 */
       ".ct-tb { border-collapse: collapse; margin: 2.5mm 0 3mm; font-size: " + (base - 1) + "pt; }",
       ".ct-tb th, .ct-tb td { border: 0.5pt solid #000; padding: 1.2mm 3mm; text-align: center; }",
@@ -30136,7 +30181,11 @@
       ".ct-fields { display: flex; gap: 6mm; margin: 12mm 0 0; }",
       ".ct-f { display: flex; align-items: flex-end; gap: 2mm; flex: 1 1 auto;",
       "        font-size: " + (base - 0.5) + "pt; }",
-      ".ct-f > i { display: block; border-bottom: 0.6pt solid #000; height: 7mm; flex: 1 1 auto; }",
+      ".ct-f > i { display: block; border-bottom: 0.6pt solid #000; height: 7mm; flex: 1 1 auto;",
+      "            font-style: normal; text-align: center; }",
+      /* 表紙で 書いた ことを そのまま 印字する（2026-08-30）。 */
+      ".ct-fv { font-family: " + GOTHIC + "; font-weight: 400; font-size: " + (base - 0.5) + "pt; }",
+      ".nb-v { font-family: " + GOTHIC + "; font-weight: 700; }",
       ".ct-foot { position: absolute; left: 0; right: 0; bottom: 0; text-align: center;",
       "           font-size: " + (base - 1.5) + "pt; }",
       ".ct-pg { }",
@@ -30226,7 +30275,12 @@
       ".ms-ex { flex: 0 0 auto; }",
       ".ms-exg { display: flex; gap: 1mm; }",
       ".ms-exc { display: flex; flex-direction: column; align-items: center; gap: 0.3mm; }",
-      ".ms-exh { width: 5mm; height: 5mm; border: 0.4pt solid #000; margin-bottom: 0.6mm; }",
+      ".ms-exh { width: 5mm; height: 5mm; border: 0.4pt solid #000; margin-bottom: 0.6mm;",
+      "           text-align: center; line-height: 5mm; font-size: 6pt; }",
+      /* 表紙で 書いた ことを そのまま 入れる（2026-08-30）。 */
+      ".ms-nv { font-family: " + GOTHIC + "; font-weight: 700; font-size: 8pt; }",
+      ".ms-nz { font-size: 6pt; margin-left: 2mm; }",
+      ".ags-v { font-family: " + GOTHIC + "; font-weight: 700; }",
       /* 塗る 丸。線だけで 描く（塗りは 印刷で 潰れる）。 */
       ".ms-o { display: inline-flex; align-items: center; justify-content: center;",
       "        width: 4.6mm; height: 2.8mm; border: 0.4pt solid #000; border-radius: 999px;",
@@ -30394,8 +30448,54 @@
      ★ **無い 値は 出さない。** 空の 枠を 並べて「あるように」見せない。
      ★ 注意事項の 中に 表を 入れられる（出題科目 / ページ / 選択方法）。
      ══════════════════════════════════════════════════════════════════ */
+  /* 実物は 全角の 読点「，」。ただし 昔から の 検査や 利用者の 書いた ものは
+     「、」の ことが ある。表示は 実物に そろえ、比べる ときは どちらも 通す。 */
   var CT_開封 = "試験開始の指示があるまで、この問題冊子の中を見てはいけません。";
-  var CT_解答上 = "解答上の注意は、裏表紙に記載してあります。問題冊子を裏返して必ず読みなさい。";
+  var CT_解答上 = "解答上の注意は，裏表紙に記載してあります。問題冊子を裏返して必ず読みなさい。";
+
+  /* ══ 注意事項の 既定（2026-08-30・実物の 表紙に そろえた）══════════
+     訴え「表紙も 今のままでは 情報が 少ないから、2 枚目くらい 量を 入れて欲しい」
+     実物（外国語〔英語（リーディング）〕）の 6 項目を 下敷きに する。
+     ★ 冊子の ページ数・科目名は **その 試験の 値**を 差し込む。
+       埋められない ところは その 文ごと 落とす（作り話を 書かない）。 */
+  function CT_注意の既定(c, cv) {
+    var 科 = 文2(cv.subjectDetail || c.subject || "");
+    var 頁 = Number(cv.pageCount) || 0;
+    var 例 = Number(cv.markExampleNo) || 10;
+    var 例答 = Number(cv.markExampleAnswer) || 3;
+    var 出 = [];
+    出.push({ t: "解答用紙に，正しく記入・マークされていない場合は，採点できないことがあります。"
+      + (科 ? "特に，解答用紙の解答科目欄にマークされていない場合又は複数の科目に"
+             + "マークされている場合は，０点となります。" : "") });
+    if (頁) 出.push({ t: "この問題冊子は，" + 頁 + "ページあります。\n"
+      + "試験中に問題冊子の印刷不鮮明，ページの落丁・乱丁及び解答用紙の汚れ等に"
+      + "気付いた場合は，手を高く挙げて監督者に知らせなさい。" });
+    出.push({ t: "解答は，解答用紙の解答欄にマークしなさい。例えば，" + 例
+      + " と表示のある問いに対して" + 丸数字2(例答) + "と解答する場合は，次の（例）のように"
+      + "解答番号 " + 例 + " の解答欄の" + 丸数字2(例答) + "にマークしなさい。",
+      例: { no: 例, on: 例答 } });
+    出.push({ t: "問題冊子の余白等は適宜利用してよいが，どのページも切り離してはいけません。" });
+    出.push({ t: "不正行為について", 子: [
+      "不正行為に対しては厳正に対処します。",
+      "不正行為に見えるような行為が見受けられた場合は，監督者がカードを用いて注意します。",
+      "不正行為を行った場合は，その時点で受験を取りやめさせ退室させます。"
+    ] });
+    出.push({ t: "試験終了後，問題冊子は持ち帰りなさい。" });
+    return 出;
+  }
+  var 丸数字ら2 = ["\u24EA", "\u2460", "\u2461", "\u2462", "\u2463", "\u2464",
+                   "\u2465", "\u2466", "\u2467", "\u2468", "\u2469"];
+  function 丸数字2(i) { return 丸数字ら2[i] || String(i); }
+  /* マークの 例（実物の 表）。塗る のは 1 つだけ。 */
+  function CT_マーク例(例) {
+    if (!例) return "";
+    var h = '<table class="ct-mk"><tr><th>解答番号</th><th class="ct-mk-h">解　答　欄</th></tr>'
+      + '<tr><td class="ct-mk-n">' + esc(例.no) + '</td><td class="ct-mk-r">';
+    for (var i = 0; i <= 9; i++) {
+      h += '<i' + (i === Number(例.on) ? ' class="is-on"' : "") + ">" + 丸数字2(i) + "</i>";
+    }
+    return h + "</td></tr></table>";
+  }
 
   function 共通テストの表紙(spec, c, plan) {
     var cv = (spec && spec.cover) || {};
@@ -30424,13 +30524,37 @@
     /* ③ リード文（あれば）。 */
     if (cv.lead) h += '<div class="ct-lead">' + esc(cv.lead) + "</div>";
 
-    /* ④ Ⅰ 注意事項。番号つき。表を 挟める。 */
-    var 注 = c.instructions || [];
+    /* ④ 注意事項（2026-08-30・実物の 表紙に そろえた）。
+       ★ 利用者が 何も 書いていない ときは **実物なみの 6 項目**を 出す。
+         前は 1〜2 行しか 無く、表紙が すかすかだった。
+       ★ 子項目（不正行為について ①②③）と マークの 例の 表も 出す。 */
+    var 注生 = (c.instructions || []).filter(function (x) { return 文2(x).trim(); });
+    var 注 = 注生.length
+      ? 注生.map(function (t) { return { t: 文2(t) }; })
+      : CT_注意の既定(c, cv);
+    /* 画面から 子項目・例を 足せる（cover.noticeExtras）。 */
+    if (Array.isArray(cv.noticeExtras)) {
+      cv.noticeExtras.forEach(function (x) {
+        if (x && 文2(x.t).trim()) 注.push({ t: 文2(x.t), 子: x.子 || x.subs, 例: x.例 || x.markExample });
+      });
+    }
     if (注.length || cv.noticeTable) {
-      h += '<div class="ct-h">' + 字間("Ⅰ　注意事項") + "</div>";
+      /* 見出しは 実物でも 2 通り ある（「Ⅰ　注意事項」と「注意事項」だけ）。
+         既定は 前者。cover.noticeHeading で 変えられる。 */
+      h += '<div class="ct-h">' + 字間(cv.noticeHeading || "Ⅰ　注意事項") + "</div>";
       h += '<ol class="ct-ol">';
-      注.forEach(function (t, i) {
-        h += "<li>" + esc(t);
+      注.forEach(function (x, i) {
+        var t = (x && typeof x === "object") ? 文2(x.t) : 文2(x);
+        h += "<li>" + esc(t).replace(/\n/g, "<br>");
+        if (x && x.例) h += CT_マーク例(x.例);
+        var 子 = (x && Array.isArray(x.子)) ? x.子 : null;
+        if (子 && 子.length) {
+          h += '<ol class="ct-ol2">';
+          子.forEach(function (y, k) {
+            h += '<li><span class="ct-mn">' + 丸数字2(k + 1) + "</span>" + esc(文2(y)) + "</li>";
+          });
+          h += "</ol>";
+        }
         /* 表は「何番目の 注意の 下に 置くか」で 指す（既定は 1 つ目）。 */
         var tb = cv.noticeTable;
         if (tb && (Number(tb.after || 1) - 1) === i) h += 注意の表(tb);
@@ -30455,10 +30579,14 @@
 
     /* ⑥ 記入欄（本物の 表紙には 無いが、校内の 模試では 要る）。
        表紙に 欄を 求めた ときだけ 出す。 */
-    if ((c.studentFields || []).length && cv.studentFieldsOnCover === true) {
+    var 欄ら = (c.studentFields || []).slice();
+    if (cv.examineeNumber !== false && 欄ら.indexOf("受験番号") < 0) 欄ら.push("受験番号");
+    if (欄ら.length && cv.studentFieldsOnCover !== false) {
       h += '<div class="ct-fields">';
-      c.studentFields.forEach(function (f) {
-        h += '<span class="ct-f">' + esc(f) + "<i></i></span>";
+      欄ら.forEach(function (f) {
+        var v = 受験者の値(f);
+        h += '<span class="ct-f">' + esc(f) + "<i>"
+          + (v ? '<b class="ct-fv">' + esc(v) + "</b>" : "") + "</i></span>";
       });
       h += "</div>";
     }
@@ -30572,8 +30700,16 @@
             + "<span>試験時間 " + esc(spec.durationMinutes) + " 分</span>"
             + "<span>満点 " + esc(spec.totalPoints) + " 点</span></div>"
           : "");
-    if (showName && booklet.kind !== "answer-key")
-      h += '<div class="name-box">組　　　番　　　氏名　　　　　　　　　　</div>';
+    if (showName && booklet.kind !== "answer-key") {
+      /* ★ 表紙で 書いた ことを ここにも 入れる（2026-08-30・訴え）。
+         書いていなければ これまでどおり 空の 欄。 */
+      var 名欄 = ["年", "組", "番", "氏名", "受験番号"].map(function (k) {
+        var v = 受験者の値(k);
+        return v ? esc(k) + " " + '<b class="nb-v">' + esc(v) + "</b>" : "";
+      }).filter(Boolean).join("　");
+      h += '<div class="name-box">'
+        + (名欄 || "組　　　番　　　氏名　　　　　　　　　　") + "</div>";
+    }
     h += "</div>";
 
     (booklet.blocks || []).forEach(function (b) {
@@ -30966,6 +31102,13 @@
         （-webkit-print-color-adjust: exact は上で全体に効かせてある）。
      ══════════════════════════════════════════════════════════════════ */
   var 採点 = null;          /* buildHtml の間だけ入る。数式表と同じ作法。 */
+  /* 受験する人が 表紙で 書いた こと。buildHtml の間だけ 入る。 */
+  var 受験者印字 = null;
+  function 受験者の値(k) {
+    if (!受験者印字) return "";
+    var v = 受験者印字[k];
+    return (v === undefined || v === null) ? "" : String(v);
+  }
 
   function 採点表を作る(spec, graded) {
     if (!graded || !Array.isArray(graded.items)) return null;
@@ -31306,14 +31449,31 @@
         + '<div class="ms-note">※ 解答する科目を1つマークしなさい。</div></div>';
     }
     /* 受験番号。桁ごとに 0〜9 を 縦に 積む（本物の 形）。 */
+    /* ★ 表紙で 書いた 受験番号を **塗って** 入れる（2026-08-30・訴え
+       「表紙に 入力した情報は、全て 最後に 紙面の方の 問題用紙、解答用紙に
+         同期させ 印字する」）。数字で ない ところは 塗らない。 */
+    var 番号 = String(受験者の値("受験番号") || "").replace(/[^0-9]/g, "");
+    var 桁数 = b.examineeDigits || 8;
     h += '<div class="ms-bx ms-ex"><div class="ms-bt">受験番号</div><div class="ms-exg">';
-    for (var d = 0; d < (b.examineeDigits || 8); d++) {
-      h += '<div class="ms-exc"><div class="ms-exh"></div>';
-      for (var v = 0; v <= 9; v++) h += '<span class="ms-o">' + v + "</span>";
+    for (var d = 0; d < 桁数; d++) {
+      /* 右づめ（本物と 同じ）。短ければ 左は 空のまま。 */
+      var 位 = 番号.length - 桁数 + d;
+      var 数 = (位 >= 0 && 位 < 番号.length) ? Number(番号[位]) : -1;
+      h += '<div class="ms-exc"><div class="ms-exh">'
+        + (数 >= 0 ? esc(String(数)) : "") + "</div>";
+      for (var v = 0; v <= 9; v++) {
+        h += '<span class="ms-o' + (v === 数 ? " is-on" : "") + '">' + v + "</span>";
+      }
       h += "</div>";
     }
     h += "</div></div>";
-    h += '<div class="ms-bx ms-nm"><div class="ms-bt">氏名</div><div class="ms-nml"></div>'
+    var 氏 = 受験者の値("氏名");
+    var 添 = ["年", "組", "番"].map(function (k) {
+      var x = 受験者の値(k); return x ? x + k : "";
+    }).filter(Boolean).join(" ");
+    h += '<div class="ms-bx ms-nm"><div class="ms-bt">氏名</div>'
+      + '<div class="ms-nml">' + (氏 ? '<b class="ms-nv">' + esc(氏) + "</b>" : "")
+      + (添 ? '<span class="ms-nz">' + esc(添) + "</span>" : "") + "</div>"
       + '<div class="ms-bt">試験名</div><div class="ms-nmv">' + esc(b.examName || "") + "</div></div>";
     h += "</div>";
 
@@ -31418,8 +31578,11 @@
   function renderGridStudent(b) {
     return '<div class="ags" data-block="' + esc(b.id) + '">'
       + (b.fields || []).map(function (f) {
+          /* ★ 表紙で 書いた ことを 入れる（2026-08-30）。 */
+          var v = 受験者の値(f.label);
           return '<span class="ags-f" style="min-width:' + f.widthMm + 'mm">'
-            + '<span class="ags-l">' + esc(f.label) + '</span><span class="ags-b"></span></span>';
+            + '<span class="ags-l">' + esc(f.label) + "</span>"
+            + '<span class="ags-b">' + (v ? '<b class="ags-v">' + esc(v) + "</b>" : "") + "</span></span>";
         }).join("")
       + "</div>";
   }
@@ -31615,12 +31778,19 @@
     var booklets = (plan.booklets || []).filter(function (b) { return !only || b.id === only; });
     /* ★ 表紙は **問題冊子の先頭にだけ** 付ける（2026-08-30）。
        解答用紙・解答例に付けると、解く人の手元が 1 枚ずつ増えてしまう。 */
+    /* ★ 受験する人が 表紙で 書いた こと（2026-08-30・訴え
+       「表紙に 入力した情報は、全て 最後に 紙面の方の 問題用紙、解答用紙に
+         同期させ 印字する」）。**この 1 回の あいだだけ** 開く。 */
+    受験者印字 = (opts.examinee && typeof opts.examinee === "object") ? opts.examinee : null;
     var body = booklets.map(function (b) {
       var 頭 = (b.kind === "question" && opts.cover !== false) ? renderCover(spec, plan) : "";
+      /* ★ 表紙だけ 見せる（開始を 押す 前）。中は まだ 出さない。 */
+      if (opts.coverOnly === true) return 頭;
       return 頭 + renderBooklet(spec, plan, b);
     }).join("");
     数式表 = null;
     採点 = null;
+    受験者印字 = null;
     return "<!doctype html><html lang=\"ja\"><head><meta charset=\"utf-8\">"
       + "<title>" + esc(spec.title || "試験") + "</title>"
       + "<style>" + pageCss(plan) + mathCss() + "</style></head><body>" + body
@@ -63336,8 +63506,9 @@
       };
       S.transition("mock", session, "preparing");
       S.transition("mock", session, "ready");
-      S.transition("mock", session, "in_progress");
-      session.startedAt = S.nowIso();
+      /* ★ **ここでは まだ 始めない**（2026-08-30・訴え）。
+         実物と 同じで、表紙を 読んで 記入し、「開始する」を 押してから。
+         前は 開いた 瞬間に in_progress へ 進めて 時計が 動きだしていた。 */
       afterStart();
     }
     function resumeSession() {
@@ -63364,6 +63535,9 @@
       clearInterval(tick);
       tick = setInterval(function () {
         if (st.paused || st.finished) return;
+        /* ★ 表紙の 段では 時間を 数えない（2026-08-30・訴え）。
+           「開始する」を 押すまでが 本物と 同じ 始まりかた。 */
+        if (!submitting && !始まっているか()) return;
         session.elapsedMs += 1000;
         if (session.durationSec && session.elapsedMs >= session.durationSec * 1000) {
           clearInterval(tick);
@@ -63658,20 +63832,86 @@
     /* ══════════════════════════════════════════════════════════
        描画
        ══════════════════════════════════════════════════════════ */
+    /* ══ 試験の 始めかた（2026-08-30・訴え）════════════════════════
+       訴え「最初 開いたら、表紙に 年組番氏名、受験番号が ある場合には
+             それを 右の 解答欄に 用意して、それを 記入した後に、下に 開始ボタン。
+             それを 押したら、試験が スタートし、1 枚目は 表示したまま、
+             新たに その後の 問題が 最初から 最後まで 表示するように しよう」
+       ★ 実物と 同じで、**開始の 指示が あるまで 中は 見えない**。
+         左は 表紙だけ、右は 記入欄と「開始」。
+       ★ 押したら 表紙は そのまま 残り、その あとに 問題が 続く
+         （紙面は もともと 表紙 → 問題 の 1 本なので、見せる 範囲を 変えるだけ）。 */
+    function 記入の欄() {
+      var f = (spec.cover && Array.isArray(spec.cover.studentFields) && spec.cover.studentFields.length)
+        ? spec.cover.studentFields : ["年", "組", "番", "氏名"];
+      var 出 = f.slice(0, 6).map(function (x) { return String(x); });
+      if (spec.cover && spec.cover.examineeNumber !== false) 出.push("受験番号");
+      return 出;
+    }
+    function 受験者() {
+      if (!session.examinee || typeof session.examinee !== "object") session.examinee = {};
+      return session.examinee;
+    }
+    function coverHtml(mobile) {
+      var v = 受験者();
+      var 欄 = 記入の欄();
+      var 埋 = 欄.every(function (k) { return String(v[k] || "").trim(); });
+      var 右 = '<div class="vq2-pane vq2-pane-r"><div class="vq2-pane-h">'
+        + '<span class="vq2-pane-t">解答欄</span></div><div class="vq2-pane-b">'
+        + '<div class="vq2-card"><div class="vq2-card-t">受験する人</div>'
+        + '<p class="vq2-hint" style="margin:0 0 10px">'
+        + "ここに 書いた ことは、あとで 刷る 問題用紙と 解答用紙にも 入ります。</p>"
+        + 欄.map(function (k) {
+            return '<div class="vq2-field is-inline" style="margin-bottom:8px">'
+              + '<span class="vq2-label" style="min-width:72px">' + esc(k) + "</span>"
+              + '<input type="text" class="vq2-input" data-exm="' + esc(k) + '"'
+              + ' value="' + esc(v[k] || "") + '" autocomplete="off"></div>';
+          }).join("")
+        + '<div style="margin-top:14px">'
+        + btn({ label: "開始する", icon: "play", variant: "primary", full: true,
+                action: "exam-start", disabled: !埋 })
+        + "</div>"
+        + (埋 ? "" : '<p class="vq2-hint" style="margin:8px 0 0">'
+            + "すべて 記入すると 押せます。</p>")
+        + "</div></div></div>";
+      if (mobile) {
+        return '<div class="vq2-body">'
+          + (st.mobileTab === "answers" ? 右
+             : '<div class="vq2-pane vq2-pane-l"><div class="vq2-pane-b" id="examPaper"></div></div>')
+          + "</div>";
+      }
+      return '<div class="vq2-body">'
+        + '<div class="vq2-pane vq2-pane-l"><div class="vq2-pane-h">'
+        + '<span class="vq2-pane-t">問題冊子</span></div>'
+        + '<div class="vq2-pane-b" id="examPaper"></div></div>'
+        + 右 + "</div>";
+    }
+    function 始まっているか() {
+      return st.始めた === true || session.state === "in_progress" || session.state === "paused"
+        || (session.answers || []).some(function (a) { return a && !G.isUnanswered(a.value); });
+    }
+
     function render() {
       if (!session) { app.root.innerHTML = U.skeleton(4); return; }
       var mobile = app.isMobile();
-      app.root.innerHTML = headerHtml()
+      var 表紙前 = !st.finished && !submitting && !始まっているか();
+      app.root.innerHTML = headerHtml(表紙前)
         + (mobile ? mobileTabsHtml() : "")
-        + (st.finished || submitting ? gradingHtml() : bodyHtml(mobile));
+        + (st.finished || submitting ? gradingHtml() : (表紙前 ? coverHtml(mobile) : bodyHtml(mobile)));
       wire();
-      if (!st.finished && !submitting) mountPaper();
+      if (!st.finished && !submitting) mountPaper(表紙前);
     }
     /* 見出しは .vq2-head ごと差し替える。中の .vq2-top だけを差し替えると、
        headerHtml() が返す進捗バーが呼ぶたびに 1 本ずつ増える。 */
     function renderHeader() {
       var h = app.root.querySelector(".vq2-head");
-      if (h) { h.outerHTML = headerHtml(); wireHeader(); }
+      /* ★ ここでも 表紙の 段かを 見る（2026-08-30）。
+         見ていなかったので、1 秒ごとの 書き直しで 見出しだけが
+         「残り 59:59／提出」に **戻って**いた。 */
+      if (h) {
+        h.outerHTML = headerHtml(!st.finished && !submitting && !始まっているか());
+        wireHeader();
+      }
     }
     function renderProgress() {
       var p = app.root.querySelector("#examProg");
@@ -63684,7 +63924,17 @@
       if (b) { b.outerHTML = paperBarHtml(); wirePaper(); }
     }
 
-    function headerHtml() {
+    function headerHtml(表紙前) {
+      /* 表紙の 段は 時計も 提出も 出さない（まだ 始まっていない）。 */
+      if (表紙前) {
+        return '<div class="vq2-head"><div class="vq2-top">'
+          + '<div style="min-width:0"><div class="vq2-top-title">' + esc(spec.title) + "</div>"
+          + '<div class="vq2-top-sub">表紙を 読み、記入してから 始めてください</div></div>'
+          + '<div class="vq2-top-sp"></div>'
+          + '<div class="vq2-top-actions">'
+          + btn({ icon: "close", iconOnly: true, variant: "quiet", action: "exit", aria: "閉じる" })
+          + "</div></div></div>";
+      }
       var t = Math.floor(session.elapsedMs / 1000);
       var remain = Math.max(0, (session.durationSec || 0) - t);
       var label = session.durationSec
@@ -64098,7 +64348,7 @@
     }
 
     /* ── 紙面の描画 ───────────────────────────────────────── */
-    function mountPaper() {
+    function mountPaper(表紙前) {
       var host = app.root.querySelector("#examPaper");
       if (!host) return;
       var iframe = doc.createElement("iframe");
@@ -64107,7 +64357,14 @@
       host.innerHTML = "";
       host.appendChild(iframe);
 
-      var html = R.buildHtml(spec, plan, { bookletId: "question-booklet" });
+      /* ★ 表紙の 段は **表紙だけ**（実物と 同じ。中は まだ 見せない）。
+         始めたら 表紙は そのまま 残り、その あとに 問題が 続く。
+         記入した ことは 紙面にも 入れる（examinee）。 */
+      var html = R.buildHtml(spec, plan, {
+        bookletId: "question-booklet",
+        coverOnly: 表紙前 === true,
+        examinee: 受験者()
+      });
       /* 受験中の強調表示と、設問クリックの受け口を足す */
       html = html.replace("</head>",
         "<style>.vq2-hl{outline:2px solid #756DB3;outline-offset:3px;border-radius:3px}"
@@ -64263,6 +64520,33 @@
         if (t.value) o[p[1]] = t.value; else delete o[p[1]];
         setAnswer(p[0], o);
         refreshRow(p[0]);
+      });
+      /* ══ 受験する人の 記入（表紙の 段）══════════════════════
+         書いた そばから 覚える。開始を 押すまで 何度でも 直せる。 */
+      U.on(r, "input", "[data-exm]", function (e, t) {
+        var k = t.getAttribute("data-exm");
+        var v = 受験者();
+        v[k] = String(t.value || "").slice(0, 40);
+        persist();
+        /* 全部 埋まったら「開始する」が 押せるように なる。 */
+        var b2 = r.querySelector('[data-act="exam-start"]');
+        var 埋 = 記入の欄().every(function (x) { return String(v[x] || "").trim(); });
+        if (b2) { b2.disabled = !埋; b2.classList.toggle("is-disabled", !埋); }
+      });
+      U.on(r, "click", '[data-act="exam-start"]', function () {
+        var v = 受験者();
+        if (!記入の欄().every(function (x) { return String(v[x] || "").trim(); })) {
+          app.toast("すべて 記入してから 始めてください。", "info");
+          return;
+        }
+        st.始めた = true;
+        try { if (session.state === "ready" || session.state === "created") S.transition("mock", session, "in_progress"); }
+        catch (e2) {}
+        if (!session.startedAt) session.startedAt = S.nowIso();
+        enteredAt = Date.now();
+        persistNow();
+        render();
+        app.toast("始めました。時間を 計っています。", "success");
       });
       /* ══ 語群 ══ 押した 語を **いちばん 上の 空いている 欄**へ 入れる。
          紙には 語群が 出ているのに、画面は 打ち込み欄 だけだった。

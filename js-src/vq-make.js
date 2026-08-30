@@ -1176,6 +1176,82 @@
     return 生の資料();
   }
 
+  /* ══ 外から 画像を 持ってくる（2026-08-30・訴え）════════════════
+     訴え「AI が 外部から 画像を 持ってきて、画像資料として 出題できる
+           ものも 作ったり」
+
+     ★ AI が 出すのは **探す 言葉**（imageQuery）だけ。住所は 書かせない。
+       取ってくるのは サーバ（Wikimedia Commons・許諾の 読める ものだけ）。
+     ★ 取れなかった 図は **落とす**（白い 四角を 出さない）。
+     ★ 出典・作者・許諾は 必ず 図に 添える（credit）。 */
+  function 外の画像を入れる(並) {
+    var 語 = [], 場所 = [];
+    (並 || []).forEach(function (q) {
+      ["materials", "contentBlocks", "figures"].forEach(function (k) {
+        if (!Array.isArray(q[k])) return;
+        q[k].forEach(function (b, i) {
+          if (!b || typeof b !== "object") return;
+          var t = String(b.imageQuery || "").trim();
+          if (!t || b.src) return;
+          if (語.indexOf(t) < 0) 語.push(t);
+          場所.push({ q: q, k: k, i: i, 語: t });
+        });
+      });
+    });
+    if (!場所.length) return Promise.resolve(0);
+    var V = VQ2(), A = V && V.aigen;
+    var 頭 = {};
+    try { 頭 = (A && A.authHeader) ? A.authHeader() : null; } catch (e) { 頭 = null; }
+    var base = "";
+    try { base = (A && A.apiBase) ? A.apiBase() : (window.API_BASE || ""); } catch (e) { base = ""; }
+    try {
+      var tok = window.localStorage.getItem("app.auth.token.v1");
+      if (tok) 頭 = { Authorization: "Bearer " + tok };
+    } catch (e) {}
+    if (!頭) return Promise.resolve(0);
+    記す("note", "資料の 画像を 外から 探しています（" + 語.length + " 件）。"
+      + "取り先は Wikimedia Commons、許諾の 読める ものだけです。");
+    return window.fetch((base || "") + "/api/exam/image", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, 頭),
+      body: JSON.stringify({ queries: 語.slice(0, 4) })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      var 表 = {};
+      ((j && j.results) || []).forEach(function (x) {
+        if (x && x.ok && x.image && x.image.dataUrl) 表[x.query] = x.image;
+      });
+      var 入 = 0, 落 = 0;
+      場所.forEach(function (m) {
+        var im = 表[m.語];
+        var b = m.q[m.k][m.i];
+        if (!im) { m.q[m.k][m.i] = null; 落++; return; }
+        b.src = im.dataUrl;
+        delete b.imageQuery;
+        b.credit = { author: im.author || "", license: im.license || "",
+                     page: im.page || "", source: im.source || "Wikimedia Commons" };
+        if (!b.caption && im.title) b.caption = im.title;
+        入++;
+      });
+      /* 取れなかった ぶんの 穴を 詰める。 */
+      (並 || []).forEach(function (q) {
+        ["materials", "contentBlocks", "figures"].forEach(function (k) {
+          if (Array.isArray(q[k])) q[k] = q[k].filter(Boolean);
+        });
+      });
+      記す(入 ? "done" : "warn", "画像 " + 入 + " 枚を 入れました"
+        + (落 ? "（" + 落 + " 枚は 取れなかったので 外しました）" : "") + "。");
+      return 入;
+    }, function (e) {
+      記す("warn", "画像を 探せませんでした：" + String((e && e.message) || e).slice(0, 80));
+      (並 || []).forEach(function (q) {
+        ["materials", "contentBlocks", "figures"].forEach(function (k) {
+          if (Array.isArray(q[k])) q[k] = q[k].filter(function (b) { return !(b && b.imageQuery && !b.src); });
+        });
+      });
+      return 0;
+    });
+  }
+
   /* ══ 送れる形に する ═══════════════════════════════════════════
      ★ **プリセット作成と 同じ 1 か所**（VQ2.aigen.filesToPayload）を 通す。
        9MB までは そのまま／それより 大きく 文字が 取れているものは 文字で／
@@ -1692,6 +1768,9 @@
           if (r.status === "contradictory" || r.status === "unsupported") 記す("warn", r.reason || "");
           /* 「画像1」を 本物の 中身へ 差し替える（知らない 住所は 落とす）。 */
           try { 画像を差し替える(r.questions, 絵); } catch (e2) {}
+          /* 外の 画像を 持ってくる（探す 言葉が あるときだけ）。 */
+          var 待 = null;
+          try { 待 = 外の画像を入れる(r.questions); } catch (e4) { 待 = null; }
           /* この 頼みは 終わり。様子の 一覧から 外す。 */
           Object.keys(向こう).forEach(function (k) {
             if (向こう[k] && 向こう[k].status !== "running" && 向こう[k].status !== "queued") delete 向こう[k];
@@ -1701,6 +1780,8 @@
              名前が 無いと「資料の どこか」を 指せず、確認あつかいに なる。
              資料が 1 件しか 無い ときは その 名前で 埋める（迷いようが ない）。 */
           try { 根拠の名前をそろえる(r.questions); } catch (e3) {}
+          /* 画像が そろってから 返す（先に 返すと 紙面が 空の 図で 組まれる）。 */
+          if (待 && typeof 待.then === "function") return 待.then(function () { return r; });
           return r;
         }, function (e) {
           /* **この端末へは 落とさない。** 理由を 言って 止める。 */

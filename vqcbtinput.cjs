@@ -135,7 +135,31 @@ const 試験を置く = () => {
     const ST = window.VQ2.store;
     window.VQ2.examWorkspace.open({ spec: ST.getExam("cbt-in-1") });
   });
-  await 待(2000);
+  await 待(1500);
+
+  /* ★ 受験は **表紙の 段**から 始まる（2026-08-30）。
+     年組番氏名・受験番号を 入れて「開始する」を 押すまで 中は 出ない。
+     検査は そこを 通してから 見る。 */
+  await page.evaluate(async () => {
+    function 深(sel) {
+      var out = [];
+      (function 掘る(root) {
+        try { root.querySelectorAll(sel).forEach(function (x) { out.push(x); }); } catch (e) {}
+        try { root.querySelectorAll("*").forEach(function (el) { if (el.shadowRoot) 掘る(el.shadowRoot); }); } catch (e) {}
+      })(document);
+      return out;
+    }
+    深("[data-exm]").forEach(function (el) {
+      var k = el.getAttribute("data-exm");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set
+        .call(el, k === "受験番号" ? "12345678" : (k === "氏名" ? "検査 太郎" : "1"));
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    var b = 深('[data-act="exam-start"]')[0];
+    if (b) b.click();
+    await new Promise(function (r) { setTimeout(r, 900); });
+  });
+  await 待(700);
 
   節("② どの 形式にも 入力の 口が ある");
   const 口 = await page.evaluate(() => {
