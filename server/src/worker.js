@@ -45066,8 +45066,17 @@ async function handleAigenUpload(request, env) {
   const len = Math.max(0, qreditSafeInt(request.headers.get("content-length") || 0, 0));
   if (!request.body) return json({ code: "EMPTY", message: "資料が空です。" }, 400, request);
 
-  /* 鍵は毎回ずらす。同じ鍵へ寄せると、その鍵だけ預かり物でいっぱいになる。 */
-  const at = Math.floor(Date.now() / 1000) % keys.length;
+  /* ══ 鍵は 1 回の 注文で **そろえる**（2026-08-30・訴え「でかいファイルだと止まる」）
+     預けた 資料は **その 鍵からしか 見えない**。
+     14 件を 続けて 預けると 秒を またいだ ところで 鍵が 変わり、
+     作るときは 先頭の 鍵に 固定されるので **残りが 見えなく**なる
+     （＝資料を 付けたのに 半分しか 読まれない）。
+     呼び出し側が keyIndex を 指してきたら、その 鍵へ 預ける。 */
+  const 指定 = url.searchParams.get("keyIndex");
+  const 指 = (指定 === null || 指定 === "") ? -1 : qreditSafeInt(指定, -1);
+  const at = (Number.isInteger(指) && 指 >= 0 && 指 < keys.length)
+    ? 指
+    : (Math.floor(Date.now() / 1000) % keys.length);
   const key = keys[at];
 
   const head = { "x-goog-api-key": key, "Content-Type": mime };
@@ -46964,6 +46973,7 @@ function aigenPassageNote(on) {
     '\u3000本文:   {"type":"passage","caption":"次の 文章を 読み、…","text":"（150〜400 字）"}',
     '\u3000資料の 束: {"type":"source","entries":[{"label":"資料1","text":"…"},{"label":"資料2","text":"…"}]}',
     "\u3000\u3000会話文は **改行（\\n）で 発言を 分けます。**「生徒A：」のように 話し手を 頭に 付けます。",
+    "\u3000\u3000★ **本文・会話文は 日本語で 書いてください。**（教科が 英語の ときを 除きます）",
     "",
     "★ **流れの 本文の 語群問題**（いちばん 試験らしい 形）の 作りかた:",
     "\u3000① materials に passage（または dialogue）で 本文を 置く",
@@ -50251,7 +50261,7 @@ async function aigenJobCreate(env, uid, o) {
       (id, user_id, type, priority, status, progress, current_stage, stages_json, title,
        input_ref, idempotency_key, executor, engine_version,
        planned_count, created_at, started_at, updated_at)
-     VALUES (?1,?2,'preset-gen',0,'running',0,?3,?4,?5,?6,?7,'cloud',?8,?9,?10,?10,?10)`
+     VALUES (?1,?2,?11,0,'running',0,?3,?4,?5,?6,?7,'cloud',?8,?9,?10,?10,?10)`
   ).bind(
     id, uid,
     /* 段の名前は **表示に使う言葉**でそろえる。作成時だけ id を入れると、
@@ -50263,7 +50273,12 @@ async function aigenJobCreate(env, uid, o) {
     toSafeString(o.idempotencyKey || "", 120),
     toSafeString(o.engineVersion || "", 40),
     Math.max(0, qreditSafeInt(o.planned || 0, 0)),
-    now
+    now,
+    /* ★ 試験は **プリセットでは ない**（2026-08-30・訴え「プリセットも増殖されてる」）。
+       うしろで 拾う 側（vq-core）は type が 'preset-gen' の ものだけ 見る。
+       試験の 仕事に 同じ 名札を 付けていたので、20 問の 試験を 作るたび
+       **分けて 頼んだ 数だけ プリセットが できて**いた。 */
+    String(o.kind || "") === "exam" ? "exam-gen" : "preset-gen"
   ).run();
   return id;
 }
@@ -50302,7 +50317,7 @@ async function aigenJobFinish(env, uid, id, out) {
     `UPDATE ai_jobs SET status=?1, progress=?2, current_stage='', stages_json=?3,
        made_count=?4, ai_calls=?5, tokens_in=?6, tokens_out=?7, first_result_ms=?8,
        partial_json=?9, error_code=?10, error_message=?11, completed_at=?12, updated_at=?12
-     WHERE id=?13 AND user_id=?14 AND status='running'`
+     WHERE id=?13 AND user_id=?14 AND status IN ('running','partial','failed')`
   ).bind(
     status,
     status === "completed" ? 1 : aiJobProgressOf(stages),
@@ -51461,7 +51476,10 @@ async function handleAiGenQuestions(request, env, ctx) {
      ② 本文に載せてある（data） … 小さい資料。これまでの形
      ①を受けていなかったので、預けたのに「資料なし」として作っていた
      （実測 2026-08-12: 5.2MB の PDF を預けたのに、無関係な問題が出た）。 */
-  const files = Array.isArray(body?.files) ? body.files.slice(0, 8)
+  /* ★ 上限を 8 → 16（2026-08-30）。預けた 資料（fileUri）は 場所を 指すだけで
+     軽いので、件数が 多くても 通る。8 で 切っていたので、
+     14 件 付けても **6 件が 黙って 落ちて**いた。 */
+  const files = Array.isArray(body?.files) ? body.files.slice(0, 16)
     .map((f) => {
       if (!f) return null;
       if (typeof f.fileUri === "string" && f.fileUri) {
@@ -51566,6 +51584,8 @@ async function handleAiGenQuestions(request, env, ctx) {
          これが 無いと 仕事の 数だけ プリセットが できてしまう。
          同じ orderId の ものは **1 つの プリセット**に まとめる。 */
       inputReference: toSafeString(body?.orderId || "", 200),
+      /* 試験づくりの 仕事は プリセットの 拾い上げから 外す。 */
+      kind: body?.exam === true || String(body?.kind || "") === "exam" ? "exam" : "",
       engineVersion: "aigen-cloud"
     });
     /* 端末の鍵は **ここで作っておく**（あとで request を読もうとすると、
@@ -53172,7 +53192,11 @@ async function handleAiJobGet(request, env, url) {
      途中で終わると、**「作成中」のまま永遠に残る**。
      しばらく動きが無ければ、できているぶんを残して閉じる。
      数は増やさない（できた数のまま partial にするだけ）。 */
-  const stale = 120 * 1000;
+  /* ★ 資料つきは 1 回の 呼び出しが 長い（大きい PDF を 読ませると 1〜3 分）。
+     120 秒で 打ち切ると **動いている 仕事を 殺し**、そのあと 本当に
+     できた ぶんまで 捨てていた（finish が status='running' の ときしか
+     書かなかったため）。長めに 取り、finish 側でも 上書きできるように した。 */
+  const stale = 300 * 1000;
   if (String(row.status) === "running" && Date.now() - (Number(row.updated_at) || 0) > stale) {
     const made = Number(row.made_count) || 0;
     await env.DB.prepare(

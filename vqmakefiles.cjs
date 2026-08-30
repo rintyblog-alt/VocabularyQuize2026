@@ -140,7 +140,7 @@ const PDF = ["情報 (2).pdf", "情報.pdf"].map((n) => path.join(process.cwd(),
   見(見た.文.indexOf("スキャン") >= 0, "★ スキャンした PDF も 読めると 書いてある");
 
   /* ══ ④ 送る形 ══ */
-  節("④ 送る形は プリセット作成と 同じ 道で 作られる");
+  節("④ 渡しかた（本文が 取れているなら 文字で・速い）");
   const 送 = await page.evaluate(async () => {
     try {
       const r = await window.__vqMake.資料の送り形();
@@ -151,10 +151,23 @@ const PDF = ["情報 (2).pdf", "情報.pdf"].map((n) => path.join(process.cwd(),
     } catch (e) { return { ok: false, err: String((e && (e.userMessage || e.message)) || e).slice(0, 200) }; }
   });
   見(送.ok, "断られずに 形が できる", 送);
-  if (送.ok) {
-    見(送.件 >= 1, "★ 少なくとも 1 件 送れる", 送.中);
-    見(送.中.every((x) => x.内 > 0 || x.預), "★ 中身か 預け先を 持っている", 送.中);
-  }
+  /* 本文が 取れている PDF なので、既定は **文字の道**（PDF を 送らない）。
+     これが「マジで遅い」の 直し。PDF を 毎回 読み直させない。 */
+  見(送.ok && 送.件 === 0, "★ 本文が 取れているので PDF は 送らない（文字で 渡す）", 送);
+
+  /* 「そのまま 読ませる」に すると、ちゃんと PDF を 送る。 */
+  const 生 = await page.evaluate(async () => {
+    const r0 = document.getElementById("vqMake").shadowRoot;
+    const b = r0.querySelector('[data-a="pass"][data-v="そのまま"]');
+    if (b) b.click();
+    try {
+      const r = await window.__vqMake.資料の送り形();
+      const f = r.files || [];
+      return { ok: true, 件: f.length, 内: f.map((x) => (x.data ? x.data.length : 0)), 預: f.filter((x) => x.fileUri).length };
+    } catch (e) { return { ok: false, err: String((e && (e.userMessage || e.message)) || e).slice(0, 200) }; }
+  });
+  見(生.ok && 生.件 >= 1, "★「そのまま」に すると PDF を 送る", 生);
+  見(生.ok && (生.預 >= 1 || (生.内[0] || 0) > 0), "中身か 預け先を 持っている", 生);
 
   /* ══ ⑤ 依頼文 ══ */
   節("⑤ 依頼文に「資料だけを 根拠に」が 入る");

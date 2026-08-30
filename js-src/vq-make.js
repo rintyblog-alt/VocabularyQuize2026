@@ -273,6 +273,9 @@
          試験は 表や グラフを 読ませる 問題が 出る ものなので。 */
       materials: true,
       instruction: "",
+      /* 資料の 渡しかた。"はやい"＝本文の 文字だけ／"そのまま"＝PDF を 読ませる。
+         既定は はやい（文字が 取れている ときだけ 効く）。 */
+      資料の渡し: "はやい",
       layoutMode: "current", answerSheetMode: "current"
     };
   }
@@ -499,6 +502,28 @@
       + "ここに 出ているのは <b>実際に 組める型だけ</b>です。</p>";
 
     /* 資料 */
+    /* 渡しかた。資料が あるときだけ 出す。 */
+    if (st.資料.length) {
+      var 文可 = st.資料.every(function (f) {
+        return String((f && f.extractedText) || "").trim().length >= 200;
+      });
+      h += '<div class="row"><label>資料の 渡しかた</label><div class="chips">'
+        + ["はやい", "そのまま"].map(function (id) {
+            var on = (c.資料の渡し || "はやい") === id;
+            return '<button type="button" class="chip' + (on ? " is-on" : "") + '" data-a="pass" data-v="'
+              + id + '" aria-pressed="' + (on ? "true" : "false") + '">'
+              + (id === "はやい" ? "本文の 文字だけ<small>速い</small>"
+                                 : "そのまま 読ませる<small>図も 読める・遅い</small>") + "</button>";
+          }).join("")
+        + "</div><div class=\"hint\">"
+        + (文可
+            ? "「本文の 文字だけ」は、添付から 取り出した <b>本文 そのもの</b>を 渡します"
+              + "（要点に していません）。PDF を 読み直させないので <b>何倍も 速い</b>です。"
+              + "図や 写真を 問題に したい ときだけ「そのまま」を 選んでください。"
+            : "本文の 取れていない 資料が あるので、この 回は <b>そのまま 読ませます</b>"
+              + "（写真や スキャンの ページを 読ませるため）。時間が かかります。")
+        + "</div></div>";
+    }
     h += '<div class="row"><label>資料（任意）</label>' + 資料の中身()
       + '<div class="hint">PDF・画像・文書・表・zip を そのまま 渡します（要点だけを 抜き出しません）。'
       + "資料を 付けると、<b>その 資料だけを 根拠に</b>した 問題を 作ります。"
@@ -1072,13 +1097,51 @@
     });
   }
 
+  /* ══ 資料を **文字で** 渡す（2026-08-30・訴え「マジで遅い」）════════
+     ★ 資料つきが 遅い 理由は 1 つ。**AI が 毎回 PDF を 読み直す**から。
+       20 問の 試験は 4 回に 分けて 頼むので、14 件の PDF を 4 回 読ませる。
+       1 回 1〜2 分 かかるので、全部で 5〜8 分に なる。
+     ★ 画面は 添付を 入れた 時点で **本文を 取り出してある**（extractedText）。
+       文字なら 読み直しが 要らず、Groq でも 作れる（実測で いちばん 速い）。
+     ★ 要点に していない。**本文 そのもの**を 渡す。長ければ 回ごとに
+       別の ところを 渡して、全部を 一巡 する。 */
+  var 一度に渡す字数 = 40000;
+  function 資料の文字() {
+    var 束 = [];
+    st.資料.forEach(function (f) {
+      var t = String((f && f.extractedText) || "").trim();
+      if (t.length < 200) return;
+      束.push("■ " + (f.name || "資料") + "\n" + t);
+    });
+    if (!束.length) return [];
+    var 全 = 束.join("\n\n");
+    var 数 = Math.max(1, Math.ceil(全.length / 一度に渡す字数));
+    var 幅 = Math.ceil(全.length / 数);
+    var 出 = [];
+    for (var i = 0; i < 数; i++) 出.push(全.slice(i * 幅, (i + 1) * 幅));
+    return 出;
+  }
+  /* 文字で 渡せるか。**全部の 資料から 本文が 取れている**ときだけ。
+     1 つでも 写真だけの ページが あると、その 資料は 読まれないので
+     そのまま 読ませる 道へ 行く。 */
+  function 文字で渡せるか() {
+    if (!st.資料.length) return false;
+    if (st.条件 && st.条件.資料の渡し === "そのまま") return false;
+    if (!(window.VQ2 && window.VQ2.aigen)) return true;
+    return st.資料.every(function (f) {
+      return String((f && f.extractedText) || "").trim().length >= 200;
+    });
+  }
+
   /* ══ 送れる形に する ═══════════════════════════════════════════
      ★ **プリセット作成と 同じ 1 か所**（VQ2.aigen.filesToPayload）を 通す。
        9MB までは そのまま／それより 大きく 文字が 取れているものは 文字で／
        スキャンは ページの 絵で／どれでも 通らない ものは **理由を 言って 断る**。
        ここを 自前で 書くと、その 判断が また ずれる。 */
-  function 資料を送れる形に() {
+  function 資料を送れる形に(onUpload) {
     if (!st.資料.length) return Promise.resolve({ files: [], 文: "" });
+    /* 文字で 渡すなら、預けも 送りも しない（いちばん 速い）。 */
+    if (文字で渡せるか()) return Promise.resolve({ files: [], 文: "" });
     var V = VQ2(), A = V && V.aigen;
     var 自前 = st.資料.filter(function (f) { return f.data; });
     if (自前.length === st.資料.length || !A || !A.filesToPayload) {
@@ -1088,7 +1151,7 @@
         文: ""
       });
     }
-    return Promise.resolve(A.filesToPayload(st.資料)).then(function (files) {
+    return Promise.resolve(A.filesToPayload(st.資料, { onUpload: onUpload })).then(function (files) {
       var 文 = "";
       try { 文 = A.bigDocText ? String(A.bigDocText(st.資料) || "") : ""; } catch (e) { 文 = ""; }
       return { files: files || [], 文: 文 };
@@ -1154,6 +1217,11 @@
       }
       if (a === "go") { 条件へ(); return; }
       if (a === "back-cover") { st.err = ""; 開く("表紙"); return; }
+      if (a === "pass") {
+        st.条件.資料の渡し = el.dataset.v;
+        描く();
+        return;
+      }
       if (a === "kind") {
         var k = 型.filter(function (x) { return x.id === el.dataset.v; })[0];
         st.条件.kind = el.dataset.v;
@@ -1328,8 +1396,38 @@
   /* ══ ④ → ⑤ 実際に 作る ═══════════════════════════════════════════
      ★ 生成そのものは **サーバ（Groq / Gemini）**。この端末では 作らない。
      ★ 枠に 入らなかったものは 捨てる（MR.run の gate）。水増ししない。 */
+  /* ══ ログは 日本語で 出す（2026-08-30・訴え「ログを日本語にできる？」）
+     いままでは 中の 合図（HTTP 503 / NOT_SIGNED_IN / cancelled …）が
+     そのまま 並んでいた。読んでも 何を すれば よいか 分からない。
+     ここで 日本語へ 直す。**分からない ものは 消さずに 添える**。 */
+  var ことば = [
+    [/^HTTP 401$|NOT_SIGNED_IN|UNAUTHORIZED/i, "ログインが 切れています。入り直してから もう一度 お試しください。"],
+    [/^HTTP 413$|TOO_LARGE|FILES_TOO_LARGE/i, "資料が 大きすぎて 送れませんでした。件数を 減らすか、ページを 分けてください。"],
+    [/^HTTP 429$|RATE|quota|使い切/i, "今日ぶんの 上限に 当たりました。しばらく 待つと また 作れます。"],
+    [/^HTTP 5\d\d$|INTERNAL|GENERATE_FAILED/i, "クラウドが 返事を 返しませんでした。少し 待って もう一度 お試しください。"],
+    [/^HTTP 503$|NO_DOC_AI/i, "いま 資料を 読める AI に つながりません。少し 待って もう一度 お試しください。"],
+    [/UPLOAD_FAILED|UPLOAD_NOT_READY/i, "資料を 預けられませんでした。もう一度 お試しください。"],
+    [/BIG_NO_TEXT/i, "その 資料は 大きくて 文字も 入っていません（写真だけの ページ）。ページを 分けてください。"],
+    [/FILES_UNAVAILABLE/i, "添付した 資料の 中身を 取り出せませんでした。選び直してください。"],
+    [/cancelled|aborted/i, "止めました。"],
+    [/BLOCKED/i, "いまは 作れませんでした。しばらく 待ってから お試しください。"],
+    [/Failed to fetch|NetworkError|Load failed/i, "つながりませんでした。電波の よい ところで もう一度 お試しください。"],
+    [/timeout|timed out/i, "待っても 返事が 来ませんでした。もう一度 お試しください。"]
+  ];
+  function 日本語に(t) {
+    var s2 = String(t == null ? "" : t).trim();
+    if (!s2) return "";
+    /* もう 日本語なら そのまま。 */
+    if (/[ぁ-んァ-ヶ一-龠]/.test(s2)) return s2;
+    for (var i = 0; i < ことば.length; i++) {
+      if (ことば[i][0].test(s2)) return ことば[i][1] + "（" + s2.slice(0, 60) + "）";
+    }
+    return "うまく いきませんでした（" + s2.slice(0, 80) + "）";
+  }
   function 記す(k, t) {
-    st.記録.push({ k: k, t: String(t).slice(0, 200) });
+    var 文 = (k === "err" || k === "warn") ? 日本語に(t) : String(t == null ? "" : t);
+    if (!文) return;
+    st.記録.push({ k: k, t: 文.slice(0, 200) });
     if (st.記録.length > 60) st.記録 = st.記録.slice(-60);
   }
   function 生成する(o) {
@@ -1355,7 +1453,13 @@
        ここで 断られる（大きすぎる・中身が 取り出せない）ことが あるので、
        作り始めてから 気づくのではなく、先に 理由を 出して 止める。 */
     if (st.資料.length) { st.進み.stage = "資料を 用意しています"; 描く(); }
-    資料を送れる形に().then(function (用意) {
+    資料を送れる形に(function (済, 全) {
+      /* ★ 預けている 間も 動きを 見せる（2026-08-30）。
+         14 件だと ここで 1 分近く かかるので、黙っていると
+         「止まった」と 見える。 */
+      if (st.進み) st.進み.stage = "資料を 預けています（" + 済 + " / " + 全 + "）";
+      描く();
+    }).then(function (用意) {
       走らせる(o, c, 表紙, p2, MC, MR, G, 用意);
     }, function (e) {
       st.走っている = false;
@@ -1368,9 +1472,12 @@
   function 走らせる(o, c, 表紙, p2, MC, MR, G, 用意) {
     var V = VQ2();
     var 依頼文 = 依頼を組む(c, 表紙, p2);
-    var 資料 = (用意 && 用意.files) || [];
+    var 文の道 = 文字で渡せるか();
+    var 資料 = 文の道 ? [] : ((用意 && 用意.files) || []);
+    var 本文の束 = 文の道 ? 資料の文字() : [];
+    var 何回目 = 0;
     /* 大きすぎて そのままは 渡せない 資料は、**取り出した 文字**で 渡す。 */
-    if (用意 && 用意.文) {
+    if (!文の道 && 用意 && 用意.文) {
       依頼文 += "\n\n【添付した 資料の 本文】\n" + 用意.文
         + "\n★ ここに 書いてあることだけを 根拠に してください。";
     }
@@ -1385,6 +1492,35 @@
         + "\n\u3000★ 要らない 問題には 貼りません。";
     }
     var 資料を言った = false;
+    /* ★ **同じ注文の 目印**。1 回の「作って」は 中で 何回にも 分けて 頼まれる。
+       これが 無いと、画面を 閉じたまま 終わったとき **仕事の 数だけ
+       試験が できる**（20 問なら 4 つ）。 */
+    var 注文番号 = "vqmk-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    /* ★ 何件を どう 渡すのかを **数で** 言う（2026-08-30・訴え）。
+       前は「資料 14 件を そのまま 渡します」と 出しながら、
+       中では 8 件に 切って いた（残り 6 件は 黙って 落ちていた）。 */
+    if (st.資料.length) {
+      if (文の道) {
+        var 字 = 本文の束.reduce(function (n, x) { return n + x.length; }, 0);
+        記す("note", "資料 " + st.資料.length + " 件を **本文の 文字**で 渡します（合わせて "
+          + Math.round(字 / 1000) + " 千字"
+          + (本文の束.length > 1 ? "・" + 本文の束.length + " 回に 分けて 一巡" : "") + "）。"
+          + "PDF を 読み直させないので、ここが いちばん 速い 道です。");
+      } else {
+        var 預 = 資料.filter(function (f) { return f && f.fileUri; }).length;
+        var 載 = 資料.filter(function (f) { return f && f.data; }).length;
+        var 言 = [];
+        if (預) 言.push("預けた " + 預 + " 件（場所を 指すだけ・送り直しません）");
+        if (載) 言.push("そのまま 載せる " + 載 + " 件");
+        記す("note", "資料 " + 資料.length + " 件を そのまま 読ませます："
+          + 言.join(" ／ ") + "。図や 写真も 読めますが、時間が かかります。");
+        if (資料.length < st.資料.length) {
+          記す("warn", "付けた " + st.資料.length + " 件のうち " + 資料.length
+            + " 件だけを 渡します（1 回に 渡せるのは 16 件までです）。");
+        }
+      }
+      資料を言った = true;
+    }
 
     MR.run({
       plan: p2,
@@ -1396,7 +1532,11 @@
          その 制限は 効かない。20 問なら 7 往復 → 4 往復・3 本 同時。
          batchSize を 上げすぎると JSON が 途中で 切れて まるごと 落ちるので、
          5 まで（実測で 破棄 0% だった 3 の 少し上）。 */
-      concurrency: 3,
+      /* ★ 資料つきは **1 本ずつ**（2026-08-30・訴え「でかいファイルだと止まる」）。
+         3 本 同時だと、同じ 資料を 読ませる 頼みが 3 つ 同時に 走る。
+         預けて 軽くしても、向こうが 資料を 読む 時間は 3 倍 重なり、
+         1 分あたりの 上限にも すぐ 当たる。資料が あるときは 1 本ずつ。 */
+      concurrency: (st.資料.length && !文の道) ? 1 : 3,
       batchSize: 5,
       onStage: function (name) {
         if (st.進み) st.進み.stage = 段の名(name);
@@ -1425,12 +1565,18 @@
             plan2[t] = (plan2[t] || 0) + 1;
           });
         } catch (e) {}
-        if (資料.length && !資料を言った) {
-          資料を言った = true;
-          記す("note", "資料 " + 資料.length + " 件を そのまま 渡します");
+        /* 文字の道では、回ごとに 本文の 別の ところを 渡して 全部を 一巡する。 */
+        var 本 = "";
+        if (本文の束.length) {
+          var k = 何回目++ % 本文の束.length;
+          本 = "\n\n【添付した 資料の 本文"
+            + (本文の束.length > 1 ? "（" + (k + 1) + " / " + 本文の束.length + ")" : "")
+            + "】\n" + 本文の束[k]
+            + "\n★ **ここに 書いてあることだけ**を 根拠に してください。"
+            + "書いていないことを 覚えで 書かないでください。";
         }
         var 頼み = {
-          prompt: (cx && cx.prompt) ? cx.prompt + "\n\n" + 依頼文 : 依頼文,
+          prompt: ((cx && cx.prompt) ? cx.prompt + "\n\n" + 依頼文 : 依頼文) + 本,
           count: (req.slots || []).length,
           questionTypes: types.length ? types : undefined,
           questionPlan: Object.keys(plan2).length ? plan2 : undefined,
@@ -1441,7 +1587,12 @@
           /* 図・表・グラフ。サーバは 頼まれたときだけ 語彙を 教える。
              既定で 付けると 要らない ところに 飾りの 表が 出る。 */
           materials: c.materials === true ? true : undefined,
-          files: 資料.length ? 資料 : undefined
+          files: 資料.length ? 資料 : undefined,
+          orderId: 注文番号,
+          /* ★ 試験の 仕事は **プリセットに しない**（2026-08-30・訴え）。
+             うしろの 拾い上げは 'preset-gen' だけを 見る。 */
+          kind: "exam",
+          selfManaged: true
         };
         var 呼 = G.generateQuestionsTracked ? G.generateQuestionsTracked(頼み) : G.generateQuestions(頼み);
         return 呼.then(function (r) {
@@ -1488,6 +1639,12 @@
     var d = { easy: "やさしめに", hard: "難しめに", mixed: "難易を 混ぜて" }[c.difficulty];
     if (d) 行.push(d + " 作ってください。");
     /* ★ 試験の 標準は 頭を 使う 問題（2026-08-30・訴え）。 */
+    /* ★ 会話文・本文は **日本語で 書かせる**（2026-08-30・訴え）。
+       教科が 英語の ときだけ 英語。書かないと 英語の 会話文が 混ざる。 */
+    行.push(/英語|English/i.test(表紙.subject || "")
+      ? "英語の 試験なので、本文・会話文・選択肢は 英語で 書いてください（設問文は 日本語）。"
+      : "**本文・会話文・選択肢・解説は すべて 日本語で 書いてください。**"
+        + "英語の 文を 混ぜないでください（教科が 英語の ときを 除きます）。");
     行.push("単語や 年号を 1 問 1 答で 答えるだけの 問題に 寄せないでください。"
       + "本文の 空欄を 複数 補う 問題（語群あり・語群なしの 両方）、"
       + "「〜字以内で まとめよ」のように 字数を 指定して 書かせる 記述、"

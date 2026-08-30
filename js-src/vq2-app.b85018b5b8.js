@@ -19510,7 +19510,8 @@
     return out;
   }
 
-  function filesToPayload(atts) {
+  function filesToPayload(atts, opts) {
+    opts = opts || {};
     var src = (atts || []).filter(Boolean);
     /* 絵にしてあるページは、本体（File）を送らずにこちらを送る。 */
     var scans = scanImagesOf(src);
@@ -19593,8 +19594,34 @@
       }));
     }
     var small = list.filter(function (x) { return (x.file.size || 0) <= INLINE_MAX; });
+    /* ══ 何度も 送り直さない（2026-08-30・訴え「でかいファイルだと止まる」）
+       1 回の「作って」は、中で 何回にも 分けて 頼まれる（試験は 20 問で
+       4 回 × 3 本 同時）。資料を そのまま 載せると、**同じ 資料を
+       12 回 送り直す**ことに なる。携帯の 回線では 送り終わる 前に
+       サーバの 見張り（2 分）に 引っかかり、仕事ごと 打ち切られていた。
+       ★ 合計が 大きい／件数が 多い ときは、**先に 1 回 預けて**、
+         あとは 場所（fileUri）を 指すだけに する。
+       ★ 預けられなければ、これまでどおり そのまま 送る（止めない）。 */
+    var 合計 = list.reduce(function (n, x) { return n + (x.file.size || 0); }, 0);
+    var 預けたい = opts.upload === true
+      || (opts.upload !== false && (合計 > 3 * 1024 * 1024 || list.length > 3));
+    if (small.length === list.length && 預けたい && !scans.length) {
+      return 預ける(list, opts).catch(function () {
+        /* 預けられなかった。そのまま 送る 道へ 落とす（黙って 資料なしに しない）。 */
+        return インラインで(list).then(function (files) { return files.concat(scans); });
+      });
+    }
     if (small.length === list.length) {
-      return Promise.all(list.slice(0, 8).map(function (x) {
+      return インラインで(list).then(function (files) { return files.concat(scans); });
+    }
+    /* 絵にしたページがあるなら、預ける道（403）へは行かない。 */
+    if (scans.length) return Promise.resolve(scans);
+    return 預ける(list, opts);
+  }
+
+  /* そのまま 載せて 送る（小さい 資料だけ）。 */
+  function インラインで(list) {
+      return Promise.all(list.slice(0, 16).map(function (x) {
         return new Promise(function (res, rej) {
           var fr = new FileReader();
           fr.onload = function () {
@@ -19607,15 +19634,32 @@
           fr.onerror = function () { rej(new Error("資料を読めませんでした")); };
           fr.readAsDataURL(x.file);
         });
-      })).then(function (files) { return files.concat(scans); });
-    }
-    /* 絵にしたページがあるなら、預ける道（403）へは行かない。 */
-    if (scans.length) return Promise.resolve(scans);
+      }));
+  }
 
+  /* ══ 資料を 先に 1 回だけ 預ける（2026-08-30・訴え「でかいファイルだと止まる」）
+     ★ **これが 止まる 原因だった。**
+       試験は 20 問を 4 回に 分けて 頼み、しかも 3 本 同時に 走らせる。
+       資料を そのまま 載せると、同じ 18MB を **12 回 送り直す**ことに なる。
+       携帯の 回線では 送り終わる 前に 2 分が 過ぎ、サーバが
+       「動いていない」と 見て 仕事を 打ち切っていた（STALLED）。
+     ★ 1 回 預ければ、あとは 場所（fileUri）を 指すだけ。数十 KB で 済む。
+     ★ 預け先は **鍵ごとに 別**。1 本目で 決まった 鍵に 残りも そろえる
+       （秒を またぐと 鍵が 変わり、後ろの 資料が 見えなく なる）。 */
+  function 預ける(list, opts) {
+    opts = opts || {};
     var h = authHeader();
-    return Promise.all(list.slice(0, 8).map(function (x) {
-      return root.fetch(apiBase() + "/api/aigen/upload?name="
-        + encodeURIComponent(x.file.name || "document"), {
+    var 並 = list.slice(0, 16);
+    var 済 = 0;
+    function 進む() {
+      済++;
+      if (typeof opts.onUpload === "function") { try { opts.onUpload(済, 並.length); } catch (e) {} }
+    }
+    function ひとつ預ける(x, keyIndex) {
+      var u = apiBase() + "/api/aigen/upload?name="
+        + encodeURIComponent(x.file.name || "document")
+        + (Number.isInteger(keyIndex) ? "&keyIndex=" + keyIndex : "");
+      return root.fetch(u, {
         method: "POST",
         headers: Object.assign({ "Content-Type": x.mimeType || "application/pdf" }, h || {}),
         body: x.file
@@ -19627,10 +19671,18 @@
                 + "もう一度お試しください。"
             });
           }
-          /* 預けた鍵も一緒に持つ。**別の鍵からは見えない**ため。 */
+          進む();
           return { fileUri: j.fileUri, mimeType: j.mimeType || x.mimeType, keyIndex: j.keyIndex };
         });
-    }));
+    }
+    if (!並.length) return Promise.resolve([]);
+    /* 1 本目で 鍵が 決まる。残りは その 鍵へ まとめて 預ける。 */
+    return ひとつ預ける(並[0]).then(function (first) {
+      if (並.length === 1) return [first];
+      var ki = Number.isInteger(first.keyIndex) ? first.keyIndex : undefined;
+      return Promise.all(並.slice(1).map(function (x) { return ひとつ預ける(x, ki); }))
+        .then(function (rest) { return [first].concat(rest); });
+    });
   }
 
   /* ══ すでにある問題を直す（2026-08-13）══════════════════════════
@@ -20006,6 +20058,12 @@
         };
       }
       if (!j.jobId) throw new Error("NO_JOB");
+      /* ★ **始まった 時点で 印を 付ける**（2026-08-30・訴え「プリセットが増殖」）。
+         いままでは 終わってから 付けていたので、途中で 落ちた 仕事は
+         印の 無いまま 残り、うしろの 拾い上げが 1 件ずつ プリセットに
+         していた（20 問の 試験で 12 個 できた）。
+         自分で 面倒を 見る 仕事（試験づくり）は ここで 外す。 */
+      if (o.selfManaged === true) { try { markJobTaken(j.jobId); } catch (e) {} }
       if (typeof o.onStart === "function") { try { o.onStart(j.jobId, j.planned || 0); } catch (e) {} }
       /* ★ 始まった ことを **その場で** 本体へ 知らせる。
          これが 無いと、作り始めて すぐ 画面を 閉じても、プリセット一覧の
