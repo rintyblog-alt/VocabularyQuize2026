@@ -18449,7 +18449,12 @@ const ACCOUNT_KEYS_OK = [
   "vq2.learn.sessions.v1",              /* 学習セッション */
   "vq2.learn.answers.v1",               /* 1 問ごとの 記録 */
   "vq2.learn.events.v1",                /* 学習の できごと */
-  "wordPractice.analytics.sessions.v1"  /* 旧 Insight */
+  "wordPractice.analytics.sessions.v1", /* 旧 Insight */
+  /* ── 2026-08-30 に 足した ぶん ─────────────────────────────
+     依頼:「この 左に メモした ものは 同じ アカウントなら 絶対に 残るように」
+     問題用紙への 手書きメモ。プリセット（試験）ごと・利用者ごと。
+     複製した プリセットは id が 別なので、新しい ほうは 空から 始まる。 */
+  "vq2.presetNotes.v1"                  /* 問題用紙への 手書きメモ */
 ];
 
 async function accountStoreUser(request, env) {
@@ -44755,6 +44760,20 @@ function aigenGradePrompt(slim) {
       "・scoringReason に **満点に するには 何が 要るか**まで 書く。",
       "・missingElements は 抽象語で 済ませない（例: ×「説明不足」 ○「恩賞が 不十分だった ことに 触れていない」）。");
   }
+  /* ══ 直したら どう なるかを 見せる（2026-08-30・依頼）════════════
+     訴え「結果画面は、プリセットとは 分けて、こんな 感じに」
+     画面には「LUMI の 修正提案 → 修正後の 答案 → 何点に なるか」を 出す。
+     ★ **書き足しでは なく 書き直し**。受験者の 文を 土台に、
+       足りなかった ところだけを 入れた 全文を 返させる。
+     ★ 満点の ときは 直す ところが 無い。**空で よい**（作り話を させない）。 */
+  行.push("",
+    "【直したら どう なるか】",
+    "・improvedAnswer … 受験者の 答案を **書き直した 全文**。",
+    "  受験者の 言い回しを できるだけ 残し、足りなかった ところだけを 入れる。",
+    "  字数の 決まりが あれば その 中に 収める。**満点なら 空の 文字**に する。",
+    "・improvementPoints … 何を 直したかを 3 つまで。1 つ 30 字以内。",
+    "  「もう少し 詳しく」の ような 当たりさわりの 無い 書きかたを しない。",
+    "  満点なら **空の 並び**に する。");
   行.push("",
     "【採点するもの】",
     JSON.stringify(slim),
@@ -44763,7 +44782,8 @@ function aigenGradePrompt(slim) {
     '{"grades":[{"i":0,"score":2,"confidence":0.9,'
     + '"rubricBreakdown":[{"rubricItemId":"r1","awarded":1,"reason":"…"}],'
     + '"scoringReason":"…","strengths":["…"],"missingElements":["…"],'
-    + '"expressionIssues":["…"],"modelAnswerDifference":"…","feedback":"…"}]}');
+    + '"expressionIssues":["…"],"modelAnswerDifference":"…",'
+    + '"improvedAnswer":"…","improvementPoints":["…"],"feedback":"…"}]}');
   return 行.join("\n");
 }
 
@@ -45037,6 +45057,10 @@ async function handleAiGrade(request, env) {
         missingElements: aigenGradeStrArr(v.missingElements ?? v.足りない, 8, 300),
         expressionIssues: aigenGradeStrArr(v.expressionIssues ?? v.表現, 8, 300),
         modelAnswerDifference: toSafeString(v.modelAnswerDifference ?? v.違い, 1000),
+        /* ★ 直したら どう なるか（2026-08-30・依頼の 結果画面）。
+           満点の ときは 空で 返る。空を 埋めない（作り話に なる）。 */
+        improvedAnswer: toSafeString(v.improvedAnswer ?? v.修正後の答案 ?? v.修正案, 1200),
+        improvementPoints: aigenGradeStrArr(v.improvementPoints ?? v.修正点, 3, 120),
         feedback: toSafeString(v.feedback, 200)
       }
     };

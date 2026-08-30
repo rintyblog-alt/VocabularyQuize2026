@@ -13492,7 +13492,12 @@
   "vq2.learn.sessions.v1",             /* 学習セッション */
   "vq2.learn.answers.v1",              /* 1 問ごとの 記録 */
   "vq2.learn.events.v1",               /* 学習の できごと */
-  "wordPractice.analytics.sessions.v1" /* 旧 Insight（古い画面が 読む） */
+  "wordPractice.analytics.sessions.v1", /* 旧 Insight（古い画面が 読む） */
+  /* ── 2026-08-30 に 足した ぶん ─────────────────────────────
+     依頼:「この 左に メモした ものは 同じ アカウントなら 絶対に 残るように」
+     問題用紙への 手書きメモ。{id, presetId, ownerId, updatedAt, strokes} の 並び
+     なので 件ごとに 突き合わせる（まるごと 上書きしない）。 */
+  "vq2.presetNotes.v1"                 /* 問題用紙への 手書きメモ */
   ];
   /* 1 件ずつ 突き合わせる鍵（配列で、各要素に id があるもの）。
      ★ ここに 入れ忘れると **まるごと 上書き**になり、
@@ -13500,7 +13505,10 @@
   var 件ごと = {
     "vq2.presets.v1": 1, "wordPractice400.presets.v1": 1, "vq2.mocks.v1": 1,
     "vq2.results.v1": 1, "vq2.learn.sessions.v1": 1, "vq2.learn.answers.v1": 1,
-    "vq2.learn.events.v1": 1, "wordPractice.analytics.sessions.v1": 1
+    "vq2.learn.events.v1": 1, "wordPractice.analytics.sessions.v1": 1,
+    /* ★ メモも 件ごと。ここに 入れ忘れると、別の 端末で 書いた メモが
+       まるごと 消える（この ファイルの 上の 但し書きの 事故）。 */
+    "vq2.presetNotes.v1": 1
   };
   var 揃える待ち = Object.create(null);
   var 揃えタイマ = null;

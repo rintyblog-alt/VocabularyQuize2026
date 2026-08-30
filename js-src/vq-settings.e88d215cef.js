@@ -856,11 +856,13 @@
     try { 様 = C && C.様子 ? C.様子() : null; } catch (e) { 様 = null; }
     var 上限 = (STG.data && STG.data.limits && STG.data.limits.accountKeyBytes) || 24 * 1024 * 1024;
     var 鍵たち = ["vq2.presets.v1", "wordPractice400.presets.v1",
-                  "vq2.presetAttachments.v1", "vq2.presetChats.v1"];
+                  "vq2.presetAttachments.v1", "vq2.presetChats.v1",
+                  "vq2.presetNotes.v1"];
     var 名 = { "vq2.presets.v1": "プリセット本体",
                "wordPractice400.presets.v1": "プリセット（古い形）",
                "vq2.presetAttachments.v1": "プリセットに つけた 資料",
-               "vq2.presetChats.v1": "プリセットごとの 会話" };
+               "vq2.presetChats.v1": "プリセットごとの 会話",
+               "vq2.presetNotes.v1": "問題用紙への 手書きメモ" };
     var 行 = [], 合計 = 0, 危 = [];
     鍵たち.forEach(function (k) {
       var 情 = (様 && 様.揃えるもの && 様.揃えるもの[k]) || null;
