@@ -11884,6 +11884,109 @@
     return Math.min(空欄の上限, n);
   }
 
+  /* ══ 形式そのものの 中身（2026-08-30・訴え）════════════════════
+     訴え「並び替え問題、組み合わせ問題、選べという問題が、
+           右の 解答側で 全て 空欄に なってしまってる」
+
+     ★ 紙も 右の 解答欄も、**この 形の データが 無いと 何も 出せない**。
+       並べ替え … orderItems[{id,text}] ＋ correctOrder[id…]
+       組み合わせ … pairs{left[{id,text}], right[{id,text}]} ＋ correctAnswer{左id:右id}
+       分類     … classification{groups[{id,label}], items[{id,text,groupId}]}
+       表うめ   … table{columns[], rows[{cells[{text,editable,answer}]}]}
+     ★ AI は いろいろな 置き方で 返す。**受けられる 形は 全部 受ける。**
+       作れない ときは 触らない（作り話の 選択肢を 作らない）。 */
+  function 文へ(v) { return str((v && typeof v === "object") ? (v.text || v.label || v.name || v.value) : v).trim(); }
+
+  function 並べる語を作る(q) {
+    var 生 = Array.isArray(q.orderItems) ? q.orderItems
+           : Array.isArray(q.items) ? q.items
+           : (Array.isArray(q.choices) && q.choices.length) ? q.choices
+           : (Array.isArray(q.rawChoices) && q.rawChoices.length) ? q.rawChoices
+           : Array.isArray(q.answerRaw) ? q.answerRaw
+           : Array.isArray(q.answer) ? q.answer : null;
+    if (!生 || 生.length < 2) return null;
+    var 語 = [], 見 = Object.create(null);
+    生.slice(0, 20).forEach(function (x) {
+      var t = 文へ(x);
+      if (!t || 見[t]) return;
+      見[t] = 1;
+      語.push({ id: (x && typeof x === "object" && str(x.id)) || ("o" + (語.length + 1)), text: t });
+    });
+    if (語.length < 2) return null;
+    /* 正しい 順。答えが 並びで 来ていれば それ、無ければ 出てきた 順。 */
+    var 順 = Array.isArray(q.correctOrder) ? q.correctOrder
+           : Array.isArray(q.answerRaw) ? q.answerRaw
+           : Array.isArray(q.answer) ? q.answer : null;
+    var byText = {}; 語.forEach(function (x) { byText[x.text] = x.id; });
+    var byId = {}; 語.forEach(function (x) { byId[x.id] = 1; });
+    var 並 = [];
+    (順 || 語).forEach(function (x) {
+      var t = 文へ(x);
+      var id = byId[t] ? t : byText[t];
+      if (id && 並.indexOf(id) < 0) 並.push(id);
+    });
+    語.forEach(function (x) { if (並.indexOf(x.id) < 0) 並.push(x.id); });
+    return { orderItems: 語, correctOrder: 並 };
+  }
+
+  function 対応を作る(q) {
+    var 対 = [];
+    var pr = q.pairs;
+    if (Array.isArray(pr)) {
+      pr.forEach(function (x) {
+        if (Array.isArray(x) && x.length >= 2) 対.push([文へ(x[0]), 文へ(x[1])]);
+        else if (x && typeof x === "object") 対.push([文へ(x.left), 文へ(x.right)]);
+      });
+    } else if (pr && typeof pr === "object" && Array.isArray(pr.left) && Array.isArray(pr.right)) {
+      pr.left.forEach(function (l, i) { 対.push([文へ(l), 文へ(pr.right[i])]); });
+    } else if (Array.isArray(q.left) && Array.isArray(q.right)) {
+      q.left.forEach(function (l, i) { 対.push([文へ(l), 文へ(q.right[i])]); });
+    } else {
+      var a = q.answerRaw !== undefined ? q.answerRaw : q.answer;
+      if (Array.isArray(a)) {
+        a.forEach(function (x) {
+          if (Array.isArray(x) && x.length >= 2) 対.push([文へ(x[0]), 文へ(x[1])]);
+        });
+      } else if (a && typeof a === "object") {
+        Object.keys(a).forEach(function (k) { 対.push([str(k).trim(), 文へ(a[k])]); });
+      }
+    }
+    対 = 対.filter(function (x) { return x[0] && x[1]; }).slice(0, 12);
+    if (対.length < 2) return null;
+    var left = [], right = [], 正 = {};
+    対.forEach(function (x, i) {
+      var lid = "L" + (i + 1), rid = "R" + (i + 1);
+      left.push({ id: lid, text: x[0] });
+      right.push({ id: rid, text: x[1] });
+      正[lid] = rid;
+    });
+    return { pairs: { left: left, right: right }, correctAnswer: 正 };
+  }
+
+  function 分類を作る(q) {
+    var c = q.classification;
+    var 箱 = [], 語 = [];
+    if (c && typeof c === "object" && Array.isArray(c.groups) && Array.isArray(c.items)) {
+      箱 = c.groups.map(function (g, i) {
+        return { id: str(g && g.id) || ("g" + (i + 1)), label: 文へ(g) || ("グループ" + (i + 1)) };
+      });
+      var byLabel = {}; 箱.forEach(function (g) { byLabel[g.label] = g.id; });
+      語 = c.items.map(function (t, i) {
+        var gid = str(t && t.groupId);
+        if (!gid) gid = byLabel[文へ(t && t.group)] || "";
+        return { id: str(t && t.id) || ("i" + (i + 1)), text: 文へ(t), groupId: gid };
+      }).filter(function (t) { return t.text && t.groupId; });
+    } else if (Array.isArray(q.groups) && Array.isArray(q.items)) {
+      箱 = q.groups.map(function (g, i) { return { id: "g" + (i + 1), label: 文へ(g) || ("グループ" + (i + 1)) }; });
+      var 表 = {}; 箱.forEach(function (g) { 表[g.label] = g.id; });
+      語 = q.items.map(function (t, i) {
+        return { id: "i" + (i + 1), text: 文へ(t), groupId: 表[文へ(t && t.group)] || "" };
+      }).filter(function (t) { return t.text && t.groupId; });
+    }
+    if (箱.length < 2 || 語.length < 2) return null;
+    return { classification: { groups: 箱, items: 語 } };
+  }
+
   function fromDraft(draft, opts) {
     opts = opts || {};
     draft = draft || {};
@@ -11980,6 +12083,51 @@
            文字列として 見られると **必ず 不正解**に なっていた（実測）。 */
         var 空 = 空欄を整える(q, q2);
         if (空) q2.blanks = 空;
+        /* ★ 形式そのものの 中身（2026-08-30・訴え「全て 空欄に なる」）。
+           並べる 語・対応の 左右・分ける 箱・うめる 表。
+           これが 無いと、紙にも 右の 解答欄にも **出す ものが 無い**。 */
+        var eng = "";
+        try { eng = (VQ2.qtypes && VQ2.qtypes.engineOf) ? (VQ2.qtypes.engineOf(type) || "") : ""; }
+        catch (eE) { eng = ""; }
+        if (eng === "reorder" || type === "ordering") {
+          var 並 = 並べる語を作る(q);
+          if (並) {
+            q2.orderItems = 並.orderItems;
+            q2.correctOrder = 並.correctOrder;
+            /* ★ 採点は correctAnswer（id の 並び）を 見る。
+               correctOrder だけ 入れて null に していたら、
+               正しい 順に 並べても **0 点**だった（実測）。両方 入れる。 */
+            q2.correctAnswer = 並.correctOrder.slice();
+            q2.acceptedAnswers = [];
+            q2.choices = [];
+          } else {
+            q2.requiresReview = true;
+            warnings.push("問" + qNo + "：並べる語が 足りません（右の 解答欄に 出せません）。");
+          }
+        } else if (eng === "matching" || type === "matching") {
+          var 対 = 対応を作る(q);
+          if (対) {
+            q2.pairs = 対.pairs;
+            q2.correctAnswer = 対.correctAnswer;
+            q2.choices = [];
+          } else {
+            q2.requiresReview = true;
+            warnings.push("問" + qNo + "：組み合わせの 左右が そろっていません（右の 解答欄に 出せません）。");
+          }
+        } else if (eng === "classification" || type === "classification") {
+          var 分 = 分類を作る(q);
+          if (分) { q2.classification = 分.classification; q2.choices = []; }
+          else {
+            q2.requiresReview = true;
+            warnings.push("問" + qNo + "：分ける 箱か 語が 足りません（右の 解答欄に 出せません）。");
+          }
+        } else if (eng === "table_fill" || type === "table_fill") {
+          if (q.table && typeof q.table === "object") q2.table = q.table;
+          else {
+            q2.requiresReview = true;
+            warnings.push("問" + qNo + "：うめる 表が ありません（右の 解答欄に 出せません）。");
+          }
+        }
         /* ★ 語群（2026-08-30・訴え「流れの本文の語群問題」）。
            本文の 【ア】【イ】に 入る 語を 下の 語群から 選ぶ 形。
            **選択肢の ある 形式には 付けない**（同じ ものが 2 回 刷られる）。 */
@@ -12664,6 +12812,25 @@
   var NEEDS_CHOICES = {
     multiple_choice_single: true, multiple_choice_multiple: true, true_false: true
   };
+
+  /* ══ 正解を 文字で 取り出す（2026-08-30）══════════════════════════
+     ★ 正誤問題の answer は **真偽値の まま**来る（契約でそう決めてある）。
+       str(true) は "true" なので、選択肢「正しい／誤っている」と 合わず
+       answer_not_in_choices で **捨てられていた**（answer:false は
+       falsy で correctAnswer へ 落ちるので 通る。true だけ 落ちる）。
+     ★ 並び・対応表の 答えも 文字に しない。toClientShape が
+       correctAnswer に 選択肢の id を 入れているので そちらを 使う。 */
+  function 答えの文字(d) {
+    if (!d) return "";
+    var a = d.answer;
+    /* ここで 直すのは **真偽値だけ**。並びや 対応表を 文字に する 道は
+       これまでどおりに しておく（変えると、答えを 配列で 返す
+       複数選択・空欄補充が まとめて 落ちる。実測で 落ちた）。 */
+    if (a === true || a === false)
+      return str(d.correctAnswer) || (a ? "正しい" : "誤っている");
+    var t = str(a).trim();
+    return t || str(d.correctAnswer);
+  }
   /* 記述系。文字数と採点基準が要る。 */
   var WRITTEN = { long_answer: true, essay: true, english_writing: true, source_analysis: true };
 
@@ -12906,7 +13073,7 @@
         reasons.push({ code: "choice_count", message: "選択肢が多すぎます（" + choices.length + " 件）" });
     }
 
-    var answer = str(draft.answer || draft.correctAnswer).trim();
+    var answer = 答えの文字(draft).trim();
     if (!answer) reasons.push({ code: "no_answer", message: "正解がありません" });
     else if (NEEDS_CHOICES[slot.type] && choices.length >= 2 && !resolvesToChoice(answer, choices))
       reasons.push({ code: "answer_not_in_choices", message: "正解が選択肢の中にありません" });
@@ -13098,8 +13265,8 @@
            （実測: 短答の correctAnswer が空で保存できなかった）。
            モデルは短答にも選択肢を付けてくることがあるので、ここで落とす。 */
         var norm = NEEDS_CHOICES[slot.type]
-          ? normalizeChoices(d.choices, str(d.answer || d.correctAnswer))
-          : { choices: [], answer: str(d.answer || d.correctAnswer) };
+          ? normalizeChoices(d.choices, 答えの文字(d))
+          : { choices: [], answer: 答えの文字(d) };
         /* 正誤問題は **必ず 2 択**（保存の決まり）。3 つ以上返ってきたら
            「正しい／誤っている」へそろえ直す。どちら側かが分からないときは、
            当てずっぽうで正解を決めない。その枠は空のままにする。 */
@@ -13145,6 +13312,24 @@
              どちらも 起きていた。中身の 清めは fromDraft が する。 */
           blanks: 空欄をそろえる(slot.type, d),
           wordBank: 語群をそろえる(slot.type, d),
+          /* ★ **形式そのものの 中身**（2026-08-30・訴え
+             「並び替え・組み合わせ・選べ が 全部 空欄に なる」）。
+             ここで 拾っていなかったので、並べる 語・対応の 左右・分類の 箱・
+             うめる 表が **丸ごと 消えて**いた。
+             紙にも 右の 解答欄にも 出す ものが 無いので、どちらも 空に なる。
+             清めは fromDraft が する。ここは 運ぶだけ。 */
+          orderItems: d.orderItems, items: d.items, groups: d.groups,
+          /* ★ 選択肢を 使わない 形式（並べ替え・組み合わせ）でも、
+             AI は 中身を choices に 入れて 返す。上で choices を 空に して
+             いるので、**生の ものを 別の 名前で 持ち回る**。
+             これが 無いと 並べる 語が 1 つも 残らない（実測）。 */
+          rawChoices: d.choices,
+          pairs: d.pairs, left: d.left, right: d.right,
+          classification: d.classification, table: d.table,
+          errors: d.errors, errorSpans: d.errorSpans,
+          correctOrder: d.correctOrder,
+          /* 並べ替え・組み合わせは 答えが 配列／対応表。文字に しない。 */
+          answerRaw: d.answer,
           requiresReview: d.requiresReview === true || g.根拠なし === true
         });
         answerKey.push({
