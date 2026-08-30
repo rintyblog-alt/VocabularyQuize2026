@@ -530,6 +530,16 @@
       + "文字の 入っていない <b>スキャンした PDF</b>も、ページを 絵にして 読ませます。"
       + "プリセット作成の AI と <b>同じ 道</b>を 通ります。</div></div>";
 
+    /* ★ 本文＋語群うめ（2026-08-30・訴え「語群問題とかって ないの？」）。 */
+    h += '<div class="row"><label>本文＋語群うめ</label>'
+      + '<button type="button" class="chip' + (c.wordBank !== false ? " is-on" : "") + '" data-a="wb"'
+      + ' aria-pressed="' + (c.wordBank !== false ? "true" : "false") + '">'
+      + (c.wordBank !== false ? "入れる" : "入れない") + "</button>"
+      + '<div class="hint">まとまった <b>本文</b>を 出し、その 中の 空欄（【ア】【イ】…）を '
+      + "<b>下の 語群から 選ばせる</b> 形です。語群は 空欄より 多くして、"
+      + "ひと目で 対応が つかないように します。"
+      + "同じ 本文に 選択・記述を 並べて 出すので、試験らしく なります。</div></div>";
+
     /* 図・表・グラフ（資料問題）─────────────────────────────
        ★ AI に SVG は 書かせない。数と 名前だけ 出させて、線は こちらが 引く。 */
     h += '<div class="row"><label>図・表・グラフ</label>'
@@ -1895,6 +1905,23 @@
         + "（そればかりに せず、ほかの 型も 混ぜます）。"
         + "毎回 同じ 順・同じ 聞かれ方に ならないように してください。");
     }
+    /* ★ 本文＋語群うめ（2026-08-30・訴え「語群問題とかって ないの？」）。
+       **数まで 名指しする。**「入れてください」だけでは 1 問も 入らない。 */
+    if (c.wordBank !== false && c.types && c.types.fill_blank) {
+      var 空数 = 0;
+      (p2.sections || []).forEach(function (sec) {
+        (sec.questions || []).forEach(function (q) { if (q.type === "fill_blank") 空数++; });
+      });
+      if (空数) {
+        var 語数 = Math.max(1, Math.round(空数 / 2));
+        行.push("空欄補充 " + 空数 + " 問の うち **" + 語数 + " 問**は、"
+          + "**本文（150〜400 字）を materials の passage で 付けて**、"
+          + "その 本文の 中に 【ア】【イ】… の 空欄を 2〜4 個 置き、"
+          + "choices に **語群を 6〜10 個**（空欄の 数 ＋ 2 以上）並べてください。"
+          + "blanks には 空欄ごとの 正解を 順に 書きます。"
+          + "語群には 正解と 見分けの つきにくい 語（似た 語・上位語・逆の 語）を 混ぜます。");
+      }
+    }
     if (String(c.instruction || "").trim()) 行.push(String(c.instruction).trim());
     if (!st.資料.length) 行.push("資料は ありません。上の 指示だけで 作ってください。");
     else {
@@ -2004,9 +2031,15 @@
     var 欲 = kind === "print-a" ? "answer-sheet" : kind === "print-k" ? "answer-key" : "question";
     var b = (plan2.booklets || []).filter(function (x) { return x.kind === 欲; })[0];
     if (!b) { st.err = "その 紙面は ありません。"; 描く(); return; }
-    try { R.printBooklet(st.spec, plan2, b.id); st.err = ""; }
-    catch (e) { st.err = "紙面を 出せませんでした。"; }
-    描く();
+    /* ★ 数式が SVG に なるよう、出す 前に 用意する（2026-08-30・訴え）。
+       用意が できなくても 紙面は 出す（式は 書いてあった まま 出る）。 */
+    var 出す = function () {
+      try { R.printBooklet(st.spec, plan2, b.id); st.err = ""; }
+      catch (e) { st.err = "紙面を 出せませんでした。"; }
+      描く();
+    };
+    if (R.数式の用意) { try { R.数式の用意().then(出す, 出す); return; } catch (e) {} }
+    出す();
   }
 
   /* ⑦ 組版（Typst）で PDF を 出す。

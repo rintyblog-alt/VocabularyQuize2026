@@ -29811,6 +29811,60 @@
     return 出;
   }
 
+  /* ══ 数式（2026-08-30・訴え「数式、数学記号に 対応させてないよな？」）══
+     ★ **実際に 対応していなかった。** 紙面は spec.__math という 表を 見る
+       作りだったが、**その 表を 作る ところが どこにも 無かった**。
+       だから $x^2+1$ は ずっと 文字の まま 出ていた。
+     ★ 紙面は 別の 窓（about:blank）なので、KaTeX の CSS も 書体も 届かない。
+       そこで **SVG に して 埋め込む**（VQM.svg.同期）。書体が 要らない。
+     ★ 組めない 式は **消さない**。書いてあった ものを そのまま 出す。 */
+  var 数式のかたち = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^$\n]+?)\$|\\\(([\s\S]+?)\\\)/g;
+  function 数式に組む(h) {
+    if (!h || h.indexOf("$") < 0 && h.indexOf("\\(") < 0 && h.indexOf("\\[") < 0) return h;
+    var V = root.VQM;
+    if (!V || !V.svg || !V.svg.同期) return h;
+    数式のかたち.lastIndex = 0;
+    return h.replace(数式のかたち, function (m, d1, d2, i1, i2) {
+      var 表示 = (d1 !== undefined || d2 !== undefined);
+      var 式 = d1 !== undefined ? d1 : (d2 !== undefined ? d2 : (i1 !== undefined ? i1 : i2));
+      式 = String(式 || "").trim();
+      if (!式) return m;
+      /* esc を 通ったあとなので、記号を 戻してから 組む。 */
+      式 = 式.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+             .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+      var svg = null;
+      try { svg = V.svg.同期(式, 表示); } catch (e) { svg = null; }
+      if (!svg) return m;                     /* 組めなければ そのまま 出す */
+      return '<span class="vqm' + (表示 ? " vqm-b" : "") + '">' + svg + "</span>";
+    });
+  }
+
+  /* ══ 文字の 飾り（2026-08-30・訴え「<u>タグが 丸見えで 反映されてない」）══
+     ★ AI は <u> <b> <sub> のような 札を 書いてくる。esc を 通すので
+       そのまま 文字として 出ていた（「&lt;u&gt;下線部&lt;/u&gt;」）。
+     ★ **決めた ものだけ**戻す。知らない 札は そのまま（作り話を しない）。
+     ★ 印の 書きかた（**太字** ~~波線~~ __下線__）も 受ける。 */
+  function 飾りを戻す(h) {
+    var 出 = h;
+    /* 下線・波線・二重線 */
+    出 = 出.replace(/&lt;u&gt;([\s\S]*?)&lt;\/u&gt;/g, '<span class="ub">$1</span>');
+    出 = 出.replace(/&lt;ins&gt;([\s\S]*?)&lt;\/ins&gt;/g, '<span class="ub">$1</span>');
+    出 = 出.replace(/&lt;(b|strong)&gt;([\s\S]*?)&lt;\/(?:b|strong)&gt;/g, "<b>$2</b>");
+    出 = 出.replace(/&lt;(i|em)&gt;([\s\S]*?)&lt;\/(?:i|em)&gt;/g, "<i>$2</i>");
+    出 = 出.replace(/&lt;sub&gt;([\s\S]*?)&lt;\/sub&gt;/g, "<sub>$1</sub>");
+    出 = 出.replace(/&lt;sup&gt;([\s\S]*?)&lt;\/sup&gt;/g, "<sup>$1</sup>");
+    出 = 出.replace(/&lt;mark&gt;([\s\S]*?)&lt;\/mark&gt;/g, '<span class="ub is-wave">$1</span>');
+    出 = 出.replace(/&lt;br\s*\/?&gt;/g, "\n");
+    /* 印の 書きかた。**太字** ／ ~~波線~~ ／ __下線__ */
+    出 = 出.replace(/\*\*([^*\n]+?)\*\*/g, "<b>$1</b>");
+    出 = 出.replace(/~~([^~\n]+?)~~/g, '<span class="ub is-wave">$1</span>');
+    出 = 出.replace(/__([^_\n]+?)__/g, '<span class="ub">$1</span>');
+    /* 上付き・下付き（化学式・指数）。H_2O → H₂O のような 書きかたも 受ける。 */
+    出 = 出.replace(/\^\{([^}\n]{1,8})\}/g, "<sup>$1</sup>");
+    出 = 出.replace(/_\{([^}\n]{1,8})\}/g, "<sub>$1</sub>");
+    return 出;
+  }
+
   function rich(text, vertical, 下線) {
     /* ★ 先に 参照記号だけを 取り分けておく。esc() を通すと
        記号は そのままだが、SVG を先に入れると タグが壊れる。
@@ -29844,12 +29898,17 @@
       return '<span class="' + cls + '">' + k + "</span>";
     });
     h = h.replace(/_{3,}/g, '<span class="blank"></span>');
+    /* ★ 札（<u> <b> <sub> …）と 印（**太字** ~~波線~~）を 戻す。
+       ここで 戻さないと 文字として 丸見えに なる（2026-08-30・訴え）。 */
+    h = 飾りを戻す(h);
     /* 傍線は 改行へ 変える 前に 引く（<br> を またぐ 線も ある）。 */
     h = 傍線を引く(h, 下線);
     h = h.replace(/\n/g, "<br>");
     /* ★ いちばん最後に 数式を差し込む。**エスケープのあと**でないと
-       SVG のタグが esc() に潰される。 */
-    return 数式を差し込む(h);
+       SVG のタグが esc() に潰される。
+       ① 事前に 用意した 表（__math）が あれば それ
+       ② 無ければ **その場で 組む**（KaTeX → SVG。書体が 要らない） */
+    return 数式に組む(数式を差し込む(h));
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -31836,6 +31895,19 @@
   /* ══════════════════════════════════════════════════════════════════
      完全な HTML を作る
      ══════════════════════════════════════════════════════════════════ */
+  /* ══ 数式を 組む 用意（2026-08-30）══════════════════════════════
+     KaTeX は 要るときに 読む 作り。紙面を 組む 前に 1 度 呼んでおく。
+     読めなくても 紙面は 出す（式は 書いてあった まま 出る）。 */
+  function 数式の用意() {
+    try {
+      var V = root.VQM;
+      if (!V || !V.svg || !V.svg.用意) return Promise.resolve(false);
+      if (V.svg.読み込み済み && V.svg.読み込み済み()) return Promise.resolve(true);
+      return Promise.resolve(V.svg.用意()).then(function () { return true; },
+        function () { return false; });
+    } catch (e) { return Promise.resolve(false); }
+  }
+
   function buildHtml(spec, plan, opts) {
     opts = opts || {};
     var only = opts.bookletId;
@@ -31958,10 +32030,10 @@
     return { ok: true, window: w };
   }
 
-  function printBooklet(spec, plan, bookletId) {
+  function printBooklet(spec, plan, bookletId, opts) {
     var b = (plan.booklets || []).find(function (x) { return x.id === bookletId; });
     if (!b) return { ok: false, error: "NOT_FOUND" };
-    return print(buildHtml(spec, plan, { bookletId: bookletId }), b.title);
+    return print(buildHtml(spec, plan, Object.assign({ bookletId: bookletId }, opts || {})), b.title);
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -32180,6 +32252,8 @@
     renderToIframe: renderToIframe,
     print: print,
     printBooklet: printBooklet,
+    /* 紙面を 組む 前に 1 度 呼ぶ（数式を SVG に できるように する）。 */
+    数式の用意: 数式の用意,
     printResultReport: printResultReport,
     printGradedAnswerSheet: printGradedAnswerSheet,
     printAnsweredSheet: printAnsweredSheet,
@@ -64461,9 +64535,20 @@
        ★ 組み直すのは 中身が 変わった ときだけ（表紙 → 本編、拡大、記入）。
          そのときも **見ていた ところへ 戻す**。 */
     var 紙の鍵 = "";
+    var 数式ようい = false;
     function mountPaper(表紙前) {
       var host = app.root.querySelector("#examPaper");
       if (!host) return;
+      /* ★ 数式を SVG に する 用意（2026-08-30・訴え）。1 度だけ。
+         できてから 組み直す。できなくても 紙面は 出す（式は そのまま 出る）。 */
+      if (!数式ようい) {
+        数式ようい = true;
+        try {
+          if (R.数式の用意) R.数式の用意().then(function (ok) {
+            if (ok) { 紙の鍵 = ""; mountPaper(表紙前); }
+          });
+        } catch (e) {}
+      }
       var v = 受験者();
       var 鍵 = [表紙前 === true ? "cover" : "full", st.zoom, spec.id,
                 記入の欄().map(function (k) { return v[k] || ""; }).join("\u0001")].join("|");
