@@ -45270,6 +45270,8 @@ actionタイプ:
           return;
         }
         if (action === "newPreset"){
+          /* 作るの入口は 1 つ（2026-08-30）。ここも 新しい 1 枚へ。 */
+          try { if (window.__vqMake && window.__vqMake.open) { window.__vqMake.open(); return; } } catch (eMk) {}
           _presetEngineOpen();
           return;
         }
@@ -45420,6 +45422,8 @@ actionタイプ:
           return;
         }
         if (action === "newPreset"){
+          /* 作るの入口は 1 つ（2026-08-30）。ここも 新しい 1 枚へ。 */
+          try { if (window.__vqMake && window.__vqMake.open) { window.__vqMake.open(); return; } } catch (eMk) {}
           _presetEngineOpen();
           return;
         }
@@ -45526,7 +45530,10 @@ actionタイプ:
         });
       }
       if (el.customPresetNewBtn){
-        el.customPresetNewBtn.addEventListener("click", () => _presetEngineOpen());
+        el.customPresetNewBtn.addEventListener("click", () => {
+              try { if (window.__vqMake && window.__vqMake.open) { window.__vqMake.open(); return; } } catch (eMk) {}
+              _presetEngineOpen();
+            });
       }
       if (el.presetManageBtn){
         el.presetManageBtn.addEventListener("click", () => openPresetManager(false));
@@ -45568,6 +45575,8 @@ actionタイプ:
       }
       if (el.appFeedFab){
         el.appFeedFab.addEventListener("click", () => {
+          /* 作るの入口は 1 つ（2026-08-30）。ここも 新しい 1 枚へ。 */
+          try { if (window.__vqMake && window.__vqMake.open) { window.__vqMake.open(); return; } } catch (eMk) {}
           _presetEngineOpen();
         });
       }
