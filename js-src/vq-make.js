@@ -121,6 +121,28 @@
     "input[type=number]{min-height:44px}",
     ".hint b{font-weight:700;color:var(--vq-text,#2B2836)}",
 
+    /* 資料 */
+    ".files{display:grid;gap:7px}",
+    ".file{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:12px;",
+      "border:1px solid var(--vq-border,#E7E4EF);background:var(--vq-surface,#fff);font-size:13px}",
+    ".file-n{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+    ".file-s{flex:0 0 auto;font-size:11.5px;color:var(--vq-text-secondary,#6B6480)}",
+    ".file-x{width:44px;height:44px;flex:0 0 auto;display:grid;place-items:center;border-radius:50%;margin:-8px -6px -8px 0}",
+    ".file-x .i{width:16px;height:16px}",
+    ".file-x:hover{background:var(--vq-surface-sunken,#F4F2FB)}",
+    ".file-add{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;",
+      "border-radius:12px;border:1px dashed var(--vq-border-strong,#D7D2E4);font-size:13.5px;",
+      "color:var(--vq-accent-text,#5F5691);font-weight:650}",
+    ".file-add .i{width:18px;height:18px}",
+    ".file-add:hover{background:var(--vq-accent-subtle,#EAE8F7)}",
+    ".file-t{font-size:11.5px;color:var(--vq-text-secondary,#6B6480)}",
+
+    ".read{margin-top:8px;padding:11px 13px;border-radius:12px;font-size:12.5px;line-height:1.8;",
+      "background:var(--vq-accent-subtle,#EAE8F7);color:var(--vq-accent-text,#5F5691)}",
+    ".read b{display:block;margin-bottom:3px}",
+    ".read .ng{color:var(--vq-danger-text,#B23A55);margin-top:4px}",
+    ".file-add[disabled]{opacity:.6;cursor:default}",
+
     /* 構成案・確認・紙面 */
     ".sum{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:16px;padding:12px 14px;",
       "border-radius:14px;background:var(--vq-surface-sunken,#F4F2FB);font-size:13px}",
@@ -288,6 +310,8 @@
     結果: null,            /* MR.run の 結果 */
     spec: null,            /* できあがった 試験 */
     走っている: false,
+    読取中: false,
+    読取り: null,
     止めたい: false,
     保存した: false
   };
@@ -459,6 +483,11 @@
       + '<p class="hint">「共通テスト風」は B5・丸数字・第 n 問。'
       + "ここに 出ているのは <b>実際に 組める型だけ</b>です。</p>";
 
+    /* 資料 */
+    h += '<div class="row"><label>資料（任意）</label>' + 資料の中身()
+      + '<div class="hint">PDF・画像・文書を そのまま 渡します（要点だけを 抜き出しません）。'
+      + "資料を 付けると <b>資料読解</b>の 問題を 作れます。合わせて 20MB まで。</div></div>";
+
     /* 指示 */
     h += '<div class="row"><label for="vm-inst">ほかに 伝えること（任意）</label>'
       + '<textarea id="vm-inst" data-f="instruction" maxlength="1200" placeholder="例）配った授業プリントの範囲だけで。記述は 40 字以内でまとめさせる問題を 2 問。">'
@@ -622,7 +651,19 @@
       + 選び欄("解答用紙の型", "answerSheetMode", st.条件.answerSheetMode, 解答用紙の型())
       + "</div>"
       + '<p class="hint">ここに 出ているのは <b>実際に 組める型だけ</b>です。'
-      + "選べば 必ず 紙面が 変わります。</p></div>";
+      + "選べば 必ず 紙面が 変わります。</p>"
+      /* ★ 添付した 紙面から 型を 作る（2026-08-30・訴え）。
+         **AI に 組版を 書かせない。** 出させるのは 既にある 型の 設定値だけ。 */
+      + '<div class="row"><label>手元の 試験に そろえる</label>'
+      + '<button type="button" class="file-add" data-a="readlayout"' + (st.読取中 ? " disabled" : "") + ">"
+      + svg("paper", "i") + (st.読取中 ? "読み取っています…" : "過去問・見本を 読み取って 型にする")
+      + "</button>"
+      + (st.読取り
+          ? '<div class="read">' + 読み取りHTML(st.読取り) + "</div>"
+          : '<div class="hint">問題用紙（と 解答用紙）の PDF か 画像を 選ぶと、'
+            + "段組・余白・文字の 大きさ・大問の 書きかた・選択肢の 記号・表紙の 有無を 読み取り、"
+            + "<b>いちばん 近い 型</b>に そろえます。中身（問題や 答え）は 読みません。</div>")
+      + "</div></div>";
 
     h += '<div class="outs">'
       + 出す札("表紙つき 問題用紙", "冊子の 1 ページ目が 表紙に なります", "print-q")
@@ -641,6 +682,99 @@
       + '<span><b>' + esc(名) + "</b><small>" + esc(説) + "</small></span></button>";
   }
 
+  function 読み取りHTML(r) {
+    var v = r.読めた || {};
+    var 行 = [];
+    if (v.段組) 行.push(v.段組 + " 段組");
+    if (v.大問の書きかた) 行.push("大問は「" + v.大問の書きかた + "」");
+    if (v.小問の書きかた) 行.push("小問は「" + v.小問の書きかた + "」");
+    if (v.選択肢) 行.push("選択肢は " + v.選択肢);
+    if (v.表紙) 行.push("表紙あり");
+    if (v.解答用紙 && v.解答用紙 !== "見当たらない") 行.push("解答用紙は " + v.解答用紙);
+    if (v.教科 && v.教科 !== "分からない") 行.push(v.教科);
+    var h = "<b>読み取りました</b><div>" + esc(行.join(" ・ ")) + "</div>";
+    if (r.紙) {
+      h += "<div>" + esc(r.紙.size) + " ・ 余白 上" + esc(r.紙.margins.top)
+        + " 下" + esc(r.紙.margins.bottom) + " 左" + esc(r.紙.margins.left)
+        + " 右" + esc(r.紙.margins.right) + "mm ・ 本文 " + esc(r.紙.bodyPt) + "pt</div>";
+    }
+    (r.できないこと || []).forEach(function (m) { h += '<div class="ng">' + esc(m) + "</div>"; });
+    return h;
+  }
+
+  /* 添付した 紙面から 型を 作る。**中身は 読まない。** */
+  function 紙面を読み取る() {
+    var inp = doc.createElement("input");
+    inp.type = "file";
+    inp.accept = ".pdf,.png,.jpg,.jpeg,.webp";
+    inp.multiple = true;
+    inp.style.cssText = "position:fixed;width:0;height:0;opacity:0";
+    doc.body.appendChild(inp);
+    inp.addEventListener("change", function () {
+      var 並 = Array.prototype.slice.call(inp.files || []).slice(0, 3);
+      try { inp.parentNode.removeChild(inp); } catch (e) {}
+      if (!並.length) return;
+      st.読取中 = true; st.err = ""; 描く();
+      Promise.all(並.map(function (f) {
+        return new Promise(function (done) {
+          var r = new FileReader();
+          r.onload = function () {
+            var m = /^data:([^;,]*);base64,(.*)$/.exec(String(r.result || ""));
+            done(m ? { mimeType: m[1], data: m[2] } : null);
+          };
+          r.onerror = function () { done(null); };
+          r.readAsDataURL(f);
+        });
+      })).then(function (files) {
+        var 送 = files.filter(Boolean);
+        if (!送.length) { st.読取中 = false; st.err = "読めない ファイルでした。"; 描く(); return; }
+        var h = { "Content-Type": "application/json" };
+        try {
+          var tok = window.localStorage.getItem("app.auth.token.v1");
+          if (tok) h.Authorization = "Bearer " + String(tok).replace(/^"|"$/g, "");
+        } catch (e) {}
+        return window.fetch(apiBase() + "/api/aigen/layout", {
+          method: "POST", headers: h, body: JSON.stringify({ files: 送 })
+        }).then(function (res) { return res.json(); }).then(function (j) {
+          st.読取中 = false;
+          if (!j || !j.ok || !j.layout) {
+            st.err = (j && j.message) || "紙面を 読み取れませんでした。";
+            描く();
+            return;
+          }
+          st.読取り = j.layout;
+          /* 型を そろえる。**あるものだけ** 当てる。 */
+          var 紙 = 紙面の型().map(function (x) { return x.id; });
+          var 解 = 解答用紙の型().map(function (x) { return x.id; });
+          if (紙.indexOf(j.layout.layoutMode) >= 0) st.条件.layoutMode = j.layout.layoutMode;
+          if (解.indexOf(j.layout.answerSheetMode) >= 0) st.条件.answerSheetMode = j.layout.answerSheetMode;
+          /* 余白と 用紙は 試験そのものへ（型の 上から かぶせる）。 */
+          if (st.spec && j.layout.紙) {
+            st.spec.paper = st.spec.paper || {};
+            st.spec.paper.size = j.layout.紙.size;
+            st.spec.paper.orientation = j.layout.紙.orientation;
+            st.spec.paper.margins = j.layout.紙.margins;
+          }
+          st.err = "";
+          描く();
+        });
+      }).catch(function (e) {
+        st.読取中 = false;
+        st.err = "紙面を 読み取れませんでした：" + String((e && e.message) || e).slice(0, 100);
+        描く();
+      });
+    });
+    inp.click();
+  }
+  function apiBase() {
+    try {
+      if (window.AUTH_API_BASE) return String(window.AUTH_API_BASE).replace(/\/+$/, "");
+      if (window.VQ_API_BASE) return String(window.VQ_API_BASE).replace(/\/+$/, "");
+      if (window.API_BASE) return String(window.API_BASE);
+    } catch (e) {}
+    return "";
+  }
+
   function 形式名(id) {
     var f = 形式.filter(function (x) { return x.id === id; })[0];
     if (f) return f.label;
@@ -650,6 +784,76 @@
       if (d) return d.shortName || d.name || String(id);
     } catch (e) {}
     return String(id || "");
+  }
+
+  /* ══ 資料 ═════════════════════════════════════════════════════════
+     ★ 読み取りは **サーバ（Gemini）**が する。ここでは 要点を 抜き出さない。
+       抜き出すと「資料に 書いていないこと」を 作る 元に なる。
+     ★ 大きさは ここで 止める。載らない ものを 送って 413 を 見せない。 */
+  var 資料の上限 = 20 * 1024 * 1024;       /* 合わせて 20MB（base64 で およそ 27MB） */
+  function 資料の中身() {
+    var h = '<div class="files">';
+    st.資料.forEach(function (f, i) {
+      h += '<div class="file"><span class="file-n">' + esc(f.name) + "</span>"
+        + '<span class="file-s">' + 大きさ(f.size) + "</span>"
+        + '<button type="button" class="file-x" data-a="rmfile" data-v="' + i
+        + '" aria-label="' + esc(f.name) + ' を外す">' + svg("x", "i") + "</button></div>";
+    });
+    h += '<button type="button" class="file-add" data-a="addfile">' + svg("plus", "i")
+      + (st.資料.length ? "もっと 足す" : "資料を 選ぶ（PDF・画像・文書）") + "</button>";
+    if (st.資料.length) {
+      var 合 = st.資料.reduce(function (a, f) { return a + f.size; }, 0);
+      h += '<div class="file-t">' + st.資料.length + " 件 ・ " + 大きさ(合) + "</div>";
+    }
+    return h + "</div>";
+  }
+  function 大きさ(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return Math.round(n / 1024) + " KB";
+    return (Math.round(n / 1024 / 1024 * 10) / 10) + " MB";
+  }
+  function 資料を選ぶ() {
+    var inp = doc.createElement("input");
+    inp.type = "file";
+    inp.multiple = true;
+    inp.accept = ".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.csv,.docx";
+    inp.style.cssText = "position:fixed;width:0;height:0;opacity:0";
+    doc.body.appendChild(inp);
+    inp.addEventListener("change", function () {
+      var 並 = Array.prototype.slice.call(inp.files || []);
+      try { inp.parentNode.removeChild(inp); } catch (e) {}
+      if (!並.length) return;
+      並.reduce(function (待, f) {
+        return 待.then(function () { return 一つ読む(f); });
+      }, Promise.resolve()).then(function () { 描く(); });
+    });
+    inp.click();
+  }
+  function 一つ読む(f) {
+    var 合 = st.資料.reduce(function (a, x) { return a + x.size; }, 0);
+    if (合 + f.size > 資料の上限) {
+      st.err = "資料が 大きすぎます（合わせて " + 大きさ(資料の上限) + " まで）。"
+        + "「" + f.name + "」は 入れていません。";
+      return Promise.resolve();
+    }
+    return new Promise(function (done) {
+      var r = new FileReader();
+      r.onload = function () {
+        try {
+          var m = /^data:([^;,]*);base64,(.*)$/.exec(String(r.result || ""));
+          if (!m) { st.err = "「" + f.name + "」を 読めませんでした。"; done(); return; }
+          st.資料.push({
+            name: String(f.name || "資料").slice(0, 80),
+            mimeType: m[1] || f.type || "application/octet-stream",
+            data: m[2], size: f.size
+          });
+          st.err = "";
+        } catch (e) { st.err = "「" + f.name + "」を 読めませんでした。"; }
+        done();
+      };
+      r.onerror = function () { st.err = "「" + f.name + "」を 読めませんでした。"; done(); };
+      r.readAsDataURL(f);
+    });
   }
 
   function 数欄(名, key, v, 小, 大) {
@@ -734,6 +938,14 @@
         描く();
         return;
       }
+      if (a === "addfile") { 資料を選ぶ(); return; }
+      if (a === "rmfile") {
+        var idx = parseInt(el.dataset.v, 10);
+        if (idx >= 0) st.資料.splice(idx, 1);
+        st.err = "";
+        描く();
+        return;
+      }
       if (a === "run") { 作りに行く(); return; }
       if (a === "back-cond") { st.err = ""; 開く("条件"); return; }
       if (a === "back-plan") { st.err = ""; 開く("構成案"); return; }
@@ -746,6 +958,7 @@
       if (a === "paper") { st.err = ""; 開く("紙面"); return; }
       if (a === "print-q" || a === "print-a" || a === "print-k") { 紙面を出す(a); return; }
       if (a === "exam") { 受験する(); return; }
+      if (a === "readlayout") { 紙面を読み取る(); return; }
     });
     root.addEventListener("change", function (e) {
       var t = e.target;
@@ -1088,9 +1301,21 @@
                  点: st.spec.totalPoints, 表紙あり: !!st.spec.cover
                } : null,
                保存した: st.保存した,
+               資料: st.資料.map(function (f) { return { name: f.name, size: f.size, mimeType: f.mimeType }; }),
                記録: st.記録.slice(-8),
                描けなかった: 描けなかった };
     },
+    /* 検査のため。**本物の ファイル選びは 自動では 押せない**ので、
+       中身だけ 入れて 通り道を 確かめられるようにする。 */
+    資料を入れる: function (並) {
+      st.資料 = (並 || []).map(function (f) {
+        return { name: String(f.name || "資料"), mimeType: String(f.mimeType || "application/pdf"),
+                 data: String(f.data || ""), size: Number(f.size) || 0 };
+      });
+      if (st.画面) 描く();
+      return st.資料.length;
+    },
+    読み取り: function () { return st.読取り; },
     表紙を入れる: function (c) {
       st.表紙 = Object.assign(既定の表紙(), c || {});
       if (st.画面) 描く();

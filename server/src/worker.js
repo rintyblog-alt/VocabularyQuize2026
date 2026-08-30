@@ -48200,6 +48200,9 @@ async function aigenAskVia(env, provider, model, p) {
     const run = await aigenGeminiTry(env, aigenGeminiKeys(env), alts, {
       sys: p.sys, user: p.user, files: p.files || [],
       max_tokens: p.maxTokens, temperature: 0.2,
+      /* ★ 形を サーバ側で 強制する（2026-08-30）。
+         ここへ 通していなかったので、responseSchema を 渡しても 効かなかった。 */
+      responseSchema: p.responseSchema || undefined,
       /* ══ 「考える」ぶんで出力を使い切らせない ══════════════════
          3 系は答える前に考えを書き、それも **出力の上限に数えられる**。
          作問は決まった形で書き出す仕事なので、考えさせる必要が無い。
@@ -51537,6 +51540,141 @@ function reviseTargetSet(instruction, src, only, scopeAll) {
 
    ★ **鍵そのものは絶対に返さない。** 何本目か・通ったか だけを返す。
    ══════════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════
+   添付した 紙面から **型の 設定だけ** を 読み取る（/api/aigen/layout）
+
+   訴え（2026-08-30）:「ユーザーがレイアウトを添付しても、しっかりと
+   ほぼ完璧にそのユーザーのレイアウトに沿って枠を作り、実際の試験と同じにしたい」
+
+   ★ **AI に 組版ソースを 書かせない。**
+     画面側の 約束（pdf/layout-profiles.js）は
+     「選べるのは プロファイルが 列挙した variant だけ。自由な 配置は 作らない」。
+     破ると 紙面が 壊れる。だから AI が 出すのは
+     **既にある 型の 中の 設定値だけ**にする。
+   ★ 知らない値は 捨てて 既定へ 落とす（勝手な 値を 通さない）。
+   ★ 元の 資料は 保存しない。読み取った 数値だけ 返す。
+   ══════════════════════════════════════════════════════════════════════ */
+const LAYOUT_READ_SCHEMA = {
+  type: "object",
+  properties: {
+    paperSize:        { type: "string", enum: ["A4", "B5", "B4", "A3"] },
+    orientation:      { type: "string", enum: ["portrait", "landscape"] },
+    writingDirection: { type: "string", enum: ["horizontal", "vertical"] },
+    columns:          { type: "integer" },
+    marginTopMm:      { type: "number" },
+    marginBottomMm:   { type: "number" },
+    marginLeftMm:     { type: "number" },
+    marginRightMm:    { type: "number" },
+    bodyPt:           { type: "number" },
+    sectionMarker:    { type: "string", enum: ["第n問", "大問n", "n", "漢数字", "その他"] },
+    questionMarker:   { type: "string", enum: ["問n", "(n)", "n", "その他"] },
+    choiceMarker:     { type: "string", enum: ["丸数字", "数字とドット", "アルファベット", "その他", "選択肢なし"] },
+    hasCover:         { type: "boolean" },
+    answerSheetKind:  { type: "string", enum: ["マーク", "罫線", "マス目", "記述多め", "計算欄", "見当たらない"] },
+    subject:          { type: "string", enum: ["国語", "英語", "数学", "理科", "社会", "情報", "分からない"] },
+    notes:            { type: "array", items: { type: "string" } }
+  },
+  required: ["paperSize", "orientation", "writingDirection", "columns"]
+};
+
+/* 読み取った 見立て → **いまある 型の ID**。無理に 当てない。 */
+function aigenLayoutToProfile(v) {
+  const S2 = (x) => String(x == null ? "" : x);
+  const 縦 = S2(v.writingDirection) === "vertical";
+  const 教 = S2(v.subject);
+  const 丸 = S2(v.choiceMarker) === "丸数字";
+  const 第 = S2(v.sectionMarker) === "第n問";
+  const B5 = S2(v.paperSize) === "B5";
+
+  let mode = "standard-exam";
+  /* 共通テスト風は「B5・丸数字・第 n 問」が そろったとき だけ。 */
+  if (丸 && 第 && B5) mode = "common-test";
+  else if (第 && (B5 || v.hasCover === true)) mode = "entrance-exam";
+  else if (教 === "英語") mode = "english-test";
+  else if (教 === "数学") mode = "math-test";
+  else if (Number(v.columns) >= 2) mode = "compact-exam";
+  /* 縦書きは HTML では 組めない。**組めるふりを しない。** */
+  const 縦は組めない = 縦;
+
+  const k = S2(v.answerSheetKind);
+  const sheet = k === "マーク" ? "mark-sheet"
+    : k === "記述多め" ? "written-heavy"
+    : k === "計算欄" ? "math-work"
+    : k === "マス目" ? "grid-dense"
+    : k === "罫線" ? "grid-standard"
+    : "current";
+
+  const 数 = (x, 小, 大, 既) => {
+    const n = Number(x);
+    return isFinite(n) ? Math.max(小, Math.min(大, Math.round(n))) : 既;
+  };
+  return {
+    layoutMode: mode,
+    answerSheetMode: sheet,
+    cover: v.hasCover === true,
+    紙: {
+      size: ["A4", "B5", "B4", "A3"].indexOf(S2(v.paperSize)) >= 0 ? S2(v.paperSize) : "A4",
+      orientation: S2(v.orientation) === "landscape" ? "landscape" : "portrait",
+      margins: {
+        top: 数(v.marginTopMm, 5, 40, 20), bottom: 数(v.marginBottomMm, 5, 40, 20),
+        left: 数(v.marginLeftMm, 5, 40, 18), right: 数(v.marginRightMm, 5, 40, 18)
+      },
+      bodyPt: 数(v.bodyPt, 7, 16, 10)
+    },
+    読めた: {
+      段組: 数(v.columns, 1, 3, 1),
+      大問の書きかた: S2(v.sectionMarker), 小問の書きかた: S2(v.questionMarker),
+      選択肢: S2(v.choiceMarker), 教科: 教,
+      表紙: v.hasCover === true, 解答用紙: k
+    },
+    できないこと: 縦は組めない
+      ? ["縦書きは いまの 紙面では 組めません（横書きで 出します）。"] : []
+  };
+}
+
+async function handleAiGenLayout(request, env) {
+  const user = await resolveAuthUser(request, env);
+  if (!user) return json({ code: "UNAUTHORIZED", message: "ログインが必要です。" }, 401, request);
+  const body = await readJsonBody(request, 100 * 1024 * 1024);
+  const files = Array.isArray(body?.files) ? body.files.slice(0, 4) : [];
+  if (!files.length) {
+    return json({ code: "NO_FILE", message: "紙面の 画像か PDF を 付けてください。" }, 400, request);
+  }
+  if (!aigenGeminiKeys(env).length) {
+    return json({ code: "NOT_AVAILABLE",
+      message: "紙面の 読み取りが いま 使えません（鍵が 未設定）。" }, 503, request);
+  }
+  const sys = "あなたは 試験の 紙面を 見て、その **体裁だけ** を 読み取る 係です。"
+    + "問題の 中身・答え・科目の 知識は 一切 書かないでください。"
+    + "読み取れないものは 推測せず、その 項目を 省いてください。";
+  const usr = "添付は 試験の 問題用紙（と 解答用紙）です。次を 読み取ってください。\n"
+    + "・用紙の 大きさ／縦か横か／縦書きか横書きか／本文の 段組の数\n"
+    + "・上下左右の 余白（mm の 見当）／本文の 文字の 大きさ（pt の 見当）\n"
+    + "・大問の 書きかた（第1問 / 大問1 / 1 / 一）\n"
+    + "・小問の 書きかた（問1 / (1) / 1）\n"
+    + "・選択肢の 記号（丸数字 ①②③ / 1. 2. / A B）\n"
+    + "・表紙が あるか\n"
+    + "・解答用紙の 種類（マーク / 罫線 / マス目 / 記述多め / 計算欄）\n"
+    + "・教科（分からなければ 分からない）";
+
+  const t0 = Date.now();
+  const r = await aigenAskVia(env, "gemini", aigenModelFor(env, "gemini", "fast"), {
+    sys: sys, user: usr, files: files, maxTokens: 1400,
+    responseSchema: LAYOUT_READ_SCHEMA
+  });
+  if (!r || !r.ok) {
+    return json({ code: "AI_FAILED",
+      message: (r && r.error) || "紙面を 読み取れませんでした。" }, 502, request);
+  }
+  const v = (r.parsed && typeof r.parsed === "object") ? r.parsed : null;
+  if (!v) {
+    return json({ code: "AI_SHAPE", message: "紙面の 読み取りの 形が 違いました。" }, 502, request);
+  }
+  const out = aigenLayoutToProfile(v);
+  return json({ ok: true, layout: out,
+    metrics: { ms: Date.now() - t0, model: r.model || "", provider: "gemini" } }, 200, request);
+}
+
 async function handleAigenDocCheck(request, env) {
   if (String(env?.AI_PROBE_ENABLED || "") !== "1") {
     return json({ code: "NOT_FOUND", message: "この口はありません。" }, 404, request);
@@ -65220,6 +65358,9 @@ export default {
       /* 打たれた文が「作ってほしい」なのか「話しかけ」なのかを見分ける。
          画面は作り始める前にここを通す（作るなら、そのまま作りに行く）。 */
       /* 資料つきが作れるかを鍵ごとに確かめる（開発版だけ・鍵そのものは返さない）。 */
+      if (request.method === "POST" && path === "/api/aigen/layout") {
+        stage = "aigen.layout"; return respond(await handleAiGenLayout(request, env));
+      }
       if (request.method === "POST" && path === "/api/aigen/doccheck") {
         stage = "aigen.doccheck"; return respond(await handleAigenDocCheck(request, env));
       }
@@ -65724,6 +65865,7 @@ export default {
           || path === "/api/aigen/questions"
           || path === "/api/aigen/intent"
           || path === "/api/aigen/doccheck"
+          || path === "/api/aigen/layout"
           || path === "/api/aigen/revise"
           || path === "/api/aigen/cover"
           || path === "/api/lumi/usage"

@@ -312,6 +312,53 @@ const 打つ = (page, f, v) => page.evaluate(([f2, v2]) => {
     見(組.ok && 組.欄 >= 1, "P-16 解答欄が 問題ぶん ある", { 欄: 組.欄 });
   }
 
+  節("段⑥e 資料の 口");
+  await 押す(a.page, "back-check");
+  await 待(500);
+  const 資 = await a.page.evaluate(() => {
+    /* 本物の ファイル選びは 自動では 押せない。中身だけ 入れて 通り道を 見る。 */
+    const n = window.__vqMake.資料を入れる([
+      { name: "授業プリント.pdf", mimeType: "application/pdf", data: "JVBERi0=", size: 1234 }
+    ]);
+    return { 入れた: n, 状態: window.__vqMake.状態().資料 };
+  });
+  見(資.入れた === 1 && 資.状態.length === 1, "R-1 資料を 持てる", 資.状態);
+  await a.page.evaluate(() => window.__vqMake.open({ kind: "exam" }));
+  await 待(400);
+  /* 条件の 段に 資料の 欄が 出る */
+  await a.page.evaluate(() => {
+    const r = document.getElementById("vqMake").shadowRoot;
+    const el = r.querySelector('[data-f="examName"]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, "資料の確かめ");
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    r.querySelector('[data-a="go"]').click();
+  });
+  await 待(700);
+  const 条2 = await 影(a.page);
+  見(条2.indexOf("資料") >= 0, "R-2 条件に 資料の 欄が ある");
+  見(条2.indexOf("授業プリント.pdf") >= 0, "R-3 入れた 資料が 並ぶ", 条2.slice(0, 140));
+  const 外 = await a.page.evaluate(() => {
+    const r = document.getElementById("vqMake").shadowRoot;
+    const b = r.querySelector('[data-a="rmfile"]'); if (b) b.click();
+    return window.__vqMake.状態().資料.length;
+  });
+  見(外 === 0, "R-4 資料を 外せる", 外);
+
+  節("段⑥f 紙面の 読み取りの 口（サーバ）");
+  const 読 = await a.page.evaluate(async () => {
+    const h = { "Content-Type": "application/json" };
+    try {
+      const t = localStorage.getItem("app.auth.token.v1");
+      if (t) h.Authorization = "Bearer " + String(t).replace(/^"|"$/g, "");
+    } catch (e) {}
+    /* 資料なしで 叩く → **断られる**（作り話を 返さない）ことを 見る */
+    const r0 = await fetch("/api/aigen/layout", { method: "POST", headers: h, body: JSON.stringify({ files: [] }) });
+    const j0 = await r0.json().catch(() => ({}));
+    return { なし: { s: r0.status, code: j0.code } };
+  });
+  見(読.なし.s === 400 && 読.なし.code === "NO_FILE",
+     "L-1 資料なしでは 断る（作り話を 返さない）", 読.なし);
+
   節("段⑥z 昔の 受け渡し（Quick Mock も まだ 開ける）");
   const 旧 = await a.page.evaluate(() => {
     try { window.VQ2.quickMock.open({ kind: "exam", cover: { examName: "旧いほう" },

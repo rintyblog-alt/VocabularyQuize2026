@@ -61480,7 +61480,57 @@
         + '<div class="vq2-row" style="justify-content:space-between;padding:4px 0">'
         + '<span class="vq2-muted">' + answered + " / " + questions.length + " 問</span>"
         + '<span class="vq2-muted">' + Math.round((answered / Math.max(1, questions.length)) * 100) + "%</span></div>"
-        + U.progressBar(answered, questions.length, "解答の進み") + "</div>";
+        + U.progressBar(answered, questions.length, "解答の進み")
+        + sectionBarHtml() + "</div>";
+    }
+
+    /* ══ 大問での 移動（2026-08-30）════════════════════════════════
+       本物の 試験は 大問で 動く。いままでは 問題単位でしか 行き来できず、
+       「第 3 問へ」が できなかった。
+       ★ 大問ごとの **答えた数**も 出す（どこが 空いているかが 一目で 分かる）。 */
+    function sectionBarHtml() {
+      var secs = spec.sections || [];
+      if (secs.length < 2) return "";
+      var 今 = "";
+      var cq = questions.filter(function (x) { return x.id === st.currentQid; })[0];
+      if (cq) 今 = cq.sectionId;
+      var 済 = {};
+      session.answers.forEach(function (a) {
+        if (G.isUnanswered(a.value)) return;
+        var q = questions.filter(function (x) { return x.id === a.questionId; })[0];
+        if (q) 済[q.sectionId] = (済[q.sectionId] || 0) + 1;
+      });
+      return '<div class="vq2-secbar" role="tablist" aria-label="大問"'
+        + ' style="display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px;-webkit-overflow-scrolling:touch">'
+        + secs.map(function (sec) {
+            var n = (sec.questions || []).length;
+            var d = 済[sec.id] || 0;
+            var on = sec.id === 今;
+            return '<button type="button" role="tab" data-esec="' + esc(sec.id) + '"'
+              + ' aria-selected="' + (on ? "true" : "false") + '"'
+              + ' title="' + esc(sec.title || ("大問" + sec.number)) + '"'
+              + ' style="flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:999px;'
+              + "border:1px solid " + (on ? "var(--vq-accent,#756DB3)" : "var(--vq-border,#E7E4EF)") + ";"
+              + "background:" + (on ? "var(--vq-accent-subtle,#EAE8F7)" : "var(--vq-surface,#fff)") + ";"
+              + "color:" + (on ? "var(--vq-accent-text,#5F5691)" : "inherit") + ";"
+              + 'font-size:13px;font-weight:' + (on ? "700" : "500") + ';cursor:pointer">'
+              + "大問" + esc(sec.number)
+              + '<span style="opacity:.7;margin-left:6px;font-weight:400">' + d + "/" + n + "</span>"
+              + "</button>";
+          }).join("")
+        + "</div>";
+    }
+    /* その 大問の **最初の 未回答**へ。無ければ 先頭へ。 */
+    function gotoSection(sid) {
+      var sec = (spec.sections || []).filter(function (x) { return x.id === sid; })[0];
+      if (!sec || !(sec.questions || []).length) return;
+      var 空 = null;
+      sec.questions.forEach(function (q) {
+        if (空) return;
+        var a = answerFor(q.id);
+        if (!a || G.isUnanswered(a.value)) 空 = q.id;
+      });
+      selectQuestion(空 || sec.questions[0].id, false);
     }
     function currentLabel() {
       var q = questions.find(function (x) { return x.id === st.currentQid; });
@@ -61728,6 +61778,9 @@
 
     function wirePaper() {
       var r = app.root;
+      U.on(r, "click", "[data-esec]", function (e, el) {
+        gotoSection(el.getAttribute("data-esec"));
+      });
       U.on(r, "click", '[data-act="page-prev"]', function () { gotoPage(st.page - 1); });
       U.on(r, "click", '[data-act="page-next"]', function () { gotoPage(st.page + 1); });
       U.on(r, "click", '[data-act="zoom-in"]', function () { setZoom(st.zoom + 0.1); });
