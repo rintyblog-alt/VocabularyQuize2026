@@ -46916,9 +46916,26 @@ function aigenLangNote(o) {
   const 英語か = /英語|英文|英作文|英訳|和訳|英単語|英熟語|英会話|英検|リスニング|english|reading|listening/i
     .test(教科 + " " + 題.slice(0, 200));
   if (英語か) {
+    /* ══ 2026-08-31・訴え「英語の 問題が 必ず 問題文まで 英語に なる」════
+       ★ 前は「英語の 試験です。本文・会話文・選択肢は 英語で 書きます」から
+         始めていた。**最初に 読む 一文が 英語の 許可**なので、
+         そのあとの「設問文は 日本語」が 効かなかった（実測）。
+       ★ 順番を 逆に する。まず **問題文は いつも 日本語**と 言い切り、
+         英語に して よい ものを **あとから 数え上げる**。
+       ★ ×と○を 並べて 見せる。言葉だけでは 直らない。 */
     return "【何語で 書くか】\n"
-      + "英語の 試験です。本文・会話文・選択肢は 英語で 書きます。"
-      + "**設問文（問いかけ）と explanation は 日本語**で 書いてください。";
+      + "★ **question（問題文・問いかけ）は いつも 日本語です。**\n"
+      + "\u3000教科が 英語でも 変わりません。ここが いちばん 大事です。\n"
+      + '\u3000× "Choose the word that best completes the sentence."\n'
+      + "\u3000○ 「空所に 入れるのに 最も 適当な ものを、次の うちから 一つ 選べ。」\n"
+      + '\u3000× "Read the passage and answer the question."\n'
+      + "\u3000○ 「次の 英文を 読み、問いに 答えよ。」\n"
+      + "★ **explanation（解説）も いつも 日本語です。**\n"
+      + "★ 英語に するのは **読ませる 中身だけ**です:\n"
+      + "\u3000・本文・会話文・例文（materials の passage / dialogue）\n"
+      + "\u3000・choices の 語句（英単語・英文の 選択肢）\n"
+      + "\u3000・answer が 英語の 語句に なる とき\n"
+      + "★ 空所は 英文の 中に 置き、その 空所を **日本語の 問題文**で 指します。";
   }
   return "【何語で 書くか】\n"
     + "★ **すべて 日本語で 書いてください。**"
@@ -48285,6 +48302,10 @@ async function aigenAskMulti(env, want, o = {}) {
     "　□ 表のうめ: 空のますの数と answer の数が同じか",
     "　□ 事実として正しいか（年号・人名・用語の取り違えがないか）",
     "　□ **【注文】の題に当てはまっているか**（同じ教科というだけの別の話題になっていないか）",
+    /* ★ 返す 直前の 確かめに 入れた ものは 守られやすい（実測）。
+       英語の 試験でも question は 日本語（2026-08-31・訴え）。 */
+    "　□ **question と explanation が 日本語か**"
+      + "（英語の 試験でも ここは 日本語。英語に してよいのは 本文・会話文・選択肢だけ）",
     /* 字数の注文は **数え直させる**（まとめ頼みでも同じ）。 */
     aigenLengthCheckNote(o.lengths),
     '次の JSON だけを返してください: {"questions":[…]}',
@@ -48351,6 +48372,69 @@ async function aigenAskMulti(env, want, o = {}) {
    ★ 問題文・選択肢・答えは **渡すだけで、書き直させない**
      （書き直させると、直したついでに答えが変わる）。
    ★ 1 回の呼び出しでまとめて直す（1 問ずつ呼ぶと回数を使い切る）。 */
+/* ══ 問題文を **日本語へ 直す**（2026-08-31・訴え）════════════════════
+   訴え「英語の 問題が 必ず 問題文まで 英語に なるから、これ 修正して。
+         それは なし。日本語で いい。標準は」
+
+   ★ 頼みかたを 強めても、モデルは 英語の 題材を 見ると 問いかけまで
+     英語で 書く。だから **できあがりを 見て、日本語で ない ものだけ 直す**。
+   ★ 直すのは **question の 1 行だけ**。本文・選択肢・答え・解説は 触らない
+     （中身が 変わると 別の 問題に なる）。
+   ★ 1 回の 呼び出しで まとめて 直す。だめなら そのまま（甘くしない）。 */
+function 日本語が入っているか(t) {
+  return /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(String(t || ""));
+}
+async function aigenJapaneseQuestionText(env, items, o = {}) {
+  const list = (items || []).slice(0, 24);
+  if (!list.length) return [];
+  const sys = "あなたは 設問文だけを 日本語へ 直す 係です。JSON だけを 返します。";
+  const user = [
+    "次の 問題の **question（問いかけの 一文）だけ**を 日本語に してください。",
+    "★ 意味を 変えないでください。言い足しも 省きも しないでください。",
+    "★ **選択肢・本文・答え・解説は 読むだけ**です。返さないでください。",
+    "★ 英語の 語句を そのまま 残してよいのは、"
+      + "設問が **その 語句そのもの**を 指している ときだけです"
+      + "（例: 「下線部 take after の 意味として…」）。",
+    "★ 日本の 試験の 言い回しに します。",
+    "\u3000例) 「空所に 入れるのに 最も 適当な ものを、次の うちから 一つ 選べ。」",
+    "\u3000例) 「次の 英文を 読み、問いに 答えよ。」",
+    "\u3000例) 「下線部の 意味に 最も 近い ものを 一つ 選べ。」",
+    "",
+    '【返す形】{"items":[{"id":"0","question":"…"}]} だけを 返します。',
+    "",
+    "【直すもの】",
+    JSON.stringify(list.map((x, i) => ({
+      id: String(i),
+      question: String(x.question || "").slice(0, 400),
+      choices: Array.isArray(x.choices) ? x.choices.slice(0, 6) : undefined
+    })))
+  ].join("\n");
+  const chain = aigenProviders(env);
+  for (const provider of chain) {
+    const r = await aigenAskVia(env, provider, aigenModelFor(env, provider, "fast"),
+      { sys, user, maxTokens: Math.min(4000, 400 + list.length * 160), files: [] })
+      .catch(() => ({ ok: false }));
+    if (!r || !r.ok) continue;
+    let arr = null;
+    try {
+      const raw = r.text || JSON.stringify({ items: r.questions || [] });
+      const j = JSON.parse(String(raw).replace(/^\u0060\u0060\u0060json\s*|\u0060\u0060\u0060\s*$/g, ""));
+      arr = Array.isArray(j.items) ? j.items : (Array.isArray(j) ? j : null);
+    } catch (e) { arr = null; }
+    if (!arr && Array.isArray(r.questions)) arr = r.questions;
+    if (!arr) continue;
+    const out = list.map((x) => null);
+    arr.forEach((it) => {
+      const i = Number(it && it.id);
+      const q = String((it && it.question) || "").trim();
+      /* ★ 直った ものだけ 受ける。日本語が 入っていなければ 直っていない。 */
+      if (isFinite(i) && i >= 0 && i < out.length && q && 日本語が入っているか(q)) out[i] = q;
+    });
+    if (out.some(Boolean)) return out;
+  }
+  return [];
+}
+
 async function aigenExpandExplanations(env, items, o = {}) {
   const list = (items || []).slice(0, 24);
   if (!list.length) return [];
@@ -48516,6 +48600,10 @@ async function aigenAskOnce(env, engineId, n, o = {}) {
     "　□ 表のうめ: 空のますの数と answer の数が同じか",
     "　□ 事実として正しいか（年号・人名・用語の取り違えがないか）",
     "　□ **【注文】の題に当てはまっているか**（同じ教科というだけの別の話題になっていないか）",
+    /* ★ 返す 直前の 確かめに 入れた ものは 守られやすい（実測）。
+       英語の 試験でも question は 日本語（2026-08-31・訴え）。 */
+    "　□ **question と explanation が 日本語か**"
+      + "（英語の 試験でも ここは 日本語。英語に してよいのは 本文・会話文・選択肢だけ）",
     /* 字数の注文は **数え直させる**。上で一度書いても、長い指示文の
        途中に埋もれる。確かめの一覧に入れると守られやすい（実測）。 */
     aigenLengthCheckNote(o.lengths),
@@ -50258,6 +50346,35 @@ async function aigenGenerate(env, contract, o = {}) {
         if (why) return;                       /* だめなら 空のまま（甘くしない） */
         q.explanation = ex;
         metrics.exFillOk++;
+      });
+    }
+  }
+
+  /* ══ 問題文が 英語の ままの ものを 日本語へ 直す（2026-08-31・訴え）══
+     訴え「英語の 問題が 必ず 問題文まで 英語に なる。それは なし。日本語で いい」
+     ★ 頼みかたを 強めても 直りきらない ので、**できあがりを 見て 直す**。
+     ★ 直すのは question の 1 行だけ。選択肢・本文・答え・解説は 触らない。
+     ★ 英語の 教科の ときだけ 走らせる（ほかの 教科は そもそも 日本語）。 */
+  {
+    const 教科 = String((o && o.subject) || "") + " " + String((o && o.topic) || "").slice(0, 200);
+    const 英語か = /英語|英文|英作文|英訳|和訳|英単語|英熟語|英会話|英検|リスニング|english|reading|listening/i.test(教科);
+    const 英語のまま = 英語か
+      ? accepted.filter((q) => String(q.question || "").trim() && !日本語が入っているか(q.question))
+      : [];
+    metrics.jaFixTried = 英語のまま.length;
+    metrics.jaFixOk = 0;
+    if (英語のまま.length && metrics.aiCalls < maxCalls) {
+      metrics.aiCalls++;
+      const 対象2 = 英語のまま.slice(0, 24);
+      const 直った = await aigenJapaneseQuestionText(env, 対象2, {}).catch(() => []);
+      対象2.forEach((q, i) => {
+        const n = (直った || [])[i];
+        if (!n) return;
+        /* 長さの 決まりを 破るなら 入れない（甘くしない）。 */
+        const 試 = Object.assign({}, q, { question: n });
+        if (aigenLengthIssue(contract.lengths, 試)) return;
+        q.question = n;
+        metrics.jaFixOk++;
       });
     }
   }

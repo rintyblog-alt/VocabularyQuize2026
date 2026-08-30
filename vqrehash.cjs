@@ -26,6 +26,19 @@ const existsCss = (p2) => fs.existsSync(p2) && fs.statSync(p2).isDirectory();
 let html = fs.readFileSync(INDEX, "utf8");
 let 変えた = 0, 見た = 0;
 const 記録 = [];
+/* ★ **中身が そっくり 同じ 2 本**を 見つける（2026-08-31・訴え
+   「設定画面の 導線が 古い方に 戻ってる」）。
+
+   起きていたこと（実測）:
+     client/js/vq-settings.*.js の 中身が **設定ストアと 1 バイト 違わず 同じ**
+     だった（55,312 バイト）。組む ときに 元を 取り違えた まま 気づかず、
+     指紋が 同じに なるので この 道具が 同じ 名前へ 寄せて しまい、
+     本物の 設定画面（114,916 バイト）は **一度も 配られていなかった**。
+     画面には 何も 出ない。ただ window.__vqOpenSettings が 生えないので、
+     設定の 入口が 昔の 画面へ 落ちるだけ。
+
+   同じ 指紋の 2 本は **まず 間違い**なので、ここで 声を 上げる。 */
+const 指紋ごと = new Map();
 
 for (const [dir, ext] of [["js", ".js"], ["css", ".css"], ["vendor/lib", ".js"], ["vendor/lib", ".css"], ["vendor/fonts", ".woff2"]]) {
   const d = path.join(CLIENT, dir);
@@ -41,6 +54,9 @@ for (const [dir, ext] of [["js", ".js"], ["css", ".css"], ["vendor/lib", ".js"],
     const 中身 = 文字もの ? fs.readFileSync(path.join(d, f), "utf8") : fs.readFileSync(path.join(d, f));
     const 指紋 = crypto.createHash("sha256")
       .update(文字もの ? Buffer.from(中身, "utf8") : 中身).digest("hex").slice(0, 10);
+    const 名前 = dir + "/" + m[1] + ext;
+    if (!指紋ごと.has(指紋)) 指紋ごと.set(指紋, new Set());
+    指紋ごと.get(指紋).add(名前);
     if (指紋 === m[2]) continue;
     const 新名 = m[1] + "." + 指紋 + ext;
     const 旧道 = "/" + dir + "/" + f, 新道 = "/" + dir + "/" + 新名;
@@ -78,6 +94,15 @@ if (!見るだけ && 変えた) fs.writeFileSync(INDEX, html, "utf8");
 
 記録.forEach((r) => console.log("  " + r.旧 + "\n    → " + r.新 + "  (" + r.バイト + " バイト)"));
 console.log(見るだけ ? `見ただけ: ${見た} 本中 ${変えた} 本が 付け替え待ち` : `${見た} 本中 ${変えた} 本の 指紋を 付け替えました`);
+
+/* ★ 中身が そっくり 同じ 2 本は 組む 元の 取り違え。止める。 */
+const 双子 = [...指紋ごと.values()].filter((v) => v.size >= 2).map((v) => [...v]);
+if (双子.length) {
+  console.error("✗ 中身が まったく 同じ ファイルが あります（組む 元の 取り違えです）:");
+  双子.forEach((g) => console.error("   " + g.join("  ＝  ")));
+  console.error("   → js-src の どれから 組んだかを 確かめてください。");
+  process.exit(1);
+}
 
 /* 参照の食い違いが 残っていないか 最後に見る */
 const 抜け = [];

@@ -416,6 +416,119 @@ const 試験を置く = (id) => {
     }
   }
 
+  節("⑪ スマホの 結果画面（2026-08-31・訴え「スマホに 最適化した？」）");
+  {
+    /* 直す前（実測 390px）: 上バーの 中身 441px・下バーの 中身 821px で
+       横に あふれ、採点パネルへ 行く 道も 無かった。 */
+    await page.setViewportSize({ width: 390, height: 844 });
+    await 待(1800);
+    const m1 = await page.evaluate(() => {
+      const r = __vqew(); const xr = r.querySelector(".vq2-xr");
+      const 幅 = (q) => { const e = r.querySelector(q); return e ? Math.round(e.getBoundingClientRect().width) : 0; };
+      const 中 = (q) => { const e = r.querySelector(q); return e ? Math.round(e.scrollWidth) : 0; };
+      return {
+        m: xr ? xr.className.indexOf("is-m") >= 0 : false,
+        上: [幅(".vq2-xr-top"), 中(".vq2-xr-top")],
+        下: [幅(".vq2-xr-bot"), 中(".vq2-xr-bot")],
+        横: xr ? xr.scrollWidth > xr.clientWidth + 1 : false,
+        紙帯: !!r.querySelector(".vq2-xr-segrow"),
+        面帯: [...r.querySelectorAll("[data-xrpane]")].map((e) => e.textContent.trim()),
+        二段: r.querySelectorAll(".vq2-xr-botrow").length,
+        押: [...r.querySelectorAll(".vq2-xr button")].filter((e) => e.getClientRects().length)
+          .map((e) => Math.round(e.getBoundingClientRect().height)).filter((x) => x > 0)
+      };
+    });
+    見(m1.m, "スマホの 組みに なる");
+    見(m1.上[0] >= m1.上[1], "★ 上バーが 画面から はみ出さない", m1.上);
+    見(m1.下[0] >= m1.下[1], "★ 下バーが 画面から はみ出さない", m1.下);
+    見(!m1.横, "★ 横に スクロールしない");
+    見(m1.紙帯, "★ 問題・解答・解説は 帯を 1 本 下ろす");
+    見(m1.面帯.join("/") === "問題用紙/採点結果", "★ 紙 ⇄ 採点の 切り替えが ある", m1.面帯);
+    見(m1.二段 === 2, "★ 下バーは 2 段", m1.二段);
+    見(m1.押.every((h) => h >= 43), "★ 押す ところが 43px 以上", m1.押.join(","));
+    /* 採点へ 切り替える。 */
+    const m2 = await page.evaluate(async () => {
+      const r = __vqew();
+      r.querySelector('[data-xrpane="side"]').click();
+      await new Promise((z) => setTimeout(z, 600));
+      const xr = r.querySelector(".vq2-xr");
+      const sd = r.querySelector(".vq2-xr-side");
+      return { 採点: !!sd && !sd.hidden && sd.getBoundingClientRect().width > 0,
+               紙: !r.querySelector(".vq2-xr-left").hidden,
+               横: xr.scrollWidth > xr.clientWidth + 1,
+               列: (() => { const t = r.querySelector(".vq2-xr-two"); return t ? getComputedStyle(t).gridTemplateColumns : ""; })(),
+               道具: r.querySelectorAll("[data-xrink]").length };
+    });
+    見(m2.採点, "★ 採点結果へ 行ける");
+    見(!m2.紙, "紙は 引っ込む（1 つずつ 出す）");
+    見(!m2.横, "★ 採点側も 横に スクロールしない");
+    見(m2.列.split(" ").length === 1, "★ 採点の 中は 1 列に なる", m2.列);
+    見(m2.道具 === 0, "採点を 見ている ときは 書き込みの 道具を 出さない", m2.道具);
+    /* 紙へ 戻す。 */
+    await page.evaluate(() => __vqew().querySelector('[data-xrpane="paper"]').click());
+    await 待(800);
+    const m3 = await page.evaluate(() => {
+      const r = __vqew();
+      const f = r.querySelector("#examPaper iframe");
+      const d = f && f.contentDocument;
+      return { 紙: !r.querySelector(".vq2-xr-left").hidden,
+               倍率: d ? (getComputedStyle(d.body).zoom || "") : "",
+               道具: r.querySelectorAll("[data-xrink]").length };
+    });
+    見(m3.紙 && m3.道具 === 3, "★ 紙へ 戻すと 道具も 戻る", m3);
+    /* ★ スマホは 読みやすさを 切り替えられる（46%＝5pt では 読めない）。 */
+    const m4 = await page.evaluate(async () => {
+      const r = __vqew();
+      const b = r.querySelector('.vq2-xr-bot [data-act="reflow"]');
+      const 前 = b ? b.textContent.trim() : "(なし)";
+      if (b) b.click();
+      await new Promise((z) => setTimeout(z, 1600));
+      const f = r.querySelector("#examPaper iframe");
+      const d = f && f.contentDocument;
+      const pg = d && d.querySelector(".page");
+      const q = d && (d.querySelector(".q-text") || d.querySelector("body"));
+      return { 札: 前,
+               後の札: (r.querySelector('.vq2-xr-bot [data-act="reflow"]') || {}).textContent,
+               倍率: d ? Number(getComputedStyle(d.body).zoom || 1) : 0,
+               字: q ? Math.round(parseFloat(getComputedStyle(q).fontSize)) : 0,
+               紙幅: pg ? Math.round(pg.getBoundingClientRect().width) : 0,
+               欄幅: Math.round(r.querySelector("#examPaper").clientWidth) };
+    });
+    見(m4.札 === "紙のまま", "★ スマホは はじめから 折り返して 読む（札は「紙のまま」）", m4.札);
+    見(m4.後の札 === "読みやすく", "★ 押すと 紙のままに なる", m4.後の札);
+    見(m4.倍率 < 0.8, "紙のままでは 幅に 合わせて 縮める", m4.倍率);
+    見(m4.紙幅 > 0 && m4.紙幅 <= m4.欄幅 + 2, "★ 紙が 欄に 収まる", m4);
+    /* もう一度 押して 折り返しへ 戻す。ここが 読める 大きさ。 */
+    const m5 = await page.evaluate(async () => {
+      const r = __vqew();
+      r.querySelector('.vq2-xr-bot [data-act="reflow"]').click();
+      await new Promise((z) => setTimeout(z, 1600));
+      const d = r.querySelector("#examPaper iframe").contentDocument;
+      const q = d.querySelector(".q-text") || d.body;
+      const pg = d.querySelector(".page");
+      return { 倍率: Number(getComputedStyle(d.body).zoom || 1),
+               字: Math.round(parseFloat(getComputedStyle(q).fontSize)),
+               紙幅: pg ? Math.round(pg.getBoundingClientRect().width) : 0,
+               欄幅: Math.round(r.querySelector("#examPaper").clientWidth) };
+    });
+    見(Math.abs(m5.倍率 - 1) < 0.01, "★ 折り返しでは 縮めない（倍率 1）", m5.倍率);
+    見(m5.字 >= 12, "★ 文字が 読める 大きさ（46%＝5pt に しない）", m5.字 + "px");
+    見(m5.紙幅 <= m5.欄幅 + 2, "★ 折り返しでも 欄に 収まる", m5);
+    await page.setViewportSize({ width: 1440, height: 950 });
+    await 待(1500);
+    const pc = await page.evaluate(() => {
+      const r = __vqew();
+      const f = r.querySelector("#examPaper iframe");
+      const d = f && f.contentDocument;
+      return { 倍率: d ? Number(getComputedStyle(d.body).zoom || 1) : 0,
+               両方: !r.querySelector(".vq2-xr-left").hidden && !r.querySelector(".vq2-xr-side").hidden,
+               面帯: r.querySelectorAll("[data-xrpane]").length };
+    });
+    見(Math.abs(pc.倍率 - 1) < 0.01, "★ PC に 戻すと 紙は 100%", pc.倍率);
+    見(pc.両方, "PC は 左右 とも 出る");
+    見(pc.面帯 === 0, "PC では 切り替えの 帯を 出さない");
+  }
+
   節("⑩ 見た目を 1 枚 撮る");
   {
     try {
@@ -453,7 +566,17 @@ const 試験を置く = (id) => {
       await 待(1600);
       const h = await page.$("#vq2-exam-workspace, [id*='vq2-exam-workspace']");
       if (h) await h.screenshot({ path: (process.env.VQ_SHOT || "/tmp") + "/exam-result.png" });
-      見(!!h, "結果画面の 画像を 出した", (process.env.VQ_SHOT || "/tmp") + "/exam-result.png");
+      見(!!h, "結果画面の 画像を 出した（PC）", (process.env.VQ_SHOT || "/tmp") + "/exam-result.png");
+      /* スマホの ぶんも 撮る（紙と 採点の 2 枚）。 */
+      await page.setViewportSize({ width: 390, height: 844 });
+      await 待(1800);
+      const h2 = await page.$("[id*='vq2-exam-workspace']");
+      if (h2) await h2.screenshot({ path: (process.env.VQ_SHOT || "/tmp") + "/exam-result-m1.png" });
+      await page.evaluate(() => __vqew().querySelector('[data-xrpane="side"]').click());
+      await 待(700);
+      const h3 = await page.$("[id*='vq2-exam-workspace']");
+      if (h3) await h3.screenshot({ path: (process.env.VQ_SHOT || "/tmp") + "/exam-result-m2.png" });
+      見(!!h2 && !!h3, "スマホの 画像も 出した（紙 と 採点）");
     } catch (e) { 見(false, "結果画面の 画像を 出した", String(e.message).slice(0, 80)); }
   }
 

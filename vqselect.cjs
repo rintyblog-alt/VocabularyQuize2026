@@ -174,6 +174,59 @@ const 待 = (ms) => new Promise((s) => setTimeout(s, ms));
   });
   見(戻.板 === false && !戻.幕, "広い 画面へ 戻すと ふつうの 一覧に 戻る", 戻);
 
+  節("⑦ 触る 画面（2026-08-31・訴え「モバイルだと システムが 勝ってる」）");
+  {
+    /* ★ 触る 画面の 合図は pointerdown だけでは ない。
+       iOS は touchstart、Android は click で 端末の 一覧が 出る。
+       どれも 止めて、独自の 一覧が **1 回だけ** 開く ことを 見る。 */
+    await page.setViewportSize({ width: 390, height: 800 });
+    await 待(400);
+    const 触 = await page.evaluate(async () => {
+      const rr = document.getElementById("vqMake").shadowRoot;
+      const s = rr.querySelector("select");
+      const 出 = { 止めた: {}, 開いた: {} };
+      function 印(t) {
+        if (t === "touchstart") {
+          const b = s.getBoundingClientRect();
+          const tc = new Touch({ identifier: 1, target: s, clientX: b.left + 5, clientY: b.top + 5 });
+          return new TouchEvent("touchstart", { bubbles: true, cancelable: true, composed: true,
+            touches: [tc], targetTouches: [tc], changedTouches: [tc] });
+        }
+        if (t === "click") return new MouseEvent("click", { bubbles: true, cancelable: true, composed: true });
+        return new PointerEvent("pointerdown", { bubbles: true, cancelable: true, composed: true, button: 0, isPrimary: true });
+      }
+      for (const t of ["pointerdown", "touchstart", "click"]) {
+        window.__vqcsClose();
+        await new Promise((z) => setTimeout(z, 900));
+        const ev = 印(t);
+        s.dispatchEvent(ev);
+        await new Promise((z) => setTimeout(z, 250));
+        出.止めた[t] = ev.defaultPrevented;
+        出.開いた[t] = !!rr.querySelector(".vqcs-menu");
+      }
+      /* 1 回の 操作（3 つ 続けて）で 開くのは 1 回だけ＝開いた まま。 */
+      window.__vqcsClose();
+      await new Promise((z) => setTimeout(z, 900));
+      ["pointerdown", "touchstart", "click"].forEach((t) => s.dispatchEvent(印(t)));
+      await new Promise((z) => setTimeout(z, 300));
+      const m = rr.querySelector(".vqcs-menu");
+      出.続けて開いている = !!m;
+      出.板 = m ? m.classList.contains("is-sheet") : false;
+      window.__vqcsClose();
+      return 出;
+    });
+    見(触.止めた.pointerdown, "★ pointerdown を 止める");
+    見(触.止めた.touchstart, "★ touchstart を 止める（iOS は ここで 端末の 一覧が 出る）");
+    見(触.止めた.click, "★ click を 止める（Android は ここで 出る）");
+    見(触.開いた.pointerdown && 触.開いた.touchstart && 触.開いた.click,
+       "★ どの 合図でも 独自の 一覧が 開く", JSON.stringify(触.開いた));
+    見(触.続けて開いている,
+       "★ 1 回の 操作（3 つ 続けて）でも 開いた まま（開いて すぐ 閉じない）");
+    見(触.板, "狭い 画面なので 下から 出る 板");
+    await page.setViewportSize({ width: 1180, height: 900 });
+    await 待(300);
+  }
+
   節("例外");
   見(例外.length === 0, "画面の 例外 0 件", 例外.slice(0, 3));
 

@@ -1640,6 +1640,36 @@
            そこからホーム等へ移動しても設定が残ってしまうのを防ぐ。 */
         else if (open) { closeIt(); }
       }).observe(document.body, { attributes: true, attributeFilter: ["data-app-tab"] });
+      /* ══ 開いた ときから 設定タブだった 場合（2026-08-31・訴え）════════
+         訴え「まだ 古い方の 導線が 残ってる」
+         ★ 見張りは **変わった とき**しか 動かない。
+           設定タブを 開いた まま 読み込み直すと、
+           古い ページが そのまま 出て、新しい 画面は 一度も 出なかった。
+         ★ 立ち上がりで 1 度 見て、すでに 設定タブなら 開く。 */
+      if (lastTab === "settings" && !open) setTimeout(function () { if (!open) openIt(true); }, 60);
+      /* ══ どの 道から 来ても 新しい 画面に する（最後の 受け皿）════════
+         ★ 上の 見張りは data-app-tab だけを 見る。
+           それを 通さずに 古い 設定を 出す 道が 残っていると、
+           古い ページが そのまま 見えて しまう。
+         ★ 古い ページが **実際に 見えた**ら、そこで 引き取る。
+           道具として 開いた とき（data-vq-legacy-tool）は 触らない。 */
+      var 旧 = document.getElementById("appSettingsPage");
+      if (旧) {
+        var 旧の見え = function () {
+          try {
+            if (document.documentElement.getAttribute("data-vq-legacy-tool") === "1") return;
+            if (open) return;
+            var cs = getComputedStyle(旧);
+            if (cs.display === "none" || cs.visibility === "hidden") return;
+            if (!旧.getClientRects().length) return;
+            openIt(true);
+          } catch (e2) {}
+        };
+        new MutationObserver(旧の見え).observe(旧, {
+          attributes: true, attributeFilter: ["style", "class", "hidden", "aria-hidden"]
+        });
+        setTimeout(旧の見え, 400);
+      }
     } catch (e) {}
   }
 

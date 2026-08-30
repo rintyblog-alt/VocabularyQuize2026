@@ -255,12 +255,37 @@
        隠れて いれば そもそも 押せないので、付けて 困ることは 無い。 */
     select.__vqcs = true;
 
-    select.addEventListener("pointerdown", function (e) {
+    /* ══ 触る 画面では **開く 合図が 違う**（2026-08-31・訴え）════════
+       訴え「モバイルだとさ、独自の ドロップダウンより、システムが 勝ってる」
+       ★ pointerdown を 止めるだけでは 足りない。
+         ・iOS は **touchstart** を 止めないと 端末の 一覧が 出る
+         ・Android は **click** で 出る（pointerdown を 止めても 残る）
+       ★ どの 合図でも 同じ ところへ 入れ、**1 回の 操作で 1 回だけ** 開く
+         （3 つとも 開くと、開いて すぐ 閉じる）。
+       ★ 触った ときは 焦点を 当てない。当てると 端末が 一覧を 出す。 */
+    function 開く合図(e) {
       if (select.disabled) return;
-      if (e.button != null && e.button !== 0) return; // 左クリックのみ
-      e.preventDefault();                              // ネイティブの一覧を抑止
-      try { select.focus(); } catch (x) {}
+      if (e.type === "pointerdown" && e.button != null && e.button !== 0) return;
+      if (e.cancelable) e.preventDefault();
+      var t = Date.now();
+      /* ★ 同じ 1 回の 操作（pointerdown → touchstart → click）を 1 回に まとめる。
+         **開いている 相手が この select の ときだけ** 飛ばす。
+         そうしないと、閉じた あと 700 ミリ秒 以内に もう一度 押しても
+         開かなく なる（実測で 下から 出る 板が 出なく なった）。
+         700 ミリ秒 より あとの 押し直しは これまでどおり 開閉の 切り替え。 */
+      if (cur && cur.select === select && t - (select.__vqcsAt || 0) < 700) return;
+      select.__vqcsAt = t;
+      if (e.type === "touchstart") { try { select.blur(); } catch (x) {} }
+      else { try { select.focus(); } catch (x) {} }
       openMenu(select);
+    }
+    select.addEventListener("pointerdown", 開く合図);
+    select.addEventListener("touchstart", 開く合図, { passive: false });
+    select.addEventListener("click", function (e) {
+      if (select.disabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      開く合図(e);
     });
     // 一部ブラウザの keyboard/クリックで開くのも抑止して独自メニューへ
     select.addEventListener("mousedown", function (e) { e.preventDefault(); });
