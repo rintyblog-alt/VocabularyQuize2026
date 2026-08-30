@@ -121,6 +121,46 @@
     "input[type=number]{min-height:44px}",
     ".hint b{font-weight:700;color:var(--vq-text,#2B2836)}",
 
+    /* 構成案・確認・紙面 */
+    ".sum{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:16px;padding:12px 14px;",
+      "border-radius:14px;background:var(--vq-surface-sunken,#F4F2FB);font-size:13px}",
+    ".sum b{font-size:17px;font-weight:750;margin-right:2px}",
+    ".secs{margin-top:14px;display:grid;gap:10px;max-height:46vh;overflow:auto}",
+    ".sec{border:1px solid var(--vq-border,#E7E4EF);border-radius:14px;padding:12px 14px}",
+    ".sec-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px}",
+    ".sec-h span{font-size:12px;color:var(--vq-text-secondary,#6B6480)}",
+    ".sec-b{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}",
+    ".tag{font-size:11.5px;padding:3px 9px;border-radius:999px;",
+      "background:var(--vq-accent-subtle,#EAE8F7);color:var(--vq-accent-text,#5F5691);font-weight:650}",
+    ".qs{margin-top:8px;display:grid;gap:5px}",
+    ".q{display:flex;align-items:baseline;gap:8px;font-size:12.5px;line-height:1.6}",
+    ".q-n{flex:0 0 auto;font-weight:700;min-width:34px}",
+    ".q-t{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+    ".q-p{flex:0 0 auto;color:var(--vq-text-secondary,#6B6480)}",
+    ".warn{margin-top:12px;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.7;",
+      "background:#FFF6E5;color:#8A5A00}",
+    /* 進み */
+    ".bar{margin-top:18px;height:8px;border-radius:999px;overflow:hidden;",
+      "background:var(--vq-surface-sunken,#F4F2FB)}",
+    ".bar i{display:block;height:100%;background:var(--vq-accent,#756DB3);",
+      "transition:width .3s ease}",
+    ".barn{margin-top:7px;font-size:12.5px;color:var(--vq-text-secondary,#6B6480)}",
+    ".log{margin-top:14px;max-height:34vh;overflow:auto;display:grid;gap:4px;font-size:12.5px;line-height:1.7}",
+    ".log-step,.log-note{color:var(--vq-text-secondary,#6B6480)}",
+    ".log-done{color:#2FA96B;font-weight:650}",
+    ".log-warn{color:#8A5A00}",
+    ".log-err{color:var(--vq-danger-text,#B23A55)}",
+    /* 出す札 */
+    ".outs{margin-top:16px;display:grid;gap:10px}",
+    ".out{display:flex;align-items:center;gap:12px;text-align:left;padding:14px 16px;",
+      "border-radius:14px;border:1px solid var(--vq-border,#E7E4EF);background:var(--vq-surface,#fff);",
+      "min-height:64px}",
+    ".out:hover{border-color:var(--vq-border-focus,#9A8CE0);background:var(--vq-accent-subtle,#EAE8F7)}",
+    ".out .i{width:24px;height:24px;color:var(--vq-accent-text,#5F5691)}",
+    ".out b{display:block;font-size:14.5px;font-weight:700}",
+    ".out small{display:block;font-size:12px;color:var(--vq-text-secondary,#6B6480);margin-top:2px}",
+    ".btn.dan{background:var(--vq-danger,#C0392B);border-color:var(--vq-danger,#C0392B);color:#fff}",
+
     ".prev{margin-top:4px;border:1px solid var(--vq-border,#E7E4EF);border-radius:14px;",
       "padding:16px 18px;background:var(--vq-surface-sunken,#F9F8FD);",
       "display:flex;flex-direction:column;gap:8px;min-height:150px}",
@@ -240,7 +280,16 @@
     画面: "",              /* "" | 選ぶ | 表紙 | 条件 */
     err: "",
     表紙: 既定の表紙(),
-    条件: 既定の条件()
+    条件: 既定の条件(),
+    資料: [],              /* {name, mimeType, data(base64), size} */
+    枠: null,              /* MC.plan の 結果（構成案） */
+    進み: null,            /* {done,total,made,madeTotal,stage} */
+    記録: [],              /* 作っている あいだの ことば */
+    結果: null,            /* MR.run の 結果 */
+    spec: null,            /* できあがった 試験 */
+    走っている: false,
+    止めたい: false,
+    保存した: false
   };
 
   /* ── 器 ──────────────────────────────────────────────────────── */
@@ -269,7 +318,11 @@
     try {
       h += st.画面 === "選ぶ" ? 選ぶ中身()
          : st.画面 === "表紙" ? 表紙の中身()
-         : 条件の中身();
+         : st.画面 === "条件" ? 条件の中身()
+         : st.画面 === "構成案" ? 構成案の中身()
+         : st.画面 === "生成" ? 生成の中身()
+         : st.画面 === "確認" ? 確認の中身()
+         : 紙面の中身();
       描けなかった = "";
     } catch (e) {
       描けなかった = String((e && e.message) || e).slice(0, 200);
@@ -421,6 +474,184 @@
     return h;
   }
 
+  /* ══ ④ 構成案 ═══════════════════════════════════════════════════════
+     **AI を 呼ぶ前に**「どの 大問に 何を 何問 出すか」を 見せる。
+     ここは コードが 決める（MC.plan）。AI に 枠を 決めさせない。 */
+  function 構成案の中身() {
+    var p2 = st.枠;
+    var h = '<div class="hd">'
+      + '<button class="ib" data-a="back-cond" aria-label="条件へ戻る">' + svg("back") + "</button>"
+      + '<div><div class="ttl">この構成で 作ります</div>'
+      + '<div class="sub">問題を 作る前に 枠を 決めました。'
+      + "配点は ここから 増えも 減りも しません。</div></div>"
+      + '<div class="sp"></div>'
+      + '<button class="ib" data-a="close" aria-label="閉じる">' + svg("x") + "</button></div>";
+    if (!p2) return h + '<div class="err">構成案を 作れませんでした。</div>'
+      + '<div class="ft"><button class="btn" data-a="back-cond">条件へ戻る</button></div>';
+
+    h += '<div class="sum">'
+      + '<span><b>' + esc(p2.sections.length) + "</b> 大問</span>"
+      + '<span><b>' + esc(p2.totalQuestions) + "</b> 問</span>"
+      + '<span><b>' + esc(p2.totalPoints) + "</b> 点</span>"
+      + '<span>' + esc(st.条件.durationMinutes) + " 分</span></div>";
+
+    (p2.issues || []).forEach(function (i) {
+      h += '<div class="' + (i.severity === "high" ? "err" : "warn") + '">' + esc(i.message) + "</div>";
+    });
+
+    h += '<div class="secs">';
+    p2.sections.forEach(function (sec) {
+      var 内訳 = {};
+      (sec.questions || []).forEach(function (q) {
+        var n = 形式名(q.type); 内訳[n] = (内訳[n] || 0) + 1;
+      });
+      h += '<div class="sec"><div class="sec-h"><b>大問 ' + esc(sec.number) + "</b>"
+        + '<span>' + esc((sec.questions || []).length) + " 問 ・ "
+        + esc(sec.points != null ? sec.points : "-") + " 点</span></div>"
+        + '<div class="sec-b">'
+        + Object.keys(内訳).map(function (k) {
+            return '<span class="tag">' + esc(k) + " " + 内訳[k] + "</span>";
+          }).join("")
+        + "</div></div>";
+    });
+    h += "</div>";
+
+    if (st.資料.length) {
+      h += '<p class="hint">資料 ' + st.資料.length + " 件を そのまま 渡します（要点だけを 抜き出しません）。</p>";
+    } else {
+      h += '<p class="hint">資料は 付いていません。上で 書いた 指示だけで 作ります。</p>';
+    }
+    if (st.err) h += '<div class="err">' + esc(st.err) + "</div>";
+    h += '<div class="ft">'
+      + '<button class="btn" data-a="back-cond">条件を 直す</button>'
+      + '<button class="btn pri" data-a="gen">この構成で 問題を 作る</button></div>';
+    return h;
+  }
+
+  /* ══ ⑤ 生成 ═══════════════════════════════════════════════════════ */
+  function 生成の中身() {
+    var pr = st.進み || { done: 0, total: 1, made: 0, madeTotal: 0, stage: "" };
+    var 割 = pr.madeTotal ? Math.round((pr.made / pr.madeTotal) * 100) : 0;
+    var h = '<div class="hd"><div><div class="ttl">問題を 作っています</div>'
+      + '<div class="sub">' + esc(pr.stage || "はじめています…") + "</div></div>"
+      + '<div class="sp"></div></div>';
+    h += '<div class="bar"><i style="width:' + 割 + '%"></i></div>'
+      + '<div class="barn">' + esc(pr.made) + " / " + esc(pr.madeTotal) + " 問"
+      + (pr.total > 1 ? "　（" + esc(pr.done) + " / " + esc(pr.total) + " 回）" : "") + "</div>";
+    h += '<div class="log">'
+      + st.記録.slice(-14).map(function (r) {
+          return '<div class="log-' + esc(r.k) + '">' + esc(r.t) + "</div>";
+        }).join("")
+      + "</div>";
+    if (st.err) h += '<div class="err">' + esc(st.err) + "</div>";
+    h += '<div class="ft">'
+      + (st.走っている
+          ? '<button class="btn dan" data-a="stop">やめる</button>'
+          : '<button class="btn" data-a="back-plan">構成案へ戻る</button>')
+      + "</div>";
+    return h;
+  }
+
+  /* ══ ⑥ 確認 ═══════════════════════════════════════════════════════ */
+  function 確認の中身() {
+    var sp = st.spec;
+    var h = '<div class="hd"><div><div class="ttl">できました</div>'
+      + '<div class="sub">中身を 確かめてから 紙面に します。</div></div>'
+      + '<div class="sp"></div>'
+      + '<button class="ib" data-a="close" aria-label="閉じる">' + svg("x") + "</button></div>";
+    if (!sp) return h + '<div class="err">試験が ありません。</div>'
+      + '<div class="ft"><button class="btn" data-a="back-cond">条件へ戻る</button></div>';
+
+    var 問数 = (sp.sections || []).reduce(function (a, x) { return a + (x.questions || []).length; }, 0);
+    h += '<div class="sum">'
+      + '<span><b>' + esc((sp.sections || []).length) + "</b> 大問</span>"
+      + '<span><b>' + esc(問数) + "</b> 問</span>"
+      + '<span><b>' + esc(sp.totalPoints) + "</b> 点</span>"
+      + '<span>' + esc(sp.durationMinutes) + " 分</span></div>";
+
+    var 足 = st.結果 && st.結果.planned > st.結果.accepted;
+    if (足) {
+      h += '<div class="warn">頼んだ ' + esc(st.結果.planned) + " 問のうち "
+        + esc(st.結果.accepted) + " 問できました。"
+        + "できたぶんは そのまま 残してあります。</div>";
+    }
+    (st.記録 || []).filter(function (r) { return r.k === "err" || r.k === "warn"; })
+      .slice(-4).forEach(function (r) {
+        h += '<div class="' + (r.k === "err" ? "err" : "warn") + '">' + esc(r.t) + "</div>";
+      });
+
+    h += '<div class="secs">';
+    (sp.sections || []).forEach(function (sec) {
+      h += '<div class="sec"><div class="sec-h"><b>大問 ' + esc(sec.number) + "　"
+        + esc(sec.title || "") + "</b>"
+        + '<span>' + esc((sec.questions || []).length) + " 問 ・ " + esc(sec.points) + " 点</span></div>"
+        + '<div class="qs">';
+      (sec.questions || []).slice(0, 40).forEach(function (q) {
+        h += '<div class="q"><span class="q-n">問' + esc(q.number) + "</span>"
+          + '<span class="q-t">' + esc(String(q.prompt || "").slice(0, 90)) + "</span>"
+          + '<span class="tag">' + esc(形式名(q.type)) + "</span>"
+          + '<span class="q-p">' + esc(q.points) + "</span></div>";
+      });
+      h += "</div></div>";
+    });
+    h += "</div>";
+
+    if (st.err) h += '<div class="err">' + esc(st.err) + "</div>";
+    h += '<div class="ft">'
+      + '<button class="btn" data-a="regen">作り直す</button>'
+      + (足 ? '<button class="btn" data-a="refill">足りないぶんを 作る</button>' : "")
+      + '<button class="btn" data-a="save">保存する</button>'
+      + '<button class="btn pri" data-a="paper">紙面へ</button></div>';
+    return h;
+  }
+
+  /* ══ ⑦ 紙面・受験 ═════════════════════════════════════════════════ */
+  function 紙面の中身() {
+    var sp = st.spec;
+    var h = '<div class="hd">'
+      + '<button class="ib" data-a="back-check" aria-label="確認へ戻る">' + svg("back") + "</button>"
+      + '<div><div class="ttl">紙面と 受験</div>'
+      + '<div class="sub">表紙・問題用紙・解答用紙は 選んだ型で 組みます。</div></div>'
+      + '<div class="sp"></div>'
+      + '<button class="ib" data-a="close" aria-label="閉じる">' + svg("x") + "</button></div>";
+    if (!sp) return h + '<div class="err">試験が ありません。</div>';
+
+    h += '<div class="form">'
+      + '<div class="row two">'
+      + 選び欄("問題用紙の型", "layoutMode", st.条件.layoutMode, 紙面の型())
+      + 選び欄("解答用紙の型", "answerSheetMode", st.条件.answerSheetMode, 解答用紙の型())
+      + "</div>"
+      + '<p class="hint">ここに 出ているのは <b>実際に 組める型だけ</b>です。'
+      + "選べば 必ず 紙面が 変わります。</p></div>";
+
+    h += '<div class="outs">'
+      + 出す札("表紙つき 問題用紙", "冊子の 1 ページ目が 表紙に なります", "print-q")
+      + 出す札("解答用紙", "問題と 番号・欄の 形が そろっています", "print-a")
+      + 出す札("解答例", "答えと 解説", "print-k")
+      + "</div>";
+
+    if (st.err) h += '<div class="err">' + esc(st.err) + "</div>";
+    h += '<div class="ft">'
+      + '<button class="btn" data-a="save">' + (st.保存した ? "保存ずみ" : "保存する") + "</button>"
+      + '<button class="btn pri" data-a="exam">受験する</button></div>';
+    return h;
+  }
+  function 出す札(名, 説, act) {
+    return '<button class="out" data-a="' + esc(act) + '">' + svg("paper", "i")
+      + '<span><b>' + esc(名) + "</b><small>" + esc(説) + "</small></span></button>";
+  }
+
+  function 形式名(id) {
+    var f = 形式.filter(function (x) { return x.id === id; })[0];
+    if (f) return f.label;
+    try {
+      var Q = window.VQ2 && window.VQ2.qtypes;
+      var d = Q && Q.get ? Q.get(id) : null;
+      if (d) return d.shortName || d.name || String(id);
+    } catch (e) {}
+    return String(id || "");
+  }
+
   function 数欄(名, key, v, 小, 大) {
     return '<div class="row"><label for="vm-' + esc(key) + '">' + esc(名) + "</label>"
       + '<input id="vm-' + esc(key) + '" type="number" inputmode="numeric" data-n="' + esc(key)
@@ -504,6 +735,17 @@
         return;
       }
       if (a === "run") { 作りに行く(); return; }
+      if (a === "back-cond") { st.err = ""; 開く("条件"); return; }
+      if (a === "back-plan") { st.err = ""; 開く("構成案"); return; }
+      if (a === "back-check") { st.err = ""; 開く("確認"); return; }
+      if (a === "gen") { 生成する(); return; }
+      if (a === "regen") { st.err = ""; 開く("構成案"); return; }
+      if (a === "refill") { 生成する({ refill: true }); return; }
+      if (a === "stop") { st.止めたい = true; 記す("note", "止めています…"); 描く(); return; }
+      if (a === "save") { 保存する(); return; }
+      if (a === "paper") { st.err = ""; 開く("紙面"); return; }
+      if (a === "print-q" || a === "print-a" || a === "print-k") { 紙面を出す(a); return; }
+      if (a === "exam") { 受験する(); return; }
     });
     root.addEventListener("change", function (e) {
       var t = e.target;
@@ -580,44 +822,246 @@
        作業場は Quick Mock の 仕組みを そのまま 使う。作り直すと
        作りかけの 保存・巡回・資料の 受け渡し・台帳が 落ちるため。
      ★ **決めたことは 全部 持って行く。** 向こうで もう一度 聞かせない。 */
+  /* ══ ③ → ④ 枠を 決める ═══════════════════════════════════════════
+     ★ 枠（どの 大問に 何を 何問）は **コードが 決める**（MC.plan）。
+       AI に 決めさせない。だから 頼んだ数と 満点が 必ず 合う。 */
   function 作りに行く() {
-    var V = VQ2();
-    if (!V || !V.quickMock || !V.quickMock.open) {
-      st.err = "まだ 準備が できていません。少し 待ってから もう一度 押してください。";
-      描く();
-      return;
-    }
     var c = st.条件;
     var 選 = 形式.filter(function (x) { return c.types[x.id]; }).length;
     if (!選) { st.err = "形式は 1 つ以上 選んでください。"; 描く(); return; }
-
+    var V = VQ2();
+    var MC = V && V.mockCompiler;
+    if (!MC || !MC.plan) {
+      st.err = "問題を 作る 部品が まだ 読み込まれていません。少し 待ってから もう一度 押してください。";
+      描く();
+      return;
+    }
     var 表紙 = 表紙を固める();
-    var 設定 = {
-      title: 表紙.examName,
-      subject: 表紙.subject,
-      kind: c.kind,
-      durationMinutes: c.durationMinutes,
-      totalPoints: c.totalPoints,
-      sectionCount: c.sectionCount,
-      questionCount: c.questionCount,
-      difficulty: c.difficulty,
-      types: JSON.parse(JSON.stringify(c.types)),
-      layoutMode: c.layoutMode,
-      answerSheetMode: c.answerSheetMode,
-      examStandard: true
-    };
-    閉じる();
+    var p2;
     try {
-      V.quickMock.open({
-        kind: "exam",
-        cover: 表紙,
-        settings: 設定,
-        instruction: String(c.instruction || ""),
-        /* 資料を 付けたい人が いるので、**勝手には 作り始めない**。
-           向こうの 画面で「作る」を 押してもらう。ただし 条件は 全部 入っている。 */
-        autoRun: false
+      p2 = MC.plan({
+        title: 表紙.examName, subject: 表紙.subject,
+        durationMinutes: c.durationMinutes, totalPoints: c.totalPoints,
+        sectionCount: c.sectionCount, questionCount: c.questionCount,
+        types: c.types, difficulty: c.difficulty,
+        allowExternalKnowledge: st.資料.length === 0,
+        requireSources: st.資料.length > 0
       });
-    } catch (e) {}
+    } catch (e) {
+      st.err = "この条件では 枠を 作れませんでした：" + String((e && e.message) || e).slice(0, 120);
+      描く();
+      return;
+    }
+    var 重 = (p2.issues || []).filter(function (i) { return i.severity === "high"; });
+    st.枠 = p2;
+    st.err = 重.length ? 重[0].message : "";
+    開く("構成案");
+  }
+
+  /* ══ ④ → ⑤ 実際に 作る ═══════════════════════════════════════════
+     ★ 生成そのものは **サーバ（Groq / Gemini）**。この端末では 作らない。
+     ★ 枠に 入らなかったものは 捨てる（MR.run の gate）。水増ししない。 */
+  function 記す(k, t) {
+    st.記録.push({ k: k, t: String(t).slice(0, 200) });
+    if (st.記録.length > 60) st.記録 = st.記録.slice(-60);
+  }
+  function 生成する(o) {
+    o = o || {};
+    var V = VQ2();
+    var MC = V && V.mockCompiler, MR = V && V.mockCompilerRun, G = V && V.aigen;
+    if (!MC || !MR) { st.err = "問題を 作る 部品が ありません。"; 描く(); return; }
+    if (!G || !G.generateQuestions) {
+      st.err = "問題を 作るには ログインが 必要です。"; 描く(); return;
+    }
+    var c = st.条件, 表紙 = 表紙を固める();
+    var p2 = o.refill && st.結果 ? st.結果.plan : st.枠;
+    if (!p2) { st.err = "構成案が ありません。"; 描く(); return; }
+
+    st.走っている = true; st.止めたい = false; st.err = "";
+    if (!o.refill) { st.記録 = []; st.結果 = null; st.spec = null; st.保存した = false; }
+    st.進み = { done: 0, total: 1, made: 0, madeTotal: p2.totalQuestions, stage: "枠を 決めました" };
+    記す("step", "大問 " + p2.sections.length + " ・ 全 " + p2.totalQuestions
+      + " 問の 枠を 先に 決めました（配点の 合計 " + p2.totalPoints + " 点）");
+    開く("生成");
+
+    var 依頼文 = 依頼を組む(c, 表紙, p2);
+    var 資料 = st.資料.map(function (f) { return { mimeType: f.mimeType, data: f.data }; });
+    var 資料を言った = false;
+
+    MR.run({
+      plan: p2,
+      filled: o.refill && st.結果 ? st.結果.filled : null,
+      label: "vq-make",
+      onStage: function (name) {
+        if (st.進み) st.進み.stage = 段の名(name);
+        描く();
+      },
+      onProgress: function (pr) {
+        st.進み = {
+          done: (pr && pr.done) || 0,
+          total: (pr && pr.total) || 1,
+          made: (pr && typeof pr.filled === "number") ? pr.filled : ((pr && pr.made) || 0),
+          madeTotal: (pr && pr.total2) || p2.totalQuestions,
+          stage: (st.進み && st.進み.stage) || "問題を 作っています"
+        };
+        描く();
+      },
+      generate: function (req, cx) {
+        if (st.止めたい) return Promise.reject(Object.assign(new Error("cancelled"), { cancelled: true }));
+        /* 枠が 決めている 形式を そのまま 渡す。渡さないと 既定の 混合が 返る。 */
+        var types = [], plan2 = {};
+        try {
+          var Q = V.qtypes;
+          (req.slots || []).forEach(function (sl) {
+            var t = sl && sl.type; if (!t) return;
+            try { t = (Q && Q.engineOf) ? (Q.engineOf(t) || t) : t; } catch (e) {}
+            if (types.indexOf(t) < 0) types.push(t);
+            plan2[t] = (plan2[t] || 0) + 1;
+          });
+        } catch (e) {}
+        if (資料.length && !資料を言った) {
+          資料を言った = true;
+          記す("note", "資料 " + 資料.length + " 件を そのまま 渡します");
+        }
+        var 頼み = {
+          prompt: (cx && cx.prompt) ? cx.prompt + "\n\n" + 依頼文 : 依頼文,
+          count: (req.slots || []).length,
+          questionTypes: types.length ? types : undefined,
+          questionPlan: Object.keys(plan2).length ? plan2 : undefined,
+          files: 資料.length ? 資料 : undefined
+        };
+        var 呼 = G.generateQuestionsTracked ? G.generateQuestionsTracked(頼み) : G.generateQuestions(頼み);
+        return 呼.then(function (r) {
+          (r.warnings || []).forEach(function (w) { if (w) 記す("warn", w); });
+          if (r.status === "contradictory" || r.status === "unsupported") 記す("warn", r.reason || "");
+          return r;
+        }, function (e) {
+          /* **この端末へは 落とさない。** 理由を 言って 止める。 */
+          var m = (e && e.userMessage) || (e && e.message) || "問題を 作れませんでした。";
+          記す("err", m);
+          throw e;
+        });
+      }
+    }).then(function (res) {
+      st.走っている = false;
+      st.結果 = res;
+      仕上げる(res, 表紙);
+    }).catch(function (e) {
+      st.走っている = false;
+      if (e && e.cancelled) { 記す("note", "止めました"); st.err = ""; 描く(); return; }
+      st.err = (e && e.userMessage) || (e && e.message) || "問題を 作れませんでした。";
+      記す("err", st.err);
+      描く();
+    });
+  }
+
+  function 段の名(n) {
+    var 表 = { plan: "枠を 決めています", request: "問題を 頼んでいます",
+               generate: "問題を 作っています", gate: "枠に 合うか 見ています",
+               assemble: "組み立てています", verify: "確かめています",
+               finalize: "配点を 合わせています" };
+    return 表[String(n)] || "作っています";
+  }
+
+  /* 依頼文。**表紙と 条件で 決めたことを 言葉に する。** */
+  function 依頼を組む(c, 表紙, p2) {
+    var 行 = [];
+    if (表紙.subject) 行.push(表紙.subject + " の 試験です。");
+    if (表紙.examName) 行.push("試験名は「" + 表紙.examName + "」。");
+    行.push("大問 " + p2.sections.length + " ・ 全 " + p2.totalQuestions + " 問、満点 "
+      + p2.totalPoints + " 点、試験時間 " + c.durationMinutes + " 分。");
+    var d = { easy: "やさしめに", hard: "難しめに", mixed: "難易を 混ぜて" }[c.difficulty];
+    if (d) 行.push(d + " 作ってください。");
+    /* ★ 試験の 標準は 頭を 使う 問題（2026-08-30・訴え）。 */
+    行.push("単語や 年号を 1 問 1 答で 答えるだけの 問題に 寄せないでください。"
+      + "本文の 空欄を 複数 補う 問題（語群あり・語群なしの 両方）、"
+      + "「〜字以内で まとめよ」のように 字数を 指定して 書かせる 記述、"
+      + "資料を 読み取って 考えさせる 問題を 必ず 混ぜてください。"
+      + "記述には 採点の 基準を 付けてください。");
+    if (String(c.instruction || "").trim()) 行.push(String(c.instruction).trim());
+    if (!st.資料.length) 行.push("資料は ありません。上の 指示だけで 作ってください。");
+    return 行.join("\n");
+  }
+
+  /* ⑤ → ⑥ できたものを 試験に する。**足りないぶんを 黙って 埋めない。** */
+  function 仕上げる(res, 表紙) {
+    var got = res.accepted, want = res.planned;
+    if (!got) {
+      st.err = (res.errors && res.errors[0] && res.errors[0].message)
+        || "1 問も 作れませんでした。条件を 変えて もう一度 お試しください。";
+      記す("err", st.err);
+      描く();
+      return;
+    }
+    var sp = res.spec;
+    if (!sp) { st.err = "作れた 問題を 試験に できませんでした。"; 描く(); return; }
+    /* 表紙・紙面の 型・時間を 載せる（ここでしか 入らない）。 */
+    sp.cover = 表紙;
+    sp.durationMinutes = st.条件.durationMinutes;
+    if (st.条件.layoutMode !== "current" || st.条件.answerSheetMode !== "current") {
+      sp.layout = {
+        layoutMode: st.条件.layoutMode,
+        answerSheetMode: st.条件.answerSheetMode,
+        outputEngine: "current",
+        layoutSeed: "vqmake-" + String(Date.now()).slice(-8)
+      };
+    }
+    st.spec = sp;
+    記す("done", got + " 問 できました（配点の 合計 " + res.plan.totalPoints + " 点）");
+    if (got < want) 記す("warn", want + " 問のうち " + got + " 問できました。");
+    (res.issues || []).filter(function (i) { return i.severity === "high"; })
+      .forEach(function (i) { 記す("err", i.message); });
+    st.err = "";
+    開く("確認");
+  }
+
+  /* ⑥ 保存 */
+  function 保存する() {
+    var V = VQ2(), ST = V && V.store;
+    if (!st.spec) { st.err = "保存する 試験が ありません。"; 描く(); return; }
+    if (!ST || !ST.mocks) { st.err = "保存の 部品が ありません。"; 描く(); return; }
+    try {
+      var r = ST.mocks.put({ id: st.spec.id, ownerId: ST.currentOwnerId(), spec: st.spec });
+      if (r && r.ok === false) { st.err = r.message || "保存できませんでした。"; 描く(); return; }
+      st.保存した = true; st.err = "";
+      記す("done", "保存しました");
+    } catch (e) { st.err = "保存できませんでした：" + String((e && e.message) || e).slice(0, 100); }
+    描く();
+  }
+
+  /* ⑦ 紙面を 出す */
+  function 紙面を出す(kind) {
+    var V = VQ2(), L = V && V.layout, R = V && V.pdfRenderer;
+    if (!st.spec || !L || !R) { st.err = "紙面の 部品が ありません。"; 描く(); return; }
+    /* 選び直した 型を 反映してから 組む。 */
+    if (st.条件.layoutMode !== "current" || st.条件.answerSheetMode !== "current") {
+      st.spec.layout = {
+        layoutMode: st.条件.layoutMode, answerSheetMode: st.条件.answerSheetMode,
+        outputEngine: "current",
+        layoutSeed: (st.spec.layout && st.spec.layout.layoutSeed) || ("vqmake-" + String(Date.now()).slice(-8))
+      };
+    } else { delete st.spec.layout; }
+    var plan2;
+    try { plan2 = L.buildPlan(st.spec); }
+    catch (e) { st.err = "紙面を 組めませんでした。"; 描く(); return; }
+    var 欲 = kind === "print-a" ? "answer-sheet" : kind === "print-k" ? "answer-key" : "question";
+    var b = (plan2.booklets || []).filter(function (x) { return x.kind === 欲; })[0];
+    if (!b) { st.err = "その 紙面は ありません。"; 描く(); return; }
+    try { R.printBooklet(st.spec, plan2, b.id); st.err = ""; }
+    catch (e) { st.err = "紙面を 出せませんでした。"; }
+    描く();
+  }
+
+  /* ⑦ 受験する */
+  function 受験する() {
+    var V = VQ2();
+    if (!st.spec) { st.err = "受験する 試験が ありません。"; 描く(); return; }
+    if (!V || !V.examWorkspace || !V.examWorkspace.open) {
+      st.err = "受験の 画面が ありません。"; 描く(); return;
+    }
+    if (!st.保存した) 保存する();
+    閉じる();
+    try { V.examWorkspace.open({ spec: st.spec }); } catch (e) {}
   }
 
   /* ── 外へ 出す 口 ─────────────────────────────────────────── */
@@ -635,6 +1079,16 @@
       return { 画面: st.画面, err: st.err,
                表紙: JSON.parse(JSON.stringify(st.表紙)),
                条件: JSON.parse(JSON.stringify(st.条件)),
+               枠: st.枠 ? { 大問: st.枠.sections.length, 問: st.枠.totalQuestions,
+                             点: st.枠.totalPoints } : null,
+               進み: st.進み, 走っている: st.走っている,
+               できた: st.spec ? {
+                 大問: (st.spec.sections || []).length,
+                 問: (st.spec.sections || []).reduce(function (a, x) { return a + (x.questions || []).length; }, 0),
+                 点: st.spec.totalPoints, 表紙あり: !!st.spec.cover
+               } : null,
+               保存した: st.保存した,
+               記録: st.記録.slice(-8),
                描けなかった: 描けなかった };
     },
     表紙を入れる: function (c) {

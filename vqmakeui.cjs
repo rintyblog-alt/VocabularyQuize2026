@@ -235,8 +235,7 @@ const 打つ = (page, f, v) => page.evaluate(([f2, v2]) => {
   });
   見(型一覧.indexOf("common-test") >= 0, "C-6 紙面に「共通テスト風」が選べる", 型一覧.slice(0, 8));
 
-  節("段⑥ 条件を持って 作業場へ");
-  /* 形式を 選び直してから 作りに 行く */
+  節("段⑥ ④ 構成案（AI を 呼ぶ前に 枠を 見せる）");
   await a.page.evaluate(() => {
     const r = document.getElementById("vqMake").shadowRoot;
     ["long_answer", "fill_blank", "multiple_choice_single"].forEach((id) => {
@@ -246,45 +245,81 @@ const 打つ = (page, f, v) => page.evaluate(([f2, v2]) => {
   });
   await 待(400);
   await 押す(a.page, "run");
-  await 待(3500);
+  await 待(1200);
   s = await 状態(a.page);
-  見(s.画面 === "", "M-8 入口は閉じる", s.画面);
-  const 開いた = await a.page.evaluate(() => {
-    /* Quick Mock は U.mount で 立つ。器の id で 見る。 */
-    return !!document.querySelector('[data-mount="vq2-quick-mock"], #vq2-quick-mock, .vq2-overlay');
-  });
-  見(開いた, "M-8b Quick Mock が開く", 開いた);
+  見(s.画面 === "構成案", "P-1 条件のあと **構成案**へ行く（Quick Mock ではない）", s.画面);
+  見(!!s.枠 && s.枠.大問 >= 1 && s.枠.問 >= 1, "P-2 枠が できている", s.枠);
+  見(s.枠 && s.枠.点 === s.条件.totalPoints, "P-3 配点の合計が 満点と 合う",
+     { 枠: s.枠 && s.枠.点, 満点: s.条件.totalPoints });
+  const 構 = await 影(a.page);
+  見(/大問 1/.test(構), "P-4 大問ごとの 内訳が 出る", 構.slice(0, 120));
 
-  節("段⑥b 表紙が Quick Mock まで 届いている");
-  const 届 = await a.page.evaluate(() => {
-    /* 画面の 中の 状態は 外から 見えないので、**同じ道**を 通して 確かめる。
-       quickMock.open({cover}) が 設定へ 引き継ぐことを 見る。 */
-    try {
-      const V = window.VQ2;
-      if (!V || !V.quickMock) return { ok: false, why: "quickMock が 無い" };
-      /* 表紙が 紙面まで 通ることは vqpaper.cjs が 見ている。
-         ここでは **入口 → 生成画面** の 引き継ぎだけ 見る。 */
-      /* 引き継いだ ものは **入力欄の 値**に 入る（文字として 出るのでは ない）。
-         器は 影の DOM の ことが あるので、そちらも 見る。 */
-      const m = document.getElementById("vq2-quick-mock");
-      const scope = (m && m.shadowRoot) || m;
-      if (!scope) return { ok: false, why: "器が 無い" };
-      const 値 = Array.from(scope.querySelectorAll("input")).map((x) => String(x.value || ""));
-      return { ok: true,
-               名前が出ている: 値.some((v) => v.indexOf("2026年度 2学期 中間考査") >= 0),
-               教科が出ている: 値.some((v) => v.indexOf("物理基礎") >= 0),
-               値: 値.slice(0, 4) };
-    } catch (e) { return { ok: false, why: String(e.message) }; }
-  });
-  見(届.ok && 届.名前が出ている, "M-8c 表紙の名前が 生成画面へ 引き継がれる", 届);
-  見(届.ok && 届.教科が出ている, "M-8d 教科名が 生成画面へ 引き継がれる", 届);
+  節("段⑥b ⑤ 生成（実際に サーバで 作る）");
+  await 押す(a.page, "gen");
+  await 待(1500);
+  s = await 状態(a.page);
+  見(s.画面 === "生成", "P-5 生成の 画面へ 行く", s.画面);
+  見(!!s.進み, "P-6 進み具合の 入れ物が ある", s.進み);
+  /* 実際に できるまで 待つ（最大 4 分） */
+  let 終 = null;
+  for (let i = 0; i < 120; i++) {
+    s = await 状態(a.page);
+    if (s.画面 === "確認" || (!s.走っている && s.err)) { 終 = s; break; }
+    await 待(2000);
+  }
+  s = await 状態(a.page);
+  見(s.画面 === "確認", "P-7 **問題が できて 確認の 画面へ 行く**",
+     { 画面: s.画面, err: s.err, 記録: (s.記録 || []).slice(-3) });
+  if (s.画面 !== "確認") {
+    console.log("     生成の ことば:", JSON.stringify(s.記録));
+  } else {
+    見(s.できた && s.できた.問 >= 1, "P-8 問題が 1 問以上 できている", s.できた);
+    見(s.できた && s.できた.表紙あり, "P-9 表紙が 試験に 載っている", s.できた);
+    見(s.できた && s.できた.点 === s.条件.totalPoints, "P-10 満点が 合っている",
+       { できた: s.できた && s.できた.点, 満点: s.条件.totalPoints });
 
-  /* ── 段⑥c について ────────────────────────────────────────────
-     「試験の 標準は 頭を使う 問題」は 実装したが、**ここでは 測れていない。**
-     形式を 選ぶ ところは 畳まれた 中に あり、開くまで DOM に 出ない
-     （data-type の 印が 0 件。まとめの 文も 出ない）。
-     無理に 当たりそうな 語で 判定すると「通ったふり」に なるので 置かない。
-     測るなら 設定の 中身を 外へ 出す 口が 要る。**未検証と 書き残す。** */
+    節("段⑥c ⑥ 確認 → 保存");
+    await 押す(a.page, "save");
+    await 待(1200);
+    s = await 状態(a.page);
+    見(s.保存した === true, "P-11 保存できる", { 保存: s.保存した, err: s.err });
+
+    節("段⑥d ⑦ 紙面");
+    await 押す(a.page, "paper");
+    await 待(800);
+    s = await 状態(a.page);
+    見(s.画面 === "紙面", "P-12 紙面の 段へ 行く", s.画面);
+    const 紙 = await 影(a.page);
+    ["問題用紙の型", "解答用紙の型", "表紙つき 問題用紙", "解答用紙", "解答例"].forEach((t) => {
+      見(紙.indexOf(t) >= 0, "P-13 紙面に「" + t + "」がある");
+    });
+    /* 実際に 組めるか（窓は 開かせず、組み立てだけ 確かめる） */
+    const 組 = await a.page.evaluate(() => {
+      try {
+        const V = window.VQ2, ST = V.store;
+        const 並 = ST.mocks.list() || [];
+        const 本 = 並[0]; const sp = 本 && (本.spec || 本);
+        if (!sp) return { ok: false, why: "保存された 試験が 無い" };
+        const plan = V.layout.buildPlan(sp);
+        const html = V.pdfRenderer.buildHtml(sp, plan, {});
+        return { ok: true, 表紙: /data-cover="1"/.test(html),
+                 冊子: (plan.booklets || []).map((b) => b.kind),
+                 欄: (html.match(/data-binding="/g) || []).length };
+      } catch (e) { return { ok: false, why: String(e.message).slice(0, 120) }; }
+    });
+    見(組.ok && 組.表紙, "P-14 保存した試験から **表紙つきの紙面**が 組める", 組);
+    見(組.ok && 組.冊子.indexOf("answer-sheet") >= 0, "P-15 解答用紙が できる", 組.冊子);
+    見(組.ok && 組.欄 >= 1, "P-16 解答欄が 問題ぶん ある", { 欄: 組.欄 });
+  }
+
+  節("段⑥z 昔の 受け渡し（Quick Mock も まだ 開ける）");
+  const 旧 = await a.page.evaluate(() => {
+    try { window.VQ2.quickMock.open({ kind: "exam", cover: { examName: "旧いほう" },
+                                      settings: { title: "旧いほう" } }); return true; }
+    catch (e) { return false; }
+  });
+  await 待(2000);
+  見(旧, "M-8 旧い作業場も まだ 開ける（落としていない）", 旧);
 
   節("段⑦ 幅 375px");
   const b = await 開く(browser, tok, 375);
