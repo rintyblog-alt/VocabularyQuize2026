@@ -1650,6 +1650,11 @@
           if (r.status === "contradictory" || r.status === "unsupported") 記す("warn", r.reason || "");
           /* 「画像1」を 本物の 中身へ 差し替える（知らない 住所は 落とす）。 */
           try { 画像を差し替える(r.questions, 絵); } catch (e2) {}
+          /* ★ 根拠の 名前を そろえる（2026-08-30）。
+             AI は fileName を 落としたり、source / title と 書いたりする。
+             名前が 無いと「資料の どこか」を 指せず、確認あつかいに なる。
+             資料が 1 件しか 無い ときは その 名前で 埋める（迷いようが ない）。 */
+          try { 根拠の名前をそろえる(r.questions); } catch (e3) {}
           return r;
         }, function (e) {
           /* **この端末へは 落とさない。** 理由を 言って 止める。 */
@@ -1668,6 +1673,35 @@
       st.err = (e && e.userMessage) || (e && e.message) || "問題を 作れませんでした。";
       記す("err", st.err);
       描く();
+    });
+  }
+
+  /* 根拠（sourceReferences）の 名前を、添付の 名前へ そろえる。
+     ★ **無い ものを 作らない。** excerpt すら 無い ときは 触らない。 */
+  function 根拠の名前をそろえる(並) {
+    var 名 = st.資料.map(function (f) { return String(f.name || ""); }).filter(Boolean);
+    if (!名.length) return;
+    var 正 = function (v) {
+      var t = String(v || "").trim();
+      if (!t) return "";
+      for (var i = 0; i < 名.length; i++) {
+        if (名[i] === t) return 名[i];
+        if (名[i].indexOf(t) >= 0 || t.indexOf(名[i]) >= 0) return 名[i];
+      }
+      return "";
+    };
+    (並 || []).forEach(function (q) {
+      var refs = Array.isArray(q && q.sourceReferences) ? q.sourceReferences : [];
+      q.sourceReferences = refs.map(function (r) {
+        if (!r || typeof r !== "object") return null;
+        var ex = String(r.excerpt || r.text || r.quote || "").trim();
+        if (!ex) return null;
+        var fn = 正(r.fileName || r.file || r.source || r.name || r.title);
+        if (!fn && 名.length === 1) fn = 名[0];
+        if (!fn) return null;
+        return { fileName: fn, excerpt: ex.slice(0, 400),
+                 page: (r.page != null ? r.page : undefined) };
+      }).filter(Boolean);
     });
   }
 
@@ -1702,10 +1736,18 @@
       + "記述には 採点の 基準を 付けてください。");
     if (String(c.instruction || "").trim()) 行.push(String(c.instruction).trim());
     if (!st.資料.length) 行.push("資料は ありません。上の 指示だけで 作ってください。");
-    else 行.push("添付した 資料が " + st.資料.length + " 件 あります。"
-      + "**その 資料に 書いてあることだけ**を 根拠に して 作ってください。"
-      + "資料に 無いことを 覚えで 書かないでください。"
-      + "資料の 図・表・数値を 読み取らせる 問題を 必ず 混ぜてください。");
+    else {
+      行.push("添付した 資料が " + st.資料.length + " 件 あります。"
+        + "**その 資料に 書いてあることだけ**を 根拠に して 作ってください。"
+        + "資料に 無いことを 覚えで 書かないでください。"
+        + "資料の 図・表・数値を 読み取らせる 問題を 必ず 混ぜてください。");
+      /* ★ 根拠を **形で** 出させる（2026-08-30）。名前が 合わないと
+         「資料の どこか」が 分からず、確認あつかいに なる。 */
+      行.push("問題ごとに、根拠に した ところを 次の 形で 付けてください:"
+        + '\n\u3000"sourceReferences": [{"fileName":"資料の 名前","excerpt":"根拠に した 本文を そのまま 1 文"}]'
+        + "\n\u3000資料の 名前は 次の どれかを **そのまま** 書きます: "
+        + st.資料.map(function (f) { return "「" + (f.name || "資料") + "」"; }).join("・"));
+    }
     return 行.join("\n");
   }
 
@@ -1734,6 +1776,14 @@
     }
     st.spec = sp;
     記す("done", got + " 問 できました（配点の 合計 " + res.plan.totalPoints + " 点）");
+    /* ★ 根拠が 付いていない ぶんは **捨てずに 数で 言う**（2026-08-30）。
+       前は ここで 全部 捨てていたので、資料を 付けた 試験は
+       「1 問も 作れませんでした」で 終わっていた。 */
+    if (res.根拠のない数) {
+      記す("warn", got + " 問のうち " + res.根拠のない数
+        + " 問は 資料の どこを 根拠に したかが 付いていません。"
+        + "問題は 残しています（確認の 印を 付けました）。");
+    }
     /* ★ **できたら その場で 一覧へ 入れる**（2026-08-30・訴え
        「全然プリセット欄にできた試験が追加されない」）。
        前は 確認の 画面で「保存する」を 押すまで どこにも 残らなかった。
@@ -1935,6 +1985,22 @@
                }),
                記録: st.記録.slice(-8),
                描けなかった: 描けなかった };
+    },
+    /* 作った ときの 内訳。**なぜ 捨てられたか**まで 出す（調べる ため）。 */
+    内訳: function () {
+      var r = st.結果;
+      if (!r) return null;
+      return {
+        頼んだ: r.planned, 受けた: r.accepted,
+        捨てた: (r.rejected || []).slice(0, 12).map(function (x) {
+          return { 枠: x.slotId, 理由: (x.reasons || []).map(function (y) {
+            return y.code + ":" + y.message; }).join(" / ") };
+        }),
+        しくじり: (r.errors || []).slice(0, 6).map(function (e) {
+          return String((e && (e.message || e.code)) || e).slice(0, 160); }),
+        指摘: (r.issues || []).slice(0, 8).map(function (i) {
+          return i.severity + ":" + i.message; })
+      };
     },
     /* 検査のため。**本物の ファイル選びは 自動では 押せない**ので、
        中身だけ 入れて 通り道を 確かめられるようにする。 */

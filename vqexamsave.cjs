@@ -146,7 +146,53 @@ async function 札() {
   節("③ 記録に「一覧に 入れました」が 出る");
   見(st.記録.some((x) => /一覧に 入れました/.test(x)), "★ 何が 起きたか 出る", st.記録);
 
-  節("④ 止まった 仕事は 一覧を 引くと 畳まれる（サーバ）");
+  節("④ 資料を 付けても 問題が 捨てられない（**これが「作れん」の 真因**）");
+  {
+    /* 資料を 付けると requireSources が 立つ。AI が 根拠（sourceReferences）を
+       返さないと、**20 問 とも 捨てられて**いた。捨てずに 印を 付ける。 */
+    const r = await page.evaluate(async () => {
+      const f = new File([new TextEncoder().encode("授業プリント。".repeat(3000))], "プリント.txt", { type: "text/plain" });
+      await window.__vqMake.資料を読ませる([f]);
+      return window.__vqMake.状態().資料.length;
+    });
+    見(r === 1, "資料を 1 件 付ける", r);
+    await page.waitForFunction(() => window.__vqMake.状態().資料.every((a) => a.状態 !== "queued" && a.状態 !== "extracting"),
+      null, { timeout: 30000 }).catch(() => {});
+    await page.evaluate(() => {
+      window.__vqMake.open({ kind: "exam" });
+      window.__vqMake.表紙を入れる({ examName: "資料つきの 確かめ", subject: "情報" });
+      const rr = document.getElementById("vqMake").shadowRoot;
+      rr.querySelector('[data-a="go"]').click();
+    });
+    await page.evaluate(() => {
+      const rr = document.getElementById("vqMake").shadowRoot;
+      const set = (k, v) => { const el = rr.querySelector('[data-n="' + k + '"]');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, String(v));
+        el.dispatchEvent(new Event("input", { bubbles: true })); };
+      set("questionCount", 6); set("sectionCount", 2); set("totalPoints", 30);
+      rr.querySelector('[data-a="run"]').click();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate(() => {
+      const rr = document.getElementById("vqMake").shadowRoot;
+      const bb = Array.from(rr.querySelectorAll("button")).filter((x) => /この構成で/.test(x.textContent))[0];
+      if (bb) bb.click();
+    });
+    await page.waitForFunction(() => window.__vqMake.状態().画面 === "確認"
+      || (!window.__vqMake.状態().走っている && window.__vqMake.状態().err), null, { timeout: 45000 }).catch(() => {});
+    const 内 = await page.evaluate(() => window.__vqMake.内訳());
+    const s2 = await page.evaluate(() => { const s = window.__vqMake.状態();
+      return { 画面: s.画面, err: s.err, 保存: s.保存した, 記録: (s.記録 || []).map((x) => x.k + ":" + x.t) }; });
+    見(内 && 内.受けた === 6, "★ 資料つきでも 6 問 とも 受かる（前は 0 問）", 内);
+    見(s2.画面 === "確認" && !s2.err, "確認まで 行く", { 画面: s2.画面, err: s2.err });
+    見(s2.保存 === true, "★ 資料つきでも 一覧に 入る", s2.保存);
+    見(s2.記録.some((x) => /根拠に したかが 付いていません/.test(x)),
+       "★ 根拠が 無いことは **隠さず 数で** 言う", s2.記録.filter((x) => /warn/.test(x)));
+    const 後2 = await 数える();
+    見(後2.試験 === 後.試験 + 1, "★ 一覧は 1 件だけ 増える", { 前: 後.試験, 後: 後2.試験 });
+  }
+
+節("⑤ 止まった 仕事は 一覧を 引くと 畳まれる（サーバ）");
   {
     const w = fs.readFileSync("server/src/worker.js", "utf8");
     見(/一覧を 引く この 口でも 同じ 決まりで 畳む/.test(w), "★ 一覧の 口にも 畳む しくみが ある");

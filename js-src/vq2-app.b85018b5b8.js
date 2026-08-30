@@ -12914,16 +12914,26 @@
     if (!str(draft.explanation).trim())
       reasons.push({ code: "no_explanation", message: "解説がありません" });
 
+    /* ══ 根拠（出典）════════════════════════════════════════════
+       ★ **無いからと いって 問題を 捨てない**（2026-08-30・訴え
+         「マジでファイル添付して試験作れん」）。
+       実測: 資料を 付けると requireSources が 立ち、AI が
+       sourceReferences を 返さない ので **20 問 とも 捨てて**いた。
+       画面には「1 問も 作れませんでした」としか 出ないので、
+       資料を 付けた 試験は **一度も 作れなかった**。
+       ここは 落とす 理由に せず、**確認の 印**に する。
+       何問に 根拠が 付いていないかは 呼び側が 数えて 出す。 */
+    var 根拠なし = false;
     if (opts.requireSources) {
       /* 出典は「書いてある」ではなく「実データへ解決できる」で判定する。
          mock-builder の mapSources は fileName の無い参照を捨てるので、
          件数だけ見ていると門は通るのに仕様には出典が 0 件、という食い違いが出る。 */
       var refs = (Array.isArray(draft.sourceReferences) ? draft.sourceReferences : [])
         .filter(function (r) { return r && str(r.fileName).trim(); });
-      if (!refs.length) reasons.push({ code: "no_source", message: "資料の該当箇所を特定できていません" });
+      根拠なし = !refs.length;
     }
 
-    return { ok: !reasons.length, reasons: reasons, type: type };
+    return { ok: !reasons.length, reasons: reasons, type: type, 根拠なし: 根拠なし };
   }
 
   /* 「①」「ア」「A」「1」や本文一致で選択肢を引けるか。
@@ -13050,6 +13060,7 @@
   function assemble(p, filled, opts) {
     opts = opts || {};
     var accepted = 0, missing = [], rejected = [];
+    var 根拠のない数 = 0;
 
     /* filled: { slotId: draftQuestion }
        ここでも門を通す。呼び出し側が通し忘れても、受理できない中身は入らない。
@@ -13073,6 +13084,8 @@
         }
         accepted++;
         used.push(slot.id);
+        /* 根拠が 付いていない ものは **捨てずに 印を 付ける**（2026-08-30）。 */
+        if (g.根拠なし) 根拠のない数++;
         /* 選択肢をそろえる。**同じ id・同じ文が混ざったままにしない。**
            実測（2026-08-04）: 保存できない理由の上位が
            duplicateChoiceId / duplicateChoiceText / tooManyCorrect だった。
@@ -13132,7 +13145,7 @@
              どちらも 起きていた。中身の 清めは fromDraft が する。 */
           blanks: 空欄をそろえる(slot.type, d),
           wordBank: 語群をそろえる(slot.type, d),
-          requiresReview: d.requiresReview === true
+          requiresReview: d.requiresReview === true || g.根拠なし === true
         });
         answerKey.push({
           id: slot.id,
@@ -13185,6 +13198,9 @@
       accepted: accepted,
       planned: p.totalQuestions,
       missing: missing,
+      /* 根拠（資料の どこか）が 付いていない 問題の 数。
+         **捨てていない**ので、ここで 数だけ 伝える。 */
+      根拠のない数: 根拠のない数,
       /* なぜ入らなかったのかを必ず残す。黙って捨てない。 */
       rejected: rejected,
       issues: (p.issues || []).concat(missing.length ? [{
@@ -13426,7 +13442,7 @@
      ・枠が尽きたら残りは捨てる（＝作りすぎても試験は膨れない）
      捨てた数は必ず数える。黙って捨てない。 */
   function assign(req, questions, filled, opts) {
-    var got = { accepted: 0, rejected: [], over: 0 };
+    var got = { accepted: 0, rejected: [], over: 0, 根拠なし: 0 };
     /* この回で受け入れてよい数の上限（資料の量から決まる）。
        指定が無ければ制限なし。 */
     var allow = opts && isFinite(opts.limit) ? Math.max(0, opts.limit) : Infinity;
@@ -13445,6 +13461,8 @@
       if (!q) return;
       var g = C.gate(slot, q, { requireSources: opts.requireSources });
       if (!g.ok) { got.rejected.push({ slotId: slot.id, reasons: g.reasons }); return; }
+      /* 根拠が 付いていない ものは **捨てない**。数だけ 数える（2026-08-30）。 */
+      if (g.根拠なし) { got.根拠なし++; q.requiresReview = true; }
       filled[slot.id] = q;
       got.accepted++;
     });
@@ -13508,6 +13526,7 @@
     var rejected = [];
     var errors = [];
     var overTotal = 0;
+    var 根拠なし合計 = 0;
     var rounds = 0;
     var maxRounds = Math.max(1, Number(opts.maxRounds) || DEFAULT_MAX_ROUNDS);
     var limit = Math.max(1, Number(opts.concurrency) || DEFAULT_CONCURRENCY);
@@ -13598,6 +13617,7 @@
             });
             m.note({ accepted: got.accepted, discarded: got.rejected.length + got.over });
             overTotal += got.over;
+            根拠なし合計 += got.根拠なし || 0;
             rejected = rejected.concat(got.rejected);
             onProgress({
               sectionNumber: r.sectionNumber, accepted: got.accepted,
@@ -13656,6 +13676,8 @@
         accepted: a.accepted,
         planned: p.totalQuestions,
         missing: a.missing,
+        /* 根拠（資料の どこか）が 付いていない 問題の 数。**捨てていない**。 */
+        根拠のない数: 根拠なし合計,
         /* 受理できなかった理由と、枠を超えて作られた数。どちらも隠さない。 */
         rejected: rejected.concat(a.rejected || []),
         /* 依頼そのものが失敗した理由。空でないなら、中身以前の問題が起きている。 */
