@@ -5513,6 +5513,71 @@
      ・決定論的に採点できるものはすべてここで確定する。
      ・AI 補助採点が必要なものは pendingAi として返し、採点は保留にする。
      ══════════════════════════════════════════════════════════════════ */
+  /* ══ 書いた 答えを **紙に 写せる 文**に する（2026-08-30）════════
+     訴え「ユーザーが解答した解答は、紙面の解答用紙にも同期して」
+
+     ★ 記号で 答える 形式は **記号**を 出す（①②… ⓪①… ア イ …）。
+       解答用紙の 欄は 小さいので、選択肢の 本文を 入れると はみ出す。
+       本物の 答案も 記号だけを 書く。
+     ★ 分からない 形は **空**を 返す。作り話を 書かない。 */
+  var 丸印 = ["\u2460", "\u2461", "\u2462", "\u2463", "\u2464", "\u2465",
+              "\u2466", "\u2467", "\u2468", "\u2469"];
+  function 文字(v) { return v === undefined || v === null ? "" : String(v); }
+
+  function 答えの文(q, value) {
+    try {
+      if (!q) return "";
+      var t = 文字(q.type);
+      var 選 = Array.isArray(q.choices) ? q.choices : [];
+      function 記号(id) {
+        for (var i = 0; i < 選.length; i++) {
+          if (選[i] && (選[i].id === id || 選[i].text === id)) {
+            /* 正誤は「正 / 誤」で 書く（①② では 何のことか 分からない）。 */
+            if (t === "true_false") return 文字(選[i].text).slice(0, 4);
+            return 丸印[i] || String(i + 1);
+          }
+        }
+        return "";
+      }
+      if (t === "multiple_choice_single" || t === "true_false") {
+        var one = (value && typeof value === "object")
+          ? (value.choiceId || value.value || value.id) : value;
+        return 記号(文字(one)) || 文字(one).slice(0, 24);
+      }
+      if (t === "multiple_choice_multiple") {
+        var 並 = Array.isArray(value) ? value
+          : (value && Array.isArray(value.choiceIds) ? value.choiceIds : []);
+        var 出 = 並.map(function (x) { return 記号(文字(x)) || 文字(x); }).filter(Boolean);
+        return 出.join("・").slice(0, 40);
+      }
+      if (t === "ordering" || t === "reorder" || t === "reorder_english") {
+        var o = Array.isArray(value) ? value : (value && Array.isArray(value.order) ? value.order : []);
+        return o.map(function (x) { return 記号(文字(x)) || 文字(x); }).filter(Boolean).join("→").slice(0, 60);
+      }
+      if (t === "matching") {
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+          return Object.keys(value).map(function (k) {
+            return 文字(k) + "-" + 文字(value[k]);
+          }).join("　").slice(0, 60);
+        }
+        return "";
+      }
+      if (t === "fill_blank") {
+        var b = Array.isArray(value) ? value
+          : (value && Array.isArray(value.blanks) ? value.blanks : null);
+        if (b) return b.map(function (x) { return 文字(x); }).join("　").slice(0, 80);
+      }
+      /* 短答・数値・記述・英作文 … そのままの 文。 */
+      if (typeof value === "string") return value.slice(0, 400);
+      if (typeof value === "number") return String(value);
+      if (value && typeof value === "object") {
+        var v = value.text || value.value || value.answer;
+        if (typeof v === "string") return v.slice(0, 400);
+      }
+      return "";
+    } catch (e) { return ""; }
+  }
+
   function gradeSession(questions, answers, opts) {
     opts = opts || {};
     var byId = Object.create(null);
@@ -5531,6 +5596,7 @@
         unansweredCount++;
         items.push({
           questionId: q.id, type: q.type, answered: false, correct: false,
+          answerText: "", answerRaw: null,
           score: 0, maxScore: max, method: "unanswered", detail: null,
           timeMs: rec ? rec.timeMs || 0 : 0, changeCount: rec ? rec.changeCount || 0 : 0,
           flagged: rec ? !!rec.flagged : false, requiresReview: false
@@ -5544,6 +5610,10 @@
         if (g.correct) correctCount++; else wrongCount++;
         items.push({
           questionId: q.id, type: q.type, answered: true, correct: g.correct,
+          /* ★ **書いた 答えを 残す**（2026-08-30・訴え
+             「ユーザーが解答した解答は、紙面の解答用紙にも同期して」）。
+             これが 無いと、刷った 解答用紙は 丸バツだけの 空欄に なる。 */
+          answerText: 答えの文(q, value), answerRaw: value,
           score: g.score, maxScore: g.maxScore, method: g.method, detail: g.detail,
           timeMs: rec ? rec.timeMs || 0 : 0, changeCount: rec ? rec.changeCount || 0 : 0,
           flagged: rec ? !!rec.flagged : false, requiresReview: false
@@ -5553,6 +5623,7 @@
         pendingAi.push({ question: q, answer: value, record: rec });
         items.push({
           questionId: q.id, type: q.type, answered: true, correct: null,
+          answerText: 答えの文(q, value), answerRaw: value,
           score: null, maxScore: max, method: "pending-ai", detail: null,
           timeMs: rec ? rec.timeMs || 0 : 0, changeCount: rec ? rec.changeCount || 0 : 0,
           flagged: rec ? !!rec.flagged : false, requiresReview: true
@@ -28542,6 +28613,8 @@
     var 全 = Math.max(毎, Math.ceil(Math.max(1, 番.length) / 毎) * 毎);
     return {
       type: "ct-mark-sheet", id: "ct-ms",
+      /* 塗るのに 設問の 並びが 要る（解答番号 → 設問）。 */
+      spec: spec,
       examName: spec.title || "", subject: spec.subject || "",
       rows: 全, used: 番.length,
       rowsPerColumn: ms.rowsPerColumn || 30,
@@ -29218,6 +29291,24 @@
       "       font-family: " + GOTHIC + "; }",
       ".gwrap.is-review { color: #6b6480; }",
       ".gtxt { font-size: " + (base - 2) + "pt; font-family: " + GOTHIC + "; }",
+      /* ── 書いた 答えを 欄へ 写す（2026-08-30）──────────────────
+         訴え「ユーザーが解答した解答は、紙面の解答用紙にも同期して」
+         ★ 印（赤）とは **別の 色**にする。どこまでが 答えで どこからが
+           採点かが 分かるように（本物の 答案と 同じ）。
+         ★ 欄の 大きさは 変えない。長い 文は 中で 折り返して 収める。 */
+      ".gans { position: absolute; inset: 0; display: flex; align-items: center;",
+      "        justify-content: center; padding: 0.6mm 1.2mm; pointer-events: none;",
+      "        z-index: 1; color: #12305c; font-family: " + GOTHIC + ";",
+      "        font-size: " + (base - 0.5) + "pt; line-height: 1.35;",
+      "        overflow: hidden; text-align: center; }",
+      /* 選んだ マス。本物の 答案と 同じで **中を 塗る**。 */
+      ".agc-mark.is-picked { background: #12305c; }",
+      ".agc-mark.is-circle.is-picked { background: #12305c; }",
+      ".gans.is-long { align-items: flex-start; justify-content: flex-start;",
+      "                text-align: left; font-size: " + (base - 2) + "pt;",
+      "                line-height: 1.5; white-space: pre-wrap; word-break: break-word; }",
+      /* 印は 答えの 上へ 出す（重なっても 読めるように 右へ 寄せる）。 */
+      ".as-field .gwrap, .agb-c .gwrap { justify-content: flex-end; padding-right: 1.5mm; }",
       /* 合計と観点別（解答用紙の下） */
       ".gsum { margin-top: 6mm; border: 0.6pt solid #000; padding: 3mm 4mm;",
       "        display: flex; flex-wrap: wrap; align-items: flex-end; gap: 3mm 8mm; }",
@@ -29369,6 +29460,8 @@
       ".ms-m > i { display: inline-flex; align-items: center; justify-content: center;",
       "            width: 4.4mm; height: 2.6mm; border: 0.4pt solid #000; border-radius: 999px;",
       "            font-style: normal; font-size: 5pt; }",
+      /* 塗った 丸。本物と 同じで **中を 黒く 塗り**、字は 白抜きに する。 */
+      ".ms-m > i.is-on { background: #000; color: #fff; }",
       /* 使っていない 行は 薄くしない（本物は 全部 同じ）。印だけ 付ける。 */
       ".ms-r.is-spare .ms-n { color: #000; }",
 
@@ -29990,7 +30083,12 @@
     /* 解答欄 → 設問 の対応。**新しい対応表は作らない**（answerBindings をそのまま使う）。 */
     var byB = {};
     (spec.answerBindings || []).forEach(function (b) { if (b && b.id) byB[b.id] = b.questionId; });
-    return { byQ: byQ, byB: byB, graded: graded };
+    /* 選んだ マスを 塗るのに 選択肢が 要る。設問そのものも 引けるように する。 */
+    var 問 = {};
+    (spec.sections || []).forEach(function (sec) {
+      (sec.questions || []).forEach(function (q) { if (q && q.id) 問[q.id] = q; });
+    });
+    return { byQ: byQ, byB: byB, 問: 問, graded: graded };
   }
 
   /* この欄に何を書くか。分からなければ null（何も書かない）。 */
@@ -30000,6 +30098,8 @@
     if (!qid) return null;
     var it = 採点.byQ[qid];
     if (!it) return null;
+    /* 「解答だけを 写す」ときは 印を 一切 出さない。 */
+    if (it.__印なし === true) return null;
     /* まだ採点できていない。**印を付けない。** */
     if (it.requiresReview === true || it.score === null || it.score === undefined) {
       return { kind: "review", score: null, max: it.maxScore };
@@ -30027,6 +30127,49 @@
         + '<path d="M20 5 35 33 5 33.5Z" fill="none" stroke="currentColor"'
         + ' stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg>';
     return "";
+  }
+
+  /* ══ 書いた 答えを 欄へ 写す（2026-08-30）════════════════════════
+     訴え「ユーザーが解答した解答は、紙面の解答用紙にも同期して」
+
+     ★ 画面で 解いた 答えを、そのまま 刷る 解答用紙の 欄へ 入れる。
+       これが 無いと、返ってくる 答案は 丸バツだけの **空の 用紙**に なる。
+     ★ 欄の 大きさは 変えない。長い 文は 欄の 中で 折り返す。
+     ★ 採点が 済んでいなくても 写す（答えは 採点の 前から ある）。 */
+  function 答えを写す(questionId, bindingId) {
+    if (!採点) return "";
+    var qid = questionId || (bindingId ? 採点.byB[bindingId] : "");
+    if (!qid) return "";
+    var it = 採点.byQ[qid];
+    if (!it) return "";
+    var t = (it.answerText === undefined || it.answerText === null) ? "" : String(it.answerText);
+    if (!t) {
+      /* 答えていない ときは **空のまま**。「未記入」と 書き足さない
+         （本物の 答案は 何も 書いていない）。 */
+      return "";
+    }
+    var 長 = t.length > 24;
+    return '<span class="gans' + (長 ? " is-long" : "") + '">' + esc(t) + "</span>";
+  }
+
+  /* 選んだ マスの 番号（0 始まり）。分からなければ -1。
+     ★ マスの 数と 選択肢の 数が 合っている ときだけ 答える。
+       合っていない のに 塗ると、違う ところを 塗った 答案に なる。 */
+  function 選んだマス(questionId, bindingId, マス数) {
+    if (!採点) return -1;
+    var qid = questionId || (bindingId ? 採点.byB[bindingId] : "");
+    if (!qid) return -1;
+    var it = 採点.byQ[qid];
+    if (!it || !it.answered) return -1;
+    var q = 採点.問 ? 採点.問[qid] : null;
+    var 選 = (q && Array.isArray(q.choices)) ? q.choices : [];
+    if (!選.length || 選.length !== マス数) return -1;
+    var v = it.answerRaw;
+    var one = (v && typeof v === "object") ? (v.choiceId || v.value || v.id) : v;
+    for (var i = 0; i < 選.length; i++) {
+      if (選[i] && (選[i].id === one || 選[i].text === one)) return i;
+    }
+    return -1;
   }
 
   /* 解答欄へ重ねる印と点。欄そのものは動かさない（上に置くだけ）。 */
@@ -30090,18 +30233,31 @@
       + (c.answerBindingId ? ' data-binding="' + esc(c.answerBindingId) + '"' : "");
     /* 採点済みなら、この欄の上へ 印と点を 重ねる（欄そのものは動かさない）。 */
     var 印 = 採点の重ね(c.questionId, c.answerBindingId);
+    /* 書いた 答えも 同じ 欄へ 写す（2026-08-30）。
+       ★ 解答用紙は **道が 2 つ**ある（この 表と、既定の answer-area）。
+         片方だけ 直すと もう片方が 空の まま に なる（前に 印で 踏んだ）。 */
+    var 答 = 答えを写す(c.questionId, c.answerBindingId);
+    印 = 答 + 印;
 
     switch (c.type) {
       case "question-label":
         return '<th class="agb-ql" scope="row"' + span + style + data + ">" + esc(c.text || "") + "</th>";
       case "fixed-label":
         return '<td class="agb-fx"' + span + style + data + ">" + esc(c.text || "") + "</td>";
-      case "small-box":
+      case "small-box": {
+        /* ★ マス の 数が 選択肢の 数と 合っている ときは、
+           **選んだ マスを 塗る**（2026-08-30・訴え）。
+           合っていない ときは 塗らない（違う マスを 塗ると 嘘に なる）。 */
+        var 塗り = 選んだマス(c.questionId, c.answerBindingId, c.cells || 1);
+        var k = 0;
         return '<td class="agb-c"' + span + style + data + ">" + 印
           + repeat(c.cells || 1, function () {
-              return '<span class="agc agc-mark' + (c.cellStyle === "circle" ? " is-circle" : "") + '"'
+              var on = (k++ === 塗り);
+              return '<span class="agc agc-mark' + (c.cellStyle === "circle" ? " is-circle" : "")
+                + (on ? " is-picked" : "") + '"'
                 + ' style="width:' + (c.widthMm || 16) + "mm;min-height:" + (c.heightMm || 9) + 'mm"></span>';
             }) + "</td>";
+      }
       case "box-sequence":
         return '<td class="agb-c"' + span + style + data + ">" + 印 + '<span class="agc-seq">'
           + repeat(c.cells || 1, function () {
@@ -30165,6 +30321,29 @@
        本体 … 解答番号ごとに 1 行。左に 番号、右に ⓪〜⑨ の 丸。
                30 行で 1 列。列を 横に 並べる。
      ★ 寸法は プロファイルが 持つ（1 行 5.05mm など）。ここで 決めない。 */
+  /* この 解答番号（通し番号）に あたる 設問の 答え。
+     マークシートは 記号を 塗るので、**何番目の 選択肢か**が 要る。 */
+  function マークの塗り(spec, 番) {
+    if (!採点 || !spec) return -1;
+    var n = 0, 当 = null;
+    (spec.sections || []).forEach(function (sec) {
+      (sec.questions || []).forEach(function (q) { n++; if (n === 番) 当 = q; });
+    });
+    if (!当) return -1;
+    var it = 採点.byQ[当.id];
+    if (!it || !it.answered) return -1;
+    var v = it.answerRaw;
+    var one = (v && typeof v === "object") ? (v.choiceId || v.value || v.id) : v;
+    var 選 = Array.isArray(当.choices) ? 当.choices : [];
+    for (var i = 0; i < 選.length; i++) {
+      if (選[i] && (選[i].id === one || 選[i].text === one)) return i;
+    }
+    /* 数字で 答えている ときは その 数字（0〜9）。 */
+    var num = parseInt(String(one), 10);
+    if (isFinite(num) && num >= 0 && num <= 9) return num;
+    return -1;
+  }
+
   function renderCtMarkSheet(b) {
     var 丸 = b.marks || ["0","1","2","3","4","5","6","7","8","9"];
     var 列数 = Math.max(1, b.columns || 3);
@@ -30200,9 +30379,13 @@
       if (始 > 全) break;
       h += '<div class="ms-col"><div class="ms-ch"><span>解答<br>番号</span><span>解　答　欄</span></div>';
       for (var r = 始; r < 始 + 行毎 && r <= 全; r++) {
+        /* ★ 解いた 答えが あれば **その 丸を 塗る**（2026-08-30・訴え）。 */
+        var 塗 = マークの塗り(b.spec, r);
         h += '<div class="ms-r' + (r > b.used ? " is-spare" : "") + '">'
           + '<span class="ms-n">' + r + '</span><span class="ms-m">';
-        丸.forEach(function (x) { h += '<i>' + esc(x) + "</i>"; });
+        丸.forEach(function (x, i) {
+          h += '<i' + (i === 塗 ? ' class="is-on"' : "") + ">" + esc(x) + "</i>";
+        });
         h += "</span></div>";
       }
       h += "</div>";
@@ -30377,9 +30560,10 @@
       /* 採点済みなら、この欄の上へ 印と点を 重ねる（2026-08-30）。
          **欄そのものは動かさない**（罫線がずれると 書いた答えと 合わなくなる）。 */
       var 印 = 採点の重ね(b.questionId, b.answerBindingId);
+      var 答 = 答えを写す(b.questionId, b.answerBindingId);
       return '<div class="as-row" data-binding="' + esc(b.answerBindingId) + '" data-question="' + esc(b.questionId) + '">'
         + '<div class="as-no">' + esc(b.number || "") + "</div>"
-        + '<div class="as-field">' + inner + 印 + "</div>"
+        + '<div class="as-field">' + inner + 答 + 印 + "</div>"
         + (b.points != null ? '<div class="as-pts">' + b.points + "</div>" : "")
         + "</div>";
     }
@@ -30579,6 +30763,29 @@
     var html = buildHtml(spec, plan, { bookletId: b.id, graded: gradedOf(result) });
     return print(html, (spec.title || "試験") + "（採点済み）");
   }
+
+  /* ══ 解いた 答えだけを 写した 解答用紙（2026-08-30）════════════
+     訴え「ユーザーが解答した解答は、紙面の解答用紙にも同期して」
+     ★ 採点の 印は 出さない。**書いたものを そのまま 紙に する**。
+       採点の 前でも 出せる（提出した 直後の 答案）。 */
+  function printAnsweredSheet(spec, plan, result) {
+    var b = (plan.booklets || []).filter(function (x) { return x.kind === "answer-sheet"; })[0];
+    if (!b) return { ok: false, error: "NO_ANSWER_SHEET" };
+    var g = gradedOf(result);
+    if (g) {
+      /* 印を 出さないために、点を 落とした 写しを 渡す。
+         **元の 結果は 触らない**（画面の 数と 食い違う元）。 */
+      g = {
+        items: (g.items || []).map(function (it) {
+          return Object.assign({}, it, { score: null, correct: null, requiresReview: false,
+                                         __印なし: true });
+        }),
+        totalScore: null, totalMax: null, aggregate: null
+      };
+    }
+    var html = buildHtml(spec, plan, { bookletId: b.id, graded: g });
+    return print(html, (spec.title || "試験") + "（解答）");
+  }
   /* 結果（result）を、紙面が読める形へそろえる。
      ★ ここで点を計算し直さない。**結果に入っている数だけ**を渡す
        （画面と紙で数が食い違う、をいちばん起こしやすいところ）。 */
@@ -30762,6 +30969,7 @@
     printBooklet: printBooklet,
     printResultReport: printResultReport,
     printGradedAnswerSheet: printGradedAnswerSheet,
+    printAnsweredSheet: printAnsweredSheet,
     gradedOf: gradedOf,
     downloadArtifact: downloadArtifact,
     adapter: adapter,
@@ -55371,6 +55579,11 @@
         + (result.kind === "mock"
             ? btn({ icon: "doc", iconOnly: true, variant: "quiet", action: "graded-sheet",
                     aria: "採点済みの解答用紙", title: "採点済みの解答用紙を出す" })
+              /* ★ 採点の 印なしで、**書いた 答えだけ**を 写した 答案
+                 （2026-08-30・訴え「解答した解答は、紙面の解答用紙にも同期して」）。
+                 採点を 見ずに 自分の 答案だけ 刷りたい ことが ある。 */
+              + btn({ icon: "print", iconOnly: true, variant: "quiet", action: "answered-sheet",
+                      aria: "解答を写した解答用紙", title: "解答を写した解答用紙を出す" })
             : "")
         + "</div></div>";
     }
@@ -55874,7 +56087,8 @@
         else app.toast("共有機能が読み込まれていません。", "warning");
       });
       U.on(r, "click", '[data-act="export"]', function () { exportReport(); });
-    U.on(r, "click", '[data-act="graded-sheet"]', function () { 採点済みの解答用紙(); });
+    U.on(r, "click", '[data-act="graded-sheet"]', function () { 解答用紙を出す(false); });
+      U.on(r, "click", '[data-act="answered-sheet"]', function () { 解答用紙を出す(true); });
       U.on(r, "click", '[data-act="advice-retry"]', function () { runAdvice(); });
       /* 分析を開いたときに 1 回だけ作る（開かない人の端末を働かせない）。
          設定で自動生成を切っているときは、押されるまで作らない。 */
@@ -55915,7 +56129,9 @@
        訴え:「ルミは解答用紙で採点し、丸バツ三角を表示させる。点数も入れる」
        成績表とは別に、**答案そのもの**を返す。
        ★ 元の試験（MockSpec）が要る。無ければ **黙って別のものを出さない**。 */
-    function 採点済みの解答用紙() {
+    /* 印なし = 書いた 答えだけ。印あり = 丸バツ三角と 点も。
+       どちらも **同じ 解答用紙**（欄も 番号も 同じ）。 */
+    function 解答用紙を出す(印なし) {
       var R2 = VQ2.pdfRenderer, L2 = VQ2.layout;
       if (!R2 || !L2 || !R2.printGradedAnswerSheet) {
         app.toast("紙面の部品が読み込まれていません。", "warning"); return;
@@ -55935,7 +56151,9 @@
       var plan;
       try { plan = L2.buildPlan(spec); }
       catch (e) { app.toast("紙面を組めませんでした。", "error"); return; }
-      var out = R2.printGradedAnswerSheet(spec, plan, result);
+      var out = (印なし && R2.printAnsweredSheet)
+        ? R2.printAnsweredSheet(spec, plan, result)
+        : R2.printGradedAnswerSheet(spec, plan, result);
       if (out && out.ok === false) {
         app.toast(out.error === "NO_ANSWER_SHEET"
           ? "この試験には解答用紙がありません。" : "解答用紙を出せませんでした。", "warning");
