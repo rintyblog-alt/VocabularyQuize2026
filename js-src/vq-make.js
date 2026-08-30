@@ -630,7 +630,11 @@
       + '<button class="btn" data-a="regen">作り直す</button>'
       + (足 ? '<button class="btn" data-a="refill">足りないぶんを 作る</button>' : "")
       + '<button class="btn" data-a="save">保存する</button>'
-      + '<button class="btn pri" data-a="paper">紙面へ</button></div>';
+      + '<button class="btn" data-a="paper">紙面へ</button>'
+      /* ★ 試験は 受けるために 作る。ここに 出しておかないと
+         「紙面へ」→「受験する」の 2 手を 踏まないと CBT に 辿り着けない
+         （訴え 2026-08-30「CBT に ならない。試験モードに ならない」）。 */
+      + '<button class="btn pri" data-a="take-exam">受験する（CBT）</button></div>';
     return h;
   }
 
@@ -674,7 +678,7 @@
     if (st.err) h += '<div class="err">' + esc(st.err) + "</div>";
     h += '<div class="ft">'
       + '<button class="btn" data-a="save">' + (st.保存した ? "保存ずみ" : "保存する") + "</button>"
-      + '<button class="btn pri" data-a="exam">受験する</button></div>';
+      + '<button class="btn pri" data-a="take-exam">受験する</button></div>';
     return h;
   }
   function 出す札(名, 説, act) {
@@ -957,7 +961,13 @@
       if (a === "save") { 保存する(); return; }
       if (a === "paper") { st.err = ""; 開く("紙面"); return; }
       if (a === "print-q" || a === "print-a" || a === "print-k") { 紙面を出す(a); return; }
-      if (a === "exam") { 受験する(); return; }
+      /* ★ ここは 長いあいだ **死んでいた**（2026-08-30 に 気づいた）。
+         合図が "exam" で、選ぶ画面の「試験」の 札と 同じだった。
+         上の `if (a === "exam") { …表紙を 開く… return; }` で 必ず 止まるので、
+         受験の ボタンを 押しても ここへ 来ない ＝ **CBT に 一度も 行けなかった**
+         （訴え「CBT に ならない。試験モードに ならない」）。
+         合図を 分けた。同じ 名前を 2 つの 意味で 使わない。 */
+      if (a === "take-exam") { 受験する(); return; }
       if (a === "readlayout") { 紙面を読み取る(); return; }
     });
     root.addEventListener("change", function (e) {
@@ -1105,6 +1115,14 @@
       plan: p2,
       filled: o.refill && st.結果 ? st.結果.filled : null,
       label: "vq-make",
+      /* ★ 一度に 出てこない件（2026-08-30・訴え）。
+         既定は 1 本ずつ・3 問ずつ。理由は **この端末の AI（Bridge）は
+         枠が 2 つしかない**から。ここは クラウド（Groq / Gemini）なので
+         その 制限は 効かない。20 問なら 7 往復 → 4 往復・3 本 同時。
+         batchSize を 上げすぎると JSON が 途中で 切れて まるごと 落ちるので、
+         5 まで（実測で 破棄 0% だった 3 の 少し上）。 */
+      concurrency: 3,
+      batchSize: 5,
       onStage: function (name) {
         if (st.進み) st.進み.stage = 段の名(name);
         描く();
@@ -1267,14 +1285,36 @@
 
   /* ⑦ 受験する */
   function 受験する() {
-    var V = VQ2();
     if (!st.spec) { st.err = "受験する 試験が ありません。"; 描く(); return; }
-    if (!V || !V.examWorkspace || !V.examWorkspace.open) {
-      st.err = "受験の 画面が ありません。"; 描く(); return;
-    }
+    var V = VQ2();
+    if (V && V.examWorkspace && V.examWorkspace.open) return 受験を開く(V);
+    /* ★ 4.7MB の vq2-app は **起動が 終わってから** 読む（index.html の 道具）。
+       押した その瞬間には まだ 無いことが ある。
+       「受験の 画面が ありません」で 突き放すと **CBT に 一生 辿り着けない**。
+       読ませて から 待つ。 */
+    st.err = "";
+    st.待っている = true; 描く();
+    try { if (window.__vqLoadLibs) window.__vqLoadLibs(); } catch (e) {}
+    var 回 = 0;
+    var t = setInterval(function () {
+      var V2 = VQ2();
+      if (V2 && V2.examWorkspace && V2.examWorkspace.open) {
+        clearInterval(t); st.待っている = false; 受験を開く(V2); return;
+      }
+      if (++回 > 80) {                      /* 12 秒 */
+        clearInterval(t); st.待っている = false;
+        st.err = "受験の 画面を 読み込めませんでした。もう一度 押してください。";
+        描く();
+      }
+    }, 150);
+  }
+  function 受験を開く(V) {
     if (!st.保存した) 保存する();
     閉じる();
-    try { V.examWorkspace.open({ spec: st.spec }); } catch (e) {}
+    try { V.examWorkspace.open({ spec: st.spec }); }
+    catch (e) {
+      try { window.__vqToast && window.__vqToast("受験の 画面を 開けませんでした。"); } catch (e2) {}
+    }
   }
 
   /* ── 外へ 出す 口 ─────────────────────────────────────────── */

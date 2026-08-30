@@ -273,7 +273,70 @@
         });
       }
     } catch (e) {}
+    /* ★ 試験を 一覧へ 混ぜる（2026-08-30）───────────────────────
+       訴え「CBT に ならない。試験モードに ならない」。
+       真因の 半分は ここ。一覧の 札は **本体の プリセット一覧の DOM から
+       拾って**作っている（collectDom）。試験は VQ2.store.mocks に あって
+       プリセット一覧には 出ないので、**一覧に 1 枚も 並んでいなかった**。
+       表紙の 縮小見本（試験の表紙HTML）も、押す先が 無いので 一度も 出ていない。
+       ここで 試験を 札の 形に して 足す。器を preset へ 寄せる 段に なったら
+       この 関数だけ 消せばよい。 */
+    try { 並 = 試験の札(並).concat(並); } catch (e) {}
     return 並;
+  }
+
+  /* 試験を「一覧の 札」の 形に する。
+     ★ 中身を 作り直さない。並べ替え・絞り込み・検索が 読む 分だけ 埋める。
+     ★ 同じ id が すでに 並んでいるなら 足さない（二重に 出さない）。 */
+  function 試験の札(すでに) {
+    var ST = window.VQ2 && window.VQ2.store;
+    if (!ST || !ST.mocks || !ST.mocks.list) return [];
+    var 済 = Object.create(null);
+    (すでに || []).forEach(function (c) { if (c && c.id) 済[String(c.id)] = 1; });
+    var 私 = "";
+    try { 私 = String(ST.currentOwnerId ? ST.currentOwnerId() : ""); } catch (e) {}
+    var 出 = [];
+    (ST.mocks.list() || []).forEach(function (r) {
+      var sp = r && (r.spec || r);
+      if (!sp || !sp.sections || !sp.sections.length) return;
+      var id = String(r.id || sp.id || "");
+      if (!id || 済[id]) return;
+      var 問 = 0, 内訳 = {};
+      sp.sections.forEach(function (sec) {
+        (sec.questions || []).forEach(function (q) {
+          問++;
+          var t = String(q && q.type || "");
+          if (t) 内訳[t] = (内訳[t] || 0) + 1;
+        });
+      });
+      出.push({
+        id: id,
+        title: String(sp.title || (sp.cover && sp.cover.examName) || "試験"),
+        subject: String(sp.subject || (sp.cover && sp.cover.subject) || ""),
+        description: "", tags: [],
+        questionCount: 問, countUnit: "問",
+        questionTypeCounts: 内訳,
+        estimatedMinutes: Number(sp.durationMinutes) || null,
+        /* 自分の 持ちもの。公開の 仕組みは まだ 通っていないので 非公開のまま。 */
+        visibility: "private",
+        isOwnedByCurrentUser: true, isOfficial: false,
+        isFavoritedByCurrentUser: false, isSavedByCurrentUser: false,
+        ownerName: "", ownerHandle: "",
+        createdAt: r.createdAt || sp.createdAt || null,
+        updatedAt: r.updatedAt || sp.updatedAt || null,
+        publishedAt: null, lastPlayedAt: null,
+        favoriteCount: 0, viewCount: 0,
+        /* 一覧の ボタンは 試験用の ものへ 差し替わるので actions は 使わない。 */
+        actions: [], raw: null,
+        /* ここが 試験だと 一目で 分かるように 印を 付けておく。 */
+        __exam: true
+      });
+    });
+    /* 新しい ものから。 */
+    出.sort(function (a, b) {
+      return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+    });
+    return 出;
   }
   /* ══ クラウドで 作りかけの プリセット ══════════════════════════════
      ★ AI で 作っている 間、これまでは 作成の 画面を 開いたままに して
@@ -1126,6 +1189,51 @@
   }
   function 試験か(id) { return 試験の表()[String(id)] || null; }
 
+  /* ══ 試験を **CBT で** 開く（2026-08-30）════════════════════════
+     訴え「CBT に ならない。試験モードに ならない。
+           PDF が 左で、右を 解答欄でしょ？」
+
+     ★ 一覧の「開始」は これまで data-preset-start で、
+       vq2-app が 横取りして **1 問ずつの 出題画面**を 開いていた。
+       試験は そこでは なく VQ2.examWorkspace（左＝問題冊子／右＝解答欄）。
+     ★ vq2-app は **あとから 読む** 4.7MB の 塊。押した その瞬間には
+       まだ 無いことが ある。無いときは 読ませて から 待つ。
+       「部品が ありません」で 突き放さない。 */
+  function 試験の道具(){
+    try {
+      var V = window.VQ2;
+      return (V && V.examWorkspace && V.examWorkspace.open && V.store && V.store.mocks) ? V : null;
+    } catch (e) { return null; }
+  }
+  function 受験へ(id) {
+    var V = 試験の道具();
+    if (V) return 受験を開く(V, id);
+    /* まだ 読めていない。読ませて から 待つ（最大 12 秒）。 */
+    try { if (window.__vqLoadLibs) window.__vqLoadLibs(); } catch (e) {}
+    var 待 = 0;
+    var t = setInterval(function () {
+      var V2 = 試験の道具();
+      if (V2) { clearInterval(t); 受験を開く(V2, id); return; }
+      if (++待 > 80) {
+        clearInterval(t);
+        try { window.__vqToast && window.__vqToast("試験の 画面を 読み込めませんでした。", "warning"); } catch (e) {}
+      }
+    }, 150);
+  }
+  function 受験を開く(V, id) {
+    var rec = null;
+    try { rec = V.store.mocks.get(String(id)); } catch (e) {}
+    var spec = rec && (rec.spec || rec);
+    if (!spec || !spec.sections) {
+      try { window.__vqToast && window.__vqToast("この試験を 読み込めませんでした。", "warning"); } catch (e) {}
+      return;
+    }
+    try { V.examWorkspace.open({ spec: spec, manifest: rec.manifest || null }); }
+    catch (e) {
+      try { window.__vqToast && window.__vqToast("受験の 画面を 開けませんでした。", "warning"); } catch (e2) {}
+    }
+  }
+
   /* 表紙の 縮小見本。**実際の 表紙の 中身**から 描く（絵を でっち上げない）。 */
   function 試験の表紙HTML(e) {
     var c = e.表紙 || {};
@@ -1185,9 +1293,17 @@
     var state = act ? "使用中" : (c.lastPlayedAt && L ? "最後に解いたのは " + L.relTime(c.lastPlayedAt) : (c.updatedLabel || ""));
     /* 科目ごとの色（--lib-hue）は表紙とアイコンの両方で使うので、カード自身に置く */
     var fb = L ? L.fallbackBanner(c) : { style: "" };
-    return '<div class="pc' + (act ? " is-active" : "") + '" data-preset-select="' + esc(c.id) + '"'
+    /* ★ 試験の カードは **クイズ画面へ 行かせない**（2026-08-30・訴え
+       「CBT に ならない。試験モードに ならない」）。
+       data-preset-start / data-preset-select は vq2-app が 捕捉フェーズで
+       横取りして 出題画面（1 問ずつ）を 開く。試験は そこでは なく
+       **CBT の 作業場**（左＝問題冊子／右＝解答欄）で 受ける。
+       目印を 分けておくと、あちらは 素通りして ここへ 届く。 */
+    var 開閉 = 試 ? "data-exam-open" : "data-preset-select";
+    return '<div class="pc' + (act ? " is-active" : "") + '" ' + 開閉 + '="' + esc(c.id) + '"'
       + ' style="' + esc(fb.style) + '"'
-      + ' role="button" tabindex="0" aria-label="' + esc(c.title) + ' の詳細を開く">'
+      + ' role="button" tabindex="0" aria-label="' + esc(c.title)
+      + (試 ? " を受験する" : " の詳細を開く") + '">'
       + (試 ? 試験の表紙HTML(試) : bannerHTML(c))
       + '<div class="pc__body">' + (試 ? "" : icoHTML(c))
       + (試 ? '<span class="pc__badge">試験</span>' : "")
@@ -1206,8 +1322,9 @@
           + "</div>" : "")
       + "</div>"
       + '<div class="pc__foot"><span class="pc__state">' + esc(state) + "</span>"
-      + '<button class="pc__go" data-preset-start="' + esc(c.id) + '"' + (canStart ? "" : " disabled")
-      + ' aria-label="' + esc(c.title) + ' を開始">開始</button></div>'
+      + '<button class="pc__go" ' + (試 ? "data-exam-start" : "data-preset-start") + '="' + esc(c.id) + '"'
+      + ((試 || canStart) ? "" : " disabled")
+      + ' aria-label="' + esc(c.title) + (試 ? " を受験" : " を開始") + '">' + (試 ? "受験する" : "開始") + "</button></div>"
       + "</div>";
   }
   function skeletonHTML(n) {
@@ -1559,7 +1676,10 @@
     try { new ResizeObserver(place).observe(document.getElementById("appTabBar") || document.body); } catch (e) {}
 
     /* クリック → ブリッジ */
+    /* ★ ここに 名前が 無い 目印は、押しても **何も 起きない**。
+       examStart / examOpen を 足し忘れて、試験の カードが 無反応だった。 */
     var HOOKS = ["click", "home", "bridgeAction", "navTab", "presetStart", "presetSelect", "fav",
+                 "examStart", "examOpen",
                  "subj", "tab", "view", "sortpick", "openFilter", "closeFilter", "clearFilter", "retry",
                  "cancelgen"];
     function hookedEl(target) {
@@ -1577,6 +1697,8 @@
       if (!el) return;
       var d = el.dataset;
       if (d.navTab) { var nb = document.querySelector('#appTabBar [data-app-tab="' + d.navTab + '"]'); if (nb) nb.click(); }
+      else if (d.examStart != null) { e.stopPropagation(); 受験へ(d.examStart); }
+      else if (d.examOpen != null) { e.stopPropagation(); 受験へ(d.examOpen); }
       else if (d.presetStart != null) { e.stopPropagation(); presetStart(d.presetStart); }
       else if (d.fav != null) {
         e.stopPropagation();
@@ -1618,11 +1740,13 @@
       if (e.key !== "Enter" && e.key !== " ") return;
       var t = e.composedPath ? e.composedPath()[0] : e.target;
       var card = t;
-      while (card && card !== root && !(card.dataset && card.dataset.presetSelect != null)) card = card.parentNode;
+      while (card && card !== root
+        && !(card.dataset && (card.dataset.presetSelect != null || card.dataset.examOpen != null))) card = card.parentNode;
       if (!card || card === root) return;
       if (t !== card) return;     /* 中のボタンは、そのボタン自身が受ける */
       e.preventDefault();
-      presetSelect(card.dataset.presetSelect);
+      if (card.dataset.examOpen != null) 受験へ(card.dataset.examOpen);
+      else presetSelect(card.dataset.presetSelect);
     });
     /* 検索（打つたびに全部描き直さない） */
     var searchTimer = 0;

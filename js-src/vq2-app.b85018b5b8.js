@@ -12216,8 +12216,16 @@
   var VERSION = "2.0.0";
 
   /* 1 大問に入れる設問数の上限。これ以上は大問を分ける。
-     1 回の生成が長くなるほど JSON が途中で切れて全部失う（V1 の実測）。 */
-  var MAX_PER_SECTION = 8;
+
+     ★ ここは 長く 8 だった。理由は「1 回の生成が長くなるほど JSON が
+       途中で切れて全部失う」。**その理由は 大問の 大きさとは 関係が 無い。**
+       AI へ 頼む 単位は requestsOf が batchSize（既定 3）で 刻んでいるので、
+       1 大問に 20 問 入っていても、頼むのは 3 問ずつ。切れる 心配は 無い。
+     ★ 8 のままだと 20 問を 頼んだ 人は **必ず 大問 3 つに 割られる**
+       （訴え 2026-08-30「20 問を 分割される。20 問が 一度に 出てこない」）。
+       本物の 試験は 第1問に 小問が 10 個 並ぶことも 普通に ある。
+       選んだ 大問数を そのまま 通せるように 広げる。 */
+  var MAX_PER_SECTION = 20;
   /* 1 回の依頼でまとめて作らせる設問数。1 問ずつだと往復が増えて遅くなり、
      多すぎると途中で切れる。V1 の実測（3 問／回で 0% 破棄）を初期値にする。 */
   var DEFAULT_BATCH = 3;
@@ -25091,7 +25099,7 @@
     return Math.min(w || 62, f.maxWidthPct || 94);
   }
   /* 図・表として扱うブロック。ここに無いものは図表として数えない。 */
-  var FIGURE_TYPES = ["figure", "table", "chart", "diagram"];
+  var FIGURE_TYPES = ["figure", "table", "chart", "diagram", "svg", "numberline"];
   function figureBlocksOf(q) {
     return (q && Array.isArray(q.contentBlocks) ? q.contentBlocks : [])
       .filter(function (b) { return b && FIGURE_TYPES.indexOf(b.type) >= 0; });
@@ -26914,7 +26922,7 @@
     });
     return out;
   }
-  var FIGURE_TYPES = ["figure", "table", "chart", "diagram", "map", "graph"];
+  var FIGURE_TYPES = ["figure", "table", "chart", "diagram", "map", "graph", "svg", "numberline"];
   function figuresOf(q) {
     return (q && Array.isArray(q.contentBlocks) ? q.contentBlocks : [])
       .filter(function (b) { return b && FIGURE_TYPES.indexOf(b.type) >= 0; });
@@ -27566,6 +27574,14 @@
   var BLOCK_TYPES = [
     "instructions", "passage", "source", "figure", "table", "dialogue",
     "code", "question", "choices", "blank", "answer-area", "notice", "spacer",
+    /* ── 資料問題（2026-08-30）────────────────────────────────
+       訴え「資料問題。フリー画像・SVG・表や図形を 問題用紙に
+             ずれなく 正確に」
+       chart / diagram は もともと 図として 数えられていたのに、
+       ここに 無かったので **静かに 捨てられていた**（この行の すぐ下で
+       BLOCK_TYPES に 無いものを return している）。
+       描くのは vq-fig.js。AI が 出すのは 数と 名前だけ。 */
+    "chart", "diagram", "numberline", "svg",
     /* 紙面プロファイルを選んだときだけ使う部品。
        AI が指定できるのは相変わらずこの語彙の中だけ。 */
     "figure-group", "answer-grid-head", "answer-grid-section", "answer-grid-block",
@@ -27800,7 +27816,7 @@
     return blocks;
   }
 
-  var FIGURE_BLOCK_TYPES = ["figure", "table", "chart", "diagram"];
+  var FIGURE_BLOCK_TYPES = ["figure", "table", "chart", "diagram", "svg", "numberline"];
   function isFigureType(t) { return FIGURE_BLOCK_TYPES.indexOf(t) >= 0; }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -28675,8 +28691,19 @@
       "          padding: " + m.top + "mm " + m.right + "mm " + m.bottom + "mm " + m.left + "mm; }",
       "  .sheet { width: auto; }",
       "}",
-      "@media print { body { background: #fff; padding: 0; } .page { box-shadow: none; margin: 0; width: auto; min-height: 0; padding: 0; } }"
+      "@media print { body { background: #fff; padding: 0; } .page { box-shadow: none; margin: 0; width: auto; min-height: 0; padding: 0; } }",
+
+      /* 資料（図・グラフ・図形・表）の 見た目は vq-fig.js が 持つ。
+         描く所と 見た目を 別々に すると 必ず ずれるので、同じ 所から 取る。 */
+      資料のCSS()
     ].filter(Boolean).join("\n");
+  }
+
+  function 資料のCSS() {
+    try {
+      var F = root.VQFIG;
+      return (F && typeof F.CSS === "function") ? String(F.CSS() || "") : "";
+    } catch (e) { return ""; }
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -28950,11 +28977,22 @@
       case "dialogue":
         return '<div class="dlg" data-block="' + esc(b.id) + '">' + rich(b.text, vertical) + "</div>";
 
+      /* ── 資料（図・グラフ・図形・表）─────────────────────────
+         描くのは vq-fig.js（VQFIG）。読めていない ときだけ、
+         これまでの 描きかたへ 落ちる（機能を 落とさない）。 */
       case "figure":
+      case "svg":
+      case "chart":
+      case "diagram":
+      case "numberline": {
+        var 図 = 資料を描く(b);
+        if (図) return '<div class="fig" data-block="' + esc(b.id) + '">' + 図 + "</div>";
+        if (b.type !== "figure") return "";
         return '<div class="fig" data-block="' + esc(b.id) + '">'
           + (b.src && /^data:image\//.test(b.src) ? '<img src="' + esc(b.src) + '" alt="' + esc(b.caption || "図") + '">'
              : '<div class="src">' + esc(b.caption || "（図）") + "</div>")
           + (b.caption ? '<div class="src-cap">' + esc(b.caption) + "</div>" : "") + "</div>";
+      }
 
       case "table":
         return renderTable(b);
@@ -29070,6 +29108,11 @@
      幅は Planner が決めている。ここでは受け取った幅をそのまま使い、広げない。
      図の縦横比は変えない（object-fit しない・height を指定しない）。 */
   function oneFigure(f) {
+    var 図 = 資料を描く(f);
+    if (図) {
+      return '<div class="fgi" data-block="' + esc(f.id) + '">'
+        + (f.title ? '<div class="fgi-t">' + esc(f.title) + "</div>" : "") + 図 + "</div>";
+    }
     if (f.type === "table") {
       return '<div class="fgi" data-block="' + esc(f.id) + '">'
         + (f.title ? '<div class="fgi-t">' + esc(f.title) + "</div>" : "")
@@ -29380,9 +29423,25 @@
       + "</div>";
   }
 
+  /* 資料を 1 つ 描く。VQFIG が 無い／描けない ときは "" を 返す。
+     ここを 1 か所に しておくと、図の 出しかたを 直すのが ここだけで 済む。 */
+  function 資料を描く(b) {
+    try {
+      var F = root.VQFIG;
+      if (!F || typeof F.描く !== "function") return "";
+      return String(F.描く(b) || "");
+    } catch (e) { return ""; }
+  }
+
   function renderTable(b) {
     var rows = Array.isArray(b.rows) ? b.rows : [];
     if (!rows.length) return "";
+    /* 表も VQFIG が 正（列ごとの 寄せ・見出しの 列・うめる マス）。 */
+    var t = 資料を描く({ type: "table", id: b.id, rows: rows, header: b.header,
+                        headerColumn: b.headerColumn || b.rowHeader, align: b.align,
+                        columnWidths: b.columnWidths, caption: b.caption, note: b.note,
+                        credit: b.credit, widthMm: b.widthMm });
+    if (t) return t;
     return '<table class="tbl" data-block="' + esc(b.id) + '">'
       + rows.map(function (r, i) {
           var tag = i === 0 && b.header !== false ? "th" : "td";
@@ -31029,7 +31088,7 @@
   }
   function sectionSheetLabel(n) { return "問題" + n; }
 
-  var FIGURE_TYPES = ["figure", "table", "chart", "diagram"];
+  var FIGURE_TYPES = ["figure", "table", "chart", "diagram", "svg", "numberline"];
 
   /* ── 画像 ────────────────────────────────────────────────────
      data: URI は書き出し用のバイト列として集める。
@@ -64604,8 +64663,22 @@
         }
 
         var ca = el.getAttribute("data-action") || el.getAttribute("data-bridge-action");
-        if (ca === "create-quiz" && F.isOn("presetStudioV2")) {
-          e.preventDefault(); e.stopPropagation(); onEntry("preset-new"); return;
+        if (ca === "create-quiz") {
+          /* ★ ここが PC で「試験 / プリセット」を 選べなかった 真因（2026-08-30）。
+             影の DOM の クリックを **捕捉フェーズ**で 横取りしているので、
+             vq-core 側に 入れた 新しい 入口（__vqMake）へ 届く前に
+             ここで 旧 preset-studio が 開いていた。
+             PC は シェルの サイドバー（影の DOM）から 押すので こちらだけを 通り、
+             スマホは 下の 帯（本体 DOM）から 押すので 新しい方へ 行っていた。
+             ＝「PC だと 選べない」。入口は 1 つなので ここでも 同じ所へ 送る。 */
+          try {
+            if (root.__vqMake && root.__vqMake.open) {
+              e.preventDefault(); e.stopPropagation(); root.__vqMake.open(); return;
+            }
+          } catch (eMk) {}
+          if (F.isOn("presetStudioV2")) {
+            e.preventDefault(); e.stopPropagation(); onEntry("preset-new"); return;
+          }
         }
       }
     }, true);
@@ -64868,6 +64941,10 @@
      ══════════════════════════════════════════════════════════════════ */
   function onEntry(action) {
     if (action === "flags") return openFlagPanel();
+    /* 作るの 入口は 1 つ（2026-08-30）。開いた 瞬間に プリセット / 試験 を 選ぶ。 */
+    if (action === "preset-new" || action === "mock") {
+      try { if (root.__vqMake && root.__vqMake.open) return root.__vqMake.open(); } catch (eMk) {}
+    }
     if (action === "preset-new") return api.presetStudio({});
     if (action === "preset") return api.presetStudio({});
     if (action === "result") return pickResult();

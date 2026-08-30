@@ -878,6 +878,12 @@
       window.uiConfirmHtml = uiConfirmHtml;
 
       let _toastTimer = null;
+      /* ★ 一言の 知らせを **外へ 出す**（2026-08-30）。
+         vq-shell / vq-screens は window.__vqToast を 呼んでいたが、
+         それを 置いている 所が どこにも 無く、**黙って 何も 出ていなかった**
+         （`window.__vqToast &&` なので 例外も 出ない＝気づけない）。 */
+      try { window.__vqToast = (m) => uiToast(m); } catch (e) {}
+
       function uiToast(message){
         const text = String(message ?? "").trim();
         if (!text) return;
