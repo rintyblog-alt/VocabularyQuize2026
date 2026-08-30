@@ -19967,6 +19967,27 @@
   }
   function jobTaken(jobId) { return takenList().indexOf(String(jobId || "")) >= 0; }
 
+  /* ══ **この 仕事は こちらで 面倒を 見る**（2026-08-30・訴え）════════
+     「受け取った」印（taken）は、10 分 たつと 無視される 決まりに なっている
+     （画面が 保存する 前に 閉じた ぶんを 拾い直す ため）。
+     ところが 試験づくりの 仕事は **プリセットに しては いけない**ので、
+     その 拾い直しで 毎回 分割された プリセットが 増えていた。
+     ここは 取り消されない 印。うしろの 拾い上げは これを 必ず 見る。 */
+  var OWNED_KEY = "vq2.aigen.owned.v1";
+  function ownedList() {
+    try { var a = JSON.parse(root.localStorage.getItem(OWNED_KEY) || "[]"); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function markJobOwned(jobId) {
+    var id = String(jobId || ""); if (!id) return;
+    var a = ownedList();
+    if (a.indexOf(id) >= 0) return;
+    a.push(id);
+    if (a.length > 400) a = a.slice(a.length - 400);
+    try { root.localStorage.setItem(OWNED_KEY, JSON.stringify(a)); } catch (e) {}
+  }
+  function jobOwned(jobId) { return ownedList().indexOf(String(jobId || "")) >= 0; }
+
   /* すでに走っている仕事に、あとから合流する（再読み込み・別端末）。 */
   function followJob(jobId, o) {
     o = o || {};
@@ -20063,7 +20084,9 @@
          印の 無いまま 残り、うしろの 拾い上げが 1 件ずつ プリセットに
          していた（20 問の 試験で 12 個 できた）。
          自分で 面倒を 見る 仕事（試験づくり）は ここで 外す。 */
-      if (o.selfManaged === true) { try { markJobTaken(j.jobId); } catch (e) {} }
+      if (o.selfManaged === true) {
+        try { markJobTaken(j.jobId); markJobOwned(j.jobId); } catch (e) {}
+      }
       if (typeof o.onStart === "function") { try { o.onStart(j.jobId, j.planned || 0); } catch (e) {} }
       /* ★ 始まった ことを **その場で** 本体へ 知らせる。
          これが 無いと、作り始めて すぐ 画面を 閉じても、プリセット一覧の
@@ -20297,6 +20320,8 @@
     generateQuestionsTracked: generateQuestionsTracked,
     /* うしろで 拾う 側（vq-core）が 使う。 */
     markJobTaken: markJobTaken, jobTaken: jobTaken,
+    /* **取り消されない 印**。試験づくりの 仕事は これを 付ける。 */
+    markJobOwned: markJobOwned, jobOwned: jobOwned,
     /* 資料（PDF・画像）を送れる形に直す */
     filesToPayload: filesToPayload,
     /* 大きい資料の文字（そのままでは送れないぶん）。無ければ空。 */

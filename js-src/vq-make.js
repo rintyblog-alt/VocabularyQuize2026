@@ -504,9 +504,7 @@
     /* 資料 */
     /* 渡しかた。資料が あるときだけ 出す。 */
     if (st.資料.length) {
-      var 文可 = st.資料.every(function (f) {
-        return String((f && f.extractedText) || "").trim().length >= 200;
-      });
+      var 文件 = 文字の資料().length, 生件 = 生の資料().length;
       h += '<div class="row"><label>資料の 渡しかた</label><div class="chips">'
         + ["はやい", "そのまま"].map(function (id) {
             var on = (c.資料の渡し || "はやい") === id;
@@ -516,12 +514,14 @@
                                  : "そのまま 読ませる<small>図も 読める・遅い</small>") + "</button>";
           }).join("")
         + "</div><div class=\"hint\">"
-        + (文可
-            ? "「本文の 文字だけ」は、添付から 取り出した <b>本文 そのもの</b>を 渡します"
-              + "（要点に していません）。PDF を 読み直させないので <b>何倍も 速い</b>です。"
-              + "図や 写真を 問題に したい ときだけ「そのまま」を 選んでください。"
-            : "本文の 取れていない 資料が あるので、この 回は <b>そのまま 読ませます</b>"
-              + "（写真や スキャンの ページを 読ませるため）。時間が かかります。")
+        + ((c.資料の渡し || "はやい") === "そのまま"
+            ? "全部を <b>そのまま 読ませます</b>（図や 写真も 読めますが、時間が かかります）。"
+            : (文件
+                ? "本文の 取れた <b>" + 文件 + " 件</b>は 文字で 渡します"
+                  + "（要点に していません。<b>本文 そのもの</b>です）。読み直させないので 速いです。"
+                  + (生件 ? " 本文の 取れなかった <b>" + 生件 + " 件</b>だけ そのまま 読ませます。" : "")
+                : "本文が 1 件も 取れていないので、<b>そのまま 読ませます</b>"
+                  + "（写真や スキャンの ページ）。時間が かかります。"))
         + "</div></div>";
     }
     h += '<div class="row"><label>資料（任意）</label>' + 資料の中身()
@@ -918,7 +918,10 @@
         extractedText: x.text || "",
         pageImages: x.pageImages || null,
         status: x.status, statusText: x.statusText || "", error: x.error || "",
-        warnings: x.warnings || [], truncated: !!x.truncated, kind: x.kind || ""
+        warnings: x.warnings || [], truncated: !!x.truncated, kind: x.kind || "",
+        pageCount: x.pageCount || null, ocr: (x.pages || []).filter(function (pg) {
+          return pg && pg.extractionMethod === "ocr-required";
+        }).length
       };
     });
   }
@@ -1106,12 +1109,40 @@
      ★ 要点に していない。**本文 そのもの**を 渡す。長ければ 回ごとに
        別の ところを 渡して、全部を 一巡 する。 */
   var 一度に渡す字数 = 40000;
+  /* ★ **1 件ずつ 決める**（2026-08-30・作り直し）。
+     前は「全部の 資料から 文字が 取れている ときだけ 文字で 渡す」に
+     していた。1 件でも 写真だけの ページが あると **14 件 まとめて**
+     そのまま 読ませる 道へ 落ち、しかも 先に 14 件 預けるので、
+     押しても 何分も 何も 始まらない ように 見えていた。
+     文字が 取れている ものは 文字で、取れていない ものだけ ファイルで 渡す。 */
+  /* ★ 「文字が 取れている」の 見かた（2026-08-30）。
+     長さだけで 決めると 危ない。**21 ページで 2 千字**の PDF は、
+     ほとんどが 写真の ページで、見出しだけが 取れている。
+     それを 文字で 渡すと「資料を 付けたのに 中身が 無い」に なる。
+       ・絵にした ページ（pageImages）が ある → 写真の 資料。ファイルで 渡す
+       ・読み取れなかった ページ（ocr）が 半分 以上 → 同じく ファイルで
+       ・1 ページ あたり 100 字 未満 → 中身が 薄い。ファイルで */
+  function 文字で足りるか(f) {
+    if (!f) return false;
+    var t = String(f.extractedText || "").trim();
+    if (t.length < 200) return false;
+    if ((f.pageImages || []).length) return false;
+    var 頁 = Number(f.pageCount) || 0;
+    if (頁 && Number(f.ocr) >= 頁 / 2) return false;
+    /* 実測（2026-08-30）: 本物の 共通テスト（情報Ⅰ・21 ページ）を 読み取ると
+       **2,411 字**しか 取れない（1 ページ 115 字）。ほとんどが 図と 写真で、
+       見出しだけが 文字に なっている。これを 文字で 渡すと
+       「資料を 付けたのに 中身が 無い」に なる。
+       本物の 文字の ページは 1 ページ 600〜1,500 字。400 字で 線を 引く。 */
+    if (頁 && t.length / 頁 < 400) return false;
+    return true;
+  }
+  function 文字の資料() { return st.資料.filter(文字で足りるか); }
+  function 生の資料() { return st.資料.filter(function (f) { return !文字で足りるか(f); }); }
   function 資料の文字() {
     var 束 = [];
-    st.資料.forEach(function (f) {
-      var t = String((f && f.extractedText) || "").trim();
-      if (t.length < 200) return;
-      束.push("■ " + (f.name || "資料") + "\n" + t);
+    文字の資料().forEach(function (f) {
+      束.push("■ " + (f.name || "資料") + "\n" + String(f.extractedText).trim());
     });
     if (!束.length) return [];
     var 全 = 束.join("\n\n");
@@ -1124,13 +1155,17 @@
   /* 文字で 渡せるか。**全部の 資料から 本文が 取れている**ときだけ。
      1 つでも 写真だけの ページが あると、その 資料は 読まれないので
      そのまま 読ませる 道へ 行く。 */
+  /* 文字で 渡す ものが 1 件でも あるか。「そのまま」を 選んだら 使わない。 */
   function 文字で渡せるか() {
     if (!st.資料.length) return false;
     if (st.条件 && st.条件.資料の渡し === "そのまま") return false;
-    if (!(window.VQ2 && window.VQ2.aigen)) return true;
-    return st.資料.every(function (f) {
-      return String((f && f.extractedText) || "").trim().length >= 200;
-    });
+    return 文字の資料().length > 0;
+  }
+  /* ファイルとして 渡す ぶん（文字の 取れなかった もの）。 */
+  function ファイルで渡すぶん() {
+    if (!st.資料.length) return [];
+    if (st.条件 && st.条件.資料の渡し === "そのまま") return st.資料.slice();
+    return 生の資料();
   }
 
   /* ══ 送れる形に する ═══════════════════════════════════════════
@@ -1140,20 +1175,22 @@
        ここを 自前で 書くと、その 判断が また ずれる。 */
   function 資料を送れる形に(onUpload) {
     if (!st.資料.length) return Promise.resolve({ files: [], 文: "" });
-    /* 文字で 渡すなら、預けも 送りも しない（いちばん 速い）。 */
-    if (文字で渡せるか()) return Promise.resolve({ files: [], 文: "" });
+    /* ★ ファイルとして 渡す ぶんだけ 通す。文字で 渡す ものは 送らない
+       （預けも しない）。ここが「押しても 始まらない」の 直し。 */
+    var 生 = ファイルで渡すぶん();
+    if (!生.length) return Promise.resolve({ files: [], 文: "" });
     var V = VQ2(), A = V && V.aigen;
-    var 自前 = st.資料.filter(function (f) { return f.data; });
-    if (自前.length === st.資料.length || !A || !A.filesToPayload) {
+    var 自前 = 生.filter(function (f) { return f.data; });
+    if (自前.length === 生.length || !A || !A.filesToPayload) {
       return Promise.resolve({
-        files: st.資料.map(function (f) { return { mimeType: f.mimeType, data: f.data }; })
+        files: 生.map(function (f) { return { mimeType: f.mimeType, data: f.data }; })
           .filter(function (x) { return x.data; }),
         文: ""
       });
     }
-    return Promise.resolve(A.filesToPayload(st.資料, { onUpload: onUpload })).then(function (files) {
+    return Promise.resolve(A.filesToPayload(生, { onUpload: onUpload })).then(function (files) {
       var 文 = "";
-      try { 文 = A.bigDocText ? String(A.bigDocText(st.資料) || "") : ""; } catch (e) { 文 = ""; }
+      try { 文 = A.bigDocText ? String(A.bigDocText(生) || "") : ""; } catch (e) { 文 = ""; }
       return { files: files || [], 文: 文 };
     });
   }
@@ -1452,7 +1489,18 @@
     /* ★ 資料は **走り出す 前に** 送れる形へ 直す（2026-08-30）。
        ここで 断られる（大きすぎる・中身が 取り出せない）ことが あるので、
        作り始めてから 気づくのではなく、先に 理由を 出して 止める。 */
-    if (st.資料.length) { st.進み.stage = "資料を 用意しています"; 描く(); }
+    /* ★ **押した 瞬間に 何を しているか 出す**（2026-08-30・訴え
+       「試験が 作り始まらない」）。写真の 資料は 先に 預けるので、
+       ここで 1 分ほど かかる。黙っていると 固まったように 見える。 */
+    var 預ける件 = ファイルで渡すぶん().length;
+    if (預ける件) {
+      st.進み.stage = "資料を 預けています（0 / " + 預ける件 + "）";
+      記す("step", "写真・図の 資料 " + 預ける件 + " 件を 先に 預けます。"
+        + "1 回 預ければ、あとは 何回 頼んでも 送り直しません。");
+    } else if (st.資料.length) {
+      st.進み.stage = "資料を 用意しています";
+    }
+    描く();
     資料を送れる形に(function (済, 全) {
       /* ★ 預けている 間も 動きを 見せる（2026-08-30）。
          14 件だと ここで 1 分近く かかるので、黙っていると
@@ -1472,12 +1520,12 @@
   function 走らせる(o, c, 表紙, p2, MC, MR, G, 用意) {
     var V = VQ2();
     var 依頼文 = 依頼を組む(c, 表紙, p2);
-    var 文の道 = 文字で渡せるか();
-    var 資料 = 文の道 ? [] : ((用意 && 用意.files) || []);
-    var 本文の束 = 文の道 ? 資料の文字() : [];
+    var 資料 = (用意 && 用意.files) || [];
+    var 本文の束 = 文字で渡せるか() ? 資料の文字() : [];
+    var 文の道 = !資料.length;                 /* ファイルを 1 件も 送らない＝いちばん 速い */
     var 何回目 = 0;
     /* 大きすぎて そのままは 渡せない 資料は、**取り出した 文字**で 渡す。 */
-    if (!文の道 && 用意 && 用意.文) {
+    if (用意 && 用意.文) {
       依頼文 += "\n\n【添付した 資料の 本文】\n" + 用意.文
         + "\n★ ここに 書いてあることだけを 根拠に してください。";
     }
@@ -1500,24 +1548,25 @@
        前は「資料 14 件を そのまま 渡します」と 出しながら、
        中では 8 件に 切って いた（残り 6 件は 黙って 落ちていた）。 */
     if (st.資料.length) {
-      if (文の道) {
-        var 字 = 本文の束.reduce(function (n, x) { return n + x.length; }, 0);
-        記す("note", "資料 " + st.資料.length + " 件を **本文の 文字**で 渡します（合わせて "
+      var 文数 = 文字で渡せるか() ? 文字の資料().length : 0;
+      var 字 = 本文の束.reduce(function (n, x) { return n + x.length; }, 0);
+      if (文数) {
+        記す("note", "資料 " + 文数 + " 件は **本文の 文字**で 渡します（合わせて "
           + Math.round(字 / 1000) + " 千字"
           + (本文の束.length > 1 ? "・" + 本文の束.length + " 回に 分けて 一巡" : "") + "）。"
-          + "PDF を 読み直させないので、ここが いちばん 速い 道です。");
-      } else {
+          + "読み直させないので、ここが いちばん 速い 道です。");
+      }
+      if (資料.length) {
         var 預 = 資料.filter(function (f) { return f && f.fileUri; }).length;
         var 載 = 資料.filter(function (f) { return f && f.data; }).length;
         var 言 = [];
-        if (預) 言.push("預けた " + 預 + " 件（場所を 指すだけ・送り直しません）");
+        if (預) 言.push("預けた " + 預 + " 件");
         if (載) 言.push("そのまま 載せる " + 載 + " 件");
-        記す("note", "資料 " + 資料.length + " 件を そのまま 読ませます："
-          + 言.join(" ／ ") + "。図や 写真も 読めますが、時間が かかります。");
-        if (資料.length < st.資料.length) {
-          記す("warn", "付けた " + st.資料.length + " 件のうち " + 資料.length
-            + " 件だけを 渡します（1 回に 渡せるのは 16 件までです）。");
-        }
+        記す("note", "資料 " + 資料.length + " 件は そのまま 読ませます："
+          + 言.join(" ／ ") + "（図や 写真も 読めますが、時間が かかります）。");
+      }
+      if (!文数 && !資料.length) {
+        記す("warn", "資料から 中身を 取り出せませんでした。指示だけで 作ります。");
       }
       資料を言った = true;
     }
@@ -1861,7 +1910,9 @@
                資料: st.資料.map(function (f) {
                  return { name: f.name, size: f.size, mimeType: f.mimeType,
                           状態: f.status || "", 文字数: (f.extractedText || "").length,
-                          絵: (f.pageImages || []).length };
+                          絵: (f.pageImages || []).length,
+                          頁: f.pageCount || 0, 読めない頁: f.ocr || 0,
+                          文字で足りる: 文字で足りるか(f) };
                }),
                記録: st.記録.slice(-8),
                描けなかった: 描けなかった };

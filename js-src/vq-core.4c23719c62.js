@@ -24557,7 +24557,14 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
         try{
           const body = await _appApiJson("/api/aijob/list?live=1&limit=20", { method: "GET" });
           const all = Array.isArray(body?.jobs) ? body.jobs : [];
-          _appCloudGen.jobs = all.filter((j) => j && String(j.type || "") === "preset-gen");
+          /* ★ 試験づくり（exam-gen）も **帯には 出す**（2026-08-30・訴え
+             「クラウド表示もされてない」）。プリセットに しないのは
+             下の 拾い上げ（_appCloudGenAdoptFinished）だけ。
+             ここまで 外して しまうと、走っている ことが どこにも 出ない。 */
+          _appCloudGen.jobs = all.filter((j) => {
+            const t = String(j?.type || "");
+            return t === "preset-gen" || t === "exam-gen";
+          });
           _appCloudGen.loadedAt = Date.now();
         }catch(err){
           /* 取れなくても 画面は 壊さない。次の 機会に 取り直す。 */
@@ -24616,7 +24623,15 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
             && (j.status === "completed" || j.status === "partial")
             && Number(j.made || 0) > 0
             && (いま - Number(j.completedAt || j.updatedAt || 0)) > CLOUD_ADOPT_WAIT_MS
-            && !_appCloudGen.取り込みずみ.has(String(j.jobId || "")));
+            && !_appCloudGen.取り込みずみ.has(String(j.jobId || ""))
+            /* ★ **こちらで 面倒を 見る 仕事は 絶対に 拾わない**（2026-08-30・訴え
+               「またプリセットに分割して一覧に追加されてるし」）。
+               試験づくりは 画面が 自分で 受け取って 試験に する。
+               下の 10 分の 拾い直しでも、この 印は 無視しない。 */
+            && !(V.aigen?.jobOwned && V.aigen.jobOwned(String(j.jobId || "")))
+            /* 別の 端末・別の タブで 作った ものにも 効くように、注文の 目印でも
+               見分ける（試験づくりの 注文は vqmk- で 始まる）。 */
+            && !/^vqmk-/.test(String(j.inputReference || "")));
           /* ★ 「画面が 受け取った」印（jobTaken）だけで 切り捨てない（2026-08-29）。
              受け取った あと **保存する前に 画面を 閉じる**と、
              その ぶんは どこにも 残らない（訴え「完成したら かならず 一覧へ」）。
