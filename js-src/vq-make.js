@@ -124,7 +124,14 @@
     /* 資料 */
     ".files{display:grid;gap:7px}",
     ".file{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:12px;",
-      "border:1px solid var(--vq-border,#E7E4EF);background:var(--vq-surface,#fff);font-size:13px}",
+      "border:1px solid var(--vq-border,#E7E4EF);background:var(--vq-surface,#fff);font-size:13px;",
+      "flex-wrap:wrap}",
+    /* 読み取れたか どうかを **その 場に** 出す。隠すと「入れたのに 読まれない」に なる。 */
+    ".file-st{flex:1 0 100%;font-size:11.5px;line-height:1.6;color:var(--vq-text-secondary,#6B6480)}",
+    ".file.is-busy{border-color:var(--vq-accent,#6C5CE7)}",
+    ".file.is-busy .file-st{color:var(--vq-accent-text,#5F5691)}",
+    ".file.is-bad{border-color:var(--vq-danger,#C0392B)}",
+    ".file.is-bad .file-st{color:var(--vq-danger,#C0392B)}",
     ".file-n{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
     ".file-s{flex:0 0 auto;font-size:11.5px;color:var(--vq-text-secondary,#6B6480)}",
     ".file-x{width:44px;height:44px;flex:0 0 auto;display:grid;place-items:center;border-radius:50%;margin:-8px -6px -8px 0}",
@@ -493,8 +500,10 @@
 
     /* 資料 */
     h += '<div class="row"><label>資料（任意）</label>' + 資料の中身()
-      + '<div class="hint">PDF・画像・文書を そのまま 渡します（要点だけを 抜き出しません）。'
-      + "資料を 付けると <b>資料読解</b>の 問題を 作れます。合わせて 20MB まで。</div></div>";
+      + '<div class="hint">PDF・画像・文書・表・zip を そのまま 渡します（要点だけを 抜き出しません）。'
+      + "資料を 付けると、<b>その 資料だけを 根拠に</b>した 問題を 作ります。"
+      + "文字の 入っていない <b>スキャンした PDF</b>も、ページを 絵にして 読ませます。"
+      + "プリセット作成の AI と <b>同じ 道</b>を 通ります。</div></div>";
 
     /* 図・表・グラフ（資料問題）─────────────────────────────
        ★ AI に SVG は 書かせない。数と 名前だけ 出させて、線は こちらが 引く。 */
@@ -854,27 +863,80 @@
   }
 
   /* ══ 資料 ═════════════════════════════════════════════════════════
-     ★ 読み取りは **サーバ（Gemini）**が する。ここでは 要点を 抜き出さない。
-       抜き出すと「資料に 書いていないこと」を 作る 元に なる。
-     ★ 大きさは ここで 止める。載らない ものを 送って 413 を 見せない。 */
-  var 資料の上限 = 20 * 1024 * 1024;       /* 合わせて 20MB（base64 で およそ 27MB） */
+     ★ **プリセット作成の AI と 同じ 道**を 通す（2026-08-30・訴え
+       「Quick Mock に 根拠と なる 資料も 添付できるように」）。
+       ここだけ 自前の 作りに していたので、同じ「資料を 付ける」でも
+         ・20MB を 超えると 送れない（プリセット側は 512MB まで）
+         ・**スキャンした PDF**（文字が 入っていない）は 何も 読まれない
+         ・docx / csv / zip は 中身が 取り出されない
+         ・読み取れたのか どうかが 画面に 出ない
+       という 差が あった。読み取り（__vqChatFiles）も 送り口
+       （VQ2.aigen.filesToPayload）も **もう ある**。作らずに 使う。
+     ★ 要点を 抜き出して 渡さない。抜き出すと「資料に 書いていないこと」を
+       作る 元に なる。渡すのは 資料 そのもの（か、その ページの 絵）。 */
+  function 読取器() { try { return window.__vqChatFiles || null; } catch (e) { return null; } }
+  var 見張り = null;
+
+  /* __vqChatFiles の 一覧から、いま 持っている 資料の 状態を 写し直す。 */
+  function 資料を見直す() {
+    var F = 読取器();
+    if (!F || !F.list) return;
+    var 表 = {};
+    F.list().forEach(function (x) { if (x && x.id) 表[x.id] = x; });
+    st.資料 = st.資料.map(function (a) {
+      var x = a && a.id ? 表[a.id] : null;
+      if (!x) return a;                        /* 自前で 読んだ ぶん（読取器なし） */
+      return {
+        id: x.id, name: x.name, size: x.size, mimeType: x.mimeType || "",
+        file: x.file || null,
+        /* aigen 側は extractedText という 名前で 読む。ここで そろえる。 */
+        extractedText: x.text || "",
+        pageImages: x.pageImages || null,
+        status: x.status, statusText: x.statusText || "", error: x.error || "",
+        warnings: x.warnings || [], truncated: !!x.truncated, kind: x.kind || ""
+      };
+    });
+  }
+  function 見張る() {
+    var F = 読取器();
+    if (!F || !F.subscribe || 見張り) return;
+    見張り = F.subscribe(function () {
+      if (!st.資料.length) return;
+      資料を見直す();
+      if (st.画面 === "条件") 描く();
+    });
+  }
+
+  /* 1 件ぶんの 見え方。**読み取れたか どうかを 隠さない。** */
+  function 資料の札(f, i) {
+    var 状 = "", cls = "";
+    if (f.status === "extracting" || f.status === "queued") { 状 = "読み取っています…"; cls = " is-busy"; }
+    else if (f.status === "failed") { 状 = f.error || "読み取れませんでした"; cls = " is-bad"; }
+    else if ((f.pageImages || []).length) 状 = "文字が 入っていないので " + f.pageImages.length + " ページを 絵で 渡します";
+    else if (f.extractedText) 状 = Math.round(f.extractedText.length / 100) / 10 + " 千字を 読み取りました"
+      + (f.truncated ? "（長いので 途中まで）" : "");
+    else if (f.kind === "image") 状 = "画像として 渡します";
+    else if (f.status === "ready" || f.status === "warning") 状 = "そのまま 渡します";
+    return '<div class="file' + cls + '"><span class="file-n">' + esc(f.name) + "</span>"
+      + '<span class="file-s">' + 大きさ(f.size) + "</span>"
+      + '<button type="button" class="file-x" data-a="rmfile" data-v="' + i
+      + '" aria-label="' + esc(f.name) + ' を外す">' + svg("x", "i") + "</button>"
+      + (状 ? '<div class="file-st">' + esc(状) + "</div>" : "")
+      + "</div>";
+  }
   function 資料の中身() {
     var h = '<div class="files">';
-    st.資料.forEach(function (f, i) {
-      h += '<div class="file"><span class="file-n">' + esc(f.name) + "</span>"
-        + '<span class="file-s">' + 大きさ(f.size) + "</span>"
-        + '<button type="button" class="file-x" data-a="rmfile" data-v="' + i
-        + '" aria-label="' + esc(f.name) + ' を外す">' + svg("x", "i") + "</button></div>";
-    });
+    st.資料.forEach(function (f, i) { h += 資料の札(f, i); });
     h += '<button type="button" class="file-add" data-a="addfile">' + svg("plus", "i")
       + (st.資料.length ? "もっと 足す" : "資料を 選ぶ（PDF・画像・文書）") + "</button>";
     if (st.資料.length) {
-      var 合 = st.資料.reduce(function (a, f) { return a + f.size; }, 0);
+      var 合 = st.資料.reduce(function (a, f) { return a + (f.size || 0); }, 0);
       h += '<div class="file-t">' + st.資料.length + " 件 ・ " + 大きさ(合) + "</div>";
     }
     return h + "</div>";
   }
   function 大きさ(n) {
+    n = Number(n) || 0;
     if (n < 1024) return n + " B";
     if (n < 1024 * 1024) return Math.round(n / 1024) + " KB";
     return (Math.round(n / 1024 / 1024 * 10) / 10) + " MB";
@@ -883,23 +945,62 @@
     var inp = doc.createElement("input");
     inp.type = "file";
     inp.multiple = true;
-    inp.accept = ".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.csv,.docx";
+    /* プリセット作成と 同じ 顔ぶれ。表・書類・まとめて 入れた zip も 受ける。 */
+    inp.accept = ".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.md,.markdown,.csv,.tsv,.json,.docx,.zip";
     inp.style.cssText = "position:fixed;width:0;height:0;opacity:0";
     doc.body.appendChild(inp);
     inp.addEventListener("change", function () {
       var 並 = Array.prototype.slice.call(inp.files || []);
       try { inp.parentNode.removeChild(inp); } catch (e) {}
       if (!並.length) return;
-      並.reduce(function (待, f) {
-        return 待.then(function () { return 一つ読む(f); });
-      }, Promise.resolve()).then(function () { 描く(); });
+      資料を足す(並);
     });
     inp.click();
   }
+
+  /* 足す。読取器が あれば そちらへ（＝プリセット作成と 同じ 道）。 */
+  function 資料を足す(並) {
+    var F = 読取器();
+    if (!F || !F.add) return 自前で読む(並);
+    var 前 = {};
+    F.list().forEach(function (x) { if (x && x.id) 前[x.id] = 1; });
+    st.err = "";
+    描く();
+    return Promise.resolve(F.add(並)).then(function () {
+      F.list().forEach(function (x) {
+        if (!x || !x.id || 前[x.id]) return;
+        if (st.資料.some(function (a) { return a.id === x.id; })) return;
+        st.資料.push({ id: x.id, name: x.name, size: x.size, mimeType: x.mimeType || "",
+                      file: x.file || null, extractedText: "", pageImages: null,
+                      status: x.status, statusText: x.statusText || "", error: "", kind: x.kind || "" });
+      });
+      /* 受け取れなかった ものが あれば 言う（黙って 減らさない）。 */
+      var 受 = st.資料.length;
+      if (受 < 前ぶん(前) + 並.length) {
+        var 落 = (前ぶん(前) + 並.length) - 受;
+        st.err = 落 + " 件は 受け取れませんでした（大きすぎる・対応していない 形）。";
+      }
+      資料を見直す();
+      見張る();
+      描く();
+    }, function (e) {
+      st.err = "資料を 読み取れませんでした：" + String((e && e.message) || e).slice(0, 100);
+      描く();
+    });
+    function 前ぶん(t) { return st.資料.filter(function (a) { return t[a.id]; }).length; }
+  }
+
+  /* 読取器が 無い ところ（試験用の 器 など）だけの 道。base64 で 持つ。 */
+  var 自前の上限 = 18 * 1024 * 1024;
+  function 自前で読む(並) {
+    return 並.reduce(function (待, f) {
+      return 待.then(function () { return 一つ読む(f); });
+    }, Promise.resolve()).then(function () { 描く(); });
+  }
   function 一つ読む(f) {
-    var 合 = st.資料.reduce(function (a, x) { return a + x.size; }, 0);
-    if (合 + f.size > 資料の上限) {
-      st.err = "資料が 大きすぎます（合わせて " + 大きさ(資料の上限) + " まで）。"
+    var 合 = st.資料.reduce(function (a, x) { return a + (x.size || 0); }, 0);
+    if (合 + f.size > 自前の上限) {
+      st.err = "資料が 大きすぎます（合わせて " + 大きさ(自前の上限) + " まで）。"
         + "「" + f.name + "」は 入れていません。";
       return Promise.resolve();
     }
@@ -912,7 +1013,7 @@
           st.資料.push({
             name: String(f.name || "資料").slice(0, 80),
             mimeType: m[1] || f.type || "application/octet-stream",
-            data: m[2], size: f.size
+            data: m[2], size: f.size, status: "ready"
           });
           st.err = "";
         } catch (e) { st.err = "「" + f.name + "」を 読めませんでした。"; }
@@ -920,6 +1021,77 @@
       };
       r.onerror = function () { st.err = "「" + f.name + "」を 読めませんでした。"; done(); };
       r.readAsDataURL(f);
+    });
+  }
+
+  /* ══ 添付した 画像を **紙面の 資料**に する（2026-08-30・訴え）════
+     訴え「外部から 画像資料などを 持ってきてもいい」。
+
+     ★ AI に **画像の 住所を 書かせない。** 作り話の URL を 書いてくるだけで、
+       印刷では 取りに 行けず 白い 四角に なる（前に 踏んだ）。
+     ★ そこで **利用者が 添付した 画像だけ**に 名前（画像1・画像2…）を 付け、
+       AI には その 名前で 指させる。名前 → 中身の 差し替えは ここで する。 */
+  function 画像の資料() {
+    var 出 = [];
+    st.資料.forEach(function (f) {
+      var url = f && (f.imageDataUrl || (f.data && /^image\//.test(f.mimeType || "")
+        ? "data:" + f.mimeType + ";base64," + f.data : ""));
+      if (!url) {
+        /* 読取器が 持っている 縮小ずみの 絵。 */
+        try {
+          var F = 読取器();
+          var x = F && F.list ? F.list().filter(function (y) { return y.id === f.id; })[0] : null;
+          if (x && x.imageDataUrl) url = x.imageDataUrl;
+        } catch (e) {}
+      }
+      if (!url || !/^data:image\//.test(url)) return;
+      出.push({ 名: "画像" + (出.length + 1), name: f.name || "画像", src: url });
+    });
+    return 出.slice(0, 6);
+  }
+  /* AI が 書いた「画像1」を、本物の 中身へ 差し替える。
+     知らない 名前は **消す**（住所を でっち上げさせない）。 */
+  function 画像を差し替える(並, 絵) {
+    if (!絵.length) return;
+    var 表 = {};
+    絵.forEach(function (g) { 表[g.名] = g.src; });
+    (並 || []).forEach(function (q) {
+      ["materials", "contentBlocks", "figures"].forEach(function (k) {
+        if (!Array.isArray(q[k])) return;
+        q[k] = q[k].map(function (b) {
+          if (!b || typeof b !== "object") return b;
+          var v = String(b.src || b.url || b.image || "");
+          if (!v) return b;
+          if (/^data:image\//.test(v) || /^\/api\/media\//.test(v)) return b;
+          var 当 = 表[v] || 表[v.replace(/\s/g, "")];
+          if (当) return Object.assign({}, b, { type: b.type || "figure", src: 当, url: undefined });
+          /* 知らない 住所は **図ごと 落とす**（白い 四角を 出さない）。 */
+          return null;
+        }).filter(Boolean);
+      });
+    });
+  }
+
+  /* ══ 送れる形に する ═══════════════════════════════════════════
+     ★ **プリセット作成と 同じ 1 か所**（VQ2.aigen.filesToPayload）を 通す。
+       9MB までは そのまま／それより 大きく 文字が 取れているものは 文字で／
+       スキャンは ページの 絵で／どれでも 通らない ものは **理由を 言って 断る**。
+       ここを 自前で 書くと、その 判断が また ずれる。 */
+  function 資料を送れる形に() {
+    if (!st.資料.length) return Promise.resolve({ files: [], 文: "" });
+    var V = VQ2(), A = V && V.aigen;
+    var 自前 = st.資料.filter(function (f) { return f.data; });
+    if (自前.length === st.資料.length || !A || !A.filesToPayload) {
+      return Promise.resolve({
+        files: st.資料.map(function (f) { return { mimeType: f.mimeType, data: f.data }; })
+          .filter(function (x) { return x.data; }),
+        文: ""
+      });
+    }
+    return Promise.resolve(A.filesToPayload(st.資料)).then(function (files) {
+      var 文 = "";
+      try { 文 = A.bigDocText ? String(A.bigDocText(st.資料) || "") : ""; } catch (e) { 文 = ""; }
+      return { files: files || [], 文: 文 };
     });
   }
 
@@ -1009,7 +1181,14 @@
       if (a === "addfile") { 資料を選ぶ(); return; }
       if (a === "rmfile") {
         var idx = parseInt(el.dataset.v, 10);
-        if (idx >= 0) st.資料.splice(idx, 1);
+        if (idx >= 0) {
+          var 抜 = st.資料.splice(idx, 1)[0];
+          /* 読取器の 一覧からも 消す。残すと Quick Chat 側にも 出てしまう。 */
+          try {
+            var F0 = 読取器();
+            if (F0 && F0.remove && 抜 && 抜.id) F0.remove(抜.id);
+          } catch (e0) {}
+        }
         st.err = "";
         描く();
         return;
@@ -1172,8 +1351,39 @@
       + " 問の 枠を 先に 決めました（配点の 合計 " + p2.totalPoints + " 点）");
     開く("生成");
 
+    /* ★ 資料は **走り出す 前に** 送れる形へ 直す（2026-08-30）。
+       ここで 断られる（大きすぎる・中身が 取り出せない）ことが あるので、
+       作り始めてから 気づくのではなく、先に 理由を 出して 止める。 */
+    if (st.資料.length) { st.進み.stage = "資料を 用意しています"; 描く(); }
+    資料を送れる形に().then(function (用意) {
+      走らせる(o, c, 表紙, p2, MC, MR, G, 用意);
+    }, function (e) {
+      st.走っている = false;
+      st.err = (e && e.userMessage) || (e && e.message) || "資料を 渡せませんでした。";
+      記す("err", st.err);
+      描く();
+    });
+  }
+
+  function 走らせる(o, c, 表紙, p2, MC, MR, G, 用意) {
+    var V = VQ2();
     var 依頼文 = 依頼を組む(c, 表紙, p2);
-    var 資料 = st.資料.map(function (f) { return { mimeType: f.mimeType, data: f.data }; });
+    var 資料 = (用意 && 用意.files) || [];
+    /* 大きすぎて そのままは 渡せない 資料は、**取り出した 文字**で 渡す。 */
+    if (用意 && 用意.文) {
+      依頼文 += "\n\n【添付した 資料の 本文】\n" + 用意.文
+        + "\n★ ここに 書いてあることだけを 根拠に してください。";
+    }
+    /* 添付した 画像は **名前で 指させる**（住所を 書かせない）。 */
+    var 絵 = 画像の資料();
+    if (絵.length) {
+      依頼文 += "\n\n【紙面に 貼れる 画像】\n"
+        + 絵.map(function (g) { return "\u3000" + g.名 + " … " + g.name; }).join("\n")
+        + "\n\u3000使うときは materials に "
+        + '{"type":"figure","src":"画像1","caption":"図1 …"} と 書きます。'
+        + "\n\u3000★ **ここに 無い 名前や URL を 書かないでください。** 消されます。"
+        + "\n\u3000★ 要らない 問題には 貼りません。";
+    }
     var 資料を言った = false;
 
     MR.run({
@@ -1237,6 +1447,8 @@
         return 呼.then(function (r) {
           (r.warnings || []).forEach(function (w) { if (w) 記す("warn", w); });
           if (r.status === "contradictory" || r.status === "unsupported") 記す("warn", r.reason || "");
+          /* 「画像1」を 本物の 中身へ 差し替える（知らない 住所は 落とす）。 */
+          try { 画像を差し替える(r.questions, 絵); } catch (e2) {}
           return r;
         }, function (e) {
           /* **この端末へは 落とさない。** 理由を 言って 止める。 */
@@ -1283,6 +1495,10 @@
       + "記述には 採点の 基準を 付けてください。");
     if (String(c.instruction || "").trim()) 行.push(String(c.instruction).trim());
     if (!st.資料.length) 行.push("資料は ありません。上の 指示だけで 作ってください。");
+    else 行.push("添付した 資料が " + st.資料.length + " 件 あります。"
+      + "**その 資料に 書いてあることだけ**を 根拠に して 作ってください。"
+      + "資料に 無いことを 覚えで 書かないでください。"
+      + "資料の 図・表・数値を 読み取らせる 問題を 必ず 混ぜてください。");
     return 行.join("\n");
   }
 
@@ -1485,7 +1701,11 @@
                  点: st.spec.totalPoints, 表紙あり: !!st.spec.cover
                } : null,
                保存した: st.保存した,
-               資料: st.資料.map(function (f) { return { name: f.name, size: f.size, mimeType: f.mimeType }; }),
+               資料: st.資料.map(function (f) {
+                 return { name: f.name, size: f.size, mimeType: f.mimeType,
+                          状態: f.status || "", 文字数: (f.extractedText || "").length,
+                          絵: (f.pageImages || []).length };
+               }),
                記録: st.記録.slice(-8),
                描けなかった: 描けなかった };
     },
@@ -1494,11 +1714,18 @@
     資料を入れる: function (並) {
       st.資料 = (並 || []).map(function (f) {
         return { name: String(f.name || "資料"), mimeType: String(f.mimeType || "application/pdf"),
-                 data: String(f.data || ""), size: Number(f.size) || 0 };
+                 data: String(f.data || ""), size: Number(f.size) || 0,
+                 status: String(f.status || "ready"),
+                 extractedText: String(f.extractedText || ""),
+                 pageImages: f.pageImages || null };
       });
       if (st.画面) 描く();
       return st.資料.length;
     },
+    /* 本物の ファイルを 読取器へ 通す（実機と 同じ 道）。 */
+    資料を読ませる: function (並) { return 資料を足す(Array.prototype.slice.call(並 || [])); },
+    /* 送るときの 形。**何が どう 渡るか**を そのまま 見られるようにする。 */
+    資料の送り形: function () { return 資料を送れる形に(); },
     読み取り: function () { return st.読取り; },
     表紙を入れる: function (c) {
       st.表紙 = Object.assign(既定の表紙(), c || {});

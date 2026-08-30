@@ -3302,6 +3302,14 @@
     q.choices = Q.hasChoices(type) || arr(src.choices).length
       ? normalizeChoices(src.choices, engine) : [];
     q.blanks = normalizeBlanks(src.blanks);
+    /* ★ 語群（2026-08-30・訴え「流れの本文の語群問題」）。
+       ここで 拾わないと、保存の ときに 落ちて **語群の ない 穴埋め**に なる。
+       文字の 配列でも {id,text} でも 受ける。 */
+    q.wordBank = arr(src.wordBank).map(function (w, i) {
+      if (typeof w === "string") return { id: "w" + i, text: w };
+      return { id: str(w && w.id) || ("w" + i), text: str(w && (w.text || w.label)) };
+    }).filter(function (w) { return w.text; }).slice(0, 12);
+    if (!q.wordBank.length) delete q.wordBank;
     q.orderItems = arr(src.orderItems).length ? normalizeOrderItems(src.orderItems)
                  : (engine === "reorder" ? normalizeOrderItems(src.choices) : []);
     if (engine === "reorder") q.orderItems = dropMarkOnlyOrderItems(q.orderItems);
@@ -5456,10 +5464,47 @@
         return mk(exact4, roundScore(max * (keys.length ? hit3 / keys.length : 0)), max, "matching",
           { pairs: detail, hits: hit3, total: keys.length, partial: !exact4 && hit3 > 0 });
       }
-      default:
-        return mk(false, 0, max, "not-deterministic", { reason: "この形式はコードで採点できません。" });
+      default: {
+        /* ① 旧採点の 呼び名が あるなら、その 規則で 採点する。
+           （choice_5 / kanji_input などは 中身が 4択・短答と 同じ） */
+        var Q0 = null;
+        try { Q0 = root.VQ2 && root.VQ2.qtypes; } catch (e0) { Q0 = null; }
+        var 旧 = null;
+        try { 旧 = (Q0 && Q0.legacyTypeOf) ? Q0.legacyTypeOf(type) : null; } catch (e1) { 旧 = null; }
+        if (旧 && 旧 !== type && LEGACY_DETERMINISTIC_SET[旧]) {
+          return gradeDeterministic(Object.assign({}, question, { type: 旧 }), answer);
+        }
+        /* ② 新しい 採点系（evaluator）が 知っている 形式なら そちらへ。
+           分類・表うめ・図の 指し示し・誤り訂正・書き取り などは
+           こちらにしか 規則が ない。 */
+        var EV0 = null;
+        try { EV0 = root.VQ2 && root.VQ2.evaluator; } catch (e2) { EV0 = null; }
+        if (EV0 && typeof EV0.evaluate === "function") {
+          var r0 = null;
+          try { r0 = EV0.evaluate(question, answer); } catch (e3) { r0 = null; }
+          if (r0 && r0.method !== "unknown-type" && r0.method !== "unsupported-engine") {
+            /* 採点できなかった（保留）ときは **0 点に しない**。
+               score を null の まま 返し、上で 未採点として 扱わせる。 */
+            return {
+              correct: (r0.isCorrect === true), score: r0.score,
+              maxScore: isNum(r0.maxScore) ? r0.maxScore : max,
+              method: r0.method || "evaluator",
+              detail: r0.detail || null,
+              requiresReview: r0.requiresManualReview === true || r0.score === null || r0.score === undefined
+            };
+          }
+        }
+        /* ③ どちらも 知らない。**0 点に しない**（保留にする）。 */
+        return { correct: false, score: null, maxScore: max, method: "not-deterministic",
+                 detail: { reason: "この形式はコードで採点できません。" }, requiresReview: true };
+      }
     }
   }
+  /* 旧採点が 名前で 知っている 形式（早見表）。 */
+  var LEGACY_DETERMINISTIC_SET = {
+    multiple_choice_single: 1, multiple_choice_multiple: 1, true_false: 1,
+    short_answer: 1, fill_blank: 1, ordering: 1, matching: 1, numeric: 1, formula: 1
+  };
 
   function normalizeFormula(s) {
     return String(s == null ? "" : s)
@@ -5581,12 +5626,50 @@
           : (value && Array.isArray(value.blanks) ? value.blanks : null);
         if (b) return b.map(function (x) { return 文字(x); }).join("　").slice(0, 80);
       }
+      /* ══ 分類（2026-08-30）════════════════════════════════════
+         { items: { 語id: 箱id } }。**箱の 名前**で 書く
+         （id の ままだと 紙に "g1" と 出て 読めない）。 */
+      if (value && typeof value === "object" && value.items && typeof value.items === "object") {
+        var c = (q.classification && typeof q.classification === "object") ? q.classification : {};
+        var 語名 = {}, 箱名 = {};
+        (Array.isArray(c.items) ? c.items : []).forEach(function (x) {
+          if (x && x.id) 語名[x.id] = 文字(x.text || x.label || x.id);
+        });
+        (Array.isArray(c.groups) ? c.groups : []).forEach(function (g) {
+          if (g && g.id) 箱名[g.id] = 文字(g.label || g.text || g.id);
+        });
+        return Object.keys(value.items).map(function (k) {
+          return (語名[k] || 文字(k)) + "→" + (箱名[value.items[k]] || 文字(value.items[k]));
+        }).join("　").slice(0, 120);
+      }
+      /* ══ 表うめ ══ { cells: { "行:列": 文字 } }。書いた 文だけ 並べる。 */
+      if (value && typeof value === "object" && value.cells && typeof value.cells === "object") {
+        return Object.keys(value.cells).map(function (k) { return 文字(value.cells[k]); })
+          .filter(Boolean).join("　").slice(0, 120);
+      }
+      /* ══ 誤り訂正 ══ { spans: { 位置: 直した文字 } }。 */
+      if (value && typeof value === "object" && value.spans && typeof value.spans === "object") {
+        return Object.keys(value.spans).map(function (k) { return 文字(value.spans[k]); })
+          .filter(Boolean).join("　").slice(0, 120);
+      }
       /* 短答・数値・記述・英作文 … そのままの 文。 */
       if (typeof value === "string") return value.slice(0, 400);
       if (typeof value === "number") return String(value);
       if (value && typeof value === "object") {
         var v = value.text || value.value || value.answer;
         if (typeof v === "string") return v.slice(0, 400);
+        /* ★ **"[object Object]" を 出さない。** 中の 文字だけを 拾う。
+           ここが 無いと、AI 採点へ そのまま 渡って 意味の 無い 採点に なる。 */
+        if (!Array.isArray(value)) {
+          var 拾 = Object.keys(value).map(function (k) {
+            var x = value[k];
+            return (typeof x === "string" || typeof x === "number") ? String(x) : "";
+          }).filter(Boolean);
+          if (拾.length) return 拾.join("　").slice(0, 200);
+        }
+      }
+      if (Array.isArray(value)) {
+        return value.map(function (x) { return 文字(x); }).filter(Boolean).join("　").slice(0, 200);
       }
       return "";
     } catch (e) { return ""; }
@@ -5620,6 +5703,21 @@
 
       if (S.isDeterministic(q.type)) {
         var g = gradeDeterministic(q, value);
+        /* ★ 採点できなかった ものを **0 点で 確定しない**（2026-08-30）。
+           知らない 形式を 黙って 不正解に していたので、合っていても
+           バツが 付いていた。ここは 未採点として 持ち、AI 側へ 回す。 */
+        if (g.score === null || g.score === undefined) {
+          pendingAi.push({ question: q, answer: value, record: rec });
+          items.push({
+            questionId: q.id, type: q.type, answered: true, correct: null,
+            answerText: 答えの文(q, value), answerRaw: value,
+            score: null, maxScore: isNum(g.maxScore) ? g.maxScore : max,
+            method: g.method || "pending-ai", detail: g.detail || null,
+            timeMs: rec ? rec.timeMs || 0 : 0, changeCount: rec ? rec.changeCount || 0 : 0,
+            flagged: rec ? !!rec.flagged : false, requiresReview: true
+          });
+          return;
+        }
         totalScore += g.score;
         if (g.correct) correctCount++; else wrongCount++;
         items.push({
@@ -5863,6 +5961,9 @@
     parseNumber: parseNumber,
     toHalfwidth: toHalfwidth,
     isUnanswered: isUnanswered,
+    /* 書いた 答えを **人が 読める 文**へ。紙の 解答用紙と AI 採点の
+       両方が これを 使う（別々に 書くと 片方だけ "[object Object]" に なる）。 */
+    answerTextOf: 答えの文,
     gradeDeterministic: gradeDeterministic,
     gradeSession: gradeSession,
     applyAiGrade: applyAiGrade,
@@ -11879,6 +11980,19 @@
            文字列として 見られると **必ず 不正解**に なっていた（実測）。 */
         var 空 = 空欄を整える(q, q2);
         if (空) q2.blanks = 空;
+        /* ★ 語群（2026-08-30・訴え「流れの本文の語群問題」）。
+           本文の 【ア】【イ】に 入る 語を 下の 語群から 選ぶ 形。
+           **選択肢の ある 形式には 付けない**（同じ ものが 2 回 刷られる）。 */
+        if (!choices.length && Array.isArray(q.wordBank) && q.wordBank.length >= 2) {
+          var 見 = Object.create(null), 語 = [];
+          q.wordBank.forEach(function (w) {
+            var t = str((w && typeof w === "object") ? (w.text || w.label) : w).trim();
+            if (!t || 見[t]) return;
+            見[t] = 1;
+            語.push({ id: "w" + 語.length, text: t });
+          });
+          if (語.length >= 2) q2.wordBank = 語.slice(0, 12);
+        }
 
         /* 記述式には採点基準を用意する。無いと採点根拠を示せない（§25）。 */
         if (AI_TYPES.indexOf(type) >= 0) {
@@ -12897,6 +13011,42 @@
      配点は **Plan の値をそのまま使う**。AI が書いてきた points は読まない。
      ＝「100 点のはずが 83 点」は、この段階の作りとして起こりえない。
      ══════════════════════════════════════════════════════════ */
+  /* ══ 空欄と 語群（2026-08-30）════════════════════════════════════
+     ★ **選択肢の ある 形式には 語群を 付けない。** 4 択の 選択肢が
+       語群として もう 一度 刷られる（同じ ものが 2 回 出る）。 */
+  function 空欄をそろえる(type, d) {
+    if (type !== "fill_blank") return undefined;
+    var 並 = Array.isArray(d.blanks) ? d.blanks
+           : (Array.isArray(d.answer) ? d.answer
+           : (Array.isArray(d.correctAnswer) ? d.correctAnswer : null));
+    if (!並 || !並.length) return undefined;
+    var 出 = 並.slice(0, 10).map(function (b) {
+      if (b && typeof b === "object") {
+        var a = str(b.answer || b.text || b.value);
+        return a ? { answer: a,
+                     acceptedAnswers: Array.isArray(b.acceptedAnswers)
+                       ? b.acceptedAnswers.map(str).filter(Boolean).slice(0, 6) : [] } : null;
+      }
+      var t = str(b);
+      return t ? { answer: t, acceptedAnswers: [] } : null;
+    }).filter(Boolean);
+    return 出.length ? 出 : undefined;
+  }
+  function 語群をそろえる(type, d) {
+    if (type !== "fill_blank") return undefined;
+    var 並 = Array.isArray(d.wordBank) && d.wordBank.length ? d.wordBank
+           : (Array.isArray(d.choices) ? d.choices : null);
+    if (!並 || 並.length < 2) return undefined;
+    var 見 = Object.create(null), 出 = [];
+    並.forEach(function (w) {
+      var t = str((w && typeof w === "object") ? (w.text || w.label || w.value) : w).trim();
+      if (!t || 見[t]) return;
+      見[t] = 1;
+      出.push(t);
+    });
+    return 出.length >= 2 ? 出.slice(0, 12) : undefined;
+  }
+
   function assemble(p, filled, opts) {
     opts = opts || {};
     var accepted = 0, missing = [], rejected = [];
@@ -12975,6 +13125,13 @@
              中身の 清めは fromDraft の 資料ブロック が する。 */
           materials: d.materials, contentBlocks: d.contentBlocks,
           figure: d.figure, table: d.table, chart: d.chart, diagram: d.diagram,
+          /* ★ 空欄と 語群（2026-08-30・訴え「流れの本文の語群問題」）。
+             ここで 拾っていなかったので、
+               ・空欄の 正解が 消える → 受験しても 必ず 不正解
+               ・語群が 消える     → 選ぶ ものが 無い 紙に なる
+             どちらも 起きていた。中身の 清めは fromDraft が する。 */
+          blanks: 空欄をそろえる(slot.type, d),
+          wordBank: 語群をそろえる(slot.type, d),
           requiresReview: d.requiresReview === true
         });
         answerKey.push({
@@ -19085,6 +19242,17 @@
     if (Array.isArray(q.right)) out.right = q.right;
     if (Array.isArray(q.groups)) out.groups = q.groups;
     if (q.wrong != null) out.wrong = q.wrong;
+    /* ══ 資料・本文・会話文（2026-08-30）══════════════════════════
+       ★ **ここで 落ちていた。** out は 1 から 作り直しているので、
+         書いていない 鍵は 何も 通らない。サーバに 図・表・グラフ・
+         本文を 出させても、この 1 行が 無いと 紙面まで 届かず、
+         「資料問題を 頼んだのに 資料が 出ない」に なる。
+       中身の 見張り（知らない 種類を 捨てる・数を 丸める）は
+       mock-builder の 資料ブロック() が する。ここは 運ぶだけ。 */
+    ["materials", "contentBlocks", "figures", "figure", "table", "chart", "diagram"]
+      .forEach(function (k) { if (q[k] != null) out[k] = q[k]; });
+    /* 記述の 採点基準。AI が 出していれば 使う（無ければ 下敷きを 作る）。 */
+    if (Array.isArray(q.rubric) && q.rubric.length) out.rubric = q.rubric;
     cloudBody(out, q, String(q.type || ""));
     if (CLOUD_TYPE[String(q.type || "")]) out.type = CLOUD_TYPE[String(q.type || "")];
     /* ★ リスニング（2026-08-26）。原稿が あるなら **音の 形式**として 出す。
@@ -28437,8 +28605,40 @@
         showPoints: lprofile ? lprofile.sectionStyle.showPoints !== false : true
       });
 
-      (sec.questions || []).forEach(function (q) {
-        var pq = byQ[q.id] || null;
+      /* ══ 同じ 本文を 何度も 刷らない（2026-08-30・訴え）════════════
+         訴え「会話文、流れの本文の語群問題、それの記述問題」。
+         1 つの 本文に **選択 → 語群うめ → 記述** を 並べるのが 試験の 形。
+         AI は 同じ 本文を 問題ごとに 付けてくるので、そのままだと
+         同じ 会話文が 3 回 刷られる。**大問の 中で 1 回だけ**に する
+         （2 問目からは、上に 出ている ものを 見て 解く）。 */
+      var 出した本文 = Object.create(null);
+      function 本文の鍵(cb) {
+        var t = String(cb && cb.type || "");
+        if (t !== "passage" && t !== "dialogue" && t !== "source" && t !== "text") return "";
+        var 中 = cb.text || "";
+        if (!中 && Array.isArray(cb.entries)) {
+          中 = cb.entries.map(function (e) { return (e && e.label) + "\u0001" + (e && e.text); }).join("\u0002");
+        }
+        中 = String(中).replace(/\s+/g, "");
+        return 中.length >= 20 ? (t + "\u0003" + 中) : "";
+      }
+
+      (sec.questions || []).forEach(function (q0) {
+        var pq = byQ[q0.id] || null;
+        /* ★ 同じ 本文・会話文を 2 度目からは 落とす。
+           **図まとめの 道も 通る**ので、ここで 先に ふるいに かける
+           （下の 分岐の 中で やると、片方だけ 効かない）。 */
+        var q = q0;
+        if (Array.isArray(q0.contentBlocks) && q0.contentBlocks.length) {
+          var 残 = q0.contentBlocks.filter(function (cb) {
+            var 鍵 = 本文の鍵(cb);
+            if (!鍵) return true;
+            if (出した本文[鍵]) return false;
+            出した本文[鍵] = 1;
+            return true;
+          });
+          if (残.length !== q0.contentBlocks.length) q = Object.assign({}, q0, { contentBlocks: 残 });
+        }
         /* 図表を持つ設問は、本文と図表をひとつの枠へ入れる。
            別々のブロックのまま流すと、改ページで本文だけが次のページへ行き、
            図表が本文から離れる（＝問題文の一部でなくなる）。
@@ -28478,6 +28678,10 @@
         });
 
         if ((q.choices || []).length) blocks.push(choiceBlock(q, sec, pq, lprofile));
+        /* ★ 語群（2026-08-30・訴え「流れの本文の語群問題」）。
+           選択肢の ない 穴埋めに 語群が あるときは、解答群の 枠で 出す。
+           札は 本文の 空欄の 記号（【ア】【イ】→「ア〜イ の解答群」）。 */
+        else if ((q.wordBank || []).length >= 2) blocks.push(wordBankBlock(q, sec, lprofile));
         /* 形式そのものの中身（並べる語・対応表・分類の箱・うめる表）。
            **これが無いと解けない紙になる。** */
         var body = formBodyBlock(q, sec);
@@ -28652,11 +28856,13 @@
        解答群の **枠**が 出るのは「本文の 空欄（【セ】など）を 指す」ときだけ。
        ふつうの 設問（問1〜問5）は **枠なしの ①〜⑤ の ぶら下げ**で 並ぶ。
        前は 全部を 枠に していたので、実物と 別の 紙に なっていた。 */
-    var 空 = 空欄の記号(q);
+    var 空ら = 空欄の記号ら(q);
+    var 空 = 空ら.length ? 空ら[0] : "";
     if (cl && cl.groupBox === true && 空) {
       return {
         type: "answer-group", id: q.id + "-ag", questionId: q.id, sectionId: sec.id,
-        marker: 空,
+        /* 空欄が 2 つ以上 なら「ア〜ウ の解答群」。1 つの 語群を みんなで 使う。 */
+        marker: 空欄の札(空ら),
         tailLabel: cl.groupTail || "の解答群",
         items: q.choices.map(function (c) { return String(c.text == null ? "" : c.text); })
       };
@@ -28700,9 +28906,12 @@
         ? q.choices.map(function (c, i) { return { id: c.id, label: choiceLabel(pq.choiceMarker, i), text: c.text }; })
         : null,
       choiceColumns: pq.choiceColumns || 1,
+      /* ★ **中身を 選んで 写さない**（2026-08-30）。
+         ここで src / caption / rows しか 写していなかったので、
+         グラフ（labels・series）・図形（items）・生 SVG が **丸ごと 消えて**、
+         本文と 枠だけの 図に なっていた（実測で 1 本も 描かれなかった）。 */
       figures: figs.map(function (f, i) {
-        return { id: q.id + "-fig" + i, type: f.type, src: f.src, caption: f.caption,
-                 title: f.title, rows: f.rows, header: f.header, text: f.text };
+        return Object.assign({}, f, { id: q.id + "-fig" + i });
       }),
       extras: others.map(function (b, i) {
         return Object.assign({}, b, { id: q.id + "-cb" + i, questionId: q.id, sectionId: sec.id });
@@ -28713,9 +28922,41 @@
   /* この設問が 指している 空欄の 記号（ア イ ウ …）。
      本文に 【ア】 と 書いてあれば それ。無ければ 札は 出さない
      （勝手な 記号を 作ると、本文と 解答群が 食い違う）。 */
+  /* 語群の 枠。1 つの 語群を 空欄 みんなで 使う。 */
+  function wordBankBlock(q, sec, profile) {
+    var cl = (profile && profile.choiceLayout) || null;
+    var 空ら = 空欄の記号ら(q);
+    return {
+      type: "answer-group", id: q.id + "-wb", questionId: q.id, sectionId: sec.id,
+      marker: 空欄の札(空ら),
+      tailLabel: (cl && cl.groupTail) || "の語群",
+      items: (q.wordBank || []).map(function (w) {
+        return String((w && typeof w === "object") ? (w.text || "") : w);
+      }).filter(Boolean)
+    };
+  }
+
+  /* 設問の 中の 空欄の 記号。**全部**を 順に 拾う（重なりは 1 回）。
+     ★ 本文に 【ア】【イ】【ウ】と 空欄が 並ぶ 語群問題（2026-08-30・訴え）で、
+       札が「ア の解答群」だけに なっていた。実物は「ア〜ウ の解答群」。 */
+  function 空欄の記号ら(q) {
+    var 文 = String((q && q.prompt) || "");
+    var re = /[【\[]([ア-ンA-Za-z0-9]{1,4})[】\]]/g, m, 出 = [];
+    while ((m = re.exec(文))) { if (出.indexOf(m[1]) < 0) 出.push(m[1]); }
+    return 出;
+  }
   function 空欄の記号(q) {
-    var m = String((q && q.prompt) || "").match(/[【\[]([ア-ンA-Za-z0-9]{1,4})[】\]]/);
-    return m ? m[1] : "";
+    var 並 = 空欄の記号ら(q);
+    return 並.length ? 並[0] : "";
+  }
+  /* 札に 出す 書きかた。1 つなら「ア」、続きなら「ア〜ウ」、飛べば「ア・ウ」。 */
+  function 空欄の札(並) {
+    if (!並.length) return "";
+    if (並.length === 1) return 並[0];
+    var カナ = "アイウエオカキクケコサシスセソタチツテトナニヌネノ";
+    var i0 = カナ.indexOf(並[0]);
+    var 続き = i0 >= 0 && 並.every(function (x, k) { return カナ.indexOf(x) === i0 + k; });
+    return 続き ? (並[0] + "\u301c" + 並[並.length - 1]) : 並.join("\u30fb");
   }
 
   /* ══ 共通テストの マークシート 1 枚ぶん ═══════════════════════════
@@ -29637,6 +29878,19 @@
       ".ms-m > i.is-on { background: #000; color: #fff; }",
       /* 使っていない 行は 薄くしない（本物は 全部 同じ）。印だけ 付ける。 */
       ".ms-r.is-spare .ms-n { color: #000; }",
+      /* ── マークシートの 採点欄（2026-08-30・訴え）──────────────
+         訴え「解答用紙で Lumi が マーク式だと 採点してくれていない」。
+         塗った 丸の 上に 印を 重ねると **どれを 塗ったかが 読めなく**なる。
+         そこで 行の 右へ **採点の 列を 足す**（採点済みの ときだけ）。
+         A4 横は 297mm、3 列で 215.55mm なので 6mm×3 を 足しても 収まる。 */
+      ".ms-g { flex: 0 0 6mm; align-self: stretch; display: flex; align-items: center;",
+      "        justify-content: center; border-left: 0.4pt solid #000; color: #d0342c; }",
+      ".ms-g .gm { width: 3.6mm; height: 3.6mm; transform: rotate(-4deg); }",
+      '.ms-g[data-graded="batsu"] .gm { transform: rotate(2deg); }',
+      ".ms-g.is-review { color: #6b6480; font-size: 4.6pt; font-family: " + GOTHIC + "; }",
+      ".ms-ch > span.ms-gh { flex: 0 0 6mm; border-left: 0.4pt solid #000; padding: 1.2mm 0; }",
+      /* 罫線表の 解答用紙（agt）も 印を 重ねられるように する。 */
+      ".agt-c { position: relative; }",
 
       /* ══ 穴埋め枠（アイウエ）════════════════════════════════
          TeX の 作法に そろえた: 枠と 字の 間 1pt、
@@ -30386,20 +30640,26 @@
      ★ マスの 数と 選択肢の 数が 合っている ときだけ 答える。
        合っていない のに 塗ると、違う ところを 塗った 答案に なる。 */
   function 選んだマス(questionId, bindingId, マス数) {
-    if (!採点) return -1;
+    if (!採点) return [];
     var qid = questionId || (bindingId ? 採点.byB[bindingId] : "");
-    if (!qid) return -1;
+    if (!qid) return [];
     var it = 採点.byQ[qid];
-    if (!it || !it.answered) return -1;
+    if (!it || !it.answered) return [];
     var q = 採点.問 ? 採点.問[qid] : null;
     var 選 = (q && Array.isArray(q.choices)) ? q.choices : [];
-    if (!選.length || 選.length !== マス数) return -1;
+    if (!選.length || 選.length !== マス数) return [];
     var v = it.answerRaw;
-    var one = (v && typeof v === "object") ? (v.choiceId || v.value || v.id) : v;
-    for (var i = 0; i < 選.length; i++) {
-      if (選[i] && (選[i].id === one || 選[i].text === one)) return i;
-    }
-    return -1;
+    /* ★ 複数選択も 塗る（2026-08-30）。1 つしか 返していなかったので、
+       「①と③」と 答えても 紙は 空の ままだった。 */
+    var 並 = (Array.isArray(v) ? v : [v]).map(function (x) {
+      return (x && typeof x === "object") ? (x.choiceId || x.value || x.id) : x;
+    });
+    var out = [];
+    並.forEach(function (one) {
+      var i = 選択肢の番(q, one);
+      if (i >= 0 && out.indexOf(i) < 0) out.push(i);
+    });
+    return out;
   }
 
   /* 解答欄へ重ねる印と点。欄そのものは動かさない（上に置くだけ）。 */
@@ -30482,7 +30742,7 @@
         var k = 0;
         return '<td class="agb-c"' + span + style + data + ">" + 印
           + repeat(c.cells || 1, function () {
-              var on = (k++ === 塗り);
+              var on = (塗り.indexOf(k++) >= 0);
               return '<span class="agc agc-mark' + (c.cellStyle === "circle" ? " is-circle" : "")
                 + (on ? " is-picked" : "") + '"'
                 + ' style="width:' + (c.widthMm || 16) + "mm;min-height:" + (c.heightMm || 9) + 'mm"></span>';
@@ -30553,25 +30813,73 @@
      ★ 寸法は プロファイルが 持つ（1 行 5.05mm など）。ここで 決めない。 */
   /* この 解答番号（通し番号）に あたる 設問の 答え。
      マークシートは 記号を 塗るので、**何番目の 選択肢か**が 要る。 */
-  function マークの塗り(spec, 番) {
-    if (!採点 || !spec) return -1;
+  /* 通し番号 → 設問。マークシートは 1 行が 1 問（解答番号の 通し）。 */
+  function 通しの設問(spec, 番) {
+    if (!spec) return null;
     var n = 0, 当 = null;
     (spec.sections || []).forEach(function (sec) {
       (sec.questions || []).forEach(function (q) { n++; if (n === 番) 当 = q; });
     });
-    if (!当) return -1;
-    var it = 採点.byQ[当.id];
-    if (!it || !it.answered) return -1;
-    var v = it.answerRaw;
-    var one = (v && typeof v === "object") ? (v.choiceId || v.value || v.id) : v;
-    var 選 = Array.isArray(当.choices) ? 当.choices : [];
+    return 当;
+  }
+  /* 選択肢の 並びの 何番目か。id でも 文字でも 引ける。 */
+  function 選択肢の番(当, one) {
+    var 選 = Array.isArray(当 && 当.choices) ? 当.choices : [];
     for (var i = 0; i < 選.length; i++) {
-      if (選[i] && (選[i].id === one || 選[i].text === one)) return i;
+      if (!選[i]) continue;
+      if (選[i].id === one || 選[i].text === one || 選[i].label === one) return i;
     }
-    /* 数字で 答えている ときは その 数字（0〜9）。 */
-    var num = parseInt(String(one), 10);
-    if (isFinite(num) && num >= 0 && num <= 9) return num;
     return -1;
+  }
+  /* ══ どの マスを 塗るか（2026-08-30・訴え）════════════════════
+     訴え「マーク式とかだと 採点してくれていない」。
+     **1 つしか 返せなかった**ので、複数選択・正誤・数値が
+     どれも 塗られず、返ってきた 答案が 空だった。
+     ここは **番号の 一覧**を 返す（0 個・1 個・複数）。 */
+  function マークの塗り(spec, 番) {
+    if (!採点 || !spec) return [];
+    var 当 = 通しの設問(spec, 番);
+    if (!当) return [];
+    var it = 採点.byQ[当.id];
+    if (!it || !it.answered) return [];
+    var v = it.answerRaw;
+
+    /* 複数選択。塗る マスも 複数に なる。 */
+    if (Array.isArray(v)) {
+      var 並 = [];
+      v.forEach(function (x) {
+        var one = (x && typeof x === "object") ? (x.choiceId || x.value || x.id) : x;
+        var i = 選択肢の番(当, one);
+        if (i < 0) {
+          var d = parseInt(String(one), 10);
+          if (isFinite(d) && d >= 0 && d <= 9) i = d;
+        }
+        if (i >= 0 && 並.indexOf(i) < 0) 並.push(i);
+      });
+      return 並;
+    }
+    var one = (v && typeof v === "object") ? (v.choiceId || v.value || v.id) : v;
+    var i0 = 選択肢の番(当, one);
+    if (i0 >= 0) return [i0];
+    /* 選択肢を 持たない 正誤（正 / 誤 だけ で 保存されている）。 */
+    var t = String(one == null ? "" : one).trim();
+    if (/^(正しい|正|true|○|◯)$/i.test(t)) return [0];
+    if (/^(誤り|誤|false|×|✕)$/i.test(t)) return [1];
+    /* 数字（数値・空欄補充の 1 桁）。 */
+    var num = parseInt(t, 10);
+    if (isFinite(num) && num >= 0 && num <= 9) return [num];
+    return [];
+  }
+  /* マークシートの 行に 出す 採点の 印。**点は 出さない**（6mm しかない）。 */
+  function マークの採点(spec, 番) {
+    if (!採点) return "";
+    var 当 = 通しの設問(spec, 番);
+    if (!当) return "";
+    var g = 欄の採点(当.id, "");
+    if (!g) return "";
+    if (g.kind === "review")
+      return '<span class="ms-g is-review" data-graded="review">確認</span>';
+    return '<span class="ms-g" data-graded="' + g.kind + '">' + 採点の印SVG(g.kind) + "</span>";
   }
 
   function renderCtMarkSheet(b) {
@@ -30607,16 +30915,23 @@
     for (var c = 0; c < 列数; c++) {
       var 始 = c * 行毎 + 1;
       if (始 > 全) break;
-      h += '<div class="ms-col"><div class="ms-ch"><span>解答<br>番号</span><span>解　答　欄</span></div>';
+      h += '<div class="ms-col"><div class="ms-ch"><span>解答<br>番号</span><span>解　答　欄</span>'
+        + (採点 ? '<span class="ms-gh">採点</span>' : "") + "</div>";
       for (var r = 始; r < 始 + 行毎 && r <= 全; r++) {
         /* ★ 解いた 答えが あれば **その 丸を 塗る**（2026-08-30・訴え）。 */
         var 塗 = マークの塗り(b.spec, r);
         h += '<div class="ms-r' + (r > b.used ? " is-spare" : "") + '">'
           + '<span class="ms-n">' + r + '</span><span class="ms-m">';
         丸.forEach(function (x, i) {
-          h += '<i' + (i === 塗 ? ' class="is-on"' : "") + ">" + esc(x) + "</i>";
+          h += '<i' + (塗.indexOf(i) >= 0 ? ' class="is-on"' : "") + ">" + esc(x) + "</i>";
         });
-        h += "</span></div>";
+        h += "</span>";
+        /* ★ 採点済みなら 行の 右へ 丸・バツ・三角（2026-08-30・訴え）。
+           塗った 丸の 上に 重ねると どれを 塗ったかが 読めなく なるので、
+           **列を 足して** そこへ 書く。 */
+        if (採点 && r <= b.used) h += マークの採点(b.spec, r);
+        else if (採点) h += '<span class="ms-g"></span>';
+        h += "</div>";
       }
       h += "</div>";
     }
@@ -30644,7 +30959,13 @@
         h += '<th class="agt-sec" rowspan="' + (b.rows || []).length + '" scope="rowgroup">' + esc(b.label) + "</th>";
       }
       h += '<th class="agt-no" scope="row">' + esc(r.label) + "</th>";
-      h += '<td class="agt-c">' + answerCell(r) + "</td>";
+      /* ★ 3 つめの 道（2026-08-30・訴え）。解答用紙は
+           ① answer-area ② 罫線マス（agb） ③ この 表（agt）
+         の 3 通りで 描かれる。①② だけ 直していたので、
+         **この 表を 選んだ 試験は 採点の 印が 1 つも 出なかった**。 */
+      h += '<td class="agt-c">' + answerCell(r)
+        + 答えを写す(r.questionId, r.answerBindingId)
+        + 採点の重ね(r.questionId, r.answerBindingId) + "</td>";
       if (i === 0 && extra) {
         if (b.subtotal) h += '<td class="agt-x" rowspan="' + (b.rows || []).length + '"><span class="agt-xl">小計</span></td>';
         if (b.grader) h += '<td class="agt-x" rowspan="' + (b.rows || []).length + '"><span class="agt-xl">採点</span></td>';
@@ -55104,7 +55425,16 @@
       if (!st.pendingAi.length || st.grading) return;
       var targets = st.pendingAi.map(function (p) {
         var q = p.question;
-        var answerText = (p.answer && p.answer.text !== undefined) ? p.answer.text : String(p.answer || "");
+        /* ★ **"[object Object]" を AI へ 渡さない**（2026-08-30）。
+           分類・表うめ・組み合わせは 答えが 物（object）なので、
+           String() を かけると 中身が 消えて 意味の 無い 採点に なる。
+           紙の 解答用紙と 同じ 1 か所（grading.answerTextOf）を 通す。 */
+        var answerText = "";
+        try { answerText = G.answerTextOf ? G.answerTextOf(q, p.answer) : ""; } catch (e0) { answerText = ""; }
+        if (!answerText) {
+          answerText = (p.answer && p.answer.text !== undefined) ? String(p.answer.text)
+            : (typeof p.answer === "string" || typeof p.answer === "number") ? String(p.answer) : "";
+        }
         var model = q.correctAnswer || (q.acceptedAnswers || [])[0] || "";
         /* 採点基準が無いときは、模範解答から作る。
            基準が無いまま AI へ渡すと、長さと丁寧さで点が付く。
@@ -62737,7 +63067,16 @@
       var EV2 = root.VQ2 && root.VQ2.evaluator;
       var targets = graded.pendingAi.map(function (p) {
         var q = p.question;
-        var answerText = (p.answer && p.answer.text !== undefined) ? p.answer.text : String(p.answer || "");
+        /* ★ **"[object Object]" を AI へ 渡さない**（2026-08-30）。
+           分類・表うめ・組み合わせは 答えが 物（object）なので、
+           String() を かけると 中身が 消えて 意味の 無い 採点に なる。
+           紙の 解答用紙と 同じ 1 か所（grading.answerTextOf）を 通す。 */
+        var answerText = "";
+        try { answerText = G.answerTextOf ? G.answerTextOf(q, p.answer) : ""; } catch (e0) { answerText = ""; }
+        if (!answerText) {
+          answerText = (p.answer && p.answer.text !== undefined) ? String(p.answer.text)
+            : (typeof p.answer === "string" || typeof p.answer === "number") ? String(p.answer) : "";
+        }
         var model = q.correctAnswer || (q.acceptedAnswers || [])[0] || "";
         /* ★ 採点基準が 無いときは 模範解答から その場で 作る
            （結果画面と 同じ扱いに する）。プリセットへは 保存しない。 */
@@ -63139,6 +63478,23 @@
         var n = Math.max(1, Math.min(10,
           (b && b.blankCount) || (q.blanks || []).length || 1));
         var out = '<div style="display:flex;flex-direction:column;gap:6px">';
+        /* ★ 語群（2026-08-30・訴え「流れの本文の語群問題」）。
+           紙には 下に 語群が 出ている。画面にも 同じ ものを 出さないと、
+           「何から 選ぶのか」が 分からないまま 打たせることに なる。
+           押すと その 語が 入る（打っても よい）。 */
+        var 語 = (q.wordBank || []).map(function (w) {
+          return String((w && typeof w === "object") ? (w.text || "") : w);
+        }).filter(Boolean);
+        if (語.length) {
+          out += '<div class="vq2-hint" style="margin:0 0 2px">語群（押すと 入ります）</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px">'
+            + 語.map(function (t2, k) {
+                return '<button type="button" class="vq2-chip" data-wb="' + esc(q.id) + "|" + esc(t2)
+                  + '" style="min-height:32px;cursor:pointer">'
+                  + esc(丸印(k)) + "\u3000" + esc(t2) + "</button>";
+              }).join("")
+            + "</div>";
+        }
         for (var i = 0; i < n; i++) {
           out += '<div class="vq2-field is-inline"><span class="vq2-label" style="min-width:56px">空欄' + (i + 1) + "</span>"
             + '<input type="text" class="vq2-input" data-blank="' + esc(q.id) + "|" + i + '" value="' + esc(vals[i] || "") + '"></div>';
@@ -63261,6 +63617,10 @@
     }
     /* 紙面と **同じ 並び・同じ 記号**にする。種は 設問 id（紙面と 同じ）。
        ここを そろえないと、紙の「ア」と 画面の「ア」が 別物に なる。 */
+    /* 語群の 記号。紙面の 解答群と 同じで **⓪ から**（①では ない）。 */
+    var 丸印ら = ["\u24EA", "\u2460", "\u2461", "\u2462", "\u2463", "\u2464",
+                  "\u2465", "\u2466", "\u2467", "\u2468", "\u2469", "\u246A"];
+    function 丸印(i) { return 丸印ら[i] || ("(" + i + ")"); }
     function 散らす(list, seed) {
       try {
         if (L && L.stableShuffle) return L.stableShuffle(list, seed);
@@ -63483,6 +63843,26 @@
         if (t.value) o[p[1]] = t.value; else delete o[p[1]];
         setAnswer(p[0], o);
         refreshRow(p[0]);
+      });
+      /* ══ 語群 ══ 押した 語を **いちばん 上の 空いている 欄**へ 入れる。
+         紙には 語群が 出ているのに、画面は 打ち込み欄 だけだった。
+         何から 選ぶのかが 分からないまま 打たせることに なっていた。 */
+      U.on(r, "click", "[data-wb]", function (e, t) {
+        var p2 = t.getAttribute("data-wb").split("|");
+        var qid = p2[0], 語 = p2.slice(1).join("|");
+        var a = answerFor(qid);
+        var q3 = questions.find(function (x) { return x.id === qid; });
+        var b3 = q3 ? (spec.answerBindings || []).find(function (x) { return x.id === q3.answerBindingId; }) : null;
+        var n3 = Math.max(1, Math.min(10, (b3 && b3.blankCount) || ((q3 && q3.blanks) || []).length || 1));
+        var 並 = (a && Array.isArray(a.value)) ? a.value.slice() : [];
+        while (並.length < n3) 並.push("");
+        var i3 = -1;
+        for (var k3 = 0; k3 < n3; k3++) { if (!String(並[k3] || "").trim()) { i3 = k3; break; } }
+        if (i3 < 0) i3 = n3 - 1;
+        並[i3] = 語;
+        setAnswer(qid, 並.slice(0, n3));
+        selectQuestion(qid, false);
+        render();
       });
       /* ══ 分類 ══ 保存するのは { items: { 語id: 箱id } }。 */
       U.on(r, "change", "[data-clssel]", function (e, t) {
