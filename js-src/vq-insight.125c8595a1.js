@@ -1265,6 +1265,10 @@
     if (!id) return;
     try {
       var r = window.VQ2 && VQ2.store ? VQ2.store.results.get(id) : null;
+      /* ★ 試験は 試験の 画面へ（2026-09-03・訴え）。VQ2.open.result が
+         中で 振り分ける。ここで resultView を 直に 呼ぶと 試験でも
+         プリセットの 画面が 出る。 */
+      if (r && VQ2.open && VQ2.open.result) { VQ2.open.result({ result: r }); return; }
       if (r && VQ2.resultView) { VQ2.resultView.open({ result: r }); return; }
     } catch (e) {}
   }

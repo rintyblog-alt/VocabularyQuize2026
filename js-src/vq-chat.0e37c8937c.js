@@ -906,15 +906,15 @@
       ".side{position:absolute;left:0;top:0;bottom:0;z-index:38;width:min(84vw,300px);transform:translateX(-102%);transition:transform .24s cubic-bezier(.22,1,.36,1);box-shadow:14px 0 40px rgba(24,22,34,.16);}" +
       ".root.side-on .side{transform:none;}.root.side-on .backdrop{display:block;}" +
       ".thread{padding:6px 14px 20px;}" +
-      ".cwrap{padding:0 12px calc(env(safe-area-inset-bottom,0px) + var(--vqc-bottombar,64px) + 12px);}" +
+      ".cwrap{padding:0 12px calc(var(--vq-sab,0px) + var(--vqc-bottombar,64px) + 12px);}" +
       ".disc{display:none;}" +
       ".hero__t{font-size:24px;}.msg.user .b{max-width:88%;}" +
       /* モバイルでも位置は同じ（入力欄の真上・中央）。指で押しやすいよう少しだけ大きくする。 */
       ".jump{width:40px;height:40px;}" +
       ".act{width:100%;max-width:none;top:auto;height:72%;border-left:0;border-top:1px solid var(--vqc-line);border-radius:calc(18px * var(--vq-r-scale,1)) calc(18px * var(--vq-r-scale,1)) 0 0;}" +
       /* アプリの上バーを出さないので、時計やノッチにかぶらないよう自分で余白を持つ */
-      ".top{padding:calc(env(safe-area-inset-top,0px) + 10px) 10px 8px;}" +
-      ".side__h{padding-top:calc(env(safe-area-inset-top,0px) + 10px);}" +
+      ".top{padding:calc(var(--vq-sat,0px) + 10px) 10px 8px;}" +
+      ".side__h{padding-top:calc(var(--vq-sat,0px) + 10px);}" +
     "}";
 
   /* ── アプリの左パネルを呼ぶ ──────────────────────────────────

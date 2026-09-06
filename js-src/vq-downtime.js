@@ -31,7 +31,16 @@
   window.__vqDowntimeInstalled = true;
 
   var TOKEN_KEY = "app.auth.token.v1";
-  var 見に行く間 = 30000;
+  /* ══ ★★ **30 秒 → 5 分**（2026-09-01・緊急）════════════════════════
+     訴え:「Error 1027（1 日の 上限）で サイトが 止まった」
+
+     30 秒ごとだと 開いて いる 1 タブで **1 時間 120 回**。
+     ★ ここは **薄くて よい**。下で window.fetch と XHR を 包んで いて、
+       **どの API でも 503 が 返った 瞬間に 出す**ので、
+       人が 何か した ときには 巡回を 待たずに 気づく。
+       巡回が 要るのは「何も せずに 開いたまま 眺めて いる」場面だけ。
+     ★ 隠れて いる タブでは 1 回も 叩かない（誰も 見て いない）。 */
+  var 見に行く間 = 300000;
 
   /* ── 印（管理ダッシュボードと **同じ 7 つ**）──────────────────
      ずれると、管理画面で 選んだ 印と ここに 出る 印が 食い違う。 */
@@ -167,8 +176,17 @@
 
   function 見張る() {
     clearTimeout(時計);
-    時計 = setTimeout(調べる, 見に行く間);
+    時計 = setTimeout(function () {
+      /* 隠れて いる あいだは 見に 行かず、**戻って きたら すぐ** 見る。 */
+      if (document.hidden) { 見張る(); return; }
+      調べる();
+    }, 見に行く間);
   }
+  try {
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) { clearTimeout(時計); 調べる(); }
+    });
+  } catch (e) {}
 
   function 読み取る(j) {
     var m = (j && j.maintenance)

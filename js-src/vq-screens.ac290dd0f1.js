@@ -31,7 +31,10 @@
     rotate: '<path d="M4 12a8 8 0 1 1 2.5 5.8"/><path d="M4 19v-5h5"/>', zap: '<path d="M13 3 5 13.5h6L11 21l8-10.5h-6L13 3Z"/>',
     /* 公式サイトへの導線（2026-08-18） */
     site: '<circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="10.5" opacity=".45"/>',
-    out: '<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>'
+    out: '<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
+    /* 横に すべる 棚の 矢印（2026-09-01） */
+    left: '<path d="M15 5l-7 7 7 7"/>', right: '<path d="M9 5l7 7-7 7"/>',
+    news: '<path d="M4 5h13v14H4z"/><path d="M17 9h3v8a2 2 0 0 1-3 1.7"/><path d="M7 9h7M7 13h7M7 16h4"/>'
   };
   function svg(n, cls) { return '<svg viewBox="0 0 24 24" ' + P + (cls ? ' class="' + cls + '"' : '') + '>' + (ICON[n] || '') + '</svg>'; }
   function click(id) { var e = document.getElementById(id); if (e) e.click(); }
@@ -48,8 +51,62 @@
   var RESUME_KEY = "app.home.resume.v1";
   var GOALS_KEY = "vq_slash_goals";
   var DAY = 86400000;
+  /* ══ ★ **2 つの 置き場を 両方 読む**（2026-09-01・訴え）════════════════
+     訴え「ホームの 今日の 学習、連続学習、今週の 問題数、週間正答数が
+           機能して いない 気が する」
+
+     数え方は 正しい（記録を 1 行 入れると 4 つ とも 動く。実測）。
+     問題は **どこに 書かれて いるか**。
+       ・古い クイズ  … wordPractice.analytics.sessions.v1
+       ・いまの クイズ（V2）… vq2.learn.sessions.v1
+         V2 は 終わる ときに 古い ほうへ 写す（mirrorLegacy）が、
+         **写す前に 落ちる／写さない 道**が あると ホームだけ 0 のままに なる。
+     ★ 片方だけを 正に して 直すと、また 別の 道で 0 に なる。
+       **両方 読んで、id で 重なりを 落とす。** これなら どちらに 書かれても 出る。 */
+  var V2_SESS_KEY = "vq2.learn.sessions.v1";
   function readSessions() {
-    try { var a = JSON.parse(localStorage.getItem(SESS_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+    var 出 = [];
+    var 見た = Object.create(null);
+    var 足す = function (r) {
+      if (!r || typeof r !== "object") return;
+      if (r.deletedAt) return;
+      var id = String(r.id || "");
+      /* V2 を 写した 行は id が "vq2:<V2のid>"。同じ ものを 二度 数えない。 */
+      var 素 = id.indexOf("vq2:") === 0 ? id.slice(4) : id;
+      if (素 && 見た[素]) return;
+      if (素) 見た[素] = 1;
+      出.push(r);
+    };
+    /* ① 古い ほう（写した ぶんも ここに ある）。**先に** 入れる。 */
+    try {
+      var a = JSON.parse(localStorage.getItem(SESS_KEY) || "[]");
+      if (Array.isArray(a)) a.forEach(足す);
+    } catch (e) {}
+    /* ② いまの ほう。写されて いない ぶんだけ 拾う（形を そろえる）。 */
+    try {
+      var b = JSON.parse(localStorage.getItem(V2_SESS_KEY) || "[]");
+      if (Array.isArray(b)) b.forEach(function (v) {
+        if (!v || typeof v !== "object") return;
+        var t = num(v.completedAt) || num(v.updatedAt) || num(v.createdAt) || 0;
+        if (!t) return;
+        足す({
+          id: String(v.id || ""),
+          ts: t,
+          date: String(v.localDate || ""),
+          presetId: String(v.presetId || v.sourceId || ""),
+          presetName: String(v.title || ""),
+          mode: v.mode === "mock" ? "MOCK" : "CHOICE",
+          total: num(v.questionCount),
+          correct: num(v.correctCount),
+          accuracy: num(v.accuracy),
+          durationMs: v.activeDurationSeconds != null
+            ? num(v.activeDurationSeconds) * 1000
+            : num(v.durationSeconds) * 1000,
+          wrongIds: []
+        });
+      });
+    } catch (e) {}
+    return 出;
   }
   function readResume() {
     try { var o = JSON.parse(localStorage.getItem(RESUME_KEY) || "null"); return (o && typeof o === "object") ? o : null; } catch (e) { return null; }
@@ -419,11 +476,19 @@
     "[hidden]{display:none !important;}" +
     ":host{display:block;font-family:Inter,'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;color:var(--vq-text,#454151);}" +
     ".scroll{height:100%;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:var(--vq-bg-canvas,#F7F6FB);}" +
-    /* --vqs-pt/--vqs-pb = 上下バー分の内側余白（モバイルのみ非0） */
-    ".wrap{max-width:calc(var(--wrapmax,1120px) * var(--vq-width-scale,1));margin:0 auto;padding:calc(28px + var(--vqs-pt,0px)) 32px calc(64px + var(--vqs-pb,0px));}" +
+    /* --vqs-pt/--vqs-pb = 上下バー分の内側余白（モバイルのみ非0）
+       ★ --vqs-pbc は **中身の 下余白**（2026-09-04）。
+         --vqs-pb（＝ 器の 高さ）を 中身にも 使うと、浮いた 島の
+         **上にも 下にも 空き**が できる。実測: 中身が 下端から 128px で
+         終わり、島は 40〜100px。他の 画面（main）は 20〜24px なので
+         島の 下まで 中身が 続き、そこだけ 隙間に 見えて いた
+         （訴え「ホーム画面、プリセットだけ 下端に 隙間が できる」）。
+         → 中身は **島の 下端**まで 続かせる。--vqs-pb は 下から せり上がる
+           シートが 使うので そのまま 残す。 */
+    ".wrap{max-width:calc(var(--wrapmax,1120px) * var(--vq-width-scale,1));margin:0 auto;padding:calc(28px + var(--vqs-pt,0px)) 32px calc(64px + var(--vqs-pbc,var(--vqs-pb,0px)));}" +
     /* プリセット一覧だけは広く使う（カードが 4 列並ぶ幅） */
     ".wrap.wide{--wrapmax:1500px;}" +
-    "@media (max-width:900px){.wrap{padding:calc(14px + var(--vqs-pt,0px)) 16px calc(28px + var(--vqs-pb,0px));}}" +
+    "@media (max-width:900px){.wrap{padding:calc(14px + var(--vqs-pt,0px)) 16px var(--vqs-pbc,calc(28px + var(--vqs-pb,0px)));}}" +
     ".screen{display:none;}.screen.on{display:block;}" +
     ".ttl{font-size:15px;font-weight:750;color:var(--vq-text,#2B2836);margin-bottom:14px;}" +
     /* HOME（UI Studio HomeScreen 準拠レイアウト） */
@@ -572,8 +637,88 @@
     ".pc__kind .ms{font-size:13px;}" +
     ".pc__kind.is-official{background:var(--vq-accent,#756DB3);color:#fff;}" +
     ".pc__kind.is-new{background:var(--vq-warning,#E5A85F);color:#3B2A0C;}" +
+    /* ══ 横に すべる 棚（2026-09-01・訴え「右に スライドすれば 他のも」）══
+       ★ 指では そのまま すべらせる（scroll-snap で 1 枚ずつ 止まる）。
+       ★ PC では 矢印。**中身が はみ出して いる ときだけ 出す**
+         （いつも 出すと、3 枚しか 無い ときに 押しても 何も 起きない）。 */
+    /* Lumi の ひとこと（2026-09-01） */
+    ".alert__t{display:flex;align-items:baseline;gap:8px;}" +
+    ".alert__w{font-size:11px;font-weight:500;color:var(--vq-text-tertiary,#9994A8);}" +
+    ".alert__s{margin-top:5px;font-size:12px;line-height:1.8;color:var(--vq-text-tertiary,#9994A8);}" +
+    ".alert__act{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}" +
+    ".resume.is-ghost{background:transparent;color:var(--vq-text-secondary,#5A5568);" +
+      "border:1px solid var(--vq-border,#E7E4EF);}" +
+    ".alert.is-quiet{opacity:.92;}" +
+    /* 1 日の 目あて（2026-09-01） */
+    ".goal{padding:16px 18px;}" +
+    ".goal__h{display:flex;align-items:baseline;gap:10px;margin-bottom:9px;}" +
+    ".goal__t{font-size:13px;font-weight:700;}" +
+    ".goal__n{margin-left:auto;font-size:12.5px;color:var(--vq-text-tertiary,#9994A8);}" +
+    ".goal__n b{font-size:17px;font-weight:750;color:var(--vq-text,#2B2836);}" +
+    ".goal__bar{height:8px;border-radius:999px;background:var(--vq-border-subtle,#EFEDF5);overflow:hidden;}" +
+    ".goal__bar i{display:block;height:100%;border-radius:999px;background:var(--vq-accent,#756DB3);" +
+      "transition:width .3s ease;}" +
+    ".goal.is-done .goal__bar i{background:var(--vq-success,#70AD86);}" +
+    ".goal__d{margin-top:7px;font-size:12px;color:var(--vq-text-tertiary,#9994A8);}" +
+    ".rail-card{overflow:hidden;}" +
+    ".railwrap{position:relative;}" +
+    ".rail{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;" +
+      "-webkit-overflow-scrolling:touch;scroll-behavior:smooth;padding:2px 20px 18px;" +
+      "scrollbar-width:none;}" +
+    ".rail::-webkit-scrollbar{display:none;}" +
+    ".rail:focus-visible{outline:2px solid var(--vq-accent,#756DB3);outline-offset:-2px;border-radius:12px;}" +
+    ".rail > *{flex:0 0 auto;width:230px;scroll-snap-align:start;}" +
+    ".rail--news > *{width:290px;}" +
+    ".rail__empty{width:100%!important;padding:6px 0 14px;color:var(--vq-text-tertiary,#9994A8);font-size:13px;}" +
+    ".railb{position:absolute;top:calc(50% - 12px);width:36px;height:36px;border-radius:50%;cursor:pointer;" +
+      "border:1px solid var(--vq-border,#E7E4EF);background:var(--vq-surface,#fff);color:var(--vq-text-secondary,#5A5568);" +
+      "display:grid;place-items:center;box-shadow:0 2px 10px rgba(30,20,60,.14);z-index:3;transform:translateY(-50%);}" +
+    ".railb:hover{background:var(--vq-surface-hover,#F7F5FC);}" +
+    ".railb--l{left:6px;}.railb--r{right:6px;}" +
+    ".railb svg{width:18px;height:18px;}" +
+    ".railb[hidden]{display:none;}" +
+    /* お知らせの 札 */
+    ".nc{display:block;text-align:left;width:100%;border:1px solid var(--vq-border,#E7E4EF);border-radius:14px;" +
+      "background:var(--vq-surface,#fff);padding:0;cursor:pointer;font-family:inherit;overflow:hidden;}" +
+    /* ★ バナー（2026-09-01）。絵が 無い ものは 種類の 印を 敷く。 */
+    ".nc__cv{display:block;width:100%;height:104px;background:var(--vq-bg-subtle,#F4F2FB);" +
+      "border-bottom:1px solid var(--vq-border-subtle,#EFEDF5);}" +
+    ".nc__cv img{width:100%;height:100%;object-fit:cover;display:block;}" +
+    ".nc__cv--art{display:grid;place-items:center;position:relative;overflow:hidden;" +
+      "color:var(--vq-accent,#756DB3);}" +
+    ".nc__cv--art::after{content:'';position:absolute;inset:0;pointer-events:none;" +
+      "background-image:repeating-linear-gradient(135deg,rgba(138,129,194,.10) 0 1px,transparent 1px 12px);}" +
+    ".nc__cv--art svg{position:relative;width:34px;height:34px;opacity:.85;}" +
+    ".nc__c{display:block;padding:12px 14px 13px;}" +
+    ".nc:hover{background:var(--vq-surface-hover,#F7F5FC);}" +
+    ".nc__top{display:flex;align-items:center;gap:7px;margin-bottom:7px;}" +
+    ".nc__k{font-size:10.5px;font-weight:750;letter-spacing:.05em;padding:2px 8px;border-radius:999px;" +
+      "background:var(--vq-accent-subtle,#F4F2FB);color:var(--vq-accent-text,#5F579E);}" +
+    ".nc__new{width:7px;height:7px;border-radius:50%;background:var(--vq-danger,#D9534F);}" +
+    ".nc__d{margin-left:auto;font-size:11px;color:var(--vq-text-tertiary,#9994A8);}" +
+    ".nc__t{font-size:14px;font-weight:700;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;" +
+      "-webkit-box-orient:vertical;overflow:hidden;}" +
+    ".nc__b{margin-top:6px;font-size:12px;line-height:1.75;color:var(--vq-text-secondary,#5A5568);" +
+      "display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}" +
+    /* スマホ。棚は そのまま 指で すべる ので 矢印は 出さない。 */
+    "@media (max-width:760px){" +
+      ".railb{display:none;}" +
+      ".rail{padding:2px 16px 16px;gap:10px;}" +
+      ".rail > *{width:200px;}" +
+      ".rail--news > *{width:82vw;max-width:300px;}" +
+    "}" +
     ".pc__fav{position:absolute;right:8px;top:8px;width:34px;height:34px;border-radius:50%;border:0;cursor:pointer;background:rgba(255,255,255,.92);color:#9E98AC;display:grid;place-items:center;box-shadow:0 1px 3px rgba(30,20,60,.16);z-index:2;}" +
     ".pc__fav.on{color:#E0A31C;}.pc__fav .ms{font-size:19px;}.pc__fav:hover{background:#fff;}" +
+    /* ★ 途中まで 解いた ぶんの 棒（2026-09-03・訴え）。YouTube と 同じで
+       表紙の 下端に 細く 敷く。下地は 薄く、進んだ ぶんだけ 濃く。 */
+    ".pc__prog{position:absolute;left:0;right:0;bottom:0;height:4px;z-index:3;" +
+      "background:rgba(0,0,0,.28);pointer-events:none;}" +
+    ".pc__prog-f{display:block;height:100%;background:var(--vq-accent,#756DB3);" +
+      "border-radius:0 2px 2px 0;transition:width .25s ease;}" +
+    ".pc__state.is-resume{color:var(--vq-accent-text,#5F5691);font-weight:750;" +
+      "display:inline-flex;align-items:center;gap:3px;}" +
+    ".pc__state.is-resume .ms{font-size:15px;}" +
+    ".pc__go.is-resume{background:var(--vq-accent,#756DB3);color:#fff;border-color:transparent;}" +
     ".pc__fav:not(.on) .ms{font-variation-settings:'FILL' 0;}" +
     ".pc__fav:focus-visible{outline:2px solid var(--vq-accent,#756DB3);outline-offset:2px;}" +
     /* ── クラウドで 作りかけの 札 ────────────────────────────────
@@ -741,8 +886,33 @@
       '<div class="koto" data-home-koto hidden></div></div>' +
       '<span class="qpill">' + svg("coins") + '<span data-home-qredit>0</span> Qredit</span></div>' +
       '<div class="stats" data-home-stats></div>' +
+      /* ══ ★ 横に すべる 棚（2026-09-01・訴え）══════════════════════════
+         訴え「公開の おすすめの プリセットとかを 一覧の 表示の まま ホームに
+               表示。あと ニュースとかも。右に スライドすれば 他のも 表示される 仕組み」
+         ★ カードの 見た目は **一覧と 同じ もの**（pcHTML）を そのまま 使う。
+           ホーム用に 別の カードを 作ると、いつか 見た目が 食い違う。
+         ★ 指では すべらせ、PC では 矢印。どちらでも 動く ように 両方 置く。 */
+      '<div class="card card--flush rail-card">' +
+        '<div class="card__head card__head--pad"><h2 class="card__t">おすすめのプリセット</h2>' +
+        '<button class="linkbtn" data-nav-tab="library">すべて見る</button></div>' +
+        '<div class="railwrap">' +
+          '<button class="railb railb--l" data-rail="rec:-1" aria-label="前へ" hidden>' + svg("left") + '</button>' +
+          '<div class="rail" data-home-rec tabindex="0" role="list" aria-label="おすすめのプリセット"></div>' +
+          '<button class="railb railb--r" data-rail="rec:1" aria-label="次へ" hidden>' + svg("right") + '</button>' +
+        '</div></div>' +
+      '<div class="card card--flush rail-card">' +
+        /* ★ 呼び名を **NEWS** に そろえる（2026-09-01・訴え）。
+           左の 帯も タブも NEWS なので、ここだけ「お知らせ」だと 別物に 見える。 */
+        '<div class="card__head card__head--pad"><h2 class="card__t">NEWS</h2>' +
+        '<button class="linkbtn" data-nav-tab="news">すべて見る</button></div>' +
+        '<div class="railwrap">' +
+          '<button class="railb railb--l" data-rail="news:-1" aria-label="前へ" hidden>' + svg("left") + '</button>' +
+          '<div class="rail rail--news" data-home-news tabindex="0" role="list" aria-label="NEWS"></div>' +
+          '<button class="railb railb--r" data-rail="news:1" aria-label="次へ" hidden>' + svg("right") + '</button>' +
+        '</div></div>' +
       '<div class="hgrid">' +
       '<div class="col">' +
+      '<div data-home-goal></div>' +
       '<div data-home-continue></div>' +
       '<div data-home-ai></div>' +
       '<div class="card"><div class="card__head"><h2 class="card__t">今週の学習時間</h2><span class="badge badge--out" data-home-total>—</span></div>' +
@@ -751,7 +921,8 @@
       '<button class="linkbtn" data-nav-tab="library">すべて見る</button></div><div data-home-recent></div></div>' +
       '</div>' +
       '<div class="col">' +
-      '<div class="card"><div class="card__head"><h2 class="card__t">試験カレンダー</h2><span style="color:var(--vq-text-tertiary,#9994A8)">' + svg("cal") + '</span></div>' +
+      '<div class="card"><div class="card__head"><h2 class="card__t">カレンダー</h2>' +
+      '<button class="linkbtn" data-calopen="">ひらく</button></div>' +
       '<div data-home-cal></div></div>' +
       '<div class="card"><h2 class="card__t2">苦手トップ3</h2><div data-home-weak></div></div>' +
       /* ★ 公式サイトへの導線（2026-08-18）。
@@ -871,6 +1042,170 @@
     var x = 全部[n];
     return x ? { 句: x[0], 意味: x[1], 番号: n } : null;
   }
+  /* ══ ★ 1 時間ごとの ひとこと（2026-09-01・訴え）════════════════════
+     ★ **1 時間に 1 回だけ 頼む。** 描き直すたびに 頼むと 枠を 食い潰す
+       （今日 それで サイトが 止まった）。控えは 端末に 置く。
+     ★ 返って きた ものだけ 出す。**無い ときは 何も 出さない。** */
+  var HOURLY_KEY = "vq.lumi.hourly.v1";
+  var 一時間 = 3600000;
+  var 頼み中 = false;
+  function ひとことを読む() {
+    try {
+      var o = JSON.parse(localStorage.getItem(HOURLY_KEY) || "null");
+      return (o && typeof o === "object") ? o : null;
+    } catch (e) { return null; }
+  }
+  function いつの(t) {
+    var d = Date.now() - (Number(t) || 0);
+    if (!t) return "";
+    if (d < 120000) return "たった今";
+    if (d < 3600000) return Math.floor(d / 60000) + "分前";
+    return Math.floor(d / 3600000) + "時間前";
+  }
+  function ひとことを頼む(force) {
+    if (頼み中) return;
+    var 前 = ひとことを読む();
+    if (!force && 前 && (Date.now() - (Number(前.とき) || 0)) < 一時間) return;
+    var tk = "";
+    try { tk = localStorage.getItem("app.auth.token.v1") || ""; } catch (e) {}
+    if (!tk) return;                                   /* ログイン前は 頼まない */
+    var T = null;
+    try { T = window.__vqTrace; } catch (e) {}
+    if (T && T.切れてるか && T.切れてるか()) return;      /* 記録を 切って いる 人には 頼まない */
+    var m = null;
+    try { m = computeMetrics(); } catch (e) {}
+    var 動 = null;
+    try { 動 = T && T.まとめ ? T.まとめ(6) : null; } catch (e) {}
+    if (!動 && !m) return;
+    頼み中 = true;
+    var base = "";
+    try { base = String(window.VQ_API_BASE || window.AUTH_API_BASE || "").replace(/\/+$/, ""); } catch (e) {}
+    window.fetch(base + "/api/ai/hourly", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + tk },
+      body: JSON.stringify({
+        動き: 動,
+        学び: m ? { todayAnswers: m.todayAnswers, weekAnswers: m.weekAnswers,
+                    weekAcc: m.weekAcc, streak: m.streak,
+                    todayMin: Math.round(m.todayMs / 60000) } : null,
+        苦手: (m && m.weak ? m.weak : []).slice(0, 6).map(function (w) {
+          return { id: w.id, 名: w.name, 正答率: w.acc, 問数: w.total };
+        })
+      })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      頼み中 = false;
+      if (!j || j.ok === false) return;
+      try {
+        localStorage.setItem(HOURLY_KEY, JSON.stringify({
+          とき: Date.now(), 提案: j.できた ? j.提案 : null, 理由: j.理由 || ""
+        }));
+      } catch (e) {}
+      try { if (curScreen === "home") renderHome(); } catch (e) {}
+    }).catch(function () { 頼み中 = false; });
+  }
+
+  /* ══ お知らせを 取る（ホームの 棚のため。2026-09-01）════════════════
+     ★ **1 回だけ 取って 控える。** ホームは 10 秒ごとに 描き直すので、
+       そのたび 取りに 行くと 1 分に 6 回 叩く ことに なる。
+     ★ 取れなくても ホームは そのまま 使える（棚だけ 出さない）。 */
+  var お知らせの控え = null, お知らせ取得中 = false, お知らせを見た = 0;
+  function お知らせを取る(done) {
+    var 今 = Date.now();
+    if (お知らせ取得中) return;
+    if (お知らせの控え && 今 - お知らせを見た < 120000) { if (done) done(); return; }
+    お知らせ取得中 = true;
+    var base = "";
+    try { base = String(window.VQ_API_BASE || window.AUTH_API_BASE || "").replace(/\/+$/, ""); } catch (e) {}
+    var h = { "Content-Type": "application/json" };
+    try {
+      var tk = localStorage.getItem("app.auth.token.v1") || "";
+      if (tk) h.Authorization = "Bearer " + tk;
+    } catch (e) {}
+    window.fetch(base + "/api/news/list", { headers: h })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        お知らせの控え = Array.isArray(j && j.items) ? j.items : [];
+        お知らせを見た = Date.now();
+        お知らせ取得中 = false;
+        if (done) done();
+      })
+      .catch(function () {
+        お知らせの控え = [];
+        お知らせを見た = Date.now();
+        お知らせ取得中 = false;
+        if (done) done();
+      });
+  }
+  /* 種類の 呼び名。お知らせの 画面と **同じ 言葉**に する（食い違わせない）。 */
+  var 種の表 = { update: "アップデート", feature: "新機能", maintenance: "メンテナンス",
+                incident: "障害", campaign: "キャンペーン", notice: "お知らせ" };
+  function 種の名(k) {
+    var v = String(k || "").toLowerCase();
+    return 種の表[v] || String(k || "お知らせ");
+  }
+  /* 表紙。**本物の 絵が ある ときだけ 絵**。無ければ 種類の 印。 */
+  var 種の印 = { update: "rotate", feature: "sparkle", maintenance: "sliders",
+                incident: "alert", campaign: "star", notice: "news" };
+  function 表紙(x) {
+    var u = String((x && (x.coverUrl || x.cover || x.image)) || "").trim();
+    if (/^https?:\/\//i.test(u)) {
+      return '<span class="nc__cv"><img src="' + esc(u) + '" alt="" loading="lazy" decoding="async"></span>';
+    }
+    var k = 種の印[String((x && (x.category || x.kind)) || "").toLowerCase()] || "news";
+    return '<span class="nc__cv nc__cv--art" aria-hidden="true">' + svg(k) + "</span>";
+  }
+  function お知らせの日(x) {
+    var t = Number(x && (x.publishedAt || x.createdAt || x.updatedAt)) || 0;
+    if (!t) return "";
+    var d = new Date(t);
+    return (d.getMonth() + 1) + "/" + d.getDate();
+  }
+  function 棚にお知らせ(el) {
+    var 並 = (お知らせの控え || []).filter(function (x) { return x && (x.title || x.body); }).slice(0, 10);
+    if (!並.length) {
+      el.innerHTML = '<div class="rail__empty">いまは お知らせが ありません。</div>';
+      矢印を合わせる(el);
+      return;
+    }
+    el.innerHTML = 並.map(function (x) {
+      var 種 = 種の名(x.category || x.kind);
+      var 未 = x.read === false || x.unread === true;
+      return '<button class="nc" type="button" data-news-open="' + esc(String(x.id || "")) + '" role="listitem">'
+        /* ★ **バナーと セットで 出す**（2026-09-01・訴え）。
+           絵が 無い ものは **でっち上げない**。種類の 印を 敷く だけ
+           （お知らせの 画面と 同じ 決まり）。 */
+        + 表紙(x)
+        + '<span class="nc__c">'
+        + '<span class="nc__top"><span class="nc__k">' + esc(種) + "</span>"
+        + (未 ? '<span class="nc__new" aria-label="未読"></span>' : "")
+        + '<span class="nc__d">' + esc(お知らせの日(x)) + "</span></span>"
+        + '<span class="nc__t">' + esc(String(x.title || "（題名なし）")) + "</span>"
+        + '<span class="nc__b">' + esc(String(x.summary || x.excerpt || x.body || "").replace(/<[^>]*>/g, "").slice(0, 90)) + "</span>"
+        + "</span></button>";
+    }).join("");
+    矢印を合わせる(el);
+  }
+  /* ★ 矢印は **はみ出して いる ときだけ** 出す。
+     3 枚しか 無いのに 出すと、押しても 何も 起きない。 */
+  function 矢印を合わせる(rail) {
+    if (!rail) return;
+    var wrap = rail.parentNode;
+    if (!wrap) return;
+    var l = wrap.querySelector(".railb--l"), r = wrap.querySelector(".railb--r");
+    var 更 = function () {
+      var はみ = rail.scrollWidth - rail.clientWidth;
+      if (l) l.hidden = !(はみ > 8) || rail.scrollLeft <= 4;
+      if (r) r.hidden = !(はみ > 8) || rail.scrollLeft >= はみ - 4;
+    };
+    更();
+    if (!rail.__railHook) {
+      rail.__railHook = 1;
+      rail.addEventListener("scroll", 更, { passive: true });
+      try { new ResizeObserver(更).observe(rail); } catch (e) {}
+    }
+    setTimeout(更, 80);
+  }
+
   /* ★ q() は renderHome の中でしか 使えない（影の DOM の 入口を 持っている）。
      ことわざは あとから（読み込みのあと・0 時をまたいだとき）にも 描き直すので、
      **置き場そのもの**を 覚えておく。ここを 間違えると
@@ -943,6 +1278,7 @@
     }, Math.min(日が変わるまで(), 2147483000));
   }
 
+  var 棚を出すか = true;
   function renderHome() {
     if (!root) return;
     var m = computeMetrics(), presets = scrapePresets(), byId = {};
@@ -987,6 +1323,24 @@
       ].join("");
     }
 
+    /* ★ 1 日の 目あて（2026-09-01・設定 learn.dailyGoal）。
+       0 なら 何も 出さない（要らない ものを 置かない）。 */
+    var 目 = 0;
+    try { 目 = Math.max(0, Number(localStorage.getItem("vq.dailyGoal.v1")) || 0); } catch (e) {}
+    var ge = q("[data-home-goal]");
+    if (ge) {
+      if (!目) ge.innerHTML = "";
+      else {
+        var 済 = Math.max(0, Number(m.todayAnswers) || 0);
+        var 割2 = Math.min(100, Math.round(済 / 目 * 100));
+        ge.innerHTML = '<div class="card goal' + (済 >= 目 ? " is-done" : "") + '">'
+          + '<div class="goal__h"><span class="goal__t">今日の 目あて</span>'
+          + '<span class="goal__n"><b>' + 済 + "</b> / " + 目 + " 問</span></div>"
+          + '<div class="goal__bar"><i style="width:' + 割2 + '%"></i></div>'
+          + '<div class="goal__d">' + (済 >= 目 ? "きょうの 目あては 達成しました。"
+              : ("あと " + (目 - 済) + " 問")) + "</div></div>";
+      }
+    }
     /* 続きから */
     var r = readResume(), ce = q("[data-home-continue]");
     if (ce) {
@@ -1009,15 +1363,36 @@
       }
     }
 
-    /* AI（アプリが生成した実テキストを鏡写し） */
-    var ai = q("[data-home-ai]"), aiEl = document.getElementById("appHomeAiGreeting");
-    var aiTxt = aiEl ? (aiEl.textContent || "").trim() : "";
+    /* ══ ★ AI から（2026-09-01・訴え）════════════════════════════════
+       訴え「AI から っていう 所は、必ず 学習履歴と 行動パターンを 記録し、
+             そこから Live（無制限）が **1 時間ごとに 傾向を 掴んで 提案**。
+             そこに ボタンを 作ったり。苦手を 補う プリセットを 作ったり」
+       ★ 出すのは **本当に 返って きた もの だけ**。
+         材料が 無い ときは 何も 出さない（当てずっぽうを 置かない）。 */
+    var ai = q("[data-home-ai]");
     if (ai) {
-      ai.innerHTML = aiTxt
-        ? '<div class="alert"><span class="alert__ic">' + svg("sparkle") + '</span><div><div class="alert__t">AIから</div>' +
-          '<div class="alert__b">' + esc(aiTxt) + '</div>' +
-          '<div class="alert__act"><button class="resume" data-nav-tab="chat">' + svg("zap") + 'Quick Chat を開く</button></div></div></div>'
-        : "";
+      var 提 = ひとことを読む();
+      if (提 && 提.提案 && 提.提案.ひとこと) {
+        var 手 = (提.提案["手"] || []).map(function (h) {
+          return '<button class="resume" data-lumi="' + esc(h["型"]) + '" data-lumiarg="'
+            + esc(h.arg || "") + '">' + svg("zap") + esc(h.label) + "</button>";
+        }).join("");
+        ai.innerHTML = '<div class="alert"><span class="alert__ic">' + svg("sparkle") + "</span><div>"
+          + '<div class="alert__t">Lumi から<span class="alert__w">' + esc(いつの(提.とき)) + "</span></div>"
+          + '<div class="alert__b">' + esc(提.提案.ひとこと) + "</div>"
+          + (提.提案["根拠"] ? '<div class="alert__s">' + esc(提.提案["根拠"]) + "</div>" : "")
+          + '<div class="alert__act">' + 手
+          + '<button class="resume is-ghost" data-lumi="refresh">' + svg("rotate") + "いま 見て もらう</button></div>"
+          + "</div></div>";
+      } else {
+        /* まだ 何も 無い ときは **静かに 待つ**。1 行の 誘いだけ 置く。 */
+        ai.innerHTML = '<div class="alert is-quiet"><span class="alert__ic">' + svg("sparkle") + "</span><div>"
+          + '<div class="alert__t">Lumi から</div>'
+          + '<div class="alert__b">' + esc(提 && 提.理由 ? 提.理由 : "少し 使うと、1 時間ごとに 気づいた ことを お伝えします。") + "</div>"
+          + '<div class="alert__act"><button class="resume is-ghost" data-lumi="refresh">'
+          + svg("rotate") + "いま 見て もらう</button></div></div></div>";
+      }
+      ひとことを頼む();
     }
 
     /* 今週の学習時間グラフ */
@@ -1044,9 +1419,72 @@
       }
     }
 
+    /* ══ ★ おすすめの プリセット（横に すべる 棚。2026-09-01・訴え）══════
+       ★ カードは 一覧と **同じ pcHTML**。ホーム用に 別の カードを 作らない。
+       ★ 出すのは **みんなの 公開**と **公式**。自分の ものは 下の
+         「最近の クイズ」に 出る ので ここには 入れない。
+       ★ 並びは 保存された 数 → お気に入り → 見られた 数。
+         どれも 数えて いない ものは 後ろへ（**数を でっち上げない**）。 */
+    var rec = q("[data-home-rec]");
+    if (rec) {
+      /* ★ **一覧と 同じ 札の 作りかた**を 使う（2026-09-01・訴え
+         「おすすめの プリセットの 作者が『名前のない もの』に なってる」）。
+         直す前は 画面から 拾った ぶん（scrapePresets）を そのまま 渡して いた。
+         pcHTML は **buildCards の 形**（ownerName・isOfficial・visibility…）を
+         見る ので、名前が 入って おらず 全部「名前のない人」に なって いた。
+         ★ 一覧が 使う 道を そのまま 通す。別の 道を 作ると また ずれる。 */
+      var 元 = [];
+      try { 元 = buildCards() || []; } catch (e) { 元 = []; }
+      var 推 = 元.filter(function (p) {
+        if (p.__exam) return false;                    /* 試験は ここでは 出さない */
+        return p.isOfficial === true || p.visibility === "public"
+          || p.kind === "public" || p.kind === "official";
+      }).sort(function (a2, b2) {
+        /* 呼び名が 揺れる ので 両方 見る（片方だけだと いつも 0 に なる）。 */
+        var 数 = function (x) {
+          return (Number(x.saveCount || x.savedCount || 0) || 0) * 3
+            + (Number(x.favoriteCount || 0) || 0) * 2
+            + (Number(x.viewCount || 0) || 0);
+        };
+        var A = 数(a2), B = 数(b2);
+        if (B !== A) return B - A;
+        return String(a2.title || "").localeCompare(String(b2.title || ""));
+      }).slice(0, 14);
+      rec.innerHTML = 推.length
+        ? 推.map(function (p) { return pcHTML(p); }).join("")
+        : '<div class="rail__empty">公開の プリセットが まだ 届いて いません。'
+          + "ログインすると おすすめが 並びます。</div>";
+      矢印を合わせる(rec);
+    }
+    /* 設定で 切って いれば 描き直しの あとも たたむ。 */
+    if (!棚を出すか) { try { window.__vqScreens.棚を出す(false); } catch (e) {} }
+
+    /* ★ お知らせ（横に すべる 棚）。**取れた ぶんだけ 出す**。 */
+    var nw = q("[data-home-news]");
+    if (nw) {
+      if (お知らせの控え) 棚にお知らせ(nw);
+      else {
+        nw.innerHTML = '<div class="rail__empty">お知らせを 読み込んで います…</div>';
+        お知らせを取る(function () { var n2 = q("[data-home-news]"); if (n2) 棚にお知らせ(n2); });
+      }
+    }
+
     /* 試験カレンダー（/goal の実データ ＋ 英検カウントダウン） */
     var cal = q("[data-home-cal]");
     if (cal) {
+      /* ★ **同期する カレンダー**の 予定を 先に 出す（2026-09-01・訴え
+         「カレンダーを 自分で 設定し、記録できる。アカウントで 同期」）。
+         これまでの /goal（端末だけ）も 残す。どちらも 出す。 */
+      var 予 = [];
+      try { 予 = (window.__vqCalendar && window.__vqCalendar.予定) ? window.__vqCalendar.予定(4) : []; } catch (e) {}
+      予.forEach(function (x) {
+        var t2 = Date.parse(String(x.date) + "T00:00:00");
+        if (!isFinite(t2)) return;
+        var 日 = Math.ceil((t2 - dayStart(Date.now())) / DAY);
+        goals.push({ name: String(x.title || (x.kind === "exam" ? "試験" : "課題")), ts: t2, days: 日, 同期: true });
+      });
+      goals = goals.filter(function (g) { return g.days != null && g.days >= 0; })
+                   .sort(function (a2, b2) { return a2.ts - b2.ts; });
       var rows = goals.slice(0, 3).map(function (g) {
         var dd = new Date(g.ts);
         return '<div class="calrow"><span class="calrow__d">' + (dd.getMonth() + 1) + "/" + dd.getDate() + '</span>' +
@@ -1154,7 +1592,29 @@
       + '<button class="pc__fav' + (c.isFavoritedByCurrentUser ? " on" : "") + '" data-fav="' + esc(c.id)
       + '" aria-pressed="' + (c.isFavoritedByCurrentUser ? "true" : "false")
       + '" aria-label="' + esc(c.title) + ' をお気に入り">' + ms("star") + "</button>"
+      + 進みの棒(c)
       + "</div>";
+  }
+  /* ══ 途中まで 解いた ぶんの 棒（2026-09-03・訴え）════════════════
+     訴え「進捗を、YouTube の 再生バーのように 一覧の プリセットの ところに
+           出して。解いた 問題数を 再生時間みたいに」
+     ★ 置くのは 表紙の **下端**（YouTube と 同じ）。
+     ★ **中断中の ものだけ** 出す。0 問の ときは 出さない。
+     ★ 色だけで 伝えない。数（3 / 12 問）も 下の 行に 出す。 */
+  function 進み(c) {
+    var p = c && c.progress;
+    if (!p) return null;
+    var 済 = Number(p.answered) || 0, 全 = Number(p.total) || 0;
+    if (!済 || !全) return null;
+    return { 済: Math.min(済, 全), 全: 全,
+             率: Math.max(2, Math.min(100, Math.round(済 / 全 * 100))) };
+  }
+  function 進みの棒(c) {
+    var p = 進み(c);
+    if (!p) return "";
+    return '<div class="pc__prog" role="progressbar" aria-valuemin="0" aria-valuemax="' + p.全
+      + '" aria-valuenow="' + p.済 + '" aria-label="' + p.全 + " 問中 " + p.済 + ' 問まで 解きました">'
+      + '<span class="pc__prog-f" style="width:' + p.率 + '%"></span></div>';
   }
   /* ══ この id は 試験か（2026-08-30）════════════════════════════
      訴え:「プリセット一覧からその両方の違いをどう一覧で見せるかも決めないと」
@@ -1205,6 +1665,23 @@
       return (V && V.examWorkspace && V.examWorkspace.open && V.store && V.store.getExam) ? V : null;
     } catch (e) { return null; }
   }
+  /* ══ 試験を 押したら **まず 詳細**（2026-09-01・訴え）════════════════
+     訴え「試験を クリックすると、詳細が でない。プリセットと 同じように
+           試験も 詳細モードを 表示させて。そこから 公開が できるように」
+     ★ 直す前は 押した 瞬間に CBT（受験）が 始まって いた。
+       何問 あるのかも 見られず、公開の 口も どこにも 無かった。
+     ★ 詳細の 部品が まだ 読めて いない ときは **これまでどおり 受験へ**。
+       押しても 何も 起きない のが いちばん 悪い。 */
+  function 試験の詳細へ(id) {
+    try {
+      if (window.__vqExamDetail && window.__vqExamDetail.open) {
+        window.__vqExamDetail.open(id);
+        return;
+      }
+    } catch (e) {}
+    受験へ(id);
+  }
+
   function 受験へ(id) {
     var V = 試験の道具();
     if (V) return 受験を開く(V, id);
@@ -1320,10 +1797,17 @@
           + c.tags.slice(0, 3).map(function (t) { return '<span class="pc__tag">' + esc(t) + "</span>"; }).join("")
           + "</div>" : "")
       + "</div>"
-      + '<div class="pc__foot"><span class="pc__state">' + esc(state) + "</span>"
-      + '<button class="pc__go" ' + (試 ? "data-exam-start" : "data-preset-start") + '="' + esc(c.id) + '"'
+      + '<div class="pc__foot">'
+      + (進み(c)
+          ? '<span class="pc__state is-resume">' + ms("play_circle")
+            + 進み(c).済 + " / " + 進み(c).全 + " 問</span>"
+          : '<span class="pc__state">' + esc(state) + "</span>")
+      + '<button class="pc__go' + (進み(c) ? " is-resume" : "") + '" '
+      + (試 ? "data-exam-start" : "data-preset-start") + '="' + esc(c.id) + '"'
       + ((試 || canStart) ? "" : " disabled")
-      + ' aria-label="' + esc(c.title) + (試 ? " を受験" : " を開始") + '">' + (試 ? "受験する" : "開始") + "</button></div>"
+      + ' aria-label="' + esc(c.title)
+      + (進み(c) ? " の 続きから" : (試 ? " を受験" : " を開始")) + '">'
+      + (進み(c) ? "続きから" : (試 ? "受験する" : "開始")) + "</button></div>"
       + "</div>";
   }
   function skeletonHTML(n) {
@@ -1434,6 +1918,16 @@
      **受け手が どこにも 無かった**（client 全体で 投げる側 1 か所だけ）。
      そのため 「別の端末で 作った ぶんが 出てこない。再読み込みすれば 出る」
      という 見えかたに なっていた。 */
+  /* ★ 解いた ぶんが 変わったら 一覧の 棒を 追いつかせる（2026-09-03・訴え）。
+     中断して 戻ったのに 棒が 古いまま、を 起こさない。 */
+  try {
+    window.addEventListener("vq-quiz-progress", function () {
+      /* ★ 棒は **一覧の 札にも ホームの 棚にも** 出る。
+         どちらか だけを 描き直すと、もう 片方が 古いまま 残る（実測）。 */
+      try { if (typeof renderPresets === "function") renderPresets(); } catch (e) {}
+      try { if (typeof renderHome === "function") renderHome(); } catch (e) {}
+    });
+  } catch (e) {}
   try {
     window.addEventListener("vq-presets-restored", function (e) {
       var 受 = (e && e.detail && e.detail["受けた"]) || [];
@@ -1679,6 +2173,9 @@
        examStart / examOpen を 足し忘れて、試験の カードが 無反応だった。 */
     var HOOKS = ["click", "home", "bridgeAction", "navTab", "presetStart", "presetSelect", "fav",
                  "examStart", "examOpen",
+                 /* ★ 足し忘れると **押しても 何も 起きない**（2026-09-01 に また やった）。
+                    新しい 目印を 作ったら **必ず ここへ**。 */
+                 "rail", "newsOpen", "calopen", "lumi",
                  "subj", "tab", "view", "sortpick", "openFilter", "closeFilter", "clearFilter", "retry",
                  "cancelgen"];
     function hookedEl(target) {
@@ -1697,7 +2194,7 @@
       var d = el.dataset;
       if (d.navTab) { var nb = document.querySelector('#appTabBar [data-app-tab="' + d.navTab + '"]'); if (nb) nb.click(); }
       else if (d.examStart != null) { e.stopPropagation(); 受験へ(d.examStart); }
-      else if (d.examOpen != null) { e.stopPropagation(); 受験へ(d.examOpen); }
+      else if (d.examOpen != null) { e.stopPropagation(); 試験の詳細へ(d.examOpen); }
       else if (d.presetStart != null) { e.stopPropagation(); presetStart(d.presetStart); }
       else if (d.fav != null) {
         e.stopPropagation();
@@ -1707,6 +2204,73 @@
       }
       else if (d.presetSelect != null) { presetSelect(d.presetSelect); renderPresets(); }
       else if (d.click) click(d.click);
+      else if (d.rail != null) {
+        /* ★ 矢印。**1 枚ぶんでは なく 見えている 幅の 8 割**ずつ 送る。
+           1 枚ずつだと 何回も 押す ことに なり、丸ごと 1 画面だと 見失う。 */
+        e.stopPropagation();
+        var 割 = String(d.rail).split(":");
+        var 棚 = root.querySelector(割[0] === "news" ? "[data-home-news]" : "[data-home-rec]");
+        if (棚) 棚.scrollBy({ left: Math.round(棚.clientWidth * 0.8) * (割[1] === "-1" ? -1 : 1), behavior: "smooth" });
+      }
+      else if (d.lumi != null) {
+        /* ══ ★ Lumi が 置いた 手（2026-09-01・訴え「ボタンとかも ルミが
+           勝手に 置いたり できる ように」）════════════════════════════
+           ★ 置けるのは **こちらが 用意した 型の 中だけ**。
+             自由な コードは 書かせない（何が 起きるか 分からない ものを
+             画面に 置かない）。型ごとの 行き先は ここで 決める。 */
+        e.stopPropagation();
+        var 型 = String(d.lumi || ""), 引 = String(d.lumiarg || "");
+        if (型 === "refresh") { ひとことを頼む(true); return; }
+        try { if (window.__vqTrace) window.__vqTrace.記す("lumi", 型, { v: 引 }); } catch (e4) {}
+        if (型 === "make_preset") {
+          var 開けた = false;
+          try {
+            if (window.VQ2 && window.VQ2.presetStudio && window.VQ2.presetStudio.open) {
+              window.VQ2.presetStudio.open({ prompt: 引, draft: 引 });
+              開けた = true;
+            }
+          } catch (e5) {}
+          if (!開けた) { try { if (window.__vqMake) window.__vqMake.open({ kind: "preset" }); } catch (e6) {} }
+          return;
+        }
+        if (型 === "review") {
+          var b3 = document.getElementById("homeResumeBtn");
+          if (b3 && !b3.disabled) { b3.click(); return; }
+          var nb2 = document.querySelector('#appTabBar [data-app-tab="library"]');
+          if (nb2) nb2.click();
+          return;
+        }
+        if (型 === "open_preset") { if (引) presetStart(引); return; }
+        if (型 === "open_tab") {
+          var nb3 = document.querySelector('#appTabBar [data-app-tab="' + 引 + '"]');
+          if (nb3) nb3.click();
+          return;
+        }
+        if (型 === "open_help") {
+          try { if (window.__vqHelp) window.__vqHelp.open(引 ? { id: 引 } : {}); } catch (e7) {}
+          return;
+        }
+        return;
+      }
+      else if (d.calopen != null) {
+        e.stopPropagation();
+        try {
+          if (window.__vqCalendar && window.__vqCalendar.open) { window.__vqCalendar.open(); return; }
+        } catch (e3) {}
+      }
+      else if (d.newsOpen != null) {
+        e.stopPropagation();
+        /* お知らせを 開く。お知らせの 画面が あれば そこへ、無ければ タブへ。 */
+        var 開けた = false;
+        try {
+          if (typeof window.__vqOpenNews === "function") { window.__vqOpenNews(d.newsOpen); 開けた = true; }
+          else if (window.__vqNews && window.__vqNews.open) { window.__vqNews.open(d.newsOpen); 開けた = true; }
+        } catch (e2) {}
+        if (!開けた) {
+          var nb = document.querySelector('#appTabBar [data-app-tab="news"]');
+          if (nb) nb.click();
+        }
+      }
       else if (d.home) homeAction(d.home);
       else if (d.bridgeAction) { var b = document.querySelector('#appTabBar [data-v2-action="' + d.bridgeAction + '"]'); if (b) b.click(); }
       else if (d.subj != null) { pstate.subject = (pstate.subject === d.subj) ? null : d.subj; syncUrl(); renderPresets(); }
@@ -1744,7 +2308,7 @@
       if (!card || card === root) return;
       if (t !== card) return;     /* 中のボタンは、そのボタン自身が受ける */
       e.preventDefault();
-      if (card.dataset.examOpen != null) 受験へ(card.dataset.examOpen);
+      if (card.dataset.examOpen != null) 試験の詳細へ(card.dataset.examOpen);
       else presetSelect(card.dataset.presetSelect);
     });
     /* 検索（打つたびに全部描き直さない） */
@@ -1878,6 +2442,7 @@
       host.style.bottom = "0px";
       host.style.setProperty("--vqs-pt", "0px");
       host.style.setProperty("--vqs-pb", "0px");
+      host.style.setProperty("--vqs-pbc", "64px");   /* PC は もとの 余白 */
       host.style.boxShadow = "none";     /* PCは左サイドバーを覆わないよう延長なし */
     } else {
       /* モバイルは常に全画面を覆う（隙間から旧UIが覗かないように）。
@@ -1898,13 +2463,59 @@
         if (mr.height > 0 && mr.height < 200 && getComputedStyle(mb).display !== "none") mh = Math.round(mr.height);
       }
       if (!mh) mh = 64;
-      host.style.setProperty("--vqs-pt", (th || 58) + "px");
+      /* ★ 上は 空けない（2026-09-04）。
+         訴え「まだ 時計まで 上端が 達してない。ホーム画面も プリセットも」。
+         この 2 つだけ 上のピル(58px)ぶんを 空けて いて、他の 画面（main）は
+         webview の 上端から 中身が 始まる。その 差が「達して いない」に
+         見えて いた。
+         → 中身を 上端から 描く。浮いている ピルは **半透明**なので、
+           その 裏を 中身が 通って 透ける（LINE と 同じ 形）。
+           一番上まで 戻した ときは 先頭が ピルに かかるが、
+           指で 少し 下げれば 読める。 */
+      host.style.setProperty("--vqs-pt", "0px");
       host.style.setProperty("--vqs-pb", mh + "px");
+      /* ★ 中身の 下余白は **浮いた 島の 下端**まで（2026-09-04）。
+         器（#vqMobBar）は 画面の 下端まで あるが、見えて いる 島は
+         その 中で 浮いて いる。器の 高さ ぶん 空けると
+         島の 下にも 中身が 無い 帯が でき、そこだけ 隙間に 見える。 */
+      var 島の下 = 0;
+      try {
+        var 島 = mb && mb.shadowRoot ? mb.shadowRoot.querySelector(".bar") : null;
+        if (島) {
+          var br2 = 島.getBoundingClientRect();
+          if (br2.height > 0) 島の下 = Math.max(0, Math.round(window.innerHeight - br2.bottom));
+        }
+      } catch (e) {}
+      /* 島が 測れない ときは これまでどおり（器の 高さ ＋ 28px）に 落とす */
+      host.style.setProperty("--vqs-pbc", (島の下 > 0 ? 島の下 : (28 + mh)) + "px");
       /* iOSのラバーバンド(引っ張り戻し)対策: 背景を画面外まで延長しておき、
          端で跳ねても旧UIではなく新UIの背景が見えるようにする。レイアウトには影響しない。 */
       host.style.boxShadow = "0 0 0 600px var(--vq-bg-canvas,#F7F6FB)";
     }
   }
+
+  /* ══ 外から 呼べる 口（2026-09-01）══════════════════════════════════
+     試験の 詳細（vq-examdetail）から 受験へ 行き、公開の あとに
+     一覧の 札を 塗り直す ため。**一覧の 描きかたは ここに 1 つだけ**に する
+     （あちらで 数え直すと、いつか 食い違う）。 */
+  window.__vqScreens = window.__vqScreens || {};
+  window.__vqScreens.受験へ = 受験へ;
+  /* ★ ホームの 棚を 出す／切る（2026-09-01・設定 display.homeRails）。
+     ★ 設定は html に 印を 付けるが、**影の DOM の 中の CSS には 届かない**
+       （:host-context は 端末に よって 効かない）。だから **自分で** 付ける。 */
+  window.__vqScreens.棚を出す = function (on) {
+    try { if (root) root.querySelectorAll(".rail-card").forEach(function (c) {
+      c.style.display = (on === false) ? "none" : "";
+    }); } catch (e) {}
+    棚を出すか = (on !== false);
+  };
+  window.__vqScreens.描き直す = function () {
+    try { 試験の控え = null; } catch (e) {}
+    try { renderPresets(); } catch (e) {}
+    /* ★ ホームも 描き直す（2026-09-01）。一覧だけ 描き直して いた ので、
+       設定を 変えても ホームの 目あてが 出なかった（実測）。 */
+    try { if (curScreen === "home") renderHome(); } catch (e) {}
+  };
 
   build();
 })();

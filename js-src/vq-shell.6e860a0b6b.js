@@ -23,8 +23,13 @@
     message: '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.5 8.5 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5Z"/>',
     news: '<path d="M4 5h13a1 1 0 0 1 1 1v12a2 2 0 0 0 2 2H5a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1Z"/><path d="M18 9h1a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2"/><path d="M7 9h7M7 13h7M7 17h4"/>',
     trend: '<path d="M3 17 9 11l4 4 8-8"/><path d="M16 7h5v5"/>',
+    /* 文章添削（2026-08-31）。鉛筆と 紙。 */
+    pencil: '<path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="M13.5 6.5l4 4"/><path d="M4 20h16"/>',
     shield: '<path d="M12 3 5 6v5.5c0 4 3 6.9 7 8.5 4-1.6 7-4.5 7-8.5V6l-7-3Z"/><path d="m9.2 12 1.9 1.9L15 10"/>',
     zap: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
+    /* カレンダーと ヘルプ（2026-09-01）。無いと **絵が 出ない ボタン**に なる。 */
+    cal: '<rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 1 1 4 2.3c-.9.6-1.6 1-1.6 2M12 17h.01"/>',
     bell: '<path d="M6 8.5a6 6 0 0 1 12 0c0 6.5 2.5 7.5 2.5 7.5h-17S6 15 6 8.5Z"/><path d="M10.2 20a1.9 1.9 0 0 0 3.6 0"/>',
     mail: '<rect x="3" y="5" width="18" height="14" rx="2.4"/><path d="m3.5 7 8.5 6 8.5-6"/>',
     coins: '<ellipse cx="8.5" cy="7" rx="5.5" ry="3"/><path d="M3 7v5c0 1.7 2.5 3 5.5 3s5.5-1.3 5.5-3V7"/><path d="M14 10.7c1.7.2 3.5 1 3.5 2.8 0 1.7-2.5 3-5.5 3-.9 0-1.7-.1-2.4-.3"/>',
@@ -90,11 +95,18 @@
     { key: "news", label: "NEWS", icon: "news", path: "tab:news", section: "main", order: 40 },
     { key: "insights", label: "Insights", icon: "trend", path: "tab:insight", section: "main", order: 50 },
     { key: "survive", label: "VocabuSurvive", icon: "game", path: "tab:survive", section: "main", order: 60 },
+    /* 文章添削（校正モード）2026-08-31。画面を 切り替えず **重ねて 開く**。 */
+    { key: "write", label: "文章添削", icon: "pencil", path: "fn:write", section: "tools", order: 5 },
     { key: "timer", label: "タイマー", icon: "timer", path: "fn:timer", section: "tools", order: 10 },
     { key: "quick_chat", label: "Quick Chat", icon: "zap", path: "tab:chat", section: "tools", order: 20 },
     { key: "notifications", label: "通知", icon: "bell", path: "tab:notifications", section: "tools", order: 30 },
     { key: "qredit", label: "Qredit", icon: "coins", path: "tab:qredit", section: "tools", order: 40 },
     { key: "subscription", label: "Subscription", icon: "crown", path: "tab:subscription", section: "tools", order: 50 },
+    /* カレンダー（2026-09-01・訴え「カレンダーを 自分で 設定し、記録できる」）。 */
+    { key: "calendar", label: "カレンダー", icon: "cal", path: "fn:calendar", section: "tools", order: 15 },
+    /* ヘルプ（2026-09-01・訴え「ヘルプ画面を 大改造」）。**いちばん 下**に 置く。
+       困った ときに 探す ものなので、いつも 同じ ところに ある のが 大事。 */
+    { key: "help", label: "ヘルプ", icon: "help", path: "fn:help", section: "foot", order: 30 },
     { key: "profile", label: "プロフィール", icon: "user", path: "action:open-profile", section: "foot", order: 10 },
     { key: "settings", label: "設定", icon: "gear", path: "fn:settings", section: "foot", order: 20 }
   ].map(function (x) { x.on = true; x.sidebar = true; x.badge = ""; x.notice = ""; x.state = "on"; return x; });
@@ -260,7 +272,25 @@
       });
     };
     fetchFlags().then(function () { TAB_FLAG = null; repaintNav(); guardTab(); });
-    setInterval(見る, 15000);
+    /* ══ ★★ **15 秒 → 60 秒。隠れて いる ときは 見ない**（2026-09-01・緊急）══
+       訴え:「Error 1027（1 日の 上限）で サイトが 止まった」
+
+       15 秒ごとだと 開いて いる 1 タブで **1 時間 240 回**。
+       Workers の 無料枠（1 日 100,000 回）では 開きっぱなしの タブが
+       数枚 あるだけで 効いて くる。
+       ★ 「30 秒 以内に 効く」は **admin で 機能を 切った ときの 話**。
+         いまは 最悪 60〜70 秒に なる。戻って きた ときは 待たずに 見に 行く
+         （下の visibilitychange）ので、人が 見て いる 場面では すぐ 効く。
+       ★ 隠れて いる タブは **1 回も 叩かない**。裏の タブは 誰も 見て いない。 */
+    setInterval(function () {
+      if (document.hidden) return;
+      /* ★ 何枚 開いても 見に 行くのは 1 枚だけ／手が 止まったら 休む
+         （2026-09-02）。旗は 端末の localStorage に 控えて あるので、
+         代表で ない タブも 描くのに 困らない。 */
+      var Q = window.__vqQuiet;
+      if (Q && (!Q.よいか({}) || Q.待たされているか())) return;
+      見る();
+    }, 60000);
     /* 画面へ戻ってきたときは待たずに見に行く（いちばん気付いてほしい瞬間） */
     document.addEventListener("visibilitychange", function () {
       if (!document.hidden) 見る();
@@ -272,7 +302,7 @@
 
   var CSS =
     "*{box-sizing:border-box;margin:0;padding:0;}" +
-    ".wrap{display:flex;flex-direction:column;height:100%;padding:calc(14px + env(safe-area-inset-top,0px)) 12px calc(12px + env(safe-area-inset-bottom,0px));" +
+    ".wrap{display:flex;flex-direction:column;height:100%;padding:calc(14px + var(--vq-sat,0px)) 12px calc(12px + var(--vq-sab,0px));" +
       "font-family:Inter,'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;color:var(--vq-text,#454151);}" +
     ".brand{display:flex;align-items:center;gap:10px;padding:6px 6px 12px;}" +
     ".brand__logo{width:32px;height:32px;border-radius:calc(9px * var(--vq-r-scale,1));flex:0 0 auto;display:grid;place-items:center;background:var(--vq-accent,#756DB3);color:var(--vq-accent-contrast,#fff);font-weight:800;font-size:12px;letter-spacing:.02em;}" +
@@ -330,7 +360,7 @@
     ".cbtn:hover{background:var(--vq-surface-active,#F1EEF8);color:var(--vq-text,#2B2836);}" +
     ".cbtn svg{width:18px;height:18px;}" +
     "@media (min-width:880px){.cbtn{display:flex;}}" +
-    ":host-context(body.app-v2-sidebar-collapsed) .wrap{padding:calc(40px + env(safe-area-inset-top,0px)) 8px calc(12px + env(safe-area-inset-bottom,0px));}" +
+    ":host-context(body.app-v2-sidebar-collapsed) .wrap{padding:calc(40px + var(--vq-sat,0px)) 8px calc(12px + var(--vq-sab,0px));}" +
     ":host-context(body.app-v2-sidebar-collapsed) .brand{justify-content:center;padding:6px 0 10px;gap:0;}" +
     ":host-context(body.app-v2-sidebar-collapsed) .brand__name," +
     ":host-context(body.app-v2-sidebar-collapsed) .find .t," +
@@ -463,6 +493,20 @@
       }
       else if (el.dataset.fn === "cmdk") { if (window.__vqCmdk) window.__vqCmdk.open(); }
       else if (el.dataset.fn === "dm") { closeDrawer(); if (window.__vqOpenDM) window.__vqOpenDM(); }
+      /* 文章添削（校正モード）。タブでは なく 窓として 開く。 */
+      else if (el.dataset.fn === "write") {
+        closeDrawer();
+        try { if (window.__vqWrite) window.__vqWrite.open(); } catch (eW) {}
+      }
+      /* カレンダー・ヘルプ（2026-09-01）。どちらも 窓として 重ねて 開く。 */
+      else if (el.dataset.fn === "calendar") {
+        closeDrawer();
+        try { if (window.__vqCalendar) window.__vqCalendar.open(); } catch (eC) {}
+      }
+      else if (el.dataset.fn === "help") {
+        closeDrawer();
+        try { if (window.__vqHelp) window.__vqHelp.open(); } catch (eH) {}
+      }
       else if (el.dataset.tab) bridge("tab", el.dataset.tab);
       else if (el.dataset.action) bridge("action", el.dataset.action);
       else if (el.dataset.sel) bridge("sel", el.dataset.sel);
@@ -581,8 +625,16 @@
     "*{box-sizing:border-box;margin:0;padding:0;}" +
     ":host{font-family:Inter,'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;}" +
     /* ホスト背景は無し。この丸いピルだけが浮く（下のコンテンツが素通しで見える） */
+    /* ★ 2026-09-04「上端部分は 透明度を 調整」。
+       送ると 中身が この ピルの 裏を 通るので、そこで うっすら 透ける。
+       ★ 面の 色を **先に べた塗り**で 置いてから 薄める
+         （color-mix を 知らない 端末で 透明に なって しまわない ように）。
+       ★ ぼかしの 帯（::before）は 入れない。「変な ぼかし。いらない」で 外した。 */
     ".bar{display:flex;align-items:center;gap:6px;height:46px;width:100%;padding:0 6px 0 4px;border-radius:999px;overflow:hidden;" +
-      "background:var(--vq-border-subtle,#E7E5F4);pointer-events:auto;box-shadow:0 2px 14px rgba(24,22,34,.10),0 0 0 1px rgba(24,22,34,.03);" +
+      "background:var(--vq-border-subtle,#E7E5F4);" +
+      "background:color-mix(in srgb, var(--vq-surface,#fff) 74%, transparent);" +
+      "-webkit-backdrop-filter:blur(20px) saturate(150%);backdrop-filter:blur(20px) saturate(150%);" +
+      "pointer-events:auto;box-shadow:0 2px 14px rgba(24,22,34,.10),0 0 0 1px rgba(24,22,34,.06);" +
       "transition:width .26s cubic-bezier(.22,1,.36,1),padding .26s cubic-bezier(.22,1,.36,1);}" +
     /* 下スクロール時: ピルが左の丸いハンバーガーだけに縮む（三本線は常に押せる） */
     ":host(.vqtb-hide) .bar{width:46px;padding:0 2px;}" +
@@ -601,7 +653,7 @@
     ".q::placeholder{color:var(--vq-text-secondary,#6C6880);}" +
     ".ava{width:34px;height:34px;flex:0 0 auto;margin-right:2px;border:0;padding:0;border-radius:50%;cursor:pointer;overflow:hidden;" +
       "background:var(--vq-accent-subtle,#EDE9FB);color:var(--vq-accent-text,#5F579E);display:grid;place-items:center;font-weight:700;font-size:13px;font-family:inherit;" +
-      "box-shadow:0 0 0 2px #fff;-webkit-tap-highlight-color:transparent;transition:opacity .16s ease;}" +
+      "box-shadow:0 0 0 2px var(--vq-surface,#fff);-webkit-tap-highlight-color:transparent;transition:opacity .16s ease;}" +
     ".ava img{width:100%;height:100%;object-fit:cover;display:block;}";
 
   function buildTopbar(syncIdentity) {
@@ -614,7 +666,7 @@
       "#vqTopbar{position:fixed;top:0;left:0;right:0;z-index:900;display:none;pointer-events:none;" +
         /* 上の安全領域も差し替えられるようにする。実機でしか値が入らないため、
            ここが env() 直書きのままだと、手元の検証で上の形が再現できない。 */
-        "padding:calc(var(--vq-safe-top, env(safe-area-inset-top,0px)) + 6px) 10px 6px;background:transparent;}" +
+        "padding:calc(var(--vq-safe-top, var(--vq-sat,0px)) + 6px) 10px 6px;background:transparent;}" +
       /* 新ピルが出るのは新UIの画面（ホーム / プリセット）だけ。
          旧上部バー #topbar はモバイルでは全画面で廃止（display:none）。
          消えた分は上に詰める: レイアウト変数 --app-v2-topbar-h を 0 に上書き
@@ -629,7 +681,7 @@
            その画面自身の見出しや検索欄を隠さないよう、中身を下げる。 */
         /* 外側の main にだけ乗せる。.stage にも同じものを乗せていたため
            58px が二重にかかり、上に 116px の空白ができていた。 */
-        "body[data-ui-v2=\"1\"].vqtb-only-on main{padding-top:calc(env(safe-area-inset-top,0px) + 54px) !important;}" +
+        "body[data-ui-v2=\"1\"].vqtb-only-on main{padding-top:calc(var(--vq-sat,0px) + 54px) !important;}" +
         "body[data-ui-v2=\"1\"].vqtb-only-on .stage{padding-top:0 !important;}" +
         "body[data-ui-v2=\"1\"] #topbar{display:none !important;}" +
         "body[data-ui-v2=\"1\"]{--app-v2-topbar-h:0px !important;}" +

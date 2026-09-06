@@ -2198,8 +2198,10 @@
       const SHARE_FEATURE_NOTICE_PRE = "2026/04/30 15:00 をもって、共有機能の提供を終了します。必要な共有コードの発行や共有からの追加は、それまでにご利用ください。";
       const SHARE_FEATURE_NOTICE_POST = "2026/04/30 15:00 をもって、共有機能の提供は終了しました。";
       const PUBLIC_APP_CONFIG_PATH = "/api/public/config";
-      const PUBLIC_APP_CONFIG_POLL_VISIBLE_MS = 15000;
-      const PUBLIC_APP_CONFIG_POLL_HIDDEN_MS = 30000;
+      /* ★ **15 秒 → 5 分**（2026-09-01・緊急）。開いて いる 1 タブで
+         1 時間 240 回。中身は めったに 変わらない ので 5 分で 足りる。 */
+      const PUBLIC_APP_CONFIG_POLL_VISIBLE_MS = 300000;
+      const PUBLIC_APP_CONFIG_POLL_HIDDEN_MS = 600000;
       const APP_CONFIG_DEFAULT = Object.freeze({
         appVersion: "2026.03.01",
         features: {
@@ -2601,6 +2603,9 @@
             words: [],
             cards: [],
             subjectId: op.subjectId || "sub:english",
+            /* ★ 表紙（2026-09-03・訴え「バナー画像を 作って、それぞれ
+               わかりやすく」）。サーバが 返した ものを そのまま 持つ。 */
+            appearance: op.appearance || null,
             tagIds: []
           };
         }
@@ -3278,7 +3283,7 @@
             setTimeout(() => {
               overlay.classList.add("hidden");
               overlay.classList.remove("liquid-fade-out");
-            }, 400);
+            }, 480);
           }
         }
         const textEl = document.getElementById("globalLoadingText");
@@ -4398,11 +4403,23 @@
           if (on) {
             el.authBootSplash.classList.remove("hidden", "liquid-fade-out");
           } else if (!el.authBootSplash.classList.contains("hidden")) {
-            el.authBootSplash.classList.add("liquid-fade-out");
-            setTimeout(() => {
-              el.authBootSplash.classList.add("hidden");
-              el.authBootSplash.classList.remove("liquid-fade-out");
-            }, 400);
+            /* ★ **札を 掴んで いる 人が 居る 間は しまわない**（2026-08-18／
+               2026-09-02 に 戻した）。1 枚は /api/auth/me で 消えるが、
+               暗証番号の 確認は そのあと。ここで しまうと **何も 無い 画面**が
+               2 秒ほど 出る（実測 2,025ms）。札は 6 秒で 必ず 外れる。 */
+            const しまう = () => {
+              if (el.authBootSplash.classList.contains("hidden")) return;
+              el.authBootSplash.classList.add("liquid-fade-out");
+              /* ★ 退場の 動きは 460ms（CSS）。ここを 400 の ままに すると
+                 終わる 前に display:none へ 落ちて **最後が 切れる**。 */
+              setTimeout(() => {
+                el.authBootSplash.classList.add("hidden");
+                el.authBootSplash.classList.remove("liquid-fade-out");
+              }, 480);
+            };
+            const H = window.__vqBootHold;
+            if (H && H.ある && H.ある()) H.外れたら(しまう);
+            else しまう();
           }
         }
       }
@@ -9601,8 +9618,17 @@ function reviewWrong(){
 
       const MAINTENANCE_COLLECTION = "appConfig";
       const MAINTENANCE_DOC_ID = "maintenance";
-      const MAINTENANCE_POLL_VISIBLE_MS = 3000;
-      const MAINTENANCE_POLL_HIDDEN_MS = 15000;
+      /* ══ ★★ **3 秒 → 60 秒**（2026-09-01・緊急）════════════════════════
+         訴え:「Error 1027（1 日の 上限）で サイトが 止まった」
+
+         3 秒ごとに 叩くと、**開いて いる 1 タブで 1 時間 1,200 回**。
+         Workers の 無料枠は 1 日 100,000 回 なので、
+         **3〜4 人が 1 日 開いて いるだけで 使い切る。**
+         止めた ことを 知らせる のが 目的なので、1 分に 1 回で 足りる
+         （そもそも 止めて いる 間は どの API も 503 を 返す）。
+         裏には 実況の 見張り（_maintenanceStartRealtimeWatch）も ある。 */
+      const MAINTENANCE_POLL_VISIBLE_MS = 60000;
+      const MAINTENANCE_POLL_HIDDEN_MS = 300000;
       const MAINTENANCE_COUNTDOWN_MS = 10000;
       const MAINTENANCE_ADMIN_PATH = "/api/admin/maintenance";
       const MAINTENANCE_PUBLIC_PATH = "/api/public/maintenance";
@@ -10549,7 +10575,11 @@ function reviewWrong(){
         const force = !!opts.force;
         const silent = !!opts.silent;
         const now = Date.now();
-        if (!force && (now - (_maintenanceState.lastCheckAt || 0)) < 1200){
+        /* ★ **1.2 秒 → 60 秒**（2026-09-01・緊急）。
+           1.2 秒では 起動の あいだに 何度も 通り、1 回 開くだけで 5 回
+           叩いて いた（実測）。止めたい ときは 管理から force で 呼ぶ ので、
+           ふだんの 確かめは 1 分に 1 回で 足りる。 */
+        if (!force && (now - (_maintenanceState.lastCheckAt || 0)) < 60000){
           _maintenanceRenderOverlay();
           _maintenanceRenderAdminForm();
           return;
@@ -11582,7 +11612,10 @@ function reviewWrong(){
       let _vqNotifPollTimer = null;
       let _vqNotifPollBusy = false;
       let _vqNotifLastRunAt = 0;
-      const VQ_NOTIF_POLL_MS = 60000;
+      /* ★ **60 秒 → 2 分**（2026-09-01・緊急）。1 回で 通知と News の
+         2 本を 叩く ので、60 秒だと 1 タブ 1 時間 120 回。
+         隠れて いる ときは もともと 叩かない（下の document.hidden）。 */
+      const VQ_NOTIF_POLL_MS = 120000;
       /* 窓に 戻る たびに 取り直すと、行ったり来たりする だけで 何度も 走る。
          きっかけが 窓（focus / visibilitychange）の ときは 間を あける。 */
       const VQ_NOTIF_MIN_GAP_MS = 30000;
@@ -23462,14 +23495,44 @@ function _openSearchResultByIndex(i){
           row.innerHTML = '<div class="hv3-hscroll-empty">読み込みに失敗しました</div>';
         });
       }
+      /* ══ ★★ **1 回だけ 取って 控える**（2026-09-01・緊急）════════════════
+         訴え:「Error 1027（1 日の 上限）で サイトが 止まった」
+
+         真因: ホームは **描き直すたび**に ここを 呼んで いた。
+           _appRefreshHomeConnectedData は 読み込みが 1 つ 終わる ごとに
+           rerender を 呼び、rerender は _appHomeRenderNewSections を 通り、
+           そこから 毎回 **生の fetch** が 出て いた。
+           プリセットを 保存しても、タブを 戻しても、同じ 道を 通る。
+           実測（2026-09-01・1 回 開いただけ・14 秒）:
+             GET /api/sede/public-projects … **40 回**
+           1 人が 開いて いる だけで 秒 3 回。Workers の 無料枠は
+           1 日 100,000 回 なので、**数人 × 数時間で 使い切る。**
+
+         直しかた: **控えと 走って いる 途中の 約束を 持つ。**
+           ・10 分は 控えを そのまま 返す（描き直しでは 取りに 行かない）
+           ・同時に 何度 呼ばれても **走る のは 1 本**（in-flight を 共有）
+           ・失敗した ときは 短く 控える（30 秒）。ずっと 叩き続けない */
+      let _sedeCache = null, _sedeAt = 0, _sedeInflight = null;
+      const SEDE_TTL = 10 * 60 * 1000;
+      const SEDE_TTL_ERR = 30 * 1000;
       async function _appHomeFetchSedeProjects(){
+        const now = Date.now();
+        if (_sedeCache && (now - _sedeAt) < (_sedeCache.length ? SEDE_TTL : SEDE_TTL_ERR)) return _sedeCache;
+        if (_sedeInflight) return _sedeInflight;
+        _sedeInflight = (async () => {
+          try {
+            const base = String(window.AUTH_API_BASE || "").trim().replace(/\/+$/, "") || "https://vocabuquiz-api.rintyblog.workers.dev";
+            const res = await fetch(base + "/api/sede/public-projects?limit=8", { method: "GET" });
+            if(!res.ok) return [];
+            const data = await res.json();
+            return Array.isArray(data?.projects) ? data.projects : [];
+          } catch(e){ return []; }
+        })();
         try {
-          const base = String(window.AUTH_API_BASE || "").trim().replace(/\/+$/, "") || "https://vocabuquiz-api.rintyblog.workers.dev";
-          const res = await fetch(base + "/api/sede/public-projects?limit=8", { method: "GET" });
-          if(!res.ok) return [];
-          const data = await res.json();
-          return Array.isArray(data?.projects) ? data.projects : [];
-        } catch(e){ return []; }
+          const out = await _sedeInflight;
+          _sedeCache = out; _sedeAt = Date.now();
+          return out;
+        } finally { _sedeInflight = null; }
       }
 
       /* ── ⑤ 苦手復習 ── */
@@ -28455,13 +28518,21 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
         }
         const cache = _appSocialState.feedCacheByScope?.[scope];
         const age = Date.now() - Number(cache?.ts || 0);
-        if (!force && cache && age < 8000){
+        /* ★ **控えを 8 秒 → 60 秒**（2026-09-01・緊急）。
+           ホームは 描き直すたび ここを 通る ので、8 秒では ほとんど 効かず、
+           1 回 開く あいだに 7 回 叩いて いた（実測）。
+           新しくしたい ときは force で 呼ぶ ので、待ち時間は 伸ばして よい。 */
+        if (!force && cache && age < 60000){
           _appSocialState.posts = Array.isArray(cache.posts) ? cache.posts : [];
           _appSocialState.postsLoadedAt = Number(cache.ts || Date.now());
           _appSocialState.feedLastError = "";
           _appRenderFeed();
           return _appSocialState.posts;
         }
+        /* ★ **同時に 何度 呼ばれても 走るのは 1 本**（2026-09-01）。
+           番号（token）は 遅れて 返った ものを 捨てる ための ものなので、
+           **頼み自体は 出て いた**。ここで 出さない。 */
+        if (!force && _appSocialState.postsLoading) return _appSocialState.posts;
         const token = Number(_appSocialState.feedLoadToken || 0) + 1;
         _appSocialState.feedLoadToken = token;
         _appSocialState.postsLoading = true;
@@ -63875,7 +63946,7 @@ actionタイプ:
           #onlineOverlay{position:fixed; inset:0; z-index:99990; display:none;}
           #onlineOverlay.is-open{display:block;}
           #onlineOverlay .ov-bg{position:absolute; inset:0; background:rgba(0,0,0,.28);}
-          #onlineOverlay .ov-shell{position:absolute; inset:10px 10px calc(env(safe-area-inset-bottom,0px) + 10px) 10px; background:var(--bg,var(--panel,#fff)); color:var(--text,#111); border:1px solid var(--border,#ddd); border-radius:20px; box-shadow:var(--shadow,0 12px 30px rgba(0,0,0,.12)); display:flex; flex-direction:column; overflow:hidden;}
+          #onlineOverlay .ov-shell{position:absolute; inset:10px 10px calc(var(--vq-sab,0px) + 10px) 10px; background:var(--bg,var(--panel,#fff)); color:var(--text,#111); border:1px solid var(--border,#ddd); border-radius:20px; box-shadow:var(--shadow,0 12px 30px rgba(0,0,0,.12)); display:flex; flex-direction:column; overflow:hidden;}
           #onlineOverlay .ov-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-bottom:1px solid var(--bar-border,var(--line,var(--border,#ddd))); background:var(--bar-bg,var(--panel,#fff)); position:sticky; top:0; z-index:2;}
           #onlineOverlay .ov-title{font-weight:800; font-size:16px;}
           #onlineOverlay .ov-headbtn{min-height:40px; min-width:40px; border-radius:12px;}
@@ -64037,7 +64108,7 @@ actionタイプ:
           @keyframes ovToastIn{from{opacity:0; transform:translateY(-8px)}to{opacity:1; transform:none}}
           @keyframes ovToastOut{from{opacity:1; transform:none}to{opacity:0; transform:translateY(-8px)}}
           @media (max-width: 760px){
-            #onlineOverlay .ov-shell{inset:0 0 calc(env(safe-area-inset-bottom,0px)) 0; border-radius:0;}
+            #onlineOverlay .ov-shell{inset:0 0 calc(var(--vq-sab,0px)) 0; border-radius:0;}
             #onlineOverlay .ov-grid.cols2{grid-template-columns:1fr;}
             #onlineOverlay .ov-body{padding:12px;}
             #onlineOverlay .ov-scene-gameplay{grid-template-rows:auto auto minmax(0,1fr);}
@@ -65684,14 +65755,14 @@ actionタイプ:
           #rt3dOverlay .b3d-toast.ok .badge{background:rgba(64,190,106,.10); color:#1e7a45;}
           #rt3dOverlay .b3d-toast.ng .badge{background:rgba(235,87,87,.10); color:#b03939;}
           #rt3dOverlay .b3d-toast.info .badge{background:rgba(31,42,68,.08); color:#324a78;}
-          #rt3dOverlay .b3d-quiz{position:absolute; inset:auto 12px calc(120px + env(safe-area-inset-bottom,0px)) 12px; z-index:7; max-width:680px; margin:0 auto; border:1px solid var(--border,#ddd); background:rgba(255,255,255,.98); border-radius:16px; padding:12px; box-shadow:0 8px 20px rgba(0,0,0,.10); display:none;}
+          #rt3dOverlay .b3d-quiz{position:absolute; inset:auto 12px calc(120px + var(--vq-sab,0px)) 12px; z-index:7; max-width:680px; margin:0 auto; border:1px solid var(--border,#ddd); background:rgba(255,255,255,.98); border-radius:16px; padding:12px; box-shadow:0 8px 20px rgba(0,0,0,.10); display:none;}
           #rt3dOverlay .b3d-quiz.is-open{display:block; animation:b3dFadeIn .2s cubic-bezier(.22,1,.36,1);}
           #rt3dOverlay .b3d-quiz h4{margin:0 0 6px; font-size:14px;}
           #rt3dOverlay .b3d-quiz .q{font-size:16px; font-weight:800; line-height:1.35; margin-bottom:8px;}
           #rt3dOverlay .b3d-quiz .choices{display:grid; gap:8px;}
           #rt3dOverlay .b3d-quiz .choices button{min-height:44px;}
           #rt3dOverlay .b3d-quiz .err{font-size:12px; color:#b03939; min-height:16px; margin-top:8px;}
-          #rt3dOverlay .b3d-bottom{position:absolute; left:0; right:0; bottom:0; z-index:5; padding:8px 10px calc(env(safe-area-inset-bottom,0px) + 8px); pointer-events:none;}
+          #rt3dOverlay .b3d-bottom{position:absolute; left:0; right:0; bottom:0; z-index:5; padding:8px 10px calc(var(--vq-sab,0px) + 8px); pointer-events:none;}
           #rt3dOverlay .b3d-controls{display:flex; justify-content:space-between; align-items:flex-end; gap:12px;}
           #rt3dOverlay .b3d-dpad,#rt3dOverlay .b3d-actions{pointer-events:auto; display:grid; gap:8px;}
           #rt3dOverlay .b3d-dpad{grid-template-columns:repeat(3,56px); grid-template-rows:repeat(2,56px);}
@@ -65699,7 +65770,7 @@ actionタイプ:
           #rt3dOverlay .b3d-mbtn{width:56px; height:56px; border-radius:16px; border:1px solid var(--border,#ddd); background:rgba(255,255,255,.92); box-shadow:0 2px 8px rgba(0,0,0,.06); font-weight:800; display:grid; place-items:center; touch-action:none; user-select:none;}
           #rt3dOverlay .b3d-mbtn:active,#rt3dOverlay .b3d-mbtn.is-active{transform:scale(.97); background:rgba(31,42,68,.08);}
           #rt3dOverlay .b3d-jump{width:76px; height:76px; border-radius:20px;}
-          #rt3dOverlay .b3d-status-bar{position:absolute; left:12px; bottom:calc(env(safe-area-inset-bottom,0px) + 12px); z-index:5; max-width:min(52vw,420px); border:1px solid var(--border,#ddd); background:rgba(255,255,255,.92); border-radius:12px; padding:6px 10px; font-size:12px; color:var(--muted,#666); box-shadow:0 2px 8px rgba(0,0,0,.06);}
+          #rt3dOverlay .b3d-status-bar{position:absolute; left:12px; bottom:calc(var(--vq-sab,0px) + 12px); z-index:5; max-width:min(52vw,420px); border:1px solid var(--border,#ddd); background:rgba(255,255,255,.92); border-radius:12px; padding:6px 10px; font-size:12px; color:var(--muted,#666); box-shadow:0 2px 8px rgba(0,0,0,.06);}
           #rt3dOverlay .b3d-result{position:absolute; inset:70px 12px 120px; z-index:8; display:none; align-items:center; justify-content:center; pointer-events:none;}
           #rt3dOverlay .b3d-result.is-open{display:flex;}
           #rt3dOverlay .b3d-result-card{pointer-events:auto; width:min(640px,100%); border:1px solid var(--border,#ddd); background:rgba(255,255,255,.98); border-radius:16px; padding:14px; box-shadow:0 10px 24px rgba(0,0,0,.12); display:grid; gap:10px;}
@@ -65712,7 +65783,7 @@ actionタイプ:
           #rt3dOverlay .b3d-overlay-card{width:min(480px, calc(100vw - 24px)); border:1px solid var(--border,#ddd); background:rgba(255,255,255,.98); border-radius:16px; padding:14px; box-shadow:0 10px 24px rgba(0,0,0,.12);}
           #rt3dOverlay .b3d-overlay-card h4{margin:0 0 6px;}
           #rt3dOverlay .b3d-overlay-card .mini{line-height:1.4;}
-          #rt3dOverlay .b3d-loading-layer{position:absolute; inset:0; z-index:12; display:none; overflow:hidden; padding:calc(env(safe-area-inset-top,0px) + 22px) max(18px, env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 20px) max(18px, env(safe-area-inset-left,0px));}
+          #rt3dOverlay .b3d-loading-layer{position:absolute; inset:0; z-index:12; display:none; overflow:hidden; padding:calc(var(--vq-sat,0px) + 22px) max(18px, var(--vq-sar,0px)) calc(var(--vq-sab,0px) + 20px) max(18px, var(--vq-sal,0px));}
           #rt3dOverlay .b3d-loading-layer.is-open{display:block; animation:b3dLoadingFadeIn .24s cubic-bezier(.22,1,.36,1);}
           #rt3dOverlay .b3d-loading-backdrop{position:absolute; inset:0; overflow:hidden;}
           #rt3dOverlay .b3d-loading-bg{position:absolute; inset:-6%; opacity:0; transform:scale(1.02); transition:opacity .55s ease, transform 1.6s ease; background-size:cover; background-position:center; filter:saturate(1.06);}
@@ -65747,8 +65818,8 @@ actionタイプ:
             #rt3dOverlay .b3d-hud .b3d-hud-card:nth-child(1){grid-area:a;}
             #rt3dOverlay .b3d-hud .b3d-hud-card:nth-child(2){grid-area:b;}
             #rt3dOverlay .b3d-hud .b3d-hud-card:nth-child(3){grid-area:c;}
-            #rt3dOverlay .b3d-score-panel{top:auto; bottom:calc(env(safe-area-inset-bottom,0px) + 96px); left:12px; right:12px; width:auto; max-height:140px;}
-            #rt3dOverlay .b3d-quiz{inset:auto 12px calc(env(safe-area-inset-bottom,0px) + 110px) 12px;}
+            #rt3dOverlay .b3d-score-panel{top:auto; bottom:calc(var(--vq-sab,0px) + 96px); left:12px; right:12px; width:auto; max-height:140px;}
+            #rt3dOverlay .b3d-quiz{inset:auto 12px calc(var(--vq-sab,0px) + 110px) 12px;}
             #rt3dOverlay .b3d-dpad{grid-template-columns:repeat(3,52px); grid-template-rows:repeat(2,52px);}
             #rt3dOverlay .b3d-mbtn{width:52px; height:52px;}
             #rt3dOverlay .b3d-jump{width:68px; height:68px;}
@@ -67083,7 +67154,7 @@ actionタイプ:
           #rt3dOverlay .b3d-hud .b3d-hud-card.is-timer .v{font-size:22px; font-weight:900; font-variant-numeric:tabular-nums; line-height:1;}
           #rt3dOverlay .b3d-hud .b3d-hud-card.is-round .v{font-size:14px;}
           #rt3dOverlay .b3d-scene-layer{position:absolute; inset:0; z-index:7; pointer-events:none;}
-          #rt3dOverlay .b3d-center-stack{position:absolute; inset:74px 12px calc(env(safe-area-inset-bottom,0px) + 100px); display:grid; align-items:center; justify-items:center; pointer-events:none;}
+          #rt3dOverlay .b3d-center-stack{position:absolute; inset:74px 12px calc(var(--vq-sab,0px) + 100px); display:grid; align-items:center; justify-items:center; pointer-events:none;}
           #rt3dOverlay .b3d-lobby-card,
           #rt3dOverlay .b3d-countdown-card{pointer-events:auto; width:min(760px, calc(100vw - 24px)); border:1px solid var(--border,#ddd); background:rgba(255,255,255,.96); border-radius:16px; box-shadow:0 12px 24px rgba(0,0,0,.10);}
           #rt3dOverlay .b3d-lobby-card{padding:14px; display:none; grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr); gap:12px;}
@@ -67925,7 +67996,7 @@ actionタイプ:
           #rt3dOverlay .b3d-score-panel{top:58px; background:rgba(255,255,255,.78); border-color:rgba(17,17,17,.08); box-shadow:0 6px 18px rgba(0,0,0,.06);}
           #rt3dOverlay .b3d-score-fill{background:linear-gradient(90deg, rgba(31,42,68,.88), rgba(76,130,210,.66));}
           #rt3dOverlay .b3d-score-row.is-me .b3d-score-fill{background:linear-gradient(90deg, rgba(31,42,68,.92), rgba(64,190,106,.72));}
-          #rt3dOverlay .b3d-quiz{inset:auto 12px calc(124px + env(safe-area-inset-bottom,0px)) 12px; border-radius:20px; background:rgba(255,255,255,.97); border-color:rgba(17,17,17,.08); box-shadow:0 18px 36px rgba(0,0,0,.14);}
+          #rt3dOverlay .b3d-quiz{inset:auto 12px calc(124px + var(--vq-sab,0px)) 12px; border-radius:20px; background:rgba(255,255,255,.97); border-color:rgba(17,17,17,.08); box-shadow:0 18px 36px rgba(0,0,0,.14);}
           #rt3dOverlay .b3d-quiz h4{font-size:13px; color:var(--muted,#666); letter-spacing:.05em;}
           #rt3dOverlay .b3d-quiz .q{font-size:20px; line-height:1.4; margin-bottom:10px;}
           #rt3dOverlay .b3d-quiz .choices{gap:10px;}
@@ -67943,7 +68014,7 @@ actionタイプ:
           #rt3dOverlay .b3d-go-pop{position:absolute; inset:0; z-index:9; display:none; place-items:center; pointer-events:none;}
           #rt3dOverlay .b3d-go-pop.is-open{display:grid;}
           #rt3dOverlay .b3d-go-pop span{font-weight:900; font-size:clamp(40px, 14vw, 96px); line-height:1; color:#1f2a44; background:rgba(255,255,255,.88); border:1px solid rgba(17,17,17,.08); border-radius:var(--radius-lg, 16px); padding:10px 18px; box-shadow:0 18px 36px rgba(0,0,0,.12); animation:b3dGoPop .28s cubic-bezier(.22,1,.36,1);}
-          #rt3dOverlay .b3d-chatdock{position:absolute; right:12px; bottom:calc(env(safe-area-inset-bottom,0px) + 92px); z-index:6; width:min(360px, calc(100vw - 24px)); border:1px solid rgba(17,17,17,.08); background:rgba(255,255,255,.88); border-radius:16px; box-shadow:0 12px 24px rgba(0,0,0,.10); overflow:hidden; display:grid; grid-template-rows:auto 1fr auto;}
+          #rt3dOverlay .b3d-chatdock{position:absolute; right:12px; bottom:calc(var(--vq-sab,0px) + 92px); z-index:6; width:min(360px, calc(100vw - 24px)); border:1px solid rgba(17,17,17,.08); background:rgba(255,255,255,.88); border-radius:16px; box-shadow:0 12px 24px rgba(0,0,0,.10); overflow:hidden; display:grid; grid-template-rows:auto 1fr auto;}
           #rt3dOverlay .b3d-chatdock.is-collapsed{grid-template-rows:auto; width:auto; min-width:120px;}
           #rt3dOverlay .b3d-chatdock-head{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border-bottom:1px solid rgba(17,17,17,.08); background:rgba(255,255,255,.7);}
           #rt3dOverlay .b3d-chatdock.is-collapsed .b3d-chatdock-head{border-bottom:0;}
@@ -67957,12 +68028,12 @@ actionタイプ:
           #rt3dOverlay .b3d-chatdock-foot{padding:8px; border-top:1px solid rgba(17,17,17,.08); display:flex; gap:8px; align-items:center; background:rgba(255,255,255,.66);}
           #rt3dOverlay .b3d-chatdock-foot input{flex:1; min-width:0; min-height:40px; border-radius:12px; border:1px solid rgba(17,17,17,.10); background:rgba(255,255,255,.96); padding:0 12px; font:inherit;}
           #rt3dOverlay .b3d-chatdock-foot .btn{min-height:40px;}
-          #rt3dOverlay .b3d-joystick{position:absolute; left:12px; bottom:calc(env(safe-area-inset-bottom,0px) + 90px); z-index:6; width:112px; height:112px; border-radius:999px; border:1px solid rgba(17,17,17,.08); background:rgba(255,255,255,.72); box-shadow:0 12px 22px rgba(0,0,0,.08); touch-action:none; display:grid; place-items:center;}
+          #rt3dOverlay .b3d-joystick{position:absolute; left:12px; bottom:calc(var(--vq-sab,0px) + 90px); z-index:6; width:112px; height:112px; border-radius:999px; border:1px solid rgba(17,17,17,.08); background:rgba(255,255,255,.72); box-shadow:0 12px 22px rgba(0,0,0,.08); touch-action:none; display:grid; place-items:center;}
           #rt3dOverlay .b3d-joystick-base{width:84px; height:84px; border-radius:999px; border:1px dashed rgba(31,42,68,.18); background:rgba(255,255,255,.32); position:relative;}
           #rt3dOverlay .b3d-joystick-knob{position:absolute; left:50%; top:50%; width:40px; height:40px; margin:-20px 0 0 -20px; border-radius:999px; border:1px solid rgba(17,17,17,.10); background:rgba(255,255,255,.95); box-shadow:0 6px 12px rgba(0,0,0,.08); transform:translate(0,0);}
-          #rt3dOverlay .b3d-jump2{position:absolute; right:12px; bottom:calc(env(safe-area-inset-bottom,0px) + 92px); z-index:6; width:74px; height:74px; border-radius:20px;}
+          #rt3dOverlay .b3d-jump2{position:absolute; right:12px; bottom:calc(var(--vq-sab,0px) + 92px); z-index:6; width:74px; height:74px; border-radius:20px;}
           #rt3dOverlay .b3d-camreset{position:absolute; right:12px; top:120px; z-index:6; width:42px; height:42px; border-radius:var(--radius, 12px); border:1px solid rgba(17,17,17,.08); background:rgba(255,255,255,.84); display:grid; place-items:center; box-shadow:0 10px 18px rgba(0,0,0,.08);}
-          #rt3dOverlay .b3d-chat-toggle{position:absolute; right:12px; bottom:calc(env(safe-area-inset-bottom,0px) + 46px); z-index:6; min-height:36px; padding:0 12px; border-radius:999px; border:1px solid rgba(17,17,17,.08); background:rgba(255,255,255,.88); display:inline-flex; align-items:center; gap:6px; box-shadow:0 10px 18px rgba(0,0,0,.08);}
+          #rt3dOverlay .b3d-chat-toggle{position:absolute; right:12px; bottom:calc(var(--vq-sab,0px) + 46px); z-index:6; min-height:36px; padding:0 12px; border-radius:999px; border:1px solid rgba(17,17,17,.08); background:rgba(255,255,255,.88); display:inline-flex; align-items:center; gap:6px; box-shadow:0 10px 18px rgba(0,0,0,.08);}
           #rt3dOverlay .b3d-gfx-badge{position:absolute; left:12px; top:120px; z-index:6; border-radius:12px; border:1px solid rgba(17,17,17,.08); background:rgba(255,255,255,.84); padding:7px 10px; font-size:11px; color:var(--muted,#666);}
           #rt3dOverlay .b3d-gimmick-hit{position:absolute; inset:0; z-index:7; pointer-events:none; opacity:0; background:radial-gradient(circle at center, rgba(255,255,255,.0) 20%, rgba(235,87,87,.10) 100%);}
           #rt3dOverlay .b3d-gimmick-hit.is-show{animation:b3dHitFlash .22s ease-out;}
@@ -67970,10 +68041,10 @@ actionタイプ:
           @keyframes b3dRoundCardIn{from{opacity:0; transform:translateY(10px) scale(.98)}to{opacity:1; transform:none}}
           @keyframes b3dHitFlash{0%{opacity:0}15%{opacity:1}100%{opacity:0}}
           @media (max-width: 768px){
-            #rt3dOverlay .b3d-chatdock{width:min(92vw, 360px); right:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 84px);}
-            #rt3dOverlay .b3d-joystick{left:8px; width:104px; height:104px; bottom:calc(env(safe-area-inset-bottom,0px) + 82px);}
+            #rt3dOverlay .b3d-chatdock{width:min(92vw, 360px); right:8px; bottom:calc(var(--vq-sab,0px) + 84px);}
+            #rt3dOverlay .b3d-joystick{left:8px; width:104px; height:104px; bottom:calc(var(--vq-sab,0px) + 82px);}
             #rt3dOverlay .b3d-joystick-base{width:78px; height:78px;}
-            #rt3dOverlay .b3d-jump2{right:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 84px);}
+            #rt3dOverlay .b3d-jump2{right:8px; bottom:calc(var(--vq-sab,0px) + 84px);}
             #rt3dOverlay .b3d-camreset{top:112px; right:8px;}
             #rt3dOverlay .b3d-gfx-badge{left:8px; top:112px;}
           }
@@ -71110,7 +71181,7 @@ actionタイプ:
           #rt3dOverlay .b3d-select{appearance:none; background-image:linear-gradient(45deg,transparent 50%, currentColor 50%),linear-gradient(135deg,currentColor 50%, transparent 50%); background-position:calc(100% - 18px) 48%, calc(100% - 12px) 48%; background-size:6px 6px, 6px 6px; background-repeat:no-repeat; padding-right:30px;}
           #rt3dOverlay .ov-iconbtn{min-width:34px; min-height:34px; padding:0 8px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center;}
           #rt3dOverlay .ov-iconbtn .ms{font-size:18px; line-height:1;}
-          #rt3dOverlay .b3d-head{padding-top:calc(env(safe-area-inset-top,0px) + 2px);}
+          #rt3dOverlay .b3d-head{padding-top:calc(var(--vq-sat,0px) + 2px);}
           @media (hover:hover){
             #rt3dOverlay .btn:hover,
             #rt3dOverlay .b3d-seg-btn:hover,
@@ -71119,19 +71190,19 @@ actionタイプ:
             #rt3dOverlay .b3d-camreset:hover{transform:none !important; filter:brightness(1.02); box-shadow:0 8px 16px rgba(0,0,0,.08);}
           }
           @media (max-width: 768px){
-            #rt3dOverlay .b3d-head{min-height:44px; padding:calc(env(safe-area-inset-top,0px) + 4px) 8px 6px;}
+            #rt3dOverlay .b3d-head{min-height:44px; padding:calc(var(--vq-sat,0px) + 4px) 8px 6px;}
             #rt3dOverlay .b3d-head-right .btn{min-height:34px; padding:0 9px; border-radius:10px;}
-            #rt3dOverlay .b3d-hud{top:calc(env(safe-area-inset-top,0px) + 52px); left:8px; right:8px; gap:6px; grid-template-columns:repeat(3,minmax(0,1fr));}
+            #rt3dOverlay .b3d-hud{top:calc(var(--vq-sat,0px) + 52px); left:8px; right:8px; gap:6px; grid-template-columns:repeat(3,minmax(0,1fr));}
             #rt3dOverlay .b3d-hud .b3d-hud-card{padding:6px 8px;}
             #rt3dOverlay .b3d-hud .b3d-hud-card .t{font-size:10px;}
             #rt3dOverlay .b3d-hud .b3d-hud-card .v{font-size:12px;}
-            #rt3dOverlay .b3d-score-panel{top:calc(env(safe-area-inset-top,0px) + 108px); left:8px; max-width:56vw;}
-            #rt3dOverlay .b3d-quiz{left:8px; right:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 108px);}
+            #rt3dOverlay .b3d-score-panel{top:calc(var(--vq-sat,0px) + 108px); left:8px; max-width:56vw;}
+            #rt3dOverlay .b3d-quiz{left:8px; right:8px; bottom:calc(var(--vq-sab,0px) + 108px);}
             #rt3dOverlay .b3d-quiz .q{font-size:17px; line-height:1.38;}
-            #rt3dOverlay .b3d-chatdock{right:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 66px);}
-            #rt3dOverlay .b3d-joystick{left:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 62px);}
-            #rt3dOverlay .b3d-jump2{right:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 62px);}
-            #rt3dOverlay .b3d-chat-toggle{right:8px; bottom:calc(env(safe-area-inset-bottom,0px) + 18px);}
+            #rt3dOverlay .b3d-chatdock{right:8px; bottom:calc(var(--vq-sab,0px) + 66px);}
+            #rt3dOverlay .b3d-joystick{left:8px; bottom:calc(var(--vq-sab,0px) + 62px);}
+            #rt3dOverlay .b3d-jump2{right:8px; bottom:calc(var(--vq-sab,0px) + 62px);}
+            #rt3dOverlay .b3d-chat-toggle{right:8px; bottom:calc(var(--vq-sab,0px) + 18px);}
             #rt3dOverlay .b3d-gfx-badge{display:none;}
             #rt3dOverlay.is-quiz-open .b3d-chatdock,
             #rt3dOverlay.is-quiz-open .b3d-chat-toggle,
@@ -71923,7 +71994,7 @@ actionタイプ:
           }
           #rt3dOverlay .b3d-head{
             min-height: 52px;
-            padding: calc(env(safe-area-inset-top, 0px) + 6px) 10px 8px;
+            padding: calc(var(--vq-sat,0px) + 6px) 10px 8px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.12);
             background: linear-gradient(180deg, rgba(10, 14, 22, 0.78), rgba(10, 14, 22, 0.54));
             backdrop-filter: blur(10px) saturate(1.12);
@@ -71960,7 +72031,7 @@ actionタイプ:
             box-shadow:0 10px 22px rgba(0,0,0,.28);
           }
           #rt3dOverlay .b3d-center-stack{
-            inset:64px 10px calc(env(safe-area-inset-bottom, 0px) + 88px);
+            inset:64px 10px calc(var(--vq-sab,0px) + 88px);
             display:block !important;
             pointer-events:none;
             padding:0;
@@ -72422,7 +72493,7 @@ actionタイプ:
             display:none;
             align-items:center;
             justify-content:center;
-            padding:calc(env(safe-area-inset-top,0px) + 14px) calc(env(safe-area-inset-right,0px) + 14px) calc(env(safe-area-inset-bottom,0px) + 14px) calc(env(safe-area-inset-left,0px) + 14px);
+            padding:calc(var(--vq-sat,0px) + 14px) calc(var(--vq-sar,0px) + 14px) calc(var(--vq-sab,0px) + 14px) calc(var(--vq-sal,0px) + 14px);
             background:rgba(4,8,16,.62);
             backdrop-filter:blur(6px);
           }
@@ -72466,7 +72537,7 @@ actionタイプ:
             #rt3dOverlay .b3d-head-center .b3d-pill:nth-child(2),
             #rt3dOverlay .b3d-head-center .b3d-pill:nth-child(3){display:none;}
             #rt3dOverlay.is-lobby-v9 .b3d-settings-head-btn{display:inline-flex;}
-            #rt3dOverlay .b3d-center-stack{inset:60px 6px calc(env(safe-area-inset-bottom,0px) + 74px);}
+            #rt3dOverlay .b3d-center-stack{inset:60px 6px calc(var(--vq-sab,0px) + 74px);}
             #rt3dOverlay .b3d-topstrip{
               left:0;
               right:0;
@@ -72559,7 +72630,7 @@ actionタイプ:
           }
           @media (max-width: 1024px) and (orientation: landscape){
             #rt3dOverlay .b3d-center-stack{
-              inset:60px 6px calc(env(safe-area-inset-bottom,0px) + 70px);
+              inset:60px 6px calc(var(--vq-sab,0px) + 70px);
             }
             #rt3dOverlay .b3d-topstrip{
               left:0;

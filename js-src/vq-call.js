@@ -122,7 +122,7 @@
       "background:var(--vq-surface,#fff);border-radius:26px;",
       "border:1px solid var(--vq-border,#E7E4EF);",
       "box-shadow:0 26px 80px rgba(16,14,26,.34);",
-      "padding:26px 22px calc(22px + env(safe-area-inset-bottom,0px));",
+      "padding:26px 22px calc(22px + var(--vq-sab,0px));",
       "animation:vqcUp .26s cubic-bezier(.22,1,.36,1) both}",
     "@media (prefers-reduced-motion:reduce){.bd,.w{animation:none}}",
 
@@ -194,7 +194,7 @@
          画面を 同席する ときは 必ず 畳める ように する。
          畳んだ ときは 幕を 消し、押せる ところ以外は 触りが 下へ 通り抜ける。 */
     ":host([data-open='1'][data-min='1']){display:block;inset:auto;left:0;right:0;",
-      "top:calc(env(safe-area-inset-top,0px) + 8px);padding:0 8px;",
+      "top:calc(var(--vq-sat,0px) + 8px);padding:0 8px;",
       "pointer-events:none;z-index:2147483200}",
     ":host([data-min='1']) .bd,:host([data-min='1']) .w{display:none}",
     /* 幅の 狭い 端末の 上書き（下の @media より 後ろに 置けないので 詳細度で 勝つ） */
@@ -248,7 +248,7 @@
     "@media (max-width:420px){",
       ":host([data-open='1']){padding:8px}",
       ".w{width:calc(100vw - 16px)}",
-      ".w{border-radius:22px;padding:22px 16px calc(18px + env(safe-area-inset-bottom,0px))}",
+      ".w{border-radius:22px;padding:22px 16px calc(18px + var(--vq-sab,0px))}",
       ".face{width:88px;height:88px;font-size:32px}",
       ".nm{font-size:19px}",
       ".rowb{gap:14px}",
@@ -656,20 +656,66 @@
       ws開く();
     }, 待ち直し);
   }
+  /* ══ 見張りの 間隔（2026-09-02 に 測って 直した）════════════════════
+     直す前: 10 秒ごとに **必ず** /api/call/state を 叩いて いた。
+       タブを 開いて いる だけで 1 日 8,640 回。30 タブで 26 万回。
+       これが 積み上がって Cloudflare の 1 日の 枠を 使い切り、
+       毎朝（＝ 00:00 UTC の リセット直前）に 全員が 429 に なって いた。
+       実測: 8/31 = 396,080 回・9/1 = 351,513 回。人の 操作は 時 3〜6 千回。
+
+     直した あと:
+       ・**裏に 回った タブは 何も しない**（document.hidden）
+       ・押し出しは WebSocket が 本筋。/api/call/state は **取りこぼしの
+         受け皿**なので 90 秒に 1 回で 足りる
+       ・表に 戻った 瞬間は すぐ 1 回 見る（着信を 取りこぼさない）
+     これで 1 タブ 8,640 回/日 → **960 回/日**（開きっぱなしでも）。 */
+  var 裏か = function () { try { return !!document.hidden; } catch (e) { return false; } };
+  var 拾い時 = 0;
+  var 状態の間 = 90000;
   function ws見張る() {
     if (wsTimer) return;
     wsTimer = setInterval(function () {
       if (!token()) return;
+      /* 裏の タブは 触らない。切れた ままでも、表に 戻った ときに つなぎ直す。 */
+      if (裏か()) return;
+      /* ★ 何枚 開いても 叩くのは 1 枚だけ／手が 止まって 15 分で 休む
+         （2026-09-02・この 家の 3 台で 1 時間 61,442 回 出て いた）。
+         着信は WebSocket で 届く ので、代表で なくても 受け取れる。 */
+      var Q = window.__vqQuiet;
+      if (Q && Q.待たされているか()) return;
       if (!ws || ws.readyState > 1) { ws開く(); return; }
       if (ws.readyState === 1) { try { ws.send(JSON.stringify({ type: "ping" })); } catch (e) {} }
-      /* ★ 受け皿。押し出しを 取りこぼしても、10 秒 以内には 気づく。
-         いま 何も 出していない ときだけ 聞きに行く（通話中は 邪魔しない）。 */
-      if (!st.call) 落ちている通話を拾う();
+      /* ★ 受け皿。**通話中は 邪魔しない**し、続けざまには 聞かない。 */
+      if (st.call) return;
+      if (Q && !Q.よいか({})) return;
+      var now = Date.now();
+      if (now - 拾い時 < 状態の間) return;
+      拾い時 = now;
+      落ちている通話を拾う();
     }, 10000);
   }
 
+  /* 表に 戻った ら すぐ つなぎ直して 1 回だけ 見る（待たせない）。 */
+  try {
+    document.addEventListener("visibilitychange", function () {
+      if (裏か() || !token()) return;
+      if (!ws || ws.readyState > 1) ws開く();
+      if (!st.call) { 拾い時 = Date.now(); 落ちている通話を拾う(); }
+    });
+  } catch (e) {}
+
   function 合図(d) {
     var t = String(d.type || "");
+    /* ══ 通知・お知らせの 押し出し（2026-09-05）══════════════════════
+       訴え「通知も、受信した タイミングで 通知として 鳴らす ように して
+             欲しい。アプリを 開いて いる 人に リアルタイムで 通知音を」
+       ★ この WebSocket は 通話の ために 1 本 繋いで ある。
+         通知の ために もう 1 本 開かない（繋ぎ直しの 世話も 二重に なる）。
+       ★ 出すのは vq-notifylive。ここは **渡すだけ**。 */
+    if (t === "notify.new" || t === "news.new") {
+      try { if (window.__vqNotifyLive) window.__vqNotifyLive.受ける(d); } catch (e) {}
+      return;
+    }
     if (t === "call.invite") {
       if (st.call) { return; }                     /* すでに 通話中（サーバも 断る） */
       建てる();

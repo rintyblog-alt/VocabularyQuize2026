@@ -492,6 +492,96 @@
   var WIDTHS = { narrow: "0.8", standard: null, wide: "1.25" };
   function applyWidth(v) { setVar("--vq-width-scale", WIDTHS[v] || null); }
 
+  /* ══ ★ 学習中に 画面を 暗く しない（2026-09-01）════════════════════
+     訴え「設定で 増やしたら 便利な ものを どんどん 追加」。
+     紙の 問題集と いちばん 違うのが これ。読んで いる 途中で 消えると
+     解き直しに なる。端末の 決まりで **人が 触った あと**しか 頼めないので、
+     ON に した その 場では 頼まず、**次に 画面を 触った ときに** 頼む。 */
+  var 起きたまま = null, 起きる希望 = false;
+  function 画面を起こす() {
+    if (!起きる希望) return;
+    try {
+      if (!navigator.wakeLock || !navigator.wakeLock.request) return;
+      if (起きたまま) return;
+      navigator.wakeLock.request("screen").then(function (w) {
+        起きたまま = w;
+        w.addEventListener("release", function () { 起きたまま = null; });
+      }).catch(function () {});
+    } catch (e) {}
+  }
+  function applyKeepAwake(on) {
+    起きる希望 = !!on;
+    if (!on) {
+      try { if (起きたまま) 起きたまま.release(); } catch (e) {}
+      起きたまま = null;
+      return;
+    }
+    画面を起こす();
+    if (!applyKeepAwake.__つないだ) {
+      applyKeepAwake.__つないだ = 1;
+      /* 端末は **人が 触った あと**しか 許さない。次の 一押しで 頼む。 */
+      document.addEventListener("pointerdown", 画面を起こす, { passive: true });
+      /* ほかの タブから 戻った ときは 外れて いる ので 頼み直す。 */
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) 画面を起こす();
+      });
+    }
+  }
+  /* ホームの 棚（おすすめ・お知らせ）を 出す／出さない。 */
+  function applyHomeRails(on) {
+    /* ★ setFlag は **付ける／外す** だけ（値は いつも "1"）。
+       「off」の ような 値を 渡すと 付いて しまい、CSS が 逆に 効く。 */
+    /* ★ 影の DOM の 中の CSS には **外の 印が 届かない**（2026-09-01 実測）。
+       html に 印を 付けても 棚は 消えなかった。**画面に 直に 頼む。** */
+    setFlag("data-vq-no-rails", !on);
+    try {
+      if (window.__vqScreens && window.__vqScreens.棚を出す) window.__vqScreens.棚を出す(!!on);
+    } catch (e) {}
+  }
+  /* 今日の ことわざ。 */
+  function applyProverb(on) {
+    setFlag("data-vq-no-proverb", !on);
+    sheet("vqsetProverb", on ? "" : "[data-vq-no-proverb] .koto{display:none !important}");
+  }
+  /* 1 日の 目あて（問題数）。ホームが 読む。0 なら 出さない。 */
+  function applyDailyGoal(v) {
+    try { localStorage.setItem("vq.dailyGoal.v1", String(Math.max(0, Math.min(500, Number(v) || 0)))); } catch (e) {}
+    try { if (window.__vqScreens && window.__vqScreens.描き直す) window.__vqScreens.描き直す(); } catch (e) {}
+  }
+  /* 週の 始まり（0＝日曜・1＝月曜）。カレンダーが 読む。 */
+  function applyWeekStart(v) {
+    try { localStorage.setItem("vq.weekStart.v1", String(v) === "1" ? "1" : "0"); } catch (e) {}
+    try { if (root.__vqCalendar && root.__vqCalendar.close) {
+      /* 開いて いる ときだけ 描き直す（閉じて いる ものを 開かない）。 */
+      var h = document.getElementById("vqCalendar");
+      if (h && h.getAttribute("data-open") === "1") { root.__vqCalendar.open(); }
+    } } catch (e) {}
+  }
+  /* 一覧の カードを 小さく（一度に たくさん 見える）。 */
+  function applyCompactCards(on) {
+    setFlag("data-vq-compact-cards", on);
+    sheet("vqsetCompact", on
+      ? ".pc__body{padding:10px 12px 12px !important}"
+        + ".pc__title{font-size:13px !important;line-height:1.45 !important}"
+        + ".pc__meta,.pc__types,.pc__tags{font-size:10.5px !important}"
+        + ".pc-exam,.pc__banner{height:70px !important}"
+        + ".pgrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr)) !important}"
+      : "");
+  }
+  /* ══ ★ 行動の 記録（2026-09-01・訴え）════════════════════════════
+     1 時間ごとの Lumi の ひとことは これを 材料に する。
+     ★ **切れる ように する。** 切ったら 1 行も 取らない・送らない。
+       「記録して います」と 書いて 切れない のは いちばん よくない。 */
+  function applyTrace(on) {
+    try { if (root.__vqTrace && root.__vqTrace.切る) root.__vqTrace.切る(!on); } catch (e) {}
+    try { if (!on) localStorage.removeItem("vq.lumi.hourly.v1"); } catch (e) {}
+  }
+  /* カレンダーを アカウントへ 同期するか。 */
+  function applyCalendarSync(on) {
+    try { localStorage.setItem("vq.calendar.sync.v1", on ? "1" : "0"); } catch (e) {}
+    if (on) { try { if (window.__vqCalendar) window.__vqCalendar.送る(); } catch (e) {} }
+  }
+
   function applyTabular(on) {
     sheet("vqsetTabular", on
       ? ":root,body{font-variant-numeric:tabular-nums;}:host{font-variant-numeric:tabular-nums;}"
@@ -615,6 +705,24 @@
       apply: applyWidth },
     { id: "display.tabularNums", group: "display", type: "toggle", kind: "own", def: false,
       label: "数字の幅をそろえる", desc: "点数や時間がガタつかなくなる", apply: applyTabular },
+    /* ══ 2026-09-01・訴え「設定で 増やしたら 便利な ものを どんどん 追加」══ */
+    { id: "display.keepAwake", group: "display", type: "toggle", kind: "own", def: false,
+      label: "学習中に画面を暗くしない",
+      desc: "問題を読んでいる途中で画面が消えなくなります（端末が対応しているときだけ）",
+      apply: applyKeepAwake },
+    { id: "display.homeRails", group: "display", type: "toggle", kind: "own", def: true,
+      label: "ホームにおすすめとお知らせを出す",
+      desc: "横にすべる棚。切ると自分の記録だけの静かなホームになります",
+      apply: applyHomeRails },
+    { id: "display.proverb", group: "display", type: "toggle", kind: "own", def: true,
+      label: "今日のことわざを出す", desc: "ホームの見出しの下に日替わりで出ます",
+      apply: applyProverb },
+    { id: "display.weekStart", group: "display", type: "seg", kind: "own", def: "0",
+      label: "週の始まり", desc: "カレンダーの並び",
+      opts: [["0", "日曜"], ["1", "月曜"]], apply: applyWeekStart },
+    { id: "display.compactCards", group: "display", type: "toggle", kind: "own", def: false,
+      label: "一覧のカードを小さくする", desc: "一度にたくさん見えます",
+      apply: applyCompactCards },
     /* ★ 訴え（2026-08-20）「DM の背景を 設定から 設定できるように。
        VocabuQuiz 側でも 用意はしておこう。テンプレートを 8 つくらい」
        絵の中身は vq-dm.js が 持つ（:host([data-bg]) の CSS）。
@@ -646,6 +754,9 @@
        出題の向きは廃止した（プリセットごとに決まるため、全体の設定にすると噛み合わない）。
        EXAM と WRITE で別々だった「問題数」「入れ替え」も 1 つにまとめ、
        問題数と制限時間は決め打ちの選択肢をやめて **自由に決められる** ようにした。 */
+    { id: "learn.dailyGoal", group: "learn", type: "number", kind: "own", def: 0,
+      label: "1日の目あて（問題数）", desc: "0 なら出しません。ホームに今日の進み具合が出ます",
+      min: 0, max: 500, step: 5, apply: applyDailyGoal },
     { id: "learn.questionCount", group: "learn", type: "number", kind: "legacy",
       label: "問題数", desc: "1〜500 問。EXAM と WRITE の両方に使う",
       min: 1, max: 500, step: 1, unit: "問",
@@ -702,6 +813,9 @@
       apply: function (v) { try { learnBridge("reverse", !!v); } catch (e) {} } },
     { id: "learn.keyboard", group: "learn", type: "toggle", kind: "own", def: true,
       label: "キーボードで答える", desc: "1〜9 と A〜Z で選択肢を選ぶ", readBy: "v2/ui/quiz-player.js" },
+    /* ★ 2026-09-05「受信した タイミングで 通知として 鳴らす」。
+       開いて いる ときに 届いた 通知・お知らせで 短く 鳴る。
+       読むのは js-src/vq-notifylive.js。 */
     { id: "learn.showTimer", group: "learn", type: "toggle", kind: "own", def: true,
       label: "残り時間を出す", apply: applyQuizChrome },
     { id: "learn.showProgress", group: "learn", type: "toggle", kind: "own", def: true,
@@ -730,6 +844,13 @@
       apply: function (v) { player("maxWidth", v); } },
     { id: "player.animations", group: "player", type: "toggle", kind: "own", def: true,
       label: "解いている間の画面の動き", apply: function (v) { player("animations", v); } },
+    /* ★ 2026-09-03・訴え「設定から 正解不正解の アニメーションの
+       オンオフも 入れておいて。オフの 場合は そのアニメーションが 無効に」。
+       上の「画面の動き」とは 別。こちらは **答え合わせの ときだけ**。 */
+    { id: "player.answerAnim", group: "player", type: "toggle", kind: "own", def: true,
+      label: "正解・不正解の動き",
+      desc: "正解は ふわっと 浮き、不正解は 横に ゆれる。切ると 色と 印だけ 残る",
+      apply: function (v) { player("answerAnim", v); } },
     { id: "player.showProgress", group: "player", type: "toggle", kind: "own", def: true,
       label: "進み具合を出す", apply: function (v) { player("showProgress", v); } },
     { id: "player.showTimer", group: "player", type: "toggle", kind: "own", def: true,
@@ -841,13 +962,17 @@
        端末が実際に何と聞き取ったかを、そのまま見せる。 */
     /* ★ 実機でしか出ない不具合を **推測で直さない**ための入口。
        1 タップで、聞き取りの知らせが 1 つずつ出るか／どこで落ちるかが分かる。 */
-    /* ══ 端末の声で 代用するか（2026-08-28）════════════════════════
+    /* ══ 端末の声で 代用するか（2026-08-28 → 2026-09-02 で 既定を 切に）══
        ★ 訴え「iPhone だと、なぜか Apple の TTS が 流れてしまう」。
          流れるのは **こちらが 用意できなかった とき の 逃げ道**。
-         無音より ましなので 既定は 入だが、
-         「用意した 声でないなら 鳴らさなくていい」人は 切れるようにする。 */
+       ★ 2026-09-02、Rinty さん:「**システムの TTS だけは やめてね**。
+         普通に あの 男女の ちゃんとした 声が 鳴るように」。
+         → **既定を 切**に した。用意した 声で 鳴らせない ときは、
+           端末の 声で ごまかさず **なぜ 出せなかったかを 出す**。
+           リスニングは 声が 変わると 問題そのものが 変わるので、
+           そちらは この 設定に かかわらず 落とさない（tts.js 側）。 */
     { id: "voice.deviceFallback", group: "sound", type: "switch", kind: "own",
-      def: true, label: "用意した声を出せないときは端末の声で読む",
+      def: false, label: "用意した声を出せないときは端末の声で読む",
       desc: "切ると、iPhone や PC の標準の声（Apple / Google の声）に切り替わらなくなります。かわりに、なぜ出せなかったかだけを出します",
       /* 当てる 相手が 居ない（この場で 変える 見た目が 無い）。
          鳴らす その時に 読まれる ので、持ち主を 書いておく。
@@ -995,7 +1120,7 @@
        もとの 初期値は 通知音 1 だった。すでに 自分で 選んでいる人の
        設定は そのまま（def は **まだ 選んでいない人**にだけ 効く）。 */
     { id: "sound.notify", group: "sound", type: "select", kind: "own", def: "n0",
-      label: "通知音", desc: "新しいお知らせがあるときに鳴らす音。選ぶと試聴できる",
+      label: "通知音", desc: "通知やお知らせが届いた瞬間に鳴らす音。選ぶと試聴できる。大きさは「効果音の大きさ」に従う",
       opts: [["off", "鳴らさない"], ["n0", "デフォルト"],
              ["n1", "通知音 1"], ["n2", "通知音 2"], ["n3", "通知音 3"],
              ["n4", "通知音 4"], ["n5", "通知音 5"], ["n6", "通知音 6"], ["n7", "通知音 7"]],
@@ -1061,6 +1186,61 @@
       label: "押せる範囲を広げる", apply: applyBigTap },
 
     /* ── データ ───────────────────────────────────────────── */
+    /* ★ 端末の カレンダーへ 持ち出す（2026-09-01）。予定は この アプリの
+       中だけに あっても 半分しか 役に 立たない。iPhone / Android / Google が
+       そのまま 読める 形（.ics）で 出す。**終わった 記録は 出さない。** */
+    { id: "data.exportCalendar", group: "data", type: "action",
+      label: "カレンダーを書き出す（.ics）", value: "書き出す",
+      desc: "iPhone・Android・Google カレンダーにそのまま取り込めます（記録は出しません）",
+      run: function () {
+        try {
+          var r = root.__vqCalendar && root.__vqCalendar.書き出す
+            ? root.__vqCalendar.書き出す() : { ok: false, 訳: "カレンダーの部品がありません。" };
+          if (root.__vqToast) root.__vqToast(r.ok
+            ? (r.件 + " 件を書き出しました。")
+            : ("書き出せませんでした：" + (r.訳 || "")), r.ok ? "success" : "warning");
+        } catch (e) {}
+      } },
+    /* ★ 案内を もう 一度 見る（2026-09-01）。「次から 出さない」に チェックを
+       入れると 二度と 出ない ので、**戻り道**を 置く。無いと 消しっぱなしに なる。 */
+    { id: "app.installTour", group: "data", type: "action",
+      label: "アプリの入れかたを見る", value: "見る",
+      desc: "ホーム画面・デスクトップへアプリとして入れる手順を、Chrome / Safari の画面で案内します",
+      run: function () {
+        try {
+          if (!root.__vqInstall) {
+            if (root.__vqToast) root.__vqToast("案内の部品がありません。", "warning");
+            return;
+          }
+          root.__vqInstall.もう出さない(false);   /* 見たい と 言われた ので 印を 外す */
+          if (root.__vqInstall.入っているか()) {
+            if (root.__vqToast) root.__vqToast("すでにアプリとして開いています。", "success");
+            return;
+          }
+          root.__vqInstall.open();
+        } catch (e) {}
+      } },
+    { id: "data.trace", group: "data", type: "toggle", kind: "own", def: true,
+      label: "行動の記録（Lumi の ひとこと用）",
+      desc: "いつ何を開いたか・どの選択肢を選んだか等を端末に控え、1時間ごとに Lumi が傾向をまとめます。"
+        + "サーバへ送るのは**まとめた数だけ**（1件ずつの記録は送りません）。切ると1行も取りません。",
+      apply: applyTrace },
+    { id: "data.clearTrace", group: "data", type: "action",
+      label: "行動の記録を消す", value: "消す", danger: true,
+      desc: "端末に控えている行動の記録を消します（学習の記録は残ります）",
+      run: function () {
+        try {
+          if (root.__vqTrace && root.__vqTrace.消す) {
+            var n = root.__vqTrace.件数 ? root.__vqTrace.件数() : 0;
+            root.__vqTrace.消す();
+            if (root.__vqToast) root.__vqToast(n + " 件を消しました。", "success");
+          }
+        } catch (e) {}
+      } },
+    { id: "data.calendarSync", group: "data", type: "toggle", kind: "own", def: true,
+      label: "カレンダーをアカウントに保存する",
+      desc: "端末を変えても予定と記録がそのまま出ます（ログインしているときだけ）",
+      apply: applyCalendarSync },
     { id: "data.sync", group: "data", type: "toggle", kind: "own", def: true,
       label: "設定をアカウントに保存する", desc: "ログインしている端末どうしで設定がそろう",
       apply: function (v) { if (v) pull(); } },

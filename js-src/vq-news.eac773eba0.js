@@ -174,6 +174,23 @@
     ".body p + p{margin-top:15px;}",
     ".body .none{color:var(--vq-text-tertiary,#9994A8);font-size:13.5px;}",
     /* 添えもの（画像・動画）。動画の 見た目は VQVID が 持つ（2026-08-20）。 */
+    /* 本文の 中の 絵・見出し・箇条書き（2026-09-02） */
+    ".body h2{margin:26px 0 10px;font-size:19px;font-weight:700;line-height:1.5;",
+      "color:var(--vq-text,#2B2836);letter-spacing:.01em;}",
+    ".body h3{margin:20px 0 8px;font-size:16px;font-weight:700;line-height:1.55;",
+      "color:var(--vq-text,#2B2836);}",
+    ".body ul{margin:10px 0 10px 1.25em;padding:0;}",
+    ".body li{margin:.32em 0;line-height:1.95;}",
+    ".body b{font-weight:700;}",
+    ".body code{font-size:.92em;padding:1px 5px;border-radius:6px;",
+      "background:var(--vq-bg-subtle,#F4F2FB);}",
+    ".bfig{margin:22px 0;}",
+    ".bfig img{display:block;width:100%;height:auto;border-radius:14px;",
+      "border:1px solid var(--vq-border,#E7E4EF);box-shadow:0 12px 34px rgba(20,16,40,.14);",
+      "background:var(--vq-bg-subtle,#F4F2FB);}",
+    ".bfig figcaption{margin-top:9px;font-size:12.5px;line-height:1.7;text-align:center;",
+      "color:var(--vq-text-tertiary,#9994A8);}",
+    "@media (max-width:640px){.bfig{margin:18px 0;}.body h2{font-size:17.5px;}}",
     ".media{margin-top:16px;display:flex;flex-direction:column;gap:12px;}",
     ".media-i{width:100%;display:block;border-radius:var(--vq-r-lg,calc(14px * var(--vq-r-scale,1)));",
       "border:1px solid var(--vq-border-subtle,#E7E4EF);}",
@@ -229,6 +246,23 @@
     ".fld input:focus,.fld textarea:focus{border-color:var(--vq-accent,#8A81C2);",
       "box-shadow:0 0 0 3px color-mix(in srgb,var(--vq-accent,#8A81C2) 22%,transparent);}",
     ".fld .note{font-size:11.5px;color:var(--vq-text-tertiary,#9994A8);line-height:1.6;}",
+    /* 表紙と 添えもの（2026-09-03）。あげた ものを その場で 見せる。 */
+    ".cov{position:relative;border-radius:calc(12px * var(--vq-r-scale,1));overflow:hidden;",
+      "border:1px solid var(--vq-border-subtle,#E7E4EF);background:var(--vq-surface-sunken,#F4F2FB);",
+      "aspect-ratio:1200/630;}",
+    ".cov img{width:100%;height:100%;object-fit:cover;display:block;}",
+    ".upr{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}",
+    ".upr .m{font-size:11.5px;color:var(--vq-text-tertiary,#9994A8);}",
+    ".mg{display:flex;gap:9px;flex-wrap:wrap;}",
+    ".mg .it{position:relative;width:96px;height:96px;border-radius:calc(12px * var(--vq-r-scale,1));",
+      "overflow:hidden;border:1px solid var(--vq-border-subtle,#E7E4EF);background:var(--vq-surface-sunken,#F4F2FB);}",
+    ".mg .it img,.mg .it video{width:100%;height:100%;object-fit:cover;display:block;}",
+    ".mg .it .k{position:absolute;left:0;right:0;bottom:0;font-size:10px;line-height:1.6;",
+      "text-align:center;color:#fff;background:rgba(0,0,0,.48);}",
+    ".xb{position:absolute;top:5px;right:5px;width:26px;height:26px;border-radius:999px;cursor:pointer;",
+      "display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--vq-border-subtle,#E7E4EF);",
+      "background:var(--vq-surface,#fff);color:var(--vq-text,#2B2836);}",
+    ".xb svg{width:14px;height:14px;}",
     ".sw{display:flex;align-items:center;gap:9px;cursor:pointer;font-size:14px;font-weight:600;}",
     ".sw input{width:18px;height:18px;accent-color:var(--vq-accent,#8A81C2);cursor:pointer;}",
     ".seg{display:flex;gap:6px;flex-wrap:wrap;}",
@@ -288,9 +322,18 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
-  /* 表紙は http(s) のときだけ使う。CSS へ差し込まず <img> で敷く。 */
+  /* 表紙は http(s)、または **自分の 置き場**（/api/media/img/…）のときだけ 使う。
+     CSS へ差し込まず <img> で敷く。
+     ★ 2026-09-03・訴え「バナー画像を 設定できるように」。
+       これまでは http(s) だけ ＝ よそへ 置いた 画像の URL を 手で 打つしか
+       なかった。あげた 画像を そのまま 表紙に できるように する。
+     ★ 通すのは **画像だけ**。動画（vid）・ファイル（fil）は 表紙に しない。 */
+  function 自分の画像か(v) {
+    return /^\/api\/media\/img\/[A-Za-z0-9._-]+$/.test(String(v || "").trim());
+  }
   function safeCover(u) {
     var v = String(u || "").trim();
+    if (自分の画像か(v)) return v;
     return /^https?:\/\//i.test(v) ? v : "";
   }
   /* 表紙の画像が無いお知らせ用の絵。種類ごとに かたち を変える。
@@ -343,12 +386,48 @@
   }
 
   /* 本文は素の文字として組む。空行で段落、単の改行は <br>。 */
+  /* ══ 本文（2026-09-02 で 書き直し）════════════════════════════════
+     直す前は **段落だけ**。見出しも 箇条書きも 絵も 出せなかったので、
+     長い お知らせ（リリースの まとめ 等）が 読めた ものでは なかった。
+
+     ★ 絵は **自分のところの 道だけ**（/ で 始まる もの）。
+       外の URL を 許すと、そこから 誰が 読んだかを 数えられて しまう。
+       ここは お知らせ側（site.js の md）と 同じ 決まりに そろえる。 */
+  function 飾り(t) {
+    return esc(t)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]*)\)/g,
+        '<a href="$2" rel="noopener" target="_blank">$1</a>');
+  }
   function bodyHtml(text) {
     var t = String(text == null ? "" : text);
     if (!t.trim()) return '<p class="none">本文はまだありません。</p>';
-    return t.split(/\n{2,}/).map(function (p) {
-      return "<p>" + esc(p).replace(/\n/g, "<br>") + "</p>";
-    }).join("");
+    var 行 = t.replace(/\r\n?/g, "\n").split("\n");
+    var 出 = [], 箇条 = false;
+    var 閉 = function () { if (箇条) { 出.push("</ul>"); 箇条 = false; } };
+    for (var i = 0; i < 行.length; i++) {
+      var l = 行[i];
+      var g = /^!\[([^\]]*)\]\((\/[A-Za-z0-9._\/-]+)\)\s*$/.exec(l.trim());
+      if (g) {
+        閉();
+        出.push('<figure class="bfig"><img src="' + esc(g[2]) + '" alt="' + esc(g[1])
+          + '" loading="lazy" decoding="async">'
+          + (g[1] ? "<figcaption>" + esc(g[1]) + "</figcaption>" : "") + "</figure>");
+        continue;
+      }
+      var h = /^(#{1,4})\s+(.*)$/.exec(l);
+      if (h) { 閉(); var n = Math.min(4, h[1].length + 1);
+        出.push("<h" + n + ">" + 飾り(h[2]) + "</h" + n + ">"); continue; }
+      var li = /^[-*]\s+(.*)$/.exec(l);
+      if (li) { if (!箇条) { 出.push("<ul>"); 箇条 = true; }
+        出.push("<li>" + 飾り(li[1]) + "</li>"); continue; }
+      if (!l.trim()) { 閉(); continue; }
+      閉();
+      出.push("<p>" + 飾り(l) + "</p>");
+    }
+    閉();
+    return 出.join("");
   }
 
   var CATS = [
@@ -610,6 +689,84 @@
   }
 
   /* ── 管理（書く / 直す / 消す）───────────────────────────── */
+  /* ══ あげる（2026-09-03・訴え「バナー画像／画像添付」）═══════════
+     ★ あげ先は **本体と 同じ口**（/api/upload/image）。
+       画像も 動画も 中身で 見分けるので、種類ごとの 口は 作らない。
+       上限も 置き場も 台帳も 本体の ものを そのまま 使う。
+     ★ 見出しに 日本語は そのまま 載らない（latin-1 だけ）。
+       名前は 必ず encodeURIComponent して 送る（生で 載せると fetch が 落ちる）。 */
+  function 添えものか(m) {
+    return !!m && /^\/api\/media\/(img|vid)\/[A-Za-z0-9._-]+$/.test(String(m.url || ""));
+  }
+  function あげる(file) {
+    var t = token();
+    if (!t) return Promise.reject(new Error("ログインが必要です。"));
+    return fetch("/api/upload/image", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + t,
+        "content-type": file.type || "application/octet-stream",
+        "x-file-name": encodeURIComponent(String(file.name || "file"))
+      },
+      body: file,
+      credentials: "same-origin"
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok || !j.ok || !j.url) throw new Error(j.message || ("あげられませんでした（HTTP " + r.status + "）"));
+        return j;
+      });
+    });
+  }
+  /* 何枚でも 選べるが、**1 つずつ 順に** 送る。
+     まとめて 投げると 本体の「1 分に 20 回まで」に 自分で ぶつかる。 */
+  function あげて足す(files, 表紙に) {
+    var e = st.edit;
+    if (!e) return;
+    var 列 = Array.prototype.slice.call(files || []);
+    if (!列.length) return;
+    if (表紙に) 列 = 列.slice(0, 1);
+    else if (e.media.length + 列.length > 8) {
+      列 = 列.slice(0, Math.max(0, 8 - e.media.length));
+      if (!列.length) { e.up = "添えられるのは 8 つまでです。"; paintOverlay(); return; }
+    }
+    syncEdit();
+    e.upBusy = true; e.up = "あげています…"; paintOverlay();
+    var 済 = 0;
+    var 次 = function () {
+      if (!st.edit || st.edit !== e) return;
+      if (!列.length) {
+        e.upBusy = false;
+        e.up = 済 ? (済 + " 件 あげました。") : "";
+        paintOverlay();
+        return;
+      }
+      var f = 列.shift();
+      e.up = "あげています… " + String(f.name || "");
+      paintOverlay();
+      あげる(f).then(function (j) {
+        if (!st.edit || st.edit !== e) return;
+        if (表紙に) {
+          if (j.kind !== "image") { e.up = "表紙にできるのは画像だけです。"; return; }
+          e.cover = String(j.url || "");
+        } else {
+          e.media.push({ kind: j.kind === "video" ? "video" : "image",
+                         url: String(j.url || ""), name: String(f.name || ""),
+                         bytes: Number(j.bytes || 0) });
+        }
+        済++;
+      }).catch(function (x) {
+        if (!st.edit || st.edit !== e) return;
+        e.up = x.message || "あげられませんでした。";
+      }).then(function () { 次(); });
+    };
+    次();
+  }
+  function 選ばせる(kind) {
+    if (!ovRoot) return;
+    var el = ovRoot.querySelector('[data-f="' + kind + '"]');
+    if (el) el.click();
+  }
+
   function openEditor(id) {
     var src = null, l = st.items || [];
     for (var i = 0; i < l.length; i++) if (l[i].id === id) src = l[i];
@@ -625,7 +782,9 @@
       important: !!(src && src.important),
       status: src && src.status === "draft" ? "draft" : "published",
       body: src ? String(src.body || "") : "",
-      busy: false, err: ""
+      /* 添えもの（画像・動画）。**通ったものだけ**を 持つ（2026-09-03）。 */
+      media: (src && Array.isArray(src.media) ? src.media : []).filter(添えものか).slice(0, 8),
+      busy: false, err: "", up: "", upBusy: false
     };
     /* 一覧には本文が入っていないことがあるので、直すときは取り直す */
     if (id) {
@@ -683,9 +842,40 @@
       + '<textarea id="vqNBody" data-e="body" maxlength="20000"'
       + ' placeholder="空行で段落が分かれます。">' + esc(e.body) + "</textarea>"
       + '<span class="note">文字としてそのまま保存します。HTML は書けません（書いても文字として出ます）。</span></div>';
-    h += '<div class="fld"><label for="vqNCover">表紙の画像（URL）</label>'
-      + '<input id="vqNCover" data-e="cover" type="url" value="' + esc(e.cover) + '"'
-      + ' placeholder="https://"></div>';
+    /* ══ 表紙（バナー）（2026-09-03・訴え）════════════════════════
+       ★ URL を 手で 打つだけ だった。あげた 画像も 選べるように する。
+       ★ 出るのは 一覧の 札・記事の 頭・公式サイト・共有の 絵。 */
+    var 表 = safeCover(e.cover);
+    h += '<div class="fld"><span class="lg">表紙のバナー</span>'
+      + (表 ? '<div class="cov"><img src="' + esc(表) + '" alt="表紙のバナー">'
+            + '<button class="xb" data-a="ed-cover-x" aria-label="表紙を外す">' + svg("x") + "</button></div>" : "")
+      + '<input id="vqNCover" data-e="cover" type="text" inputmode="url" value="' + esc(e.cover) + '"'
+      + ' placeholder="画像をあげるか、https:// で始まる URL">'
+      + '<input type="file" data-f="cover" accept="image/jpeg,image/png,image/webp,image/gif" hidden>'
+      + '<div class="upr"><button class="btn btn--secondary btn--sm" data-a="ed-cover-up"'
+      + (e.upBusy ? " disabled" : "") + ">画像をあげる</button>"
+      + (e.up ? '<span class="m">' + esc(e.up) + "</span>" : "") + "</div>"
+      + '<span class="note">横長（1200×630 くらい）が きれいに 出ます。'
+      + "JPEG・PNG・WebP・GIF、5MB まで。SVG は 受けられません。</span></div>";
+    /* ══ 添える 画像・動画（2026-09-03・訴え「画像添付も 可能に」）══
+       ★ 本文の あと に 並ぶ。アプリ・公式サイトの どちらでも 同じ。 */
+    h += '<div class="fld"><span class="lg">画像・動画を添える（8つまで）</span>'
+      + (e.media.length ? '<div class="mg">' + e.media.map(function (m, i) {
+          return '<div class="it">'
+            + (m.kind === "video"
+              ? '<video src="' + esc(m.url) + '" muted playsinline preload="metadata"></video>'
+              : '<img src="' + esc(m.url) + '" alt="">')
+            + '<span class="k">' + (m.kind === "video" ? "動画" : "画像") + "</span>"
+            + '<button class="xb" data-a="ed-media-x" data-i="' + i + '" aria-label="外す">'
+            + svg("x") + "</button></div>";
+        }).join("") + "</div>" : "")
+      + '<input type="file" data-f="media" accept="image/*,video/mp4,video/webm" multiple hidden>'
+      + '<div class="upr"><button class="btn btn--secondary btn--sm" data-a="ed-media-up"'
+      + (e.upBusy || e.media.length >= 8 ? " disabled" : "") + ">画像・動画を選ぶ</button>"
+      + '<span class="m">' + e.media.length + " / 8</span></div>"
+      + '<span class="note">画像は 5MB、動画は 64MB まで。'
+      + "本文の あとに 並びます（本文の 途中に 入れたい ときは "
+      + "<code>![説明](/help/img/○○.jpg)</code> のように 書きます）。</span></div>";
     h += '<div class="fld"><label for="vqNLink">くわしく見る先（URL）</label>'
       + '<input id="vqNLink" data-e="linkUrl" type="url" value="' + esc(e.linkUrl) + '"'
       + ' placeholder="https://">'
@@ -725,7 +915,9 @@
         adminKey: ak, id: e.id || undefined,
         title: e.title.trim(), summary: e.summary.trim(), category: e.cat,
         body: e.body,
-        coverUrl: /^https?:\/\//i.test(e.cover.trim()) ? e.cover.trim() : "",
+        coverUrl: safeCover(e.cover),
+        /* 添えもの。**通ったものだけ**を 送る（サーバも 同じ ものさしで 見る）。 */
+        media: (e.media || []).filter(添えものか).slice(0, 8),
         linkUrl: /^https?:\/\//i.test(e.linkUrl.trim()) ? e.linkUrl.trim() : "",
         linkLabel: e.linkLabel.trim(),
         important: !!e.important, publishedAt: pub, status: e.status
@@ -786,6 +978,7 @@
       var box = document.createElement("div"); box.setAttribute("data-ovbox", ""); ovRoot.appendChild(box);
       document.body.appendChild(ovHost);
       ovRoot.addEventListener("click", onOvClick);
+      ovRoot.addEventListener("change", onOvChange);
     }
     ovHost.style.cssText = "position:fixed;inset:0;z-index:999000;pointer-events:"
       + (modalOpen() ? "auto" : "none") + ";";
@@ -821,6 +1014,31 @@
     if (a === "ed-del") { deleteArticle(st.edit && st.edit.id); return; }
     if (a === "ed-cat") { syncEdit(); if (st.edit) st.edit.cat = el.dataset.cat; paintOverlay(); return; }
     if (a === "ed-st") { syncEdit(); if (st.edit) st.edit.status = el.dataset.v; paintOverlay(); return; }
+    /* 表紙・添えもの（2026-09-03）。選ばせる 前に 必ず 打ち込みを 取り込む
+       （取り込まないと、あげ終わった あとの 描き直しで 本文が 消える）。 */
+    if (a === "ed-cover-up") { syncEdit(); 選ばせる("cover"); return; }
+    if (a === "ed-media-up") { syncEdit(); 選ばせる("media"); return; }
+    if (a === "ed-cover-x") { syncEdit(); if (st.edit) { st.edit.cover = ""; st.edit.up = ""; } paintOverlay(); return; }
+    if (a === "ed-media-x") {
+      syncEdit();
+      var i = Number(el.dataset.i);
+      if (st.edit && isFinite(i)) st.edit.media.splice(i, 1);
+      paintOverlay();
+      return;
+    }
+  }
+  /* 選び終わったとき。change は 影の DOM の 外へは 出ないので、
+     影の 根で 受ける（body に 付けても 一生 呼ばれない）。 */
+  function onOvChange(e) {
+    var t = e.target;
+    if (!t || !t.dataset || t.dataset.f === undefined) return;
+    var kind = t.dataset.f;
+    /* ★ **先に 写しを 取る**（2026-09-03・実測で 踏んだ）。
+       t.value = "" は その場で files を 空に する。
+       あとで 読むと 0 件に なっていて、**何も 起きない**。 */
+    var files = Array.prototype.slice.call(t.files || []);
+    try { t.value = ""; } catch (x) {}
+    あげて足す(files, kind === "cover");
   }
 
   /* ── 操作 ─────────────────────────────────────────────────── */

@@ -10,22 +10,41 @@
 
      ① **影の DOM が 見えていなかった。**
         MutationObserver は subtree:true でも 影の 中まで 見ない。
-        いまの 画面（作る・設定・画面群・受験・Workplace…）は ほぼ 全部
-        影の DOM なので、そこの select は 1 つも 昇格していなかった。
         → Element.prototype.attachShadow を 包んで、**影が できた 瞬間**に
           その 中を 見る。起動時には すでに ある 影も 深く 一巡する。
 
      ② **隠れていた ものを 永久に 飛ばしていた。**
-        起動時に aria-hidden / .hidden だった select は attach() が
-        「対象外」と 決めて、あとで 見えるように なっても 二度と 戻らなかった。
-        画面の ほとんどは 隠した 板を あとから 見せる 作りなので、
-        これで 大半が 落ちていた。
         → 隠れている ものにも 付ける。隠れて いれば そもそも 押せない。
+
+   訴え（2026-08-31・Rinty さん）
+     「モバイルの ドロップダウンが、まだ システムが 反応してしまってるのと、
+       独自ドロップダウンを モバイルだと 下部バー（ナビゲーションバー）に
+       被ってしまう ことが あるから、直下に おいて。」
+
+   ★ ここで 直した 2 つ（どちらも **原因が はっきり している**）:
+
+     ③ **触った ときに select へ 焦点を 当てていた。**
+        iOS は select に 焦点が 入った だけで 端末の 一覧を 出す。
+        ・iOS の 順番は pointerdown → touchstart。前の 作りは
+          pointerdown を 「触る 合図」と 見ておらず focus() を 呼んでいた。
+        ・**選んだ あと**も closeMenu(true) が focus() を 呼んでいたので、
+          選ぶ たびに 端末の 一覧が 出ていた（いちばん 目に つく 症状）。
+        → 触って 開いた ときは 焦点を 当てない・戻さない。touchend も 止める。
+          念のため、触った 直後に 焦点が 入ったら すぐ 外す。
+
+     ④ **一覧を 影の DOM の 中に 出していた。**
+        影の 中の 重なりは **持ち主（host）の 重なり**に 閉じ込められる。
+        z-index を いくら 上げても、host より 上の #vqMobBar（z-index:9990）
+        には 勝てない。どの 画面かで 変わるので 「ことが ある」に なる。
+        → 一覧は いつも **document.body** に 出す。
+          そのうえで **下部バーの 上端**を 見て、そこより 下へ 出さない。
+
+     ・下から 出る 板は やめ、**押した ところの 直下**に 出す（訴えどおり）。
+       指で 押せる 大きさ（44px 以上）は そのまま 保つ。
 
    ・閉じた見た目・レイアウト・既存CSS/JSは一切触らない（＝競合最小）。
      native <select> をそのまま残し、"開く操作" だけ横取りして独自リストを表示する。
    ・選択時は select.value を更新し input/change を発火 → 既存アプリロジックはそのまま動く。
-   ・狭い画面（560px 以下）では 下から 出る 板に する（指で 押せる 大きさ）。
    ・全クラス/ID は vqcs- 接頭辞でスコープ。`data-vqcs-skip` で 抜けられる。
    ══════════════════════════════════════════════════════════════════════════ */
 (function () {
@@ -33,19 +52,27 @@
   window.__vqcsInstalled = true;
 
   var CSS =
-    ".vqcs-layer{position:fixed;inset:0;pointer-events:none;z-index:2147482000;}" +
+    /* ★ 重なりは **開いた 板より 上**でなければ 意味が ない。
+       いまの 上位: 停止中の 覆い 2147483646 / Live 2147483644 /
+       作る 画面 2147483100 / 下部バー 9990。
+       停止中の 覆いだけには 譲る（あれは 全部を 止める もの）。 */
+    ".vqcs-layer{position:fixed;inset:0;pointer-events:none;z-index:2147483645;}" +
     ".vqcs-menu{position:fixed;pointer-events:auto;box-sizing:border-box;" +
       "display:flex;flex-direction:column;gap:3px;" +
       "min-width:180px;max-height:min(340px,64vh);overflow-y:auto;overscroll-behavior:contain;" +
+      "-webkit-overflow-scrolling:touch;" +
       "padding:5px;background:var(--vq-bg-elevated,#FFFFFF);" +
       "border:1px solid var(--vq-border-subtle,#EFEDF5);border-radius:var(--vq-r-md,calc(14px * var(--vq-r-scale,1)));" +
       "box-shadow:var(--vq-shadow-floating,0 4px 12px rgba(84,72,140,.10),0 16px 40px rgba(84,72,140,.14));" +
       "font-family:Inter,'Hiragino Sans','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;" +
       "animation:vqcs-fade 120ms cubic-bezier(.16,1,.3,1);}" +
     "@keyframes vqcs-fade{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}" +
+    ".vqcs-menu.is-up{animation:vqcs-fade-up 120ms cubic-bezier(.16,1,.3,1);}" +
+    "@keyframes vqcs-fade-up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}" +
     ".vqcs-opt{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;flex:0 0 auto;" +
       "padding:11px 10px 11px 12px;border:0;background:none;border-radius:var(--vq-r-sm,calc(10px * var(--vq-r-scale,1)));" +
       "cursor:pointer;text-align:left;font-size:13.5px;font-weight:500;line-height:1.4;" +
+      "-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;" +
       "color:var(--vq-text,#454151);transition:background 120ms;}" +
     ".vqcs-opt:hover,.vqcs-opt.is-active{background:var(--vq-surface-active,#F1EEF8);}" +
     ".vqcs-opt.is-selected{color:var(--vq-accent-text,#5F579E);font-weight:650;}" +
@@ -53,17 +80,11 @@
     ".vqcs-opt__label{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}" +
     ".vqcs-opt__check{flex:0 0 auto;width:16px;height:16px;opacity:0;color:var(--vq-accent,#756DB3);}" +
     ".vqcs-opt.is-selected .vqcs-opt__check{opacity:1;}" +
-    /* ── 狭い画面は 下から 出る 板（指で 押せる 大きさ）───────────── */
-    ".vqcs-scrim{position:fixed;inset:0;pointer-events:auto;background:rgba(24,20,40,.32);" +
-      "animation:vqcs-in 140ms ease-out;}" +
-    "@keyframes vqcs-in{from{opacity:0}to{opacity:1}}" +
-    ".vqcs-menu.is-sheet{left:8px!important;right:8px!important;top:auto!important;" +
-      "bottom:0;width:auto;max-width:none!important;min-width:0!important;" +
-      "max-height:min(66vh,520px);gap:4px;padding:8px 8px calc(8px + env(safe-area-inset-bottom,0px));" +
-      "border-radius:var(--vq-r-lg,18px) var(--vq-r-lg,18px) 0 0;" +
-      "animation:vqcs-up 180ms cubic-bezier(.16,1,.3,1);}" +
-    "@keyframes vqcs-up{from{transform:translateY(14px);opacity:.6}to{transform:none;opacity:1}}" +
-    ".vqcs-menu.is-sheet .vqcs-opt{padding:14px 12px;font-size:15px;}" +
+    /* ── 触る 画面（指で 押せる 大きさ・押した ところの 直下に 出る）───── */
+    ".vqcs-scrim{position:fixed;inset:0;pointer-events:auto;background:transparent;}" +
+    ".vqcs-menu.is-touch{gap:4px;padding:6px;" +
+      "border-radius:var(--vq-r-lg,calc(18px * var(--vq-r-scale,1)));}" +
+    ".vqcs-menu.is-touch .vqcs-opt{min-height:46px;padding:12px 12px;font-size:15px;}" +
     ".vqcs-ttl{flex:0 0 auto;padding:4px 12px 8px;font-size:12px;font-weight:650;" +
       "color:var(--vq-text-muted,#8A85A0);}" +
     ".vqcs-open{}";
@@ -87,23 +108,37 @@
   function isShadow(n) { return typeof ShadowRoot !== "undefined" && n instanceof ShadowRoot; }
   function rootOf(node) { var r = node.getRootNode ? node.getRootNode() : document; return isShadow(r) ? r : document; }
 
-  function ensureStyle(root) {
-    var inShadow = isShadow(root);
-    var has = inShadow ? root.getElementById("vqcs-style") : document.getElementById("vqcs-style");
-    if (has) return;
+  function ensureStyle() {
+    if (document.getElementById("vqcs-style")) return;
     var st = document.createElement("style"); st.id = "vqcs-style"; st.textContent = CSS;
-    (inShadow ? root : document.head).appendChild(st);
+    (document.head || document.documentElement).appendChild(st);
   }
-  function layerFor(root) {
-    var inShadow = isShadow(root);
-    var container = inShadow ? root : document.body;
-    var el = inShadow ? root.getElementById("vqcs-layer") : document.getElementById("vqcs-layer");
-    if (!el) { el = document.createElement("div"); el.id = "vqcs-layer"; el.className = "vqcs-layer"; container.appendChild(el); }
+  /* ★ 一覧は **いつも document.body** に 出す（2026-08-31・訴え ④）。
+     影の 中に 出すと、重なりが 持ち主の 重なりに 閉じ込められて
+     下部バー（z-index:9990）に 負ける ことが ある。 */
+  function layerFor() {
+    ensureStyle();
+    var el = document.getElementById("vqcs-layer");
+    if (!el || !el.isConnected) {
+      el = document.createElement("div"); el.id = "vqcs-layer"; el.className = "vqcs-layer";
+      (document.body || document.documentElement).appendChild(el);
+    } else if (el.parentNode !== document.body && document.body) {
+      document.body.appendChild(el);          /* 画面ごと 差し替えられても 付け直す */
+    }
     return el;
   }
 
   /* ── 現在開いているメニュー（同時に1つ） ── */
   var cur = null; // { select, menu, root, opts[], active, onDocDown, onScroll, onKey }
+  /* 最後に 指で 触った 時刻。**焦点を 当てて よいか**の 判断に 使う。 */
+  var 最後に触った = 0;
+  function 触ったばかり() { return Date.now() - 最後に触った < 900; }
+  try {
+    window.addEventListener("touchstart", function () { 最後に触った = Date.now(); }, true);
+    window.addEventListener("pointerdown", function (e) {
+      if (e && e.pointerType && e.pointerType !== "mouse") 最後に触った = Date.now();
+    }, true);
+  } catch (e) {}
 
   function closeMenu(refocus) {
     if (!cur) return;
@@ -114,30 +149,98 @@
     if (isShadow(c.root)) { try { c.root.removeEventListener("pointerdown", c.onDocDown, true); } catch (e) {} }
     if (c.menu && c.menu.parentNode) c.menu.parentNode.removeChild(c.menu);
     if (c.scrim && c.scrim.parentNode) c.scrim.parentNode.removeChild(c.scrim);
-    if (c.select) { c.select.removeAttribute("aria-expanded"); if (refocus) { try { c.select.focus(); } catch (e) {} } }
+    if (c.select) {
+      c.select.removeAttribute("aria-expanded");
+      /* 開いている あいだ 切っていた 当たり判定を 戻す。 */
+      if (c.元のpe != null) { try { c.select.style.pointerEvents = c.元のpe; } catch (e) {} }
+      /* ★ 触って 選んだ ときは **焦点を 戻さない**（2026-08-31・訴え ③）。
+         iOS は select に 焦点が 入った だけで 端末の 一覧を 出すので、
+         ここで 戻すと 選ぶ たびに システムの 一覧が 開いていた。 */
+      /* ★ **巻きを 動かさない**（2026-09-01・訴え「選択したりして 更新すると
+         上に スクロールして しまう」）。focus() は 既定で **その 部品が 見える
+         ところまで 親を 巻き戻す**。窓の 上の ほうに ある 選び欄を 選ぶと、
+         下まで 巻いて いた 画面が 一気に 先頭へ 戻って いた（実測 333 → 0）。
+         焦点は 要る（キーボードで 続けて 操作できる）ので、**巻きだけ 止める**。 */
+      if (refocus && !触ったばかり()) { try { c.select.focus({ preventScroll: true }); } catch (e) { try { c.select.focus(); } catch (e2) {} } }
+    }
   }
 
-  /* 狭い画面（＝指で 触る 画面）は 下から 出る 板に する。 */
-  function 板にするか() {
+  /* 指で 触る 画面か（大きさでは なく **入力の しかた**で 決める）。 */
+  function 触る画面() {
     try {
-      if (window.matchMedia && window.matchMedia("(max-width: 560px)").matches) return true;
+      if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) return true;
+      if (触ったばかり()) return true;
       return window.innerWidth <= 560;
     } catch (e) { return false; }
   }
+
+  /* ★ 下部バー（ナビゲーションバー）の 上端。ここより 下へは 出さない。
+     body の 直下だけを 見る（安い）。画面いっぱいの 覆いは 除く。 */
+  function 下の限り() {
+    var vh = window.innerHeight, vw = window.innerWidth;
+    var 下 = vh - 8 - 安全な下();
+    try {
+      var ch = document.body ? document.body.children : [];
+      for (var i = 0; i < ch.length; i++) {
+        var el = ch[i];
+        if (!el || el.id === "vqcs-layer") continue;
+        var cs = window.getComputedStyle(el);
+        if (cs.position !== "fixed" || cs.display === "none" || cs.visibility === "hidden") continue;
+        if (parseFloat(cs.opacity || "1") < 0.05) continue;
+        var b = el.getBoundingClientRect();
+        if (b.height <= 8 || b.height > vh * 0.35) continue;   /* 覆い・全画面は 除く */
+        if (b.width < vw * 0.5) continue;                      /* 横いっぱいの 帯だけ */
+        if (b.bottom < vh - 4) continue;                        /* 下に ついている ものだけ */
+        if (b.top - 8 < 下) 下 = b.top - 8;
+      }
+    } catch (e) {}
+    return 下;
+  }
+  var _安全 = null;
+  function 安全な下() {
+    if (_安全 != null) return _安全;
+    try {
+      var p = document.createElement("div");
+      p.style.cssText = "position:fixed;bottom:0;left:-9999px;width:1px;pointer-events:none;" +
+                        "height:var(--vq-sab,0px);";
+      (document.body || document.documentElement).appendChild(p);
+      _安全 = p.offsetHeight || 0;
+      p.parentNode.removeChild(p);
+    } catch (e) { _安全 = 0; }
+    return _安全;
+  }
+  try { window.addEventListener("resize", function () { _安全 = null; }); } catch (e) {}
+
+  /* ★ **押した ところの 直下**に 出す（2026-08-31・訴え）。
+     入り切らない ときだけ 上へ 逃がす。下部バーには 決して 掛けない。 */
   function position(select, menu) {
-    if (menu.classList.contains("is-sheet")) return;   /* 板は CSS が 置く */
     var r = select.getBoundingClientRect();
     var vw = window.innerWidth, vh = window.innerHeight;
-    menu.style.minWidth = Math.max(r.width, 180) + "px";
-    menu.style.maxWidth = Math.max(r.width, Math.min(vw - 16, 420)) + "px";
-    // 一旦表示して実寸取得
+    var 触 = menu.classList.contains("is-touch");
+    var 上限 = 8, 下限 = 下の限り();
+    if (下限 < 上限 + 80) 下限 = Math.min(vh - 8, 上限 + 80);   /* 帯が 大きすぎる ときの 保険 */
+
+    var 幅 = Math.max(r.width, 触 ? 220 : 180);
+    menu.style.minWidth = Math.round(Math.min(幅, vw - 16)) + "px";
+    menu.style.maxWidth = Math.round(Math.min(vw - 16, Math.max(幅, 触 ? 520 : 420))) + "px";
+
+    var 下の余り = 下限 - (r.bottom + 6);
+    var 上の余り = (r.top - 6) - 上限;
+    var 天井 = Math.min(触 ? 420 : 340, vh * 0.7);
+    /* ★ **下を 強く 優先**する（訴え「直下に おいて」）。
+       上のほうが 広くても、下に 200px 取れるなら 下へ 出す。
+       上へ 逃がすのは 下が 本当に 狭い ときだけ。 */
+    var 下へ = (下の余り >= 200) || (下の余り >= 上の余り);
+    menu.style.maxHeight = Math.round(Math.max(120, Math.min(天井, 下へ ? 下の余り : 上の余り))) + "px";
+
     menu.style.left = "-9999px"; menu.style.top = "0px";
     var mh = menu.offsetHeight, mw = menu.offsetWidth;
+
     var left = Math.min(r.left, vw - mw - 8); if (left < 8) left = 8;
-    var below = vh - r.bottom, above = r.top;
     var top;
-    if (below >= mh + 8 || below >= above) { top = Math.min(r.bottom + 6, vh - mh - 8); if (top < 8) top = 8; }
-    else { top = Math.max(r.top - mh - 6, 8); }
+    if (下へ) { top = Math.min(r.bottom + 6, 下限 - mh); if (top < 上限) top = 上限; }
+    else { top = Math.max(r.top - mh - 6, 上限); }
+    menu.classList.toggle("is-up", !下へ);
     menu.style.left = Math.round(left) + "px";
     menu.style.top = Math.round(top) + "px";
   }
@@ -166,32 +269,29 @@
     closeMenu(true);
   }
 
-  function openMenu(select) {
+  function openMenu(select, 触指定) {
     if (select.disabled) return;
     if (cur && cur.select === select) { closeMenu(true); return; }
     closeMenu(false);
     var root = rootOf(select);
-    ensureStyle(root);
-    var layer = layerFor(root);
-    var 板 = 板にするか();
+    var layer = layerFor();
+    /* ★ 指で 開いたのか マウスで 開いたのかは **その 合図**で 決める。
+       画面の 広さだけで 決めると、触れる パソコンで ちぐはぐに なる。 */
+    var 触 = (触指定 == null) ? 触る画面() : !!触指定;
     var scrim = null;
-    if (板) {
+    if (触) {
+      /* 外を 触った ときに 下の ボタンが 反応しないよう、透明な 幕で 受ける。 */
       scrim = document.createElement("div");
       scrim.className = "vqcs-scrim";
-      scrim.addEventListener("pointerdown", function (e) { e.preventDefault(); closeMenu(true); });
+      scrim.addEventListener("pointerdown", function (e) { e.preventDefault(); closeMenu(false); });
+      scrim.addEventListener("touchstart", function (e) { if (e.cancelable) e.preventDefault(); closeMenu(false); }, { passive: false });
       layer.appendChild(scrim);
     }
     var menu = document.createElement("div");
-    menu.className = "vqcs-menu" + (板 ? " is-sheet" : "");
+    menu.className = "vqcs-menu" + (触 ? " is-touch" : "");
     menu.setAttribute("role", "listbox");
     var lbl = select.getAttribute("aria-label") || 名前(select);
     if (lbl) menu.setAttribute("aria-label", lbl);
-    /* 板は 何を 選んでいるのかが 見えなく なるので、見出しを 付ける。 */
-    if (板 && lbl) {
-      var ttl = document.createElement("div");
-      ttl.className = "vqcs-ttl"; ttl.textContent = lbl;
-      menu.appendChild(ttl);
-    }
 
     var sel = select.selectedIndex;
     for (var i = 0; i < select.options.length; i++) {
@@ -204,7 +304,7 @@
       if (o.disabled) b.setAttribute("aria-disabled", "true");
       var txt = (o.textContent || o.value || "").trim();
       b.innerHTML = '<span class="vqcs-opt__label"></span>' + CHECK;
-      b.firstChild.textContent = txt || " ";
+      b.firstChild.textContent = txt || " ";
       menu.appendChild(b);
     }
     layer.appendChild(menu);
@@ -214,13 +314,39 @@
     setActive(cur.active);
 
     /* クリックで確定 */
-    menu.addEventListener("pointerdown", function (e) { e.preventDefault(); e.stopPropagation(); });
+    /* マウスの ときだけ 既定を 止める（文字の 選択・焦点の 移動を 防ぐ）。
+       指の ときは 止めない。止めると 一覧が なぞって 動かせなく なる。 */
+    menu.addEventListener("pointerdown", function (e) {
+      e.stopPropagation();
+      if (!e.pointerType || e.pointerType === "mouse") e.preventDefault();
+    });
     menu.addEventListener("click", function (e) {
       var t = e.target; while (t && t !== menu && !t.classList.contains("vqcs-opt")) t = t.parentNode;
       if (t && t.classList && t.classList.contains("vqcs-opt") && t.getAttribute("aria-disabled") !== "true") {
         commit(select, parseInt(t.getAttribute("data-i"), 10));
       }
     });
+    /* 触る 画面は click を 待たずに 決める（合成の click が 来ない ことが ある）。
+       ★ ただし **なぞって 一覧を 動かした ときは 決めない**（指を 離した ところで
+         勝手に 選ばれる）。10px より 動いたら 見送る。 */
+    var 触点 = null;
+    menu.addEventListener("touchstart", function (e) {
+      var p = e.touches && e.touches[0];
+      触点 = p ? { x: p.clientX, y: p.clientY, 動: false } : null;
+    }, { passive: true });
+    menu.addEventListener("touchmove", function (e) {
+      var p = e.touches && e.touches[0];
+      if (触点 && p && (Math.abs(p.clientX - 触点.x) > 10 || Math.abs(p.clientY - 触点.y) > 10)) 触点.動 = true;
+    }, { passive: true });
+    menu.addEventListener("touchend", function (e) {
+      if (触点 && 触点.動) { 触点 = null; return; }
+      触点 = null;
+      var t = e.target; while (t && t !== menu && !t.classList.contains("vqcs-opt")) t = t.parentNode;
+      if (t && t.classList && t.classList.contains("vqcs-opt") && t.getAttribute("aria-disabled") !== "true") {
+        if (e.cancelable) e.preventDefault();
+        commit(select, parseInt(t.getAttribute("data-i"), 10));
+      }
+    }, { passive: false });
     menu.addEventListener("mousemove", function (e) {
       var t = e.target; while (t && t !== menu && !t.classList.contains("vqcs-opt")) t = t.parentNode;
       if (t && t.classList && t.classList.contains("vqcs-opt")) {
@@ -234,6 +360,17 @@
       var path = e.composedPath ? e.composedPath() : [];
       if (path.indexOf(menu) === -1 && path.indexOf(select) === -1) closeMenu(false);
     };
+    cur.触 = 触;
+    /* ★ 開いている あいだは select 自身を **触れなく**する。
+       2 度目の tap が 端末の 一覧へ 行くのを 断つ（見た目は 変わらない）。 */
+    if (触) {
+      try { cur.元のpe = select.style.pointerEvents || ""; select.style.pointerEvents = "none"; } catch (e) {}
+      /* 端末が あとから 焦点を 入れて くることが あるので、次の コマでも 外す。 */
+      try {
+        var 外す = function () { if (cur && cur.select === select) { try { select.blur(); } catch (x) {} } };
+        requestAnimationFrame(外す); setTimeout(外す, 60); setTimeout(外す, 200);
+      } catch (e) {}
+    }
     cur.onScroll = function () { if (cur) position(select, menu); };
     document.addEventListener("pointerdown", cur.onDocDown, true);
     if (isShadow(root)) root.addEventListener("pointerdown", cur.onDocDown, true);
@@ -258,34 +395,54 @@
     /* ══ 触る 画面では **開く 合図が 違う**（2026-08-31・訴え）════════
        訴え「モバイルだとさ、独自の ドロップダウンより、システムが 勝ってる」
        ★ pointerdown を 止めるだけでは 足りない。
-         ・iOS は **touchstart** を 止めないと 端末の 一覧が 出る
+         ・iOS は **touchstart / touchend** を 止めないと 端末の 一覧が 出る
          ・Android は **click** で 出る（pointerdown を 止めても 残る）
-       ★ どの 合図でも 同じ ところへ 入れ、**1 回の 操作で 1 回だけ** 開く
-         （3 つとも 開くと、開いて すぐ 閉じる）。
-       ★ 触った ときは 焦点を 当てない。当てると 端末が 一覧を 出す。 */
+       ★ どの 合図でも 同じ ところへ 入れ、**1 回の 操作で 1 回だけ** 開く。
+       ★ ★ 触った ときは **焦点を 当てない**。
+         iOS は select に 焦点が 入った だけで 端末の 一覧を 出す。
+         前の 作りは iOS の 順番（pointerdown → touchstart）を 知らず、
+         先に 来る pointerdown で focus() を 呼んでいた。ここが 芯。 */
+    function 触る系(e) {
+      if (e.type === "touchstart" || e.type === "touchend") return true;
+      if (e.pointerType) return e.pointerType !== "mouse";
+      return 触ったばかり() || 触る画面();
+    }
     function 開く合図(e) {
       if (select.disabled) return;
-      if (e.type === "pointerdown" && e.button != null && e.button !== 0) return;
+      if (e.type === "pointerdown" && e.button != null && e.button > 0) return;
+      var 触 = 触る系(e);
+      if (触) 最後に触った = Date.now();
       if (e.cancelable) e.preventDefault();
       var t = Date.now();
       /* ★ 同じ 1 回の 操作（pointerdown → touchstart → click）を 1 回に まとめる。
          **開いている 相手が この select の ときだけ** 飛ばす。
          そうしないと、閉じた あと 700 ミリ秒 以内に もう一度 押しても
-         開かなく なる（実測で 下から 出る 板が 出なく なった）。
-         700 ミリ秒 より あとの 押し直しは これまでどおり 開閉の 切り替え。 */
+         開かなく なる（実測で 一覧が 出なく なった）。 */
       if (cur && cur.select === select && t - (select.__vqcsAt || 0) < 700) return;
       select.__vqcsAt = t;
-      if (e.type === "touchstart") { try { select.blur(); } catch (x) {} }
-      else { try { select.focus(); } catch (x) {} }
-      openMenu(select);
+      if (触) { try { select.blur(); } catch (x) {} }
+      else { try { select.focus({ preventScroll: true }); } catch (x) { try { select.focus(); } catch (x2) {} } }
+      openMenu(select, 触);
     }
     select.addEventListener("pointerdown", 開く合図);
     select.addEventListener("touchstart", 開く合図, { passive: false });
+    /* touchend も 止める。iOS は ここで 合成の click と 端末の 一覧を 出す。 */
+    select.addEventListener("touchend", function (e) {
+      最後に触った = Date.now();
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false });
     select.addEventListener("click", function (e) {
       if (select.disabled) return;
       e.preventDefault();
       e.stopPropagation();
       開く合図(e);
+    });
+    /* ★ 最後の 砦。触った 直後に 焦点が 入ったら すぐ 外す。
+       （どこか よそから focus() されても 端末の 一覧を 出させない） */
+    select.addEventListener("focus", function () {
+      if (触ったばかり() || (cur && cur.select === select && cur.触)) {
+        try { select.blur(); } catch (x) {}
+      }
     });
     // 一部ブラウザの keyboard/クリックで開くのも抑止して独自メニューへ
     select.addEventListener("mousedown", function (e) { e.preventDefault(); });
@@ -336,12 +493,21 @@
     return { 全: 全, 独自: 済 };
   };
   window.__vqcsClose = function () { closeMenu(false); };
+  /* 検証用: いま 開いている 一覧の 置き場所と 下端の 限り。 */
+  window.__vqcsWhere = function () {
+    if (!cur) return null;
+    var b = cur.menu.getBoundingClientRect();
+    return { body: cur.menu.parentNode === document.getElementById("vqcs-layer") &&
+                   document.getElementById("vqcs-layer").parentNode === document.body,
+             上: Math.round(b.top), 下: Math.round(b.bottom), 左: Math.round(b.left),
+             幅: Math.round(b.width), 高: Math.round(b.height),
+             限り: Math.round(下の限り()), 触: cur.menu.classList.contains("is-touch"),
+             上向き: cur.menu.classList.contains("is-up") };
+  };
 
   /* ══ 影の DOM まで 届かせる（2026-08-30・訴え）══════════════════════
      ★ **ここが 効いていなかった 芯。**
        MutationObserver は subtree:true でも 影の 中を 見ない。
-       いまの 画面は ほぼ 全部 影の DOM なので、そこの select は
-       1 つも 昇格していなかった（実測 51 個中 8 個だけ）。
      ★ 影は 2 つの 道で 捕まえる:
        ① これから できる 影 … attachShadow を 包む（できた 瞬間に 入る）
        ② もう ある 影     … 起動時に 深く 一巡する
@@ -352,7 +518,6 @@
     if (!root) return;
     if (見た) { if (見た.has(root)) return; 見た.add(root); }
     else { if (root.__vqcsWatched) return; root.__vqcsWatched = true; }
-    ensureStyle(root);
     深く一巡(root);
     try {
       var mo = new MutationObserver(function (muts) {
@@ -401,7 +566,7 @@
 
   /* ── 自動適用（light DOM ＋ 影の DOM）── */
   function boot() {
-    ensureStyle(document);
+    ensureStyle();
     見張る(document);
     // ページ内スクロール中に開いていたら閉じる保険（capture済だがフォールバック）
     window.addEventListener("blur", function () { closeMenu(false); });
@@ -413,4 +578,3 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 })();
-

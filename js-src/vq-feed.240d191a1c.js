@@ -434,7 +434,7 @@
       ".acts{max-width:none;}",
       ".act{padding:0 6px;gap:5px;}",
       /* 下のナビと + ボタンに隠れないように、下へ余白を足す */
-      ".wrap{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px));}",
+      ".wrap{padding-bottom:calc(96px + var(--vq-sab,0px));}",
       /* 返信欄 */
       ".rform{padding:12px 14px;gap:10px;}",
       ".rform textarea{font-size:16px;}",

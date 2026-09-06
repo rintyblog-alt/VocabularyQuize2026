@@ -114,7 +114,7 @@
     "#vqLiveEdge{position:fixed;inset:0;z-index:2147483600;pointer-events:none;}",
 
     /* ── 島（言葉が出るところ）── */
-    "#vqLiveEdge .isl{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 11px);",
+    "#vqLiveEdge .isl{position:absolute;left:50%;top:calc(var(--vq-sat,0px) + 11px);",
     "transform:translateX(-50%) scale(.9);transform-origin:50% 0;",
     "width:126px;min-height:37px;max-width:min(680px,calc(100vw - 24px));",
     "display:flex;align-items:center;justify-content:center;",
@@ -252,16 +252,16 @@
          ちょうど その場所に 4 つが 並ぶ。
        ★ 数字を 別々に 持たない。ずれたら すぐ 気づけなくなる。 */
     "#vqLiveDock{position:fixed !important;z-index:2147483601;",
-    "right:calc(env(safe-area-inset-right,0px) + 14px);",
-    "bottom:calc(env(safe-area-inset-bottom,0px) + 88px);",
+    "right:calc(var(--vq-sar,0px) + 14px);",
+    "bottom:calc(var(--vq-sab,0px) + 88px);",
     "display:flex;align-items:center;gap:8px;pointer-events:none;}",
     "#vqLiveDock > *{pointer-events:auto;}",
     /* 文字の帯を 出している 間は、帯の ぶん さらに 上へ 逃がす。 */
-    "body.vq-live-bar #vqLiveDock{bottom:calc(env(safe-area-inset-bottom,0px) + 96px);}",
+    "body.vq-live-bar #vqLiveDock{bottom:calc(var(--vq-sab,0px) + 96px);}",
     "@media (max-width:700px){",
-      "#vqLiveDock{right:calc(env(safe-area-inset-right,0px) + 10px);",
-      "bottom:calc(env(safe-area-inset-bottom,0px) + 70px);}",
-      "body.vq-live-bar #vqLiveDock{bottom:calc(env(safe-area-inset-bottom,0px) + 92px);}}",
+      "#vqLiveDock{right:calc(var(--vq-sar,0px) + 10px);",
+      "bottom:calc(var(--vq-sab,0px) + 70px);}",
+      "body.vq-live-bar #vqLiveDock{bottom:calc(var(--vq-sab,0px) + 92px);}}",
     /* 設定「会話中のボタンを出す」を切ったとき（vq-settings が body に付ける） */
     "body.vq-live-nodock #vqLiveDock{display:none !important;}",
     "#vqLiveType{position:relative !important;z-index:1;",
@@ -328,8 +328,8 @@
     "#vqLiveCam svg{width:18px;height:18px;}}",
     /* 小窓（見せているものを 自分でも見る） */
     "#vqLiveAR{position:fixed;z-index:2147483599;display:none;",
-    "left:max(14px,env(safe-area-inset-left));",
-    "bottom:calc(max(14px,env(safe-area-inset-bottom)) + 0px);",
+    "left:max(14px,var(--vq-sal,0px));",
+    "bottom:calc(max(14px,var(--vq-sab,0px)) + 0px);",
     "width:168px;border-radius:16px;overflow:hidden;background:#0b0a10;",
     "box-shadow:0 10px 30px rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.14);",
     "transition:width .22s cubic-bezier(.2,.8,.2,1);}",
@@ -406,7 +406,7 @@
        ボタン（601）より 下にしておく——**止める手段は 常に 押せること。** */
     "#vqLiveNote{position:fixed;z-index:2147483600;display:none;",
     "left:50%;transform:translateX(-50%) translateY(-8px);",
-    "top:calc(max(10px,env(safe-area-inset-top)) + 58px);",
+    "top:calc(max(10px,var(--vq-sat,0px)) + 58px);",
     "width:min(94vw,680px);max-height:min(62vh,560px);overflow:auto;",
     /* ★ **透けさせない。**下に絵があると 字が読めなくなる（実測で 透けた）。
        色の変数が 半透明でも 大丈夫なように、後ろを ぼかして 重ねる。 */
@@ -428,10 +428,13 @@
     /* ★ 全画面（2026-08-19 の 3 度目・訴え「途切れる。全画面にして」）。
        置き場所を 覚えている ぶんの inline style を 押しのけるので **すべて !important**。 */
     "#vqLiveNote.vqn-zen{position:fixed !important;left:0 !important;top:0 !important;",
-    "right:0 !important;bottom:0 !important;width:100vw !important;height:100vh !important;",
+    /* dvh を 知らない ブラウザ用に 100vh を 先に 置く（後勝ち）。
+       ★ 2026-09-04 — 時計の 裏まで 画面を 広げたので、
+         100vh だけだと iOS で 下が はみ出す。 */
+    "right:0 !important;bottom:0 !important;width:100vw !important;height:100vh !important;height:100dvh !important;",
     "max-width:none !important;max-height:none !important;margin:0 !important;",
     "transform:none !important;border-radius:0 !important;border:0 !important;",
-    "padding:8px 10px calc(8px + env(safe-area-inset-bottom)) 10px !important;",
+    "padding:8px 10px calc(8px + var(--vq-sab,0px)) 10px !important;",
     "display:flex !important;flex-direction:column !important;overflow:hidden !important;",
     "z-index:2147483640 !important;}",
     "#vqLiveNote.vqn-zen .vqn-b{flex:1 1 auto;min-height:0;overflow:auto;}",
@@ -493,9 +496,9 @@
     "#vqLiveType svg{width:18px;height:18px;}}",
 
     "#vqLiveBtn{position:fixed !important;",
-    "right:calc(env(safe-area-inset-right,0px) + 14px) !important;",
+    "right:calc(var(--vq-sar,0px) + 14px) !important;",
     "left:auto !important;top:auto !important;",
-    "bottom:calc(env(safe-area-inset-bottom,0px) + 88px) !important;",
+    "bottom:calc(var(--vq-sab,0px) + 88px) !important;",
     "z-index:2147483590 !important;",
     /* ★ **邪魔にならない大きさと濃さ**にする（2026-08-15）。
        押すときだけはっきりする。ふだんは背景になじませる。 */
@@ -517,8 +520,8 @@
     "@media (max-width:700px){#vqLiveBtn{width:38px !important;height:38px !important;",
     "min-width:38px !important;min-height:38px !important;",
     "max-width:38px !important;max-height:38px !important;",
-    "right:calc(env(safe-area-inset-right,0px) + 10px) !important;",
-    "bottom:calc(env(safe-area-inset-bottom,0px) + 70px) !important;}",
+    "right:calc(var(--vq-sar,0px) + 10px) !important;",
+    "bottom:calc(var(--vq-sab,0px) + 70px) !important;}",
     "#vqLiveBtn svg{width:17px !important;height:17px !important;}}",
     /* 動かすのは **透明度だけ**。影の 形は 上で 決め打ちにしてある。 */
     "@keyframes vqLiveGlow{0%,100%{opacity:0}50%{opacity:1}}",
@@ -535,10 +538,10 @@
        ★ 箱そのものは 素通り。玉だけ押せる。画面の操作を奪わない。
        ★ それでも邪魔なときのために、出す／しまうを 押して選べる。 */
     "#vqLiveLog{position:fixed;z-index:2147483598;display:none;",
-    "right:max(14px,env(safe-area-inset-right));left:auto;",
+    "right:max(14px,var(--vq-sar,0px));left:auto;",
     /* ★ 4 つのボタンの **すぐ上**（2026-08-20）。ボタンを 上げたので、
        ここも 同じだけ 上げないと 重なる（44px の ボタン ＋ すき間）。 */
-    "bottom:calc(env(safe-area-inset-bottom,0px) + 136px);",
+    "bottom:calc(var(--vq-sab,0px) + 136px);",
     "width:min(380px,calc(100vw - 28px));max-height:min(52vh,460px);",
     "overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;",
     "pointer-events:none;padding:2px;",
@@ -550,7 +553,7 @@
     "#vqLiveLog.show{display:block;}",
     "#vqLiveLog::-webkit-scrollbar{width:0;height:0;}",
     /* 入力欄が上がっている間は その上へ逃がす（重ねない） */
-    "body.vq-live-bar #vqLiveLog{bottom:calc(env(safe-area-inset-bottom,0px) + 144px);}",
+    "body.vq-live-bar #vqLiveLog{bottom:calc(var(--vq-sab,0px) + 144px);}",
     /* 頭（会話の履歴 ／ Quick Chat に残す）。下まで読んでも 消えない。 */
     "#vqLiveLog .vqlg-h{position:sticky;top:0;z-index:2;pointer-events:auto;",
     "display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:5px 4px 7px;}",
@@ -598,10 +601,10 @@
     "#vqLiveLog .vqlg-e{pointer-events:auto;text-align:center;padding:14px 8px;",
     "font-family:inherit;font-weight:600;font-size:12px;line-height:1.7;",
     "color:var(--vq-text-tertiary,#9994A8);}",
-    "@media (max-width:700px){#vqLiveLog{left:max(10px,env(safe-area-inset-left));",
-    "right:max(10px,env(safe-area-inset-right));width:auto;max-height:42vh;",
-    "bottom:calc(env(safe-area-inset-bottom,0px) + 114px);}",
-    "body.vq-live-bar #vqLiveLog{bottom:calc(env(safe-area-inset-bottom,0px) + 136px);}}",
+    "@media (max-width:700px){#vqLiveLog{left:max(10px,var(--vq-sal,0px));",
+    "right:max(10px,var(--vq-sar,0px));width:auto;max-height:42vh;",
+    "bottom:calc(var(--vq-sab,0px) + 114px);}",
+    "body.vq-live-bar #vqLiveLog{bottom:calc(var(--vq-sab,0px) + 136px);}}",
     /* ══ マイクを 止める（2026-08-18・訴え）══════════════════════════
        ★ 止めていることが **ひと目で分かる**こと。ここが分からないと
          「話しかけても 反応しない」に見える（いちばん困る間違え方）。
@@ -2755,7 +2758,7 @@
     "transition:transform .22s cubic-bezier(.2,.8,.2,1);}",
     ":host(.show){display:block;}",
     ":host(.in){transform:translateY(0);}",
-    ".wrap{padding:30px 12px calc(10px + env(safe-area-inset-bottom,0px));",
+    ".wrap{padding:30px 12px calc(10px + var(--vq-sab,0px));",
     "background:linear-gradient(to bottom,transparent 0%,",
     "var(--vq-bg-subtle,#F7F6FB) 46%,var(--vq-bg-subtle,#F7F6FB) 100%);}",
     ".box{display:flex;align-items:flex-end;gap:6px;max-width:720px;margin:0 auto;",
@@ -8420,7 +8423,7 @@
       d.id = "vqLiveProg";
       d.setAttribute("role", "status");
       d.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);"
-        + "bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:2147483001;"
+        + "bottom:calc(14px + var(--vq-sab,0px));z-index:2147483001;"
         + "max-width:min(92vw,420px);padding:8px 13px;border-radius:999px;"
         + "background:rgba(24,22,38,.90);color:#fff;font-size:12.5px;line-height:1.5;"
         + "box-shadow:0 6px 22px rgba(16,15,26,.28);display:flex;align-items:center;gap:9px;"

@@ -237,7 +237,7 @@
     ".sheet{position:fixed;inset:0;z-index:999200;display:flex;align-items:flex-end;justify-content:center;",
       "background:var(--vq-surface-overlay,rgba(38,34,68,.40));-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);}",
     ".sheet__c{width:min(100%,520px);background:var(--vq-surface,#fff);",
-      "border-radius:var(--vq-r-2xl,28px) var(--vq-r-2xl,28px) 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));",
+      "border-radius:var(--vq-r-2xl,28px) var(--vq-r-2xl,28px) 0 0;padding:18px 18px calc(18px + var(--vq-sab,0px));",
       "box-shadow:var(--vq-shadow-modal,0 10px 24px rgba(60,50,110,.10),0 32px 80px rgba(60,50,110,.18));",
       "display:grid;gap:12px;animation:vqq-up .22s var(--vq-ease-enter,cubic-bezier(.16,1,.3,1)) both;}",
     "@keyframes vqq-up{from{transform:translateY(14px);opacity:.6}to{transform:none;opacity:1}}",

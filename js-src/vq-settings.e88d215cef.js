@@ -98,23 +98,92 @@
     ".head__t{font-size:17px;font-weight:800;color:var(--vq-text,#2B2836);letter-spacing:-.01em;}" +
     ".xbtn{width:34px;height:34px;border:0;background:var(--vq-surface-active,#F4F2F9);border-radius:calc(10px * var(--vq-r-scale,1));cursor:pointer;display:grid;place-items:center;color:var(--vq-text-secondary,#686477);flex:0 0 auto;}.xbtn:hover{background:var(--vq-accent-subtle-hover,#EAE6F4);color:var(--vq-text,#2B2836);}.xbtn svg{width:18px;height:18px;}" +
     ".body{flex:1 1 auto;overflow-y:auto;padding:22px 24px 30px;}" +
-    ".grp{border:1px solid var(--vq-border-subtle,#ECEAF4);border-radius:calc(14px * var(--vq-r-scale,1));overflow:hidden;background:var(--vq-surface,#fff);}" +
-    ".grp+.grp,.grp+.note,.note+.grp,.grp+.gttl,.note+.gttl{margin-top:18px;}" +
-    ".gttl{font-size:12.5px;font-weight:750;letter-spacing:.05em;color:var(--vq-text-secondary,#5F5A70);padding:0 4px 8px;}" +
-    ".row{display:flex;align-items:center;gap:14px;padding:13px 16px;border-top:1px solid var(--vq-border-subtle,#F1EFF6);}.row:first-child{border-top:0;}" +
+    /* ══ 設定の 見た目（2026-09-03・訴え「アプリ設定の UI を こんな感じに」）══
+       もらった 写真（Discord の 設定画面）に そろえた:
+         ・束は 角の 丸い カード。枠線は 出さない（暗い 地では 面で 分ける）
+         ・見出しは カードの **外**に 小さく 灰色で
+         ・1 行 = 左に 印 / 中に 題と 説明 / 右に つまみ・矢印・丸
+         ・区切り線は **印の 右から**（行の 全幅では ない）
+         ・つまみは 52×32 の 丸い もの
+       ★ 色は この アプリの 変数の まま。暗くすれば 写真と ほぼ 同じに なり、
+         明るいままでも 崩れない（写真の 色を 直に 書かない）。 */
+    ".grp{border:0;border-radius:calc(16px * var(--vq-r-scale,1));overflow:hidden;background:var(--vq-surface,#fff);" +
+      "box-shadow:0 0 0 1px var(--vq-border-subtle,#ECEAF4);}" +
+    ".grp+.grp,.grp+.note,.note+.grp{margin-top:22px;}" +
+    ".grp+.gttl,.note+.gttl,.stg-more+.gttl{margin-top:26px;}" +
+    ".gttl{font-size:12.5px;font-weight:750;letter-spacing:.03em;color:var(--vq-text-tertiary,#8B85A0);padding:0 6px 9px;}" +
+    ".gsub{font-size:12px;color:var(--vq-text-tertiary,#9994A8);padding:0 6px 9px;margin-top:-6px;line-height:1.6;}" +
+    /* 行。**高さを 上げる**（写真は 1 行 60px・2 行 84px ほど）。 */
+    ".row{position:relative;display:flex;align-items:center;gap:14px;padding:14px 16px;min-height:60px;border-top:0;}" +
+    ".row+.row::before{content:'';position:absolute;top:0;left:56px;right:0;height:1px;" +
+      "background:var(--vq-border-subtle,#F1EFF6);}" +
+    /* 左の 印。囲いを 付けない（写真と 同じで 白い 線画だけ）。 */
+    /* ══ ★ 印の 書体は **土台**に 置く（2026-09-03・実測で 踏んだ）════════
+       もとは モバイルの 枠（@media）の 中にしか 無かった。
+       PC で 開くと 書体が 当たらず、Material Symbols は 合字なので
+       **"style" "bolt" "palette" という 文字が 巨大に 出た**（写真で 確認）。
+       影の DOM には 外の material-symbols.css が 届かないので、
+       ここに 書くしかない。**枠の 中に 入れない。** */
+    ".ms{font-family:'Material Symbols Rounded';font-weight:400;font-style:normal;line-height:1;" +
+      "display:inline-block;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;" +
+      "-webkit-font-feature-settings:'liga';-webkit-font-smoothing:antialiased;" +
+      "font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;}" +
+    ".rico{width:26px;height:26px;flex:0 0 auto;display:grid;place-items:center;color:var(--vq-text,#2B2836);}" +
+    /* ★ 写真の 印は **塗り**（白い かたまり）。FILL 1 に する。 */
+    ".rico .ms{font-size:25px;font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;}" +
+    /* 右の 矢印。写真と 同じ 大きさ・薄さ。 */
+    ".row .chev.ms{font-size:22px;width:auto;height:auto;color:var(--vq-text-disabled,#C2BDD0);flex:0 0 auto;}" +
+    /* 選ぶ もの（ラジオ）。右端に 丸。 */
+    ".rrow{width:100%;border:0;background:none;font-family:inherit;text-align:left;cursor:pointer;" +
+      "-webkit-tap-highlight-color:transparent;}" +
+    ".rrow:active{background:var(--vq-surface-active,#F0EEF6);}" +
+    /* ★ 選ぶ ところの 印（2026-09-03・訴え「選択だけ 変えよ」）════════
+       写真（Discord）は **塗った 丸の 中に 白い 点**。それを やめて、
+       選んだ ものに **チェック**を 付ける 形に する（静かで、目が 迷わない）。
+       ★ 色だけで 伝えない。チェックの 有無が 主。題も 少し 濃くする。 */
+    ".rdot{width:22px;height:22px;flex:0 0 auto;position:relative;}" +
+    ".rdot::after{content:'done';font-family:'Material Symbols Rounded';font-size:22px;line-height:1;" +
+      "position:absolute;left:0;top:0;color:var(--vq-accent,#756DB3);opacity:0;" +
+      "transform:scale(.7);transition:opacity .16s ease,transform .18s cubic-bezier(.3,1.2,.4,1);" +
+      "font-variation-settings:'FILL' 0,'wght' 600,'GRAD' 0,'opsz' 24;}" +
+    ".rrow.on .rdot::after{opacity:1;transform:scale(1);}" +
+    ".rrow .row__label{font-weight:600;}" +
+    ".rrow.on .row__label{color:var(--vq-accent-text,#5F579E);font-weight:750;}" +
     /* 検索から飛んできた行を、しばらく光らせる（どれのことか分かるように） */
     ".row.is-found{background:var(--vq-accent-subtle,#F1EEFB);box-shadow:inset 3px 0 0 var(--vq-accent,#756DB3);}" +
     ".row__main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;}" +
     /* ★ 見やすさ（2026-08-20）。説明の 文字が 白地に対して 3 前後しか なく、
        目を 近づけないと 読めなかった。大きさと 濃さを 上げる。 */
-    ".row__label{font-size:14.5px;font-weight:600;color:var(--vq-text,#2B2836);line-height:1.5;}" +
-    ".row__desc{font-size:12.5px;color:var(--vq-text-secondary,#5F5A70);font-weight:500;line-height:1.6;}" +
-    ".row.tap{cursor:pointer;width:100%;border:0;background:none;font-family:inherit;text-align:left;border-top:1px solid var(--vq-border-subtle,#F1EFF6);}.row.tap:first-child{border-top:0;}.row.tap:hover{background:var(--vq-surface-hover,#FAF9FD);}" +
+    ".row__label{font-size:15.5px;font-weight:600;color:var(--vq-text,#2B2836);line-height:1.45;letter-spacing:-.005em;}" +
+    ".row__desc{font-size:12.5px;color:var(--vq-text-tertiary,#8B85A0);font-weight:500;line-height:1.55;}" +
+    ".row.tap{cursor:pointer;width:100%;border:0;background:none;font-family:inherit;text-align:left;-webkit-tap-highlight-color:transparent;}" +
+    ".row.tap:active{background:var(--vq-surface-active,#F0EEF6);}" +
     ".row.tap .chev{width:16px;height:16px;color:var(--vq-text-disabled,#C7C2D4);flex:0 0 auto;}.row.danger .row__label{color:var(--vq-danger-text,#C1445F);}" +
     ".rval{font-size:13.5px;font-weight:700;color:var(--vq-accent-text,#5F579E);flex:0 0 auto;}" +
     /* controls */
     "select.sel{appearance:none;-webkit-appearance:none;height:36px;padding:0 34px 0 12px;border:1px solid var(--vq-border,#E1DDEE);border-radius:calc(10px * var(--vq-r-scale,1));background:var(--vq-surface,#fff);font-family:inherit;font-size:13px;font-weight:600;color:var(--vq-text,#2B2836);cursor:pointer;background-image:url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238A81C2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>\");background-repeat:no-repeat;background-position:right 10px center;min-width:120px;}select.sel:focus{outline:2px solid var(--vq-border-focus,#C9BEEB);outline-offset:1px;}" +
-    ".sw{position:relative;width:44px;height:26px;border-radius:999px;background:var(--vq-border,#DAD6E6);border:0;cursor:pointer;flex:0 0 auto;transition:background .15s;padding:0;}.sw::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--vq-surface,#fff);box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .15s;}.sw.on{background:var(--vq-accent,#756DB3);}.sw.on::after{transform:translateX(18px);}" +
+    /* ══ つまみ（2026-09-03・訴え「ボタンが Discord すぎる」）════════
+       Discord の 目印は「太い 52×32 の 帯 ＋ 白い 大玉 ＋ 濃い 青紫の 塗り」。
+       そこから 離して、この アプリの 顔（静かで・精緻で・温かい）に する:
+         ・少し 小さく（48×28）、玉も 小さく（20px）
+         ・切  … 面では なく **内側の 細い 輪**（静か）。玉は 灰
+         ・入  … 帯は **薄い アクセント**、玉と 輪が **アクセント色**
+                （白い 大玉の 塗り分けを しない）
+       ★ 入・切は 色だけで 伝えない。**玉の 位置**が いつも 変わる。 */
+    ".sw{position:relative;width:48px;height:28px;border-radius:999px;border:0;padding:0;" +
+      "cursor:pointer;flex:0 0 auto;background:var(--vq-surface-active,#F1EEF8);" +
+      "box-shadow:inset 0 0 0 1.5px var(--vq-border,#DAD6E6);" +
+      "transition:background .18s ease,box-shadow .18s ease;}" +
+    ".sw::after{content:'';position:absolute;left:4px;top:4px;width:20px;height:20px;border-radius:50%;" +
+      "background:var(--vq-text-tertiary,#9994A8);" +
+      "transition:transform .2s cubic-bezier(.32,1.15,.4,1),background .18s ease;}" +
+    ".sw.on{background:var(--vq-accent-subtle,#EAE8F7);" +
+      "box-shadow:inset 0 0 0 1.5px var(--vq-accent,#756DB3);}" +
+    ".sw.on::after{background:var(--vq-accent,#756DB3);transform:translateX(20px);}" +
+    ".sw:hover{box-shadow:inset 0 0 0 1.5px var(--vq-border-strong,#C7C2D4);}" +
+    ".sw.on:hover{box-shadow:inset 0 0 0 1.5px var(--vq-accent,#756DB3);}" +
+    ".sw:disabled{opacity:.45;cursor:default;}" +
+    ".sw:focus-visible{outline:2px solid var(--vq-border-focus,#C9BEEB);outline-offset:2px;}" +
     ".seg{display:inline-flex;background:var(--vq-surface-sunken,#EFEDF6);border-radius:calc(10px * var(--vq-r-scale,1));padding:3px;gap:2px;flex:0 0 auto;}.seg button{height:30px;padding:0 13px;border:0;background:none;border-radius:calc(8px * var(--vq-r-scale,1));cursor:pointer;color:var(--vq-text-secondary,#686477);font-family:inherit;font-size:12.5px;font-weight:650;}.seg button.on{background:var(--vq-surface,#fff);color:var(--vq-accent-text,#5F579E);box-shadow:0 1px 3px rgba(0,0,0,.07);}" +
     ".btn{height:34px;padding:0 15px;border-radius:calc(9px * var(--vq-r-scale,1));border:1px solid var(--vq-border,#E1DDEE);background:var(--vq-surface,#fff);color:var(--vq-accent-text,#5F579E);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;flex:0 0 auto;}.btn:hover{background:var(--vq-accent-subtle,#F4F1FA);}" +
     ".btn.dgr{border-color:var(--vq-danger-bg,#F0C9D3);color:var(--vq-danger-text,#C1445F);}.btn.dgr:hover{background:var(--vq-danger-bg,#FBE9EE);}" +
@@ -252,12 +321,12 @@
       ".modal.is-detail .back{display:grid;}" +
       /* ヘッダ（一覧・詳細で共通の見え方: 中央タイトル） */
       ".mhead,.head{display:flex;align-items:center;gap:8px;background:var(--vq-bg-canvas,#F2F1F7);border-bottom:0;" +
-        "padding:calc(env(safe-area-inset-top,0px) + 12px) 12px 10px;}" +
+        "padding:calc(var(--vq-sat,0px) + 12px) 12px 10px;}" +
       ".mhead__t,.head__t{flex:1 1 auto;text-align:center;font-size:17px;font-weight:800;color:var(--vq-text,#1B1922);letter-spacing:-.01em;}" +
       ".mhead .sp,.head .sp{width:34px;flex:0 0 auto;}" +
       /* 下部バー(z9990・高さ約65px)は設定中も出したままなので、その分の余白を確保 */
       ".mscroll,.body{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;" +
-        "padding:6px 16px calc(env(safe-area-inset-bottom,0px) + 92px);}" +
+        "padding:6px 16px calc(var(--vq-sab,0px) + 92px);}" +
       /* グループ化されたカード */
       ".mgrp{background:var(--vq-surface,#fff);border-radius:calc(14px * var(--vq-r-scale,1));overflow:hidden;border:0;}" +
       ".mgrp+.mgrp{margin-top:26px;}" +
@@ -277,21 +346,32 @@
          もとは ".mico .ms" にしか 当てていなかったので、
          .meRow__av（プロフィールの 顔）の 印だけ 取り残されていた。
          **束ごとに 書くのを やめて、.ms 全部に 当てる。** */
-      ".ms{font-family:'Material Symbols Rounded';font-weight:400;font-style:normal;line-height:1;" +
-        "display:inline-block;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;" +
-        "-webkit-font-feature-settings:'liga';-webkit-font-smoothing:antialiased;" +
-        "font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;}" +
       ".mico .ms{font-size:25px;}" +
       ".mrow__c{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;}" +
       ".mrow__l{font-size:16px;font-weight:600;color:var(--vq-text,#1B1922);letter-spacing:-.01em;}" +
       ".mrow__s{font-size:11.5px;color:var(--vq-text-tertiary,#9994A8);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}" +
       ".mrow .chv{width:15px;height:15px;flex:0 0 auto;color:var(--vq-text-disabled,#C2BDD0);}" +
-      /* 詳細側は既存 .grp/.row を iOS 寄りのサイズへ */
-      ".grp{border:0;border-radius:calc(14px * var(--vq-r-scale,1));}" +
-      ".grp+.grp,.grp+.note,.note+.grp,.grp+.gttl,.note+.gttl{margin-top:24px;}" +
-      ".gttl{padding:0 14px 7px;font-size:11.5px;}" +
-      ".row,.row.tap{padding:12px 14px;border-top-color:var(--vq-border-subtle,#EDEBF2);gap:12px;}" +
-      ".row__label{font-size:15.5px;}.row__desc{font-size:12px;}" +
+      /* 詳細側は既存 .grp/.row を iOS 寄りのサイズへ（2026-09-03 に 写真へ そろえた） */
+      ".grp{border:0;border-radius:calc(16px * var(--vq-r-scale,1));box-shadow:none;}" +
+      ".grp+.grp,.grp+.note,.note+.grp{margin-top:24px;}" +
+      ".grp+.gttl,.note+.gttl,.stg-more+.gttl{margin-top:28px;}" +
+      ".gttl{padding:0 16px 9px;font-size:12px;}" +
+      ".gsub{padding:0 16px 9px;}" +
+      ".row,.row.tap{padding:14px 16px;min-height:62px;gap:14px;}" +
+      ".row+.row::before{left:56px;background:var(--vq-border-subtle,#EDEBF2);}" +
+      ".row__label{font-size:16px;}.row__desc{font-size:12px;}" +
+      ".rico{width:26px;height:26px;}.rico .ms{font-size:25px;}" +
+      /* ★ 狭い 画面では **幅の 要る 部品を 下の 行へ 降ろす**（2026-09-03）。
+         右に 置いたままだと 題と 説明が 4 行に 折れて 読めない（実測の 写真）。 */
+      /* ★ 折り返すと 印が 題の **上**へ 飛ぶ（実測）。マス目で 置く。
+         1 行目 = 印 ＋ 題、2 行目 = 部品（題の 真下にそろえる）。 */
+      ".row.wide{display:grid;grid-template-columns:26px minmax(0,1fr);column-gap:14px;row-gap:11px;align-items:center;}" +
+      ".row.wide>.rico{grid-column:1;grid-row:1;}" +
+      ".row.wide>.row__main{grid-column:2;grid-row:1;}" +
+      ".row.wide>select.sel,.row.wide>.seg,.row.wide>.num{grid-column:2;grid-row:2;width:100%;margin-left:0;}" +
+      ".row.wide>.seg{display:flex;}" +
+      ".row.wide>.seg button{flex:1 1 0;min-width:0;}" +
+      ".row.wide>.num{justify-content:flex-start;}" +
       ".note{background:var(--vq-surface,#fff);border:0;}" +
       ".xbtn{background:var(--vq-border-subtle,#E9E7F0);}" +
     "}";
@@ -304,25 +384,121 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
     });
   }
+  /* ══ 行の 左に 置く 印（2026-09-03・訴え「アプリ設定の UI を こんな感じに」）══
+     もらった 写真（Discord の 設定）に そろえる。行の 左に 白い 印、
+     右に つまみ／矢印／丸、区切り線は 印の 右から。
+
+     ★ **書体に 入っている 名前だけ 使う。** Material Symbols は 合字なので、
+       入っていない 名前は **その 名前が そのまま 文字で 出る**
+       （実測で accessibility_new / format_size / email などが そう だった）。
+       ここに 並べた 名前は 実機で 1 つずつ 幅を 測って 確かめた もの。
+     ★ 見つからない ときは **束の 印**（GROUPS の ms）へ 落ちる。 */
+  var ICO_KEY = [
+    [/tts|voice|読み上げ|声|narrat/i, "record_voice_over"],
+    [/\bmic|マイク/i, "mic"],
+    [/theme|テーマ|dark|ダーク/i, "dark_mode"],
+    [/accent|アクセント|色/i, "palette"],
+    [/font|書体/i, "style"],
+    [/文字|size|大きさ/i, "text_fields"],
+    [/width|幅/i, "straighten"],
+    [/density|詰まり/i, "grid_view"],
+    [/radius|角/i, "layers"],
+    [/motion|anim|動き/i, "bolt"],
+    [/rail|棚|home|ホーム/i, "dashboard"],
+    [/bgm|sound|volume|音/i, "volume_up"],
+    [/効果音|se\b/i, "headphones"],
+    [/notif|通知/i, "notifications"],
+    [/timer|時間|秒|分\b/i, "schedule"],
+    [/progress|進み/i, "insights"],
+    [/keyboard|キーボード/i, "keyboard"],
+    [/auto|オート|自動/i, "bolt"],
+    [/explain|解説/i, "menu_book"],
+    [/grade|採点|scoring/i, "grading"],
+    [/unanswer|未回答|confirm|確認/i, "help"],
+    [/visib|公開|見え/i, "visibility"],
+    [/pin|暗証|password|パスワード/i, "lock"],
+    [/google|連携|link/i, "link"],
+    [/email|メール/i, "inbox"],
+    [/account|アカウント|本人|プロフィール/i, "manage_accounts"],
+    [/storage|容量/i, "data_usage"],
+    [/sync|同期/i, "sync"],
+    [/backup|バックアップ|書き出/i, "cloud_upload"],
+    [/delete|消す|削除|初期化|退会/i, "delete"],
+    [/reset|戻す|既定/i, "restart_alt"],
+    [/\bai\b|lumi|ルミ/i, "auto_awesome"],
+    [/lang|言語/i, "translate"],
+    [/camera|カメラ|スキャン/i, "photo_camera"],
+    [/print|印刷|紙面/i, "print"],
+    [/doc|書類/i, "description"],
+    [/version|情報|ばん/i, "info"],
+    [/device|端末/i, "computer"],
+    [/offline|オフライン/i, "cloud_off"],
+    [/search|探す|検索/i, "search"],
+    [/sort|並べ|順/i, "sort"],
+    [/list|一覧/i, "list"],
+    [/image|画像|写真/i, "image"],
+    [/video|動画/i, "videocam"],
+    [/calendar|カレンダー|予定/i, "calendar_month"],
+    [/history|記録|履歴/i, "history"],
+    [/fav|お気に入り/i, "star"],
+    [/share|共有/i, "share"],
+    [/save|保存/i, "save"],
+    [/edit|直す|編集/i, "edit"],
+    [/rotate|回転/i, "screen_rotation"],
+    [/haptic|振動|触/i, "touch_app"],
+    [/quiz|出題|問題/i, "quiz"],
+    [/player|プレイヤー|解いて/i, "play_circle"],
+    [/learn|学習/i, "school"],
+    [/logout|ログアウト/i, "logout"]
+  ];
+  var 束の印 = "tune";
+  function icoName(sp) {
+    if (sp && sp.ms) return String(sp.ms);
+    var t = String((sp && sp.id) || "") + " " + String((sp && sp.label) || "");
+    for (var i = 0; i < ICO_KEY.length; i++) if (ICO_KEY[i][0].test(t)) return ICO_KEY[i][1];
+    return 束の印 || "tune";
+  }
+  function rico(sp) {
+    return '<span class="rico" aria-hidden="true"><span class="ms">' + esc(icoName(sp)) + '</span></span>';
+  }
   function head(sp) {
     return '<span class="row__main"><span class="row__label">' + esc(sp.label) + '</span>' +
       (sp.desc ? '<span class="row__desc">' + esc(sp.desc) + '</span>' : '') + '</span>';
+  }
+  /* ══ 選ぶ もの（2026-09-03・訴え）════════════════════════════════
+     写真には **落ちる 一覧（select）が 1 つも 無い**。
+     選ぶ ものは 「見出し ＋ 1 行 1 つ・右端に 丸」で 並んでいる。
+     ★ **6 つまで**は その 形（ラジオの 束）に する。
+       それより 多い もの（書体 61 種 など）は これまでの 落ちる 一覧のまま
+       （60 行 並べても 選べない）。 */
+  var RADIO_MAX = 6;
+  function radioCard(sp, v) {
+    var 行 = sp.opts.map(function (o) {
+      var on = String(v) === String(o[0]);
+      return '<button class="row rrow' + (on ? " on" : "") + '" role="radio" aria-checked="' + on + '"'
+        + ' data-set="' + esc(sp.id) + '" data-val="' + esc(o[0]) + '">'
+        + '<span class="row__main"><span class="row__label">' + esc(o[1]) + '</span></span>'
+        + '<span class="rdot" aria-hidden="true"></span></button>';
+    }).join("");
+    return '<div class="gttl">' + esc(sp.label) + '</div>'
+      + (sp.desc ? '<div class="gsub">' + esc(sp.desc) + '</div>' : '')
+      + '<div class="grp" role="radiogroup" aria-label="' + esc(sp.label) + '">' + 行 + '</div>';
   }
   function rowSelect(sp, v) {
     var opts = sp.opts.map(function (o) {
       return '<option value="' + esc(o[0]) + '"' + (String(v) === String(o[0]) ? " selected" : "") + '>' + esc(o[1]) + '</option>';
     }).join("");
-    return '<div class="row">' + head(sp) + '<select class="sel" data-set="' + esc(sp.id) + '">' + opts + '</select></div>';
+    return '<div class="row wide">' + rico(sp) + head(sp) + '<select class="sel" data-set="' + esc(sp.id) + '">' + opts + '</select></div>';
   }
   function rowToggle(sp, v) {
-    return '<div class="row">' + head(sp) +
+    return '<div class="row">' + rico(sp) + head(sp) +
       '<button class="sw' + (v ? ' on' : '') + '" role="switch" aria-checked="' + (!!v) + '" aria-label="' + esc(sp.label) + '" data-set="' + esc(sp.id) + '"></button></div>';
   }
   function rowSeg(sp, v) {
     var segs = sp.opts.map(function (o) {
       return '<button data-set="' + esc(sp.id) + '" data-val="' + esc(o[0]) + '" class="' + (String(v) === String(o[0]) ? "on" : "") + '">' + esc(o[1]) + '</button>';
     }).join("");
-    return '<div class="row">' + head(sp) + '<span class="seg">' + segs + '</span></div>';
+    return '<div class="row wide">' + rico(sp) + head(sp) + '<span class="seg">' + segs + '</span></div>';
   }
   function rowAction(sp) {
     /* doc = 新しい書類の画面（vq-docs）／real = 本体の本物のボタン
@@ -332,14 +508,20 @@
       : sp.push ? 'data-push="1"'
       : sp.doc ? ('data-doc="' + esc(sp.doc) + '"')
       : ('data-action="' + esc(sp.real) + '"');
+    /* ★ **先へ 進む もの**は 矢印（写真と 同じ）。押すと その場で 動く ものは
+       これまでどおり ボタン（何が 起きるか 分かる 言葉を 残す）。 */
+    var 進む = !!(sp.push || sp.doc);
     return '<button class="row tap' + (sp.danger ? " danger" : "") + '" ' + at + (sp.closeFirst ? ' data-close="1"' : '') + '>' +
-      head(sp) + '<span class="btn' + (sp.danger ? " dgr" : "") + '">' + esc(sp.value || "実行") + '</span></button>';
+      rico(sp) + head(sp) +
+      (進む ? '<span class="chev ms" aria-hidden="true">chevron_right</span>'
+            : '<span class="btn' + (sp.danger ? " dgr" : "") + '">' + esc(sp.value || "実行") + '</span>') +
+      '</button>';
   }
   /* 自由に決める数（問題数・制限時間）。押せる −／＋ と直接入力の両方を出す。 */
   function rowNumber(sp, v) {
     var n = Number(v);
     var note = (sp.zeroLabel && n === 0) ? sp.zeroLabel : "";
-    return '<div class="row">' + head(sp) +
+    return '<div class="row wide">' + rico(sp) + head(sp) +
       '<span class="num">' +
       '<button class="num__b" data-step="' + esc(sp.id) + '" data-dir="-1" aria-label="減らす">−</button>' +
       '<input class="num__i" type="number" inputmode="numeric" data-num="' + esc(sp.id) + '"' +
@@ -352,14 +534,16 @@
   function rowInfo(sp) {
     var t = "";
     try { t = sp.read ? String(sp.read()) : ""; } catch (e) { t = "—"; }
-    return '<div class="row">' + head(sp) + '<span class="rval">' + esc(t || "—") + '</span></div>';
+    return '<div class="row">' + rico(sp) + head(sp) + '<span class="rval">' + esc(t || "—") + '</span></div>';
   }
   function rowOf(sp) {
     var st = S();
     if (sp.type === "action") return rowAction(sp);
     if (sp.type === "info") return rowInfo(sp);
     var v = st.get(sp.id);
-    if (sp.type === "select") return rowSelect(sp, v);
+    if (sp.type === "select") {
+      return ((sp.opts || []).length <= RADIO_MAX) ? radioCard(sp, v) : rowSelect(sp, v);
+    }
     if (sp.type === "seg") return rowSeg(sp, v);
     if (sp.type === "number") return rowNumber(sp, v);
     return rowToggle(sp, v);
@@ -373,15 +557,25 @@
     var vals = rows.filter(function (r) { return r.type !== "action" && r.type !== "info"; });
     var acts = rows.filter(function (r) { return r.type === "action"; });
     var infos = rows.filter(function (r) { return r.type === "info"; });
+    /* ★ 印が 決まらない ときは **この 束の 印**へ 落とす（2026-09-03）。 */
+    束の印 = String(sec.ms || "tune");
+    /* ★ 選ぶ もの（6 つ まで）は **自分の 束**として 出す（写真の ノイズ抑制）。
+       ほかの 行と 同じ カードに 入れると 見出しが 中に 入って 崩れる。 */
+    var 丸 = vals.filter(function (r) {
+      return r.type === "select" && (r.opts || []).length <= RADIO_MAX;
+    });
+    var 並 = vals.filter(function (r) { return 丸.indexOf(r) < 0; });
     var html = "";
-    if (vals.length) html += '<div class="grp">' + vals.map(rowOf).join("") + '</div>';
-    if (infos.length) html += (vals.length ? '<div class="gttl" style="margin-top:18px;">状態</div>' : '') +
+    if (並.length) html += '<div class="grp">' + 並.map(rowOf).join("") + '</div>';
+    丸.forEach(function (r) { html += rowOf(r); });
+    if (infos.length) html += '<div class="gttl">状態</div>' +
       '<div class="grp">' + infos.map(rowOf).join("") + '</div>';
-    if (acts.length) html += '<div class="gttl" style="margin-top:18px;">操作</div><div class="grp">' + acts.map(rowOf).join("") + '</div>';
+    if (acts.length) html += '<div class="gttl">操作</div><div class="grp">' + acts.map(rowOf).join("") + '</div>';
     /* 自前の設定を持つ束だけ、既定値へ戻せるようにする */
     if (vals.some(function (r) { return r.kind === "own"; })) {
-      html += '<div class="grp" style="margin-top:18px;">' +
+      html += '<div class="grp">' +
         '<button class="row tap" data-reset="' + esc(sec.id) + '">' +
+        rico({ ms: "restart_alt" }) +
         '<span class="row__main"><span class="row__label">この束を既定に戻す</span>' +
         '<span class="row__desc">ほかの束と学習データはそのまま</span></span>' +
         '<span class="btn">戻す</span></button></div>';
@@ -1186,7 +1380,11 @@
           hasLink ? (ACCT.links.map(function (x) { return x.providerLabel || x.provider; }).join("・")
                      + " と結んでいます")
                   : "ログイン画面の「Google で続ける」から結べます",
-          'data-nav="account"', hasLink ? "外す" : "—")
+          /* ★ 直す前は data-nav="account"＝**いま 居る 場所**へ 移る だけ。
+             描き直しの ちらつきだけが 起きて、何も 起きなかった。
+             サーバの /api/auth/social/link は ログイン中の 結び付けに 対応 済み。 */
+          hasLink ? 'data-nav="account"' : 'data-sociallink="google.com"',
+          hasLink ? "外す" : "結ぶ")
       + "</div>";
 
     /* 連携の中身（外す操作はここに置く。上は状態だけ） */
@@ -1205,7 +1403,9 @@
 
     /* ── 3. パスワード ── */
     var pw = '<div class="gttl" style="margin-top:18px;">パスワード</div><div class="grp">'
-      + '<button class="row tap" data-action="authChangePwSubmitBtn" data-close="1">'
+      /* ★ 直す前は data-action="authChangePwSubmitBtn"＝**送信ボタン**を 押していた。
+         開く ボタンでは ないので、設定が 閉じて **何も 出ない**（実測で 再現）。 */
+      + '<button class="row tap" data-pwchange="1">'
       + '<span class="row__main"><span class="row__label">パスワードを変える</span>'
       + '<span class="row__desc">いまのパスワードを知っている場合に使います</span></span>'
       + '<span class="btn">変える</span></button></div>';
@@ -1529,7 +1729,7 @@
       /* 背景クリックで閉じる */
       if (t.classList && t.classList.contains("backdrop")) { closeIt(); return; }
       var el = t;
-      while (el && el !== root && !(el.dataset && (el.dataset.nav || el.dataset.x != null || el.dataset.back != null || el.dataset.action || el.dataset.doc || el.dataset.tool || el.dataset.pin || el.dataset.push || el.dataset.set || el.dataset.step || el.dataset.reset || el.dataset.vq2flag || el.dataset.me || el.dataset.emailsetup || el.dataset.unlink || el.dataset.run || el.dataset.openLegacy != null || el.dataset.dev || el.dataset.drv || (el.classList && el.classList.contains("sw"))))) el = el.parentNode;
+      while (el && el !== root && !(el.dataset && (el.dataset.nav || el.dataset.x != null || el.dataset.back != null || el.dataset.action || el.dataset.doc || el.dataset.tool || el.dataset.pin || el.dataset.push || el.dataset.set || el.dataset.step || el.dataset.reset || el.dataset.vq2flag || el.dataset.me || el.dataset.emailsetup || el.dataset.unlink || el.dataset.pwchange || el.dataset.sociallink || el.dataset.run || el.dataset.openLegacy != null || el.dataset.dev || el.dataset.drv || (el.classList && el.classList.contains("sw"))))) el = el.parentNode;
       if (!el || el === root) return;
       var d = el.dataset;
       /* この端末の 容量まわり（2026-08-19） */
@@ -1568,7 +1768,12 @@
       else if (d.set && d.val != null) {
         if (!S().set(d.set, d.val)) return;
         var seg = el.parentNode;
-        seg.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", b === el); });
+        seg.querySelectorAll("button").forEach(function (b) {
+          var on2 = (b === el);
+          b.classList.toggle("on", on2);
+          /* ★ 丸（ラジオ）は 読み上げにも 選んだことを 伝える（2026-09-03）。 */
+          if (b.getAttribute("role") === "radio") b.setAttribute("aria-checked", on2 ? "true" : "false");
+        });
         afterSet(d.set);
       }
       else if (d.step) {
@@ -1597,10 +1802,37 @@
         var lbl = nm ? (nm.querySelector(".row__label") || {}).textContent || pv : pv;
         if (window.confirm(lbl + " との連携を外します。よろしいですか？")) acctUnlink(pv);
       }
+      else if (d.pwchange) {
+        closeIt();
+        setTimeout(function () {
+          if (!(window.__vqPasswordChange && window.__vqPasswordChange())) {
+            if (window.__vqToast) window.__vqToast("パスワードの画面を開けませんでした。", "warning");
+          }
+        }, 90);
+      }
+      else if (d.sociallink) {
+        var pv2 = d.sociallink;
+        closeIt();
+        setTimeout(function () {
+          if (!(window.__vqSocialLink && window.__vqSocialLink(pv2))) {
+            if (window.__vqToast) window.__vqToast("連携の画面を開けませんでした。", "warning");
+          }
+        }, 90);
+      }
       else if (d.pin) { closeIt(); setTimeout(function () { if (window.__vqPin) window.__vqPin.change(); }, 90); }
       else if (d.push) { closeIt(); setTimeout(function () { if (window.__vqPushSetup) window.__vqPushSetup(); }, 120); }
       else if (d.tool) { openTool(d.tool); }
-      else if (d.doc) { closeIt(); setTimeout(function () { if (window.__vqDocs) window.__vqDocs.open(d.doc); }, 90); }
+      else if (d.doc) {
+        closeIt();
+        setTimeout(function () {
+          /* ★ 「ヘルプ」は **新しい ヘルプ**へ（2026-09-01・訴え「ヘルプ画面を 大改造」）。
+             記事・絵・検索が ある ほうを 出す。無い ときは これまでの 文書へ 落とす。 */
+          if (d.doc === "help") {
+            try { if (window.__vqHelp && window.__vqHelp.open) { window.__vqHelp.open(); return; } } catch (eH) {}
+          }
+          if (window.__vqDocs) window.__vqDocs.open(d.doc);
+        }, 90);
+      }
       else if (d.action) { if (d.close != null) { closeIt(); setTimeout(function () { bClick(d.action); }, 90); } else { bClick(d.action); } }
     });
     /* select 変更 */

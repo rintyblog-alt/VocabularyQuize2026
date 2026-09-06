@@ -37,7 +37,11 @@
 
   var TOKEN_KEY = "app.auth.token.v1";
   var 早い = 3000;      /* 開いている間の 取り直し */
-  var 遅い = 25000;     /* 閉じている間（左の 印だけ） */
+  /* ★ 閉じている ときの 間隔（2026-09-02 に 測って 25 秒 → 60 秒）。
+     左の 未読の 印を 出す ためだけの 取り直し。25 秒だと
+     タブを 開いて いる だけで 1 日 3,456 回に なる。
+     未読の 印が 最大 1 分 遅れて 出るのは 困らない。 */
+  var 遅い = 60000;
 
   function token() {
     try { return String(localStorage.getItem(TOKEN_KEY) || "").trim(); } catch (e) { return ""; }
@@ -287,7 +291,7 @@
        ・iPhone の 下の 帯（ホームバー）ぶんを env() で 空ける
        ・キーボードが 出たら --kb を 入れて そのぶん 持ち上げる
        ・形は **Lumi の 下部と 同じ**（丸い 1 本のバー） */
-    ".comp{padding:8px 10px calc(10px + max(6px,env(safe-area-inset-bottom,0px)) + var(--kb,0px));",
+    ".comp{padding:8px 10px calc(10px + max(6px,var(--vq-sab,0px)) + var(--kb,0px));",
       "background:var(--vq-surface,#fff);border-top:1px solid var(--vq-border-subtle,#E7E4EF)}",
     ".repbar{display:flex;gap:8px;align-items:center;padding:7px 10px;margin:0 auto 8px;max-width:820px;border-radius:11px;",
       "background:var(--vq-surface-sunken,#F2F0F8);font-size:12.5px}",
@@ -862,8 +866,31 @@
     });
   }
 
-  function 巡回() {
-    var 間 = st.開いた ? 早い : 遅い;
+  /* 裏に 回った タブは **止める**。表に 戻った ときに すぐ 1 回 見る。
+     これが 無いと、開いた ままの タブが 一日中 叩き続ける。 */
+  var 裏か = function () { try { return !!document.hidden; } catch (e) { return false; } };
+  try {
+    document.addEventListener("visibilitychange", function () {
+      if (!裏か()) { clearTimeout(st.巡); st.巡 = null; 巡回(true); }
+    });
+  } catch (e) {}
+
+  function 巡回(いますぐ) {
+    if (裏か()) {
+      /* 裏の あいだは 叩かない。戻った ときに visibilitychange が 起こす。 */
+      clearTimeout(st.巡);
+      st.巡 = setTimeout(巡回, 遅い * 5);
+      return;
+    }
+    /* ★ 閉じて いる ときの 取り直しは **代表タブだけ**・**手が 止まったら 休む**
+       （2026-09-02）。開いて 読んで いる ときは 何も 変えない。 */
+    var Q = window.__vqQuiet;
+    if (!st.開いた && Q && (!Q.よいか({}) || Q.待たされているか())) {
+      clearTimeout(st.巡);
+      st.巡 = setTimeout(巡回, 遅い);
+      return;
+    }
+    var 間 = いますぐ === true ? 60 : (st.開いた ? 早い : 遅い);
     clearTimeout(st.巡);
     st.巡 = setTimeout(function () {
       var q = "/api/dm/sync?since=" + (st.最後 || 0) + (st.部屋 && st.開いた ? "&threadId=" + encodeURIComponent(st.部屋) : "");

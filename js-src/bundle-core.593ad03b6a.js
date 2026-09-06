@@ -8902,6 +8902,34 @@
      text … 本文（HTML ではなく 素の文字列）
      表   … { id: {latex, display} } を 足していく入れ物
      戻り … 参照記号に置き換わった 本文 */
+  /* ══ 式の 中に 混じった HTML の 札を TeX へ 直す（2026-09-06・訴え）══
+     訴え「数学記号が 描画されずに タグが 剥き出しに なってます」
+
+     AI が  ax<sup>2</sup>+bx+c  と 書いて くる ことが ある。
+     それが $…$ の 中に あると、組む 側は 「<」「s」「u」「p」「>」を
+     **数式の 文字**として 組むので、紙に  < sup > 2 < /sup >  と 出る。
+
+     ★ **消さずに 意味を 保って** 直す。2 乗は 2 乗の まま に する
+       （消すと ax+bx+c に なって **別の 式**に なる）。
+     ★ 表示用に 逃がした 形（&lt;sup&gt;）でも 来るので 両方 見る。
+     ★ `a < b` の 「<」は 数式として 正しい ので、**sup / sub と
+       決まった 札だけ**を 相手に する。ほかの 「<」は 触らない。
+     ★ ここは 数式の **唯一の 出どころ**。ここで 直せば
+       画面・問題用紙・解答用紙・PDF の 全部に 効く。 */
+  var 札上 = /(?:<|&lt;)\s*sup\s*(?:>|&gt;)([\s\S]*?)(?:<|&lt;)\s*\/\s*sup\s*(?:>|&gt;)/gi;
+  var 札下 = /(?:<|&lt;)\s*sub\s*(?:>|&gt;)([\s\S]*?)(?:<|&lt;)\s*\/\s*sub\s*(?:>|&gt;)/gi;
+  var 札改行 = /(?:<|&lt;)\s*br\s*\/?\s*(?:>|&gt;)/gi;
+  var 札飾り = /(?:<|&lt;)\s*\/?\s*(?:b|strong|i|em|u|span|small|font|mark)\s*(?:>|&gt;)/gi;
+  function 札をTeXへ(s) {
+    var t = 文(s);
+    if (t.indexOf("<") < 0 && t.indexOf("&lt;") < 0) return t;
+    t = t.replace(札上, function (m, x) { return "^{" + x + "}"; });
+    t = t.replace(札下, function (m, x) { return "_{" + x + "}"; });
+    /* 改行と 飾りは 数式の 中では 意味を 持たない。外すだけ。 */
+    t = t.replace(札改行, " ").replace(札飾り, "");
+    return t.trim();
+  }
+
   function 抜く(text, 表, 種) {
     var s = 文(text);
     if (!s) return s;
@@ -8913,7 +8941,7 @@
     }
     var 一つだけ = new RegExp("^" + 開 + "([^" + 閉 + "]+)" + 閉 + "$");
     function 入れる(latex, display) {
-      var t = 文(latex).trim();
+      var t = 札をTeXへ(文(latex).trim());
       if (!t) return "";                      /* 中身が空なら 記号ごと消す */
       /* ★ **二重に包まない**（2026-08-17・実測で見つけた）。
          \[\begin{pmatrix}…\end{pmatrix}\] や $$\begin{cases}…\end{cases}$$ は
@@ -9034,6 +9062,12 @@
 
   VQM.parse = {
     抜く: 抜く, 残り: 残り, 割る: 割る, 戻す: 戻す, 素: 素,
+    /* ★ 式を 組む 道は **2 つ** ある（2026-09-06）。
+         ① 先に 抜いて 表に する（抜く → 上の 入れる）
+         ② その場で $…$ を 見つけて 組む（vq2-app の 数式に組む / katexOf）
+       ② は ここを 通らないので、**同じ 直しを 外からも 呼べる ように**出す。
+       出どころを 2 つに すると、片方だけ 直って もう 片方が 剥き出しに なる。 */
+    札をTeXへ: 札をTeXへ,
     区切りの無い式: 区切りの無い式, 数式らしい命令: 数式らしい命令,
     記号がある: 記号がある, 開: 開, 閉: 閉, 数式の環境: 数式の環境
   };
@@ -14070,6 +14104,9 @@
     ".txt{white-space:pre-wrap;word-break:break-word;font-size:13.5px;line-height:1.9;",
     "color:#E6E3F0;background:#211F29;border:1px solid rgba(255,255,255,.1);border-radius:12px;",
     "padding:12px 13px;}",
+    ".go3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}",
+    ".go3 button{height:44px;font-size:13px;padding:0 6px;}",
+    "@media (max-width:360px){.go3{grid-template-columns:repeat(2,1fr);}}",
     ".go{display:grid;grid-template-columns:1fr;gap:9px;padding:12px 14px ",
     "calc(env(safe-area-inset-bottom,0px) + 16px);background:#1C1A26;flex:0 0 auto;}",
     ".go button{height:48px;border-radius:12px;border:0;background:#5F579E;color:#fff;",
@@ -14079,6 +14116,19 @@
     ".go button.alt:hover{background:rgba(255,255,255,.18);}",
     ".go button:disabled{opacity:.4;cursor:default;}",
     ".note{font-size:12.5px;line-height:1.8;color:#BBB7C5;padding:10px 14px 0;}",
+    /* 指示（プロンプト）欄 — 2026-08-31・訴え「プロンプトと 投げられる ように」 */
+    ".ask{margin-top:12px;}",
+    ".ask label{display:block;font-size:12.5px;font-weight:700;color:#D5D0EC;margin:0 0 6px;}",
+    ".ask textarea{width:100%;min-height:76px;resize:vertical;border-radius:12px;",
+    "border:1px solid rgba(255,255,255,.16);background:#211F29;color:#F4F3F9;",
+    "font-size:14px;line-height:1.8;padding:10px 12px;font-family:inherit;}",
+    ".ask textarea:focus{outline:2px solid #8A81C2;outline-offset:1px;}",
+    ".ask .n{display:flex;align-items:center;gap:10px;margin-top:10px;}",
+    ".ask .n label{margin:0;}",
+    ".ask .n input{width:88px;height:40px;border-radius:10px;text-align:center;",
+    "border:1px solid rgba(255,255,255,.16);background:#211F29;color:#F4F3F9;",
+    "font-size:15px;font-family:inherit;}",
+    ".ask .hint{font-size:12px;line-height:1.7;color:#9994A8;margin-top:8px;}",
     ".err{margin:10px 14px 0;padding:10px 12px;border-radius:10px;background:rgba(229,72,77,.18);",
     "border:1px solid rgba(229,72,77,.4);color:#FFC9CB;font-size:13px;line-height:1.8;}",
     /* 進み具合 */
@@ -14362,16 +14412,54 @@
     s.querySelector(".head h1").textContent = "読み取った中身";
     var pr = s.querySelector(".prog"); if (pr) pr.remove();
     var pm = s.querySelector(".pmsg"); if (pm) pm.remove();
+    var 枚 = 状.ページ.length;
+    var 字 = String(状.文 || "").length;
     s.querySelector(".body").innerHTML =
       '<p class="note" style="padding-left:0;padding-right:0">'
+      + 枚 + ' 枚 から ' + 字 + ' 字を 読み取りました。'
       + 'ここに 出ているものが、AI に 渡る 中身です。ちがっていたら 戻って 撮り直してください。</p>'
-      + '<div class="txt">' + 逃す(状.文 || "（何も 読めませんでした）") + "</div>";
+      + '<div class="txt">' + 逃す(状.文 || "（何も 読めませんでした）") + "</div>"
+      /* ★ **指示（プロンプト）を 書ける ように する**（2026-08-31・訴え
+         「何枚も スキャンしてから、添付させて、プロンプト（指示文章）と
+           投げられる ように して ほしい。…プロンプトに 沿って」）。
+         これまでは「この資料から N 問 作ってください」で 決め打ちだった。 */
+      + '<div class="ask">'
+      +   '<label for="vqscan-p">どんな 問題に しますか？（書かなくても 作れます）</label>'
+      +   '<textarea id="vqscan-p" placeholder="例: 3 ページ目の 表から 計算問題を 中心に。'
+      +     '記述も 2 問 入れて。難しめで。">' + 逃す(状.指示 || "") + '</textarea>'
+      +   '<div class="n"><label for="vqscan-n">問題数</label>'
+      +     '<input id="vqscan-n" type="number" min="3" max="30" step="1" value="'
+      +     (Number(状.件数) || 10) + '"></div>'
+      +   '<p class="hint">書いたことに 沿って 作ります。'
+      +   '（読み取った 文字を そのまま 渡すので、絵を 送り直しません。）</p>'
+      + '</div>';
     var go = doc.createElement("div");
     go.className = "go";
-    go.innerHTML = '<button type="button" data-go="board">ボードにまとめる</button>'
-      + '<button type="button" data-go="quiz" class="alt">問題を作る</button>'
+    /* ★ **いちばん やりたい ことだけ 大きく**（2026-09-01）。
+       行き先が 4 つに 増えて、小さい 画面では ボタンの 列が 読む ところを
+       食べて いた。**主役は 1 つ・残りは 横に 3 つ**。 */
+    var 主 = 状.用途 === "添付"
+      ? '<button type="button" data-go="attach">この 内容を 添付する</button>'
+      : '<button type="button" data-go="quiz">問題を作る</button>';
+    var 副 = (状.用途 === "添付"
+        ? '<button type="button" data-go="quiz" class="alt">問題を作る</button>' : "")
+      + '<button type="button" data-go="board" class="alt">ボードにまとめる</button>'
       + '<button type="button" data-go="game" class="alt">ゲームにする</button>';
+    go.innerHTML = 主 + '<div class="go3">' + 副 + "</div>";
     s.appendChild(go);
+  }
+
+  /* いま 画面に 書かれている 指示と 問題数を 取る（無ければ 控えの まま）。 */
+  function 指示を読む() {
+    if (!状) return { 指示: "", 件数: 10 };
+    var t = null, n = null;
+    try { t = 状.sr.getElementById ? 状.sr.getElementById("vqscan-p") : 状.sr.querySelector("#vqscan-p"); } catch (e) {}
+    try { n = 状.sr.getElementById ? 状.sr.getElementById("vqscan-n") : 状.sr.querySelector("#vqscan-n"); } catch (e) {}
+    var 指示 = t ? String(t.value || "").trim() : String(状.指示 || "");
+    var 件数 = n ? Number(n.value) : Number(状.件数);
+    状.指示 = 指示;
+    状.件数 = Math.max(3, Math.min(30, 件数 || 10));
+    return { 指示: 指示, 件数: 状.件数 };
   }
 
   /* ── 渡す先 ─────────────────────────────────────────────── */
@@ -14459,20 +14547,48 @@
     }, function () { しくじり(s, "つながりませんでした。"); return false; });
   }
 
-  function 問題へ(件数) {
-    var n = Math.max(3, Math.min(30, Number(件数) || 10));
-    var s = 待たせる("問題を作っています…", n + " 問 作ります。1 分ほど かかります。");
-    var files = 状.ページ.map(function (p) {
+  function 問題へ(o2) {
+    /* 前は 件数（数）を そのまま 受けていた。指示も 受ける ので 器を 変える。
+       数を そのまま 渡された ときも これまでどおり 動く。 */
+    if (typeof o2 === "number" || typeof o2 === "string") o2 = { 件数: o2 };
+    o2 = o2 || {};
+    var n = Math.max(3, Math.min(30, Number(o2.件数) || Number(状 && 状.件数) || 10));
+    var 指示 = String(o2.指示 || (状 && 状.指示) || "").trim().slice(0, 1200);
+
+    /* ══ ★ **読み取った 文字を 渡す**（2026-08-31・訴え「高速で 読んで、
+         すぐに 問題に できる ように」）══════════════════════════════
+       これまでは 撮った 絵を そのまま 送り直していた。
+       スキャンは 撮った そばから 1 枚 1.6 秒で 文字に して あるのに、
+       作る ときに **同じ 絵を もう 一度** 読ませていた。しかも 生成は
+       2〜5 回に 分けて 頼むので、同じ 絵を その 回数だけ 送る。
+       文字なら 数十 KB。絵は 1 枚 50KB × 枚数 × 頼む 回数。
+       ★ 読めなかった ページ（PDF・失敗）だけは これまでどおり 絵で 送る。
+         「読めた ふり」を しない ため。 */
+    var 文 = String((状 && 状.文) || "").trim();
+    var 残り = (状 ? 状.ページ : []).filter(function (p) {
+      return p.種 === "PDF" || p.状態 !== "済" || !String(p.文 || "").trim();
+    });
+    var files = (文 ? 残り : (状 ? 状.ページ : [])).map(function (p) {
       var m = /^data:([^;,]+);base64,(.+)$/i.exec(String(p.dataUrl || ""));
       return m ? { mimeType: m[1], data: m[2] } : null;
     }).filter(Boolean);
+
+    var 頼み = (指示 || "この 資料から 問題を 作って ください。")
+      + "\n\n★ **" + n + " 問** 作って ください。"
+      + "\n★ 下の【資料の 本文】に 書いて ある ことだけを 根拠に します。"
+      + "書いて いない ことは 足さないで ください。";
+    if (文) 頼み += "\n\n【資料の 本文】\n" + 文.slice(0, 60000);
+    if (files.length) {
+      頼み += "\n\n（文字に できなかった " + files.length + " ページは そのまま 添えて います。）";
+    }
+
+    var s = 待たせる("問題を作っています…",
+      n + " 問 作ります。" + (文 ? "読み取った 文字（" + 文.length + " 字）で 作るので 速いです。"
+                                : "資料を 読みながら 作るので 1 分ほど かかります。"));
     return fetch(api() + "/api/aigen/questions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() },
-      body: JSON.stringify({
-        prompt: "この資料から " + n + " 問 作ってください。資料に書いてあることだけで作ります。",
-        count: n, files: files
-      })
+      body: JSON.stringify({ prompt: 頼み, count: n, files: files })
     }).then(function (r) { return r.json(); }).then(function (j) {
       if (!j || j.ok === false) { しくじり(s, 訳を読む(j)); return null; }
       s.querySelector(".head h1").textContent = "問題ができました";
@@ -14533,7 +14649,12 @@
       + "</div>";
     sr.appendChild(box);
     doc.body.appendChild(host);
-    状 = { host: host, sr: sr, ページ: [], stream: null, 文: "", 見出し: "", 面: null };
+    状 = { host: host, sr: sr, ページ: [], stream: null, 文: "", 見出し: "", 面: null,
+           /* ★ 指示（プロンプト）と 問題数を **画面に 持たせる**（2026-08-31）。
+              開いた 人が 先に 渡す ことも、画面で 書く ことも できる。 */
+           指示: String(o.指示 || ""), 件数: Math.max(3, Math.min(30, Number(o.件数) || 10)),
+           /* 用途 "添付" … 問題に せず、読み取った 中身を 呼んだ 側へ 返す。 */
+           用途: String(o.用途 || ""), 済んだら: (typeof o.済んだら === "function" ? o.済んだら : null) };
 
     sr.addEventListener("click", function (e) {
       var t = e.target;
@@ -14549,9 +14670,11 @@
       if (g) {
         e.preventDefault();
         var k = g.getAttribute("data-go");
+        var 注 = 指示を読む();
         if (k === "board") ボードへ();
-        else if (k === "quiz") 問題へ(o.件数);
+        else if (k === "quiz") 問題へ({ 件数: 注.件数 || o.件数, 指示: 注.指示 });
         else if (k === "game") ゲームへ();
+        else if (k === "attach") 添付する();
         return;
       }
       if (t.closest("[data-save]")) { e.preventDefault(); 残す(); return; }
@@ -14594,6 +14717,27 @@
     return Promise.resolve(false);
   }
 
+  /* ══ 読み取った 中身を **呼んだ 側へ 返す**（2026-08-31・訴え「添付させて」）══
+     作る 画面から 開いた ときは、ここで 資料として 渡して 閉じる。
+     ★ 返すのは **文字**（と 読めなかった ページの 絵）。
+       絵だけ 返すと、受け取った 側で もう 一度 読む ことに なる。 */
+  function 添付する() {
+    if (!状) return false;
+    var 注 = 指示を読む();
+    var 出 = {
+      文: String(状.文 || ""), 見出し: 状.見出し || "スキャンした資料",
+      枚数: 状.ページ.length, 指示: 注.指示, 件数: 注.件数,
+      ページ: 状.ページ.map(function (p) {
+        return { 種: p.種, 名: p.名, mime: p.mime, dataUrl: p.dataUrl,
+                 文: String(p.文 || ""), 状態: p.状態 || "" };
+      })
+    };
+    var 受け = 状.済んだら;
+    閉じる();
+    if (受け) { try { 受け(出); } catch (e) {} }
+    return true;
+  }
+
   function 閉じる() {
     if (!状) return false;
     カメラを止める();
@@ -14611,6 +14755,7 @@
     /* 確かめるとき用（カメラの 無い所でも 中身を 入れられる） */
     _足す: function (p) { if (状) { 状.ページ.push(p); 並べ直す(); } },
     読み取る: 読み取る, ボードへ: ボードへ, 問題へ: 問題へ, ゲームへ: ゲームへ,
+    添付する: 添付する, 指示を読む: 指示を読む,
     CSS: CSS
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);
