@@ -19,7 +19,7 @@ const BASE = process.env.BASE || "http://127.0.0.1";
 if (!/127\.0\.0\.1|localhost|-dev\./.test(BASE)) { console.error("本番では実行しません。"); process.exit(2); }
 
 const ROOT = path.join(__dirname, "client");
-const 旧 = process.env.VQ_OLD || "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/idx.before-split.html";
+const 旧 = process.env.VQ_OLD || require("path").join(__dirname, "_fixtures", "idx.before-split.html");
 const PORT = Number(process.env.VQ_PORT || 8971);
 let pass = 0, fail = 0; const 落ち = [];
 const ok = (n, c, x) => {

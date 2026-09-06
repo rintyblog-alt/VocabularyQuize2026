@@ -18,7 +18,7 @@ const crypto = require("node:crypto");
 
 const OLLAMA = process.env.VQ_OLLAMA || "http://127.0.0.1:11434";
 const PAGES = process.env.VQ_PAGES
-  || "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/pages";
+  || require("path").join(__dirname, "_fixtures", "pages");
 const hr = () => Number(process.hrtime.bigint()) / 1e6;
 const sha = (s) => crypto.createHash("sha256").update(s).digest("hex").slice(0, 16);
 

@@ -1,7 +1,7 @@
 /* Quick Chat 回帰テスト: 初期画面 / 履歴 / タイトル / ピン / プロジェクト /
    添付 / 思考レベル / Activity / モバイル / 両 Provider の存在 */
 const { chromium } = require("playwright");
-const OUT = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/orch/";
+const OUT = require("path").join(__dirname, "_fixtures", "orch/");
 const HIDE = `#vqbFlow,#mob-tut-overlay,#mobBarTutorial,#firstLaunchOverlay,#vqOnboardingOverlay{display:none !important;}`;
 
 async function login(pg) {

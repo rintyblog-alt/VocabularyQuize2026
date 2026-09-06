@@ -93,7 +93,7 @@ async function upload(file, jobId, o) {
      文字ページが Vision へ送られず、画像ページだけが解析されることを見る。 */
   if (process.env.VQ_MIX === "1") {
     const PAGES = process.env.VQ_PAGES
-      || "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/pages";
+      || require("path").join(__dirname, "_fixtures", "pages");
     const imgs = fs.readdirSync(PAGES).filter((f) => /\.png$/.test(f)).sort().slice(0, 2)
       .map((f) => path.join(PAGES, f));
     let i = 0;

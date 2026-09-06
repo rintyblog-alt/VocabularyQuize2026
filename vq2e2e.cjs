@@ -6,7 +6,7 @@
    ══════════════════════════════════════════════════════════════════════ */
 const { chromium } = require("playwright");
 const fs = require("fs");
-const OUT = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/v2/";
+const OUT = require("path").join(__dirname, "_fixtures", "v2/");
 const HIDE = `#vqbFlow,#mob-tut-overlay,#mobBarTutorial,#firstLaunchOverlay,#vqOnboardingOverlay{display:none !important;}`;
 try { fs.mkdirSync(OUT, { recursive: true }); } catch (e) {}
 

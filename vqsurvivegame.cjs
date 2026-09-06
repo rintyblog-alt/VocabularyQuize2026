@@ -16,7 +16,7 @@ const fs = require("fs");
 const PORT = Number(process.env.VQ_PORT || 8976);
 const BASE = "http://127.0.0.1:" + PORT;
 if (!/127\.0\.0\.1|localhost|-dev\./.test(BASE)) { console.error("本番では実行しません。"); process.exit(2); }
-const OUT = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad";
+const OUT = require("path").join(__dirname, "_fixtures", "scratchpad");
 const 絵 = process.argv.includes("--shot");
 
 let pass = 0, fail = 0; const bad = [];

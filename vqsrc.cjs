@@ -75,8 +75,20 @@ function 丸ごと() {
 function 圧縮前(id) {
   const d = path.join(__dirname, "js-src");
   if (!fs.existsSync(d)) return null;
-  const re = new RegExp("^" + id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\.[0-9a-f]{10}\\.js$");
-  for (const f of fs.readdirSync(d)) if (re.test(f)) return fs.readFileSync(path.join(d, f), "utf8");
+  const 逃 = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  /* ★ 2026-09-06 の 実測で 見つけた 穴。
+       js-src の 新しい ファイルは **指紋を 付けずに** 置く 決まりに なった
+       （vq-make.js / vq-quiet.js / vq-write.js …17本）。
+       指紋つきの 名前しか 見て いなかった ので、その 17本は
+       ここで null に なり、**圧縮ずみの client/js を 読んで いた**。
+       9月の 新しい 仕事は まるごと 測れて いなかった。
+       指紋つき → 指紋なし の 順に 見る（指紋つきが 正）。 */
+  const 候補 = [
+    new RegExp("^" + 逃 + "\\.[0-9a-f]{10}\\.js$"),
+    new RegExp("^" + 逃 + "\\.js$"),
+  ];
+  const 一覧 = fs.readdirSync(d);
+  for (const re of 候補) for (const f of 一覧) if (re.test(f)) return fs.readFileSync(path.join(d, f), "utf8");
   return null;
 }
 

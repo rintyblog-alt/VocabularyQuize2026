@@ -14,13 +14,13 @@ const BASE = process.env.BASE || "http://127.0.0.1";
 if (!/127\.0\.0\.1|localhost|-dev\./.test(BASE)) { console.error("本番では実行しません。"); process.exit(2); }
 
 const 旧を見る = process.argv.includes("--old");
-const 控え = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/idx.before-split.html";
+const 控え = require("path").join(__dirname, "_fixtures", "idx.before-split.html");
 const ROOT = path.join(__dirname, "client");
 const PORT = Number(process.env.VQ_PORT || 8973);
 const CPU = Number(process.env.VQ_CPU || 4);
 const 絞る = process.env.VQ_NET !== "0";
 const 撮る = process.env.VQ_SHOT === "1";
-const 出力 = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/boot";
+const 出力 = require("path").join(__dirname, "_fixtures", "boot");
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".json": "application/json", ".png": "image/png",

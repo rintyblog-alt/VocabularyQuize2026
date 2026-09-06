@@ -16,7 +16,7 @@ const path = require("node:path");
 
 const OLLAMA = process.env.VQ_OLLAMA || "http://127.0.0.1:11434";
 const PAGES = process.env.VQ_PAGES
-  || "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/pages";
+  || require("path").join(__dirname, "_fixtures", "pages");
 const WANT = (process.argv.slice(2).length ? process.argv.slice(2) : ["A", "B", "C"])
   .map((s) => s.toUpperCase());
 

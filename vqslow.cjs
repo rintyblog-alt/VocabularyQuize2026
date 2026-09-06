@@ -14,7 +14,7 @@ if (!/127\.0\.0\.1|localhost|-dev\./.test(BASE)) { console.error("本番では�
 const 引 = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? Number(process.argv[i + 1]) : d; };
 const MBPS = 引("--mbps", 1.2), CPU = 引("--cpu", 4);
 const ROOT = path.join(__dirname, "client");
-const 控え = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/idx.before-split.html";
+const 控え = require("path").join(__dirname, "_fixtures", "idx.before-split.html");
 const PORT = Number(process.env.VQ_PORT || 8987);
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml",

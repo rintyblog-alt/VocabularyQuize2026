@@ -27,7 +27,7 @@ if (setGlobalDispatcher && Agent)
 
 const BRIDGE = process.env.VQ_BRIDGE || "http://127.0.0.1:17891";
 const PAGES = process.env.VQ_PAGES
-  || "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/pages";
+  || require("path").join(__dirname, "_fixtures", "pages");
 const COUNT = Number(process.env.VQ_Q) || 10;
 const PDF = process.env.VQ_PDF || "/Users/user/Downloads/biomimetics.pdf";
 const PART = 8 * 1024 * 1024;

@@ -2,7 +2,7 @@
 const { chromium } = require("playwright");
 const BASE = "http://127.0.0.1:8791";
 const TOKEN = process.env.VQ_TOKEN || "";
-const SCR = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad";
+const SCR = require("path").join(__dirname, "_fixtures", "scratchpad");
 let pass=0, fail=0;
 const ok=(n,c,x)=>{c?(pass++,console.log("  ok   "+n)):(fail++,console.log("  NG   "+n+(x?"  → "+x:"")));};
 const F=(pg,s)=>pg.evaluate((x)=>!!document.getElementById("vqFeed").shadowRoot.querySelector(x),s);

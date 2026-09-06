@@ -19,7 +19,7 @@ const 引 = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? Number
 const MBPS = 引("--mbps", 1.2), CPU = 引("--cpu", 4);
 const ROOT = path.join(__dirname, "client");
 const PORT = Number(process.env.VQ_PORT || 8989);
-const 出力 = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/bootlook";
+const 出力 = require("path").join(__dirname, "_fixtures", "bootlook");
 let pass = 0, fail = 0; const 落ち = [];
 const ok = (n, c, x) => { if (c) { pass++; console.log("  ✅ " + n); } else { fail++; 落ち.push(n); console.log("  ❌ " + n + (x !== undefined ? "  → " + JSON.stringify(x).slice(0, 260) : "")); } };
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",

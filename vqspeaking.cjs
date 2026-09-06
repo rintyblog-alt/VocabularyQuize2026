@@ -2,7 +2,7 @@
 const { chromium } = require("playwright");
 const fs = require("fs");
 const { execSync } = require("child_process");
-const SP = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad";
+const SP = require("path").join(__dirname, "_fixtures", "scratchpad");
 const HIDE = "#vqNewAuth{display:none !important}";
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? (pass++, console.log("  ok   " + n)) : (fail++, console.log("  NG   " + n + (x ? "  → " + x : ""))); };

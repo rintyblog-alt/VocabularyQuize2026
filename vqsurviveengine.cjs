@@ -64,7 +64,7 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     }
 
     /* 撮った 絵そのものも 見る（readPixels と 別の 経路） */
-    const shotPath = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/survive-engine.png";
+    const shotPath = require("path").join(__dirname, "_fixtures", "survive-engine.png");
     await pg.screenshot({ path: shotPath });
     const buf = require("fs").readFileSync(shotPath);
     ok("撮った 絵が 1 万バイト 以上（＝一色の 画では ない）", buf.length > 10000, buf.length);

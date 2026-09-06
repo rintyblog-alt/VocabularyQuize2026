@@ -1,0 +1,15 @@
+{
+  "name": "vocabuquiz",
+  "private": true,
+  "description": "VocabuQuiz — 検査を まとめて 走らせる 口。詳しくは node vqall.cjs --list",
+  "scripts": {
+    "check": "node vqall.cjs --static --jobs 8",
+    "check:server": "node vqall.cjs --server --jobs 4 --timeout 120",
+    "check:ui": "node vqall.cjs --ui --jobs 3 --timeout 120",
+    "check:all": "node vqall.cjs --all --jobs 4 --timeout 120",
+    "check:ai": "node vqall.cjs --ai --timeout 600",
+    "check:new": "node vqall.cjs --all --since 7 --jobs 4 --timeout 120",
+    "check:list": "node vqall.cjs --all --ai --list",
+    "dev": "cd server && ./dev-local.sh echo"
+  }
+}

@@ -17,7 +17,7 @@ const BASE = process.env.VQ_BASE || "http://127.0.0.1:8791";
 const BRIDGE = process.env.VQ_BRIDGE || "http://127.0.0.1:17891";
 const OUT = process.argv[2] || "shots/restore";
 const TMP = process.env.VQ_TMP
-  || "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/e2e";
+  || require("path").join(__dirname, "_fixtures", "e2e");
 fs.mkdirSync(OUT, { recursive: true });
 fs.mkdirSync(TMP, { recursive: true });
 

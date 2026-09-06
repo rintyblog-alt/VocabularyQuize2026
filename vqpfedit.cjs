@@ -7,7 +7,7 @@ fs.mkdirSync("shots/pfedit", { recursive: true });
 const BASE = "http://127.0.0.1:8791";
 const TOKEN = process.env.VQ_TOKEN || "";
 const IMG = process.env.VQ_IMG
-  || "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/big.png";
+  || require("path").join(__dirname, "_fixtures", "big.png");
 
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? (pass++, console.log("  ok   " + n))

@@ -19,7 +19,7 @@ const { chromium } = require("playwright");
 const fs = require("node:fs");
 const BASE = process.env.VQ_BASE || "https://vocabuquiz-api-dev.rintyblog.workers.dev";
 if (!/127\.0\.0\.1|localhost|-dev\./.test(BASE)) { console.error("本番では実行しません。"); process.exit(2); }
-const SC = process.env.VQ_SC || "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad";
+const SC = process.env.VQ_SC || require("path").join(__dirname, "_fixtures", "scratchpad");
 
 let pass = 0, fail = 0; const bad = [];
 const ok = (n, c, x) => {

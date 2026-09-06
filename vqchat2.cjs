@@ -4,7 +4,7 @@
    実行: node vqchat2.cjs */
 const { chromium } = require("playwright");
 const fs = require("fs"), path = require("path");
-const TMP = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/vqchat2";
+const TMP = require("path").join(__dirname, "_fixtures", "vqchat2");
 const HIDE = `#vqbFlow,#mob-tut-overlay,#mobBarTutorial,#firstLaunchOverlay,#vqOnboardingOverlay{display:none !important;}`;
 let pass = 0, fail = 0;
 const errs = [];

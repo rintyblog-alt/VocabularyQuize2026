@@ -22,7 +22,7 @@ const CPU = 引("--cpu", 4);
 const 撮る = process.argv.includes("--撮る");
 const ROOT = path.join(__dirname, "client");
 const PORT = Number(process.env.VQ_PORT || 8979);
-const 出力 = "/private/tmp/claude-501/-Users-user-Downloads-word-practice-v26-menu-terms-report-emailjs/ea86a79f-1ff2-4347-9303-995fcdd2a12d/scratchpad/pinboot";
+const 出力 = require("path").join(__dirname, "_fixtures", "pinboot");
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml",
   ".webmanifest": "application/manifest+json", ".ico": "image/x-icon", ".woff2": "font/woff2",
