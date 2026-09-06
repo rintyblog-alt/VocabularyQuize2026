@@ -15,6 +15,8 @@
 
   var P = 'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"';
   var ICON = {
+    /* プレイグラウンド（2026-09-07）。フラスコ＝実験して 確かめる ところ。 */
+    flask: '<path d="M9.5 3h5M10.5 3v6.2L5.4 18.1A2 2 0 0 0 7.1 21h9.8a2 2 0 0 0 1.7-2.9L13.5 9.2V3" ' + P + '/><path d="M7.6 14.5h8.8" ' + P + '/>',
     /* 左のパネルを 畳む／開く（パソコンだけ） */
     panelfold: '<rect x="3" y="4" width="18" height="16" rx="2.2"/><path d="M9 4v16"/><path d="M15.5 9.5 13 12l2.5 2.5"/>',
     panelopen: '<rect x="3" y="4" width="18" height="16" rx="2.2"/><path d="M9 4v16"/><path d="M13 9.5 15.5 12 13 14.5"/>',
@@ -95,6 +97,9 @@
     { key: "news", label: "NEWS", icon: "news", path: "tab:news", section: "main", order: 40 },
     { key: "insights", label: "Insights", icon: "trend", path: "tab:insight", section: "main", order: 50 },
     { key: "survive", label: "VocabuSurvive", icon: "game", path: "tab:survive", section: "main", order: 60 },
+    /* プレイグラウンド（2026-09-07・訴え「理科、社会、数学など…3D/2D で
+       シミュレーションが できる もの」）。窓として 重ねて 開く。 */
+    { key: "playground", label: "プレイグラウンド", icon: "flask", path: "fn:playground", section: "main", order: 65 },
     /* 文章添削（校正モード）2026-08-31。画面を 切り替えず **重ねて 開く**。 */
     { key: "write", label: "文章添削", icon: "pencil", path: "fn:write", section: "tools", order: 5 },
     { key: "timer", label: "タイマー", icon: "timer", path: "fn:timer", section: "tools", order: 10 },
@@ -494,6 +499,11 @@
       else if (el.dataset.fn === "cmdk") { if (window.__vqCmdk) window.__vqCmdk.open(); }
       else if (el.dataset.fn === "dm") { closeDrawer(); if (window.__vqOpenDM) window.__vqOpenDM(); }
       /* 文章添削（校正モード）。タブでは なく 窓として 開く。 */
+      /* プレイグラウンド（2026-09-07）。タブでは なく 窓として 重ねて 開く。 */
+      else if (el.dataset.fn === "playground") {
+        closeDrawer();
+        try { if (window.__vqPlayground) window.__vqPlayground.open(); } catch (eP) {}
+      }
       else if (el.dataset.fn === "write") {
         closeDrawer();
         try { if (window.__vqWrite) window.__vqWrite.open(); } catch (eW) {}

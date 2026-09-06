@@ -844,6 +844,13 @@
       ".psec{margin-bottom:22px;}" +
     "}";
 
+  /* ★ プレイグラウンド（2026-09-07）も **この 見た目を そのまま** 使う。
+     訴え「プレイグラウンドの 一覧は プリセット一覧と 同じ ものに して ほしい。
+     そうすれば 見やすいから」。
+     ★ 写して 持つと 必ず ずれる（片方だけ 直る）。**出どころを 1 つに する。**
+     vq-playground は これを 自分の 影の DOM へ 入れて 一覧を 描く。 */
+  window.__vqScreensCss = CSS;
+
   /* ══ HOME builders（UI Studio HomeScreen と同一レイアウト・中身は実データ） ══ */
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
   function statHTML(o) {

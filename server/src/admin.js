@@ -509,6 +509,10 @@ const SEED_FLAGS = [
      下の 一度きりの 直しで 左パネルから 外し、代わりに VocabuSurvive を 出す。 */
   ["survival", "VocabuSurvival", "shield", "tab:survival3", "hidden", 60, 0, "off", ""],
   ["survive", "VocabuSurvive", "game", "tab:survive", "main", 60, 1, "on", "NEW"],
+  /* プレイグラウンド（2026-09-07・訴え「理科、社会、数学など…3D/2D で
+     シミュレーション」）。★ 種は **新しい DB にしか 効かない**。
+     すでに ある DB へは 下の 一度きりの 直しで 入れる。 */
+  ["playground", "プレイグラウンド", "flask", "fn:playground", "main", 65, 1, "on", "NEW"],
   /* 文章添削（校正モード）2026-08-31。画面を 切り替えず 重ねて 開く。 */
   ["write", "文章添削", "pencil", "fn:write", "tools", 5, 1, "beta", "NEW"],
   /* カレンダー・ヘルプ（2026-09-01・訴え）。
@@ -658,6 +662,14 @@ export async function ensureAdminSchema(env) {
        (key, display_name, description, state, visible_in_sidebar, sidebar_order,
         badge, audience, allowlist, percentage, notice, icon, path, section, updated_by, updated_at)
        VALUES ('help','ヘルプ','','on',1,30,'','all','[]',100,'','help','fn:help','foot','seed',?1)`
+    ).bind(nowIso()).run().catch(() => {});
+    /* ★ プレイグラウンド（2026-09-07）。同じく 1 度だけ 入れる。
+       入れ忘れると 左の 帯に 出ない（カレンダーで 実際に 踏んだ）。 */
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO feature_flags
+       (key, display_name, description, state, visible_in_sidebar, sidebar_order,
+        badge, audience, allowlist, percentage, notice, icon, path, section, updated_by, updated_at)
+       VALUES ('playground','プレイグラウンド','','on',1,65,'NEW','all','[]',100,'','flask','fn:playground','main','seed',?1)`
     ).bind(nowIso()).run().catch(() => {});
 
     for (const r of SEED_REASONS) {
