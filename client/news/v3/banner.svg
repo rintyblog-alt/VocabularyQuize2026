@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630"
+     role="img" aria-label="VocabuQuiz V3">
+  <title>VocabuQuiz V3</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A0612"/>
+      <stop offset=".52" stop-color="#140F26"/>
+      <stop offset="1" stop-color="#090614"/>
+    </linearGradient>
+    <radialGradient id="glowB" cx="50%" cy="50%">
+      <stop offset="0" stop-color="#4F8DFF" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#4F8DFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowP" cx="50%" cy="50%">
+      <stop offset="0" stop-color="#FF2D92" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#FF2D92" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ribA" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4F8DFF" stop-opacity="0"/>
+      <stop offset=".42" stop-color="#64E0FF" stop-opacity=".95"/>
+      <stop offset="1" stop-color="#4F8DFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ribB" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FF2D92" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#B44DFF" stop-opacity=".85"/>
+      <stop offset="1" stop-color="#FF2D92" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="v3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9AA8FF"/>
+      <stop offset=".55" stop-color="#C9A6FF"/>
+      <stop offset="1" stop-color="#FF9AD0"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8A81C2"/>
+      <stop offset="1" stop-color="#5F579E"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#sky)"/>
+  <ellipse cx="300" cy="200" rx="470" ry="330" fill="url(#glowB)"/>
+  <ellipse cx="950" cy="470" rx="420" ry="300" fill="url(#glowP)"/>
+
+  <!-- 星（決め打ち。乱数を 使わないので 毎回 同じ 絵に なる） -->
+  <g fill="#FFFFFF">
+    <g opacity=".85">
+      <circle cx="118" cy="86" r="1.6"/><circle cx="245" cy="512" r="1.4"/>
+      <circle cx="392" cy="148" r="1.2"/><circle cx="527" cy="566" r="1.7"/>
+      <circle cx="661" cy="72" r="1.3"/><circle cx="806" cy="238" r="1.5"/>
+      <circle cx="941" cy="118" r="1.2"/><circle cx="1086" cy="392" r="1.6"/>
+      <circle cx="1142" cy="188" r="1.3"/><circle cx="70" cy="330" r="1.4"/>
+    </g>
+    <g opacity=".45">
+      <circle cx="176" cy="242" r="1"/><circle cx="318" cy="404" r="1"/>
+      <circle cx="470" cy="94" r="1"/><circle cx="612" cy="330" r="1"/>
+      <circle cx="742" cy="530" r="1"/><circle cx="884" cy="356" r="1"/>
+      <circle cx="1016" cy="228" r="1"/><circle cx="1158" cy="524" r="1"/>
+      <circle cx="212" cy="150" r="1"/><circle cx="556" cy="230" r="1"/>
+      <circle cx="700" cy="180" r="1"/><circle cx="980" cy="560" r="1"/>
+    </g>
+  </g>
+
+  <!-- 流線リボン（青とピンク） -->
+  <g fill="none" stroke-linecap="round">
+    <path d="M-40 470 C 240 400, 430 520, 700 430 S 1080 330, 1250 386"
+          stroke="url(#ribA)" stroke-width="2.4" opacity=".9"/>
+    <path d="M-40 508 C 250 452, 470 552, 730 468 S 1090 380, 1250 424"
+          stroke="url(#ribA)" stroke-width="1.4" opacity=".55"/>
+    <path d="M-40 176 C 220 116, 470 214, 720 140 S 1070 62, 1250 108"
+          stroke="url(#ribB)" stroke-width="2" opacity=".7"/>
+    <path d="M-40 214 C 230 164, 500 252, 760 182 S 1090 118, 1250 152"
+          stroke="url(#ribB)" stroke-width="1.2" opacity=".4"/>
+  </g>
+
+  <!-- マーク -->
+  <g transform="translate(96,232)">
+    <rect x="0" y="0" width="96" height="96" rx="26" fill="url(#mark)"/>
+    <path d="M27 30 L48 74 L69 30" fill="none" stroke="#FFFFFF" stroke-width="11"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- 文字 -->
+  <g font-family="Inter, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif">
+    <text x="222" y="252" fill="#B9B2DC" font-size="22" font-weight="600" letter-spacing="7.5">RELEASE</text>
+    <text x="220" y="352" font-size="82" font-weight="700" letter-spacing="-1.5"
+          fill="#FFFFFF">VocabuQuiz<tspan fill="url(#v3)" font-weight="800" dx="22">V3</tspan></text>
+    <text x="222" y="424" fill="#DCD6F0" font-size="30" font-weight="600" letter-spacing=".01em">
+      ぜんぶ、作れるようになりました。</text>
+    <text x="222" y="482" fill="#9089B6" font-size="20" font-weight="500">
+      試験モード ／ 133 の出題形式 ／ Lumi ／ VocabuSpeak ／ Workplace ／ カレンダー ほか</text>
+  </g>
+
+  <!-- 下の 光の 帯 -->
+  <rect x="0" y="624" width="1200" height="6" fill="url(#ribA)" opacity=".8"/>
+</svg>

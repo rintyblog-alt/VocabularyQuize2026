@@ -18,6 +18,34 @@
 /vendor/arapp/*
   Cache-Control: public, max-age=31536000, immutable
 
+# ヘルプの 絵（2026-09-01）。**実機を そのまま 撮った もの。**
+# 幅 1440px・JPEG q82（6.5MB → 3.6MB）。細い 回線でも 開ける ように。
+# 画面では lazy なので、見て いる 記事の ぶんしか 流れない。
+# ★ 名前に 指紋が 入って いない ので 1 年 溜めさせない。
+#   画面を 直して 撮り直しても 古い 絵が 出続けると、
+#   手順の 絵と 実物が 食い違う（いちばん 困る 種類の 食い違い）。
+/help/img/*
+  Cache-Control: public, max-age=86400, must-revalidate
+
+# ══ ★ 2026-09-01・緊急（Error 1027）══════════════════════════════════
+# 資産（/assets, /data, favicon）に **溜める 決まりが 1 つも 無かった**。
+# 名前に 指紋が 無いので 1 年は 危ないが、溜めないと **1 回 開くたびに
+# 35 本ほど Worker を 通る**（Workers の 1 日の 上限に 直に 効く）。
+# ★ must-revalidate は 付けない。付けると 毎回 確かめに 来て、
+#   304 でも **1 回として 数えられる**（それでは 意味が ない）。
+# ★ 1 時間なら、出し直しても 遅くとも 1 時間で 新しく なる。
+/assets/*
+  Cache-Control: public, max-age=3600
+
+/data/*
+  Cache-Control: public, max-age=3600
+
+/favicon.ico
+  Cache-Control: public, max-age=86400
+
+/manifest.json
+  Cache-Control: public, max-age=3600
+
 /index.html
   Cache-Control: no-cache, must-revalidate
 

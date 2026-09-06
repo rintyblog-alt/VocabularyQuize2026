@@ -105,8 +105,66 @@ tailwind.config = {
 </div>
 
 <!-- ══ 本体 ══════════════════════════════════════════════════════════ -->
+<style id="admin-mobile">
+/* ══ スマホでの 手直し（2026-09-05）══════════════════════════════════
+   訴え「アドミンを モバイルにも 最適化させて」
+
+   ★ 骨組み（引き出し・全幅）は Tailwind の max-md: で 当てて いる。
+     ここは **指で 押せる 大きさ**と、狭い 幅で 溢れる ものだけ。
+   実測（390px）で 出て いた もの:
+     ・押しどころが 32px（指の 目安 44px に 足りない）
+     ・チェックボックスが 16px
+     ・横に 3 つ 並べた 入力が 潰れる
+   ══════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  /* 押しどころは 44px 以上。上部の ハンバーガーは もともと 44px。 */
+  #scApp button, #scApp a[href], #scApp select, #scApp input:not([type="checkbox"]):not([type="radio"]) {
+    min-height: 44px;
+  }
+  /* チェックボックスは そのままだと 16px。指で 押せる 大きさに して、
+     ラベルごと 押せる ように 高さを 持たせる。 */
+  #scApp input[type="checkbox"], #scApp input[type="radio"] { width: 20px; height: 20px; }
+  #scApp label { min-height: 44px; display: flex; align-items: center; gap: 8px; }
+  #scApp label.block, #scApp label[for] { min-height: 0; display: block; }
+  /* 横並びの 入力は 縦に する（3 つ 並べると 1 つ 90px しか 無い）。 */
+  #scApp .flex.flex-wrap.items-end { flex-direction: column; align-items: stretch; gap: 12px; }
+  #scApp .flex.flex-wrap.items-end > div,
+  #scApp .flex.flex-wrap.items-end > button { width: 100%; }
+  #scApp .flex.flex-wrap.items-end input,
+  #scApp .flex.flex-wrap.items-end select { width: 100%; }
+  /* ══ 表 ═══════════════════════════════════════════════════════
+     ★ 表は **器の 中で 横に すべる**。縦に 潰さない。
+       min-width を 520px に して いた ときは 列が 5 つ 以上 あると
+       1 文字ずつ 折り返して いた（実測: "H2-ncmtn7uq…" が 縦 1 列）。
+     ★ セルは 折り返さない。読みたい ものは 横に すべって 見る。 */
+  #scApp table { min-width: 760px; }
+  #scApp th, #scApp td { white-space: nowrap; }
+  /* 札（状態・役割）も 縦に 潰さない。 */
+  #scApp td span { white-space: nowrap; }
+  /* 2 カラムの 並びは 1 本に。 */
+  #scApp .grid.md\:grid-cols-2 { grid-template-columns: 1fr; }
+  /* 長い URL などで 横に 伸びない（表の 外の 文だけ）。 */
+  #scApp .lead, #scApp p { word-break: break-word; }
+}
+</style>
 <div id="scApp" class="flex h-screen" hidden>
-  <aside class="w-64 bg-white border-r border-slate-200 flex-shrink-0 flex flex-col h-screen">
+  <!-- ══ スマホの 上部バー（2026-09-05）══════════════════════════════
+       訴え「アドミンを モバイルにも 最適化させて。今 モバイルだと
+             レイアウトが 終わってる から」
+       実測（390px 幅）: サイドバーが 256px 固定で、**本文に 134px しか
+       残って いなかった**。文字が 1 行に 2〜3 字しか 入らない。
+       → スマホでは サイドバーを **引き出し**に して、本文を 全幅に する。 -->
+  <header id="mbTop" class="md:hidden fixed top-0 left-0 right-0 z-40 h-14 bg-white border-b border-slate-200 flex items-center gap-2 px-3">
+    <button id="mbMenu" type="button" aria-label="メニューを開く"
+            class="w-11 h-11 inline-flex items-center justify-center rounded-lg hover:bg-gray-50 cursor-pointer flex-shrink-0">
+      <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <span id="mbTitle" class="text-base font-bold text-slate-900 truncate flex-1 leading-normal"></span>
+  </header>
+  <div id="mbBackdrop" class="md:hidden fixed inset-0 z-40 bg-slate-900/40" hidden></div>
+  <aside id="scSide" class="w-64 bg-white border-r border-slate-200 flex-shrink-0 flex flex-col h-screen
+                            max-md:fixed max-md:top-0 max-md:left-0 max-md:z-50 max-md:-translate-x-full
+                            max-md:transition-transform max-md:duration-200 max-md:shadow-xl">
     <div class="px-5 py-5 leading-normal">
       <div class="text-base font-bold text-slate-900">VocabuQuiz Admin</div>
       <div class="text-xs text-slate-500 mt-0.5" id="navEnv"></div>
@@ -122,8 +180,8 @@ tailwind.config = {
     </div>
   </aside>
 
-  <main class="flex-1 overflow-y-auto">
-    <div class="max-w-7xl mx-auto px-8 py-12">
+  <main class="flex-1 overflow-y-auto max-md:pt-14">
+    <div class="max-w-7xl mx-auto px-8 py-12 max-md:px-4 max-md:py-6">
       <div id="pageAlert" class="mb-6" hidden></div>
       <h1 id="pageTitle" class="text-3xl font-bold text-slate-900 leading-normal"></h1>
       <p id="pageLead" class="text-sm text-slate-500 mt-1 mb-8 lead"></p>
@@ -311,6 +369,8 @@ tailwind.config = {
       lead: "中身の確認は、確認画面を挟んだうえで監査ログに残ります。" },
     { key: "announcements", path: "/admin/announcements", label: "お知らせ", perm: "announcements.view",
       lead: "公開すると、公式サイトのニュースと同じ置き場所へ入ります。" },
+    { key: "notify", path: "/admin/notify", label: "通知を送る", perm: "notify.send",
+      lead: "通知欄へ直に入れます。お知らせ（News）と違い、公式サイトには載りません。送る前に届く人数が出ます。" },
     { key: "audit", path: "/admin/audit", label: "監査ログ", perm: "audit.view",
       lead: "追記のみです。編集・削除の口はありません。" },
     { key: "downtime", path: "/admin/downtime", label: "ダウンタイム", perm: "system.downtime",
@@ -522,10 +582,56 @@ tailwind.config = {
     };
     次();
   }
+  /* ══ 表紙のバナー（2026-09-03）═══════════════════════════════════
+     ★ あげ先は 添えものと **同じ口**（/api/admin/upload）。
+       種類の 見分けも 上限も 置き場も 本体の ものを そのまま 使う。
+     ★ 表紙に できるのは **画像だけ**。動画を あげられても 表紙に しない。 */
+  function anPaintCover() {
+    var box = $("anCoverPrev"); if (!box) return;
+    var v = $("anCover") ? String($("anCover").value || "").trim() : "";
+    var 通る = /^\/api\/media\/img\/[A-Za-z0-9._-]+$/.test(v) || /^https?:\/\//i.test(v);
+    box.innerHTML = 通る
+      ? '<div class="w-full max-w-md rounded-xl border border-slate-200 overflow-hidden bg-gray-50" style="aspect-ratio:1200/630">'
+        + '<img src="' + esc(v) + '" alt="表紙のバナー" class="w-full h-full object-cover"></div>'
+      : "";
+  }
+  function anUploadCover(file) {
+    var msg = $("anCoverMsg");
+    if (!file) return;
+    if (msg) msg.textContent = "あげています… " + (file.name || "");
+    fetch("/api/admin/upload", {
+      method: "POST",
+      headers: {
+        "x-vq-admin": "1",
+        "content-type": file.type || "application/octet-stream",
+        "x-file-name": encodeURIComponent(file.name || "file")
+      },
+      body: file,
+      credentials: "same-origin"
+    }).then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (j) {
+        if (!j || !j.ok || !j.url) { if (msg) msg.textContent = (j && j.message) || "あげられませんでした。"; return; }
+        if (j.kind !== "image") { if (msg) msg.textContent = "表紙にできるのは画像だけです。"; return; }
+        if ($("anCover")) $("anCover").value = j.url;
+        if (msg) msg.textContent = "あげました。";
+        anPaintCover();
+      }).catch(function () { if (msg) msg.textContent = "あげられませんでした。"; });
+  }
   document.addEventListener("change", function (e) {
-    if (!e.target || e.target.id !== "anFile") return;
-    anUpload(e.target.files);
-    try { e.target.value = ""; } catch (x) {}
+    if (!e.target) return;
+    if (e.target.id === "anFile") {
+      anUpload(e.target.files);
+      try { e.target.value = ""; } catch (x) {}
+      return;
+    }
+    if (e.target.id === "anCoverFile") {
+      anUploadCover(e.target.files && e.target.files[0]);
+      try { e.target.value = ""; } catch (x) {}
+    }
+  });
+  /* URL を 手で 打った ときにも 絵を 出す。 */
+  document.addEventListener("input", function (e) {
+    if (e.target && e.target.id === "anCover") anPaintCover();
   });
 
   function badgeName(b) {
@@ -630,13 +736,60 @@ tailwind.config = {
           + (ME.role === "owner" ? '<button type="button" data-act="op" data-op="purge" data-id="' + esc(d.userId) + '" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-red-700 border border-red-200 rounded-lg hover:bg-red-50 cursor-pointer">恒久削除（owner のみ）</button>' : "")
           + "</div>");
       }
+      /* ══ Qredit ・ サブスク（2026-09-05）════════════════════════
+         訴え「Admin で できる ことを 増やしたい」→ 手で 動かせる ように。
+         ★ 理由が 無いと 押せない（サーバも 断る）。
+         ★ 動かすと **本人にも 知らせが 飛ぶ**（黙って 増やさない・減らさない）。 */
+      var qbox = "";
+      if (can("users.qredit")) {
+        qbox = card(h2("Qredit と プラン")
+          + '<div class="space-y-4 leading-normal">'
+          + '<div id="qdNow" class="text-sm text-slate-500">読み込んでいます…</div>'
+          + '<div class="flex flex-wrap items-end gap-4">'
+          + '<div class="leading-normal"><label for="qdAmt" class="block text-sm font-medium text-slate-700 mb-1.5">いくつ</label>'
+          + '<input id="qdAmt" type="number" min="1" max="1000000" value="100" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-32"></div>'
+          + '<button type="button" data-act="qdgrant" data-id="' + esc(d.userId) + '" class="h-11 inline-flex items-center justify-center gap-2 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">付与</button>'
+          + '<button type="button" data-act="qdrevoke" data-id="' + esc(d.userId) + '" class="h-11 inline-flex items-center justify-center gap-2 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">回収</button>'
+          + "</div>"
+          + '<div class="flex flex-wrap items-end gap-4 pt-2 border-t border-slate-100">'
+          + '<div class="leading-normal"><label for="qdPlan" class="block text-sm font-medium text-slate-700 mb-1.5">プラン</label>'
+          + '<div class="relative"><select id="qdPlan" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+          + '<option value="free">FREE</option><option value="pre">PRE</option><option value="edu_pre">EDU PRE</option>'
+          + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+          + '<div class="leading-normal"><label for="qdDays" class="block text-sm font-medium text-slate-700 mb-1.5">何日</label>'
+          + '<input id="qdDays" type="number" min="0" max="3650" value="30" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-24"></div>'
+          + '<button type="button" data-act="qdplan" data-id="' + esc(d.userId) + '" class="h-11 inline-flex items-center justify-center gap-2 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">プランを変える</button>'
+          + "</div>"
+          + '<div><label for="qdWhy" class="block text-sm font-medium text-slate-700 mb-1.5">理由（監査ログに残ります）</label>'
+          + '<input id="qdWhy" maxlength="200" placeholder="例: 不具合のお詫び" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg"></div>'
+          + '<span id="qdMsg" class="text-sm text-slate-500"></span>'
+          + "</div>");
+      }
+      /* ══ 調べ（2026-09-05）。持ちものの 一覧と 数まで。中身は 出さない。 */
+      var insBox = card(h2("この人の手元を調べる")
+        + '<p class="text-sm text-slate-500 mb-3 lead">プリセット・生成の記録・通報・通知を一覧で見ます。開くと監査ログに残ります。中身（問題文・DM・生成した文章）は出しません。</p>'
+        + '<button type="button" data-act="udinspect" data-id="' + esc(d.userId) + '" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">調べる</button>'
+        + '<div id="udInspect" class="mt-4"></div>');
+
       host.innerHTML = '<div id="udAlert" class="mb-6" hidden></div>'
         + h2("ユーザー " + esc(d.userId) + "（" + esc(d.displayId || "名前なし") + "）")
         + '<div class="grid grid-cols-1 md:grid-cols-2 gap-6">'
         + card(h2("基本") + meta) + card(h2("利用状況") + usage) + "</div>"
         + (badgeBox ? '<div class="mt-6">' + badgeBox + "</div>" : "")
+        + (qbox ? '<div class="mt-6">' + qbox + "</div>" : "")
+        + '<div class="mt-6">' + insBox + "</div>"
         + '<div class="mt-6">' + ops + "</div>"
         + '<p class="text-sm text-slate-500 mt-6 lead">生成物の中身（問題文・書類の内容・氏名・金額）は、この画面には出しません。</p>';
+      /* Qredit の いまの 値を 読む（描いた あと） */
+      if (can("users.qredit")) {
+        api("users/" + encodeURIComponent(uid) + "/qredit-now").then(function (q) {
+          var e = $("qdNow"); if (!e) return;
+          e.textContent = q && q.ok
+            ? ("いまの残高 " + fmt(q.残高) + " Qredit ／ プラン " + String(q.plan || "free").toUpperCase()
+               + (q.期限 ? "（" + when(q.期限) + " まで）" : ""))
+            : "残高を読めませんでした。";
+        });
+      }
       /* ★ 描き直すと #udAlert ごと 作り直されるので、知らせは **描いたあと**に 出す。 */
       if (知らせ) show($("udAlert"), 知らせ, 種 || "ok");
       host.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1142,6 +1295,50 @@ tailwind.config = {
       + "</div></div>";
   }
 
+  /* ══ 通知を 直接 送る（2026-09-05）══════════════════════════════════
+     訴え「Admin で できる ことを 増やしたい」→「通知を 直接 送る」。
+     お知らせ（News）と 違い **公式サイトには 載らない**。通知欄だけ。
+     ★ 送る前に **何人に 届くか**を 出す（送ってから 驚かない ため）。
+     ★ 送ったら **入った 人数**を そのまま 出す（届いたふりを しない）。 */
+  RENDER.notify = function () {
+    var sel = function (id, 中) {
+      return '<div class="relative"><select id="' + id + '" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
+        + 中 + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>';
+    };
+    var out = card(h2("通知を送る")
+      + '<div class="space-y-4 leading-normal">'
+      + '<div class="flex items-start gap-3 p-4 bg-primary-50 border border-primary-200 text-primary-800 rounded-lg lead"><span class="text-sm">'
+      + "通知欄へ<b>直に</b>入れます。公式サイトのニュースには載りません。"
+      + "アプリを開いている人には<b>その場で音が鳴ります</b>。閉じている人には端末の通知が飛びます。</span></div>"
+      + '<div class="flex flex-wrap items-end gap-4">'
+      + '<div class="leading-normal"><label for="nfTo" class="block text-sm font-medium text-slate-700 mb-1.5">宛先</label>'
+      + sel("nfTo", '<option value="user">この人だけ</option><option value="all">全員</option>'
+          + '<option value="active">最近ひらいた人</option><option value="inactive">しばらく開いていない人</option>')
+      + "</div>"
+      + '<div class="leading-normal" id="nfUidWrap"><label for="nfUid" class="block text-sm font-medium text-slate-700 mb-1.5">ユーザー ID</label>'
+      + '<input id="nfUid" type="text" inputmode="numeric" placeholder="例: 119" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-32"></div>'
+      + '<div class="leading-normal" id="nfDaysWrap" hidden><label for="nfDays" class="block text-sm font-medium text-slate-700 mb-1.5">何日</label>'
+      + '<input id="nfDays" type="number" min="1" max="365" value="7" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg w-24"></div>'
+      + '<button type="button" data-act="nfcount" class="h-11 inline-flex items-center justify-center gap-2 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">何人に届くか見る</button>'
+      + '<span id="nfCount" class="text-sm text-slate-500"></span>'
+      + "</div>"
+      + '<div><label for="nfTitle" class="block text-sm font-medium text-slate-700 mb-1.5">見出し</label>'
+      + '<input id="nfTitle" maxlength="200" placeholder="例: メンテナンスのお知らせ" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg"></div>'
+      + '<div><label for="nfBody" class="block text-sm font-medium text-slate-700 mb-1.5">本文</label>'
+      + '<textarea id="nfBody" rows="4" maxlength="600" placeholder="短く。通知欄に そのまま 出ます。" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg"></textarea></div>'
+      + '<div><label for="nfReason" class="block text-sm font-medium text-slate-700 mb-1.5">送る理由（監査ログに残ります）</label>'
+      + '<input id="nfReason" maxlength="200" placeholder="例: 9/6 のメンテナンスを 事前に 知らせる" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg"></div>'
+      + '<div class="flex items-center gap-3 pt-2">'
+      + '<button type="button" data-act="nfsend" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-primary-500 text-white rounded-lg hover:bg-primary-700 cursor-pointer">送る</button>'
+      + '<span id="nfMsg" class="text-sm text-slate-500"></span>'
+      + "</div></div>");
+    /* ★ 描くのは draw() が **あとから** innerHTML する ので、
+       ここで 要素を つかまえに 行っても まだ 居ない。
+       宛先の 切り替えは 下の 委譲（document の change）で 拾う。
+     ★ draw() は Promise を 待つ ので、同期でも **Promise で 返す**。 */
+    return Promise.resolve(out);
+  };
+
   RENDER.announcements = function () {
     return api("announcements").then(function (j) {
       if (!j.ok) return alertBox("err", j.message || "読み込めませんでした。");
@@ -1160,6 +1357,8 @@ tailwind.config = {
         + '<div class="relative"><select id="anCat" class="h-11 leading-normal appearance-none pl-3 pr-10 text-base border border-slate-300 rounded-lg">'
         + '<option value="release">リリース</option><option value="maintenance">メンテナンス</option><option value="incident">障害</option><option value="feature">新機能</option>'
         + '</select><svg class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>'
+        + '<div class="leading-normal"><label for="anSum" class="block text-sm font-medium text-slate-700 mb-1.5">要約（省くと本文の先頭）</label>'
+        + '<input id="anSum" type="text" maxlength="400" placeholder="一覧に出る短い説明" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg"></div>'
         + '<div class="leading-normal"><label for="anPub" class="block text-sm font-medium text-slate-700 mb-1.5">公開日時（予約）</label>'
         + '<input id="anPub" type="datetime-local" class="h-11 leading-normal px-3 text-base border border-slate-300 rounded-lg"></div>'
         + '<div class="leading-normal"><label for="anExp" class="block text-sm font-medium text-slate-700 mb-1.5">掲載終了</label>'
@@ -1172,6 +1371,17 @@ tailwind.config = {
         + "下の印を付けると <b>アプリの通知</b> にも届きます（1 人 1 通）。</span></div>"
         + '<div><label class="inline-flex items-center gap-2"><input id="anNotify" type="checkbox" class="w-4 h-4">'
         + '<span class="text-sm text-slate-700">アプリの通知にも送る（登録している人 全員）</span></label></div>'
+        /* ★ 表紙のバナー（2026-09-03・訴え「バナー画像を 設定できるように」）。
+           これまでは URL を 手で 打つだけ ＝ どこか よそへ 画像を 置いてこないと
+           バナーが 付けられなかった。ここから あげられるように する。 */
+        + '<div><span class="block text-sm font-medium text-slate-700 mb-1.5">表紙のバナー</span>'
+        + '<div id="anCoverPrev" class="mb-3"></div>'
+        + '<input id="anCoverFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">'
+        + '<input id="anCover" type="text" inputmode="url" placeholder="画像をあげるか、https:// で始まる URL" class="w-full px-3 py-2 text-base border border-slate-300 rounded-lg mb-3">'
+        + '<button type="button" data-act="ancoverpick" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">画像をあげる</button>'
+        + '<button type="button" data-act="ancoverdrop" class="ml-2 inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">外す</button>'
+        + '<span id="anCoverMsg" class="ml-3 text-sm text-slate-500"></span>'
+        + '<p class="text-sm text-slate-500 mt-2 lead">一覧の札・記事の頭・公式サイト・共有の絵に出ます。横長（1200×630 くらい）がきれいに出ます。JPEG・PNG・WebP・GIF、5MB まで。SVG は受けられません。</p></div>'
         /* ★ 画像・動画（2026-08-20・訴え「画像や 動画は アップできないの？」） */
         + '<div><span class="block text-sm font-medium text-slate-700 mb-1.5">画像・動画（最大 8 つ）</span>'
         + '<input id="anFile" type="file" accept="image/*,video/mp4,video/webm" multiple style="display:none">'
@@ -1181,6 +1391,7 @@ tailwind.config = {
         + '<p class="text-sm text-slate-500 mt-2 lead">画像は 5MB まで、動画は置き場に入る大きさまで。ニュース・Feed・通知のどれでも同じものが出ます。</p></div>'
         + "</div>"
         + '<div class="flex flex-wrap gap-3 mt-6">'
+        + '<button type="button" data-act="anload" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">下書きを貼って読み込む</button>'
         + '<button type="button" data-act="anpreview" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">プレビュー</button>'
         + '<button type="button" data-act="ansave" data-op="draft" class="inline-flex items-center justify-center gap-2 h-10 px-4 text-[1rem] font-medium bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-gray-50 cursor-pointer">下書き保存</button>'
         + (can("announcements.publish")
@@ -1251,6 +1462,7 @@ tailwind.config = {
     var p = pageFor(location.pathname);
     buildNav(p.key);
     $("pageTitle").textContent = p.label;
+    if ($("mbTitle")) $("mbTitle").textContent = p.label;   /* スマホの 上部バー */
     $("pageLead").textContent = p.lead;
     $("pageAlert").hidden = true;
     $("pageBody").innerHTML = '<div class="text-base text-slate-500 text-center py-16 lead">読み込んでいます…</div>';
@@ -1261,8 +1473,51 @@ tailwind.config = {
     RENDER[p.key]().then(function (html) { $("pageBody").innerHTML = html; })
       .catch(function (e) { $("pageBody").innerHTML = alertBox("err", "読み込みに失敗しました。" + e.message); });
   }
+  /* ══ スマホ：引き出しの 開け閉め（2026-09-05）══════════════════════
+     ・ハンバーガーで 開く／幕を 押すと 閉じる／中の どれかを 押しても 閉じる
+     ・幅が 広がったら（横向き・タブレット）**必ず 閉じた 形に 戻す**
+       （開いた ままの 印が 残ると PC で 幕が 出っぱなしに なる） */
+  function 引き出し(開ける) {
+    var side = $("scSide"), bd = $("mbBackdrop");
+    if (!side) return;
+    if (開ける) {
+      side.classList.remove("max-md:-translate-x-full");
+      if (bd) bd.hidden = false;
+      document.body.style.overflow = "hidden";
+    } else {
+      side.classList.add("max-md:-translate-x-full");
+      if (bd) bd.hidden = true;
+      document.body.style.overflow = "";
+    }
+  }
+  (function 引き出しを結ぶ() {
+    var m = $("mbMenu"), bd = $("mbBackdrop");
+    if (m) m.addEventListener("click", function () { 引き出し(true); });
+    if (bd) bd.addEventListener("click", function () { 引き出し(false); });
+    var side = $("scSide");
+    if (side) side.addEventListener("click", function (e) {
+      /* 行き先を 押したら 閉じる（開いた ままだと 中身が 見えない） */
+      if (e.target && e.target.closest && e.target.closest("a,button")) 引き出し(false);
+    });
+    try {
+      var mq = window.matchMedia("(min-width: 768px)");
+      var 直す = function () { if (mq.matches) 引き出し(false); };
+      if (mq.addEventListener) mq.addEventListener("change", 直す);
+      直す();
+    } catch (e) {}
+  })();
+
   window.addEventListener("popstate", draw);
   /* ダウンタイムの 下書きを 変えたら 見本も すぐ 変える。 */
+  /* 通知を 送る 画面：宛先で 出す 欄を 変える（2026-09-05）。
+     画面は あとから 描かれる ので **委譲**で 拾う。 */
+  document.addEventListener("change", function (e) {
+    if (!e.target || e.target.id !== "nfTo") return;
+    var v = e.target.value;
+    if ($("nfUidWrap")) $("nfUidWrap").hidden = v !== "user";
+    if ($("nfDaysWrap")) $("nfDaysWrap").hidden = !(v === "active" || v === "inactive");
+    if ($("nfCount")) $("nfCount").textContent = "";
+  });
   document.addEventListener("input", function (e) {
     var id = e.target && e.target.id;
     if (id === "dtTitle" || id === "dtReason" || id === "dtFrom" || id === "dtTo") {
@@ -1559,15 +1814,150 @@ tailwind.config = {
         + '<h3 class="text-xl font-bold text-slate-900 leading-normal">' + esc($("anTitle").value) + "</h3>"
         + '<div class="mt-3 text-base text-body whitespace-pre-wrap">' + esc($("anBody").value) + "</div>");
     }
+    /* ══ Qredit ・ プラン ・ 調べ（2026-09-05）════════════════════ */
+    if (act === "qdgrant" || act === "qdrevoke") {
+      var 向 = act === "qdgrant" ? "grant" : "revoke";
+      var 量 = Number($("qdAmt").value || 0);
+      var なぜ = String($("qdWhy").value || "").trim();
+      if (!(量 > 0)) { $("qdMsg").textContent = "いくつ 動かすかを 入れて ください。"; return; }
+      if (!なぜ) { $("qdMsg").textContent = "理由を 書いて ください（監査ログに 残ります）。"; return; }
+      if (!confirm((向 === "grant" ? "+" : "−") + 量 + " Qredit を 動かします。\n本人にも 知らせが 届きます。よろしいですか。")) return;
+      $("qdMsg").textContent = "動かしています…";
+      return apiGuarded("users/" + encodeURIComponent(id) + "/qredit", { method: "POST", body: {
+        direction: 向, amount: 量, reasonText: なぜ, reasonCategory: "other"
+      } }).then(function (j) {
+        if (!j.ok) { $("qdMsg").textContent = j.message || "動かせませんでした。"; return; }
+        $("qdMsg").textContent = "動かしました。いまの残高 " + fmt(j.残高) + " Qredit";
+        var e = $("qdNow"); if (e) e.textContent = "いまの残高 " + fmt(j.残高) + " Qredit";
+      });
+    }
+    if (act === "qdplan") {
+      var pl = $("qdPlan").value;
+      var 日 = Number($("qdDays").value || 0);
+      var なぜ2 = String($("qdWhy").value || "").trim();
+      if (!なぜ2) { $("qdMsg").textContent = "理由を 書いて ください（監査ログに 残ります）。"; return; }
+      if (!confirm("プランを " + pl.toUpperCase() + " に します。\n本人にも 知らせが 届きます。よろしいですか。")) return;
+      $("qdMsg").textContent = "変えています…";
+      return apiGuarded("users/" + encodeURIComponent(id) + "/subscription", { method: "POST", body: {
+        planId: pl, days: 日, reasonText: なぜ2, reasonCategory: "other"
+      } }).then(function (j) {
+        $("qdMsg").textContent = j.ok
+          ? ("プランを " + String(j.plan).toUpperCase() + " に しました。")
+          : (j.message || "変えられませんでした。");
+      });
+    }
+    if (act === "udinspect") {
+      var 箱 = $("udInspect");
+      箱.innerHTML = '<div class="text-sm text-slate-500 py-4">読み込んでいます…</div>';
+      return api("users/" + encodeURIComponent(id) + "/inspect").then(function (j) {
+        if (!j.ok) { 箱.innerHTML = alertBox("err", j.message || "読めませんでした。"); return; }
+        var d2 = j.data || {};
+        var 節 = function (題, 中) {
+          return '<div class="mt-4"><div class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">'
+            + esc(題) + "</div>" + 中 + "</div>";
+        };
+        var pre = (d2.presets || []).length
+          ? table(["名前", "公開", "更新"], (d2.presets || []).map(function (p2) {
+              return [esc(p2.public_title || p2.name || "（名前なし）"),
+                      p2.is_public ? badge("公開", "green") : badge("非公開", "gray"),
+                      when(p2.updated_at)];
+            }))
+          : empty("プリセットは ありません。");
+        var jb = (d2.jobs || []).length
+          ? table(["種類", "結果", "作った数", "とき"], (d2.jobs || []).map(function (x) {
+              return [esc(x.type || "—"),
+                      x.error_code ? badge(String(x.error_code), "red") : badge(String(x.status || "—"), "green"),
+                      fmt(x.made_count) + " / " + fmt(x.planned_count),
+                      when(x.created_at)];
+            }))
+          : empty("生成の記録は ありません。");
+        var rp = ((d2.通報 && d2.通報.された) || []).length
+          ? table(["対象", "理由", "状態", "とき"], d2.通報.された.map(function (x) {
+              return [esc(x.target_type || "—"), esc(x.reason || "—"),
+                      badge(String(x.state || "—"), x.state === "open" ? "amber" : "gray"), when(x.created_at)];
+            }))
+          : empty("通報は ありません。");
+        var nt = (d2.通知 || []).length
+          ? table(["種類", "見出し", "とき"], (d2.通知 || []).map(function (x) {
+              return [esc(x.type || "—"), esc(x.title || "—"), when(x.ts)];
+            }))
+          : empty("通知は ありません。");
+        箱.innerHTML = 節("プリセット（" + (d2.presets || []).length + "）", pre)
+          + 節("生成の記録（直近 30）", jb)
+          + 節("通報された（" + ((d2.通報 && d2.通報.された) || []).length + "）", rp)
+          + 節("届いた通知（直近 20）", nt);
+      });
+    }
+
+    /* ══ 通知を 送る（2026-09-05）══════════════════════════════════ */
+    if (act === "nfcount") {
+      var to0 = $("nfTo").value;
+      $("nfCount").textContent = "数えています…";
+      return api("notify/count", { method: "POST", body: {
+        to: to0, userId: Number($("nfUid").value || 0), days: Number($("nfDays").value || 7)
+      } }).then(function (j) {
+        $("nfCount").textContent = j.ok ? ("→ " + j.人数 + " 人に 届きます") : (j.message || "数えられません");
+      });
+    }
+    if (act === "nfsend") {
+      var to = $("nfTo").value;
+      var 題 = String($("nfTitle").value || "").trim();
+      var 文 = String($("nfBody").value || "").trim();
+      var 理 = String($("nfReason").value || "").trim();
+      if (!題 || !文) { $("nfMsg").textContent = "見出しと 本文を 書いて ください。"; return; }
+      if (!理) { $("nfMsg").textContent = "送る理由を 書いて ください（監査ログに 残ります）。"; return; }
+      var 相手 = to === "user" ? ("ID " + $("nfUid").value + " の 人")
+        : to === "all" ? "全員"
+        : ($("nfDays").value + " 日" + (to === "active" ? " 以内に 開いた 人" : " 開いて いない 人"));
+      if (!confirm(相手 + " へ 通知を 送ります。\n\n" + 題 + "\n\n送ったら 取り消せません。よろしいですか。")) return;
+      $("nfMsg").textContent = "送っています…";
+      return apiGuarded("notify/send", { method: "POST", body: {
+        to: to, userId: Number($("nfUid").value || 0), days: Number($("nfDays").value || 7),
+        title: 題, body: 文, reasonText: 理, reasonCategory: "other"
+      } }).then(function (j) {
+        if (!j.ok) { $("nfMsg").textContent = j.message || "送れませんでした。"; return; }
+        $("nfMsg").textContent = "送りました。" + j.送った + " 人に 入りました（" + j.宛先 + "）"
+          + (j.打ち切り ? "。※ 上限で 打ち切りました" : "");
+        $("nfTitle").value = ""; $("nfBody").value = ""; $("nfReason").value = "";
+      });
+    }
     if (act === "anpick") { if ($("anFile")) $("anFile").click(); return; }
+    if (act === "ancoverpick") { if ($("anCoverFile")) $("anCoverFile").click(); return; }
+    if (act === "ancoverdrop") {
+      if ($("anCover")) $("anCover").value = "";
+      if ($("anCoverMsg")) $("anCoverMsg").textContent = "";
+      anPaintCover();
+      return;
+    }
     if (act === "androp") {
       AN_MEDIA.splice(Number(t.getAttribute("data-i")) || 0, 1);
       anPaintMedia();
       return;
     }
+    /* ★ 長い お知らせを **手で 打たない** ための 口（2026-09-02）。
+       {title, summary, body, category, coverUrl} の JSON を 貼ると 欄が 埋まる。
+       貼るだけで、配信は これまで どおり 人が 押す。 */
+    if (act === "anload") {
+      var 生 = window.prompt("お知らせの JSON を貼ってください（title / summary / body / category / coverUrl）");
+      if (!生) return;
+      var o = null;
+      try { o = JSON.parse(生); } catch (e) { show($("pageAlert"), "JSON として読めませんでした。"); return; }
+      if (!o || typeof o !== "object") { show($("pageAlert"), "JSON として読めませんでした。"); return; }
+      var 入 = function (id, v) { var e = $(id); if (e && v != null) e.value = String(v); };
+      入("anTitle", o.title);
+      入("anBody", o.body != null ? o.body : o.bodyMd);
+      入("anSum", o.summary);
+      入("anCover", o.coverUrl);
+      anPaintCover();
+      if (o.category && $("anCat")) $("anCat").value = String(o.category);
+      show($("pageAlert"), "読み込みました。中身を確かめてから配信してください。", "ok");
+      return;
+    }
     if (act === "ansave") {
       apiGuarded("announcements", { method: "POST", body: {
         title: $("anTitle").value, bodyMd: $("anBody").value,
+        coverUrl: $("anCover") ? $("anCover").value.trim() : "",
+        summary: $("anSum") ? $("anSum").value.trim() : "",
         channel: $("anCh").value, category: $("anCat").value,
         publishedAt: $("anPub").value ? new Date($("anPub").value).toISOString() : "",
         expiresAt: $("anExp").value ? new Date($("anExp").value).toISOString() : "",
