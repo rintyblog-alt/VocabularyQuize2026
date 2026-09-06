@@ -102,9 +102,12 @@ function 見る(名, 良い, 追) {
       try {
         const c = cv.getContext("2d");
         if (c) {
-          const d = c.getImageData(0, 0, Math.min(cv.width, 300), Math.min(cv.height, 300)).data;
+          /* ★ 左上だけを 見ると、絵が 下や 右に ある もの（グラフ・図表）を
+             「白紙」と 言って しまう（実測で 9 本 誤検出した）。
+             **canvas ぜんたい**を とびとびに 見る。 */
+          const d = c.getImageData(0, 0, cv.width, cv.height).data;
           const 見 = new Set();
-          for (let i = 0; i < d.length; i += 40) 見.add(d[i] + "," + d[i + 1] + "," + d[i + 2]);
+          for (let i = 0; i < d.length; i += 4 * 37) 見.add(d[i] + "," + d[i + 1] + "," + d[i + 2]);
           色数 = 見.size;
         }
       } catch (e) { }

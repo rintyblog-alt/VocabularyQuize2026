@@ -48,6 +48,13 @@ console.log("\n■ ② 配って いる");
 const IDX = 読む("client/index.html");
 const 土 = /\/js\/(vq-playground\.[0-9a-f]{10}\.js)/.exec(IDX);
 const 中 = /\/js\/(vq-plg-sim\.[0-9a-f]{10}\.js)/.exec(IDX);
+/* ★ js-src に ある 中身の ファイルが、**全部 index.html から 読まれて いるか**。
+   足したのに 貼り忘れると、一覧に 出ない のに 検査は 通る。 */
+{
+  const 元 = fs.readdirSync(path.join(根, "js-src")).filter((f) => /^vq-plg-/.test(f)).map((f) => f.replace(/\.js$/, ""));
+  const 抜け = 元.filter((b) => !new RegExp("/js/" + b + "\\.[0-9a-f]{10}\\.js").test(IDX));
+  見る("★ 中身の ファイルが 全部 配られて いる", 抜け.length === 0, 抜け.join(" "));
+}
 見る("index.html が vq-playground を 読む", !!土, 土 && 土[1]);
 見る("index.html が vq-plg-sim を 読む", !!中, 中 && 中[1]);
 見る("その ファイルが 実在する", !!土 && !!中 &&
@@ -62,8 +69,15 @@ const 定義 = [];
   const g = { window: {}, console: { warn() { }, log() { } }, Math, Date, JSON, isFinite, parseFloat, parseInt, String, Number, Array, Object, Boolean };
   g.globalThis = g; g.window.VQPLG = { 足す: (d) => 定義.push(d) };
   vm.createContext(g);
-  try { vm.runInContext(読む("js-src/vq-plg-sim.js"), g, { timeout: 20000 }); }
-  catch (e) { console.log("  ✗ 読み込みで 落ちました: " + e.message); process.exit(1); }
+  /* ★ 教科ごとに ファイルが 分かれて いる。**1 本でも 読み落とすと
+     「その 教科は 検査されて いない」に なる。**index.html が 読んで いる
+     ものを 見て、全部 走らせる。 */
+  const 束 = fs.readdirSync(path.join(根, "js-src")).filter((f) => /^vq-plg-/.test(f)).sort();
+  for (const f of 束) {
+    try { vm.runInContext(読む("js-src/" + f), g, { timeout: 20000 }); }
+    catch (e) { console.log("  ✗ " + f + " の 読み込みで 落ちました: " + e.message); process.exit(1); }
+  }
+  console.log("  読んだ ファイル: " + 束.join(" "));
 }
 見る("シミュレーションが 登録された", 定義.length > 0, 定義.length + " 本");
 
