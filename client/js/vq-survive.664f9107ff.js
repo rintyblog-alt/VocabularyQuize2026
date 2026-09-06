@@ -64,10 +64,10 @@ contain: layout paint style;
 --vs-ease:       var(--vq-ease-standard, cubic-bezier(.25,.65,.2,1));
 color: var(--vs-ink);
 background: var(--vs-bg);
---vs-safe-t: var(--vq-sat,0px);
---vs-safe-b: var(--vq-sab,0px);
---vs-safe-l: var(--vq-sal,0px);
---vs-safe-r: var(--vq-sar,0px);
+--vs-safe-t: env(safe-area-inset-top, 0px);
+--vs-safe-b: env(safe-area-inset-bottom, 0px);
+--vs-safe-l: env(safe-area-inset-left, 0px);
+--vs-safe-r: env(safe-area-inset-right, 0px);
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
@@ -1840,7 +1840,7 @@ text-shadow:0 1px 2px rgba(0,0,0,.5);}
 .rh-log-i.is-warn{color:#FFC9A8;border-color:rgba(255,180,130,.30);}
 .rh-bottom{position:absolute;left:0;right:0;bottom:0;
 display:flex;align-items:flex-end;justify-content:space-between;
-padding:0 12px calc(12px + var(--vq-sab,0px));gap:10px;}
+padding:0 12px calc(12px + env(safe-area-inset-bottom,0px));gap:10px;}
 .rh-tabs{display:flex;gap:7px;flex-wrap:wrap;}
 .rh-tab{height:44px;padding:0 15px;border-radius:12px;font:600 13px/1;
 border:1px solid rgba(255,255,255,.16);background:rgba(12,10,24,.52);
