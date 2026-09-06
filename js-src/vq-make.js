@@ -42,8 +42,23 @@
     paper: '<path ' + P + ' d="M6 3h12v18H6z"/><path ' + P + ' d="M9 8h6M9 12h6M9 16h3"/>',
     back: '<path ' + P + ' d="M15 5l-7 7 7 7"/>',
     plus: '<path ' + P + ' d="M12 5v14M5 12h14"/>',
-    x: '<path ' + P + ' d="M6 6l12 12M18 6L6 18"/>'
+    x: '<path ' + P + ' d="M6 6l12 12M18 6L6 18"/>',
+    camera: '<path ' + P + ' d="M4 8h3l1.5-2h7L17 8h3v11H4z"/>'
+      + '<circle ' + P + ' cx="12" cy="13" r="3.2"/>',
+    help: '<circle ' + P + ' cx="12" cy="12" r="9"/>'
+      + '<path ' + P + ' d="M9.6 9.2a2.5 2.5 0 1 1 4 2.3c-.9.6-1.6 1-1.6 2M12 17h.01"/>'
   };
+  /* ★ **その 画面の ヘルプ**（2026-09-01）。段ごとに 行き先を 変える。
+     「どこかに ヘルプが ある」より「いま 見て いる 段の 説明」が 要る。 */
+  var ヘルプの行き先 = {
+    "選ぶ": "what-is", "表紙": "make-exam", "条件": "make-exam",
+    "構成案": "exam-blueprint", "生成": "trouble-slow", "確認": "exam-detail", "紙面": "exam-paper"
+  };
+  function ヘルプ札() {
+    var id = ヘルプの行き先[st.画面] || "what-is";
+    return '<button class="ib" data-a="help" data-v="' + esc(id)
+      + '" aria-label="この 画面の ヘルプ" title="この 画面の ヘルプ">' + svg("help") + "</button>";
+  }
   function svg(n, cls) {
     return '<svg viewBox="0 0 24 24" class="' + (cls || "i") + '" aria-hidden="true">' + (ICON[n] || "") + "</svg>";
   }
@@ -68,8 +83,12 @@
       "background:var(--vq-surface,#fff);border-radius:24px;",
       "border:1px solid var(--vq-border,#E7E4EF);",
       "box-shadow:0 24px 70px rgba(16,14,26,.30);",
-      "padding:26px 24px calc(22px + env(safe-area-inset-bottom,0px));",
+      "padding:26px 24px calc(22px + var(--vq-sab,0px));",
       "animation:vmUp .24s cubic-bezier(.22,1,.36,1) both}",
+    /* ★ 同じ 画面の 描き直しでは 出てくる 動きを やり直さない
+       （2026-09-01・訴え「いちいち 更新すると 上に 戻る」）。
+       毎回 跳ねる ので、それだけで「リセットされた」ように 見える。 */
+    ".w.keep{animation:none}",
     "@media (prefers-reduced-motion:reduce){.bd,.w{animation:none}}",
 
     ".hd{display:flex;align-items:center;gap:10px}",
@@ -159,6 +178,16 @@
     ".sec-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px}",
     ".sec-h span{font-size:12px;color:var(--vq-text-secondary,#6B6480)}",
     ".sec-b{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}",
+    /* ★ 構成案を 直す 欄（2026-08-31）。狭い 画面では 縦に 積む。 */
+    ".sec-e{margin-top:8px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}",
+    ".fl{display:flex;flex-direction:column;gap:4px;flex:1 1 200px;min-width:0;line-height:normal}",
+    ".fl>span{font-size:11.5px;color:var(--vq-text-muted,#7A7589)}",
+    ".fl-s{flex:0 0 86px}",
+    ".sec-e+.fl{margin-top:8px}",
+    ".in{width:100%;height:38px;padding:0 10px;font:inherit;font-size:14px;",
+      "border:1px solid var(--vq-border,#D7D2E4);border-radius:10px;",
+      "background:var(--vq-surface,#fff);color:inherit;min-width:0}",
+    ".in:focus{outline:2px solid var(--vq-primary,#756DB3);outline-offset:1px}",
     ".tag{font-size:11.5px;padding:3px 9px;border-radius:999px;",
       "background:var(--vq-accent-subtle,#EAE8F7);color:var(--vq-accent-text,#5F5691);font-weight:650}",
     ".qs{margin-top:8px;display:grid;gap:5px}",
@@ -218,7 +247,7 @@
 
     "@media (max-width:560px){",
       ":host([data-open='1']){padding:8px}",
-      ".w{width:calc(100vw - 16px);border-radius:20px;padding:20px 16px calc(16px + env(safe-area-inset-bottom,0px))}",
+      ".w{width:calc(100vw - 16px);border-radius:20px;padding:20px 16px calc(16px + var(--vq-sab,0px))}",
       ".pick{grid-template-columns:1fr}",
       ".card{min-height:0}",
       ".row.two{grid-template-columns:1fr}",
@@ -419,6 +448,9 @@
     読取り: null,
     止めたい: false,
     保存した: false,
+    /* ★ 人が 直した 大問（2026-08-31・訴え「構成案を ユーザーでも 詳しく 調整」）。
+       [{title, field, where, count}]。触るまでは 空（サーバに 任せる）。 */
+    範囲: null,
     AI注意: null          /* 教科ならではの 一言（返って きたときだけ） */
   };
 
@@ -437,12 +469,69 @@
   function 閉じる() { st.画面 = ""; st.err = ""; if (host) host.removeAttribute("data-open"); }
 
   /* ── 描く ──────────────────────────────────────────────────── */
+  /* ══ ★ 描き直しても **元の 場所に 戻る**（2026-09-01・訴え）════════════
+     訴え「いちいち 更新すると、上に 戻ったり、設定してたのが
+           リセットされちゃう。あの モーダルの とこね」
+
+     描く() は 窓の 中身を **まるごと 作り直す**。そのため
+       ・巻き（.w）が 先頭へ 戻る
+       ・打っていた 欄から 指が 離れ、打った 位置も 消える
+       ・出てくる ときの 動き（vmUp）が 毎回 やり直される＝跳ねて 見える
+     形式の 札を 1 つ 押すだけで これが 起きるので、
+     決めた ものが 消えたように 見える。
+
+     ★ **同じ 画面の 描き直しでは 場所を 保つ。** 画面が 変わった ときは
+       これまでどおり 先頭から（別の 話に 移った ので 戻す ほうが 正しい）。 */
+  var 前の画面 = "";
+  var 巻き = {};                    /* 画面ごとの 巻き位置を 覚える */
+
+  function 場所を控える(box) {
+    var w = box.querySelector(".w");
+    if (!w) return null;
+    var 控 = { w: w.scrollTop, 中: {}, 焦: null };
+    /* 中に ある 巻きも 覚える（大問の 一覧・作っている 途中の 記録）。 */
+    Array.prototype.forEach.call(box.querySelectorAll(".secs,.log"), function (el, i) {
+      控.中[(el.className || "") + "#" + i] = el.scrollTop;
+    });
+    var a = null;
+    try { a = root.activeElement || null; } catch (e) {}
+    if (a && a.id && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName || "")) {
+      控.焦 = { id: a.id, s: null, e: null };
+      try { 控.焦.s = a.selectionStart; 控.焦.e = a.selectionEnd; } catch (e) {}
+    }
+    return 控;
+  }
+
+  function 場所を戻す(box, 控) {
+    if (!控) return;
+    var w = box.querySelector(".w");
+    /* ★ scrollHeight を 一度 読む。読まないと 組み上がる 前に 入れる ことに なり、
+       高さが 0 の まま 丸められて **やっぱり 先頭へ 戻る**。 */
+    if (w && 控.w) { void w.scrollHeight; w.scrollTop = 控.w; }
+    Array.prototype.forEach.call(box.querySelectorAll(".secs,.log"), function (el, i) {
+      var v = 控.中[(el.className || "") + "#" + i];
+      if (v) el.scrollTop = v;
+    });
+    if (!控.焦) return;
+    var t = null;
+    try { t = root.getElementById ? root.getElementById(控.焦.id) : box.querySelector("#" + 控.焦.id); } catch (e) {}
+    if (!t) return;
+    try { t.focus({ preventScroll: true }); } catch (e) { try { t.focus(); } catch (e2) {} }
+    /* 打っていた 位置に カーソルを 戻す（先頭へ 飛ぶと 打ち直しに なる）。 */
+    if (控.焦.s !== null && t.setSelectionRange) {
+      try { t.setSelectionRange(控.焦.s, 控.焦.e); } catch (e) {}
+    }
+  }
+
   function 描く() {
     if (!root) return;
     var box = root.querySelector("[data-box]");
     if (!box) return;
-    if (!st.画面) { box.innerHTML = ""; return; }
-    var h = '<div class="bd" data-a="bd"></div><div class="w" role="dialog" aria-modal="true">';
+    if (!st.画面) { box.innerHTML = ""; 前の画面 = ""; return; }
+    var 同じ = (前の画面 === st.画面);
+    var 控 = 同じ ? 場所を控える(box) : null;
+    var h = '<div class="bd" data-a="bd"></div><div class="w' + (同じ ? " keep" : "")
+      + '" role="dialog" aria-modal="true">';
     /* ★ 描けなかったら **黙って 閉じない。** 何が 起きたかを 残す。
        画面が 空に なるのが いちばん 分かりにくい 落ちかた。 */
     try {
@@ -461,12 +550,30 @@
         + '<div class="ft"><button class="btn" data-a="close">閉じる</button></div>';
     }
     box.innerHTML = h + "</div>";
+    前の画面 = st.画面;
+    if (同じ) 場所を戻す(box, 控);
+    else {
+      /* 画面が 変わった ときは 先頭から。ただし **一度 見た 画面へ 戻った**
+         ときは、その 画面で 見ていた ところへ 戻す（前へ／次へ の 行き来）。 */
+      var w2 = box.querySelector(".w");
+      if (w2 && 巻き[st.画面]) { void w2.scrollHeight; w2.scrollTop = 巻き[st.画面]; }
+    }
+    var w3 = box.querySelector(".w");
+    if (w3) {
+      巻き[st.画面] = w3.scrollTop;
+      /* 人が 巻いた ところを 覚えておく（描き直しでは ない ときの ため）。 */
+      if (!w3.__vm巻き) {
+        w3.__vm巻き = 1;
+        w3.addEventListener("scroll", function () { 巻き[st.画面] = w3.scrollTop; }, { passive: true });
+      }
+    }
   }
 
   function 選ぶ中身() {
     return '<div class="hd"><div><div class="ttl">何を作りますか</div>'
       + '<div class="sub">あとから 作り直せます。試験は 表紙から 順に 作ります。</div></div>'
       + '<div class="sp"></div>'
+      + ヘルプ札()
       + '<button class="ib" data-a="close" aria-label="閉じる">' + svg("x") + "</button></div>"
       + '<div class="pick">'
       + '<button class="card" data-a="preset">' + svg("cards")
@@ -490,6 +597,7 @@
       + '<div class="sub">試験は 表紙から 作ります。ここで 入れたものが '
       + "そのまま 1 ページ目に なります。</div></div>"
       + '<div class="sp"></div>'
+      + ヘルプ札()
       + '<button class="ib" data-a="close" aria-label="閉じる">' + svg("x") + "</button></div>";
 
     h += '<div class="form">'
@@ -552,6 +660,7 @@
       + '<div class="sub">ここまで 決めれば あとは 作るだけです。'
       + "あとから 直せます。</div></div>"
       + '<div class="sp"></div>'
+      + ヘルプ札()
       + '<button class="ib" data-a="close" aria-label="閉じる">' + svg("x") + "</button></div>";
 
     h += '<div class="form">';
@@ -666,7 +775,8 @@
 
     /* 指示 */
     h += '<div class="row"><label for="vm-inst">ほかに 伝えること（任意）</label>'
-      + '<textarea id="vm-inst" data-f="instruction" maxlength="1200" placeholder="例）配った授業プリントの範囲だけで。記述は 40 字以内でまとめさせる問題を 2 問。">'
+      + '<textarea id="vm-inst" data-f="instruction" data-o="cond" maxlength="1200"'
+      + ' placeholder="例）配った授業プリントの範囲だけで。記述は 40 字以内でまとめさせる問題を 2 問。">'
       + esc(c.instruction) + "</textarea>"
       + '<div class="hint">範囲・出したい形式の 比率・字数の 指定などを 書くと そのとおりに 寄せます。</div></div>';
 
@@ -690,6 +800,7 @@
       + '<div class="sub">問題を 作る前に 枠を 決めました。'
       + "配点は ここから 増えも 減りも しません。</div></div>"
       + '<div class="sp"></div>'
+      + ヘルプ札()
       + '<button class="ib" data-a="close" aria-label="閉じる">' + svg("x") + "</button></div>";
     if (!p2) return h + '<div class="err">構成案を 作れませんでした。</div>'
       + '<div class="ft"><button class="btn" data-a="back-cond">条件へ戻る</button></div>';
@@ -704,15 +815,32 @@
       h += '<div class="' + (i.severity === "high" ? "err" : "warn") + '">' + esc(i.message) + "</div>";
     });
 
+    /* ★ **ここを 直せる ように した**（2026-08-31・訴え）。
+       題・問数・出題範囲（ページ）を 人が 決められる。
+       直さなければ これまでどおり サーバが 決める。 */
+    範囲をそろえる(p2);
     h += '<div class="secs">';
-    p2.sections.forEach(function (sec) {
+    st.範囲.forEach(function (r, i) {
+      var sec = p2.sections[i] || {};
       var 内訳 = {};
       (sec.questions || []).forEach(function (q) {
         var n = 形式名(q.type); 内訳[n] = (内訳[n] || 0) + 1;
       });
-      h += '<div class="sec"><div class="sec-h"><b>大問 ' + esc(sec.number) + "</b>"
-        + '<span>' + esc((sec.questions || []).length) + " 問 ・ "
-        + esc(sec.points != null ? sec.points : "-") + " 点</span></div>"
+      h += '<div class="sec"><div class="sec-h"><b>大問 ' + esc(i + 1) + "</b>"
+        + '<span>' + esc(sec.points != null ? sec.points : "-") + " 点</span></div>"
+        + '<div class="sec-e">'
+        + '<label class="fl"><span>題・分野</span>'
+        + '<input class="in" data-a="sec-t" data-i="' + i + '" value="' + esc(r.title)
+        + '" placeholder="第1問 評論" /></label>'
+        + '<label class="fl fl-s"><span>問数</span>'
+        + '<input class="in" data-a="sec-n" data-i="' + i + '" type="number" min="0" max="40" '
+        + 'value="' + esc(r.count) + '" /></label>'
+        + '</div>'
+        + (st.資料.length
+            ? '<label class="fl"><span>出題する 範囲（資料の ページ）</span>'
+              + '<input class="in" data-a="sec-w" data-i="' + i + '" value="' + esc(r.where)
+              + '" placeholder="p.12〜p.27（空なら AI が 決めます）" /></label>'
+            : "")
         + '<div class="sec-b">'
         + Object.keys(内訳).map(function (k) {
             return '<span class="tag">' + esc(k) + " " + 内訳[k] + "</span>";
@@ -720,6 +848,12 @@
         + "</div></div>";
     });
     h += "</div>";
+    var 合 = st.範囲.reduce(function (a, x) { return a + (parseInt(x.count, 10) || 0); }, 0);
+    h += '<p class="hint">大問の 問数の 合計 <b>' + esc(合) + '</b> 問'
+      + (合 !== p2.totalQuestions
+          ? "（条件は " + esc(p2.totalQuestions) + " 問。**直した ほうを 使います**）"
+          : "")
+      + "。題・問数・範囲を 直すと、その とおりに 作ります。</p>";
 
     if (st.資料.length) {
       h += '<p class="hint">資料 ' + st.資料.length + " 件を そのまま 渡します（要点だけを 抜き出しません）。</p>";
@@ -731,6 +865,23 @@
       + '<button class="btn" data-a="back-cond">条件を 直す</button>'
       + '<button class="btn pri" data-a="gen">この構成で 問題を 作る</button></div>';
     return h;
+  }
+
+  /* 枠から 「直せる 大問の 一覧」を 作る。すでに 直して いれば そのまま。 */
+  function 範囲をそろえる(p2) {
+    var n = (p2 && p2.sections) ? p2.sections.length : 0;
+    if (!st.範囲 || st.範囲.length !== n) {
+      st.範囲 = [];
+      for (var i = 0; i < n; i++) {
+        var sec = p2.sections[i] || {};
+        st.範囲.push({
+          title: String(sec.title || ("大問 " + (i + 1))),
+          field: String(sec.title || ""),
+          where: "",
+          count: (sec.questions || []).length
+        });
+      }
+    }
   }
 
   /* ══ ⑤ 生成 ═══════════════════════════════════════════════════════ */
@@ -751,13 +902,16 @@
          止まっているように 見えていた。経った 時間を 出す ほうが 役に立つ。 */
       + '<div class="barn">' + esc(pr.made) + " / " + esc(pr.madeTotal) + " 問"
       + (st.始めた ? "　（" + esc(経った(st.始めた)) + "）" : "") + "</div>";
-    h += '<div class="log">'
-      + st.記録.slice(-14).map(function (r) {
+    var 並 = st.記録.slice(-14);
+    h += '<div class="log" data-last="' + esc(並.length ? 並[並.length - 1].i : 0) + '">'
+      + 並.map(function (r) {
           return '<div class="log-' + esc(r.k) + '">' + esc(r.t) + "</div>";
         }).join("")
       + "</div>";
     if (st.err) h += '<div class="err">' + esc(st.err) + "</div>";
-    h += '<div class="ft">'
+    /* data-run … 走っているかで ボタンが 変わる。塗り替えでは 直せないので
+       ここが 変わった ときだけ 建て直す（進みを塗る が 見る）。 */
+    h += '<div class="ft" data-run="' + (st.走っている ? "1" : "0") + '">'
       + (st.走っている
           ? '<button class="btn dan" data-a="stop">やめる</button>'
           : '<button class="btn" data-a="back-plan">構成案へ戻る</button>')
@@ -771,6 +925,7 @@
     var h = '<div class="hd"><div><div class="ttl">できました</div>'
       + '<div class="sub">中身を 確かめてから 紙面に します。</div></div>'
       + '<div class="sp"></div>'
+      + ヘルプ札()
       + '<button class="ib" data-a="close" aria-label="閉じる">' + svg("x") + "</button></div>";
     if (!sp) return h + '<div class="err">試験が ありません。</div>'
       + '<div class="ft"><button class="btn" data-a="back-cond">条件へ戻る</button></div>';
@@ -830,6 +985,7 @@
       + '<div><div class="ttl">紙面と 受験</div>'
       + '<div class="sub">表紙・問題用紙・解答用紙は 選んだ型で 組みます。</div></div>'
       + '<div class="sp"></div>'
+      + ヘルプ札()
       + '<button class="ib" data-a="close" aria-label="閉じる">' + svg("x") + "</button></div>";
     if (!sp) return h + '<div class="err">試験が ありません。</div>';
 
@@ -1130,6 +1286,14 @@
     st.資料.forEach(function (f, i) { h += 資料の札(f, i); });
     h += '<button type="button" class="file-add" data-a="addfile">' + svg("plus", "i")
       + (st.資料.length ? "もっと 足す" : "資料を 選ぶ（PDF・画像・文書）") + "</button>";
+    /* ★ **スキャンして 足す**（2026-08-31・訴え「何枚も スキャンしてから、
+       添付させて、プロンプトと 投げられる ように」）。
+       スキャンは 撮った そばから 文字に する ので、ここから 入れると
+       **読み取りが すでに 済んだ 資料**として 入る（作る ときに 読み直さない）。 */
+    if (window.VQSCAN) {
+      h += '<button type="button" class="file-add" data-a="scanfile">' + svg("camera", "i")
+        + "スキャンして 足す（何枚でも）</button>";
+    }
     if (st.資料.length) {
       var 合 = st.資料.reduce(function (a, f) { return a + (f.size || 0); }, 0);
       h += '<div class="file-t">' + st.資料.length + " 件 ・ " + 大きさ(合) + "</div>";
@@ -1157,6 +1321,67 @@
       資料を足す(並);
     });
     inp.click();
+  }
+
+  /* ══ スキャンして 足す（2026-08-31・訴え）═══════════════════════════
+     訴え「写真を 撮る じゃ なくて、スキャンで 撮り溜め できる ように して、
+           何枚も スキャンしてから、添付させて、プロンプト（指示文章）と
+           投げられる ように して ほしい。それを 高速で 読んで、
+           すぐに 問題に できる ように して ほしい。プロンプトに 沿って。」
+
+     ★ スキャンは **撮った そばから** 1 枚 1.6 秒で 文字に して いる。
+       ここから 入れると「読み取りが すでに 済んだ 資料」として 入るので、
+       作る ときに **もう 一度 読ませない**（絵を 送らない＝いちばん 速い 道）。
+     ★ 指示（プロンプト）は スキャンの 画面でも 書けるが、ここから 入れた
+       ときは **作る 画面の 注文欄**が 本命なので、書いて あれば そちらへ 足す。 */
+  function スキャンして足す() {
+    var S = window.VQSCAN;
+    if (!S || !S.開く) {
+      st.err = "スキャンの 部品が 読み込まれて いません。";
+      描く(); return;
+    }
+    try {
+      S.開く({
+        用途: "添付",
+        済んだら: function (出) {
+          if (!出) return;
+          var 文 = String(出.文 || "").trim();
+          var 枚 = Number(出.枚数) || (出.ページ || []).length;
+          if (!文 && !枚) return;
+          /* 読めなかった ページ だけ 絵で 持つ（読めた ふりを しない）。 */
+          var 絵 = (出.ページ || []).filter(function (p) {
+            return p.状態 !== "済" || !String(p.文 || "").trim();
+          }).map(function (p, i) {
+            return { pageNumber: i + 1, dataUrl: p.dataUrl };
+          });
+          st.資料.push({
+            id: "scan-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+            name: (出.見出し || "スキャン") + "（" + 枚 + " 枚）",
+            size: 文.length + 絵.reduce(function (a, g) { return a + String(g.dataUrl || "").length; }, 0),
+            mimeType: "text/plain", file: null,
+            /* ★ **もう 読んで ある**ことを ここで 伝える。
+               ocrText が 入って いれば、作る ときは 文字だけで 渡る。 */
+            ocrText: 文, ocr頁: 枚 - 絵.length,
+            extractedText: 文,
+            pageImages: 絵.length ? 絵 : null,
+            status: "ready", statusText: "", error: "", warnings: [],
+            truncated: false, kind: "scan", pageCount: 枚, ocr: 絵.length
+          });
+          /* スキャン画面で 指示を 書いて いたら、注文欄へ 足す（捨てない）。 */
+          var 指 = String(出.指示 || "").trim();
+          if (指) {
+            st.条件 = st.条件 || {};
+            var 前 = String(st.条件.instruction || "").trim();
+            st.条件.instruction = 前 ? (前 + "\n" + 指) : 指;
+          }
+          st.err = "";
+          描く();
+        }
+      });
+    } catch (e) {
+      st.err = "スキャンを 開けませんでした：" + String((e && e.message) || e).slice(0, 100);
+      描く();
+    }
   }
 
   /* 足す。読取器が あれば そちらへ（＝プリセット作成と 同じ 道）。 */
@@ -1192,7 +1417,10 @@
   }
 
   /* 読取器が 無い ところ（試験用の 器 など）だけの 道。base64 で 持つ。 */
-  var 自前の上限 = 18 * 1024 * 1024;
+  /* ★ 2026-09-03・訴え「PDF・スキャン画像は 100MB まで 読み取れるように」。
+     読取器（__vqChatFiles）が ある ときは そちらの 上限（PDF 512MB）。
+     ここは 読取器の 無い ところの 逃げ道なので、100MB に そろえる。 */
+  var 自前の上限 = 100 * 1024 * 1024;
   function 自前で読む(並) {
     return 並.reduce(function (待, f) {
       return 待.then(function () { return 一つ読む(f); });
@@ -1326,18 +1554,51 @@
   }
   function 文字の資料() { return st.資料.filter(文字で足りるか); }
   function 生の資料() { return st.資料.filter(function (f) { return !文字で足りるか(f); }); }
-  function 資料の文字() {
+  /* ══ 資料を 分ける（2026-09-03・訴え）════════════════════════════
+     訴え「PDF から 均等に 出題されず、同じ 箇所が 永遠に 出題される」
+
+     真因: 分けかたが **大きさだけ**だった。40,000 字に 収まる 資料は
+       いつも 1 つの かたまりに なり、どの 回にも **まったく 同じ 文**が
+       渡っていた。AI は 渡された 文の 頭から 作るので、
+       何回 頼んでも 同じ ところが 出る。
+
+     ★ **回数ぶんに 割る。** 1 回ごとに 資料の 別の ところを 渡す。
+       これで 資料の 端から 端まで 一巡する。
+     ★ 割る ところは 段落の 切れ目（文の 途中で 切らない）。
+     ★ 大きさの 上限（一度に渡す字数）も これまでどおり 守る。 */
+  var 分ける最大 = 24;
+  function 段落で切る(全, 数) {
+    if (数 <= 1) return [全];
+    var 幅 = Math.ceil(全.length / 数);
+    var 出 = [], at = 0;
+    for (var i = 0; i < 数 && at < 全.length; i++) {
+      var 端 = (i === 数 - 1) ? 全.length : Math.min(全.length, at + 幅);
+      if (端 < 全.length) {
+        /* 幅の 前後 12% の 中で いちばん 近い 段落の 切れ目を 探す。 */
+        var 余 = Math.max(200, Math.floor(幅 * 0.12));
+        var 探 = 全.lastIndexOf("\n\n", 端 + 余);
+        if (探 > at + 幅 - 余) 端 = 探 + 2;
+      }
+      出.push(全.slice(at, 端));
+      at = 端;
+    }
+    return 出.filter(function (x) { return String(x).trim(); });
+  }
+  function 資料の文字(回数) {
     var 束 = [];
     文字の資料().forEach(function (f) {
       束.push("■ " + (f.name || "資料") + "\n" + 本文(f));
     });
     if (!束.length) return [];
     var 全 = 束.join("\n\n");
-    var 数 = Math.max(1, Math.ceil(全.length / 一度に渡す字数));
-    var 幅 = Math.ceil(全.length / 数);
-    var 出 = [];
-    for (var i = 0; i < 数; i++) 出.push(全.slice(i * 幅, (i + 1) * 幅));
-    return 出;
+    /* 大きさで 決まる 最小の 数（1 回に 渡せる 字数を 超えない）。 */
+    var 大きさ由来 = Math.max(1, Math.ceil(全.length / 一度に渡す字数));
+    /* 回数ぶん（＝毎回 別の ところを 渡す）。回数が 分からない ときは 4。 */
+    var 回由来 = Math.max(1, Math.min(分ける最大, Number(回数) || 4));
+    var 数 = Math.min(分ける最大, Math.max(大きさ由来, 回由来));
+    /* 1 つが 短すぎると 手がかりが 足りない。1,200 字は 残す。 */
+    while (数 > 1 && 全.length / 数 < 1200) 数--;
+    return 段落で切る(全, 数);
   }
   /* 文字で 渡せるか。**全部の 資料から 本文が 取れている**ときだけ。
      1 つでも 写真だけの ページが あると、その 資料は 読まれないので
@@ -1371,8 +1632,14 @@
        図・表は〔図: …〕と 1 行 書き添えさせる（消さない）。
      ★ 図そのものを 読ませたい ときは 「そのまま 読ませる」を 選ぶ。
        そちらは これまでどおり 絵を 送る（遅いが 図が 見える）。 */
-  var OCR一度に = 4;        /* 1 回に 送る ページ数（向こうの 上限は 8） */
-  var OCR同時 = 3;          /* 同時に 走らせる 本数 */
+  /* ★ 速さ（2026-09-03・訴え「PDF・スキャン画像の 読み取りが まだ 遅い」）。
+     ・1 回に 送る ページを **向こうの 上限（8）まで** 使う。
+       4 → 8 で 呼ぶ 回数が **半分**。1 回の 待ち時間は ほぼ 変わらない。
+     ・同時に 走らせる 本数を 3 → 6。
+     ・**資料ごとに 順番に** 読んでいたのを やめ、全部の ページを
+       1 本の 列に して 走らせる（14 件 あると 前は 14 回 直列だった）。 */
+  var OCR一度に = 8;        /* 1 回に 送る ページ数（向こうの 上限も 8） */
+  var OCR同時 = 6;          /* 同時に 走らせる 本数 */
   var OCR長辺 = 1600;       /* 送る 前に 縮める 長辺（文字は これで 読める） */
 
   function 読み取る資料() {
@@ -1429,39 +1696,51 @@
     var 済 = 0;
     function 知らせる() { try { 進む(済, 全); } catch (e) {} }
     知らせる();
-    return 並.reduce(function (待, f) {
-      return 待.then(function () {
-        var 頁 = f.pageImages.slice();
-        return Promise.all(頁.map(function (pi) {
-          return 縮める(String(pi.dataUrl || "")).then(function (u) {
-            return { p: pi.pageNumber || 0, u: u };
-          });
-        })).then(function (絵) {
-          var 束 = [];
-          for (var i = 0; i < 絵.length; i += OCR一度に) 束.push(絵.slice(i, i + OCR一度に));
-          var 出 = new Array(束.length);
-          var 次 = 0;
-          function 走る() {
-            if (次 >= 束.length) return Promise.resolve();
-            var k = 次++;
-            return 一束読む(f.name || "資料", 束[k]).then(function (t) {
-              出[k] = t;
-              済 += 束[k].length;
-              知らせる();
-              return 走る();
-            });
-          }
-          var 本 = [];
-          for (var j = 0; j < Math.min(OCR同時, 束.length); j++) 本.push(走る());
-          return Promise.all(本).then(function () {
-            var t = 出.filter(Boolean).join("\n\n").trim();
-            f.ocrText = t;
-            f.ocr頁 = t ? 絵.length : 0;
-          });
+    /* ★ **全部の 資料の ページを 1 本の 列に する**（2026-09-03）。
+       前は 資料ごとに 直列だったので、14 件 あると 6 本 同時に 走らせても
+       1 件ずつしか 進まなかった（＝実質 1 件ぶんの 速さ）。 */
+    return Promise.all(並.map(function (f) {
+      return Promise.all(f.pageImages.map(function (pi) {
+        return 縮める(String(pi.dataUrl || "")).then(function (u) {
+          return { p: pi.pageNumber || 0, u: u };
         });
+      })).then(function (絵) { return { f: f, 絵: 絵 }; });
+    })).then(function (ら) {
+      var 仕事 = [];
+      ら.forEach(function (x) {
+        for (var i = 0; i < x.絵.length; i += OCR一度に) {
+          仕事.push({ f: x.f, 束: x.絵.slice(i, i + OCR一度に), 順: 仕事.length });
+        }
+        x.出 = [];
+        x.枚 = x.絵.length;
       });
-    }, Promise.resolve()).then(function () {
-      return 並.reduce(function (n, f) { return n + (f.ocr頁 || 0); }, 0);
+      /* 資料ごとの 入れ物（返ってきた 順が ばらけても 並びを 保つ） */
+      var 表 = new Map();
+      ら.forEach(function (x) { 表.set(x.f, { x: x, 片: [] }); });
+      var 次 = 0;
+      function 走る() {
+        if (次 >= 仕事.length) return Promise.resolve();
+        var w = 仕事[次++];
+        return 一束読む(w.f.name || "資料", w.束).then(function (t) {
+          var box = 表.get(w.f);
+          if (box) box.片.push({ 順: w.順, t: t });
+          済 += w.束.length;
+          知らせる();
+          return 走る();
+        });
+      }
+      var 本 = [];
+      for (var j = 0; j < Math.min(OCR同時, 仕事.length); j++) 本.push(走る());
+      return Promise.all(本).then(function () {
+        ら.forEach(function (x) {
+          var box = 表.get(x.f);
+          var t = (box ? box.片 : []).sort(function (a, b) { return a.順 - b.順; })
+            .map(function (p) { return p.t; }).filter(Boolean).join("\n\n").trim();
+          x.f.ocrText = t;
+          x.f.ocr頁 = t ? x.枚 : 0;
+        });
+        return 並.reduce(function (n, f) { return n + (f.ocr頁 || 0); }, 0);
+      });
     });
   }
 
@@ -1659,6 +1938,15 @@
         return;
       }
       if (a === "diff") { st.条件.difficulty = el.dataset.v; 描く(); return; }
+      if (a === "sec-add" || a === "sec-del") {
+        if (!st.範囲) return;
+        if (a === "sec-add" && st.範囲.length < 12) {
+          st.範囲.push({ title: "大問 " + (st.範囲.length + 1), field: "", where: "", count: 4 });
+        } else if (a === "sec-del" && st.範囲.length > 1) {
+          st.範囲.splice(parseInt(el.dataset.i, 10), 1);
+        }
+        描く(); return;
+      }
       if (a === "mat") { st.条件.materials = !st.条件.materials; 描く(); return; }
       if (a === "type") {
         var id = el.dataset.v;
@@ -1670,7 +1958,14 @@
         描く();
         return;
       }
+      if (a === "help") {
+        try {
+          if (window.__vqHelp) { window.__vqHelp.open({ id: el.dataset.v || "what-is" }); return; }
+        } catch (eH) {}
+        return;
+      }
       if (a === "addfile") { 資料を選ぶ(); return; }
+      if (a === "scanfile") { スキャンして足す(); return; }
       if (a === "rmfile") {
         var idx = parseInt(el.dataset.v, 10);
         if (idx >= 0) {
@@ -1712,6 +2007,27 @@
     });
     root.addEventListener("input", function (e) {
       var t = e.target;
+      /* ★ 構成案を 直す（2026-08-31・訴え「ユーザーでも 詳しく 調整できる ように」）。
+         **打っている 最中に 描き直さない**（入力欄が 作り直されて 打てなく なる）。 */
+      if (t && t.dataset && t.dataset.a && /^sec-[tnw]$/.test(t.dataset.a)) {
+        var i = parseInt(t.dataset.i, 10);
+        if (!st.範囲 || !st.範囲[i]) return;
+        if (t.dataset.a === "sec-t") { st.範囲[i].title = String(t.value || ""); st.範囲[i].field = st.範囲[i].title; }
+        else if (t.dataset.a === "sec-w") st.範囲[i].where = String(t.value || "");
+        else {
+          var n2 = parseInt(t.value, 10);
+          st.範囲[i].count = isFinite(n2) && n2 >= 0 ? Math.min(40, n2) : 0;
+          /* 合計だけ 書き換える（欄は 触らない）。 */
+          var 合 = st.範囲.reduce(function (a2, x) { return a2 + (parseInt(x.count, 10) || 0); }, 0);
+          var box2 = root.querySelector(".secs");
+          var p3 = box2 && box2.nextElementSibling;
+          if (p3 && p3.classList.contains("hint")) {
+            var b2 = p3.querySelector("b");
+            if (b2) b2.textContent = String(合);
+          }
+        }
+        return;
+      }
       if (t && t.dataset && t.dataset.n) {
         var v = parseInt(t.value, 10);
         if (!isFinite(v)) v = 0;
@@ -1725,6 +2041,16 @@
       }
       if (!t || !t.dataset || !t.dataset.f) return;
       var f = t.dataset.f;
+      /* ★ **どちらの 持ちものかを 欄が 名乗る**（2026-09-01・訴え
+         「設定してたのが リセットされちゃう」）。
+         「ほかに 伝えること」は 条件（st.条件.instruction）から 描いて いるのに、
+         打った ものは **表紙**（st.表紙.instruction）へ 書いて いた。
+         書き先と 読み元が 違うので、描き直すたびに **打った ものが 消えて いた**。
+         名乗らせて おけば、欄を 増やしても 同じ 間違いに ならない。 */
+      if (t.dataset.o === "cond") {
+        st.条件[f] = String(t.value || "");
+        return;
+      }
       if (f === "instructions") {
         st.表紙.instructions = String(t.value || "").split("\n")
           .map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 12);
@@ -1821,8 +2147,61 @@
     }
     var 重 = (p2.issues || []).filter(function (i) { return i.severity === "high"; });
     st.枠 = p2;
+    /* ★ 条件から 枠を 作り直したら、前の 直しは **捨てる**
+       （大問の 数が 変わって いる ことが ある）。 */
+    st.範囲 = null;
     st.err = 重.length ? 重[0].message : "";
     開く("構成案");
+  }
+
+  /* 人が 構成案で 直した 大問（題・問数・出題範囲）を、サーバの 形へ。
+     ★ 何も 触って いなければ **送らない**（サーバが 自分で 決める）。 */
+  /* ★ **その 頼みが 作る 大問だけ**を 送る（2026-09-05）。
+     1 回の 頼みは requestsOf が 大問ごとに 刻んで いるので、
+     **中身は いつも 1 つの 大問ぶん**（多くて 5 問）。
+     なのに 大問 12 の 試験では 毎回 12 大問ぶんを 送って いた。
+     サーバは 送られた 数だけ 割ろうと するので、
+       ・4 問を 12 大問へ 配る という 無駄な 割り算が 走る
+       ・呼び出しの 予算（天井 20）が 大問の 数で 割られ、
+         その 頼みが 実際に 作る 大問へ 回る ぶんが 減る
+     手がかりを 渡された ときは その 1 つだけに する。
+     渡されなければ これまでどおり 全部（構成案の 下見などで 使う）。
+
+     ★ **番号だけで 引かない**。plan の 大問番号（sec.number）は
+       *問題が 0 の 大問を 落としてから* 1 から 振り直される
+       （vq2-app の 「番号と回答欄を振り直す」）。
+       こちらの st.範囲 は 人が 並べた まま なので、
+       途中に 問題 0 の 大問が あると **1 つ ずれて 別の 大問**を 指す。
+       題（sectionTitle）で 突き合わせ、**ただ 1 つに 決まる ときだけ**使う。 */
+  function 出題範囲(手がかり) {
+    var e = st.範囲;
+    if (!e || !e.length) return undefined;
+    var 全 = e.map(function (x, i) {
+      return {
+        title: String(x.title || ("大問 " + (i + 1))).slice(0, 80),
+        field: String(x.field || x.title || "").slice(0, 40),
+        where: String(x.where || "").slice(0, 60),
+        count: Math.max(0, parseInt(x.count, 10) || 0)
+      };
+    });
+    var 中身あり = function (x) { return x.title || x.where; };
+    var 出 = 全.filter(中身あり);
+    /* 1 つも 中身が 無ければ 送らない。 */
+    var 意味 = 出.some(function (x) { return x.where || x.count > 0; });
+    if (!意味) return undefined;
+    if (!手がかり) return 出;
+    /* ① 題で 突き合わせる。**ただ 1 つに 決まる ときだけ**。
+       同じ 題の 大問が 2 つ あれば どちらか 分からないので 使わない。 */
+    var 題 = String(手がかり.title || "").trim();
+    if (題) {
+      var 当 = 全.filter(function (x) { return String(x.title || "").trim() === 題; });
+      if (当.length === 1 && 中身あり(当[0])) return [当[0]];
+    }
+    /* ② 題で 決まらない ときだけ 番号。**絞る 前の 並び**で 引く。
+       ここも ずれる ことが ある ので、題が 空の ときの 保険に とどめる。 */
+    var n = parseInt(手がかり.number, 10);
+    if (!題 && n >= 1 && n <= 全.length && 中身あり(全[n - 1])) return [全[n - 1]];
+    return 出;
   }
 
   /* ══ ④ → ⑤ 実際に 作る ═══════════════════════════════════════════
@@ -1859,9 +2238,68 @@
   function 記す(k, t) {
     var 文 = (k === "err" || k === "warn") ? 日本語に(t) : String(t == null ? "" : t);
     if (!文) return;
-    st.記録.push({ k: k, t: 文.slice(0, 200) });
+    /* ★ **通し番号**を 振る（2026-09-01）。記録は 60 件で 切るので、
+       「何件 出したか」では どこまで 出したかを 数えられない
+       （切った 瞬間に ずれて、同じ 行が もう一度 出る）。 */
+    st.記番 = (st.記番 || 0) + 1;
+    st.記録.push({ i: st.記番, k: k, t: 文.slice(0, 200) });
     if (st.記録.length > 60) st.記録 = st.記録.slice(-60);
   }
+  /* ══ ★ 作って いる あいだは **塗り替えるだけ**（2026-09-01・訴え）════
+     訴え「試験作成 途中に、生成バーが 出るやん？ あれも チカチカ
+           更新するたびに なるから 修正を」
+
+     進みは 1 秒に 何度も 来る。そのたび 描く() で 窓を **まるごと
+     作り直して いた**ので、帯も 記録も 毎回 生まれ直して 点滅していた。
+     ★ 出来上がって いる ところは 触らず、**変わった 字と 幅だけ** 塗る。
+     ★ 形が 変わる とき（ボタンの 入れ替え・断りの 出入り・別の 画面）は
+       これまでどおり 建て直す。塗り替えで 無理に 直すと ずれる。 */
+  function 進みを塗る() {
+    var box = root && root.querySelector("[data-box]");
+    var w = box && box.querySelector(".w");
+    if (st.画面 !== "生成" || !w) { 描く(); return; }
+    var bar = w.querySelector(".bar > i");
+    var ft = w.querySelector(".ft");
+    if (!bar || !ft) { 描く(); return; }
+    /* 形が 変わる ものは 建て直す。 */
+    if (ft.getAttribute("data-run") !== (st.走っている ? "1" : "0")) { 描く(); return; }
+    if ((w.querySelector(".err") ? 1 : 0) !== (st.err ? 1 : 0)) { 描く(); return; }
+
+    var pr = st.進み || { made: 0, madeTotal: 0, stage: "" };
+    /* ★ **多い ほうを 出す**（2026-09-06・訴え）。
+       受け取る 前でも 向こうで できて いれば、その 数を 見せる。
+       0 の まま 何分も 動かないと「止まって いる」と 見える。 */
+    var 出来 = Math.max(Number(pr.made) || 0, Number(st.向こう済) || 0);
+    var 割 = pr.madeTotal ? Math.round((出来 / pr.madeTotal) * 100) : 0;
+    var sub = w.querySelector(".hd .sub");
+    if (sub) { var t1 = pr.stage || "はじめています…"; if (sub.textContent !== t1) sub.textContent = t1; }
+    var 幅 = 割 + "%";
+    if (bar.style.width !== 幅) bar.style.width = 幅;
+    var n = w.querySelector(".barn");
+    if (n) {
+      var t2 = 出来 + " / " + pr.madeTotal + " 問"
+        + (st.始めた ? "\u3000（" + 経った(st.始めた) + "）" : "");
+      if (n.textContent !== t2) n.textContent = t2;
+    }
+    /* 記録は **足りない ぶんだけ 足す**（作り直さない＝点滅しない）。 */
+    var log = w.querySelector(".log");
+    if (log) {
+      var 最後 = Number(log.getAttribute("data-last")) || 0;
+      var 足す = st.記録.filter(function (r) { return (r.i || 0) > 最後; });
+      for (var i = 0; i < 足す.length; i++) {
+        var d = doc.createElement("div");
+        d.className = "log-" + 足す[i].k;
+        d.textContent = 足す[i].t;
+        log.appendChild(d);
+      }
+      if (足す.length) {
+        log.setAttribute("data-last", String(足す[足す.length - 1].i));
+        while (log.children.length > 14) log.removeChild(log.firstChild);
+        try { log.scrollTop = log.scrollHeight; } catch (e) {}
+      }
+    }
+  }
+
   function 生成する(o) {
     o = o || {};
     var V = VQ2();
@@ -1906,7 +2344,7 @@
     var 読み = 読む件
       ? 絵を文字にする(function (済, 全) {
           if (st.進み) st.進み.stage = "資料を 読み取っています（" + 済 + " / " + 全 + " ページ）";
-          描く();
+          進みを塗る();
         })
       : Promise.resolve(0);
     読み.then(function (頁) {
@@ -1934,7 +2372,7 @@
            14 件だと ここで 1 分近く かかるので、黙っていると
            「止まった」と 見える。 */
         if (st.進み) st.進み.stage = "資料を 預けています（" + 済 + " / " + 全 + "）";
-        描く();
+        進みを塗る();
       });
     }).then(function (用意) {
       走らせる(o, c, 表紙, p2, MC, MR, G, 用意);
@@ -1953,7 +2391,23 @@
     var V = VQ2();
     var 依頼文 = 依頼を組む(c, 表紙, p2);
     var 資料 = (用意 && 用意.files) || [];
-    var 本文の束 = 文字で渡せるか() ? 資料の文字() : [];
+    /* ★ 何回に 分けて 頼むかを 先に 見積もる（2026-09-03・訴え
+       「PDF から 均等に 出題されない」）。回数ぶんに 資料を 割って、
+       1 回ごとに 別の ところを 渡す。1 回は だいたい 5〜8 問。 */
+    var 予定問数 = 0;
+    try {
+      /* 人が 直した 大問（st.範囲）→ 枠（MC.plan）→ 条件、の 順に 見る。 */
+      予定問数 = (st.範囲 || []).reduce(function (a, x) { return a + (parseInt(x.count, 10) || 0); }, 0);
+      if (!予定問数 && p2 && Array.isArray(p2.sections)) {
+        予定問数 = p2.sections.reduce(function (a, x) {
+          return a + (Number(x.count) || (x.slots || []).length || (x.questions || []).length || 0);
+        }, 0);
+      }
+    } catch (e) { 予定問数 = 0; }
+    if (!予定問数) 予定問数 = Number(c && c.questionCount) || 0;
+    if (!予定問数) 予定問数 = 20;
+    var 見込み回数 = Math.max(2, Math.ceil(予定問数 / 6));
+    var 本文の束 = 文字で渡せるか() ? 資料の文字(見込み回数) : [];
     var 文の道 = !資料.length;                 /* ファイルを 1 件も 送らない＝いちばん 速い */
     var 何回目 = 0;
     /* 大きすぎて そのままは 渡せない 資料は、**取り出した 文字**で 渡す。 */
@@ -1987,6 +2441,12 @@
         済 += Number(x.made) || 0; 全 += Number(x.planned) || 0;
         if (x.status === "running" || x.status === "queued") 走++;
       });
+      /* ★ 帯の 数字と そろえる ため 残す（2026-09-06・訴え）。
+         画面に「向こうで 10 / 24 問」と 出ながら、その 下の 帯が
+         「0 / 24 問」の ままで、どちらが 本当か 分からなかった。
+         下の 帯は **受け取って 枠に 入れた 数**、こちらは
+         **向こうで できた 数**。利用者には 同じ ことに 見える。 */
+      st.向こう済 = 済;
       if (!全) return "";
       return "向こうで " + 済 + " / " + 全 + " 問"
         + (走 ? "（" + 走 + " 本 走っています）" : "");
@@ -2036,12 +2496,28 @@
       /* ★ 資料つきは **1 本ずつ**（2026-08-30・訴え「でかいファイルだと止まる」）。
          3 本 同時だと、同じ 資料を 読ませる 頼みが 3 つ 同時に 走る。
          預けて 軽くしても、向こうが 資料を 読む 時間は 3 倍 重なり、
-         1 分あたりの 上限にも すぐ 当たる。資料が あるときは 1 本ずつ。 */
-      concurrency: (st.資料.length && !文の道) ? 1 : 3,
+         1 分あたりの 上限にも すぐ 当たる。資料が あるときは 1 本ずつ。
+
+         ★ **預けた ものだけ なら 2 本**へ（2026-09-05・訴え
+           「前まで こんな 遅く なかった」）。
+           1 本ずつだと 大問 12 の 試験は 12 回 順番に 待つ ことに なり、
+           サーバを いくら 速く しても 合計は 縮まない
+           （本番の 実測: 8/30 は 12 ジョブ 59 秒、9/3 は 同じ 12 で 1,086 秒）。
+           預けた 資料（fileUri）は **場所を 指すだけ**なので、
+           何本 同時でも 送る 量は 増えない。サーバは 鍵を ずらして 使うので
+           1 分あたりの 上限にも 散る。
+           丸ごと 載せる（data）ものが 1 件でも あるときは、
+           送る 量が 本数ぶん 増えるので **1 本の まま**。 */
+      concurrency: (function () {
+        if (文の道) return 3;
+        if (!st.資料.length) return 3;
+        var 丸ごと = 資料.some(function (f) { return f && f.data; });
+        return 丸ごと ? 1 : 2;
+      })(),
       batchSize: 5,
       onStage: function (name) {
         if (st.進み) st.進み.stage = 段の名(name);
-        描く();
+        進みを塗る();
       },
       onProgress: function (pr) {
         st.進み = {
@@ -2051,7 +2527,7 @@
           madeTotal: (pr && pr.total2) || p2.totalQuestions,
           stage: (st.進み && st.進み.stage) || "問題を 作っています"
         };
-        描く();
+        進みを塗る();
       },
       generate: function (req, cx) {
         if (st.止めたい) return Promise.reject(Object.assign(new Error("cancelled"), { cancelled: true }));
@@ -2071,10 +2547,19 @@
         if (本文の束.length) {
           var k = 何回目++ % 本文の束.length;
           本 = "\n\n【添付した 資料の 本文"
-            + (本文の束.length > 1 ? "（" + (k + 1) + " / " + 本文の束.length + ")" : "")
+            + (本文の束.length > 1 ? "（" + (k + 1) + " / " + 本文の束.length + " 番目の 範囲）" : "")
             + "】\n" + 本文の束[k]
             + "\n★ **ここに 書いてあることだけ**を 根拠に してください。"
-            + "書いていないことを 覚えで 書かないでください。";
+            + "書いていないことを 覚えで 書かないでください。"
+            /* ★ 2026-09-03・訴え「同じ 箇所が 永遠に 出題される」。
+               範囲を 割って 渡すだけでは 足りない。**その 範囲の 中でも
+               頭に 寄る**ので、まんべんなく 使うよう はっきり 言う。 */
+            + (本文の束.length > 1
+              ? "\n★ これは 資料 全体の うち **" + (k + 1) + " 番目の 範囲だけ**です。"
+                + "ほかの 範囲は 別の 回で 出すので、**この 範囲の 中から**作ってください。"
+              : "")
+            + "\n★ **資料の 頭だけに 寄せない。** 前半・中ほど・後半から"
+            + " まんべんなく 選んでください。同じ 段落から 2 問 以上 作らないでください。";
         }
         var 頼み = {
           prompt: ((cx && cx.prompt) ? cx.prompt + "\n\n" + 依頼文 : 依頼文) + 本,
@@ -2088,6 +2573,24 @@
           /* 図・表・グラフ。サーバは 頼まれたときだけ 語彙を 教える。
              既定で 付けると 要らない ところに 飾りの 表が 出る。 */
           materials: c.materials === true ? true : undefined,
+          /* ★ **難しさ**（2026-08-31・訴え「選択肢が すぐ 分かる くらい 簡単」）。
+             サーバは これで 選択肢の 字数の 下限と 誤答の 作りを 変える。
+             国語では 本文の 長さも これで 決まる。
+             通して いなかった ので、難しめに しても 何も 変わって いなかった。 */
+          level: { easy: "やさしい", hard: "難しい", mixed: "標準" }[c.difficulty] || "標準",
+          /* ★ **大問ごとの 出題範囲**（2026-08-31・訴え）。
+             人が 構成案で 直した ものを そのまま 渡す。
+             where に ページを 書けば その 範囲だけから 出す。 */
+          /* ★ この 頼みが 作る 大問だけ。数も **この 頼みの ぶん**に そろえる
+             （大問が 8 問 あって 5 問ずつ 刻まれた ときに、
+               8 問 作れと 言わない ため）。 */
+          parts: (function () {
+            var ps = 出題範囲(req
+              ? { title: req.sectionTitle, number: req.sectionNumber } : null);
+            if (!ps || ps.length !== 1) return ps;
+            var n = (req.slots || []).length;
+            return n ? [Object.assign({}, ps[0], { count: n })] : ps;
+          })(),
           files: 資料.length ? 資料 : undefined,
           orderId: 注文番号,
           /* ★ 試験の 仕事は **プリセットに しない**（2026-08-30・訴え）。
@@ -2100,15 +2603,22 @@
           if (!pr || !pr.jobId) return;
           向こう[pr.jobId] = { made: pr.made, planned: pr.planned, status: pr.status };
           var 様 = 向こうの様子();
-          if (st.進み && 様) { st.進み.stage = 様; 描く(); }
+          if (st.進み && 様) { st.進み.stage = 様; 進みを塗る(); }
         };
         頼み.onStart = function (jobId) {
           if (jobId) 向こう[jobId] = { made: 0, planned: 頼み.count || 0, status: "running" };
         };
-        /* ★ 1 回の 頼みを **4 分**で 見切る（既定は 15 分）。
-           そんなに かかる ときは 向こうが 詰まっている。
-           打ち切って 残りの 枠を 頼み直した ほうが 早く 終わる。 */
-        頼み.maxWaitMs = 4 * 60 * 1000;
+        /* ★ **進んで いる 間は 待つ**（2026-09-06・訴え）。
+           これまでは 「4 分」で 一律に 見切って いた。
+           ところが 向こうは ちゃんと 動いて いて、画面には
+           「向こうで 10 / 24 問」と 出ながら 同時に
+           「時間内に 終わりません でした」が 3 件 出て いた。
+           できかけを 置き去りに して 頼み直すので、かえって 遅く なる。
+           ★ 見るのは **止まって いるか どうか**:
+             ・進んで いる → 上限（10 分）まで 待つ
+             ・90 秒 進まない → そこで 切る（詰まりには 前より 速く 気づく） */
+        頼み.maxWaitMs = 10 * 60 * 1000;
+        頼み.stallMs = 90 * 1000;
         var 呼 = G.generateQuestionsTracked ? G.generateQuestionsTracked(頼み) : G.generateQuestions(頼み);
         return 呼.then(function (r) {
           (r.warnings || []).forEach(function (w) { if (w) 記す("warn", w); });
@@ -2501,6 +3011,34 @@
       開く("紙面");
       return true;
     },
+    /* ══ 検証のため。作って いる あいだの 進みを **本物の AI を 呼ばずに** 流す。
+       チカチカの 直しは 「進みが 来ても 部品が 生まれ変わらない」ことなので、
+       進みを 流せないと 何も 測れない（測れない ものは 直った ことに ならない）。 */
+    __進みためし: function (o) {
+      o = o || {};
+      if (o.画面) {
+        st.画面 = "生成";
+        st.走っている = true; st.err = ""; st.記録 = []; st.記番 = 0;
+        st.始めた = Date.now();
+        st.進み = { done: 0, total: 1, made: 0, madeTotal: Number(o.total) || 20, stage: o.stage || "" };
+        host.setAttribute("data-open", "1");
+        描く();
+      }
+      if (o.走っている !== undefined) st.走っている = !!o.走っている;
+      if (o.err !== undefined) st.err = String(o.err || "");
+      if (o.made !== undefined || o.total !== undefined || o.stage !== undefined) {
+        st.進み = st.進み || { done: 0, total: 1, made: 0, madeTotal: 20, stage: "" };
+        if (o.made !== undefined) st.進み.made = Number(o.made) || 0;
+        if (o.total !== undefined) st.進み.madeTotal = Number(o.total) || 0;
+        if (o.stage !== undefined) st.進み.stage = String(o.stage || "");
+      }
+      (o.記録 || []).forEach(function (r) {
+        var i = String(r).indexOf(":");
+        記す(i > 0 ? String(r).slice(0, i) : "note", i > 0 ? String(r).slice(i + 1) : String(r));
+      });
+      進みを塗る();
+      return true;
+    },
     /* 検証のため（画面を 触らずに 中を 見る） */
     状態: function () {
       return { 画面: st.画面, err: st.err,
@@ -2567,7 +3105,9 @@
     読み取る資料: function () { return 読み取る資料().map(function (f) { return f.name; }); },
     文字で渡すぶん: function () { return 文字の資料().map(function (f) { return f.name; }); },
     ファイルで渡すぶん: function () { return ファイルで渡すぶん().map(function (f) { return f.name; }); },
-    渡す本文: function () { return 資料の文字(); },
+    /* ★ 回数を そのまま 渡す（2026-09-03）。受け取らずに 捨てていたので、
+       何回に 分けても いつも 同じ 割りかたに なっていた。 */
+    渡す本文: function (回) { return 資料の文字(回); },
     /* 注意事項。**書かせずに 書く**ところ。 */
     注意を書く: function (p2) { return 注意を書く(st.表紙, st.条件, p2 || null); },
     読み取り: function () { return st.読取り; },
