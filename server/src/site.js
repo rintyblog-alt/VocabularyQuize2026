@@ -305,6 +305,16 @@ function md(src) {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]*)\)/g, '<a href="$2">$1</a>');
   const 閉じる = () => { if (箇条) { 出.push("</ul>"); 箇条 = false; } };
+  /* ★ 絵（2026-09-02）。**自分のところの 絵だけ**（/ で 始まる 道）。
+     外の URL を 許すと、そこから 誰が 読んだかを 数えられて しまう。
+     行 まるごとが 絵の ときだけ、図として 出す。 */
+  const 絵 = (l) => {
+    const m = /^!\[([^\]]*)\]\((\/[A-Za-z0-9._\/-]+)\)\s*$/.exec(l.trim());
+    if (!m) return null;
+    return '<figure class="md-fig"><img class="md-img" src="' + esc(m[2])
+      + '" alt="' + esc(m[1]) + '" loading="lazy" decoding="async">'
+      + (m[1] ? "<figcaption>" + esc(m[1]) + "</figcaption>" : "") + "</figure>";
+  };
   for (const l of 行) {
     if (/^```/.test(l)) {
       閉じる();
@@ -312,6 +322,8 @@ function md(src) {
       コード = !コード; continue;
     }
     if (コード) { 出.push(esc(l)); continue; }
+    const g = 絵(l);
+    if (g) { 閉じる(); 出.push(g); continue; }
     const h = /^(#{1,4})\s+(.*)$/.exec(l);
     if (h) { 閉じる(); const n = Math.min(4, h[1].length + 1); 出.push("<h" + n + ">" + 飾り(h[2]) + "</h" + n + ">"); continue; }
     const li = /^[-*]\s+(.*)$/.exec(l);
@@ -328,7 +340,7 @@ function md(src) {
 async function 記事を取る(env, id) {
   try {
     const r = await env.DB.prepare(
-      `SELECT id, category, title, summary, body, cover_url, published_at, updated_at
+      `SELECT id, category, title, summary, body, cover_url, media_json, published_at, updated_at
          FROM news_articles WHERE id = ?1 AND status = 'published' AND published_at <= ?2`
     ).bind(S(id), Date.now()).first();
     return r || null;
@@ -513,7 +525,12 @@ async function ogpPng(seed) {
 
 /* ── 一覧 ──────────────────────────────────────────────────────────── */
 function カード(x, i) {
+  /* ★ 表紙（バナー）が あれば 出す（2026-09-02）。
+     これまでは 記事の 顔つきが 分からず、どれも 同じ 見た目だった。 */
+  const 表 = S(x.cover_url);
   return '<a class="news-card reveal" data-delay="' + (i * 60) + '" href="' + esc(記事のURL(x.id, x.published_at)) + '">'
+    + (表 ? '<span class="news-card__cover"><img src="' + esc(表)
+        + '" alt="" loading="lazy" decoding="async"></span>' : "")
     + '<span class="news-card__cat">' + esc(カテゴリ名[S(x.category)] || "お知らせ") + "</span>"
     + '<span class="news-card__title">' + esc(x.title) + "</span>"
     + '<span class="news-card__date">' + esc(日付(x.published_at)) + "</span>"
@@ -556,6 +573,25 @@ async function 一覧ページ(env, url) {
   });
 }
 
+/* ── 添えもの（画像・動画）（2026-09-03）──────────────────────────────
+   アプリの お知らせで 添えた ものを、公式サイトの 記事でも 出す。
+   ★ 受けるのは **自分の 置き場だけ**（/api/media/img|vid/…）。
+     外の URL を 通すと、そこから 誰が 記事を 読んだかを 数えられてしまう。
+   ★ 静かな ページなので 自動では 鳴らさない（controls だけ）。 */
+function 添えもの(raw) {
+  let a = [];
+  try { a = JSON.parse(String(raw || "[]")); } catch (e) { a = []; }
+  if (!Array.isArray(a)) return "";
+  const 出 = a.filter((m) => /^\/api\/media\/(img|vid)\/[A-Za-z0-9._-]+$/.test(S(m && m.url))).slice(0, 8);
+  if (!出.length) return "";
+  return '<div class="article__media">' + 出.map((m) => {
+    const u = esc(S(m.url));
+    return u.indexOf("/vid/") >= 0
+      ? '<figure class="article__att"><video src="' + u + '" controls playsinline preload="metadata"></video></figure>'
+      : '<figure class="article__att"><img src="' + u + '" alt="" loading="lazy" decoding="async"></figure>';
+  }).join("") + "</div>";
+}
+
 /* ── 記事 ──────────────────────────────────────────────────────────── */
 async function 記事ページ(env, url, id) {
   const a = await 記事を取る(env, id);
@@ -563,7 +599,12 @@ async function 記事ページ(env, url, id) {
   const 関連 = await 記事ら(env, { per: 4 });
   const ほか = 関連.items.filter((x) => S(x.id) !== S(a.id)).slice(0, 3);
   const 自分 = url.origin + 記事のURL(a.id, a.published_at);
-  const 画 = S(a.cover_url) || (url.origin + "/site/og/" + encodeURIComponent(S(a.id)) + ".png");
+  /* ★ 共有の 絵は **絶対 URL でないと 出ない**（2026-09-03）。
+     表紙に あげた 画像（/api/media/img/…）を 使えるように したので、
+     / で 始まる ときは この サイトの 頭を 足す。 */
+  const 表紙 = S(a.cover_url);
+  const 画 = (表紙.charAt(0) === "/" ? url.origin + 表紙 : 表紙)
+    || (url.origin + "/site/og/" + encodeURIComponent(S(a.id)) + ".png");
 
   const 本文 = '<article class="section container article">'
     + '<p class="section__label">' + esc(カテゴリ名[S(a.category)] || "お知らせ") + "</p>"
@@ -571,6 +612,8 @@ async function 記事ページ(env, url, id) {
     + '<p class="article__date"><time datetime="' + esc(日付ISO(a.published_at)) + '">'
     + esc(日付(a.published_at)) + "</time></p>"
     + (S(a.summary) ? '<p class="section__lead">' + esc(a.summary) + "</p>" : "")
+    + (S(a.cover_url) ? '<figure class="article__cover"><img src="' + esc(a.cover_url)
+        + '" alt="" decoding="async"></figure>' : "")
     + '<div class="share" role="group" aria-label="この記事を共有する">'
     + '<a class="btn btn--ghost" rel="noopener" target="_blank" href="https://x.com/intent/post?text='
     + encodeURIComponent(S(a.title)) + "&url=" + encodeURIComponent(自分) + '">Xで共有</a>'
@@ -581,6 +624,7 @@ async function 記事ページ(env, url, id) {
     + '<button class="btn btn--ghost" type="button" data-copy="' + esc(自分) + '">URLをコピー</button>'
     + "</div>"
     + '<div class="article__body">' + md(a.body) + "</div>"
+    + 添えもの(a.media_json)
     + (ほか.length ? '<section class="article__more"><h2>ほかのお知らせ</h2>'
         + '<div class="news-grid">' + ほか.map(カード).join("") + "</div></section>" : "")
     + "</article>";

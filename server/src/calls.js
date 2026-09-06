@@ -345,6 +345,19 @@ export async function canCall(env, aId, bId, opts) {
 }
 
 /* ══ ③ 押し出し（CallHub へ）════════════════════════════════════════════ */
+/* ══ 開いて いる 人へ 押し出す（2026-09-05）══════════════════════════
+   訴え「通知も、受信した タイミングで 通知として 鳴らす ように して
+         欲しい。アプリを 開いて いる 人に リアルタイムで 通知音を 鳴らす」
+
+   ★ 新しい 通り道は 作らない。**通話が 既に 使って いる WebSocket**
+     （/ws/call → CallHub。ユーザーごとに 1 本）に 相乗りする。
+     繋いで いない 人には 何も 起きない（false が 返るだけ）。
+   ★ これは「開いて いる 人」だけ。閉じて いる 人へは Web Push
+     （worker.js の pushNotifyUser）が 別に 飛ぶ。 */
+export async function 開いている人へ押す(env, uid, msg) {
+  return await 押す(env, uid, msg);
+}
+
 async function 押す(env, uid, msg) {
   if (!env?.CALL_HUB) return false;
   try {

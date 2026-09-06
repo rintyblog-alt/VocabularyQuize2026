@@ -22,7 +22,8 @@
 
 /* ★ 通話（2026-08-29）。控えを 捨てる 口と、数だけの 集計を 借りる。
    calls.js は 何も import しないので、ここから 読んでも 輪に ならない。 */
-import { forgetCallLimitCache, callsAdminSummary, callsReportDetail, callsSelfTest } from "./calls.js";
+import { forgetCallLimitCache, callsAdminSummary, callsReportDetail, callsSelfTest,
+  開いている人へ押す } from "./calls.js";
 
 /* ══ 1. 権限 ══════════════════════════════════════════════════════════════
    ロールではなく **権限の集合**で持つ。ロールはその詰め合わせにすぎない。
@@ -50,6 +51,11 @@ export const ADMIN_PERMISSIONS = [
   "content.hide",
   "announcements.view",
   "announcements.publish",
+  /* 通知を 直接 送る（2026-09-05）。お知らせ（News）とは 別に、
+     通知欄へ 直に 入れる。moderator には 渡さない。 */
+  "notify.send",
+  /* Qredit・サブスクを 手で 動かす（2026-09-05）。owner と admin だけ。 */
+  "users.qredit",
   "audit.view"
 ];
 
@@ -72,7 +78,10 @@ export const ADMIN_ROLE_PERMISSIONS = {
 const DESTRUCTIVE = new Set([
   "users.suspend", "users.ban", "users.delete", "users.unban", "users.restore", "users.purge",
   "admins.invite", "admins.revoke", "admins.role_change", "admins.transfer_owner",
-  "flags.toggle", "limits.edit", "content.hide", "announcements.publish"
+  "flags.toggle", "limits.edit", "content.hide", "announcements.publish",
+  /* 2026-09-05。どちらも **取り消しにくい**。通知は 送ったら 引っ込められないし、
+     Qredit は 人の 持ちものを 動かす。理由と 再認証を 要る ように する。 */
+  "notify.send", "users.qredit"
 ]);
 
 const REAUTH_WINDOW_MS = 10 * 60 * 1000;      /* 再認証は 10 分だけ有効 */
@@ -500,6 +509,13 @@ const SEED_FLAGS = [
      下の 一度きりの 直しで 左パネルから 外し、代わりに VocabuSurvive を 出す。 */
   ["survival", "VocabuSurvival", "shield", "tab:survival3", "hidden", 60, 0, "off", ""],
   ["survive", "VocabuSurvive", "game", "tab:survive", "main", 60, 1, "on", "NEW"],
+  /* 文章添削（校正モード）2026-08-31。画面を 切り替えず 重ねて 開く。 */
+  ["write", "文章添削", "pencil", "fn:write", "tools", 5, 1, "beta", "NEW"],
+  /* カレンダー・ヘルプ（2026-09-01・訴え）。
+     ★ 種は **新しい DB にしか 効かない**。すでに ある DB へは
+       下の 一度きりの 直しで 入れる（前に これで 出なかった）。 */
+  ["calendar", "カレンダー", "cal", "fn:calendar", "tools", 15, 1, "on", "NEW"],
+  ["help", "ヘルプ", "help", "fn:help", "foot", 30, 1, "on", ""],
   ["timer", "タイマー", "timer", "fn:timer", "tools", 10, 1, "on", ""],
   ["quick_chat", "Quick Chat", "zap", "tab:chat", "tools", 20, 1, "on", ""],
   ["notifications", "通知", "bell", "tab:notifications", "tools", 30, 1, "on", ""],
@@ -618,6 +634,30 @@ export async function ensureAdminSchema(env) {
           SET visible_in_sidebar = 0, section = 'hidden', state = 'off',
               updated_by = 'seed', updated_at = ?1
         WHERE key = 'survival' AND updated_by = 'seed' AND path = 'tab:survival3'`
+    ).bind(nowIso()).run().catch(() => {});
+
+    /* ★ 種は INSERT OR IGNORE なので、**すでに 表が ある 環境には 入らない**。
+       文章添削は あとから 足した ので、ここで 1 度だけ 入れ直す
+       （管理画面で 触った 行は 触らない）。 */
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO feature_flags
+       (key, display_name, description, state, visible_in_sidebar, sidebar_order,
+        badge, audience, allowlist, percentage, notice, icon, path, section, updated_by, updated_at)
+       VALUES ('write','文章添削','','beta',1,5,'NEW','all','[]',100,'','pencil','fn:write','tools','seed',?1)`
+    ).bind(nowIso()).run().catch(() => {});
+    /* ★ カレンダー・ヘルプ（2026-09-01）。種は すでに ある DB には 効かない ので
+       ここでも 1 度だけ 入れる。入れ忘れると **左の 帯に 出ない**。 */
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO feature_flags
+       (key, display_name, description, state, visible_in_sidebar, sidebar_order,
+        badge, audience, allowlist, percentage, notice, icon, path, section, updated_by, updated_at)
+       VALUES ('calendar','カレンダー','','on',1,15,'NEW','all','[]',100,'','cal','fn:calendar','tools','seed',?1)`
+    ).bind(nowIso()).run().catch(() => {});
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO feature_flags
+       (key, display_name, description, state, visible_in_sidebar, sidebar_order,
+        badge, audience, allowlist, percentage, notice, icon, path, section, updated_by, updated_at)
+       VALUES ('help','ヘルプ','','on',1,30,'','all','[]',100,'','help','fn:help','foot','seed',?1)`
     ).bind(nowIso()).run().catch(() => {});
 
     for (const r of SEED_REASONS) {
@@ -993,6 +1033,16 @@ async function notifyUser(env, userId, o) {
        VALUES (?1,?2,0,?3,?4,?5,?6,?7,?8)`
     ).bind(uuid(), N(userId), S(o.type) || "account", S(o.title), S(o.body),
       nowMs(), jstDay(), JSON.stringify(o.meta || {})).run();
+    /* ★ 開いて いる 人には **その場で** 届ける（2026-09-05）。
+       ここは 管理画面からの 知らせ（停止・再開・お知らせ）。
+       worker.js の pushNotifyUser を 通らない ので、ここでも 押す。
+       繋いで いない 人は 素通り（false が 返るだけ）。 */
+    try {
+      await 開いている人へ押す(env, N(userId), {
+        type: "notify.new", at: nowMs(),
+        title: S(o.title), body: S(o.body), tag: "adm:" + (S(o.type) || "account") + ":" + nowMs()
+      });
+    } catch (e) {}
     return true;
   } catch (e) { return false; }
 }
@@ -1010,11 +1060,15 @@ async function notifyUser(env, userId, o) {
 const 知らせの上限 = 20000;
 async function みんなへ知らせる(env, o) {
   if (!env?.DB) return { 入れた: 0, 全体: 0 };
+  /* ★ 絞り込み（2026-09-05）。無ければ これまでどおり 全員。 */
+  const 絞 = o.絞り && o.絞り.sql ? o.絞り : null;
+  const 引数 = [知らせの上限 + 1].concat(絞 ? (絞.引数 || []) : []);
   const rows = await allRows(env,
     `SELECT u.id AS id FROM users u
        LEFT JOIN user_status s ON s.user_id = CAST(u.id AS TEXT)
       WHERE COALESCE(s.state,'active') NOT IN ('deleted','purged')
-      ORDER BY u.id LIMIT ?1`, [知らせの上限 + 1]);
+        ${絞 ? "AND " + 絞.sql : ""}
+      ORDER BY u.id LIMIT ?1`, 引数);
   const ids = rows.map((r) => N(r.id)).filter((x) => x > 0);
   const 全体 = ids.length;
   const 使う = ids.slice(0, 知らせの上限);
@@ -1037,6 +1091,19 @@ async function みんなへ知らせる(env, o) {
       for (const st of 束) { try { await st.run(); 入れた += 1; } catch (e2) {} }
     }
   }
+  /* ★ 開いて いる 人には **その場で** 届ける（2026-09-05）。
+     繋いで いない 人は 素通り（false が 返るだけ）。
+     20 人ずつ。一度に 全部 投げると 詰まる。 */
+  try {
+    const msg = {
+      type: "notify.new", at: now,
+      title, body, tag: 鍵
+    };
+    for (let i = 0; i < 使う.length; i += 20) {
+      await Promise.all(使う.slice(i, i + 20).map((uid) =>
+        開いている人へ押す(env, uid, msg).catch(() => false)));
+    }
+  } catch (e) {}
   return { 入れた, 全体 };
 }
 
@@ -1665,10 +1732,25 @@ export function isAdminPath(path) {
   return path === "/admin" || path.startsWith("/admin/") || path.startsWith("/api/admin/");
 }
 
-export async function handleAdminRequest(request, env, ctx) {
+export async function handleAdminRequest(request, env, ctx, 本体 = {}) {
   const url = new URL(request.url);
   const path = (url.pathname || "/").replace(/\/+$/, "") || "/";
   if (!isAdminPath(path)) return null;
+  /* ══ ここだけは 引き受けない（2026-09-03・実測で 見つけた）═════════
+     アプリの お知らせ画面から 書く／消す 口は **本体（worker.js）**に
+     あって、ADMIN_KEY（x-admin-key）で 見ている。
+     ところが この 振り分けは /api/admin/* を **丸ごと** 取るので、
+       ・独自ヘッダ X-VQ-Admin が 無い → その場で 403 CSRF
+       ・付けても この中に news/save は 無い → 404
+     となり、**本体の handleAdminNewsSavePost は 一度も 呼ばれていなかった**。
+     ＝ お知らせ画面の「保存する」「消す」が ずっと 効いていなかった。
+     ★ 管理ダッシュボードの お知らせ（announcements）は これまでどおり
+       ここで 引き受ける。別の 口なので 混ざらない。 */
+  if (path === "/api/admin/news/save" || path === "/api/admin/news/delete") return null;
+  /* ★ 公式の 英単語プリセットを 配り直す 口も 同じ（2026-09-03）。
+     ここで 引き受けると CSRF で 403、通しても route に 無いので 404 で、
+     **一度も 呼べない 口**だった。本体側で ADMIN_KEY を 見る。 */
+  if (path === "/api/admin/eiken-deliver") return null;
   if (!env?.DB) return bad("DB_NOT_CONFIGURED", "データベースが設定されていません。", 500);
 
   /* 画面（HTML）。中身は client/admin.html。
@@ -1707,7 +1789,7 @@ export async function handleAdminRequest(request, env, ctx) {
   const adm = await resolveAdminSession(request, env);
   let res = null;
   try {
-    res = await route(request, env, url, sub, method, adm, ip);
+    res = await route(request, env, url, sub, method, adm, ip, 本体);
   } catch (e) {
     console.error("[admin]", S(e?.message));
     /* ★ 検証用 Worker では **理由をそのまま返す**（2026-08-18）。
@@ -1725,7 +1807,7 @@ export async function handleAdminRequest(request, env, ctx) {
   return res;
 }
 
-async function route(request, env, url, sub, method, adm, ip) {
+async function route(request, env, url, sub, method, adm, ip, 本体 = {}) {
   /* ★ あげる（upload）だけは **中身を 読まない**（2026-08-20）。
      ここで request.json() を 呼ぶと、その時点で 中身の 流れを
      使い切ってしまい、画像・動画の **本体が 消える**。 */
@@ -1912,6 +1994,150 @@ async function route(request, env, url, sub, method, adm, ip) {
     return ok({ data: await screenUsers(env, url) });
   }
   let m;
+  /* いまの 残高と プランを 読む（画面が 開いた ときに 出す） */
+  if ((m = /^users\/([^/]+)\/qredit-now$/.exec(sub)) && method === "GET") {
+    const g = guard(adm, "users.qredit"); if (g) return g;
+    const uid = N(m[1]);
+    const bal = 本体.qreditLoadBalanceRow ? await 本体.qreditLoadBalanceRow(env, uid).catch(() => null) : null;
+    const sub2 = await oneRow(env,
+      `SELECT plan_name, status, renews_at FROM user_subscription_state WHERE user_id=?1`, [uid]);
+    return ok({ 残高: N(bal?.balance), plan: S(sub2?.plan_name) || "free",
+      状態: S(sub2?.status), 期限: N(sub2?.renews_at) });
+  }
+
+  /* ══ Qredit を 手で 動かす（2026-09-05）══════════════════════════
+     訴え「Admin で できる ことを 増やしたい」→「Qredit ・ サブスクの 手動操作」。
+     ★ 残高の 動かしかたは **本体の qreditGrant / qreditSpend** を 借りる。
+       ここで 直に UPDATE すると 台帳（qredit_ledger）と 食い違う。
+     ★ 理由 必須・再認証 必須・監査ログ。人の 持ちものを 動かす ので。 */
+  if ((m = /^users\/([^/]+)\/qredit$/.exec(sub)) && method === "POST") {
+    const g = guard(adm, "users.qredit", {
+      destructive: true, reason: S(body.reasonText), reasonCategory: S(body.reasonCategory) || "other"
+    });
+    if (g) return g;
+    if (!本体.qreditGrant || !本体.qreditSpend) {
+      return bad("NOT_WIRED", "Qredit の 口が つながって いません。", 500);
+    }
+    const uid = N(m[1]);
+    const いる = await oneRow(env, `SELECT id FROM users WHERE id=?1`, [uid]);
+    if (!いる) return bad("NOT_FOUND", "その 人は いません。", 404);
+    const 向き = S(body.direction) === "revoke" ? "revoke" : "grant";
+    const 量 = Math.max(1, Math.min(1000000, N(body.amount)));
+    if (!量) return bad("BAD_REQUEST", "いくつ 動かすかを 入れて ください。", 400);
+    const 鍵 = "adm:qredit:" + adm.adminId + ":" + uuid();
+    const 前 = 本体.qreditLoadBalanceRow ? await 本体.qreditLoadBalanceRow(env, uid).catch(() => null) : null;
+    const r = 向き === "grant"
+      ? await 本体.qreditGrant(env, { userId: uid, amount: 量, type: "admin_grant",
+          reasonCode: "admin", idempotencyKey: 鍵, createdBy: adm.adminId,
+          meta: { by: adm.adminId, reason: S(body.reasonText) } })
+      : await 本体.qreditSpend(env, { userId: uid, amount: 量, type: "admin_revoke",
+          reasonCode: "admin", idempotencyKey: 鍵, createdBy: adm.adminId,
+          meta: { by: adm.adminId, reason: S(body.reasonText) } });
+    if (!r || !r.ok) {
+      return bad(S(r?.code) || "QREDIT_FAILED",
+        向き === "revoke" ? "回収できません（残高が 足りない かも しれません）。" : "付与できません。", 400);
+    }
+    const 後 = 本体.qreditLoadBalanceRow ? await 本体.qreditLoadBalanceRow(env, uid).catch(() => null) : null;
+    await audit(env, adm, { action: "users.qredit." + 向き, targetType: "user", targetId: String(uid),
+      reason: (S(body.reasonCategory) || "other") + " / " + S(body.reasonText),
+      before: { balance: N(前?.balance) }, after: { balance: N(後?.balance), amount: 量 }, ip });
+    /* 本人にも 知らせる（黙って 増やしたり 減らしたり しない）。 */
+    await notifyUser(env, uid, {
+      type: "qredit",
+      title: 向き === "grant" ? "Qredit が 追加されました" : "Qredit が 調整されました",
+      body: (向き === "grant" ? "+" : "−") + 量 + " Qredit"
+        + (S(body.reasonText) ? "（" + S(body.reasonText) + "）" : ""),
+      meta: { by: "admin", amount: 量, direction: 向き }
+    }).catch(() => false);
+    return ok({ 残高: N(後?.balance), 動かした: 量, 向き });
+  }
+
+  /* ══ サブスクを 手で 動かす（2026-09-05）══════════════════════════ */
+  if ((m = /^users\/([^/]+)\/subscription$/.exec(sub)) && method === "POST") {
+    const g = guard(adm, "users.qredit", {
+      destructive: true, reason: S(body.reasonText), reasonCategory: S(body.reasonCategory) || "other"
+    });
+    if (g) return g;
+    const uid = N(m[1]);
+    const いる = await oneRow(env, `SELECT id FROM users WHERE id=?1`, [uid]);
+    if (!いる) return bad("NOT_FOUND", "その 人は いません。", 404);
+    /* ★ プランの 呼び名は **本体が 決める**（free / edu_pre / pre）。
+       ここで 並べ直すと、プランが 増えた ときに 食い違う。 */
+    const 正す = 本体.プランを正す || ((v) => S(v).trim().toLowerCase());
+    const plan = 正す(S(body.planId)) || "";
+    if (!plan) {
+      const 並び = 本体.プラン一覧 ? 本体.プラン一覧().join(" / ") : "free";
+      return bad("BAD_REQUEST", "プランは " + 並び + " のどれかです。", 400);
+    }
+    const 日 = Math.max(0, Math.min(3650, N(body.days)));
+    const now = nowMs();
+    const renews = plan === "free" ? 0 : (日 ? now + 日 * 86400000 : 0);
+    const 前 = await oneRow(env,
+      `SELECT plan_name, status, renews_at FROM user_subscription_state WHERE user_id=?1`, [uid]);
+    await env.DB.prepare(`
+      INSERT INTO user_subscription_state (user_id, plan_name, status, source, started_at, renews_at, updated_at)
+      VALUES (?1,?2,?3,'admin',?4,?5,?4)
+      ON CONFLICT(user_id) DO UPDATE SET plan_name=?2, status=?3, source='admin', renews_at=?5, updated_at=?4
+    `).bind(uid, plan, plan === "free" ? "inactive" : "active", now, renews).run();
+    await audit(env, adm, { action: "users.subscription", targetType: "user", targetId: String(uid),
+      reason: (S(body.reasonCategory) || "other") + " / " + S(body.reasonText),
+      before: { plan: S(前?.plan_name), status: S(前?.status), renewsAt: N(前?.renews_at) },
+      after: { plan, status: plan === "free" ? "inactive" : "active", renewsAt: renews }, ip });
+    await notifyUser(env, uid, {
+      type: "subscription", title: "プランが 変わりました",
+      body: plan.toUpperCase() + (renews ? "（" + new Date(renews).toLocaleDateString("ja-JP") + " まで）" : ""),
+      meta: { by: "admin", plan }
+    }).catch(() => false);
+    return ok({ plan, 期限: renews });
+  }
+
+  /* ══ 利用者の 中身を 見る（2026-09-05）════════════════════════════
+     訴え「Admin で できる ことを 増やしたい」→「利用者の 中身を 見る」。
+     何か あった とき（通報・問い合わせ）に **その人の 手元を 1 枚で**。
+     ★ 見た ことは 監査ログに 残す。黙って 覗かない。
+     ★ 出すのは **持ちものの 一覧と 数**まで。
+       プリセットの 問題文・DM の 中身・生成した 文章は 出さない。 */
+  if ((m = /^users\/([^/]+)\/inspect$/.exec(sub)) && method === "GET") {
+    const g = guard(adm, "users.view"); if (g) return g;
+    const uid = N(m[1]);
+    const いる = await oneRow(env, `SELECT id, nickname FROM users WHERE id=?1`, [uid]);
+    if (!いる) return bad("NOT_FOUND", "その 人は いません。", 404);
+
+    /* プリセット（公開して いる もの） */
+    const presets = (await tableExists(env, "public_presets")) ? await allRows(env,
+      `SELECT preset_id, name, public_title, subject_id, is_public,
+              public_visibility_state, published_at, created_at, updated_at
+         FROM public_presets WHERE user_id=?1 AND deleted_at=0
+        ORDER BY updated_at DESC LIMIT 50`, [uid]) : [];
+
+    /* 生成の 記録（何を 頼んだか の 種類と 結果だけ。中身は 出さない） */
+    const jobs = (await tableExists(env, "ai_jobs")) ? await allRows(env,
+      `SELECT id, type, status, executor, engine_version, made_count, planned_count,
+              error_code, created_at, completed_at
+         FROM ai_jobs WHERE user_id=?1 ORDER BY created_at DESC LIMIT 30`, [uid]) : [];
+
+    /* 通報（この 人が された もの・した もの） */
+    const された = await allRows(env,
+      `SELECT id, target_type, reason, state, created_at FROM content_reports
+        WHERE owner_id=?1 ORDER BY created_at DESC LIMIT 20`, [S(uid)]);
+    const した = await allRows(env,
+      `SELECT id, target_type, reason, state, created_at FROM content_reports
+        WHERE reporter_id=?1 ORDER BY created_at DESC LIMIT 20`, [S(uid)]).catch(() => []);
+
+    /* 通知（最近 届いた もの。何が 起きて いるかが 分かる） */
+    const 通知 = (await tableExists(env, "user_notifications")) ? await allRows(env,
+      `SELECT type, title, ts FROM user_notifications WHERE user_id=?1
+        ORDER BY ts DESC LIMIT 20`, [uid]) : [];
+
+    await audit(env, adm, { action: "users.inspect", targetType: "user", targetId: String(uid),
+      reason: "調べ", after: { nickname: S(いる.nickname) }, ip });
+
+    return ok({ data: {
+      user: { id: uid, nickname: S(いる.nickname) },
+      presets, jobs, 通報: { された, した }, 通知
+    } });
+  }
+
   if ((m = /^users\/([^/]+)$/.exec(sub)) && method === "GET") {
     const g = guard(adm, "users.view"); if (g) return g;
     const d = await screenUserDetail(env, m[1]);
@@ -2005,6 +2231,79 @@ async function route(request, env, url, sub, method, adm, ip) {
 
      ★ official（青と金の 重ね）は **owner だけ**。ごく限られた 公式のため。
      ★ 付け外しは かならず 監査ログへ 残す。 */
+  /* ══ 通知を 直接 送る（2026-09-05）════════════════════════════════
+     訴え「Admin で できる ことを 増やしたい」→「通知を 直接 送る」。
+
+     お知らせ（News）は **公式サイトにも 載る 読みもの**。
+     こちらは **通知欄へ 直に 入れる 短い 知らせ**。用途が 違う ので 別の 口。
+     ・宛先は 3 つ: 全員 / この人 / 条件で 絞る
+     ・下書きは 持たない（短いので 書いたら 送る）
+     ・**何人に 入れたかを そのまま 返す**（届いたふりを しない）
+     ・開いて いる 人には その場で 鳴る（notifyUser / みんなへ知らせる が 押す） */
+  if (sub === "notify/send" && method === "POST") {
+    const g = guard(adm, "notify.send", {
+      destructive: true, reason: S(body.reasonText), reasonCategory: S(body.reasonCategory) || "other"
+    });
+    if (g) return g;
+    const title = S(body.title).slice(0, 200).trim();
+    const 本文 = S(body.body).slice(0, 600).trim();
+    if (!title) return bad("BAD_REQUEST", "見出しを 書いて ください。", 400);
+    if (!本文) return bad("BAD_REQUEST", "本文を 書いて ください。", 400);
+    const 宛 = S(body.to) || "user";
+    const 鍵 = "adm:" + uuid();
+    if (宛 === "user") {
+      const uid = N(body.userId);
+      if (!uid) return bad("BAD_REQUEST", "誰に 送るかを 選んで ください。", 400);
+      const いる = await oneRow(env, `SELECT id FROM users WHERE id=?1`, [uid]);
+      if (!いる) return bad("NOT_FOUND", "その 人は いません。", 404);
+      const 入った = await notifyUser(env, uid, {
+        type: "admin", title, body: 本文, meta: { from: "admin", by: adm.adminId }
+      });
+      await audit(env, adm, { action: "notify.send", targetType: "user", targetId: String(uid),
+        reason: (S(body.reasonCategory) || "other") + " / " + S(body.reasonText),
+        after: { to: "user", userId: uid, title }, ip });
+      return ok({ 送った: 入った ? 1 : 0, 宛先: "この人" });
+    }
+    /* 全員 / 条件で 絞る */
+    let 絞り = null, 名 = "全員";
+    if (宛 === "inactive") {
+      const 日 = Math.min(365, Math.max(1, N(body.days) || 7));
+      絞り = { sql: `u.last_login_at < ?2`, 引数: [Date.now() - 日 * 86400000] };
+      名 = 日 + " 日 開いて いない 人";
+    } else if (宛 === "active") {
+      const 日 = Math.min(365, Math.max(1, N(body.days) || 7));
+      絞り = { sql: `u.last_login_at >= ?2`, 引数: [Date.now() - 日 * 86400000] };
+      名 = 日 + " 日 以内に 開いた 人";
+    }
+    const r = await みんなへ知らせる(env, {
+      key: 鍵, type: "admin", title, body: 本文,
+      meta: { from: "admin", by: adm.adminId }, 絞り
+    });
+    await audit(env, adm, { action: "notify.send", targetType: "broadcast", targetId: 鍵,
+      reason: (S(body.reasonCategory) || "other") + " / " + S(body.reasonText),
+      after: { to: 宛, 名, title, 入れた: r.入れた, 全体: r.全体 }, ip });
+    return ok({ 送った: r.入れた, 全体: r.全体, 宛先: 名, 打ち切り: r.入れた < r.全体 });
+  }
+
+  /* 誰に 届くかを **送る前に** 数える（送ってから 驚かない ため）。 */
+  if (sub === "notify/count" && method === "POST") {
+    const g = guard(adm, "notify.send"); if (g) return g;
+    const 宛 = S(body.to) || "user";
+    if (宛 === "user") return ok({ 人数: N(body.userId) ? 1 : 0 });
+    let where = `COALESCE(s.state,'active') NOT IN ('deleted','purged')`;
+    const 引数 = [];
+    if (宛 === "inactive" || 宛 === "active") {
+      const 日 = Math.min(365, Math.max(1, N(body.days) || 7));
+      where += ` AND u.last_login_at ${宛 === "inactive" ? "<" : ">="} ?1`;
+      引数.push(Date.now() - 日 * 86400000);
+    }
+    const row = await oneRow(env,
+      `SELECT COUNT(*) AS n FROM users u
+         LEFT JOIN user_status s ON s.user_id = CAST(u.id AS TEXT)
+        WHERE ${where}`, 引数);
+    return ok({ 人数: N(row?.n) });
+  }
+
   if ((m = /^users\/([^/]+)\/badge$/.exec(sub)) && method === "POST") {
     const g = guard(adm, "users.badge", { destructive: false }); if (g) return g;
     const uid = N(m[1]);
@@ -2633,14 +2932,26 @@ async function route(request, env, url, sub, method, adm, ip) {
     if (status === "published" && await tableExists(env, "news_articles")) {
       const newsId = S(before?.news_id) || ("news_" + id.slice(0, 12));
       const pubMs = S(body.publishedAt) ? new Date(S(body.publishedAt)).getTime() : nowMs();
+      /* ★ 表紙（バナー）と 要約（2026-09-02）。
+         これまでは 本文の 先頭 160 字を 要約に して、表紙は 一切 書いて
+         いなかった。そのため **どこから 配信しても バナーが 付けられなかった**。
+         表紙は アプリの お知らせ（cover）と 公式サイト（一覧の 札・記事の 頭・
+         共有の 絵）で そのまま 使う。http(s) の ものだけ 通す。 */
+      /* ★ あげた 画像も 表紙に できる（2026-09-03・訴え「バナー画像を
+         設定できるように」）。自分の 置き場（/api/media/img/…）と
+         外の http(s) の 両方を 通す。動画・ファイルは 表紙に しない。 */
+      const 表紙 = (/^\/api\/media\/img\/[A-Za-z0-9._-]+$/.test(S(body.coverUrl))
+        || /^https?:\/\//i.test(S(body.coverUrl))) ? S(body.coverUrl).slice(0, 500) : "";
+      const 要約 = S(body.summary).trim().slice(0, 400)
+        || S(body.bodyMd).replace(/[#*`>\-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
       await env.DB.prepare(
-        `INSERT INTO news_articles (id, category, title, summary, body, status, published_at, created_at, updated_at, author_id, media_json)
-         VALUES (?1,?2,?3,?4,?5,'published',?6,?7,?7,0,?8)
+        `INSERT INTO news_articles (id, category, title, summary, body, cover_url, status, published_at, created_at, updated_at, author_id, media_json)
+         VALUES (?1,?2,?3,?4,?5,?9,'published',?6,?7,?7,0,?8)
          ON CONFLICT(id) DO UPDATE SET category=?2, title=?3, summary=?4, body=?5,
-           status='published', published_at=?6, updated_at=?7, media_json=?8`
+           cover_url=?9, status='published', published_at=?6, updated_at=?7, media_json=?8`
       ).bind(newsId, S(body.category) || "release", S(body.title),
-        S(body.bodyMd).slice(0, 160), S(body.bodyMd), pubMs, nowMs(),
-        JSON.stringify(添え)).run().catch(() => {});
+        要約, S(body.bodyMd), pubMs, nowMs(),
+        JSON.stringify(添え), 表紙).run().catch(() => {});
       await env.DB.prepare(`UPDATE announcements SET news_id=?2 WHERE id=?1`).bind(id, newsId).run().catch(() => {});
 
       /* ★ 同じ内容を VocabuQuiz 公式として Feed へも 出す。

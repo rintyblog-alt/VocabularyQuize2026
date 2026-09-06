@@ -41,6 +41,14 @@ class_name = "RoomDO"
 name = "SURVIVE_ROOMS"
 class_name = "SurviveRoom"
 
+# ★ DM の 音声通話の 合図（2026-08-29）。**1 人 1 個**。
+#   2026-09-05 から 通知・お知らせの 押し出しも ここに 相乗りする。
+#   手元に これが 無いと /ws/call が CALL_NOT_CONFIGURED で 500 に なり、
+#   「届いた その場で 鳴る」を 手元で 確かめられない（実際 踏んだ）。
+[[durable_objects.bindings]]
+name = "CALL_HUB"
+class_name = "CallHub"
+
 # [ai] は local dev で Cloudflare 認証が要るため既定で除外（認証フロー検証には不要）。
 #   AI機能もローカルで試したい場合はこの下に [ai] / binding="AI" を足し `wrangler login` 済みにする。
 

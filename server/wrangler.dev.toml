@@ -162,8 +162,13 @@ ADMIN_BOOTSTRAP_EMAIL = "admin@vocabuquiz.dev"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "vocabuquiz_auth_dev"
-database_id = "c553b4ef-29ff-4077-9b02-bb66ec710fc9"
+# ★ 2026-08-31: vocabuquiz_auth_dev が **500MB の 上限**に 達し、
+#   新しい 検証アカウントが 作れなく なった（登録が INTERNAL_ERROR）。
+#   **古い ほうは 消さずに 残して**、新しい 空の DB へ 向け直す。
+#   戻す ときは 下の 2 行を 入れ替える。
+#     旧: vocabuquiz_auth_dev  / c553b4ef-29ff-4077-9b02-bb66ec710fc9（満杯）
+database_name = "vocabuquiz_auth_dev2"
+database_id = "3567411f-e169-4966-b0dd-b94526781d19"
 remote = true
 
 # 例: data_pack 保存先KV

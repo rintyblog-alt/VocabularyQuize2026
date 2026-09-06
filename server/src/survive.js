@@ -17,6 +17,8 @@
      ・毎フレーム 送らない。入力と 位置は 20Hz、配るのは 15Hz。
      ・変わっていない 人は 配らない（差分）。
    ══════════════════════════════════════════════════════════════════════════ */
+import { 開いている人へ押す } from "./calls.js";
+
 
 /* ── 小道具 ─────────────────────────────────────────────────────────── */
 const S = (v, n) => String(v === undefined || v === null ? "" : v).slice(0, n || 200);
@@ -499,6 +501,13 @@ async function handleInvite(request, env) {
     console.error("[survive] 招待を 送れません:", String(e && e.message || e));
     return json({ ok: true, sent: false, reason: "notify_failed" });
   }
+  /* ★ 誘いは **その場で** 届く ほうが 嬉しい（2026-09-05）。
+     開いて いる 人にだけ 飛ぶ。繋いで いない 人は 素通り。 */
+  try {
+    await 開いている人へ押す(env, Number(to || 0), {
+      type: "notify.new", at: now, title, body, tag: "survive:" + roomId
+    });
+  } catch (e) {}
   return json({ ok: true, sent: true, roomId });
 }
 

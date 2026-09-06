@@ -21,7 +21,8 @@ export { SurviveRoom };
      画面の ボタンを 隠すのは 制御では ない。どの 口からでも ここを 通す。 */
 import {
   handleCallRequest, isCallPath, CallHub,
-  callsOnBlock, callsAdminSummary, callsReportDetail, ensureCallSchema
+  callsOnBlock, callsAdminSummary, callsReportDetail, ensureCallSchema,
+  開いている人へ押す,
 } from "./calls.js";
 export { CallHub };
 
@@ -43,6 +44,8 @@ import {
    ★ /site の下だけを引き受ける。**既存アプリの経路には触れない。**
      ドメイン（vocabuquiz.jp）が取れたら、ここの判定をホストで分けるだけで移せる。 */
 import { handleSiteRequest, isSitePath } from "./site.js";
+/* 呼びすぎの 関所（2026-09-02）。中身は throttle.js。単体で 測れる ように 分けて ある。 */
+import { 定期通信か, 呼びすぎ判定 } from "./throttle.js";
 
 /* ★ 「いま本体はどの上限で動いているか」を管理画面へ返すための口。
    管理画面側で同じ計算をやり直すと、本体と食い違ったときに気付けない。
@@ -350,19 +353,31 @@ const DATA_PACK_FALLBACK_ASSET_PATH = "/assets/presets/survival_fallback_pack.js
 const DATA_PACK_SOURCE_META_KEY = "pack_source_meta.json";
 const DEFAULT_PACK_SOURCE_URL = "https://rintyblog-alt.github.io/VocabularyQuize2026/";
 /* ═══ EIKEN preset auto-delivery ═══ */
+/* ══ 公式の 英単語プリセット（2026-09-03・訴え）════════════════════
+   訴え「公式に 英単語の プリセットが 11 個 あるんだけど、これを
+         『VocabuTest 0-200』…『VocabuTest 800-1000』に まとめて 欲しい。
+         名前だけじゃ なくて、実際に 単語の 中身も まとめて」
+
+   もとは 週 100 語 × 11 週（うち 1 週は 総復習で 中身が 1 週目と 同じ）。
+   ★ これを **200 語ずつ 5 本**へ。範囲の 単語を **全部・順番どおり**入れる
+     （前は 乱数で 選んでいたので、同じ 名前でも 中身が 毎回 違った）。
+   ★ id は eiken: の まま。画面が isOfficialPreset() で この 頭を 見ている
+     ので、変えると **公式の 札も 開きかたも 全部 外れる**。 */
 const EIKEN_SCHEDULE = [
-  {w:1,n:"英検対策 第1週 (1-100)",d:"2026-04-11T00:00:00+09:00",nf:1,nt:100,nc:100,rf:0,rt:0,rc:0},
-  {w:2,n:"英検対策 第2週 (101-200)",d:"2026-04-17T09:00:00+09:00",nf:101,nt:200,nc:100,rf:1,rt:100,rc:10},
-  {w:3,n:"英検対策 第3週 (201-300)",d:"2026-04-24T09:00:00+09:00",nf:201,nt:300,nc:100,rf:1,rt:200,rc:10},
-  {w:4,n:"英検対策 第4週 (301-400)",d:"2026-05-01T09:00:00+09:00",nf:301,nt:400,nc:100,rf:1,rt:300,rc:10},
-  {w:5,n:"英検対策 第5週 (401-500)",d:"2026-05-08T09:00:00+09:00",nf:401,nt:500,nc:100,rf:1,rt:400,rc:10},
-  {w:6,n:"英検対策 第6週 (501-600)",d:"2026-05-15T09:00:00+09:00",nf:501,nt:600,nc:100,rf:1,rt:500,rc:10},
-  {w:7,n:"英検対策 第7週 (601-700)",d:"2026-05-29T09:00:00+09:00",nf:601,nt:700,nc:100,rf:1,rt:600,rc:10},
-  {w:8,n:"英検対策 第8週 (701-800)",d:"2026-06-05T09:00:00+09:00",nf:701,nt:800,nc:100,rf:1,rt:700,rc:10},
-  {w:9,n:"英検対策 第9週 (801-900)",d:"2026-06-12T09:00:00+09:00",nf:801,nt:900,nc:100,rf:1,rt:800,rc:10},
-  {w:10,n:"英検対策 第10週 (901-1000)",d:"2026-06-19T09:00:00+09:00",nf:901,nt:1000,nc:100,rf:1,rt:900,rc:10},
-  {w:11,n:"英検対策 第11週 (総復習)",d:"2026-06-26T09:00:00+09:00",nf:1,nt:100,nc:100,rf:0,rt:0,rc:0},
+  {w:1,n:"VocabuTest 0-200",   d:"2026-04-11T00:00:00+09:00",nf:1,  nt:200, nc:200,rf:0,rt:0,rc:0},
+  {w:2,n:"VocabuTest 200-400", d:"2026-04-11T00:00:00+09:00",nf:201,nt:400, nc:200,rf:0,rt:0,rc:0},
+  {w:3,n:"VocabuTest 400-600", d:"2026-04-11T00:00:00+09:00",nf:401,nt:600, nc:200,rf:0,rt:0,rc:0},
+  {w:4,n:"VocabuTest 600-800", d:"2026-04-11T00:00:00+09:00",nf:601,nt:800, nc:200,rf:0,rt:0,rc:0},
+  {w:5,n:"VocabuTest 800-1000",d:"2026-04-11T00:00:00+09:00",nf:801,nt:1000,nc:200,rf:0,rt:0,rc:0},
 ];
+/* 表紙。**色と 模様だけ**（写真は 使わない）。画面は appearance.banner を 見る。 */
+const VOCABUTEST_LOOK = {
+  1: { banner: "/assets/vocabutest/vt1.svg", icon: "sprout" },
+  2: { banner: "/assets/vocabutest/vt2.svg", icon: "leaf" },
+  3: { banner: "/assets/vocabutest/vt3.svg", icon: "tree" },
+  4: { banner: "/assets/vocabutest/vt4.svg", icon: "mountain" },
+  5: { banner: "/assets/vocabutest/vt5.svg", icon: "star" }
+};
 const EIKEN_WORDS = [[1,"apologize","謝る"],[2,"cycle","自転車に乗る、循環する、自転車、サイクル、循環"],[3,"dislike","を嫌う、嫌悪"],[4,"exist","存在する"],[5,"float","漂う、浮かぶ、を浮かべる、浮くもの"],[6,"flow","流れる、流れ"],[7,"arrest","を逮捕する、逮捕"],[8,"bark","(犬などが)ほえる、ほえ声"],[9,"dig","(を)掘る"],[10,"divide","を分ける"],[11,"flash","ぴかっと光る、をぱっと照らす、きらめき、発射的な"],[12,"babysit","(子供)の世話をする、子供を世話をする"],[13,"force","Aに〜することを強いる、力、暴力、軍隊"],[14,"increase","増加する、を増やす、増加"],[15,"reduce","を減らす、減る"],[16,"prevent","を防ぐ、を妨げる"],[17,"lower","を下げる、低い方の、下の"],[18,"rise","(太陽などが)昇る、(価格・温度などが)上がる"],[19,"limit","を制限する、限度"],[20,"recognize","をそれとわかる、を認識する、を認める"],[21,"remain","のままである、残る"],[22,"promote","昇進する、を促進する"],[23,"request","を要請する、依頼、要望、リクエスト"],[24,"observe","(を)観察する、(法律・習慣など)を守る"],[25,"highway","主要[幹線]道路"],[26,"lime","ライム、ライムの実"],[27,"objection","反対、反対意見"],[28,"ketchup","ケチャップ"],[29,"rainbow","虹"],[30,"imagination","想像(力)"],[31,"puppy","子犬"],[32,"row","列、横列"],[33,"horn","(動物の)角、警笛"],[34,"impression","印象、感銘"],[35,"leather","革"],[36,"lifeguard","(海岸・プールの)監視[救助]員"],[37,"palace","宮殿、大邸宅"],[38,"photocopy","写真複写、コピー、(を)写真複写[コピー]する"],[39,"pole","棒、さお"],[40,"politician","政治家"],[41,"residence","住居、居住"],[42,"spice","スパイス、香辛料"],[43,"total","合計、全体、合計の、全体の"],[44,"version","版、バージョン"],[45,"nephew","おい"],[46,"disease","病気"],[47,"chemical","化学製品、化学薬品、化学(上)の"],[48,"education","教育"],[49,"biology","生物学"],[50,"generation","世代"],[51,"blanket","毛布"],[52,"gasoline","ガソリン"],[53,"clinic","診療所"],[54,"clerk","店員、事務員"],[55,"engineer","エンジニア、技術者"],[56,"boarding","搭乗、乗船、乗車"],[57,"document","文書、書類"],[58,"emotion","感情"],[59,"congratulation","祝辞、祝いの言葉"],[60,"assistant","助手、補佐"],[61,"fisherman","漁師、釣り人"],[62,"atmosphere","雰囲気、大気"],[63,"commercial","コマーシャル"],[64,"designer","デザイナー、設計者"],[65,"envelope","封筒"],[66,"beauty","美、美人"],[67,"branch","枝、支流、支店"],[68,"diet","ダイエット、日常の食事"],[69,"edge","縁、刃"],[70,"graduation","卒業、卒業式"],[71,"calculator","計算機"],[72,"attitude","態度"],[73,"disaster","災害、不幸"],[74,"forecast","予報"],[75,"fat","太った、厚い"],[76,"empty","空の"],[77,"confident","確信して、自信のある"],[78,"exact","正確な"],[79,"dead","死んだ"],[80,"curious","好奇心の強い、知りたがる"],[81,"fantastic","素晴らしい、空想的な"],[82,"alike","(互いに)似ている、同様で、同じように"],[83,"calm","落ち着いた、平穏"],[84,"delicate","取り扱いの難しい、繊細な"],[85,"flat","平らな、空気の抜けた、均一の"],[86,"following","(その)次の、以下の、次のもの、以下に述べること"],[87,"handsome","ハンサムな、端正な顔立ちの"],[88,"balanced","バランス[均衡]の取れた"],[89,"brave","勇敢な、勇ましい"],[90,"careless","(人・行為が)不注意な、軽率な"],[91,"foolish","愚かな、ばかな"],[92,"freezing","いてつくように寒い[冷たい]"],[93,"naturally","自然に、当然"],[94,"rarely","めったに〜しない"],[95,"shortly","じきに、まもなく"],[96,"seldom","めったに〜(し)ない"],[97,"totally","完全に、全く、とても"],[98,"surprisingly","驚くほど、意外にも"],[99,"wrongly","間違って、誤って"],[100,"further","もっと遠くに、さらに、もっと遠い、なおいっそうの"],[101,"overcome","(を)克服する、(に)打ち勝つ"],[102,"insist","強く主張する"],[103,"refresh","を元気づける、の気分をさわやかにする"],[104,"melt","溶ける、を溶かす"],[105,"seek","追求する、を探す"],[106,"slide","滑り下りる、を滑らせる、滑ること、滑り台、スライド"],[107,"knit","を編む、編み物をする"],[108,"resemble","(外見・性質などが)に似ている"],[109,"suffer","苦しむ、病気にかかる、(損害・傷痕など)を受ける"],[110,"stick","くっつく、を突き刺す"],[111,"trap","を閉じ込める、(狩猟)をわなで捕らえる、わな、計略"],[112,"switch","をスイッチで切り替える、を変える、転換する、スイッチ"],[113,"specialize","専門とする、専攻する"],[114,"supply","を供給する、供給"],[115,"succeed","成功する、継承する"],[116,"tear","を裂く、を破る、を無理やり引き離す"],[117,"vote","投票する、を投票で決める、投票"],[118,"lock","に鍵をかける、錠(前)"],[119,"harm","を傷なう、を傷つける、害"],[120,"consider","についてよく考える、(を)熟考する"],[121,"release","を解放する、解放、(一般)公開"],[122,"argue","と主張する、言い争う"],[123,"concentrate","集中する"],[124,"delay","を遅らせる、を延期する、遅れ、延期"],[125,"angle","角度、観点"],[126,"beetle","カブトムシ(の類)"],[127,"bookshelf","本棚"],[128,"comment","論評、コメント、(と)論評する"],[129,"happiness","幸福、幸せ"],[130,"nationality","国籍"],[131,"researcher","研究者、調査員"],[132,"metal","金属"],[133,"organization","組織、団体"],[134,"population","人口"],[135,"image","イメージ、映像"],[136,"level","水準、レベル"],[137,"opportunity","機会"],[138,"mayor","市長"],[139,"quality","質"],[140,"signal","信号、合図、(に)合図をする"],[141,"liquid","液体"],[142,"majority","大多数、多数派、過半数"],[143,"location","場所、位置"],[144,"pain","苦痛、苦労"],[145,"reality","現実(性)、現実のもの"],[146,"rental","賃貸し[賃借り]すること、レンタル料、賃貸の"],[147,"influence","影響、影響を与える"],[148,"restroom","(公共建物内の)トイレ、化粧室"],[149,"shelter","避難所、住まい、を保護する、避難する"],[150,"sheet","1枚(の紙)、(金属・ガラスなどの)薄板、シーツ"],[151,"operation","手術、操作"],[152,"photograph","写真、(の)写真を撮る"],[153,"printer","プリンター、印刷機"],[154,"rhythm","リズム"],[155,"shrimp","小エビ"],[156,"souvenir","みやげ、記念品、思い出の品"],[157,"receipt","レシート、領収書、受領"],[158,"lecture","講義、講演"],[159,"rank","階級、ランク、を等級づけする、位置する"],[160,"purse","ハンドバッグ、(主に女性用の)財布"],[161,"harmony","調和"],[162,"lawyer","弁護士、法律家"],[163,"origin","起源"],[164,"pause","休止、中止"],[165,"popularity","人気"],[166,"praise","称賛、賛美、をほめる、を称賛する"],[167,"pride","プライド、誇り"],[168,"reaction","反応"],[169,"rumor","うわさ"],[170,"shadow","影、(日)陰"],[171,"smoker","喫煙者"],[172,"laughter","笑い、笑い声"],[173,"miracle","奇跡"],[174,"niece","めい"],[175,"oyster","カキ"],[176,"particular","特定の、特別の"],[177,"negative","否定の、消極的な"],[178,"ordinary","普通の、並の"],[179,"salty","塩辛い、塩気のある"],[180,"pure","汚れていない、純粋な"],[181,"honest","正直な"],[182,"instant","即時の、即席の、瞬間、瞬時"],[183,"mad","怒って、狂気の、熱中して"],[184,"hidden","隠された、秘密の"],[185,"roast","焼いた、あぶった、を(オーブンで)焼く"],[186,"stressful","ストレスの原因となる、緊張を強いる"],[187,"thin","薄い、細い、やせた"],[188,"worth","価値がある、価値"],[189,"tough","困難な、頑丈な、堅い"],[190,"suitable","適した"],[191,"square","平方の、正方形の、平方、正方形、広場"],[192,"unfriendly","不親切な、よそよそしい"],[193,"indeed","実は、本当に"],[194,"extremely","非常に、極端に"],[195,"perhaps","もしかすると"],[196,"moreover","その上"],[197,"regularly","定期的に"],[198,"furthermore","その上、さらに"],[199,"directly","直接に"],[200,"frequently","頻繁に"],[201,"major","専攻する、主要な、多数の"],[202,"achieve","を達成する、を成し遂げる"],[203,"lack","(に)欠けている、がない、不足"],[204,"refer","言及する、参照する"],[205,"sink","沈む、を沈める"],[206,"consist","成る、ある"],[207,"spill","をこぼす、にこぼれる"],[208,"mention","に言及する、を述べる、言及、配慮"],[209,"admit","を(事実・妥当だと)認める"],[210,"blow","(風が)吹く、に息を吹きかける"],[211,"pretend","のふりをする"],[212,"regret","を後悔する、後悔"],[213,"meet","(要求・条件など)を満たす、に合う"],[214,"provide","を提供す[供給]する"],[215,"disagree","意見が食い違う、一致しない"],[216,"charge","(税金など)を課す、を請求する、を告発する、料金、出費"],[217,"book","を予約する、本"],[218,"run","を経営[運営]する、立候補する、走る"],[219,"purchase","(高価なもの・大量の物)を購入する、購入、買ったもの"],[220,"prefer","の方を好む"],[221,"attach","を添付する、を取り付ける"],[222,"examine","を検査する、を調べる"],[223,"affect","に影響を及ぼす"],[224,"treat","を扱う、をみなす、を治療する"],[225,"pace","(発展・生活・運動などの)速さ・ペース"],[226,"penalty","罰金、罰"],[227,"prayer","祈り"],[228,"projector","映写機、プロジェクター"],[229,"sketch","スケッチ、概略、(を)スケッチする"],[230,"treatment","治療、取り扱い"],[231,"survey","(詳細な)調査"],[232,"temple","寺、神殿"],[233,"agency","代理店"],[234,"temperature","気温、温度、体温"],[235,"trend","傾向、流行"],[236,"surface","表面、外見"],[237,"throat","のど"],[238,"profit","利益、もうけ"],[239,"workplace","職場、仕事場"],[240,"web","(ワールドワイド)ウェブ、蜘蛛の巣"],[241,"task","(課せられた)仕事"],[242,"spelling","つづり、(字を正しく)つづること"],[243,"summary","要約、まとめ"],[244,"thunderstorm","雷を伴う暴風雨"],[245,"diamond","ダイヤモンド"],[246,"manual","説明書、マニュアル"],[247,"theme","テーマ、主題"],[248,"thought","考え、思考"],[249,"victory","勝利"],[250,"sword","剣、刀"],[251,"volume","音量、分冊、(シリーズ本などの)巻"],[252,"effect","影響、結果"],[253,"material","材料、資料、物質の"],[254,"statement","発言、声明"],[255,"coast","海岸、沿岸"],[256,"fear","恐れ、心配、を恐れる"],[257,"countryside","田舎、田園地帯"],[258,"issue","(雑誌などの)第〜号、発行、問題、を発行する"],[259,"condition","状態、状況、条件"],[260,"crime","犯罪"],[261,"degree","(温度・角度などの)度、程度"],[262,"sunlight","日光"],[263,"behavior","振る舞い、行動"],[264,"childhood","子供のころ、幼児期"],[265,"rate","比率、割合、速度"],[266,"ancestor","祖先"],[267,"earthquake","地震"],[268,"freedom","自由"],[269,"citizen","市民、国民"],[270,"entertainment","娯楽、催し物、もてなし"],[271,"frame","額縁、枠"],[272,"fare","(乗り物の)料金"],[273,"fault","欠点、誤り"],[274,"feature","特徴、を呼び物とする"],[275,"likely","Aは〜しそうである、ありそうな"],[276,"official","公式の、正式の、職務上の、公務員"],[277,"ill","病気で"],[278,"unusual","異常な、普通でない"],[279,"specific","特定の、明確な"],[280,"opposite","反対の、正反対の物[人]、〜の向かい側に"],[281,"pleasant","気持ちの良い、快い"],[282,"awful","ひどい"],[283,"direct","直接の、まっすぐな、(を)指揮する、に指図する"],[284,"raw","未加工の、生の"],[285,"effective","効果的な、有効な"],[286,"social","社会の、社会的な"],[287,"medical","医学の"],[288,"original","最初の、独創的な"],[289,"economic","経済の"],[290,"global","地球全体の、全体的な"],[291,"frequent","頻繁な"],[292,"surprising","驚くべき"],[293,"environmentally","環境(保護)の点で"],[294,"traditionally","伝統的に"],[295,"rapidly","急速に、素早く"],[296,"properly","適切に、礼儀正しく"],[297,"differently","異なって、それとは違って"],[298,"dramatically","劇的に"],[299,"overtime","時間外に、時間外労働の、時間外(労働)"],[300,"freely","自由に"],[301,"participate","参加する"],[302,"graduate","卒業する、卒業生"],[303,"afford","を持つ[する]余裕がある"],[304,"donate","を寄付する"],[305,"locate","に位置する"],[306,"occur","思い浮かぶ、起こす"],[307,"employ","を雇う、を用いる"],[308,"involve","を巻き込む、を含む"],[309,"edit","(原稿を)編集する"],[310,"complain","不平を言う"],[311,"preserve","を保存する"],[312,"inform","に通知する"],[313,"estimate","を見積もる、を評価する、見積もり、評価"],[314,"click","をクリックする、クリック"],[315,"apply","申し込む、を適用[適用]する"],[316,"transport","を輸送する"],[317,"hand","(物)を手渡す、手、手助け"],[318,"compare","を比較する、を例える"],[319,"adopt","を採用する、を養子にする"],[320,"consume","を消費する"],[321,"warn","(に)警告する"],[322,"rely","頼る"],[323,"respond","答える、反応する"],[324,"behave","振る舞う、行儀良くする"],[325,"honor","敬意、光栄、名誉、に名誉を与える"],[326,"role","(俳優などの)役、役割"],[327,"brain","頭脳、脳"],[328,"device","装置、工夫"],[329,"electricity","電気、電力"],[330,"stress","(心身への)ストレス、圧迫感、に緊張を与える"],[331,"fuel","燃料、に燃料を補給する"],[332,"benefit","利益、恩恵、利益を得る、のためになる"],[333,"security","安全、警備、安心"],[334,"supplement","サプリメント、栄養補助剤"],[335,"focus","焦点、の焦点を合わせる"],[336,"client","顧客、(弁護士などへの)依頼人"],[337,"bacteria","細菌、バクテリア"],[338,"retirement","(定年による)退職、引退"],[339,"farming","農業"],[340,"case","場合、事例"],[341,"advertisement","広告、宣伝"],[342,"account","口座、説明、勘定"],[343,"data","データ"],[344,"solution","解決(策)、解答"],[345,"competition","競技(会)、コンクール、競争"],[346,"industry","産業、勤勉"],[347,"participant","参加者"],[348,"payment","支払い"],[349,"resident","居住者、在住の"],[350,"variety","種類、多様性"],[351,"decision","決定、結論"],[352,"cell","細胞、(独)房"],[353,"head","責任者、頭"],[354,"movement","(政治・社会的)運動、動き、動向"],[355,"economy","経済、節約"],[356,"income","収入"],[357,"transportation","輸送[交通](機関)"],[358,"communication","意思の疎通、コミュニケーション"],[359,"period","期間、時代、終止符"],[360,"evidence","証拠"],[361,"appointment","(会う)約束、(病院などの)予約"],[362,"salary","給料"],[363,"creature","生き物"],[364,"deadline","締切、期限"],[365,"society","社会"],[366,"experiment","実験、実験をする"],[367,"vitamin","ビタミン"],[368,"source","源、原因"],[369,"relationship","関係、間柄"],[370,"object","物、対象、目的、反対する"],[371,"software","ソフトウェア"],[372,"air conditioner","冷暖房装置、エアコン"],[373,"global warming","地球温暖化"],[374,"law","法律、法"],[375,"muscle","筋肉"],[376,"current","現在の、流通している、流れ、風潮"],[377,"environmental","環境の"],[378,"rare","珍しい、まれな"],[379,"efficient","能率的な"],[380,"casual","(衣服が)カジュアルな、略式の"],[381,"classic","(文学・芸術などが)最高水準の、典型的な"],[382,"positive","肯定的な、積極的な、確信のある"],[383,"aware","知って、気づいて"],[384,"flexible","融通の利く、柔軟な"],[385,"individual","個々の、個人的な、個人"],[386,"educational","教育的な、教育の"],[387,"physical","身体の、物理的な"],[388,"attractive","魅力的な、人を引き付ける"],[389,"portable","持ち運びできる"],[390,"unlikely","ありそうにもない"],[391,"real-estate","不動産の"],[392,"due","期限が来て、〜する予定である"],[393,"normally","通常は、いつもは"],[394,"generally","一般に、だいていい"],[395,"nevertheless","それにもかかわらず"],[396,"entirely","完全に、全く"],[397,"efficiently","能率的に"],[398,"meanwhile","その間(に)、一方"],[399,"accidentally","誤って、偶然に"],[400,"locally","地元で、ある地方で"],[401,"upgrade","(の)質を高める、(を)アップグレードする、アップグレード"],[402,"register","(を)登録する"],[403,"expand","(を)拡大[拡張]する、を膨張させる"],[404,"cure","(病気・病気)を治す、(問題など)を解決する、治療、特効薬"],[405,"scan","をスキャンする、をは素早く調べる、をざっと見る、スキャン、精密検査"],[406,"bend","を曲げる、曲がる"],[407,"prove","わかる、を証明する"],[408,"transfer","を移す、乗り換える、移転、譲渡、乗り換え"],[409,"impress","を感心させる、に(良い)印象を与える"],[410,"fold","を折る、を畳む"],[411,"emphasize","を強調する"],[412,"spin","回る、を回す"],[413,"process","(食品・原料など)を加工処理する、過程"],[414,"rob","から奪う"],[415,"analyze","を分析する"],[416,"bury","を埋める、を埋葬する"],[417,"sort","を分類する、を選び出す、種類"],[418,"update","をアップデートする、を最新のものに更新する、アップデート"],[419,"obtain","を得る、を獲得する"],[420,"associate","を結びつけて考える"],[421,"advance","を促進する、を前へ進める"],[422,"progress","進歩[向上]する、進歩、前進"],[423,"doubt","を疑う、疑い"],[424,"invest","(を)投資する"],[425,"ingredient","材料、成分、要素"],[426,"agent","仲介者、代理人"],[427,"development","発達、発展、開発"],[428,"exhibition","展覧(会)、展示(会)"],[429,"region","地域、地方"],[430,"facility","施設、設備"],[431,"aim","狙い、目標、の狙いを定める"],[432,"assignment","課題、割り当て"],[433,"trail","(山中の)小道"],[434,"pressure","圧力、重圧、(人)に圧力をかける"],[435,"response","返答、反応"],[436,"vehicle","乗り物"],[437,"skin","肌、皮膚"],[438,"fossil","化石、化石の(ような)"],[439,"promotion","昇進、宣伝"],[440,"improvement","改善、進歩、向上"],[441,"privacy","プライバシー、私生活"],[442,"healthcare","医療、健康管理"],[443,"term","期間、学期、専門用語"],[444,"blood","血、血液"],[445,"tourism","観光事業、観光旅行"],[446,"construction","建設(工事)建造物"],[447,"demand","需要、要求を強く要求する"],[448,"crop","作物、収穫高、を短くXる、を収穫する"],[449,"campaign","組織的活動運動、キャンペーン、(選挙などの)運動をする"],[450,"conference","(公式の)会議、総会"],[451,"poison","毒"],[452,"delivery","配達"],[453,"slum","スラム街"],[454,"panel","パネル、羽目板"],[455,"death","死"],[456,"carbon dioxide","二酸化炭素"],[457,"bone","骨"],[458,"board","委員会、板、(飛行機など)に乗り込む"],[459,"valley","谷、流域"],[460,"decade","10年間"],[461,"recommendation","推薦、推薦状"],[462,"organ","臓器、器官"],[463,"contract","契約(書)、協定、(協定など)を結ぶ"],[464,"standard","基準、標準、規格、標準の"],[465,"consumer","消費者"],[466,"production","生産、生産高、作品"],[467,"growth","成長、発展、増加"],[468,"range","鑑域、(範囲が)及ぶ"],[469,"impact","影響、衝撃、強い影響を与える"],[470,"roommate","ルームメート、同室者"],[471,"expense","費用"],[472,"step","1段階、1歩、(階段などの)段"],[473,"pattern","パターン、様式、模様、に模様を付ける"],[474,"jewelry","宝石類"],[475,"tiny","わずかな、とても小さな"],[476,"senior","上位の、年長の、先輩の"],[477,"mysterious","神秘的な、秘密の"],[478,"unhealthy","不健康な"],[479,"accurate","正確な"],[480,"poisonous","有毒な"],[481,"mental","精神の、心の"],[482,"false","間違った、不誠実な"],[483,"artificial","人工の、不自然な"],[484,"historic","歴史上有名な"],[485,"actual","実際の、本当の"],[486,"cultural","文化の、文化的な"],[487,"constant","絶えず続く、不変の"],[488,"rude","失礼な"],[489,"urban","都会の"],[490,"religious","宗教の"],[491,"disabled","身体[心身]障がいの"],[492,"talented","才能がある"],[493,"simply","単に、簡単に"],[494,"mainly","主に、概して"],[495,"correctly","正しく、正確に"],[496,"afterwards","その後、後で"],[497,"currently","現在"],[498,"healthily","健康的に"],[499,"increasingly","ますます"],[500,"particularly","特に、とりわけ"],[501,"evolve","進化する、発展[進展]する"],[502,"represent","を代表する、を表す"],[503,"adapt","を適応[適合]させる"],[504,"strengthen","を強くする"],[505,"react","反応する、反発する"],[506,"insert","を挿入する、挿入物"],[507,"matter","重大である、問題となる、事、問題"],[508,"recover","回復する、を取り戻す"],[509,"surround","を囲む"],[510,"adjust","を調節する、順応する"],[511,"migrate","(鳥・魚が)渡る、移住する"],[512,"digest","を消化する"],[513,"reset","を再設定する、を初期状態に戻す"],[514,"renew","を更新する、を再び始める"],[515,"maintain","を維持する"],[516,"determine","を決定[決心]する、を正確に知る"],[517,"struggle","奮闘する、戦い、闘争"],[518,"refund","を払い戻す、返済(金)"],[519,"qualify","に資格を与える"],[520,"motivate","にやる気を起こさせる、に動機を与える"],[521,"convert","を変える"],[522,"satisfy","(条件)を満たす、を満足させる"],[523,"flood","を水浸しにする、氾濫する、洪水、殺到"],[524,"calculate","を計算する"],[525,"pamphlet","パンフレット、小冊子"],[526,"shark","サメ"],[527,"conclusion","結論"],[528,"loss","損失"],[529,"shortage","不足"],[530,"password","パスワード"],[531,"code","暗号、コード"],[532,"programmer","プログラマー"],[533,"instinct","本能"],[534,"route","(一定の経路的な)道、手段"],[535,"bubble","泡"],[536,"banking","銀行業、銀行業務"],[537,"label","ラベル、札"],[538,"dinosaur","恐竜"],[539,"inconvenience","不便(さ)"],[540,"poverty","貧困"],[541,"fund","資金、基金、に資金を提供する"],[542,"aspect","局面、側面、見方"],[543,"means","手段"],[544,"theory","仮説、理論"],[545,"collection","収蔵品、コレクション、収集"],[546,"position","場、位置、立場、を置く"],[547,"factor","要因、要素"],[548,"structure","構造、建造物"],[549,"destination","目的地"],[550,"combination","組み合わせ、結合"],[551,"connection","接続、関係"],[552,"link","つながり、関連、を結び付ける"],[553,"council","会議、(地方自治体の)議会、評議会"],[554,"vegetarian","ベジタリアン、菜食主義者"],[555,"laboratory","研究室、実験室"],[556,"navy","海軍"],[557,"publisher","出版社"],[558,"lamp","ランプ、電気スタンド"],[559,"insurance","保険"],[560,"handwriting","手書き、筆跡"],[561,"container","容器、入れ物"],[562,"breath","息、呼吸"],[563,"entry","入る権利、入場、入学"],[564,"jam","場集、渋滞、(機械の)故障、を詰め込む、を渋滞させる"],[565,"drug","薬、麻薬"],[566,"youth","青年時代、青年期"],[567,"mineral","鉱物、ミネラル"],[568,"requirement","必要条件、資格"],[569,"league","リーグ、競技連盟"],[570,"content","中身、内容"],[571,"anxiety","不安、心配"],[572,"expectation","予想、期待、見込み"],[573,"layer","層"],[574,"powder","粉"],[575,"traveler","旅行者"],[576,"anxious","心配して、神経質な"],[577,"incorrect","間違った"],[578,"stylish","おしゃれな、流行の"],[579,"financial","財政(上)の"],[580,"enormous","ばく大な、巨大な"],[581,"temporary","一時的な"],[582,"organic","有機の、有機体の"],[583,"blind","目の不自由な"],[584,"dizzy","めまいがする"],[585,"newborn","生まれたばかりの"],[586,"unexpected","意外な、予期しない"],[587,"virtual","仮想の"],[588,"generous","気前の良い、寛大な"],[589,"academic","学問の"],[590,"extreme","極度の、極端な"],[591,"guilty","罪悪感のある、有罪の"],[592,"inexpensive","安価な"],[593,"worldwide","世界中に[で]、世界的に、世界的な"],[594,"additionally","またさらに、その上に"],[595,"commonly","一般に"],[596,"closely","綿密に、密接に"],[597,"thus","従って、このように"],[598,"overnight","一晩中、夜通し、夜通しの"],[599,"fairly","公正に、まあまあ、かなり"],[600,"relatively","比較的"],[601,"chase","を追いかける、追跡"],[602,"stare","(を)じっと見る、凝視"],[603,"identify","を特定する、を確認する"],[604,"commit","(罪など)を犯す、に義務を負わせる"],[605,"threaten","を脅す"],[606,"monitor","を監視する、監視装置、モニター"],[607,"unpack","(包みなど)を開けて中身を出す"],[608,"enlarge","を大きく[拡大]する"],[609,"stir","(を)かき混ぜる、をかき混ぜす"],[610,"postpone","を延期する"],[611,"witness","を目撃する、を証明する、目撃者、拡大"],[612,"restore","を修復する、(秩序・健康など)を回復させる"],[613,"bet","絶対…だと確信する、(を)賭ける"],[614,"dive","(頭から)飛び込む、飛び込み"],[615,"indicate","を指し示す、を示す"],[616,"import","を輸入する、輸入"],[617,"vary","変わる、異なる、を変える"],[618,"deserve","に値する"],[619,"heal","(傷などが)治る、(傷・病人)を治す"],[620,"appeal","訴える、懇願する、訴え、懇願"],[621,"accomplish","を成し遂げる"],[622,"bloom","(花が)咲く、(主に観賞用植物の)花"],[623,"tremble","震える"],[624,"decline","衰退する、(を)丁重に断る、衰退"],[625,"steel","鋼鉄"],[626,"surgery","手術、外科"],[627,"childcare","育児、子育て"],[628,"threat","脅威、脅迫"],[629,"error","誤り、間違い"],[630,"flexibility","柔軟性"],[631,"lifetime","一生"],[632,"mess","取り散らかしたもの、混乱"],[633,"function","機能、職務、機能する"],[634,"gender","性別"],[635,"household","家族、世帯、家庭(用)の"],[636,"vaccine","ワクチン"],[637,"calculation","計算"],[638,"user","利用者、使用者、ユーザー"],[639,"liquid","液体、液体の"],[640,"manufacturer","製造業者、メーカー"],[641,"satellite","衛星、人工衛星"],[642,"civilization","文明、文明化"],[643,"feeling","感情、気持ち"],[644,"graph","グラフ"],[645,"luxury","ぜいたく(品)"],[646,"newsletter","会報、ニュースレター"],[647,"ray","光線"],[648,"partnership","提携、協力"],[649,"session","活動のための集まり、会期"],[650,"cruise","遊覧航海、巡航、クルーズ"],[651,"microscope","顕微鏡"],[652,"ecotourism","エコツーリズム"],[653,"identity","身元、同一物であること"],[654,"contrast","対照"],[655,"sunset","日没"],[656,"chess","チェス"],[657,"kindergarten","幼稚園"],[658,"length","長さ"],[659,"contribution","貢献、寄付(金)"],[660,"economics","経済学"],[661,"gap","すき間、割れ目、隔たり"],[662,"wool","羊毛"],[663,"tail","しっぽ、末端、後部"],[664,"fiber","繊維"],[665,"humidity","湿気、湿度"],[666,"perfume","香り、香水"],[667,"feather","羽"],[668,"semester","(2学期制の)学期"],[669,"tongue","舌、言語"],[670,"occasion","(特定の)時、場合、行事"],[671,"rhythm","リズム、調子"],[672,"authority","当局、権威、権限"],[673,"cancer","がん、悪性腫瘍"],[674,"tribe","部族"],[675,"curious","好奇心の強い、知りたがる、奇妙な"],[676,"ethnic","民族的な"],[677,"leftover","食べ残しの、食べ残し"],[678,"potential","潜在的な、潜在(能)力、可能性"],[679,"general","一般的な、全体の"],[680,"complex","複雑な、複合の、複合体"],[681,"overall","全般[全体]的な"],[682,"alternative","代わりの、二者択一の、代わりになるもの、二者(以上)の選択"],[683,"cheerful","元気の良い、陽気な"],[684,"imperial","皇帝の、帝国の"],[685,"informal","くだけた、非公式の"],[686,"secondhand","中古の、中古で"],[687,"homeless","家のない、ホームレス"],[688,"responsible","責任のある"],[689,"former","前の、先の"],[690,"widespread","広く行き渡った、普及した"],[691,"beneficial","有益な、ためになる"],[692,"historical","歴史の、歴史に関する"],[693,"permanently","永久に"],[694,"slightly","わずかに"],[695,"specially","特別に、特に"],[696,"silently","黙って、静かに"],[697,"definitely","間違いなく"],[698,"separately","離れて、別々に"],[699,"steadily","着実に"],[700,"importantly","重要なことには"],[701,"refuse","を拒絶する、を断る"],[702,"establish","を設立する、を確立する"],[703,"oppose","に反対する、を対抗させる"],[704,"ban","を禁止する、禁止"],[705,"alter","を変える、を改める、変わる"],[706,"confirm","を確かめる、を確認する"],[707,"defeat","を負かす、敗北"],[708,"detect","を検出する、を感知する"],[709,"absorb","夢中になる、(液体・音・光など)を吸収する"],[710,"install","(機器など)を設置する、(ソフトなど)をインストールする、インストール"],[711,"educate","を教育する"],[712,"stock","(商品)を常に置いている、に蓄える、在庫品、蓄え、株式"],[713,"settle","定住する、(問題・紛争など)を解決する"],[714,"inspire","を奮い立たせる"],[715,"launch","を発射する、を開始する、を売り出す、発射、開始"],[716,"define","を定義する、を明確に示す"],[717,"insult","を侮辱する、侮辱"],[718,"deny","を否定する"],[719,"compose","(音楽・芸術など)を創作する、構成される"],[720,"dump","(ゴミなど)を捨てる、ゴミ捨て場、ゴミの山"],[721,"expire","(期限が)切れる"],[722,"ease","を和らげる、たやすさ"],[723,"rebuild","を改築する、を再建する"],[724,"shorten","を短くする"],[725,"birth","出生、誕生"],[726,"loan","借金、ローン"],[727,"historian","歴史学者"],[728,"soil","土、土壌"],[729,"background","経歴、背景"],[730,"volcano","火山"],[731,"engineering","工学"],[732,"prescription","処方箋"],[733,"secretary","秘書"],[734,"attraction","人を引きつけるもの、魅力"],[735,"reward","報酬、に報いる"],[736,"checkup","健康診断、検査、点検"],[737,"database","データベース"],[738,"bomb","爆弾"],[739,"coal","石炭"],[740,"nonfiction","ノンフィクション(作品)"],[741,"wire","電信線、針金"],[742,"blog","ブログ"],[743,"lung","肺"],[744,"pump","ポンプ、をポンプを使って送り込む、(を)くみ出す"],[745,"fingerprint","指紋"],[746,"poetry","(文学の一形式としての)詩"],[747,"scar","傷跡"],[748,"stain","しみ、汚れ"],[749,"aluminum","アルミニウム"],[750,"freeway","高速道路、(無料の)幹線道路"],[751,"influenza","インフルエンザ"],[752,"suburb","郊外"],[753,"affection","愛情、愛着"],[754,"artwork","芸術[工芸]作品"],[755,"massage","マッサージ"],[756,"tip","秘訣、ヒント、コツ"],[757,"foundation","基礎、団体、設立、根拠"],[758,"suggestion","提案"],[759,"resource","資源、資金、(いざというときの)手段"],[760,"permission","許可"],[761,"budget","予算、経費"],[762,"management","経営、管理"],[763,"candidate","候補者、志願者"],[764,"geography","地理学、地理"],[765,"option","選択権、選択の自由、選択肢"],[766,"possibility","可能性"],[767,"employment","雇用、勤務"],[768,"supporter","支持者、後援者"],[769,"consequence","結果、結論"],[770,"criminal","犯罪者、犯人、犯罪の"],[771,"warmth","暖かさ、温かさ、温情"],[772,"automobile","自動車"],[773,"documentary","ドキュメンタリー(番組・映画)実録、実録の"],[774,"studio","スタジオ、アトリエ"],[775,"weapon","武器、兵器"],[776,"ideal","理想的な、理想"],[777,"extinct","絶滅した、廃止された"],[778,"creative","創造的な、創造力のある"],[779,"relevant","関連した"],[780,"initial","最初の"],[781,"reasonable","(値段が)手ごろな、道理をわきまえた、筋の通った"],[782,"appropriate","適切な"],[783,"obvious","明らかな"],[784,"permanent","永続的な"],[785,"challenging","やりがいのある"],[786,"complicated","複雑な、ややこしい"],[787,"dramatic","劇的な、演劇の"],[788,"innocent","無罪の、無邪気な"],[789,"reliable","信頼できる"],[790,"stable","安定した"],[791,"unnecessary","不要な"],[792,"rapid","最速な"],[793,"terribly","ひどく、とても"],[794,"effectively","効果的に、有効に"],[795,"basically","基本的には"],[796,"constantly","いつでも、絶えず"],[797,"negatively","否定的に、消極的に"],[798,"independently","独立して、自主的に"],[799,"truly","本当に、実に"],[800,"economically","経済的に"],[801,"split","を分ける、裂け目、ひび、分裂"],[802,"bleed","出血する"],[803,"reuse","を再利用する"],[804,"rewrite","を書き直す"],[805,"restart","を再開始する"],[806,"astonish","を驚かす"],[807,"beg","に懇願する"],[808,"predict","(を)予測する、(を)予言する"],[809,"commute","通勤[通学]する"],[810,"resist","を我慢する、に抵抗する"],[811,"inherit","を継ぐ、を相続する"],[812,"sacrifice","を犠牲にする、犠牲"],[813,"imply","をほのめかす、を暗に示す"],[814,"tolerate","を許容する、を我慢する、に耐える"],[815,"yell","どなる、叫ぶ"],[816,"impose","(義務や罰)を課す"],[817,"guarantee","を保証する、保証"],[818,"substitute","代わりする、を代わりに用いる、代わりとなる人"],[819,"collapse","崩壊する、崩壊"],[820,"approve","を承認する、良いと認める"],[821,"interfere","邪魔する、干渉する"],[822,"compensate","に埋め合わせをする"],[823,"construct","を建設する、を組み立てる"],[824,"instruct","に指示する"],[825,"procedure","手順、手続き"],[826,"reputation","評判、名声"],[827,"species","種(しゅ)"],[828,"substance","物質、実質"],[829,"status","地位、身分"],[830,"desire","願望、欲望、欲求、を強く望む"],[831,"Buddhist","仏教徒"],[832,"biofuel","バイオ燃料"],[833,"room","余地、場所、部屋"],[834,"internship","インターンシップ、実習訓練(期間)"],[835,"shot","(ワクチンなどの)注射、シュート、発砲"],[836,"disagreement","意見の相違、不一致"],[837,"introduction","序論、導入、紹介"],[838,"efficiency","効率、能率"],[839,"complaint","不平、苦情"],[840,"trial","裁判、試み"],[841,"apology","おわび、謝罪"],[842,"rival","競争相手、ライバル"],[843,"defence","防御(力)、守備(力)"],[844,"equality","平等"],[845,"quantity","量"],[846,"reduction","減少、短縮、削減"],[847,"applicant","出願者、願書者"],[848,"workshop","研修会、ワークショップ"],[849,"disadvantage","不利な立場、不利(な点)"],[850,"literature","文学、文献"],[851,"creator","創作者"],[852,"confidence","自信、信頼"],[853,"cooperation","協力、協調性"],[854,"pioneer","先駆者、開拓者"],[855,"specialist","専門家"],[856,"vocabulary","語彙"],[857,"wage","給料、賃金"],[858,"definition","定義"],[859,"greenhouse","温室"],[860,"accuracy","精度、正確さ"],[861,"depression","憂うつ、うつ病、不景気"],[862,"inventor","発明者、考案者"],[863,"architect","建築家、設計者"],[864,"roof","屋根"],[865,"storage","保管、貯蔵"],[866,"dormitory","寮、(学校の)寄宿舎"],[867,"cave","洞窟、洞穴"],[868,"echo","反響、こだま"],[869,"representative","代表者、代理人、代表する、代理をする"],[870,"foreigner","外国人"],[871,"eyesight","視力"],[872,"reminder","リマインダー、思い起こさせるもの"],[873,"scholarship","奨学金、学識"],[874,"breeze","よそ風"],[875,"regional","地方の、局地的な"],[876,"vital","極めて重要な、不可欠な"],[877,"adequate","十分な"],[878,"formal","正式の、(服装が)正装の"],[879,"smooth","円滑に動く、なめらかな"],[880,"absolute","完全な、絶対的な"],[881,"entire","全体の、完全な"],[882,"capable","有能な、できる"],[883,"previous","以前の、前の、先の"],[884,"unclear","不明確な"],[885,"unsure","確信がない、確かでない"],[886,"unbelievable","信じられない、驚くほど素晴らしい"],[887,"uncomfortable","心地の良くない"],[888,"spare","余分の、予備の"],[889,"exclusive","高級な、排他的な"],[890,"rough","大まかな、粗い、乱暴な"],[891,"farther","もっと遠い、もっと遠くに"],[892,"ridiculous","ばかげた"],[893,"possibly","もしかしたら、たぶん"],[894,"purely","全く、純粋に、罪じの気なく"],[895,"otherwise","そうでなければ"],[896,"randomly","無作為に"],[897,"amazingly","驚くほど、驚くべきことに"],[898,"visually","視覚的に、外見は"],[899,"individually","個々に、個別に"],[900,"temporarily","一時的に"],[901,"reject","を拒絶する、を断る"],[902,"punish","を罰する"],[903,"ship","を送る、を輸送する、船"],[904,"stimulate","を刺激する"],[905,"differ","違う"],[906,"accompany","に同行する、に伴って起こる"],[907,"confess","告白する、を告白する"],[908,"reverse","を逆にする、逆、逆の"],[909,"admire","を称賛する"],[910,"conclude","と結論を下す、を締結する"],[911,"criticize","を非難する、を批判する"],[912,"protest","(に)抗議する、抗議"],[913,"encounter","に遭遇する、に直面する、遭遇"],[914,"breed","を飼育する、を栽培する、を繁殖させる、品種"],[915,"trace","(の跡)をたどる、をなぞる、跡"],[916,"seal","に判をする、を密封する、印鑑、封印、目張り"],[917,"delight","を喜ばせる、大喜び、喜びを与えるもの"],[918,"demonstrate","を論証する、を実演する、デモをする"],[919,"propose","を提案する、結婚を申し込む"],[920,"reflect","を反射する、を反映する、熟考する"],[921,"obey","(命令・規則など)に従う"],[922,"forbid","を禁止する"],[923,"fulfill","を実現させる、を果たす"],[924,"burst","を破裂[爆発]させる、破壊[標準]する、爆発、破裂"],[925,"sculpture","彫刻(作品)"],[926,"exception","例外"],[927,"luggage","手荷物、旅行用スーツケース"],[928,"altitude","高度、海抜"],[929,"handout","配布資料"],[930,"lens","レンズ"],[931,"masterpiece","傑作、名作"],[932,"stranger","見知らぬ人、他人"],[933,"illustration","挿絵、説明図"],[934,"accomplishment","業績、成果"],[935,"chest","胸(部)"],[936,"heartbeat","心臓の鼓動"],[937,"mask","マスク、面"],[938,"script","台本"],[939,"brightness","明るさ、鮮やかさ"],[940,"encouragement","励ましとなるもの、賞問、促進"],[941,"profile","プロフィール、人物紹介、経歴"],[942,"joy","喜び、うれしさ"],[943,"fiction","(架空の)物語、フィクション"],[944,"faith","信頼、信用"],[945,"duty","義務、職務"],[946,"proposal","提案(書)、計画案"],[947,"debt","借金"],[948,"barrier","障壁、障害"],[949,"cigarette","巻きたばこ"],[950,"ankle","足首"],[951,"jungle","ジャングル"],[952,"novelist","小説家"],[953,"emperor","皇帝、天皇"],[954,"critic","批評家"],[955,"repairperson","修理工"],[956,"warning","警告、注意"],[957,"revolution","革命"],[958,"unit","単位、構成部品、ユニット"],[959,"lane","車線、路地、小道"],[960,"border","国境、境界線、の端を成す、国境を接する"],[961,"mission","使命、使節(団)"],[962,"oxygen","酸素"],[963,"peak","絶頂、頂点、山頂、頂点に達する"],[964,"explosion","爆発"],[965,"portion","分け前、一部分、を分配する"],[966,"media","マスメディア"],[967,"property","財産、不動産、特性"],[968,"corporation","大企業、株式会社"],[969,"argument","論争、議論、主張"],[970,"victim","犠牲者、被害者"],[971,"wealth","富、財産"],[972,"psychology","心理学"],[973,"arctic","北極地方、北極の"],[974,"necessity","必需品、必要性"],[975,"royal","王室の、国王[女王]の"],[976,"precious","貴重な、高価な"],[977,"nonprofit","非営利的な"],[978,"messy","散らかった、汚い"],[979,"romantic","恋愛の、ロマンチックな、空想的な"],[980,"rooftop","屋上[屋根]にある、屋上、屋根"],[981,"embarrassed","きまりの悪い、恥ずかしい"],[982,"ugly","醜い、見苦しい"],[983,"unwanted","不必要な、望まれていない"],[984,"shiny","光る、光沢のある"],[985,"essential","必要不可欠な、本質的な、不可欠なもの"],[986,"annual","1年間の、年1回の"],[987,"jealous","ねたんで、しっとして"],[988,"sudden","突然の"],[989,"nuclear","原子力利用の、各エネルギーの"],[990,"superior","優れた、上位の"],[991,"intelligent","知能の高い、頭の良い"],[992,"steady","安定した、一定した"],[993,"exceptionally","加外れて、例外として"],[994,"halfway","中途で、半分だけ、中間の"],[995,"objectively","客観的に"],[996,"fluently","流ちょうに"],[997,"innocently","無邪気に、知らないふりをして"],[998,"equally","同程度に、等しく"],[999,"technically","技術的に、厳密に言えば、専門的に"],[1000,"frankly","率直に、率直に言って"]];
 function _eikenWordsInRange(from, to) { return EIKEN_WORDS.filter(e => e[0] >= from && e[0] <= to).map(e => ({ id: e[0], word: e[1], meaning: e[2] })); }
 function _eikenPickRandom(arr, count) { const s = [...arr]; for (let i = s.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [s[i], s[j]] = [s[j], s[i]]; } return s.slice(0, count); }
@@ -3204,6 +3219,18 @@ async function ensureDbSchemaFallbackNoMeta(env) {
       deleted_at INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (user_id, id)
     )`,
+    /* ★ カレンダー（2026-09-01・訴え「カレンダーを 自分で 設定し、記録できる。
+       アカウントで 同期。端末を 変えたとて」）。
+       ★ **新しい 仕組みを 作らない。** 同期の 土台（1 件＝id + data_json +
+         updated_at / deleted_at）に そのまま 乗せる。 */
+    `CREATE TABLE IF NOT EXISTS sync_calendar (
+      user_id INTEGER NOT NULL,
+      id TEXT NOT NULL,
+      data_json TEXT NOT NULL DEFAULT '{}',
+      updated_at INTEGER NOT NULL DEFAULT 0,
+      deleted_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, id)
+    )`,
     `CREATE TABLE IF NOT EXISTS sync_settings (
       user_id INTEGER PRIMARY KEY,
       data_json TEXT NOT NULL DEFAULT '{}',
@@ -4519,6 +4546,14 @@ async function ensureDbSchema(env) {
         deleted_at INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (user_id, id)
       )`,
+      `CREATE TABLE IF NOT EXISTS sync_calendar (
+        user_id INTEGER NOT NULL,
+        id TEXT NOT NULL,
+        data_json TEXT NOT NULL DEFAULT '{}',
+        updated_at INTEGER NOT NULL DEFAULT 0,
+        deleted_at INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, id)
+      )`,
       `CREATE TABLE IF NOT EXISTS sync_settings (
         user_id INTEGER PRIMARY KEY,
         data_json TEXT NOT NULL DEFAULT '{}',
@@ -5290,7 +5325,7 @@ async function ensureDbSchema(env) {
       if (!info) return;
       /* ══ 無い表へ ALTER をかけない ═════════════════════════════════
          PRAGMA table_info は **表が無くても例外を投げず、空を返す**。
-         そのまま進むと ALTER TABLE で落ち、そこで схема の作り直しが
+         そのまま進むと ALTER TABLE で落ち、そこで 表の作り直しが
          丸ごと止まって **すべての API が 500 になる**
          （実測 2026-08-12: lumi_usage を足した直後に全滅した）。
          列が 0 個 ＝ その表は無い。触らずに帰る。 */
@@ -6123,6 +6158,14 @@ async function ensureDbSchema(env) {
     await ensureIndex("CREATE INDEX IF NOT EXISTS idx_sync_insights_updated_at ON sync_insights (user_id, updated_at DESC);");
     await ensureIndex("CREATE INDEX IF NOT EXISTS idx_sync_presets_updated_at ON sync_presets (user_id, updated_at DESC);");
     await ensureIndex("CREATE INDEX IF NOT EXISTS idx_sync_chats_updated_at ON sync_chats (user_id, updated_at DESC);");
+    /* ★ カレンダーの 表は 種で 作られない ことが ある（すでに ある DB）。
+       **ここで 必ず 作る。** 種は 新しい DB にしか 効かない（前に これで 詰まった）。 */
+    await ensureIndex(`CREATE TABLE IF NOT EXISTS sync_calendar (
+      user_id INTEGER NOT NULL, id TEXT NOT NULL,
+      data_json TEXT NOT NULL DEFAULT '{}',
+      updated_at INTEGER NOT NULL DEFAULT 0, deleted_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, id));`);
+    await ensureIndex("CREATE INDEX IF NOT EXISTS idx_sync_calendar_updated_at ON sync_calendar (user_id, updated_at DESC);");
     await ensureIndex("CREATE INDEX IF NOT EXISTS idx_user_follows_followee ON user_follows (followee_id, updated_at DESC);");
     await ensureIndex("CREATE INDEX IF NOT EXISTS idx_dm_threads_a ON dm_threads (a_user_id, last_ts DESC);");
     await ensureIndex("CREATE INDEX IF NOT EXISTS idx_dm_threads_b ON dm_threads (b_user_id, last_ts DESC);");
@@ -14052,8 +14095,30 @@ async function fetchLatestUserNotificationPayload(env, userId) {
 }
 
 async function pushNotifyUser(env, userId, rawPayload) {
+  const uid0 = Math.max(0, Number(userId || 0));
+  /* ★ ① **開いて いる 人へ その場で 押し出す**（2026-09-05）。
+     訴え「受信した タイミングで 通知として 鳴らす。リアルタイムで」。
+     直す前は 2 分ごとの 見に行き（VQ_NOTIF_POLL_MS）だけ だったので、
+     いちばん 遅いと **2 分 遅れて** 気づいて いた。
+     通話が 使って いる WebSocket に 相乗りする（新しい 通り道を 作らない）。
+     ★ Web Push（下）とは 別。あちらは **閉じて いる 人**へ 飛ぶ。
+       ここが 無いと「開いて いる 人にだけ 届かない」という 逆転が 起きる。 */
+  if (uid0) {
+    try {
+      const payload = normalizePushNotificationPayload(
+        rawPayload || await fetchLatestUserNotificationPayload(env, uid0) || {});
+      await 開いている人へ押す(env, uid0, {
+        type: "notify.new",
+        at: Date.now(),
+        title: String(payload?.title || ""),
+        body: String(payload?.body || ""),
+        url: String(payload?.url || ""),
+        tag: String(payload?.tag || "")
+      });
+    } catch (e) {}
+  }
   if (!env?.DB || !webPushConfigured(env)) return;
-  const uid = Math.max(0, Number(userId || 0));
+  const uid = uid0;
   if (!uid) return;
   const rows = await env.DB.prepare(`
     SELECT id, endpoint
@@ -16802,6 +16867,35 @@ async function handleAuthResetPassword(request, env) {
   return json({ ok: true }, 200);
 }
 
+/* ══ 利用者の 状態を 1 か所で 読む（2026-09-05）═══════════════════════
+   admin.js の userStatusBlock と **同じ 表・同じ 決まり**で 読む。
+   ここが 食い違うと「サーバは 止めて いるのに 画面は 通す」に なる。
+   返すのは 画面が 判断する のに 要る ぶん だけ（理由の 本文は 出さない）。 */
+async function loadUserStatusForMe(env, userId) {
+  if (!env?.DB || !userId) return null;
+  let row = null;
+  try {
+    row = await env.DB.prepare(
+      `SELECT state, scope, reason_category, suspend_until
+         FROM user_status WHERE user_id = ?1`).bind(String(userId)).first();
+  } catch (e) { return null; }
+  if (!row) return null;
+  const state = String(row.state || "");
+  if (!state || state === "active") return null;
+  const until = String(row.suspend_until || "");
+  /* 期限切れの 一時停止は 「もう 止まって いない」と 返す
+     （userStatusBlock 側も 期限が 過ぎたら active に 戻す）。 */
+  if (state === "suspended" && until && new Date(until).getTime() < Date.now()) return null;
+  return {
+    state,                                   /* banned / suspended / deleted / purged */
+    scope: String(row.scope || "login_blocked"),
+    reason: String(row.reason_category || ""),
+    until,
+    blocked: state === "banned" || state === "deleted" || state === "purged"
+      || String(row.scope || "login_blocked") === "login_blocked"
+  };
+}
+
 async function handleAuthMe(request, env) {
   const user = await resolveAuthUser(request, env);
   if (!user) {
@@ -16817,12 +16911,20 @@ async function handleAuthMe(request, env) {
   }, Number(user.uid || 0), Date.now()).catch(() => null);
   const accountStatus = await loadAccountStatus(env, Number(user.uid || 0), Date.now());
   const qredit = await qreditBuildPayload(env, Number(user.uid || 0), { includeCatalogs: true, includeHistory: false, now: Date.now() });
+  /* ★ 管理画面からの Ban / 一時停止を **ここでも 知らせる**（2026-09-05）。
+     userStatusBlock は この 口だけ わざと 通している（自分の 状態を 見る ため）。
+     ところが 中身に 何も 載せて いなかった ので、画面は 「異常なし」と 受け取り、
+     Ban された 人が そのまま 使えて いるように 見えて いた
+     （訴え「Ban 機能 試したんだけど、一切 適用されてない 気が する」）。
+     ここに 載せて、画面は これだけを 見て 止める。 */
+  const 停止 = await loadUserStatusForMe(env, String(user.uid || "")).catch(() => null);
   return json({
     user: {
       id: Number(user.uid || 0) || String(user.uid || ""),
       gradePrefix: String(user.gradePrefix || ""),
       nickname: String(user.nickname || "")
     },
+    accountStatus: 停止,
     enforcement: accountStatus.enforcement,
     capabilities: accountStatus.capabilities,
     officialAssistants: accountStatus.officialAssistants,
@@ -16859,6 +16961,8 @@ async function handleAuthDelete(request, env) {
   await env.DB.prepare("DELETE FROM sync_insights WHERE user_id = ?1").bind(userId).run();
   await env.DB.prepare("DELETE FROM sync_presets WHERE user_id = ?1").bind(userId).run();
   await env.DB.prepare("DELETE FROM sync_chats WHERE user_id = ?1").bind(userId).run();
+  /* ★ カレンダーも 消す。足し忘れると **退会しても 残る** データに なる。 */
+  await env.DB.prepare("DELETE FROM sync_calendar WHERE user_id = ?1").bind(userId).run().catch(() => {});
   await env.DB.prepare("DELETE FROM sync_settings WHERE user_id = ?1").bind(userId).run();
   await env.DB.prepare("DELETE FROM user_notifications WHERE user_id = ?1").bind(userId).run();
   await env.DB.prepare("DELETE FROM user_official_assistants WHERE user_id = ?1").bind(userId).run().catch(() => null);
@@ -17010,6 +17114,9 @@ async function handleSyncSnapshot(request, env) {
   const insightsRows = await env.DB.prepare("SELECT id, data_json, updated_at, deleted_at FROM sync_insights WHERE user_id = ?1").bind(uid).all();
   const presetsRows = await env.DB.prepare("SELECT id, data_json, updated_at, deleted_at FROM sync_presets WHERE user_id = ?1").bind(uid).all();
   const chatsRows = await env.DB.prepare("SELECT id, data_json, updated_at, deleted_at FROM sync_chats WHERE user_id = ?1").bind(uid).all();
+  /* ★ カレンダー（2026-09-01）。表が まだ 無い 端末でも 落とさない。 */
+  const calRows = await env.DB.prepare("SELECT id, data_json, updated_at, deleted_at FROM sync_calendar WHERE user_id = ?1")
+    .bind(uid).all().catch(() => ({ results: [] }));
   const settingsRow = await env.DB.prepare("SELECT data_json, updated_at FROM sync_settings WHERE user_id = ?1 LIMIT 1").bind(uid).first();
   let settings = {};
   let settingsUpdatedAt = 0;
@@ -17027,6 +17134,7 @@ async function handleSyncSnapshot(request, env) {
       insights: parseRows(insightsRows?.results || []),
       presets: parseRows(presetsRows?.results || []),
       chats: parseRows(chatsRows?.results || []),
+      calendar: parseRows(calRows?.results || []),
       settings: (settings && typeof settings === "object") ? settings : {},
       settingsUpdatedAt
     }
@@ -17046,6 +17154,7 @@ async function handleSyncUpsert(request, env) {
   const insightsRaw = Array.isArray(payload.insights) ? payload.insights : [];
   const presetsRaw = Array.isArray(payload.presets) ? payload.presets : [];
   const chatsRaw = Array.isArray(payload.chats) ? payload.chats : [];
+  const calendarRaw = Array.isArray(payload.calendar) ? payload.calendar : [];
   const settingsPatch = (payload.settingsPatch && typeof payload.settingsPatch === "object") ? payload.settingsPatch : null;
 
   const upsertList = async (table, items) => {
@@ -17077,6 +17186,7 @@ async function handleSyncUpsert(request, env) {
   const appliedInsights = await upsertList("sync_insights", insightsRaw);
   const appliedPresets = await upsertList("sync_presets", presetsRaw);
   const appliedChats = await upsertList("sync_chats", chatsRaw);
+  const appliedCalendar = await upsertList("sync_calendar", calendarRaw).catch(() => 0);
 
   let settingsApplied = false;
   if (settingsPatch) {
@@ -17111,6 +17221,7 @@ async function handleSyncUpsert(request, env) {
       insights: appliedInsights,
       presets: appliedPresets,
       chats: appliedChats,
+      calendar: appliedCalendar,
       settings: settingsApplied
     }
   }, 200);
@@ -17760,11 +17871,29 @@ function newsSafeUrl(v) {
   if (!/^https?:\/\//i.test(u)) return "";
   return u.slice(0, 500);
 }
+/* ══ 表紙（バナー）の URL（2026-09-03・訴え「バナー画像を 設定できるように」）══
+   これまでは **http(s) だけ**。つまり バナーを 出すには
+   どこか よそへ 画像を 置いて、その URL を 手で 打つしか なかった。
+   ★ ここから 自分の 置き場（/api/media/img/…）も 通す。
+     あげた 画像を そのまま バナーに できる。
+   ★ 通すのは **画像だけ**。/api/media/vid/ も /api/media/fil/ も 表紙には しない。
+   ★ 外の URL は これまでどおり http(s) のみ（javascript: data: は 落ちる）。 */
+function newsCoverUrl(v) {
+  const u = String(v || "").trim();
+  if (!u) return "";
+  if (/^\/api\/media\/img\/[A-Za-z0-9._-]+$/.test(u)) return u.slice(0, 500);
+  return newsSafeUrl(u);
+}
 /* お知らせに 添えた 画像・動画。**自分のところの 置き場だけ** 受ける。
    外の URL を 混ぜられると、そこから 誰が 見たかを 数えられてしまう。 */
 function newsMediaOf(raw) {
   let a = [];
   try { a = JSON.parse(String(raw || "[]")); } catch { a = []; }
+  return newsMediaList(a);
+}
+/* 読むときも 書くときも **同じ ものさし**を 通す（2026-09-03）。
+   別々に 書くと 「入るのに 出ない」添えものが 必ず 生まれる。 */
+function newsMediaList(a) {
   if (!Array.isArray(a)) return [];
   return a.map((m) => {
     const url = String((m && m.url) || "");
@@ -17899,20 +18028,76 @@ async function handleAdminNewsSavePost(request, env) {
   const publishedAt = Math.max(0, Number(body?.publishedAt || 0)) || now;
   const user = await resolveAuthUser(request, env);
   const authorId = Math.max(0, Number(user?.uid || 0));
-  const exists = await env.DB.prepare("SELECT id, created_at FROM news_articles WHERE id = ?1").bind(id).first();
+  /* ★ status も 取る（2026-09-05）。取らないと「新しく 公開に なったか」を
+     見分けられず、**下書きの 保存や 直しの たびに 押し出して しまう**。
+     media_json を 取り忘れて 添えものが 消えた のと 同じ 形の 落とし穴。 */
+  const exists = await env.DB.prepare(
+    "SELECT id, created_at, media_json, status FROM news_articles WHERE id = ?1").bind(id).first();
   const createdAt = exists ? Math.max(0, Number(exists.created_at || 0)) : now;
+  /* ══ 添えもの（画像・動画）（2026-09-03）══════════════════════════
+     ここは INSERT OR **REPLACE**。列に 書かないと 既定値（'[]'）で
+     上書きされる ＝ **直すたび 添えものが 消えていた**。
+     ★ media を もらった ときは それ。もらっていない ときは **今のまま**。
+     ★ ものさしは 読むときと 同じ（自分の 置き場だけ・8 つまで）。 */
+  const media = Array.isArray(body?.media)
+    ? JSON.stringify(newsMediaList(body.media))
+    : String(exists?.media_json || "[]");
   await env.DB.prepare(`
     INSERT OR REPLACE INTO news_articles
       (id, category, title, summary, body, cover_url, link_url, link_label,
-       important, status, published_at, created_at, updated_at, author_id)
-    VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
+       important, status, published_at, created_at, updated_at, author_id, media_json)
+    VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)
   `).bind(
     id, newsCategoryOf(body?.category), title,
     newsText(body?.summary, 400), newsText(body?.body, NEWS_MAX_BODY),
-    newsSafeUrl(body?.coverUrl), newsSafeUrl(body?.linkUrl), newsText(body?.linkLabel, 60),
-    body?.important ? 1 : 0, status, publishedAt, createdAt, now, authorId
+    newsCoverUrl(body?.coverUrl), newsSafeUrl(body?.linkUrl), newsText(body?.linkLabel, 60),
+    body?.important ? 1 : 0, status, publishedAt, createdAt, now, authorId, media
   ).run();
+  /* ★ お知らせも **出した その場で** 届ける（2026-09-05）。
+     訴え「リアルタイムで 受信できるように して くれ。News も 同様にね」。
+     直す前は 画面の 見に行き（60 秒の 溜め置き つき）だけ だった。
+
+     ★ 出す のは **新しく 公開に なった とき だけ**。
+       下書きの 保存や、既に 公開ずみの 直しでは 鳴らさない
+       （同じ お知らせで 何度も 鳴ったら うるさい）。
+     ★ 開いて いる 人にしか 届かない（繋いで いない 人は 素通り）。
+       閉じて いる 人へは これまでどおり 端末の 通知が 別に 飛ぶ。 */
+  try {
+    const 前の状態 = String(exists?.status || "");
+    if (status === "published" && 前の状態 !== "published") {
+      await お知らせを押し出す(env, { id, title, category: newsCategoryOf(body?.category) });
+    }
+  } catch (e) {}
   return json({ ok: true, id }, 200, request);
+}
+
+/* ══ お知らせを 開いて いる 人へ 押し出す（2026-09-05）══════════════
+   ★ 誰が 開いて いるかは 分からない ので、全員の 通り道へ 投げる。
+     繋いで いない 人の ぶんは すぐ false が 返るだけ（DO は 起きない）。
+     実測 110 人。多く なったら 「最近 使った 人」に 絞る こと。
+   ★ 一度に 全部 投げると 詰まる ので 20 人ずつ。 */
+async function お知らせを押し出す(env, 記事) {
+  if (!env?.DB || !env?.CALL_HUB) return 0;
+  const rows = await env.DB.prepare(
+    `SELECT id FROM users WHERE id > 0 ORDER BY id`).all().catch(() => null);
+  const 一覧 = Array.isArray(rows?.results) ? rows.results : [];
+  if (!一覧.length) return 0;
+  const msg = {
+    type: "news.new",
+    at: Date.now(),
+    id: String(記事?.id || ""),
+    title: String(記事?.title || "お知らせ"),
+    body: "新しい お知らせが 届きました",
+    tag: "news:" + String(記事?.id || "")
+  };
+  let 届 = 0;
+  for (let i = 0; i < 一覧.length; i += 20) {
+    const 束 = 一覧.slice(i, i + 20);
+    const r = await Promise.all(束.map((row) =>
+      開いている人へ押す(env, Number(row?.id || 0), msg).catch(() => false)));
+    届 += r.filter(Boolean).length;
+  }
+  return 届;
 }
 
 /* 削除。管理者だけ。既読の記録も一緒に片づける。 */
@@ -44431,7 +44616,22 @@ function aigenModelFor(env, provider, tier) {
            gemini-2.5-flash        → 同上
          つまり 本物の Flash は **gemini-3.5-flash** だけ。 */
     if (tier === "exam") {
-      return String(env?.GEMINI_MODEL_EXAM || "").trim() || "gemini-3.5-flash";
+      /* ★ **既定を Lite へ 戻す**（2026-09-06・訴え「おっそっw」）。
+         8/30 に Rinty さん の 指示で Flash 本体に した が、
+         本番の 実測（その日の provider_usage_daily）は:
+             gemini-3.5-flash  198 回 / エラー 177 / **枠切れ 161**
+         Flash 本体の 無料枠は **1 日 20 回**（Lite の 25 分の 1）。
+         朝に 尽きた あとは 毎回 429 を 食らって から 鍵 5 本 → 控え と
+         巡るので、ai_calls 0 の まま 272 秒 返らない ジョブが 出て いた。
+         「途中まで 順調だったのに 急に 遅く なる」の 境目が **枠の 尽きた 瞬間**。
+
+         ★ 質は 測って ある（2026-09-05・同じ 物差し vqaigen.cjs）:
+             Flash 本体 8/8 合格・**100 点**・p50 12s
+             Lite       7/8 合格・**97 点**・p50 12s
+           差は 3 点。**1 日 20 回で 遅くなる** 代償に 見合わない。
+         ★ 使いたい ときは 環境変数 GEMINI_MODEL_EXAM で 戻せる
+           （上の 休ませる 仕組みが ある ので、尽きても 遅く ならない）。 */
+      return String(env?.GEMINI_MODEL_EXAM || "").trim() || "gemini-3.5-flash-lite";
     }
     /* 無料枠で 1 日に意味のある回数を使えるのは Flash Lite だけ（実測）。
        ほかの Flash は 1 日 20 回、Pro 系は 0 回で、資料の読み取りには足りない。 */
@@ -44532,6 +44732,15 @@ function groqRest(k, limits, now) {
 async function aigenCallGroq(env, model, body) {
   const keys = aigenGroqKeys(env);
   const now = Date.now();
+  /* ★ **鍵を 巡る 全体の 締め切り**（2026-09-06・訴え）。
+     Gemini 側には 入れた のに ここには 無かった。
+     鍵は 6 本、1 本 45 秒 なので **最大 270 秒**。さらに 上で モデルを
+     4 種 巡るので、返らない ときは 300 秒を 軽く 超える。
+     本番の 台帳: 同じ 注文の 中で 13〜22 秒で 終わる ジョブが ある 一方、
+     **ai_calls 0 の まま 301 秒で 打ち切られる** ジョブが 混じって いた。
+     返らない ことが いちばん 悪い（呼び出し側は 何も 記録できない）。 */
+  const 締切 = now + Math.max(20000, Math.min(180000,
+    Number(body && body.deadlineMs) || AIGEN_TRY_DEADLINE_MS));
 
   /* 鍵が 1 本（または未設定）── これまでの動きを変えない */
   if (keys.length <= 1) {
@@ -44554,7 +44763,15 @@ async function aigenCallGroq(env, model, body) {
   let last = null;
   const tried = [];
   for (let i = 0; i < order.length; i++) {
-    const r = await aigenCallGroqOnce(env, model, body, order[i]);
+    /* 残りが 短いのに 呼ぶと 締め切りを 大きく 超える。 */
+    const 残 = 締切 - Date.now();
+    if (残 < 12000) {
+      last = last || { err: "時間内に 返りませんでした", status: 0 };
+      last.時間切れ = true;
+      break;
+    }
+    const r = await aigenCallGroqOnce(env, model,
+      Object.assign({}, body, { timeoutMs: Math.min(Number(body.timeoutMs) || 45000, 残) }), order[i]);
     last = r;
     const 番号 = keys.indexOf(order[i]) + 1;
     if (!r.err) { tried.push({ 鍵: 番号, 結果: "使えた" }); return { ...r, 鍵の順: tried, 使った鍵: 番号 }; }
@@ -44708,6 +44925,12 @@ function aigenGradeSlim(targets) {
     if (学年) o.学年 = 学年;
     const 条 = toSafeString(t?.constraints, 200);
     if (条) o.条件 = 条;
+    /* ★ **字数の 上限を 数で 渡す**（2026-08-31・訴え「修正案が 字数オーバー」）。
+       直す前は 「条件」という 文の 中に 埋もれて いた ので、
+       AI は 読み飛ばし、上限を 超えた 修正案を 平気で 返して いた。
+       問い・条件・模範解答の どこかに 書いて あれば 拾う。 */
+    const 上限 = aigenLenCapOf(o.問) || aigenLenCapOf(条) || aigenLenCapOf(o.模範解答);
+    if (上限) o.字数上限 = 上限;
     const 資 = toSafeString(t?.sourceText, 2000);
     if (資) o.資料 = 資;
     /* 機械で 先に 調べた「語句の 一致」。長さで 採点させないための 手がかり。 */
@@ -44770,7 +44993,12 @@ function aigenGradePrompt(slim) {
     "【直したら どう なるか】",
     "・improvedAnswer … 受験者の 答案を **書き直した 全文**。",
     "  受験者の 言い回しを できるだけ 残し、足りなかった ところだけを 入れる。",
-    "  字数の 決まりが あれば その 中に 収める。**満点なら 空の 文字**に する。",
+    /* ★ 「字数の 決まりが あれば」では 守られなかった（2026-08-31・訴え）。
+       **数を 名指しして、数えてから 返せ**と 言う。 */
+    "  ★ **字数上限 が 書いて ある 問題は、その 数を 1 字も 超えない。**",
+    "    書いたら **数えて から** 返す。句読点も 1 字に 数える。",
+    "    超えそうなら 言葉を 削って 収める（上限を 超えた 案は 使えません）。",
+    "  **満点なら 空の 文字**に する。",
     "・improvementPoints … 何を 直したかを 3 つまで。1 つ 30 字以内。",
     "  「もう少し 詳しく」の ような 当たりさわりの 無い 書きかたを しない。",
     "  満点なら **空の 並び**に する。");
@@ -44829,6 +45057,152 @@ function aigenGradeStrArr(v, n, len) {
        だけを 受け取り、音は 捨てる（そもそも 画面へ 渡さない）。
      ・作れなければ **何も 出さない**。それらしい 一言を こちらで 作らない。
    ══════════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1 時間ごとの ひとこと（2026-09-01・訴え）
+
+   訴え:「AI から っていう 所は、必ず ユーザーの 学習履歴、その他の 行動パターンを
+         記録し、そこから 裏で 働いてる Live（無制限）が **1 時間ごとに 傾向を
+         掴んで 提案**して ほしい。そこに ボタンを 作ったり。
+         あとは、学習履歴から 苦手な プリセットなどを 分析して、
+         苦手な 部分を 補う プリセットを 作成したり など。」
+
+   守る こと:
+     ★ **生の 行は 受け取らない。** 画面が まとめた 数と 傾向だけ。
+     ★ **数字を でっち上げない。** 渡された 数の 中でしか 言わない。
+     ★ ボタンは **こちらが 用意した 型の 中から 選ばせる**（自由な コードは 書かせない）。
+       これを 許すと 何が 起きるか 分からない ものが 画面に 置かれる。
+     ★ 材料が 薄い ときは **「まだ 分かりません」と 言わせる**。無理に 助言を 作らない。
+   ══════════════════════════════════════════════════════════════════════════ */
+const HOURLY_SYS =
+  "あなたは 学習アプリ VocabuQuiz の 中に いる 相棒『Lumi』です。"
+  + "利用者の この 数時間の 動きと 学習の 記録を 見て、**短い ひとこと**と "
+  + "**すぐ 押せる 手**を 返します。"
+  + "\n決まり:"
+  + "\n・ひとことは **1〜2 文・60 字以内**。ほめる だけの 言葉は 書かない。"
+  + "\n・**渡された 数の 中でしか 言わない。** 無い 数を 作らない。"
+  + "\n・材料が 薄い ときは ひとことに 「まだ 分かりません」と 書き、手は 0〜1 個に する。"
+  + "\n・手（ボタン）は 次の 型から 選ぶ。ほかの 型は 使わない:"
+  + "\n    make_preset … 苦手を 補う プリセットを 作る（arg に **AI への 指示文**）"
+  + "\n    review      … 間違えた ものだけ もう一度（arg は 空）"
+  + "\n    open_preset … 決まった プリセットを 解く（arg に プリセットの id）"
+  + "\n    open_tab    … 画面を 開く（arg は home/library/insight/news/chat の どれか）"
+  + "\n    open_help   … ヘルプの 記事（arg に 記事の id）"
+  + "\n・手は **0〜3 個**。同じ 型を 2 つ 出さない。"
+  + "\n・label は 12 字以内の 命令形（例:「苦手を 補う 10 問」）。"
+  + "\n・文は 日本語。**JSON の 鍵は 次の 英語**で 書く（日本語の 鍵は 使わない）:"
+  + "\n    {\"comment\":\"ひとこと\",\"evidence\":\"なぜ そう 言えるか\","
+  + "\"buttons\":[{\"type\":\"make_preset\",\"label\":\"…\",\"arg\":\"…\"}]}"
+  + "\n・JSON だけを 返す。前後に 何も 書かない。";
+
+const HOURLY_SCHEMA = {
+  type: "object",
+  properties: {
+    comment: { type: "string" },
+    evidence: { type: "string" },
+    buttons: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["make_preset", "review", "open_preset", "open_tab", "open_help"] },
+          label: { type: "string" },
+          arg: { type: "string" }
+        },
+        required: ["type", "label"]
+      }
+    }
+  },
+  required: ["comment"]
+};
+
+/* ★ **鍵の 名前は 英語で 受ける**（2026-09-01 実測）。
+   日本語の 鍵（ひとこと・手・型）で 頼んでも、返って くるのは
+   comment / buttons / type だった。中身は 正しいのに 形だけ 合わずに
+   「答えられませんでした」に なって いた。
+   ★ 日本語の 鍵も **一応 受ける**（返って きた ものを 捨てない）。 */
+function hourlySafe(j) {
+  if (!j || typeof j !== "object") return null;
+  const 型OK = { make_preset: 1, review: 1, open_preset: 1, open_tab: 1, open_help: 1 };
+  const タブOK = { home: 1, library: 1, insight: 1, news: 1, chat: 1 };
+  const 出 = [];
+  const 見た = {};
+  const 並 = Array.isArray(j.buttons) ? j.buttons
+    : (Array.isArray(j["手"]) ? j["手"] : []);
+  for (const h of 並) {
+    if (!h || typeof h !== "object") continue;
+    const k = String(h.type || h["型"] || "");
+    if (!型OK[k] || 見た[k]) continue;          /* 知らない 型・同じ 型は 落とす */
+    let arg = toSafeString(h.arg || "", 400);
+    if (k === "open_tab" && !タブOK[arg]) continue;
+    if (k === "make_preset" && arg.length < 8) continue;   /* 中身の 無い 指示は 出さない */
+    見た[k] = 1;
+    出.push({ 型: k, label: toSafeString(h.label || "", 24) || "ひらく", arg });
+    if (出.length >= 3) break;
+  }
+  const ひと = toSafeString(j.comment || j["ひとこと"] || "", 160);
+  if (!ひと) return null;
+  return { ひとこと: ひと,
+           根拠: toSafeString(j.evidence || j["根拠"] || "", 200),
+           手: 出 };
+}
+
+async function handleHourlyInsight(request, env) {
+  const user = await resolveAuthUser(request, env).catch(() => null);
+  if (!user) return json({ code: "UNAUTHORIZED", message: "ログインが必要です。" }, 401);
+  const body = await readJsonBody(request, 200 * 1024);
+  const 行 = (body && typeof body === "object") ? body : {};
+  const 動き = (行["動き"] && typeof 行["動き"] === "object") ? 行["動き"] : null;
+  const 学び = (行["学び"] && typeof 行["学び"] === "object") ? 行["学び"] : null;
+  const 苦手 = Array.isArray(行["苦手"]) ? 行["苦手"].slice(0, 8) : [];
+
+  /* ★ 材料が ほとんど 無い ときは **AI を 呼ばない**。
+     呼んでも 当てずっぽうしか 返らず、枠も 使う。 */
+  const 手数 = Number(動き && 動き["行数"]) || 0;
+  const 解いた = Number(学び && 学び["weekAnswers"]) || 0;
+  if (手数 < 5 && 解いた < 1) {
+    return json({ ok: true, できた: false,
+      理由: "まだ 材料が ありません（動きも 記録も ほとんど ない）。" }, 200);
+  }
+
+  const user文 = [
+    "【この 人の 直近の 動き】",
+    JSON.stringify(動き || {}, null, 0).slice(0, 4000),
+    "",
+    "【学習の 記録（数だけ）】",
+    JSON.stringify(学び || {}, null, 0).slice(0, 2000),
+    "",
+    "【正答率の 低い プリセット】",
+    JSON.stringify(苦手, null, 0).slice(0, 1500),
+    "",
+    "上の 数の 中だけで、ひとことと 手を 返して ください。"
+  ].join("\n");
+
+  let out = null;
+  /* ★ **なぜ 出せなかったかを 残す**（2026-09-01）。
+     「答えられませんでした」だけだと、鍵の 問題なのか 形の 問題なのかが
+     分からず、当てずっぽうで 直す ことに なる。 */
+  let なぜ = "", 頭 = "";
+  const r = await liveOnce(env, { sys: HOURLY_SYS, user: user文, tries: 3 }).catch((e) => {
+    なぜ = "投げられません: " + String(e && e.message || e).slice(0, 120);
+    return null;
+  });
+  if (r && r.ok) {
+    let j = null;
+    const 生 = String(r.text || "").replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    頭 = 生.slice(0, 200);
+    try { j = JSON.parse(生); } catch (e) { j = null; なぜ = "JSON に なって いません"; }
+    if (j) { out = hourlySafe(j); if (!out) なぜ = "形が 合いません（ひとことが 空）"; }
+  } else if (r && !r.ok) {
+    なぜ = "Live: " + String(r["なぜ"] || r.訳 || "").slice(0, 160);
+  } else if (!なぜ) { なぜ = "Live が 返りませんでした"; }
+  if (!out) {
+    return json({ ok: true, できた: false, 理由: "いま Lumi が 答えられませんでした。",
+                  詳: なぜ, 頭: 頭 }, 200);
+  }
+  return json({ ok: true, できた: true, 提案: out, とき: Date.now() }, 200);
+}
+
 const INSIGHT_SYS =
   "あなたは 日本の 学校の 先生です。生徒が 解いた 1 回ぶんの **数字だけ**を 見て、"
   + "短い ことばを 返します。出力は JSON だけ。前置きは 書きません。";
@@ -44969,6 +45343,500 @@ async function handleInsightReview(request, env) {
   return json({ ok: true, review: Object.assign({}, out, { by: つかった }) }, 200, request);
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   文章添削（校正モード）／文章生成   POST /api/ai/write   （2026-08-31・訴え）
+
+   訴え:
+     「どんな風に 仕上げるか、なども プロンプトで 指示したり、
+       その プロンプト入力ボックスに 資料を 添付すると、そこの ファイルから
+       文章を 読み取って、そこから 必要事項の 記入欄の 事項なども 含めて、
+       文章を 校正、または 構成する だけでなく、生成する 文章を 作って ほしい」
+     「AI らしい 文章を 作るのは やめて ほしい。
+       ちゃんと 抽象すぎず、具体的に 書いて ほしい」
+
+   ★ 決めごと:
+     ・**Live（無制限の 枠）を まず 通る。** 落ちた ときだけ ふつうの 口へ。
+     ・**書いて いない 事実を 足さない。** 具体が 足りない ときは
+       「何を 書き足せば よいか」を 質問として 返す（でっち上げない）。
+     ・添削では **その 人の 言い回しを 残す**。一般論へ 書き換えない。
+     ・生成（compose）でも、資料に 書いて ある ことだけを 使う。
+   ══════════════════════════════════════════════════════════════════════ */
+const WRITE_SYS = "あなたは 日本の 高校生の 文章を 見る 先生です。"
+  + "出力は JSON だけ。前置きも 後書きも 書きません。コードの 囲みも 使いません。";
+
+/* AI らしい 文章を 止める 決まり。添削でも 生成でも 同じ ものを 使う。 */
+const WRITE_STYLE = [
+  "【文章の 決まり（ここが いちばん 大事）】",
+  "★ **AI が 書いた ような 文章に しないでください。** 次は 使いません:",
+  "　さまざまな／多様な／幅広い／さらなる／〜が 重要です／〜が 求められます／",
+  "　〜と 言えるでしょう／〜を 通じて 成長したい／学びを 深めたい／",
+  "　貴学の 〜に 魅力を 感じ／社会に 貢献できる 人材／持続可能な 社会の 実現／",
+  "　「まず・次に・最後に」の 三段構え／「これからも 頑張って いきたいと 思います」",
+  "★ **1 文に 1 つ**、次の どれかを 入れます:",
+  "　数（何回・何人・何時間・何点・何年）／固有名詞（場所・書名・教科名）／",
+  "　その場の 出来事（いつ・どこで・誰が・何を した）／具体的な 動作",
+  "　（悪い）さまざまな 経験を 通じて 成長できました",
+  "　（よい）二年の 夏に、週 3 回 図書室で 後輩 4 人に 数学を 教えた",
+  "★ 抽象語で 言い換えない。",
+  "　（悪い）コミュニケーション能力が 高まった",
+  "　（よい）初対面の 相手に 自分から 話しかけ、要件を 3 つに 分けて 伝えられる ように なった",
+  "★★ **書いて いない 事実を 絶対に 足さない。**",
+  "　実測（2026-08-31）: 「異文化に 触れた」しか 書いて いない 文章を 直させたら、",
+  "　「アメリカへの 海外研修」「地域の ゴミ拾い活動」「二年生全員が 参加できる 長期留学制度」を",
+  "　**勝手に 作って** いました。志望理由書で これを やると、面接で 答えられません。",
+  "★ 具体が 足りない ところは、**作らずに 空欄の 札を 置きます**:",
+  "　【ここに 具体を 書く：どこへ 行き、誰と、何を したか】",
+  "　【ここに 制度の 名前を 書く】 の ように、**何を 書くかを 札の 中に 書きます**。",
+  "　札は 全角の すみ付き 括弧【　】で 書きます。",
+  "★ 札を 置いた ものは、必ず questions にも 書きます（本人に 聞く ため）。",
+  "★ 言い換え（rewrites）でも 同じ です。**元の 文に 無い 出来事を 入れない。**"
+].join("\n");
+
+function aiWriteCount(t) { return String(t || "").replace(/\s/g, "").length; }
+
+/* ★ 空欄の 札から **聞く ことを こちらで 作る**（2026-08-31）。
+   AI は 札を 置いた のに questions を 空で 返す ことが ある（実測）。
+   札が ある のに 何を 埋めれば よいか 出ない のは 不親切。
+   札の 中の 言葉が そのまま 「聞く こと」に なる。 */
+function aiWriteAskFromSlots(text, いま) {
+  const 札 = String(text || "").match(/【[^】]{1,60}】/g) || [];
+  const 出 = (Array.isArray(いま) ? いま.slice() : []);
+  const 済 = {};
+  出.forEach((q) => { 済[String(q).replace(/\s/g, "")] = 1; });
+  for (const s2 of 札) {
+    if (出.length >= 5) break;
+    const 中 = s2.slice(1, -1).replace(/^ここに\s*/, "").replace(/を?書く$/, "").trim();
+    if (!中) continue;
+    const q = 中 + " を 教えて ください。";
+    const k = q.replace(/\s/g, "");
+    if (済[k]) continue;
+    済[k] = 1; 出.push(q);
+  }
+  return 出.slice(0, 5);
+}
+
+/* AI らしい 言い回し。**返って きた 文を 数えて 見つける。**
+   頼み文で 禁じるだけでは 残る（実測 2026-08-31: 「多様な」が 残った）。 */
+const AI_WRITE_BAD = ["さまざまな", "様々な", "多様な", "幅広い", "さらなる",
+  "が重要です", "が求められます", "と言えるでしょう", "を通じて成長",
+  "学びを深めたい", "貢献できる人材", "持続可能な社会の実現",
+  "頑張っていきたいと思います", "魅力を感じ"];
+
+function aiWriteBadWords(t) {
+  const s2 = String(t || "").replace(/\s/g, "");
+  return AI_WRITE_BAD.filter((w) => s2.indexOf(w.replace(/\s/g, "")) >= 0);
+}
+
+/* ★ **作り話の 見つけかた**（2026-08-31・実測で 決めた）。
+   直した 文に 出て くる **数**の うち、元の 文に 無い ものは
+   ほぼ 必ず AI が 作った もの（「三週間」「二年次」「4 人」）。
+   固有名詞まで 見ると 言い換えを 潰して しまう ので、**数だけ**を 見る。
+   これは 志望理由書では 致命的（面接で 答えられない）。 */
+const AI_WRITE_NUM_RE = /[0-9０-９]+|[一二三四五六七八九十百千万]+(?=[つ人回年月日時分週間種名点校])/g;
+function aiWriteInvented(元, 直) {
+  const a = String(元 || "").replace(/\s/g, "");
+  const 出 = [];
+  const seen = {};
+  let m;
+  AI_WRITE_NUM_RE.lastIndex = 0;
+  while ((m = AI_WRITE_NUM_RE.exec(String(直 || "")))) {
+    const w = m[0];
+    if (!w || seen[w]) continue;
+    seen[w] = 1;
+    if (a.indexOf(w) < 0) 出.push(w);
+  }
+  return 出.slice(0, 12);
+}
+
+async function handleAiWrite(request, env) {
+  const uid = await aiJobRequireUser(request, env);
+  if (!uid) return json({ code: "UNAUTHORIZED", message: "ログインが必要です。" }, 401, request);
+  const body = await readJsonBody(request, 96 * 1024 * 1024);
+  const mode = String(body?.mode || "proofread") === "compose" ? "compose" : "proofread";
+  const text = toSafeString(body?.text || "", 20000);
+  const 指示 = toSafeString(body?.instruction || "", 2000);
+  const 種類 = toSafeString(body?.kind || "", 40);       /* 志望理由書・作文 など */
+  const 字数 = Math.max(0, qreditSafeInt(body?.maxChars, 0));
+  const files = Array.isArray(body?.files) ? body.files.slice(0, 8).map((f) => {
+    if (!f) return null;
+    if (typeof f.fileUri === "string" && f.fileUri) {
+      return { mimeType: toSafeString(f.mimeType || "application/pdf", 80), fileUri: f.fileUri,
+               keyIndex: Number.isInteger(f.keyIndex) ? f.keyIndex : undefined };
+    }
+    if (typeof f.data === "string" && f.data) {
+      return { mimeType: toSafeString(f.mimeType || "application/pdf", 80), data: f.data };
+    }
+    return null;
+  }).filter(Boolean) : [];
+
+  if (mode === "proofread" && !text) {
+    return json({ code: "EMPTY", message: "直す 文章が ありません。" }, 400, request);
+  }
+  if (mode === "compose" && !指示 && !files.length && !text) {
+    return json({ code: "EMPTY", message: "何を 書くかの 指示か、資料が 要ります。" }, 400, request);
+  }
+
+  /* ══ 資料は **先に 読み取って 文字に する**（2026-08-31）════════════
+     ★ Live（無制限の 枠）は **資料を 読めない**。
+       そのまま だと 資料を 付けた とたん ふつうの 枠（有限）へ 落ちる。
+     ★ そこで **読み取りだけ**を ふつうの 口で 1 回 やり、
+       **書く ところは Live**で やる。重い ほうが 無制限の 枠に 乗る。 */
+  let 資料の文 = "";
+  const t0 = Date.now();
+  let 読み取り回数 = 0;
+  if (files.length && aigenGeminiChatKeys(env).length) {
+    const 読 = await aigenGeminiTry(env, aigenGeminiChatKeys(env), aigenChatModels(env, false), {
+      sys: "あなたは 資料を 読み取る 人です。出力は JSON だけ。",
+      user: [
+        "添付の 資料を 読み取って ください。**要約しないで、書いて ある ことを そのまま 写します。**",
+        "・text   … 資料の 本文（順番の まま。8000 字まで）",
+        "・fields … 記入欄が あれば [{name:欄の名前, note:そこに 何を 書くか, limit:字数}]",
+        "・facts  … 資料に 書いて ある **数や 固有名詞**（10 個まで。文章を 書く ときの 材料）",
+        "",
+        '次の JSON だけ: {"text":"…","fields":[{"name":"志望理由","note":"…","limit":400}],"facts":["…"]}'
+      ].join("\n"),
+      files, max_tokens: 16000, temperature: 0, timeoutMs: 120000
+    }).catch(() => null);
+    読み取り回数 = 1;
+    const rr0 = 読 && 読.r;
+    if (rr0 && !rr0.err) {
+      let j0 = null;
+      const t00 = aigenGeminiText(rr0.out).text;
+      try { j0 = JSON.parse(String(t00).replace(/```[a-zA-Z]*/g, "").replace(/```/g, "")); } catch (e) {}
+      if (!j0) { const m0 = String(t00 || "").match(/\{[\s\S]*\}/); if (m0) { try { j0 = JSON.parse(m0[0]); } catch (e) {} } }
+      if (j0) {
+        const 本 = toSafeString(j0.text, 8000);
+        const 欄 = (Array.isArray(j0.fields) ? j0.fields : []).slice(0, 20).map((f) =>
+          "・" + toSafeString(f && f.name, 60)
+          + (f && f.note ? "（" + toSafeString(f.note, 200) + "）" : "")
+          + (f && f.limit ? " / " + qreditSafeInt(f.limit, 0) + " 字以内" : "")).filter((x) => x.length > 1);
+        const 材 = (Array.isArray(j0.facts) ? j0.facts : []).slice(0, 12)
+          .map((x) => "・" + toSafeString(x, 200)).filter((x) => x.length > 1);
+        資料の文 = [
+          本 ? "【資料の 中身】\n" + 本 : "",
+          欄.length ? "\n【資料に あった 記入欄】\n" + 欄.join("\n") : "",
+          材.length ? "\n【資料に 書いて ある 数・固有名詞（ここから 使う）】\n" + 材.join("\n") : ""
+        ].filter(Boolean).join("\n");
+      }
+    }
+  }
+
+  const 上限 = 字数 ? aigenRoundLen(字数) : 0;
+  const 共通 = [
+    指示 ? "【仕上がりの 注文】\n" + 指示 : "",
+    種類 ? "【文章の 種類】" + 種類 : "",
+    上限 ? "【字数】**" + 上限 + " 字以内**。書いたら 数えてから 返します。句読点も 1 字。" : "",
+    資料の文 ? 資料の文 : "",
+    files.length ? "★ 資料に **書いて ある ことだけ**を 使います。"
+      + "資料に 記入欄（氏名・志望理由・自己 PR など）が ある ときは、"
+      + "**その 欄の 名前と、そこに 何を 書くか**も 読み取って ください。" : "",
+    WRITE_STYLE
+  ].filter(Boolean).join("\n\n");
+
+  const user = mode === "compose" ? [
+    "次の 注文と 資料から、**文章を 書いて** ください。",
+    共通,
+    text ? "\n【下書き（あれば これを 土台に する）】\n" + text : "",
+    "",
+    "返す もの:",
+    "　draft       … 書き上げた 文章（全文）",
+    "　fields      … 資料に 記入欄が あった ときだけ。[{name:欄の名前, value:書いた内容}]",
+    "　outline     … 段落ごとの ねらい（3〜6 個）",
+    "　questions   … **本人に 聞かないと 書けない こと**（3 つまで）。無ければ 空",
+    "　notes       … 気を つけた ところ（3 つまで）",
+    "",
+    '次の JSON だけ: {"draft":"…","fields":[{"name":"志望理由","value":"…"}],'
+    + '"outline":["…"],"questions":["…"],"notes":["…"]}'
+  ].filter(Boolean).join("\n") : [
+    "次の 文章を **添削**して ください。",
+    共通,
+    "",
+    "★ **その 人の 言い回しを 残します。** きれいな 一般論へ 書き換えると、",
+    "　その 人の 文章では なく なります。直すのは 次の ときだけ:",
+    "　・言いたい ことが 伝わらない　・抽象すぎて 中身が 見えない",
+    "　・文法や 言葉づかいが おかしい　・同じ ことを 繰り返して いる",
+    "",
+    "【直す 文章】",
+    text,
+    "",
+    "返す もの:",
+    "　revised     … 直した 全文",
+    "　grade       … A / B / C / D の どれか",
+    "　gradeNote   … 一言（30 字以内）",
+    "　good        … 良かった ところ（2〜4 個。1 つ 60 字以内）",
+    "　improve     … 直す と よい ところ（2〜4 個。1 つ 60 字以内）",
+    "　rewrites    … 言い換えの 提案 [{from:元の言い方, to:直した言い方}]（2〜5 個）",
+    "　advice      … くわしい 助言 [{title:見出し, body:中身}]",
+    "　　　　　　　　見出しは「構成・論理性」「表現・語彙」「文法・校正」「説得力・具体性」",
+    "　questions   … **本人に 聞かないと 直せない こと**（3 つまで）。無ければ 空",
+    "",
+    '次の JSON だけ: {"revised":"…","grade":"A","gradeNote":"…","good":["…"],'
+    + '"improve":["…"],"rewrites":[{"from":"…","to":"…"}],'
+    + '"advice":[{"title":"構成・論理性","body":"…"}],"questions":["…"]}'
+  ].filter(Boolean).join("\n");
+
+  /* ── ① Live（無制限の 枠）で 通す ─────────────────────────── */
+  let j = null, つかった = "";
+  if (aigenGeminiKeys(env).length && (!files.length || 資料の文)) {
+    /* 資料は 上で 文字に した ので、Live でも 読める。 */
+    const r = await liveOnce(env, { sys: WRITE_SYS, user, tries: 3 }).catch(() => null);
+    if (r && r.ok) {
+      const rows = aigenGradeRows(r.text);
+      if (rows && !Array.isArray(rows)) j = rows;
+      if (!j) { try { j = JSON.parse(String(r.text).replace(/```[a-zA-Z]*/g, "").replace(/```/g, "")); } catch (e) {} }
+      if (!j) {
+        const m = String(r.text || "").match(/\{[\s\S]*\}/);
+        if (m) { try { j = JSON.parse(m[0]); } catch (e) {} }
+      }
+      if (j) つかった = "live";
+    }
+  }
+  /* ── ② ふつうの 口（資料つき・Live が 落ちた とき）──────────── */
+  if (!j) {
+    const keys = aigenGeminiChatKeys(env);
+    if (!keys.length) return json({ code: "NO_KEY", message: "いま 使えません。" }, 503, request);
+    const run = await aigenGeminiTry(env, keys, aigenChatModels(env, false), {
+      sys: WRITE_SYS, user, files: 資料の文 ? [] : files,
+      max_tokens: Math.min(32000, 4000 + (text.length + 指示.length) * 2),
+      temperature: 0.4, timeoutMs: 150000
+    }).catch(() => null);
+    const rr = run && run.r;
+    if (!rr || rr.err) {
+      return json({ code: "AI_UNAVAILABLE", message: "いま 直せません。少し 待って ください。" }, 503, request);
+    }
+    const t = aigenGeminiText(rr.out).text;
+    try { j = JSON.parse(String(t).replace(/```[a-zA-Z]*/g, "").replace(/```/g, "")); } catch (e) {}
+    if (!j) { const m = String(t || "").match(/\{[\s\S]*\}/); if (m) { try { j = JSON.parse(m[0]); } catch (e) {} } }
+    つかった = run.model || "gemini";
+  }
+  if (!j) return json({ code: "AI_EMPTY", message: "結果を 読み取れませんでした。" }, 502, request);
+
+  const 並 = (v, n, len) => (Array.isArray(v) ? v.map((x) => toSafeString(x, len || 300)).filter(Boolean).slice(0, n) : []);
+  if (mode === "compose") {
+    let draft = toSafeString(j.draft ?? j.text ?? j.本文, 20000);
+    /* ★ **作り話は 書く ときにも 起きる**（2026-08-31 実測）。
+       「吹奏楽部の 部長」としか 言って いないのに
+       「部員 80 名を まとめた」と 書いて きた。
+       元に する のは **指示 ＋ 資料 ＋ 下書き**。そこに 無い 数は 作り話。 */
+    const 元 = String(指示 || "") + String(資料の文 || "") + String(text || "");
+    let 作2 = aiWriteInvented(元, draft);
+    let 悪2 = aiWriteBadWords(draft);
+    if ((作2.length || 悪2.length) && aigenGeminiKeys(env).length) {
+      const 直2 = await liveOnce(env, {
+        sys: WRITE_SYS,
+        user: [
+          "次の 文章を 直して ください。中身と 順番は 変えません。",
+          作2.length ? [
+            "★ 次の 数は **資料にも 指示にも ありません**。あなたが 作った ものです:",
+            "　" + 作2.join(" / "),
+            "　消して、【ここに 具体を 書く：何を 書けば よいか】の ような 空欄の 札に します。"
+          ].join("\n") : "",
+          悪2.length ? "★ 次の 言い回しを 使わない 言い方へ: " + 悪2.join(" / ") : "",
+          "",
+          "【直す 文章】", draft, "",
+          '次の JSON だけ: {"draft":"…"}'
+        ].filter(Boolean).join("\n"),
+        tries: 2
+      }).catch(() => null);
+      if (直2 && 直2.ok) {
+        let j3 = null;
+        try { j3 = JSON.parse(String(直2.text).replace(/```[a-zA-Z]*/g, "").replace(/```/g, "")); } catch (e) {}
+        if (!j3) { const m3 = String(直2.text || "").match(/\{[\s\S]*\}/); if (m3) { try { j3 = JSON.parse(m3[0]); } catch (e) {} } }
+        const t3 = toSafeString(j3 && (j3.draft ?? j3.text), 20000);
+        if (t3 && t3.length > draft.length * 0.5) {
+          draft = t3;
+          作2 = aiWriteInvented(元, draft);
+          悪2 = aiWriteBadWords(draft);
+        }
+      }
+    }
+    /* ★ 字数は **こちらで 押さえる**（頼むだけでは 守られない）。 */
+    if (上限) draft = aigenFitLen(draft, 上限) || draft.slice(0, 上限);
+    return json({
+      ok: true, mode, model: つかった, ms: Date.now() - t0, readCalls: 読み取り回数,
+      draft, chars: aiWriteCount(draft), maxChars: 上限 || undefined,
+      fields: (Array.isArray(j.fields) ? j.fields : []).slice(0, 20).map((f) => ({
+        name: toSafeString(f && (f.name ?? f.欄), 60), value: toSafeString(f && (f.value ?? f.内容), 4000)
+      })).filter((f) => f.name),
+      outline: 並(j.outline ?? j.構成, 8, 200),
+      /* 札が ある のに 何を 埋めれば よいか 出ない のは 不親切。こちらで 補う。 */
+      questions: aiWriteAskFromSlots(draft, 並(j.questions ?? j.質問, 3, 200)),
+      notes: 並(j.notes ?? j.メモ, 3, 200),
+      /* 残って しまった ものは 隠さずに 返す（画面が 赤で 出す）。 */
+      invented: 作2, aiWords: 悪2
+    }, 200, request);
+  }
+  let revised = toSafeString(j.revised ?? j.修正版 ?? j.text, 20000);
+
+  /* ══ 作り話と AI 言い回しを **数えて 直させる**（2026-08-31）══════
+     頼み文で 禁じるだけでは 残る。実測:
+       ・「アメリカへの 海外研修」「地域の ゴミ拾い活動」を **作って いた**
+       ・禁じた はずの 「多様な」が 残って いた
+     超えた ものだけ もう一度 直させる（ふだんは AI を 呼ばない）。 */
+  let 作り = aiWriteInvented(text, revised);
+  let 悪語 = aiWriteBadWords(revised);
+  if ((作り.length || 悪語.length) && aigenGeminiKeys(env).length) {
+    const 直し = await liveOnce(env, {
+      sys: WRITE_SYS,
+      user: [
+        "次の 文章を 直して ください。中身と 順番は 変えません。",
+        作り.length ? [
+          "★ 次の 数は **元の 文章に ありません**。あなたが 作った ものです:",
+          "　" + 作り.join(" / "),
+          "　これらを 消し、代わりに 【ここに 具体を 書く：何を 書けば よいか】 の ような",
+          "　**空欄の 札**を 置いて ください（全角の すみ付き 括弧）。",
+          "　作った 出来事・場所・制度の 名前も 同じように 札へ 変えます。"
+        ].join("\n") : "",
+        悪語.length ? "★ 次の 言い回しを 使わない 言い方へ 直して ください: " + 悪語.join(" / ") : "",
+        "",
+        "【直す 文章】",
+        revised,
+        "",
+        '次の JSON だけ: {"revised":"…"}'
+      ].filter(Boolean).join("\n"),
+      tries: 2
+    }).catch(() => null);
+    if (直し && 直し.ok) {
+      let j2 = null;
+      try { j2 = JSON.parse(String(直し.text).replace(/```[a-zA-Z]*/g, "").replace(/```/g, "")); } catch (e) {}
+      if (!j2) { const m2 = String(直し.text || "").match(/\{[\s\S]*\}/); if (m2) { try { j2 = JSON.parse(m2[0]); } catch (e) {} } }
+      const t2 = toSafeString(j2 && (j2.revised ?? j2.修正版), 20000);
+      /* 短く なりすぎて いない ときだけ 差し替える。 */
+      if (t2 && t2.length > revised.length * 0.5) {
+        revised = t2;
+        作り = aiWriteInvented(text, revised);
+        悪語 = aiWriteBadWords(revised);
+      }
+    }
+  }
+  if (上限) revised = aigenFitLen(revised, 上限) || revised;
+  const g = String(j.grade ?? j.評価 ?? "B").trim().toUpperCase().slice(0, 1);
+  return json({
+    ok: true, mode, model: つかった, ms: Date.now() - t0, readCalls: 読み取り回数,
+    original: text, chars: aiWriteCount(text),
+    revised, revisedChars: aiWriteCount(revised),
+    grade: /^[ABCD]$/.test(g) ? g : "B",
+    gradeNote: toSafeString(j.gradeNote ?? j.一言, 120),
+    good: 並(j.good ?? j.良かった点, 4, 200),
+    improve: 並(j.improve ?? j.改善, 4, 200),
+    rewrites: (Array.isArray(j.rewrites) ? j.rewrites : []).slice(0, 6).map((r) => ({
+      from: toSafeString(r && (r.from ?? r.元), 200), to: toSafeString(r && (r.to ?? r.先), 200)
+    })).filter((r) => r.from && r.to),
+    advice: (Array.isArray(j.advice) ? j.advice : []).slice(0, 6).map((a) => ({
+      title: toSafeString(a && (a.title ?? a.見出し), 40), body: toSafeString(a && (a.body ?? a.中身), 1200)
+    })).filter((a) => a.title && a.body),
+    questions: aiWriteAskFromSlots(revised, 並(j.questions ?? j.質問, 3, 200)),
+    /* ★ **残って しまった もの**を 隠さずに 返す（画面が 注意を 出す）。
+       直せなかった ことを 黙って いると、作り話の まま 提出される。 */
+    invented: 作り, aiWords: 悪語
+  }, 200, request);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   1 問ずつの 助言（2026-09-03・訴え）
+
+   訴え「改善プロセスは、正解でも 不正解の 場合でも、必ず 次に つなげる
+         ための フィードバックを 1 問 1 問 返してあげてくれ。
+         この生成も 無制限の Gemini Flash 3 Live を 裏で 動かして」
+
+   ★ 採点（/api/ai/grade）とは **別の 口**。採点は 点を 決める もの、
+     こちらは 点を 動かさない **助言だけ**。混ぜると 点が ぶれる。
+   ★ **正解した 問題にも 返す。** 「合っていた 理由」と「次に 何を するか」。
+   ★ 8 問ずつに 割って 鍵を ずらす（採点と 同じ 作法）。
+   ★ 読み取れなかった 問題は **黙って 作り話を しない**（その問だけ 空）。
+   ══════════════════════════════════════════════════════════════════════ */
+const FEEDBACK_SYS = [
+  "あなたは 高校の 先生です。答案 1 つずつに、**次に つなげる 助言**を 書きます。",
+  "決まり:",
+  "・正解でも 不正解でも 必ず 書く。正解なら「なぜ 合っていたか」と「次の 一手」。",
+  "・不正解なら「どこで つまずいたか」と「次に 何を 見直すか」。",
+  "・**その 問題の 中身に 即して** 書く。一般論（よく 復習しましょう 等）は 禁止。",
+  "・短く。1 つ 40〜90 字。日本語。",
+  "・分からない ときは 空文字を 返す。作り話は 絶対に しない。",
+  "出力は JSON だけ:",
+  '{"out":[{"i":0,"why":"…","next":"…","tags":["…"]}]}',
+  "why = どうして その 結果に なったか。next = 次に やる こと。tags = 見直す 単元や 手筋（0〜3 個）。"
+].join("\n");
+
+function aiFeedbackSlim(list) {
+  return list.slice(0, 60).map((t, i) => ({
+    i,
+    問: toSafeString(t?.prompt, 700),
+    形式: toSafeString(t?.type, 40),
+    配点: Math.max(0, Number(t?.points) || 0),
+    得点: (t?.score === null || t?.score === undefined) ? null : Number(t.score),
+    正誤: t?.isCorrect === true ? "正解" : (t?.isCorrect === false ? "不正解" : "採点待ち"),
+    正答: toSafeString(t?.correctAnswer, 400),
+    答案: toSafeString(t?.answerText, 700),
+    解説: toSafeString(t?.explanation, 500)
+  }));
+}
+function aiFeedbackPrompt(rows) {
+  return [
+    "次の 答案 1 つずつに 助言を 書いてください。",
+    "i は そのまま 返すこと。",
+    "",
+    JSON.stringify(rows)
+  ].join("\n");
+}
+async function handleAiFeedback(request, env) {
+  const uid = await aiJobRequireUser(request, env);
+  if (!uid) return json({ code: "UNAUTHORIZED", message: "ログインが必要です。" }, 401, request);
+  const body = await readJsonBody(request, 2 * 1024 * 1024);
+  const targets = Array.isArray(body?.targets) ? body.targets.slice(0, 60) : [];
+  if (!targets.length) return json({ code: "EMPTY", message: "助言を作るものがありません。" }, 400, request);
+
+  const slim = aiFeedbackSlim(targets);
+  const 束 = [];
+  for (let i = 0; i < slim.length; i += 8) 束.push(slim.slice(i, i + 8));
+
+  let rows = null, つかった = "";
+  if (aigenGeminiKeys(env).length) {
+    const 出 = await Promise.all(束.map((b, k) =>
+      liveOnce(env, { sys: FEEDBACK_SYS, user: aiFeedbackPrompt(b), keyOffset: k, tries: 3 })
+        .then((r) => (r.ok ? aigenGradeRows(r.text) : null))
+        .then((rs) => (Array.isArray(rs) ? rs.map((x, j) => {
+          const 元 = b[Number(x && x.i) >= 0 && Number(x.i) < b.length ? Number(x.i) : j];
+          return Object.assign({}, x, { i: 元 ? 元.i : -1 });
+        }) : null))
+        .catch(() => null)
+    ));
+    if (出.some(Array.isArray)) {
+      rows = 出.filter(Array.isArray).reduce((a, b2) => a.concat(b2), []);
+      つかった = "live";
+    }
+  }
+  /* Live が 落ちた ときだけ ふつうの 口へ。 */
+  if (!rows) {
+    const keys = aigenGeminiChatKeys(env);
+    if (!keys.length) return json({ code: "NO_KEY", message: "助言の用意ができていません。" }, 503, request);
+    const run = await aigenGeminiTry(env, keys, aigenChatModels(env, false), {
+      sys: FEEDBACK_SYS, user: aiFeedbackPrompt(slim), files: [],
+      max_tokens: Math.min(16000, 600 + slim.length * 200),
+      temperature: 0.2, noThink: true
+    }).catch(() => null);
+    const rr = run && run.r;
+    if (!rr || rr.err) return json({ code: "AI_UNAVAILABLE", message: "いま助言を作れません。" }, 503, request);
+    rows = aigenGradeRows(aigenGeminiText(rr.out).text);
+    つかった = run.model || "gemini";
+    if (!rows) return json({ code: "AI_EMPTY", message: "助言を読み取れませんでした。" }, 502, request);
+  }
+
+  const by = {};
+  rows.forEach((x) => { if (x && Number(x.i) >= 0) by[Number(x.i)] = x; });
+  const out = targets.map((t, i) => {
+    const v = by[i];
+    const why = toSafeString(v && (v.why ?? v["理由"] ?? v["なぜ"]), 400);
+    const next = toSafeString(v && (v.next ?? v["次"] ?? v["つぎ"]), 400);
+    const tags = (Array.isArray(v && v.tags) ? v.tags : [])
+      .slice(0, 3).map((x) => toSafeString(x, 30)).filter(Boolean);
+    /* ★ 中身が 無い ものは ok:false（画面は 何も 出さない）。 */
+    if (!why && !next) return { questionId: t?.questionId || "", ok: false };
+    return { questionId: t?.questionId || "", ok: true, why, next, tags };
+  });
+  return json({ ok: true, provider: つかった, feedback: out }, 200, request);
+}
+
 async function handleAiGrade(request, env) {
   const uid = await aiJobRequireUser(request, env);
   if (!uid) return json({ code: "UNAUTHORIZED", message: "ログインが必要です。" }, 401, request);
@@ -45025,6 +45893,50 @@ async function handleAiGrade(request, env) {
   const by = {};
   rows.forEach((x) => { if (x && Number(x.i) >= 0) by[Number(x.i)] = x; });
 
+  /* ══ 字数を 超えた 修正案は **もう一度 だけ 縮めさせる**（2026-08-31）══
+     訴え「修正案が Lumi の 文字数を オーバーして いる。コレ アウトやろ」
+     ★ 頼み文で 「N 字以内」と 言っても 守られない ことが ある。
+       だからと いって こちらで 切ると、途中で 意味が 切れる。
+       **超えた ものだけ**を もう一度 渡して 縮めさせ、
+       それでも 超える ときだけ 文の 切れ目で 収める（aigenFitLen）。
+     ★ 超えた ものが 無ければ AI は 呼ばない（ふだんは 費用ゼロ）。 */
+  const 超過 = [];
+  slim.forEach((sl, i) => {
+    const cap = sl && sl.字数上限;
+    const v = by[i];
+    const 案 = v ? String(v.improvedAnswer ?? v.修正後の答案 ?? v.修正案 ?? "") : "";
+    if (cap && 案 && 案.length > cap) 超過.push({ i, cap, 案, 問: sl.問 });
+  });
+  if (超過.length && aigenGeminiKeys(env).length) {
+    const 頼み = [
+      "次の 文を、それぞれ **決められた 字数 以内**へ 縮めてください。",
+      "・意味と 内容は 変えない。削るのは 言い回しだけ。",
+      "・**句読点も 1 字に 数える。** 書いたら 数えてから 返す。",
+      "・1 字でも 超えたら やり直し です。",
+      "",
+      JSON.stringify(超過.map((x) => ({ i: x.i, 上限: x.cap, いまの字数: x.案.length, 文: x.案 }))),
+      "",
+      '次の 形だけ: {"out":[{"i":0,"text":"…"}]}'
+    ].join("\n");
+    const r2 = await liveOnce(env, {
+      sys: "あなたは 日本語の 文を 決められた 字数へ 縮める 人です。出力は JSON だけ。",
+      user: 頼み, tries: 2
+    }).catch(() => null);
+    if (r2 && r2.ok) {
+      const j2 = aigenGradeRows(r2.text);
+      const 並 = Array.isArray(j2) ? j2
+        : (() => { try { const o2 = JSON.parse(String(r2.text).replace(/\u0060\u0060\u0060[a-zA-Z]*/g, "").replace(/\u0060\u0060\u0060/g, "")); return Array.isArray(o2 && o2.out) ? o2.out : []; } catch (e) { return []; } })();
+      並.forEach((x) => {
+        const i = Number(x && x.i);
+        const t2 = toSafeString(x && (x.text ?? x.文), 1200);
+        const 元 = 超過.find((y) => y.i === i);
+        if (!元 || !t2) return;
+        /* 縮んで いて、上限に 収まって いる ときだけ 差し替える。 */
+        if (t2.length <= 元.cap && by[i]) by[i].improvedAnswer = t2;
+      });
+    }
+  }
+
   const grades = targets.map((t, i) => {
     const v = by[i];
     if (!v) return { questionId: t?.questionId, ok: false };
@@ -45058,8 +45970,15 @@ async function handleAiGrade(request, env) {
         expressionIssues: aigenGradeStrArr(v.expressionIssues ?? v.表現, 8, 300),
         modelAnswerDifference: toSafeString(v.modelAnswerDifference ?? v.違い, 1000),
         /* ★ 直したら どう なるか（2026-08-30・依頼の 結果画面）。
-           満点の ときは 空で 返る。空を 埋めない（作り話に なる）。 */
-        improvedAnswer: toSafeString(v.improvedAnswer ?? v.修正後の答案 ?? v.修正案, 1200),
+           満点の ときは 空で 返る。空を 埋めない（作り話に なる）。
+           ★ **字数の 上限を こちらで 数えて 押さえる**（2026-08-31・訴え
+             「修正案が 字数オーバー して いる。コレ アウトやろ」）。
+             頼み文で 言うだけでは 守られなかった。 */
+        improvedAnswer: aigenFitLen(
+          toSafeString(v.improvedAnswer ?? v.修正後の答案 ?? v.修正案, 1200),
+          slim[i] ? slim[i].字数上限 : 0),
+        /* 上限に 収めるため 削った か（画面が 「短くしました」と 言える ように）。 */
+        improvedAnswerCap: (slim[i] && slim[i].字数上限) || undefined,
         improvementPoints: aigenGradeStrArr(v.improvementPoints ?? v.修正点, 3, 120),
         feedback: toSafeString(v.feedback, 200)
       }
@@ -45248,6 +46167,43 @@ function aigenGeminiKeyBad(status, err) {
 
    全部だめなら、最後の失敗をそのまま返す（黙って作らない）。
    どの鍵を何回試したかも返す（検証で数えるため。鍵そのものは返さない）。 */
+/* ══ 枠を 使い切った **モデル × 鍵** を 休ませる（2026-09-06・訴え）══
+   訴え「おっそっw／途中まで 順調に 11/16 まで 行ってたのに、いきなり
+         4/16 に なって、そこから 遅く なるの？ なぜ？」
+
+   ★ 本番の 台帳（provider_usage_daily・その日）:
+       gemini-3.5-flash   198 回 / エラー 177 / **枠切れ 161**
+     試験は exam tier ＝ Flash 本体 を 使う 設定だが、
+     Flash 本体の 無料枠は **1 日 20 回**（Lite の 25 分の 1）。
+     つまり 朝の うちに 尽きて、あとは **毎回 429 を 食らって から**
+     鍵 5 本 → 控えモデル と 巡って いた。
+     1 回の 生成で これを 何度も 繰り返すので、
+     ai_calls が 0 の まま 272 秒 返らない ジョブが 出る。
+     「途中から 急に 遅く なる」のは、**枠が 尽きた 瞬間**が その 境目。
+
+   ★ Groq には 同じ 仕組み（groqRest）が すでに ある。Gemini にも 置く。
+     一度 429 を 食らった **モデル × 鍵**は しばらく 飛ばす。
+     戻る 時刻が 分かる ときは それに 従い、分からなければ 1 日ぶん
+     （Flash 本体の 枠は 日ごと なので、短く 休ませても また すぐ 当たる）。
+   ★ **全部 休みなら 順番どおり 全部 試す**（作れなく なるより まし）。 */
+const GEMINI_REST = new Map();
+function geminiRestKey(model, key) { return String(model) + "|" + String(key || "").slice(-8); }
+function geminiResting(model, key, now) {
+  return (GEMINI_REST.get(geminiRestKey(model, key)) || 0) > now;
+}
+function geminiRest(model, key, err, now) {
+  /* 1 日ぶんか、1 分ぶんかを 断り文から 見分ける。
+     Gemini は "quota_metric ... PerDay" / "PerMinute" を 返す。 */
+  const t = String(err || "");
+  const 日ぶん = /PerDay|per day|daily/i.test(t);
+  /* retryDelay が 書いて あれば それに 従う。 */
+  let ms = 0;
+  const m = t.match(/retryDelay["'\s:]+(\d+(?:\.\d+)?)s/i);
+  if (m) ms = parseFloat(m[1]) * 1000;
+  if (!ms) ms = 日ぶん ? 6 * 60 * 60 * 1000 : 90 * 1000;
+  GEMINI_REST.set(geminiRestKey(model, key), now + ms);
+}
+
 async function aigenGeminiTry(env, keys, models, payload, opts) {
   let list = (keys && keys.length) ? keys : [""];
   /* ══ 預けてある資料は、預けた鍵からしか見えない ═══════════════
@@ -45274,9 +46230,25 @@ async function aigenGeminiTryOn(env, keys, models, payload, opts) {
     const at = Math.floor(Date.now() / 1000) % list.length;
     list = list.slice(at).concat(list.slice(0, at));
   }
+  /* ★ **全部 休みなら 休みを 無視する**（2026-09-06）。
+     これが 無いと、枠が 一斉に 尽きた とき **1 問も 作れなく なる**。
+     叩いて 429 が 返る ほうが、何も 作れない より まし。 */
+  const 生きて = [];
+  for (const k of list) for (const m of models)
+    if (!geminiResting(m, k, Date.now())) { 生きて.push(1); break; }
+  const 休みを無視 = 生きて.length === 0;
+
   const tried = [];
+  /* ★ **巡回の 締め切り**（2026-09-05）。1 本ずつの 見切りを 短く しても、
+     鍵 5 本 × モデル 4 つ を 巡れば 積み上がって 300 秒を 超える。
+     全体で ここを 超えたら 諦めて 返す。**返す ことが 大事**で、
+     返さないと 呼び出し側は 何も 記録できないまま 打ち切られる。 */
+  const 締切 = Date.now() + Math.max(20000, Math.min(300000,
+    Number(opts && opts.deadlineMs) || Number(payload && payload.deadlineMs) || AIGEN_TRY_DEADLINE_MS));
+  let 時間切れ = false, 休んだ = 0;
   let r = null, model = "", done = false;
   for (let ki = 0; ki < list.length; ki++) {
+    if (Date.now() >= 締切 - 20000) { 時間切れ = true; break; }
     let usedModels = 0;
     /* ══ 資料は、その鍵へ 1 度だけ預ける ══════════════════════════
        預けてあれば場所を指すだけになり、2 回目以降が速い。
@@ -45309,16 +46281,34 @@ async function aigenGeminiTryOn(env, keys, models, payload, opts) {
       payloadForKey = Object.assign({}, payload, { files: refs });
     }
     for (const m of models) {
+      /* 残り時間で 見切る。残りが 短いのに 呼ぶと、締め切りを 大きく 超える。 */
+      const 残 = 締切 - Date.now();
+      if (残 < 20000) { 時間切れ = true; break; }
+      /* ★ 枠を 使い切って いる モデル × 鍵は **飛ばす**（2026-09-06）。
+         叩けば 必ず 429 が 返り、そのぶん 待たされる だけ。
+         本番の 実測: gemini-3.5-flash を 198 回 叩いて 161 回が 枠切れ。 */
+      if (!休みを無視 && geminiResting(m, list[ki], Date.now())) { 休んだ++; continue; }
       usedModels++;
-      r = await aigenCallGemini(env, m, payloadForKey, list[ki]);
+      r = await aigenCallGemini(env, m, Object.assign({}, payloadForKey, {
+        timeoutMs: Math.min(Number(payloadForKey.timeoutMs) || AIGEN_CALL_TIMEOUT_MS, 残)
+      }), list[ki]);
       if (!r.err) { model = m; done = true; break; }
+      /* 枠切れ（429）は **この モデル × 鍵** を しばらく 休ませる。 */
+      if (r.status === 429) { geminiRest(m, list[ki], r.err, Date.now()); continue; }
       if (aigenGeminiKeyBad(r.status, r.err)) break;      /* この鍵はもう無理 → 次の鍵 */
       if (!(r.status === 503 || r.status === 0)) { done = true; break; }
     }
     tried.push({ 鍵: ki + 1, モデル数: usedModels, 結果: done && r && !r.err ? "使えた" : "だめ", status: r ? r.status : 0 });
-    if (done) break;
+    if (done || 時間切れ) break;
   }
-  return { r, model, tried, 使った鍵: tried.length, 成功: !!(r && !r.err) };
+  /* 1 回も 呼べないまま 締め切りに 当たったときは、**そう分かる形**で 返す。
+     null を 返すと 呼び出し側が「呼べません」とだけ 出して 理由が 消える。 */
+  if (時間切れ && (!r || r.err)) {
+    r = r || { err: "時間内に 返りませんでした", status: 0 };
+    r.時間切れ = true;
+  }
+  return { r, model, tried, 使った鍵: tried.length, 成功: !!(r && !r.err),
+           時間切れ: 時間切れ, 休んだ: 休んだ };
 }
 
 /* ══ 資料を先に預けて、あとは場所を指すだけにする ═══════════════════
@@ -45339,6 +46329,16 @@ async function aigenSha256Hex(s) {
    base64 は元の 1.34 倍になるので、余裕をみて 12MB ぶんまでを
    「そのまま送る」に回す（＝元のファイルで約 9MB まで）。
    これより大きいものだけ預けて、ACTIVE になるまで待つ。 */
+/* ══ 1 回の AI 呼び出しの 見切り ═══════════════════════════════════
+   実測（2026-09-05・本番 ai_jobs）: 最初の 返事は 3〜10 秒。
+   45 秒 返らない ものは、待っても まず 返らない。早く 次へ 回す。 */
+const AIGEN_CALL_TIMEOUT_MS = 45000;
+/* ══ 鍵 × モデルを 巡る **全体**の 締め切り ════════════════════════
+   1 本ずつの 見切りを 短く しても、巡る 数だけ 積み上がる。
+   全体で ここを 超えたら、そこで 諦めて 返す。
+   返さないと 呼び出し側の ai_calls が 0 のまま 300 秒 放置される。 */
+const AIGEN_TRY_DEADLINE_MS = 100000;
+
 const AIGEN_GEMINI_INLINE_MAX = 12 * 1024 * 1024;
 
 /* ══ 預けたファイルが 使えるようになるまで待つ ═══════════════════════
@@ -45429,18 +46429,41 @@ async function aigenGeminiUpload(env, key, file) {
   }
 }
 
+/* ══ 「考えるのを切る」を 断る モデルを 覚えておく ═══════════════════
+   3.5 Flash Lite は noThink を 400 で 断る（実測 2026-08-12）。
+   断られる たびに 投げ直して いたので、その モデルは **毎回 2 回**
+   外へ 出て いた。外向きの 回数には 上限（50）が あり、
+   ここが 倍 掛かると 作れる 問題数が そのぶん 減る
+   （2026-09-05 実測: 大問 12 で 27 回の 呼び出しが 上限に 当たった）。
+   一度 断られたら 覚えて、次からは **最初から 外して** 投げる。
+   覚えは この Worker が 生きている 間だけ。忘れても もう 一度 覚え直すだけ。 */
+/* ★ **分かって いる ものは 最初から 入れて おく**（2026-09-05）。
+   覚えは Worker の 1 つの 入れ物の 中だけ。同時に 走らせると
+   入れ物が 分かれるので、覚え直す 前に また 2 回 外へ 出て しまう
+   （実測: 大問 12 を 6 本 同時に 走らせたら、また 上限に 当たった）。
+   3.5 系は 断ると 実測で 分かって いる ので、はじめから 外して 投げる。 */
+const AIGEN_NOTHINK_BAD = new Set([
+  "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"
+]);
+function aigenNoThinkOff(body) {
+  return Object.assign({}, body, {
+    noThink: false,
+    max_tokens: Math.min(8192, Math.max(1200, (body.max_tokens || 512) * 4))
+  });
+}
+
 async function aigenCallGemini(env, model, body, keyOverride) {
-  const first = await aigenCallGeminiOnce(env, model, body, keyOverride);
+  /* 断ると 分かって いる モデルへは、はじめから 外して 投げる（1 回で 済む）。 */
+  const 送る = (body && body.noThink && AIGEN_NOTHINK_BAD.has(String(model)))
+    ? aigenNoThinkOff(body) : body;
+  const first = await aigenCallGeminiOnce(env, model, 送る, keyOverride);
   /* ══ 「考えるのを切る」は、モデルによって受け付けない ═══════════
      3.1 Flash Lite は通るのに、3.5 Flash Lite は 400 で断ってくる（実測 2026-08-12）。
      断られたら **外して投げ直す**。そのぶん考えに字数を使うので、
      答えが途中で切れないよう上限も広げる（切れると答えにならない）。 */
-  if (body && body.noThink && first.status === 400 && /INVALID_ARGUMENT/i.test(String(first.err || ""))) {
-    return aigenCallGeminiOnce(env, model,
-      Object.assign({}, body, {
-        noThink: false,
-        max_tokens: Math.min(8192, Math.max(1200, (body.max_tokens || 512) * 4))
-      }), keyOverride);
+  if (送る && 送る.noThink && first.status === 400 && /INVALID_ARGUMENT/i.test(String(first.err || ""))) {
+    AIGEN_NOTHINK_BAD.add(String(model));
+    return aigenCallGeminiOnce(env, model, aigenNoThinkOff(body), keyOverride);
   }
   return first;
 }
@@ -45452,7 +46475,20 @@ async function aigenCallGeminiOnce(env, model, body, keyOverride) {
     return { err: "管理画面の上限に達したため使いませんでした", status: 429, 管理上限: true };
   }
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 90000);   /* 資料ありは時間がかかる */
+  /* ★ 見切りは 頼み ごとに 変える（2026-08-31）。
+     国語の 本文（2,600〜3,600 字）＋ 話し合い（900 字）を 1 回で 書かせると
+     90 秒では 足りず **時間切れ**に なった（実測: 難しい で 毎回）。
+     長い ものを 頼む ときだけ 伸ばす。 */
+  /* ★ 既定を **45 秒**へ（2026-09-05・訴え「前までこんな遅くなかった」）。
+     本番の 実測（ai_jobs 250 件）: 最初の 返事は **3〜10 秒**で 返る。
+     なのに 既定が 90 秒 だったので、返らない 1 本の ために 90 秒 待ち、
+     そのあと 次の モデルへ 回って また 待って いた。
+     鍵 5 本 × モデル 4 つ を 巡ると 300 秒を 超え、
+     **aigenAskVia が 一度も 返らない**（ai_jobs の ai_calls が 0 のまま
+     300 秒で 打ち切られた ものが 32 件・達成率 0%）。
+     長い ものを 書かせる ときだけ timeoutMs で 伸ばす（国語の 本文など）。 */
+  const 見切り = Math.max(20000, Math.min(170000, Number(body.timeoutMs) || AIGEN_CALL_TIMEOUT_MS));
+  const timer = setTimeout(() => ctrl.abort(), 見切り);   /* 資料ありは時間がかかる */
   try {
     /* 資料は最初の部品として載せる。指示文はそのあと。
        先に指示を置くと、長い資料のときに指示が薄まる。 */
@@ -46051,7 +47087,12 @@ const AIGEN_ENGINES = {
     label: "自由記述", tier: "strong", perQ: 240, maxBatch: 50,
     alias: ["自由記述", "記述", "論述", "作文", "free_text", "essay"],
     shape: '{"id":"q1","type":"free_text","question":"問題文","answer":"模範解答","explanation":"日本語の採点の観点"}',
-    rule: "answer は模範解答。explanation には採点の観点を書く。",
+    rule: "answer は模範解答。explanation には採点の観点を書く。"
+      /* ★ 字数は **10 きざみ**（2026-08-31・訴え「142 字とか 202 字は キレが 悪い」）。
+         受け取る側でも 丸めるが、先に 言って おくと 模範解答の 長さも 揃う。 */
+      + "字数を 決める ときは **10 の 倍数**にする（120字以内・150字以内）。"
+      + "142・202 の ような 半端な 数を 書かない。"
+      + "**模範解答（answer）は、その 字数の 中に 必ず 収める。**",
     validate(q) {
       if (typeof q.answer !== "string" || q.answer.trim().length < 10) return "模範解答が短すぎる";
       return null;
@@ -46743,6 +47784,67 @@ function aigenVariantInText(text) {
    数はそのまま読めるので、表に頼らず作る（2〜8 まで）。
    漢数字（二択・五択）も同じ言い方なので、ここでそろえる。 */
 const AIGEN_KANJI_NUM = { "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8 };
+/* ══ 記述の 字数は **10 きざみ**（2026-08-31・訴え）════════════════════
+   訴え:「記述の 場合、なぜか 142文字以内 とか 202文字 とか、キレが 悪い。
+         なるべく 5 で 刻んで ほしい。基本的には 10 ずつが 理想」
+
+   ★ なぜ 半端に なるか: **AI が その場で 決めて いる**。
+     「140 字」でも「142 字」でも 頼み文の 上では 同じなので、
+     何も 言わなければ 半端な 数が 出る。
+   ★ 頼み文にも 書くが、**最後の 砦は こちら**（丸めて 出す）。
+     頼むだけで 守られる なら、そもそも 半端に なって いない。
+
+   刻みかた:
+     40 字 以下 … 5 きざみ（20・25・30。10 きざみだと 荒すぎる）
+     41 字 以上 … 10 きざみ（140・230）
+*/
+/* ★ **すき間も 覚えて おく**（丸めた あと 元の 見た目に 戻す ため）。
+   「202 文字以内」を 「200文字以内」に すると 見た目が 変わって しまう。 */
+const AIGEN_LEN_TIDY_RE = /(\d{2,4})(\s*)(字|文字)(\s*)(以内|以下|程度|まで)/g;
+
+function aigenRoundLen(n) {
+  const v = Math.round(Number(n) || 0);
+  if (!(v > 0)) return 0;
+  if (v <= 40) return Math.max(5, Math.round(v / 5) * 5);
+  return Math.round(v / 10) * 10;
+}
+
+/** 文の 中の「142 字以内」を「140 字以内」へ 丸める。 */
+function aigenTidyLengths(text) {
+  const t = String(text || "");
+  if (!t) return t;
+  return t.replace(AIGEN_LEN_TIDY_RE, (m, n, s1, ji, s2, cap) => {
+    const r = aigenRoundLen(n);
+    return r && r !== Number(n) ? (r + s1 + ji + s2 + cap) : m;
+  });
+}
+
+/** 文の 中の 字数の 決まり（いちばん 小さい 上限）を 読む。無ければ 0。 */
+function aigenLenCapOf(text) {
+  const t = String(text || "");
+  let m, best = 0;
+  AIGEN_LEN_TIDY_RE.lastIndex = 0;
+  while ((m = AIGEN_LEN_TIDY_RE.exec(t))) {
+    const n = Number(m[1]);
+    if (n > 0 && (!best || n < best)) best = n;
+  }
+  return best;
+}
+
+/** 字数を 超えた 文を、**文の 切れ目で** 収める。収まらなければ 空。 */
+function aigenFitLen(text, cap) {
+  const t = String(text || "").trim();
+  if (!cap || t.length <= cap) return t;
+  /* 「。」で 切れる ところを 探す（途中で 切ると 意味が 壊れる）。 */
+  let cut = -1;
+  for (let i = 0; i < t.length && i < cap; i++) {
+    if (t[i] === "。" || t[i] === "！" || t[i] === "？") cut = i + 1;
+  }
+  /* 半分も 残らない なら 出さない（中途半端な 案は 出さない ほうが よい）。 */
+  if (cut < Math.floor(cap * 0.4)) return "";
+  return t.slice(0, cut);
+}
+
 /* ══ 「N 字以内で」を読む ═══════════════════════════════════════════
    実測 2026-08-14: 「解説は60字以内で8問」で 3 回とも守れなかった。
    **字数の注文をどこも読んでいなかった**（指示文にも検査にも入っていない）。
@@ -47167,6 +48269,713 @@ function aigenPassageNote(on) {
   ].join("\n");
 }
 
+/* ══ 国語の 試験（2026-08-31・訴え）═══════════════════════════════════
+   訴え:「国語の 試験の 場合は、本文を 入れよう。難易度に よって 長さや
+         その 内容も 変わって くる。第一問に 標準では 5 問、本文の 傍線部から
+         同じ 漢字の 読みを 選ぶ 問題。本文を AI が 生成して、執筆して ほしい。
+         そこに 傍線部を 入れたり して、その 本文を 問う 問題を 中心に。
+         選択肢は すごい 紛らわしく したり、問題に よっては 言い過ぎや
+         絶対 ないだろ って ものも 混ぜて いい。
+         あと 途中に 生徒同士の 会話とか（A〜F くらいまで 入れて 交互に、先生とかも）」
+
+   ★ これまでの 作りとの 違い:
+     ・本文の 長さが **150〜400 字**だった。国語の 試験は 一桁 足りない。
+       共通テストの 評論は 3,000〜4,000 字。ここを 変えないと 国語に ならない。
+     ・傍線部は 書けたが、**「傍線部を 中心に 問う」とは 言って いなかった**。
+     ・漢字の 問題（第1問 問1）の 形が どこにも 無かった。
+     ・選択肢は「言い過ぎを 使うな」と 禁じて いた。国語では
+       **言い過ぎ こそ 正統な 誤答の 型**なので、ここだけ 外す。
+*/
+const AIGEN_KOKUGO_RE = /(国語|現代文|評論|小説|随筆|古文|漢文|文章読解|読解)/;
+
+/** 難しさから 本文の 長さを 決める。 */
+function aigenKokugoLen(level) {
+  const t = String(level || "").trim();
+  if (/やさし|易し|基礎|初級|かんたん|簡単|easy/.test(t)) return { min: 1200, max: 1800, 漢字: 4 };
+  if (/難し|むずか|発展|応用|上級|hard|むずい/.test(t)) return { min: 2600, max: 3600, 漢字: 5 };
+  return { min: 1800, max: 2600, 漢字: 5 };            /* 標準 */
+}
+
+/* すでに 書いた 本文を 頼み文へ 差し込む。
+   ★ これが 無いと 回ごとに **別々の 本文**を 書いて しまう。 */
+function aigenPassageGiven(o) {
+  const p = o && o.passage;
+  if (!p || !p.text) return "";
+  const 線 = (p.underlines || []).map((u) => "　" + u.marker + "「" + u.text + "」").join("\n");
+  return [
+    "",
+    "【本文（すでに 決まって います。書き直さないで ください）】",
+    "★ 下の 本文に ついて 問題を 作ります。**本文を 自分で 書かない。**",
+    /* ★ ここが **資料の 無い 資料問題**の 元だった（2026-09-06 実測）。
+       「materials に 入れなくて かまいません」と 書いて いたので、
+       AI は 問題文で「【グラフ1】に よると」と 言いながら
+       **materials を 空の まま**返して いた（資料を 見ないと 解けないのに 資料が 無い）。
+       本文だけの 話だと はっきり させ、図表は 必ず 入れさせる。 */
+    "★ materials に **本文（passage）は** 入れなくて かまいません（こちらで 付けます）。",
+    "★ ただし **図・表・グラフ・別の 資料は materials に 必ず 入れて ください。**",
+    "　問題文で「【グラフ1】に よると」「表 1 から」と 書くなら、",
+    "　その グラフ・表の **中身（数字）を materials に 入れます**。",
+    "　★ 言及だけ して 中身を 入れないのは **禁止**です。",
+    "　　資料の 無い 資料問題に なり、受け取れません。",
+    "★ 問題文の 中に 本文を 写さないで ください。",
+    "",
+    p.text,
+    "",
+    線 ? "【傍線部】この 記号で 指して ください。\n" + 線 : "",
+    /* ══ 設問の 型（2026-09-06・訴え「設問とか 問題形式とかも 参考にして いいよ」）
+       Rinty さん 提供の 本物の 共通テスト『国語』第1問 問2〜問6 の 型を 写した。
+       実物の 問い方（そのまま）:
+         「傍線部A「…（本文を まるごと 引用）…」と あるが、それは どういう ことか。
+           その 説明として 最も 適当な ものを、次の ①〜④ の うちから 一つ 選べ。」
+       ★ 本物は **選択肢 4 つ・1 つ 80〜110 字**。ここが いちばん 違って いた
+         （訴え「選択肢が すぐ 分かっちゃう くらい 簡単」）。
+       ★ 選択肢は どれも **本文の 語を 使って** 書かれ、
+         違うのは **筋の 通りかた だけ**。語で 見分けられない ように する。 */
+    "【設問の 型】★ 本物の 共通テストに そろえます。",
+    "・問い方は 次の 3 つの どれか:",
+    "　① 傍線部X「（本文を そのまま 引用）」と あるが、それは どういう ことか。",
+    "　　その 説明として 最も 適当な ものを、次の ①〜④ の うちから 一つ 選べ。",
+    "　② 傍線部X「…」と あるが、それは なぜか。その 理由として 最も 適当な ものを、",
+    "　　次の ①〜④ の うちから 一つ 選べ。",
+    "　③ 傍線部X「…」と あるが、この ことに 対する 筆者の 考えとして 最も 適当な ものを、",
+    "　　次の ①〜④ の うちから 一つ 選べ。",
+    "・★ 問題文に **傍線部の 本文を「」で そのまま 引用**します（記号だけで 済ませない）。",
+    "・★ 選択肢は **4 つ**。1 つ あたり **80〜110 字**。",
+    "　どれも 同じ くらいの 長さに し、末尾も そろえます",
+    "　（「…ということ。」／「…から。」／「…しようとしているため。」）。",
+    "・★ 誤りの 選択肢も **本文の 語を 使って** 書きます。",
+    "　本文に 無い 語で 誤りを 作らない（語を 探すだけで 消せて しまう）。",
+    "　間違いは **筋の 通りかた**（因果が 逆・範囲が 広すぎる・本文に 無い 飛躍）で 作ります。",
+    "・空欄が ある ときは「空欄 X に 入る ものとして 最も 適当な もの」を 1 問 入れます。",
+    "★ 本文に 書いて いない ことを 問わない。答えは 必ず 本文の 中に あります。",
+    /* ══ 資料つきの 設問（2026-09-06・訴え）══════════════════════════
+       訴え「本文で たまに 資料問題として、本文の 中に 画像資料
+             （外部から 画像を 持って くる）とか、グラフや 表なんかも
+             多種多様に 入れたり とかも いいね」
+       ★ 本物の 共通テストも、本文の あとに 図・グラフ・表・別の 文章を
+         添えて「読み比べ」を 問う 大問が ある。
+       ★ **たまに**（訴えの 言葉）。全部の 設問に 付けると 紙面が うるさく なり、
+         1 問 あたりの 生成も 重く なる。**この 大問で 1〜2 問**に する。
+       ★ 画像の 住所は **書かせない**。imageQuery（探す 言葉）だけ 出させ、
+         取って くるのは サーバ（許諾の 読める ものだけ）。
+         取れなかった 図は 落とす（白い 四角を 出さない）。 */
+    /* ══ 資料つきの 設問（2026-09-06・訴え「グラフや 表なんかも」）══
+       ★ **書きすぎない。** 一度 「必ず 1 問・種類を 変えて・形は 別項」まで
+         書いたら、頼み文が 長く なりすぎて **話し合い（dialogue）まで
+         出なく なった**（実測）。指示は 増やすほど 守られなく なる。
+       ★ 出す/出さないは AI に 任せ、**壊れた もの（資料に 触れて いるのに
+         資料が 無い）は 受け取り側で 落とす**（aigenPromptTypeMismatch）。
+         こうすれば「資料の 無い 資料問題」は 絶対に 出ない。
+       ★ 形の 出どころは `aigenMaterialsNote` の 1 か所だけ
+         （ここへ 二重に 書いたら "values" と "series" で 食い違った）。 */
+    "【資料つきの 設問】1 問だけ、本文と 資料を 読み比べる 設問に できます。",
+    "・資料の 形は 【資料（図・表・グラフ）】の 項の とおり。materials に 入れます。",
+    "・★ 問題文で「グラフ」「表」「資料」に 触れる なら、"
+      + "**その 中身を 必ず materials に 入れて ください。**",
+    "　触れるだけで 中身が 無い 問題は 受け取れません。"
+  ].filter(Boolean).join("\n");
+}
+
+/* ══ 選択肢の 手ごたえ（2026-08-31・訴え）══════════════════════════
+   訴え:「どの 教科も そうなんだけど、選択肢が 短すぎる。
+         特に 難易度を 難しいに してるのに 選択肢が すぐ 分かっちゃう くらい 簡単。
+         消去法で いけちゃうから」
+
+   ★ なぜ 短く・易しく なるか（コードを 読んで 分かった こと）:
+     ・**字数の 下限を どこにも 言って いなかった。**
+       上限（choice: N 字以内）は 読む のに、下限は 無い。
+       AI は 短く 書く ほうが 楽なので、必ず 短く なる。
+     ・「紛らわしく」とは 書いて いたが、**測れる 決まりが 無かった**。
+       「長さを そろえる」だけでは、4 つとも 短ければ そろって しまう。
+     ・難しさ（level）が **選択肢の 作りに 一度も 効いて いなかった**。
+
+   ★ 直しかた: **長さの 下限**と **消去法を 潰す 決まり**を 数で 言う。 */
+function aigenChoiceDepth(o) {
+  const t = String((o && o.level) || "") + " " + String((o && o.topic) || "");
+  const 難 = /難し|むずか|発展|応用|上級|hard|むずい|ハイレベル|最難/.test(t);
+  const 易 = /やさし|易し|基礎|初級|かんたん|簡単|easy/.test(t);
+  if (難) return { min: 45, max: 90, 近: 3, 名: "難しい" };
+  if (易) return { min: 20, max: 45, 近: 1, 名: "やさしい" };
+  return { min: 30, max: 65, 近: 2, 名: "標準" };
+}
+
+function aigenChoiceNote(o) {
+  if (!o) return "";
+  /* ★ **試験の ときだけ**（2026-08-31・訴え「プリセットAIで 自動生成が できない」）。
+     入れた 当日は どの 依頼にも 効かせて いた。ところが プリセットの
+     ふつうの 4択（「東京」「大阪」…）は 選択肢が 2〜6 字 なので、
+     「1 つ 1 つを 30 字 以上の 文に」を 全部の 依頼に かけると
+     **1 問も 通らない**。訴えは 試験の 選択肢に ついての もの だった。 */
+  if (!o.exam) return "";
+  const D = aigenChoiceDepth(o);
+  return [
+    "",
+    "【選択肢の 手ごたえ（" + D.名 + "）】",
+    "★ **1 つ 1 つを " + D.min + "〜" + D.max + " 字で 書いて ください。**"
+      + D.min + " 字より 短い 選択肢は 受け取れません。",
+    "　単語や 短い 語句 だけの 選択肢は だめです。**文**に します。",
+    "　（悪い例）「効率が 上がる」　（よい例）「作業の 手順を 見直した ことで、"
+      + "同じ 時間で 扱える 量が 増えたと 説明して いる」",
+    "★ **4 つ（5 つ）とも 同じくらいの 長さ**に します。",
+    "　いちばん 長い ものと 短い ものの 差を **" + Math.round(D.max * 0.35) + " 字 以内**に。",
+    "　正解だけ 長い／詳しい のは、それ だけで 答えが 分かって しまいます。",
+    "★ **正解と " + D.近 + " 文字〜1 か所だけ 違う 誤答**を、"
+      + "**" + D.近 + " つ 以上**入れて ください。",
+    "　違うのは 次の どれか 1 つ だけに します:",
+    "　　範囲（すべて／一部）・程度（必ず／多くは）・順序（先に／後で）・",
+    "　　主体（誰が）・時期（いつ）・条件（〜の ときだけ）・因果の 向き",
+    "★ **消去法で 消せる 選択肢を 作らない。**",
+    "　・「明らかに おかしい 行動」「誰も 選ばない 極端な 文」を 1 つも 入れない。",
+    "　・4 つとも **本文／資料の 言葉を 使って** 書く。",
+    "　　本文に 出て こない 言葉だけで できた 選択肢は、それ だけで 消せます。",
+    "　・**1 つだけ 読んで 正誤が 決まる 問題に しない。**",
+    "　　選択肢どうしを 見比べて はじめて 決まる ように します。",
+    D.名 === "難しい" ? [
+      "★ **難しい と 言われて います。ここが いちばん 大事です。**",
+      "　・正解も **言い切らない**。「〜と 考えられる」「〜と 説明して いる」の ように、",
+      "　　誤答と 同じ 語尾に します（正解だけ 慎重な 言い方だと 見分けが つきます）。",
+      "　・誤答の うち **2 つは、正解と 同じ 結論**に して、**理由だけ** 違えます。",
+      "　・数字・固有名詞の **数を そろえます**（正解だけ 具体的に しない）。",
+      "　・「本文に 書いて ある か」では なく、**「本文の 筋に 合って いる か」**で",
+      "　　分かれる ように します（写して あるだけの 誤答を 作らない）。"
+    ].join("\n") : "",
+    "★ explanation には **選択肢 1 つずつ**、なぜ 誤りかを 書きます",
+    "　（「①…（範囲ちがい）／②…（因果の 逆）／③正解。理由…」）。"
+  ].filter(Boolean).join("\n");
+}
+
+function aigenKokugoNote(o) {
+  if (!o || !o.exam) return "";
+  const 教科 = String(o.subject || "");
+  const 題 = String(o.topic || "");
+  if (!AIGEN_KOKUGO_RE.test(教科) && !AIGEN_KOKUGO_RE.test(題)) return "";
+  const L = aigenKokugoLen(o.level || 題);
+  const 会話 = o.dialogue !== false;   /* 既定は 入れる。試験ごとに 切れる */
+  return [
+    "",
+    "【国語の 試験（ここが 主役）】",
+    "★ **本文を あなたが 書きます。** 引用では なく、書き下ろしの 評論文（または 小説）です。",
+    "　・長さは **" + L.min + "〜" + L.max + " 字**。これより 短いと 国語の 試験に なりません。",
+    "　・materials に {\"type\":\"passage\"} で 置きます。**question の 中に 書かない。**",
+    "　・段落は 5〜9 個。話が **進む**こと（主張 → 具体例 → 反論 → 言い直し → 結び）。",
+    "　・**筆者の 立場が はっきり ある**こと。両論併記で 終わらせない。",
+    "　・実在の 人・作品を 断定的に 語らない（事実の 誤りに なる）。",
+    "",
+    "★ **傍線部を 引き、それを 問う。**",
+    "　・本文に 傍線部を **5〜8 か所**（marker は ①②③… ）。",
+    "　・傍線の text は **本文に そのまま 出てくる 文字列**。1 字でも 違うと 線が 引けません。",
+    "　・設問は **傍線部を 問う ものを 中心**に します"
+      + "（理由・言い換え・筆者の 考え・表現の 効果）。",
+    "　・本文を 読まなくても 答えられる 問題を 作らない。**必ず 本文へ 戻らせる。**",
+    "",
+    "★ **第1問は 漢字**（" + L.漢字 + " 問）。共通テストの 第1問 問1 と 同じ 形です。",
+    "　・本文の 傍線部 " + L.漢字 + " か所を **カタカナ**に して おきます"
+      + "（例: 本文に「シュウシ」と 書き、傍線 ① を 引く）。",
+    "　・設問:「傍線部① の カタカナに 相当する 漢字を 含む ものを、"
+      + "次の 各群の ①〜④ の うちから 一つずつ 選べ。」",
+    "　・選択肢は **その 漢字を 含む 熟語 4 つ**。正解は 1 つ。",
+    "　　（例）シュウシ（終始）→ ① シュウソク ② シュウジツ ③ シュウチャク ④ シュウガク",
+    "　・" + L.漢字 + " 問 とも **別の 漢字**に する。同じ 漢字を 2 回 出さない。",
+    "　・type は single_choice。1 問 1 つの 傍線部です。",
+    "",
+    "★ **選択肢は 紛らわしく する**（訴え「すごい 紛らわしく」）。",
+    "　・5 つとも **本文の 言葉を 使って** 書く。本文に 無い 言葉だけの 選択肢は 弱い。",
+    "　・誤答は 次の 型から 選ぶ:",
+    "　　　【言い過ぎ】本文は 一部だと 言って いるのに「すべて」「必ず」と 言い切る",
+    "　　　【すり替え】本文に ある 言葉を 使って いるが、主語や 対象が 別",
+    "　　　【因果の 逆】原因と 結果を 入れ替える",
+    "　　　【本文に ない】もっともらしいが 本文の どこにも 書いて いない",
+    "　　　【一部だけ 正しい】前半は 合って いるが 後半が 違う（いちばん 迷う）",
+    "　・★ **言い過ぎ・絶対に ない もの を 混ぜて よい**"
+      + "（1 問に 1〜2 個 まで。全部を それに しない）。",
+    "　　ほかの 教科の 決まりでは 言い過ぎを 禁じて いますが、"
+      + "**国語では ここが 正統な 誤答の 型**です。こちらを 優先します。",
+    "　・5 つとも 同じくらいの 長さ。正解だけ 長い／短いは だめ。",
+    "　・explanation には **選択肢ごとに 型の 名前を 添えて** なぜ 違うかを 書く。",
+    会話 ? [
+      "",
+      "★ **途中に 生徒の 話し合いを 入れる**（訴え）。",
+      "　・大問の 後ろの ほうに、本文を 読んだ **生徒の 話し合い**を 1 つ 置きます。",
+      "　・話し手は **生徒A〜生徒F**（4〜6 人）と **先生**。同じ 人ばかり 続けない。",
+      "　・10〜16 発言・500〜900 字。materials の {\"type\":\"dialogue\"} に 置きます。",
+      "　・話し合いの 中に 空欄 【ア】 を 1〜2 個 置き、そこを 問う 設問を 作ります。",
+      "　・生徒が **本文の 読み違い**を して、先生が 直す 流れを 入れると 試験らしく なります。"
+    ].join("\n") : "　（この 試験では 話し合いの 場面は 入れません）",
+    "",
+    "★ 記述を 作る ときは 字数を **10 の 倍数**で 指定します（100字以内・140字以内）。",
+    "　模範解答（answer）は その 字数の 中に 必ず 収めます。",
+    "",
+    /* ══ 本物の 共通テスト国語（2026-08-31）════════════════════════
+       Rinty さんが 渡して きた 過去問（51 ページ）を Gemini に 読ませて
+       構成を 書き出した もの。**これを 標準に する**と 言われて いる。
+         第1問 近代以降の文章（評論）p.4〜17
+           問1 傍線部(ア)〜(オ)に相当する漢字を含むもの（5 問）
+           問2〜4 傍線部A・B・C　問5 構成・展開　問6 文章を読んだSさん
+         第2問 小説 p.18〜31
+           問1 傍線部(ア)〜(ウ)の語句の意味（3 問）
+           問2・3・5 傍線部　問4 描写　問6 表現　問7 資料
+         第3問 古文 p.32〜41　第4問 漢文 p.42〜51 */
+    "【本物の 共通テスト国語の 組み立て】この 形を 目指します。",
+    "　第1問 近代以降の 文章（評論）",
+    "　　問1 傍線部(ア)〜(オ)に 相当する 漢字を 含む ものを 選ぶ（**5 問**）",
+    "　　問2〜4 傍線部A・B・C に ついて（理由・言い換え・筆者の 考え）",
+    "　　問5 **文章の 構成・展開**に 関する 説明として 適当な もの",
+    "　　問6 **この 文章を 読んだ 生徒**が まとめた ノート／話し合い（空欄を 問う）",
+    "　第2問 小説",
+    "　　問1 傍線部(ア)〜(ウ)の **語句の 意味**（**3 問**。辞書的な 意味を 選ぶ）",
+    "　　問2・3・5 傍線部（心情・行動の 理由）",
+    "　　問4 **描写**に ついての 説明　問6 **表現**に 関する 説明（複数選択も 可）",
+    "　　問7 【資料】を 添えて 読み比べる",
+    "★ 問5・問6 の ような **「構成」「表現」を 問う 問題**を 必ず 1 問は 入れます。",
+    "　ここが 無いと 一問一答の 寄せ集めに なり、国語の 試験に なりません。",
+    "★ 「文章を 読んだ 生徒」の 場面は、上の 話し合い（dialogue）で 作ります。"
+  ].filter(Boolean).join("\n");
+}
+
+/* ══ 国語の 本文を **先に 書かせる**（2026-08-31）═══════════════════
+   ★ なぜ 分けるか（実測で 分かった こと）:
+     ① 問題と 一緒に 頼むと、AI は **本文を 書かずに 問題だけ** 返す。
+        形の 見本（shape）に materials が 無いので、そこに 引きずられる。
+        実測: 10 問 できたが 本文 0 字・漢字の 問題 0 問。
+     ② もっと 悪いのは、生成は 2〜5 回に 分けて 呼ぶ ので、
+        各回が **別々の 本文**を 書いて しまう こと。
+        1 つの 試験に 本文が 5 つ 並ぶ ことに なる。
+   → **本文は 1 回だけ 書かせて、全部の 回で 使い回す。**
+     漢字の 問題も ここで 一緒に 作らせる（本文の 語から 選ぶ ので、
+     本文が 決まって いないと 作れない）。 */
+async function aigenKokugoPassage(env, o = {}) {
+  /* ★ **3 回に 分ける**（2026-08-31 実測）。
+     本文（〜3,600 字）＋ 話し合い（〜900 字）＋ 漢字 5 個 を 1 回で 書かせると
+     返事が 長すぎて **時間切れ**に なる（90 秒 → 165 秒に 伸ばしても 落ちた）。
+     ① 本文と 傍線部（いちばん 長い）
+     ② 漢字（**書き上がった 本文を 渡す**ので、必ず 本文に ある 語に なる）
+     ③ 生徒の 話し合い（短い。入れない ことも ある）
+     1 回ぶんが 短く なる ので、どれも 落ちにくい。 */
+  const out = { ok: false, ms: 0, aiCalls: 0, err: "", passage: null, kanji: [], dialogue: null };
+  /* ★ **強い ところから 順に**（2026-08-31 実測）。
+     順番を 決めて いなかった ので Groq が 先に 当たり、
+     決まった 形（responseSchema）を 作れずに 落ちて いた
+     （"Failed to generate JSON" で 難しい が 毎回 失敗）。 */
+  const 好み = ["gemini", "groq", "workers"];
+  const 全 = aigenProviders(env);
+  const chain = 好み.filter((x) => 全.indexOf(x) >= 0).concat(全.filter((x) => 好み.indexOf(x) < 0));
+  if (!chain.length) { out.err = "提供元が ありません"; return out; }
+  const L = aigenKokugoLen(o.level || o.topic);
+  const 種 = /小説|物語|随筆/.test(String(o.topic || "") + String(o.subject || "")) ? "小説" : "評論";
+  const t0 = Date.now();
+  const sys = "あなたは 日本の 大学入学共通テスト 国語の 作題者です。出力は JSON だけ。";
+
+  const 呼ぶ = async (user, schema, tokens, ms) => {
+    for (const provider of chain) {
+      const model = aigenModelFor(env, provider, "exam");
+      const r = await aigenAskVia(env, provider, model, {
+        sys, user, maxTokens: Math.min(65536, tokens), files: o.files || [],
+        timeoutMs: ms, responseSchema: schema
+      });
+      out.aiCalls++;
+      if (!r.ok) { out.err = String(r.error || "").slice(0, 160); continue; }
+      let j = r.parsed;
+      if (!j && typeof r.text === "string") { try { j = JSON.parse(r.text); } catch (e) {} }
+      if (j) { out.model = r.model || model; out.provider = provider; return j; }
+      out.err = "返事を 読めませんでした";
+    }
+    return null;
+  };
+
+  /* ── ① 本文と 傍線部 ─────────────────────────────────────── */
+  const j1 = await 呼ぶ([
+    "国語の 試験の **本文**を 書いて ください。問題は 作りません。",
+    "",
+    "【注文】" + String(o.topic || "").slice(0, 600),
+    "",
+    "・種類は **" + 種 + "**。**書き下ろし**（実在の 作品を 引用しない）。",
+    "・長さは **" + L.min + "〜" + L.max + " 字**。段落は 5〜9 個。",
+    "　★ 短すぎても 長すぎても 受け取れません。**数えて から** 返して ください。",
+    "・筆者（語り手）の 立場が はっきり ある こと。両論併記で 終わらない。",
+    "・高校生が 読んで 手ごたえの ある 語彙・構文に する。やさしく 崩さない。",
+    "",
+    /* ★ 傍線部も **ここでは 頼まない**（2026-09-06 実測）。
+       「記号は 書かないで」と 言ったら、AI は 傍線部ごと 出さなく なった
+       （実測: 傍線 0 か所）。本文づくりは **本文だけ**に して、
+       線を 引く ところは 書き上がった 本文を 見せてから 選ばせる。 */
+
+    /* ══ ここから 下は 本物の 共通テストに 合わせた 作り（2026-09-06・訴え）══
+       参考にした もの: 実際の 共通テスト『国語』第1問（Rinty さん 提供）。
+       本物の 紙面に あって、これまで 出して いなかった もの:
+         ・題名と **作者**、本文の 末尾の **出典**（「（〜による）」）
+         ・難しい 語の **ふりがな**（彷徨(さまよ)う・蛇足(だそく) など）
+         ・難しい 語の **注**（本文に (注1)、本文の あとに まとめて 説明）
+         ・本文の 中の **空欄**（空欄 X に 入る ものを 選ばせる 設問の 素） */
+    "【作者と 出典】",
+    "・author … 書き下ろしの 筆者名（実在の 人物に しない）。",
+    "・source … 本文の 末尾に 出す 出典。**（著者名『書名』による）**の 形。",
+    "",
+    /* ★ ふりがな・注・空欄は **ここでは 頼まない**（2026-09-06 実測）。
+       本文と 一緒に 頼むと 指示が 重く なり、
+       ある 回は 全部 揃うのに 次の 回は **ふりがな 0・注 0**に なる。
+       本文も 短く なる（1,969 字 の 回で ふりがな 0）。
+       → 漢字と 同じで、**書き上がった 本文を 見せてから**別に 頼む。
+         そうすれば 必ず 本文に ある 語に なり、本文づくりも 軽く 済む。 */
+    '次の JSON だけ: {"title":"…","author":"…","source":"（〜による）","text":"本文"}'
+  ].join("\n"), {
+    type: "object",
+    properties: {
+      title: { type: "string" }, author: { type: "string" }, source: { type: "string" },
+      text: { type: "string" }
+    },
+    required: ["text"]
+  }, 8000 + L.max * 4, 150000);
+
+  let text0 = toSafeString(j1 && j1.text, 8000);
+  /* ★ **足りなければ 続きを 書かせる**（2026-08-31 実測）。
+     「2,600〜3,600 字で」と 頼んでも 1,287 字しか 書かない ことが ある。
+     長い 文章を 一息で 書かせる のは 無理が ある ので、**継ぎ足す**。
+     1 回だけ（それでも 足りなければ 諦める）。 */
+  /* ★ 継ぎ足す 線を 0.8 → 0.95 へ（2026-09-06）。
+     題名・作者・出典・ふりがな・注・空欄 を 一緒に 頼むように した ぶん、
+     本文が 短く なりやすい（実測: 標準 1,800〜2,600 字 に 対して 1,463 字）。
+     0.8（＝1,440 字）だと この 手前で 止まり、短い まま 出て いた。 */
+  if (text0 && text0.length >= 300 && text0.length < Math.floor(L.min * 0.95)) {
+    const 不足 = L.min - text0.length;
+    const j1b = await 呼ぶ([
+      "次の 文章の **続き**を 書いて ください。**あと " + 不足 + " 〜 " + (不足 + 400) + " 字**。",
+      "・同じ 筆者・同じ 話の 続きです。**言い直しでは なく 先へ 進めて** ください",
+      "　（具体例 → 反論 → 言い直し → 結び の ように）。",
+      "・書き出しは 続きから。前の 文を 繰り返さないで ください。",
+      "・段落は 2〜4 個。",
+      "",
+      "【ここまでの 文章】",
+      text0,
+      "",
+      '次の JSON だけ: {"text":"続きの 文章"}'
+    ].join("\n"), {
+      type: "object", properties: { text: { type: "string" } }, required: ["text"]
+    }, 6000 + 不足 * 4, 120000);
+    const 続 = toSafeString(j1b && j1b.text, 8000);
+    if (続 && 続.length > 200) text0 = (text0 + "\n" + 続).slice(0, 8000);
+  }
+  /* ★ **短くても 捨てない**（2026-08-31 実測）。
+     「2,600〜3,600 字で」と 頼んでも 1,517 字しか 書かない ことが ある。
+     これまでは そこで 本文ごと 捨てて いたので、**本文の 無い 国語の 試験**が
+     そのまま 出て いた（傍線部も 漢字も 無いのに 評論の 問題だけ 20 問）。
+     短い 本文の ほうが、本文なし より ずっと まし。
+     ただし **短い ことは 隠さない**（passageShort に 残す）。 */
+  const 下限 = Math.max(900, Math.floor(L.min * 0.5));
+  if (!text0 || text0.length < 下限) {
+    out.err = out.err || ("本文が 短すぎます（" + (text0 ? text0.length : 0) + " 字 / 下限 " + 下限 + " 字）");
+    out.ms = Date.now() - t0; return out;
+  }
+  if (text0.length < Math.floor(L.min * 0.8)) out.short = text0.length;
+  if (text0.length > Math.ceil(L.max * 1.4)) {
+    out.err = "本文が 長すぎます（" + text0.length + " 字 / 目安 " + L.max + " 字）";
+    out.ms = Date.now() - t0; return out;
+  }
+
+  /* ── ②③ 漢字と 話し合いは **同時に 頼む**（2026-08-31・訴え「国語の 生成が 遅すぎる」）──
+     どちらも 材料は「書き上がった 本文」だけ。互いを 待つ 理由が ない のに
+     順番に 呼んで いたので、本文づくりだけで 毎回 18〜22 秒 かかって いた（実測）。 */
+  let 本 = text0;
+  let 漢 = [];
+  /* ★ **多めに 頼む**（2026-08-31 実測）。同じ 語が 並ぶ もの・
+     傍線部の カタカナ そのものが 混ざった ものは 捨てる ので、
+     ちょうどの 数を 頼むと 5 問 中 1 問しか 残らない ことが ある。
+     頼む 数を 増やしても 呼び出しは 1 回の まま（時間は 変わらない）。 */
+  const 漢字予備 = L.漢字 + 3;
+  const p2 = 呼ぶ([
+    "次の 本文から、共通テスト 国語 第1問 問1 の **漢字の 問題**を "
+      + 漢字予備 + " 問 分 作る 材料を 出して ください。",
+    "",
+    "【本文】",
+    text0,
+    "",
+    "・本文の 中に **漢字で 書かれて いる 二字熟語**を " + 漢字予備 + " 個 選びます。",
+    "　★ **本文に そのまま 出て くる 語**だけ。無い 語を 書かないで ください。",
+    "・1 個ずつ 次を 出します:",
+    "　　marker … ア イ ウ エ オ",
+    "　　word     … 本文に 出て くる 漢字の 語（例「効率」）",
+    "　　katakana … その 読みを カタカナで（例「コウリツ」）",
+    "　　choices  … **その 漢字を 1 字 含む 熟語 1 つ ＋ 含まない 熟語 3 つ**を"
+      + " カタカナで（合計 4 つ。読みが 似た ものに して ください）",
+    "　　answer   … choices の 中の 正解（一字一句 同じ）",
+    "・" + 漢字予備 + " 個 とも **別の 語**に します。",
+    "・choices の 4 つも **すべて 別の 語**に します。同じ 語を 並べては いけません。",
+    "・choices に **その 語 自身（katakana と 同じ もの）を 入れては いけません**（答えが 丸見えに なります）。",
+    "",
+    '次の JSON だけ: {"kanji":[{"marker":"ア","word":"効率","katakana":"コウリツ",'
+    + '"choices":["コウソク","コウリョ","コウカ","コウフク"],"answer":"コウリョ"}]}'
+  ].join("\n"), {
+    type: "object",
+    properties: { kanji: { type: "array", items: { type: "object",
+      properties: { marker: { type: "string" }, word: { type: "string" },
+        katakana: { type: "string" }, choices: { type: "array", items: { type: "string" } },
+        answer: { type: "string" } },
+      required: ["marker", "word", "katakana", "choices", "answer"] } } },
+    required: ["kanji"]
+  }, 3000, 90000);
+
+  /* ── ③ 生徒の 話し合い（短い。切って いれば 呼ばない）────────── */
+  const p3 = o.dialogue === false ? Promise.resolve(null) : 呼ぶ([
+      "次の 本文を 読んだ **生徒の 話し合い**を 書いて ください。問題は 作りません。",
+      "",
+      "【本文】",
+      text0.slice(0, 3000),
+      "",
+      "・話し手は **生徒A〜生徒F**（4〜6 人）と **先生**。同じ 人が 続けて 話さない。",
+      "・**10〜16 発言・500〜900 字**。改行（\\n）で 発言を 分け、「生徒A：」で 始めます。",
+      "・**生徒が 本文を 読み違えて、先生や ほかの 生徒が 直す**流れを 必ず 入れます。",
+      "・話し合いの 中に **空欄【ア】を 1 つ**置き、blank に その 正解を 書きます。",
+      "・本文に 無い 話を しない。",
+      "",
+      '次の JSON だけ: {"dialogue":"生徒A：…\\n先生：…","blank":"…"}'
+    ].join("\n"), {
+      type: "object",
+      properties: { dialogue: { type: "string" }, blank: { type: "string" } },
+      required: ["dialogue"]
+    }, 4000, 90000);
+
+  /* ── ④ ふりがな・注・空欄（2026-09-06・訴え）────────────────────
+     訴え「本文に 棒線部、空欄、難しい 言葉に ふりがな、難しい 言葉の 注釈」
+
+     ★ **書き上がった 本文を 渡す。** 本文と 一緒に 頼むと、
+       ある 回は 揃い、次の 回は 0 個に なる（実測）。
+       漢字（②）と 同じ 作り。渡せば 必ず **本文に ある 語**に なる。
+     ★ ②③ と **同時に** 走らせる ので、待ち時間は 増えない。
+     ★ 番号は 振らせない（こちらで 本文の 順に 振り直す）。 */
+  const p4 = 呼ぶ([
+      "次の 本文に、共通テスト 国語の 紙面と 同じ **ふりがな・注・空欄**を"
+        + " 付ける ための 材料を 出して ください。問題は 作りません。",
+      "",
+      "【本文】",
+      text0.slice(0, 6000),
+      "",
+      "【傍線部】5〜8 か所",
+      "・読解の 設問（理由・意味・心情）に できる ところ。",
+      "・underlines[].text は **本文に そのまま 出て くる 文字列**（20〜60 字）。",
+      "・記号は 書かないで ください。**こちらで A・B・C… と 振ります**。",
+      "・本文の 前半・中ほど・後半に 散らして ください。",
+      "",
+      "【ふりがな】5〜10 語（**必ず 出す**）",
+      "・高校生が **読めない かもしれない** 漢語・熟語。",
+      "・ruby[].word は **本文に そのまま 出て くる 文字列**、read は ひらがな。",
+      "・熟語の 本体だけに 付けます（送りがなを 入れない: 「彷徨」に「さまよ」）。",
+      "・★ **漢字の 語だけ。** カタカナ語（マチエール・ラディカル 等）には 付けません",
+      "　（読めない のでは なく 意味が 分からない ので、そちらは【注】へ）。",
+      "",
+      "【注】3〜6 個（**必ず 出す**）",
+      "・本文を 読むのに **知識が 要る** 語。次の どれかから 選びます:",
+      "　人名／思想・主義の 名／作品・書名／専門語／**カタカナの 外来語**。",
+      "・notes[].word は **本文に そのまま 出て くる 語**、desc は 1 行の 説明。",
+      "・書き方は 本物と 同じに。例:「一九六〇年代後半から 台頭した 思想運動。」",
+      "・**ふりがなと 同じ 語には 付けない**（読めない のと 意味が 分からない のは 別）。",
+      "",
+      "【空欄】1〜2 か所（**必ず 出す**）",
+      "・blanks[].text は **本文に そのまま 出て くる 文字列**（8〜30 字）。",
+      "　そこが 空欄に なり、何が 入るかを 問う 設問の 素に なります。",
+      "・話の **骨に なる** ところを 選びます（飾りの 一文を 抜かない）。",
+      "",
+      "★ どれも **本文に 一字一句 同じ もの**でないと 使えません。写して ください。",
+      "",
+      '次の JSON だけ: {"underlines":[{"text":"…"}],'
+        + '"ruby":[{"word":"彷徨","read":"さまよ"}],'
+        + '"notes":[{"word":"…","desc":"…"}],"blanks":[{"text":"…"}]}'
+    ].join("\n"), {
+      type: "object",
+      properties: {
+        underlines: { type: "array", items: { type: "object",
+          properties: { text: { type: "string" } }, required: ["text"] } },
+        ruby: { type: "array", items: { type: "object",
+          properties: { word: { type: "string" }, read: { type: "string" } },
+          required: ["word", "read"] } },
+        notes: { type: "array", items: { type: "object",
+          properties: { word: { type: "string" }, desc: { type: "string" } },
+          required: ["word", "desc"] } },
+        blanks: { type: "array", items: { type: "object",
+          properties: { text: { type: "string" } }, required: ["text"] } }
+      },
+      /* ★ **全部 required に する**（2026-09-06 実測）。
+         underlines だけに して いたら、notes と blanks が 毎回 省かれた
+         （実測: ふりがな 8 語 なのに 注 0・空欄 0）。
+         形を 決めれば 出る。「必ず 出す」と 書くだけでは 出ない。 */
+      required: ["underlines", "ruby", "notes", "blanks"]
+    }, 4000, 90000);
+
+  const [j2, j3, j4] = await Promise.all([p2, p3, p4]);
+
+  /* ★ **落とした 理由を 数える**（2026-08-31）。漢字が 0 個に なった とき、
+     数だけ 見ても「AI が 出さなかった」のか「こちらが 捨てた」のかが
+     分からず、丸一日 見当違いを 直す ことに なる。 */
+  out.kanjiRaw = (Array.isArray(j2 && j2.kanji) ? j2.kanji : []).length;
+  out.kanjiWhy = {};
+  const 捨 = (why) => { out.kanjiWhy[why] = (out.kanjiWhy[why] || 0) + 1; };
+  (Array.isArray(j2 && j2.kanji) ? j2.kanji : []).slice(0, 12).forEach((x) => {
+    if (漢.length >= L.漢字) return;              /* 要る 数だけ 使う */
+    const word = toSafeString(x && x.word, 20);
+    const kana = toSafeString(x && x.katakana, 20);
+    const ch = (Array.isArray(x && x.choices) ? x.choices : []).map((c) => toSafeString(c, 40)).filter(Boolean);
+    const ans = toSafeString(x && x.answer, 40);
+    if (!word || !kana) return 捨("語か読みが空");
+    if (ch.length !== 4) return 捨("選択肢が4つでない");
+    if (ch.indexOf(ans) < 0) return 捨("正解が選択肢に無い");
+    /* ★ **同じ 選択肢が 並ぶ ものは 使わない**（2026-08-31 実測）。
+       「フキュウ」の 問題に 選択肢が ["フキュウ","フキュウ","フキュウ","フキュウ"]
+       で 返って きた ことが ある。数が 4 個 あって 正解も 含まれる ので、
+       これまでの 関所は 素通りして いた。
+       ・4 つは **すべて 別の 語**
+       ・傍線部の カタカナ そのものは 混ぜない（答えが 丸見えに なる） */
+    if (new Set(ch).size !== 4) return 捨("選択肢が同じ");
+    if (ch.indexOf(kana) >= 0) return 捨("読みそのものが選択肢に混ざる");
+    const at = 本.indexOf(word);
+    if (at < 0) return 捨("本文に無い語");     /* 本文に 無い ものは 使えない */
+    /* ★ **本文の ほうを 直す。** 漢字を カタカナへ 置き換えるので、
+       「本文に カタカナが ある」が 必ず 成り立つ。 */
+    本 = 本.slice(0, at) + kana + 本.slice(at + word.length);
+    漢.push({ marker: toSafeString(x && x.marker, 4) || String(漢.length + 1),
+      katakana: kana, correct: word, choices: ch, answer: ans });
+  });
+
+  /* ③ の 返事を 使う（呼ぶのは 上で ②と 同時に 済ませて ある）。 */
+  {
+    const 会 = toSafeString(j3 && j3.dialogue, 4000);
+    if (会 && 会.length >= 300 && (会.match(/\n/g) || []).length >= 6) {
+      out.dialogue = { text: 会, blank: toSafeString(j3 && j3.blank, 200) };
+    }
+  }
+
+  /* ══ 傍線の 記号は **こちらで 振り直す**（2026-09-06・訴え）══════════
+     訴え「棒線部の 数字が 2 つ 被って いたり する ことが よく ある」
+
+     ★ 真因は **AI に 記号を 振らせて いた**こと。
+       同じ ①が 2 つ 返る／飛び番に なる／漢字の (ア)(イ) と ぶつかる。
+       頼み方を どれだけ 厳しく しても、番号を 書かせる 限り いつか ぶつかる。
+     ★ **本文に 出て くる 順**に A・B・C… と 振る。
+       本物の 共通テストも 読解の 傍線は A〜E で、
+       漢字の 書き取りは (ア)〜(オ) と **別系統**に なっている
+       （Rinty さん 提供の 過去問で 確認）。これで 漢字とも ぶつからない。
+     ★ 同じ 文字列を 指す ものは 1 つに まとめる（同じ ところに 二重線を 引かない）。 */
+  const 傍記号 = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+  /* ★ **写し間違いを 吸収する**（2026-09-06 実測）。
+     「本文の 一部を そのまま 写して」と 頼んでも、AI は
+     空白・改行・句読点の 前後を 微妙に 変えて 返す。
+     一字一句で 突き合わせて いたので、**5 か所 頼んで 0 か所**に なる 回が あった。
+     空白を 落として 照らし合わせ、**本文の 側の 本当の 位置**を 取り直す。
+     こうしないと 紙面（本文の 中を 探して 線を 引く）でも 見つからない。 */
+  const 空白なし = (t) => String(t || "").replace(/[\s\u3000]/g, "");
+  const 本詰 = 空白なし(本);
+  /* 詰めた 位置 → 元の 本文の 位置 の 対応表（1 回だけ 作る）。 */
+  const 対応 = [];
+  for (let i = 0; i < 本.length; i++) if (!/[\s\u3000]/.test(本[i])) 対応.push(i);
+  const 本文の位置 = (t) => {
+    const q = 空白なし(t);
+    if (!q) return -1;
+    const at = 本詰.indexOf(q);
+    return at < 0 ? -1 : (対応[at] === undefined ? -1 : 対応[at]);
+  };
+  /* 本文の 側の **そのままの 文字列**を 取り出す（紙面は これを 探す）。 */
+  const 本文の文字列 = (t) => {
+    const q = 空白なし(t);
+    const at = 本詰.indexOf(q);
+    if (at < 0) return "";
+    const s0 = 対応[at], s1 = 対応[at + q.length - 1];
+    return (s0 === undefined || s1 === undefined) ? "" : 本.slice(s0, s1 + 1);
+  };
+  const 見た = new Set();
+  const 線 = (Array.isArray(j4 && j4.underlines) ? j4.underlines : [])
+    .map((x) => 本文の文字列(toSafeString(x && x.text, 200)))
+    /* 本文に 無い ものは 線が 引けない ので 落とす。 */
+    .filter((t) => t)
+    /* 同じ ところは 1 回だけ。 */
+    .filter((t) => { if (見た.has(t)) return false; 見た.add(t); return true; })
+    /* **本文に 出て くる 順**（AI が 返した 順では ない）。 */
+    .sort((a, b) => 本文の位置(a) - 本文の位置(b))
+    .slice(0, 傍記号.length)
+    .map((t, i) => ({ marker: 傍記号[i], style: "solid", text: t }));
+
+  /* ══ ふりがな・注・空欄（2026-09-06・訴え）════════════════════════
+     どれも **本文に そのまま 出て くる もの**だけ 通す。
+     無い ものを 通すと、紙面で 探して 見つからず 黙って 消える。 */
+  const ふり = (Array.isArray(j4 && j4.ruby) ? j4.ruby : [])
+    .map((x) => ({ word: toSafeString(x && x.word, 20), read: toSafeString(x && x.read, 20) }))
+    .map((x) => ({ word: 本文の文字列(x.word) || x.word, read: x.read }))
+    .filter((x) => x.word && x.read && 本.indexOf(x.word) >= 0)
+    .filter((x, i, a) => a.findIndex((y) => y.word === x.word) === i)
+    .slice(0, 12);
+  /* 注は **本文に 出て くる 順**に (注1)(注2)… と 振る（ここも 番号を 書かせない）。 */
+  const 注 = (Array.isArray(j4 && j4.notes) ? j4.notes : [])
+    .map((x) => ({ word: toSafeString(x && x.word, 40), desc: toSafeString(x && x.desc, 200) }))
+    .map((x) => ({ word: 本文の文字列(x.word) || x.word, desc: x.desc }))
+    .filter((x) => x.word && x.desc && 本.indexOf(x.word) >= 0)
+    .filter((x, i, a) => a.findIndex((y) => y.word === x.word) === i)
+    .sort((a, b) => 本.indexOf(a.word) - 本.indexOf(b.word))
+    .slice(0, 8)
+    .map((x, i) => ({ n: i + 1, word: x.word, desc: x.desc }));
+  const 空 = (Array.isArray(j4 && j4.blanks) ? j4.blanks : [])
+    .map((x) => ({ text: toSafeString(x && x.text, 80) }))
+    .map((x) => ({ text: 本文の文字列(x.text) || x.text }))
+    .filter((x) => x.text && 本.indexOf(x.text) >= 0)
+    .filter((x, i, a) => a.findIndex((y) => y.text === x.text) === i)
+    .sort((a, b) => 本.indexOf(a.text) - 本.indexOf(b.text))
+    .slice(0, 3)
+    .map((x, i) => ({ marker: ["X", "Y", "Z"][i] || String(i + 1), text: x.text }));
+
+  out.ok = true;
+  out.passage = {
+    title: toSafeString(j1 && j1.title, 80),
+    author: toSafeString(j1 && j1.author, 60),
+    source: toSafeString(j1 && j1.source, 120),
+    text: 本, underlines: 線, ruby: ふり, notes: 注, blanks: 空, kind: 種
+  };
+  out.kanji = 漢;
+  out.ms = Date.now() - t0;
+  return out;
+}
+
+/** 本文と 漢字の 表から、漢字の 問題を **こちらで 組み立てる**。
+    ★ AI に 作らせると 形が ぶれる（選択肢の 数・正解の 書きかた）。
+      材料は もう ある ので、問題文は 決まった 型で こちらが 書く。 */
+function aigenKokugoKanjiQuestions(kanji, passage) {
+  return (kanji || []).map((k, i) => ({
+    type: "single_choice",
+    id: "kanji-" + (i + 1),
+    question: "傍線部（" + k.marker + "）「" + k.katakana + "」の カタカナに 相当する 漢字を 含む ものを、"
+      + "次の ①〜④ の うちから 一つ 選べ。",
+    choices: k.choices.slice(),
+    answer: k.answer,
+    explanation: "「" + k.katakana + "」は「" + k.correct + "」と 書く。"
+      + "選択肢の うち 同じ 漢字を 含むのは「" + k.answer + "」だけ。",
+    materials: passage ? [{ type: "passage", caption: "次の 文章を 読み、後の 問いに 答えよ。",
+      title: passage.title, author: passage.author, source: passage.source,
+      text: passage.text, underlines: passage.underlines,
+      ruby: passage.ruby, notes: passage.notes, blanks: passage.blanks }] : undefined,
+    field: "漢字"
+  }));
+}
+
+/* ══ 国語の 既定の 構成案（2026-08-31）══════════════════════════════
+   人が 何も 決めなかった ときに 使う 大問割り。
+   本物の 共通テスト国語（過去問を 読み取った もの）に 合わせて ある。
+   ★ 人が parts を 送って きたら **そちらが 正**（これは 使わない）。 */
+function aigenKokugoParts(total) {
+  const n = Math.max(4, qreditSafeInt(total, 20));
+  /* 実際の 比: 第1問 6 問 / 第2問 7 問 / 第3問 5 問 / 第4問 6 問 ＝ 約 1:1.2:0.8:1 */
+  const 割 = [0.27, 0.29, 0.22, 0.22];
+  const 数 = 割.map((w) => Math.max(1, Math.round(n * w)));
+  let 差 = n - 数.reduce((a, b) => a + b, 0);
+  for (let i = 0; 差 !== 0 && i < 8; i++) {
+    const at = i % 数.length;
+    if (差 > 0) { 数[at]++; 差--; } else if (数[at] > 1) { 数[at]--; 差++; }
+  }
+  return [
+    { title: "第1問 近代以降の文章（評論）", field: "評論", where: "", share: 27, count: 数[0],
+      topics: ["漢字（傍線部ア〜オ）", "傍線部の理由", "傍線部の言い換え", "構成・展開", "文章を読んだ生徒の話し合い"] },
+    { title: "第2問 小説", field: "小説", where: "", share: 29, count: 数[1],
+      topics: ["語句の意味（傍線部ア〜ウ）", "心情", "行動の理由", "描写の説明", "表現の説明", "資料との読み比べ"] },
+    { title: "第3問 古文", field: "古文", where: "", share: 22, count: 数[2],
+      topics: ["語句の解釈", "文法（波線部）", "和歌", "内容説明"] },
+    { title: "第4問 漢文", field: "漢文", where: "", share: 22, count: 数[3],
+      topics: ["詩の形式と押韻", "語の意味", "書き下し・解釈", "資料をふまえた鑑賞"] }
+  ];
+}
+
 function aigenLengthNote(lim) {
   if (!lim) return "";
   const rows = [];
@@ -47464,11 +49273,73 @@ function aigenShapeOf(engineId, spec) {
   return (spec && spec.shape) || e.shape;
 }
 /* engine の検査 → 形式の検査 の順。どちらかが理由を返したら落とす。 */
+/* ══ 問題文と 形式の 食い違い（2026-09-06・訴え）══════════════════
+   訴え「(2) とか 選べって 言ってんのに 選ぶものが なかったり、
+         (3) も 空欄 2 個 あるのに、右の 解答欄では なぜか 記述」
+
+   ★ 紙面は **問題文**を 見て 組む（【1】を 四角に する）。
+     解答欄は **形式（type）**を 見て 作る。
+     この 2 つが 食い違うと、紙には 空欄が 2 つ 出ているのに
+     解答欄は 記述 1 つ、に なる。どちらかが 悪いのでは なく
+     **AI が 問題文と 形式を そろえずに 返した**のが 元。
+
+   ★ **直さずに 落とす。** 空欄 2 つの 文を 記述問題として 受けると、
+     答えが 1 つしか 無いので 採点できない。形式を 勝手に 付け替えても
+     正解の 形（配列 か 文字列 か）が 合わず、別の 壊れかたを する。
+     落とせば 足りない ぶんを もう一度 作りに 行く（作り直しの 道が ある）。
+   ★ 落とす 理由は **人が 読んで 分かる 言葉**で 返す（記録に 残る）。 */
+const AIGEN_PICK_RE = /(選べ|選びなさい|選択し|最も適当なもの|正しいものを|当てはまるものを|どれか)/;
+const AIGEN_WRITE_ENGINES = new Set([
+  "free_text", "long_answer", "essay", "english_writing", "source_analysis"
+]);
+function aigenPromptTypeMismatch(q, engineId) {
+  if (!q || typeof q !== "object") return null;
+  const 文 = String(q.question || q.prompt || "");
+  if (!文) return null;
+
+  /* ① 空欄が 2 つ 以上 あるのに、書かせる 形式に なっている。 */
+  if (AIGEN_WRITE_ENGINES.has(engineId)) {
+    const 数 = aigenBlankNums(文).length;
+    if (数 >= 2) {
+      return "問題文に 空欄が " + 数 + " つ あるのに 記述の 形式です"
+        + "（紙には 空欄、解答欄は 記述 1 つ に なります）";
+    }
+  }
+
+  /* ② 資料に 触れて いるのに **資料が 無い**（2026-09-06・訴え）。
+     実測: 問題文に「【グラフ1】に よると」と 書きながら materials が 空、
+     という 問題が 出た。資料を 見ないと 解けないのに 資料が 無い＝解けない。
+     ★ 本文（passage）は 別に 付ける ので **数に 入れない**。
+     ★ 「本文」「文章」だけを 指す ときは 落とさない（本文は 必ず ある）。 */
+  const 資 = (Array.isArray(q.materials) ? q.materials : [])
+    .filter((m) => m && m.type && m.type !== "passage").length;
+  if (!資 && /(グラフ|図表|表\s*[0-9１-９]|図\s*[0-9１-９]|【資料|資料\s*[0-9１-９Ⅰ-Ⅴ]|写真)/.test(文)) {
+    return "問題文が 図表・資料に 触れて いるのに 資料が 付いて いません";
+  }
+
+  /* ③ 「選べ」と 言って いるのに 選ぶ ものが 無い。
+     ★ 語群・並べ替え・対応づけ・分類は **別の ところに 札が ある**ので
+       ここでは 見ない（choices が 空でも 正しい）。 */
+  const 札が別 = /^(reorder|matching|classification|table_fill|ordering|word_bank)/.test(String(engineId || ""));
+  if (!札が別 && AIGEN_PICK_RE.test(文)) {
+    const n = Array.isArray(q.choices) ? q.choices.filter((c) => String(c || "").trim()).length : 0;
+    if (n < 2) {
+      return "「選べ」と 書いて あるのに 選択肢が " + n + " 個です";
+    }
+  }
+  return null;
+}
+
 function aigenValidateOf(engineId, spec, q) {
   const e = AIGEN_ENGINES[engineId];
   if (!e) return "知らない形式";
   const why = e.validate(q);
   if (why) return why;
+  /* ★ 形式ごとの 検査を 通った あとに、**問題文との 突き合わせ**（2026-09-06）。
+     形式ごとの 検査は その 形式の 中だけを 見るので、
+     「文は 穴埋めなのに 形式が 記述」は どの 検査にも 引っかからなかった。 */
+  const ずれ = aigenPromptTypeMismatch(q, engineId);
+  if (ずれ) return ずれ;
   if (spec && typeof spec.check === "function") {
     try { return spec.check(q) || null; } catch (err) { return null; }
   }
@@ -48258,6 +50129,8 @@ async function aigenAskMulti(env, want, o = {}) {
     /* ★ 言語の きまりは **注文より 先**（2026-08-30）。 */
     aigenLangNote(o),
     o.topic ? "【注文（この題から外れないこと）】\n" + o.topic : "",
+    /* ★ **この回で 使う 資料の 範囲**（2026-08-31・訴え「資料に 偏る」）。 */
+    aigenPartNote(o.part),
     "次の内訳どおりに、合わせて " + total + " 問つくってください。",
     "**すべての問題が【注文】の題に当てはまっていること。** 1 問ずつ確かめます。",
     blocks,
@@ -48269,6 +50142,14 @@ async function aigenAskMulti(env, want, o = {}) {
     aigenMaterialsNote(o.materials),
     /* 本文・会話文・語群。試験のときだけ（プリセットは 1 問ずつなので 要らない）。 */
     aigenPassageNote(o.exam),
+    /* ★ 国語の 試験（2026-08-31・訴え）。本文を 書き下ろし、傍線部を 引き、
+       第1問は 漢字。**上の 一般の 決まりより こちらが 強い。** */
+    aigenKokugoNote(o),
+    /* ★ 選択肢の 手ごたえ（2026-08-31・訴え「選択肢が 短すぎる・簡単すぎる」）。
+       **難しさで 変える。** どの 教科でも 効く。 */
+    aigenChoiceNote(o),
+    /* ★ すでに 書いた 本文（2026-08-31）。回ごとに 書き直させない。 */
+    aigenPassageGiven(o),
     /* **「根拠は○○です」だけの解説は役に立たない。**
        何が正しいか・なぜそうなるか・ほかがなぜ違うかまで書かせる。
        ★ 字数の注文があるときは、その字数で書かせる（aigenExplainNote）。 */
@@ -48302,6 +50183,7 @@ async function aigenAskMulti(env, want, o = {}) {
     "　□ 表のうめ: 空のますの数と answer の数が同じか",
     "　□ 事実として正しいか（年号・人名・用語の取り違えがないか）",
     "　□ **【注文】の題に当てはまっているか**（同じ教科というだけの別の話題になっていないか）",
+    o.part ? "　□ **この回の 範囲（" + (o.part.title || o.part.field) + "）の 中だけ**から 作ったか" : "",
     /* ★ 返す 直前の 確かめに 入れた ものは 守られやすい（実測）。
        英語の 試験でも question は 日本語（2026-08-31・訴え）。 */
     "　□ **question と explanation が 日本語か**"
@@ -48310,7 +50192,11 @@ async function aigenAskMulti(env, want, o = {}) {
     aigenLengthCheckNote(o.lengths),
     '次の JSON だけを返してください: {"questions":[…]}',
     "**1 問ごとに type を必ず入れて、上の内訳のどれかにしてください。**",
-    "内訳の数をそのまま守ってください。多くも少なくもしないでください。"
+    "内訳の数をそのまま守ってください。多くも少なくもしないでください。",
+    /* ★ **範囲は いちばん 最後に もう一度**（2026-08-31）。 */
+    o.part ? "もう一度: 資料の「" + (o.part.title || o.part.field) + "」"
+      + (o.part.where ? "（" + o.part.where + "）" : "")
+      + " **だけ**から 作ります。ここ以外の ページの 話は 1 問も 入れないでください。" : ""
   ].filter(Boolean).join("\n");
 
   let chain = o.forceProvider ? [o.forceProvider]
@@ -48494,6 +50380,161 @@ async function aigenExpandExplanations(env, items, o = {}) {
 }
 
 /* ── 1 回ぶんの依頼 ── */
+/* ══ 資料の 見取り図（2026-08-31・訴え「資料に 偏ってしまう」）════════
+   訴え:「資料を 添付した とき、その 資料に 偏ってしまう。
+         最初から 最後まで 満遍なく 均等に 出題してほしい。
+         大問ごとに 分野を 分けたりして」
+
+   ★ なぜ 偏るか（コードを 読んで 分かった こと）:
+     生成は 1 回では 終わらず、2〜5 回に 分けて AI を 呼ぶ。ところが
+     **どの 回にも「資料の どこから 作るか」を 一度も 言って いなかった。**
+     どの 回も 資料を 頭から 読み直す ので、前半の 目立つ ところが
+     何度も 選ばれる。「資料は 最後まで 読み、すみずみから」とは
+     頼んで いたが、**場所を 指さない 頼みは 守られない**。
+
+   ★ 直しかた: **先に 資料の 目次を 作らせ、回ごとに 範囲を 割り当てる。**
+     AI 1 回ぶん 増えるが、生成は もともと 2〜5 回 使うので 誤差の うち。
+     範囲を 絞ると 1 回あたり 探す 手間が 減るぶん、むしろ 速くなる。
+
+   ★ ここで 出す のは **場所と 分野だけ**。問題は 作らせない
+     （作らせると この 1 回も 前半に 偏る）。 */
+const AIGEN_OUTLINE_SCHEMA = {
+  type: "object",
+  properties: {
+    parts: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          field: { type: "string" },
+          where: { type: "string" },
+          share: { type: "integer" },
+          /* ★ その 範囲に 入って いる 見出しを **並べて 出させる**（2026-08-31）。
+             範囲だけを 渡した ところ、**どの 範囲でも 先頭の 章からしか
+             作らなかった**（60 章の 資料で 実測: 4,0,0,0,0,0,0,0,0,0 が 6 回）。
+             範囲の 中の 見出しを 並べて「どれからも 出す」と 言うと 散る。 */
+          topics: { type: "array", items: { type: "string" } }
+        },
+        required: ["title", "field", "where", "share"]
+      }
+    }
+  },
+  required: ["parts"]
+};
+
+/**
+ * 資料を 順番に 4〜10 個の かたまりへ 分ける。
+ * @returns {Promise<{parts:Array, ms:number, aiCalls:number, err:string}>}
+ */
+async function aigenOutline(env, files, o = {}) {
+  const out = { parts: [], ms: 0, aiCalls: 0, err: "", model: "", provider: "" };
+  if (!Array.isArray(files) || !files.length) return out;
+  /* 資料を 読めるのは いまの ところ Gemini だけ。 */
+  const chain = aigenProviders(env).filter((p) => AIGEN_DOC_PROVIDERS.has(p));
+  if (!chain.length) { out.err = "資料を読める提供元がありません"; return out; }
+  const t0 = Date.now();
+  const 欲しい数 = Math.max(3, Math.min(10, qreditSafeInt(o.want || 6, 6)));
+  const user = [
+    "この資料の **目次**を 作ってください。問題は 作りません。",
+    "★ **資料の 最初の ページから 最後の ページまで**を、順番に "
+      + 欲しい数 + " 個 前後（3〜10 個）の かたまりに 分けます。",
+    "★ **抜けを 作らないこと。** 最後の ページまで 必ず どれかに 入れます。",
+    "★ 前の かたまりの 終わりと 次の 始まりが つながる ように します。",
+    "それぞれに 次を 書きます:",
+    "　title … その かたまりの 見出し（資料に 書いてある 言葉を そのまま 使う）",
+    "　field … 学習の 分野（例:「力と運動」「江戸時代」「関係代名詞」）。"
+      + "**大問の 題**に する ので、その かたまりだけを 表す 言葉に します。",
+    "　where … 資料の どこか。ページ番号が あれば「p.12〜p.27」、"
+      + "無ければ「前から 30%〜48%」の ように 書きます。",
+    "　topics … その かたまりの 中に ある **小見出し・項目を 並べた もの**"
+      + "（3〜12 個。資料に 書いてある 言葉で）。ここが 空だと"
+      + "**その かたまりの 先頭からしか 問題が 作られません。**",
+    "　share … 資料全体に 占める 大きさ（整数。**合計が 100**に なる ように）",
+    "★ 表紙・目次・奥付・広告・白紙だけの ところは 入れないでください。",
+    "★ 資料が 短くて 分けられない ときは 1 個で かまいません。"
+  ].join("\n");
+  const sys = "あなたは 資料を 読んで 目次を 作る 人です。JSON だけを 返します。";
+  for (const provider of chain) {
+    const model = aigenModelFor(env, provider, "fast");
+    const r = await aigenAskVia(env, provider, model, {
+      sys, user, maxTokens: 2400, files,
+      responseSchema: AIGEN_OUTLINE_SCHEMA
+    });
+    out.aiCalls++;
+    if (!r.ok) { out.err = String(r.error || "").slice(0, 160); continue; }
+    /* ★ 返り値の 名前は `parsed`（`json` では ない）。
+       ここを 間違えると **いつも 空の 目次**に なる。 */
+    let j = r.parsed;
+    if (!j && typeof r.text === "string") { try { j = JSON.parse(r.text); } catch (e) {} }
+    const rows = (j && Array.isArray(j.parts)) ? j.parts : [];
+    const parts = rows.map((x) => ({
+      title: toSafeString(x && x.title, 80),
+      field: toSafeString((x && x.field) || (x && x.title), 40),
+      where: toSafeString(x && x.where, 40),
+      share: Math.max(1, qreditSafeInt(x && x.share, 10)),
+      topics: Array.isArray(x && x.topics)
+        ? x.topics.map((t) => toSafeString(t, 60)).filter(Boolean).slice(0, 14) : []
+    })).filter((x) => x.title || x.where).slice(0, 12);
+    if (parts.length) {
+      out.parts = parts; out.model = r.model || model; out.provider = provider;
+      break;
+    }
+    out.err = out.err || "目次が 空でした";
+  }
+  out.ms = Date.now() - t0;
+  return out;
+}
+
+/**
+ * 資料の かたまりへ 問題数を 配る。
+ * ★ **大きい ところに 多く。ただし どこも 0 に しない。**
+ *   均等割りに すると 3 ページの 章と 40 ページの 章が 同じ 数に なり、
+ *   こんどは 後半に 偏る。逆に 比例だけに すると 小さい 章が 0 問に なり
+ *   「満遍なく」に ならない。
+ * @returns {number[]} かたまりごとの 問題数（合計は total）
+ */
+function aigenSpread(parts, total) {
+  const n = (parts || []).length;
+  if (!n || total <= 0) return [];
+  if (total <= n) {
+    /* 数が 少ない ときは 前から 1 問ずつ（大きい 順では なく **順番どおり**。
+       前半だけに 付くのを 避ける）。 */
+    const a = new Array(n).fill(0);
+    const step = n / total;
+    for (let i = 0; i < total; i++) a[Math.min(n - 1, Math.floor(i * step + step / 2))]++;
+    return a;
+  }
+  const sum = parts.reduce((x, p) => x + Math.max(1, p.share || 1), 0) || 1;
+  const raw = parts.map((p) => (total - n) * (Math.max(1, p.share || 1) / sum));
+  const a = raw.map((v) => 1 + Math.floor(v));
+  let rest = total - a.reduce((x, y) => x + y, 0);
+  /* 端数は **小数部が 大きい 順**に配る。 */
+  const ord = raw.map((v, i) => [v - Math.floor(v), i]).sort((x, y) => y[0] - x[0]);
+  for (let k = 0; rest > 0 && k < ord.length * 4; k++) { a[ord[k % ord.length][1]]++; rest--; }
+  return a;
+}
+
+/** 「この回は ここだけ」の 言い方。**先頭と 末尾の 両方**に 置く。 */
+function aigenPartNote(part) {
+  if (!part) return "";
+  const 名 = part.title || part.field || "この範囲";
+  return [
+    "【この回で 使う 範囲（ここが いちばん 大事）】",
+    "資料の **「" + 名 + "」**" + (part.where ? "（" + part.where + "）" : "") + " **だけ**から 作ります。",
+    "★ この 範囲の 外から 作っては いけません。**1 問も** です。",
+    "★ 範囲の 中でも **先頭に 寄せないで**、前・中・後ろから 均等に 取ります。",
+    /* ★ 見出しを 並べる のが いちばん 効く（2026-08-31 実測）。
+       範囲だけ 渡すと、その 範囲の **先頭の 章からしか** 作らなかった。 */
+    (part.topics && part.topics.length)
+      ? "★ この 範囲には 次の 項目が あります。**なるべく 別々の 項目から** 作ってください"
+        + "（同じ 項目から 2 問 以上 出さない）:\n"
+        + part.topics.map((t) => "　・" + t).join("\n")
+      : "",
+    part.field ? "★ この回の 分野は「" + part.field + "」です。" : ""
+  ].filter(Boolean).join("\n");
+}
+
 async function aigenAskOnce(env, engineId, n, o = {}) {
   const eng = AIGEN_ENGINES[engineId];
   /* 出力の枠は形式ごとに決める。足りないと JSON が途中で切れる
@@ -48554,6 +50595,9 @@ async function aigenAskOnce(env, engineId, n, o = {}) {
     /* ★ 言語の きまりは いちばん 上（2026-08-30）。 */
     aigenLangNote(o),
     o.topic ? o.topic : "",
+    /* ★ **この回で 使う 資料の 範囲**（2026-08-31・訴え「資料に 偏る」）。
+       注文の すぐ 下に 置く。下に 置くと 形式の 決まりに 埋もれる。 */
+    aigenPartNote(o.part),
     `${specLabel}（${engineId}）の問題を ${n} 問作ってください。`,
     forbidNote,
     specRule,
@@ -48565,6 +50609,14 @@ async function aigenAskOnce(env, engineId, n, o = {}) {
     aigenMaterialsNote(o.materials),
     /* 本文・会話文・語群。試験のときだけ（プリセットは 1 問ずつなので 要らない）。 */
     aigenPassageNote(o.exam),
+    /* ★ 国語の 試験（2026-08-31・訴え）。本文を 書き下ろし、傍線部を 引き、
+       第1問は 漢字。**上の 一般の 決まりより こちらが 強い。** */
+    aigenKokugoNote(o),
+    /* ★ 選択肢の 手ごたえ（2026-08-31・訴え「選択肢が 短すぎる・簡単すぎる」）。
+       **難しさで 変える。** どの 教科でも 効く。 */
+    aigenChoiceNote(o),
+    /* ★ すでに 書いた 本文（2026-08-31）。回ごとに 書き直させない。 */
+    aigenPassageGiven(o),
     /* **「根拠は○○です」だけの解説は役に立たない。**
        何が正しいか・なぜそうなるか・ほかがなぜ違うかまで書かせる。
        ★ 字数の注文があるときは、その字数で書かせる（aigenExplainNote）。
@@ -48600,6 +50652,7 @@ async function aigenAskOnce(env, engineId, n, o = {}) {
     "　□ 表のうめ: 空のますの数と answer の数が同じか",
     "　□ 事実として正しいか（年号・人名・用語の取り違えがないか）",
     "　□ **【注文】の題に当てはまっているか**（同じ教科というだけの別の話題になっていないか）",
+    o.part ? "　□ **この回の 範囲（" + (o.part.title || o.part.field) + "）の 中だけ**から 作ったか" : "",
     /* ★ 返す 直前の 確かめに 入れた ものは 守られやすい（実測）。
        英語の 試験でも question は 日本語（2026-08-31・訴え）。 */
     "　□ **question と explanation が 日本語か**"
@@ -48615,7 +50668,13 @@ async function aigenAskOnce(env, engineId, n, o = {}) {
     /* 資料を付けると、**形式の決まりが資料に埋もれる**。
        実測: 資料つきで穴埋めを頼むと、10 問とも空欄（____）が無く全部捨てられた。
        最後にもう一度だけ言い直す（最後の指示がいちばん効く）。 */
-    hasFiles ? "もう一度: " + specRule : ""
+    hasFiles ? "もう一度: " + specRule : "",
+    /* ★ **範囲は いちばん 最後に もう一度**（2026-08-31）。
+       資料を 付けると 長い 指示の 途中の ものは 埋もれる。
+       最後の 一行が いちばん 効く（形式の 決まりで 実証ずみ）。 */
+    o.part ? "もう一度: 資料の「" + (o.part.title || o.part.field) + "」"
+      + (o.part.where ? "（" + o.part.where + "）" : "")
+      + " **だけ**から 作ります。ここ以外の ページの 話は 1 問も 入れないでください。" : ""
   ].filter(Boolean).join("\n");
 
   /* 提供元を順に試す。1 本だけに頼ると、その日の枠が尽きた時点で
@@ -48702,6 +50761,9 @@ async function aigenAskVia(env, provider, model, p) {
       /* ★ 形を サーバ側で 強制する（2026-08-30）。
          ここへ 通していなかったので、responseSchema を 渡しても 効かなかった。 */
       responseSchema: p.responseSchema || undefined,
+      /* ★ 見切りも 通す（2026-08-31）。ここへ 通して いなかった ので、
+         長い ものを 書かせる ときに 90 秒で 切られて いた。 */
+      timeoutMs: p.timeoutMs || undefined,
       /* ══ 「考える」ぶんで出力を使い切らせない ══════════════════
          3 系は答える前に考えを書き、それも **出力の上限に数えられる**。
          作問は決まった形で書き出す仕事なので、考えさせる必要が無い。
@@ -48740,10 +50802,17 @@ async function aigenAskVia(env, provider, model, p) {
     const at = Math.floor(Date.now() / 1000) % gm.length;
     const order = gm.slice(at).concat(gm.slice(0, at));
     let gr = null;
+    /* ★ モデルを 巡る 全体の 締め切り（2026-09-06）。鍵の 巡回と 二重に かかる
+       ので、ここでも 見る。返す ことが 大事。 */
+    const 締切2 = Date.now() + Math.max(20000, Math.min(180000,
+      Number(p.deadlineMs) || AIGEN_TRY_DEADLINE_MS));
     for (const m2 of order) {
+      const 残2 = 締切2 - Date.now();
+      if (残2 < 12000) { gr = gr || { err: "時間内に 返りませんでした", status: 0 }; break; }
       gr = await aigenCallGroq(env, m2, {
         messages: [{ role: "system", content: p.sys }, { role: "user", content: p.user }],
         max_tokens: p.maxTokens, temperature: 0.2, noWait: true,
+        timeoutMs: Math.min(Number(p.timeoutMs) || 45000, 残2), deadlineMs: 残2,
         reasoning_effort: /gpt-oss/.test(m2) ? String(env?.GROQ_REASONING_EFFORT || "low") : undefined
       });
       if (!gr.err) { model = m2; break; }
@@ -49661,7 +51730,9 @@ async function aigenGenerate(env, contract, o = {}) {
   /* 回数で切らず、**進んでいる限り続ける**。
      3 回で打ち切っていたため、10 問頼んで 7 問で終わることが多かった（実測）。
      進まなくなったら 2 回で止める（同じ失敗を繰り返さない）。 */
-  const maxRounds = Math.max(1, Math.min(12, qreditSafeInt(o.maxRounds || 8, 8)));
+  /* ★ let（const では ない）。目次が ある ときは 1 回あたりの 数を
+     かたまりの 割当まで 抑える ので、**その ぶん 巡る 回数が 要る**。 */
+  let maxRounds = Math.max(1, Math.min(12, qreditSafeInt(o.maxRounds || 8, 8)));
   /* 呼び出しの上限は問題数に合わせる。30 問を 14 回で作りきるのは無理があり、
      26 問で終わっていた（実測）。1 回あたり平均 4 問として、余裕を 4 回持つ。 */
   const plannedTotal = Object.values(contract.plan).reduce((a, b) => a + b, 0);
@@ -49673,7 +51744,12 @@ async function aigenGenerate(env, contract, o = {}) {
      こちらの 1 呼び出しは、控えのモデルへの回り込みで
      2〜4 回ぶん使うことがある。**天井の手前で止める。**
      足りない数で返すほうが、0 問で返すよりずっとよい。 */
-  const autoCalls = Math.max(8, Math.min(16, Math.ceil(plannedTotal / 3) + 4));
+  /* ★ 資料の 範囲を 割り当てる ときは **1 かたまり = 少なくとも 1 回**。
+     かたまりの ぶんを 足して おかないと、後ろの かたまりへ 行く 前に
+     呼び出しの 予算が 尽きて、また 前半だけの 試験に なる（2026-08-31）。
+     天井の 16 は 動かさない（超えると 生成そのものが 落ちる。実測）。 */
+  const 目次数 = Array.isArray(o.parts) ? o.parts.length : 0;
+  const autoCalls = Math.max(8, Math.min(16, Math.ceil(plannedTotal / 3) + 4 + Math.min(6, 目次数)));
   const maxCalls = Math.max(1, Math.min(16, qreditSafeInt(o.maxCalls || autoCalls, autoCalls)));
   let noProgress = 0;
   /* 解説が短いだけで捨てたもの（最後に書き直して救う） */
@@ -49878,6 +51954,18 @@ async function aigenGenerate(env, contract, o = {}) {
         keys.push(id + "|a|" + norm(q.answer.join("")));
       }
       let dup = keys.some((k) => seen.has(k));
+      /* ★ **問題文だけが 同じ**の ときを 見分ける（2026-08-31・訴え
+         「プリセットAIで 自動生成が できない」）。
+         実測: 英単語の 依頼で 37 件 届き 36 件が「同じ問題」で 消えた。
+         中身を 見ると 問題文が どれも
+           「次の 英文を 読んで、空所に 入る 最も 適切な 語句を 選べ。」
+         で、**肝心の 英文が どこにも 無かった**。答えは 全部 違う。
+         これは「同じ 問題」では なく **問題文に 中身が 無い**。
+         同じ 言葉で 断ると AI は 直しようが なく、次の 回も 同じ ものを 出し、
+         呼び出しの 予算を 使い切って **0 問**で 終わる。 */
+      const 同文 = seen.has(keys[0]);
+      const 同選 = keys.length > 1 && keys.slice(1).some((k) => seen.has(k));
+      const 中身なし = 同文 && !同選;
       /* ══ ほぼ同じ問題。文字の重なりで見る（言い換えを拾うため）══════
          見るのは問題文ではなく **その形式が「違い」としているもの**（disc）。
 
@@ -49922,14 +52010,53 @@ async function aigenGenerate(env, contract, o = {}) {
            実測 2026-08-13: 数学 15 問で 100 問受け取り 69 問が重複、
            採用は 9 問だけだった。ここを分けて数え、上乗せの計算から外す。 */
         pe.dup = (pe.dup || 0) + 1;
-        metrics.rejectReasons[dupAns ? "答えが同じ" : "同じ問題"] =
-          (metrics.rejectReasons[dupAns ? "答えが同じ" : "同じ問題"] || 0) + 1;
+        const 名 = dupAns ? "答えが同じ" : (中身なし ? "問題文に中身がない" : "同じ問題");
+        metrics.rejectReasons[名] = (metrics.rejectReasons[名] || 0) + 1;
+        /* ★ **捨てた ものを 3 件だけ 残す**（2026-08-31）。
+           理由の 数だけ 見ても「どんな 問題を 捨てたのか」が 分からず、
+           「作れない」の 原因を 当てずっぽうで 探す ことに なる。 */
+        metrics.rejectSamples = metrics.rejectSamples || [];
+        if (metrics.rejectSamples.length < 3) {
+          metrics.rejectSamples.push({
+            why: 名,
+            q: String(q.question || "").slice(0, 60),
+            a: String(Array.isArray(q.answer) ? q.answer.join("/") : (q.answer || "")).slice(0, 30)
+          });
+        }
         pe.lastReason = dupAns
           ? "その答えは前の問題ですでに使っています。**同じ用語を 2 回使わないでください。**"
             + "別の用語を答えにしてください。"
-          : "前に作ったものと同じ、またはよく似た問題でした。"
-            + "**資料の別の行・別の観点**から作ってください。";
+          : 中身なし
+            ? "問題文が どれも 同じ 言葉でした（答えだけが 違います）。"
+              + "**問題文に 中身が 入って いません。** 英文・語句・数値など"
+              + "**その 問題を 解く のに 要る ものを question の 中に 書いて ください。**"
+              + "「次の 英文を 読んで…」の ような 指示だけの 問題文は 受け取れません。"
+            : "前に作ったものと同じ、またはよく似た問題でした。"
+              + "**資料の別の行・別の観点**から作ってください。";
         continue;
+      }
+      /* ★ **選択肢が 短すぎる ものは 受け取らない**（2026-08-31・訴え）。
+         頼み文で 「" + 下限 + " 字 以上」と 言うだけでは 守られない
+         （今日 だけで 何度も 見た）。**数えて 落とす。**
+         ただし 落としすぎると 1 問も 作れなく なる ので、
+         **下限の 6 割**を 切った ものだけ 落とす（明らかな 単語だけの 選択肢）。 */
+      /* ★ **試験の ときだけ 数えて 落とす**（2026-08-31・訴え
+         「プリセットAIで 自動生成が できない」）。プリセットの 4択は
+         「東京」「大阪」の ような 語 なので、床（18 字）を かけると 全滅する。 */
+      if (o.exam && Array.isArray(q.choices) && q.choices.length >= 2) {
+        const 深 = aigenChoiceDepth(o);
+        const 床 = Math.floor(深.min * 0.6);
+        const 長 = q.choices.map((c) => String(c || "").length);
+        const 平均 = 長.reduce((a, b) => a + b, 0) / 長.length;
+        if (平均 < 床) {
+          metrics.rejected++;
+          metrics.rejectReasons["選択肢が短い"] = (metrics.rejectReasons["選択肢が短い"] || 0) + 1;
+          pe.ng++;
+          pe.lastReason = "選択肢が 短すぎました（平均 " + Math.round(平均) + " 字）。"
+            + "**1 つ 1 つを " + 深.min + "〜" + 深.max + " 字の 文**に して ください。"
+            + "単語や 短い 語句 だけの 選択肢は 受け取れません。";
+          continue;
+        }
       }
       /* 頼んだ数を超えて入れない。**多めに頼んだぶんはここで捨てる。** */
       if (accepted.filter((x) => x.type === id).length >= (contract.plan[id] || 0)) continue;
@@ -49937,6 +52064,11 @@ async function aigenGenerate(env, contract, o = {}) {
       if (contract.uniqueAnswers) { const ak2 = aigenAnswerKey(q); if (ak2) ansSeen.add(ak2); }
       q.type = id;
       q.id = id + "-" + (accepted.length + 1);
+      /* ★ 字数の 決まりを **10 きざみへ 丸める**（2026-08-31・訴え）。
+         「142 字以内」「202 字以内」の ような 半端な 数を AI が その場で
+         決めて いた。頼み文にも 書くが、**最後の 砦は ここ**。 */
+      if (typeof q.question === "string") q.question = aigenTidyLengths(q.question);
+      if (typeof q.explanation === "string") q.explanation = aigenTidyLengths(q.explanation);
       accepted.push(q);
       pe.ok++;
       if (!metrics.firstResultMs) metrics.firstResultMs = Date.now() - t0;
@@ -49999,6 +52131,46 @@ async function aigenGenerate(env, contract, o = {}) {
     reviewedUpTo = accepted.length;
   }
 
+  /* ══ 資料の どこから 作るかを、回ごとに 割り当てる ═══════════════
+     ★ 訴え（2026-08-31）「資料に 偏る。最初から 最後まで 満遍なく」。
+       ここが 無かった ので、どの 回も 資料を 頭から 読み直し、
+       前半の 目立つ ところばかりが 選ばれて いた。
+     ★ 目次は 上で 1 回だけ 作って 渡して もらう（o.parts）。
+       回ごとに 作り直すと AI の 回数が 一気に 増える。 */
+  const 目次 = Array.isArray(o.parts) ? o.parts.filter(Boolean) : [];
+  /* ★ 人が 大問ごとの 数を 決めて いれば **その 数を そのまま 使う**
+     （2026-08-31・訴え「ユーザーでも 詳しく 調整できる ように」）。
+     こちらで 配り直すと、決めた 意味が なくなる。 */
+  const 人が決めた = 目次.length && 目次.some((p2) => (p2.count | 0) > 0);
+  const 割当 = !目次.length ? []
+    : 人が決めた ? 目次.map((p2) => Math.max(0, p2.count | 0))
+                 : aigenSpread(目次, plannedTotal);
+  if (人が決めた) metrics.partsByUser = true;
+  /* かたまりの 数だけは 必ず 巡れる ように する（＋作り直しの ぶん 3）。 */
+  if (目次.length) maxRounds = Math.max(maxRounds, Math.min(12, 目次.length + 3));
+  const 出来 = new Array(目次.length).fill(0);
+  if (目次.length) {
+    metrics.outline = 目次.map((p2, i) => ({
+      title: p2.title, field: p2.field, where: p2.where, want: 割当[i] || 0, made: 0
+    }));
+  }
+  /* 残りが いちばん 多い 範囲を 選ぶ。同点なら **前から**（後ろへ 偏らせない）。 */
+  const 次の範囲 = () => {
+    if (!目次.length) return null;
+    let bi = -1, bv = 0;
+    for (let i = 0; i < 目次.length; i++) {
+      const rest = (割当[i] || 0) - (出来[i] || 0);
+      if (rest > bv) { bv = rest; bi = i; }
+    }
+    if (bi < 0) {
+      /* 割当を 使い切った あと（点検で 外れた ぶんなど）は 出来が 少ない 順。 */
+      let mi = 0;
+      for (let i = 1; i < 目次.length; i++) if (出来[i] < 出来[mi]) mi = i;
+      bi = mi; bv = 1;
+    }
+    return { part: Object.assign({ _i: bi }, 目次[bi]), rest: bv };
+  };
+
   for (let round = 0; round < maxRounds; round++) {
     /* まだ足りない形式だけを集める */
     const need = [];
@@ -50010,6 +52182,28 @@ async function aigenGenerate(env, contract, o = {}) {
     if (metrics.blocked) break;
     metrics.rounds = round + 1;
     const before = accepted.length;
+    /* この回で 使う 資料の 範囲。目次が 無ければ これまでどおり（範囲なし）。 */
+    const 範 = 次の範囲();
+    const 範囲上限 = 範 ? Math.max(1, 範.rest) : Infinity;
+    /* できた ものに 印を 付ける。あとで 大問に まとめる のと、
+       どこから 何問 出たかを 数える のに 使う。 */
+    const 印を付ける = () => {
+      if (!範) return;
+      let n2 = 0;
+      for (let k = before; k < accepted.length; k++) {
+        const q = accepted[k];
+        if (q.part === undefined) {
+          q.part = 範.part._i;
+          q.partTitle = 範.part.title || "";
+          q.field = 範.part.field || "";
+          n2++;
+        }
+      }
+      出来[範.part._i] = (出来[範.part._i] || 0) + n2;
+      if (metrics.outline && metrics.outline[範.part._i]) {
+        metrics.outline[範.part._i].made = 出来[範.part._i];
+      }
+    };
 
     /* ══ 形式が 2 つ以上なら、まず 1 回でまとめて頼む ═══════════════
        形式ごとに 1 回ずつ呼んでいたので、画面が 7 形式に散らして頼むと
@@ -50032,7 +52226,18 @@ async function aigenGenerate(env, contract, o = {}) {
         if (wantRaw[0].n <= 1) break;
         wantRaw[0].n--; sumWant--;
       }
-      const want = wantRaw.map((x) => ({ id: x.id, n: x.n }));
+      /* ★ **1 回で 頼む 数は、その 範囲に 割り当てた ぶんまで**（2026-08-31）。
+         抑えないと 1 回目で 全部 作り切って しまい、
+         範囲を 割り当てた 意味が 無くなる（＝また 前半に 偏る）。 */
+      if (範 && 範囲上限 < Infinity) {
+        let sum2 = wantRaw.reduce((a, x) => a + x.n, 0);
+        while (sum2 > 範囲上限) {
+          wantRaw.sort((a, b) => b.n - a.n);
+          if (wantRaw[0].n <= 1) break;
+          wantRaw[0].n--; sum2--;
+        }
+      }
+      const want = wantRaw.map((x) => ({ id: x.id, n: x.n })).filter((x) => x.n > 0);
       const rm = await aigenAskMulti(env, want, {
         topic: o.topic, explanationRequired: contract.explanationRequired,
         /* 形式ごとの違い（5択・漢字で書く・要約 など）を一緒に渡す。 */
@@ -50048,9 +52253,13 @@ async function aigenGenerate(env, contract, o = {}) {
           .slice(-40),
         /* 試験モード（聞かれ方・ひっかけ・教科の 縛り）。 */
         exam: !!o.exam, subject: o.subject,
+        /* ★ 難しさ・話し合いの 有無（2026-08-31・国語の 本文の 長さが 決まる）。 */
+        level: o.level, dialogue: o.dialogue, passage: o.passage,
         /* 資料（図・表・グラフ）。頼まれたときだけ。 */
         materials: !!o.materials,
         files: o.files, forceProvider: o.forceProvider, forceModel: o.forceModel,
+        /* ★ この回で 使う 資料の 範囲（2026-08-31）。 */
+        part: 範 ? 範.part : null,
         /* 天井が近いときは、控えへ回り込まない（0 問で落ちるのを防ぐ） */
         narrow: metrics.aiCalls >= Math.max(2, Math.floor(maxCalls / 2))
       });
@@ -50069,6 +52278,7 @@ async function aigenGenerate(env, contract, o = {}) {
         metrics.lastReason = rm.reason || metrics.lastReason || "";
       }
       absorb(rm.questions || [], null);
+      印を付ける();
       if (typeof o.onProgress === "function") {
         try { await o.onProgress(aigenSnapshot(contract, accepted, metrics, "")); } catch (e) {}
       }
@@ -50120,6 +52330,17 @@ async function aigenGenerate(env, contract, o = {}) {
         .filter(Boolean).slice(-madeCap);
       jobs.push({ id, eng, prev, batch, made });
     }
+    /* ★ **この回に 頼む 総数を、範囲に 割り当てた ぶんまで 抑える**（2026-08-31）。
+       抑えないと 1 回目で 全部 作り切って しまい、
+       範囲を 割り当てた 意味が 無くなる（＝また 前半に 偏る）。 */
+    if (範 && 範囲上限 < Infinity && jobs.length) {
+      let sum3 = jobs.reduce((a, x) => a + x.batch, 0);
+      while (sum3 > 範囲上限) {
+        jobs.sort((a, b) => b.batch - a.batch);
+        if (jobs[0].batch <= 1) break;
+        jobs[0].batch--; sum3--;
+      }
+    }
 
     /* 3 本ずつの束で投げる。全部いっぺんに投げると 1 分あたりの上限に当たる。 */
     const LANES = 3;
@@ -50141,9 +52362,12 @@ async function aigenGenerate(env, contract, o = {}) {
         avoid: (o.avoidSeed || []).concat(jb.made).slice(-40),
         truncs: jb.prev && jb.prev.truncs ? jb.prev.truncs : 0,
         files: o.files,
+        /* ★ この回で 使う 資料の 範囲（2026-08-31）。 */
+        part: 範 ? 範.part : null,
         /* 試験モード（強い モデル・聞かれ方・ひっかけ・教科の 縛り）。
            ここを 通していないと、形式ごとに 分けて 頼む 道で 効かない。 */
         exam: !!o.exam, subject: o.subject, materials: !!o.materials,
+        level: o.level, dialogue: o.dialogue, passage: o.passage,
         forceProvider: o.forceProvider, forceModel: o.forceModel,
         narrow: metrics.aiCalls >= Math.max(2, Math.floor(maxCalls / 2))
       }).catch((e) => ({ ok: false, error: String(e && e.message || e).slice(0, 160), questions: [], ms: 0 }))));
@@ -50221,6 +52445,7 @@ async function aigenGenerate(env, contract, o = {}) {
         }
         absorb(r.questions || [], id);
       }
+      印を付ける();
       if (typeof o.onProgress === "function") {
         try { await o.onProgress(aigenSnapshot(contract, accepted, metrics, "")); }
         catch (e) { /* 記録できなくても作り続ける */ }
@@ -50416,6 +52641,209 @@ async function aigenGenerate(env, contract, o = {}) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
+   大問を **同時に** 作る（2026-08-31・訴え「国語の 生成が 遅すぎる」）
+
+   直す前（実測・開発版・国語 20 問・難しい / 3 回）:
+     本文づくり 17.8 / 20.9 / 22.2 秒
+     問題づくり 124.8 / 24.2 / 18.1 秒 → 全体 142.8 / 45.2 / 40.4 秒
+     20 問 そろったのは 1 回だけ。あとの 2 回は 11 問で、
+     spread は「第1問 だけ」＝ **第2〜4問が 0 問**。
+
+   なぜ そうなるか:
+     巡回は 1 回に 1 大問しか 見ない（次の範囲）。国語は 大問 4 つ なので、
+     4 回 順番に 待つ。しかも 外へ 出せる 回数には 天井（16）が あり、
+     前の 大問が 作り直しで 使い切ると、後ろの 大問へ 行く 前に 止まる。
+
+   どう 直したか:
+     大問どうしは 中身が 別（評論／小説／古文／漢文、資料なら 別の 章）で、
+     待つ 理由が ない。**大問ごとに 契約を 割って、同時に 頼む。**
+     予算も 大問の 数で 割って 渡す ので、どの 大問にも 必ず 回が 残る。
+
+   ★ aigenGenerate 本体は いっさい 変えて いない。あちらは
+     「1 依頼 = 1 契約」の まま。ここが 契約を 割って 同時に 呼ぶ だけ。
+   ══════════════════════════════════════════════════════════════════════ */
+async function aigenGenerateByParts(env, contract, o = {}) {
+  const 目次 = (o.parts || []).filter(Boolean);
+  const 全 = Object.values(contract.plan || {}).reduce((a, b) => a + b, 0);
+  /* 人が 大問ごとの 数を 決めて いれば その 数を 重みに する。 */
+  const 人が決めた = 目次.some((p) => (p.count | 0) > 0);
+  const 割当 = 人が決めた ? 目次.map((p) => Math.max(0, p.count | 0))
+                          : aigenSpread(目次, 全);
+  /* 形式ごとの 数を、大問へ 配る。 */
+  const 表 = 目次.map(() => ({}));
+  for (const [id, want] of Object.entries(contract.plan || {})) {
+    if (!(want > 0)) continue;
+    const a = aigenSpread(目次.map((p, i) => ({ share: Math.max(1, 割当[i] || 1) })), want);
+    目次.forEach((p, i) => { 表[i][id] = a[i] || 0; });
+  }
+  const 仕事 = [];
+  目次.forEach((p, i) => {
+    const plan = {}; let n = 0;
+    Object.entries(表[i]).forEach(([id, v]) => { if (v > 0) { plan[id] = v; n += v; } });
+    if (n > 0) 仕事.push({ i, p, plan, n });
+  });
+  /* 割った 結果 1 かたまりに なったら、これまでどおり 1 回で 作る。 */
+  if (仕事.length < 2) return aigenGenerate(env, contract, o);
+
+  /* ★ 呼び出しの 予算は **割って 配る**。同時に しても 天井は 減らない。
+     本文づくり・目次づくりで すでに 使った ぶんは 先に 引く。
+
+     ★ **天井 16 を 大問の 数で 割っていた**（2026-09-05・訴え
+       「前まで こんな 遅く なかった」の 真因の 1 つ）。
+       大問 12 なら 予算は 16/12 = **1**。1 回 呼んで 失敗したら
+       その 大問は 0 問の まま 何も できず、300 秒後に 打ち切られていた。
+       本番の 実測: 8/30 は 12 ジョブで **19〜32 回** 呼べて 59 秒・48/48 問。
+       9/3 は 同じ 12 ジョブで **10 回**しか 呼べず 1,086 秒・20/48 問。
+
+     ★ 天井は **実測で 決めた**（2026-09-05・開発版で 大問 3/6/12 を 通した）。
+       48 まで 広げたら 大問 12 で
+         Too many subrequests by single Worker invocation
+       が 出た。**27 回**の 呼び出しで 当たっている
+       （1 回が 控えへ 回って 2 つ ほど 使うので、外向きの 上限 50 に 当たる）。
+       Workers 有料でも ここは 50 の まま だった。**推し量らず 実測に 合わせる。**
+       **20** で 収める（実測: 20 回は 通り、21 回と 23 回で 当たった）。
+       1 回の 呼び出しが 何回 外へ 出るかは 一定では ない
+       （控えへ 回る・「考えるのを 切る」を 断られて 投げ直す）ので、
+       呼び出しの 数だけでは 読み切れない。**当たらなかった 数**に 合わせる。
+       大問 12 で 32/48 → 48/48 問 に 上がった。
+     ★ **各 大問に 最低 2 回**は 渡す。1 回だと 失敗が そのまま 0 問に なる
+       （これが 9/3 に 起きて いた こと）。大問が 少ない ときは 3 回 まで。 */
+  const 天井 = Math.max(4, Math.min(20, qreditSafeInt(o.maxCalls || 20, 20)));
+  const 最低 = 仕事.length <= 6 ? 3 : 2;
+  const 残り = Math.max(仕事.length * 最低, 天井 - Math.max(0, qreditSafeInt(o.usedCalls, 0)));
+  const 予算 = Math.max(最低, Math.floor(残り / 仕事.length));
+  /* 同時に 出す 数。広げすぎると 1 分あたりの 上限に 当たって、かえって 遅い。
+     ★ 大問が 多い ときは **波の 数**が そのまま 待ち時間に なる
+       （2026-09-05 実測: 大問 12 は 4 本ずつ 3 波で 94 秒）。
+       Gemini Lite の 1 分あたりは 鍵 1 本 15 回、鍵は 5 本 あって
+       呼ぶ たびに ずらすので、実質 75 回/分。
+       大問 12 の 試験でも 呼び出しは 22 回 ほど なので、
+       6 本 同時でも 1 分あたりには 当たらない。
+       ★ ただし Worker が 一度に 開ける 外向きの 接続は 6 なので、
+         それより 広げても 順番待ちに なるだけ。**6 で 止める。** */
+  const LANES = 6;
+
+  const 結果 = [];
+  const 走る = (jb, 枠, plan, 種) => {
+    const n = Object.values(plan).reduce((a, b) => a + b, 0);
+    const c2 = Object.assign({}, contract, { plan, count: n, tail: null });
+    const o2 = Object.assign({}, o, {
+      parts: [Object.assign({}, jb.p, { count: n })],
+      maxCalls: 枠, maxRounds: Math.max(2, Math.min(4, 枠)), outline: false,
+      avoidSeed: (o.avoidSeed || []).concat(種 || []).slice(-40)
+    });
+    return aigenGenerate(env, c2, o2).catch((e) => ({
+      questions: [], metrics: { lastError: String(e && e.message || e).slice(0, 160) }
+    }));
+  };
+  const 波ごと = async (組) => {
+    for (let s0 = 0; s0 < 組.length; s0 += LANES) {
+      const 波 = 組.slice(s0, s0 + LANES);
+      const rs = await Promise.all(波.map((x) => 走る(x.jb, x.枠, x.plan, x.種)));
+      波.forEach((x, k) => 結果.push({ jb: x.jb, r: rs[k] || { questions: [] } }));
+    }
+  };
+  await 波ごと(仕事.map((jb) => ({ jb, 枠: 予算, plan: jb.plan, 種: [] })));
+
+  /* ── ★ 足りない 大問だけ、**もう 一度 だけ** 同時に 作り足す ────────
+     予算を 大問で 割る ので、1 巡目で 使い切らない 大問が 出る。
+     余った ぶんを 足りない 大問へ 回す。ここも 同時なので、
+     待ち時間は **1 回ぶん しか 増えない**（順番に 埋めると また 遅く なる）。
+     ★ すでに できた ものは 絶対に 捨てない（今日より 少なく ならない）。 */
+  {
+    const 使った = 結果.reduce((a, x) => a + (Number(x.r.metrics && x.r.metrics.aiCalls) || 0), 0);
+    const 余り = 天井 - Math.max(0, qreditSafeInt(o.usedCalls, 0)) - 使った;
+    const 不足 = [];
+    仕事.forEach((jb) => {
+      const 出来 = {};
+      結果.filter((x) => x.jb.i === jb.i).forEach(({ r }) => (r.questions || []).forEach((q) => {
+        const id = String(q && q.type || "");
+        出来[id] = (出来[id] || 0) + 1;
+      }));
+      const plan = {}; let n = 0;
+      Object.entries(jb.plan).forEach(([id, want]) => {
+        const d = want - (出来[id] || 0);
+        if (d > 0) { plan[id] = d; n += d; }
+      });
+      if (n > 0) 不足.push({ jb, plan, n });
+    });
+    /* ★ 足りない 数が 1 問だけ の ときは **やらない**（2026-08-31 実測）。
+       1 問の ために 丸ごと 1 巡ぶん（十数秒）待つのは 割に 合わない。 */
+    const 足りない数 = 不足.reduce((a, x) => a + x.n, 0);
+    if (不足.length && 足りない数 >= 2 && 余り >= 不足.length) {
+      /* ★ 埋め直しは **2 回まで**。ここを 広げると、1 つの 大問が
+         中で 何度も 順番に 呼んで、せっかく 同時に した 意味が 消える
+         （実測: 枠 5 の とき この 1 大問だけで 28 秒 かかった）。 */
+      const 枠 = Math.max(1, Math.min(2, Math.floor(余り / 不足.length)));
+      await 波ごと(不足.map((x) => ({
+        jb: x.jb, 枠, plan: x.plan,
+        /* 1 巡目で 作った ものを「作成済み」として 渡す（同じ 問題を 並べない）。 */
+        種: 結果.filter((y) => y.jb.i === x.jb.i)
+          .flatMap(({ r }) => (r.questions || []).map((q) => String(q.question || "").slice(0, 60)))
+          .filter(Boolean).slice(-20)
+      })));
+    }
+  }
+
+  /* ── まとめる ─────────────────────────────────────────────────
+     ★ 大問を またいだ 同じ 問題 だけ ここで 落とす。
+       同時に 作った ので、片方に「作成済み」を 渡せない ぶんの 手当て。 */
+  const questions = []; const 見た = new Set(); let 重複 = 0;
+  結果.forEach(({ jb, r }) => {
+    (r.questions || []).forEach((q) => {
+      if (!q || typeof q !== "object") return;
+      const 鍵 = String(q.question || "").replace(/\s+/g, "").slice(0, 60);
+      if (鍵 && 見た.has(鍵)) { 重複++; return; }
+      if (鍵) 見た.add(鍵);
+      q.part = jb.i;
+      q.partTitle = jb.p.title || "";
+      if (!q.field) q.field = jb.p.field || "";
+      questions.push(q);
+    });
+  });
+  /* 返る 順は ばらばら なので、**大問の 順に 並べ直す**。 */
+  questions.sort((a, b) => (a.part | 0) - (b.part | 0));
+  questions.forEach((q, i) => { q.id = String(q.type || "q") + "-" + (i + 1); });
+
+  const ms = 結果.map(({ r }) => r.metrics || {});
+  const add = (k) => ms.reduce((a, m) => a + (Number(m[k]) || 0), 0);
+  const reasons = {}; const byProvider = {}; const perEngine = {};
+  ms.forEach((m) => {
+    Object.entries(m.rejectReasons || {}).forEach(([k, v]) => { reasons[k] = (reasons[k] || 0) + v; });
+    Object.entries(m.byProvider || {}).forEach(([k, v]) => { byProvider[k] = (byProvider[k] || 0) + v; });
+    Object.assign(perEngine, m.perEngine || {});
+  });
+  const 各時間 = ms.map((m) => Number(m.totalMs) || 0);
+  const metrics = {
+    aiCalls: add("aiCalls"), neurons: add("neurons"),
+    tokensIn: add("tokensIn"), tokensOut: add("tokensOut"), tokensReserved: add("tokensReserved"),
+    rejected: add("rejected"), received: add("received"), rounds: add("rounds"),
+    rejectReasons: reasons, byProvider, perEngine,
+    model: (ms.find((m) => m.model) || {}).model || "",
+    /* ★ 同時に 走らせた ので、待ち時間は 合計では なく **いちばん 長かった もの**。
+       足すと「速く なった のに 数字は 増えた」に 見えて、後で 必ず 読み違える。 */
+    totalMs: 各時間.length ? Math.max.apply(null, 各時間) : 0,
+    partsMs: 各時間, partsParallel: 仕事.length, partsLanes: LANES, partsBudget: 予算,
+    crossPartDupes: 重複,
+    outline: 仕事.map((jb) => ({
+      title: jb.p.title, field: jb.p.field, where: jb.p.where, want: jb.n,
+      made: questions.filter((q) => q.part === jb.i).length
+    })),
+    lastError: (ms.find((m) => m.lastError) || {}).lastError || ""
+  };
+  const madeByType = {};
+  questions.forEach((q) => { madeByType[q.type] = (madeByType[q.type] || 0) + 1; });
+  const planned = 仕事.reduce((a, jb) => a + jb.n, 0);
+  const blocked = 結果.map(({ r }) => r.blocked).find(Boolean) || null;
+  return {
+    status: blocked && !questions.length ? "blocked"
+      : (questions.length >= planned ? "publishable" : "draft_needs_repair"),
+    blocked, blockedMessage: 結果.map(({ r }) => r.blockedMessage).find(Boolean) || "",
+    questions, planned, made: questions.length, madeByType, metrics
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════════
    一部だけ選択肢の数が違う依頼を、2 回に分けて作る
 
    なぜ要るか（実測 2026-08-14）:
@@ -50433,9 +52861,193 @@ async function aigenGenerate(env, contract, o = {}) {
      のままで、ここが 2 つの契約に割って呼ぶだけ。壊す範囲を最小にするため。
    ══════════════════════════════════════════════════════════════════════ */
 async function aigenGenerateAll(env, contract, o = {}) {
+  /* ══ 資料が ある ときは、**先に 目次を 作る**（2026-08-31・訴え）════
+     訴え「資料に 偏る。最初から 最後まで 満遍なく。大問ごとに 分野を」。
+     ★ ここで 1 回だけ 作って 下へ 渡す。aigenGenerate の 中で 作ると、
+       まとめ／控え の 2 回・作り足しの 2 回 と **同じ 目次を 何度も 作る**。
+     ★ 少ない 問題数（5 問 未満）では 分けても 意味が 無いので 作らない
+       （AI 1 回ぶん 無駄に なる）。 */
+  /* ★ 人が 大問を 決めて いる ときは、**その 合計を 頼む 数に する**
+     （2026-08-31）。ここを 合わせないと、5+5+10 と 決めたのに
+     契約の 10 問で 打ち切られ、最後の 大問が 空に なる。 */
+  if (Array.isArray(o.parts) && o.parts.some((p2) => (p2.count | 0) > 0)) {
+    const 合 = o.parts.reduce((a, p2) => a + Math.max(0, p2.count | 0), 0);
+    if (合 > 0 && contract && contract.plan) {
+      const いま = Object.values(contract.plan).reduce((a, b) => a + b, 0);
+      if (いま !== 合) {
+        const 鍵 = Object.keys(contract.plan);
+        if (鍵.length === 1) { contract.plan[鍵[0]] = 合; }
+        else {
+          /* 形式が 2 つ 以上 の ときは 割合を 保ったまま 伸ばす。 */
+          let 残 = 合;
+          鍵.forEach((k, i) => {
+            const v = i === 鍵.length - 1 ? 残
+              : Math.max(1, Math.round(合 * (contract.plan[k] / Math.max(1, いま))));
+            contract.plan[k] = v; 残 -= v;
+          });
+          if (残 !== 0) contract.plan[鍵[鍵.length - 1]] = Math.max(1, contract.plan[鍵[鍵.length - 1]] + 残);
+        }
+        contract.count = Object.values(contract.plan).reduce((a, b) => a + b, 0);
+      }
+    }
+  }
+  /* ★ 国語の 試験で 人が 大問を 決めて いない ときは、
+     **本物の 共通テスト国語の 組み立て**を 既定に する（2026-08-31）。
+     資料が あっても 無くても 使う（本文は こちらで 書き下ろす ため）。 */
+  const 国語か = !!o.exam
+    && AIGEN_KOKUGO_RE.test(String(o.subject || "") + " " + String(o.topic || ""));
+  if (!o.parts && 国語か) {
+    const 総 = Object.values(contract.plan || {}).reduce((a, b) => a + b, 0);
+    if (総 >= 8) o = Object.assign({}, o, { parts: aigenKokugoParts(総), outline: false });
+  }
+  /* ══ ★ 国語は **本文を 先に 1 回だけ 書かせる**（2026-08-31）══════
+     問題と 一緒に 頼むと 本文が 出ない（実測: 10 問 できて 本文 0 字）。
+     さらに 生成は 2〜5 回に 分けて 呼ぶ ので、そのままだと
+     **各回が 別々の 本文**を 書き、1 つの 試験に 本文が いくつも 並ぶ。 */
+  let 国語の本文 = null, 漢字の問 = [], 国語の会話 = null;
+  if (国語か && !o.passage) {
+    const kp = await aigenKokugoPassage(env, o).catch((e) => ({ ok: false, err: String(e && e.message || e).slice(0, 200) }));
+    if (kp && !kp.ok) {
+      /* ★ 作れなかった 理由を **残す**。落ちても 黙って いると
+         「本文が 出ない」としか 分からない（実測で ここに 詰まった）。 */
+      o = Object.assign({}, o, { passageErr: String(kp.err || "本文を 作れませんでした").slice(0, 200),
+        usedCalls: Math.max(0, qreditSafeInt(o.usedCalls, 0)) + (kp.aiCalls || 0) });
+    }
+    if (kp && kp.ok) {
+      国語の本文 = kp.passage;
+      国語の会話 = kp.dialogue || null;
+      漢字の問 = aigenKokugoKanjiQuestions(kp.kanji, kp.passage);
+      /* ★ 本文づくりで 使った 呼び出しを **持ち越す**。
+         引かないと、大問を 同時に 作る ときの 予算が 天井を 超える。 */
+      /* ★ 国語では **資料の 形も 教える**（2026-09-06・訴え
+         「本文で たまに 資料問題として、画像資料 とか グラフや 表なんかも」）。
+         これまで 図表の 形（aigenMaterialsNote）は
+         「図表を 入れる」を 選んだ ときだけ 渡して いた。
+         本物の 共通テスト国語にも 図・表・別の 資料を 読み比べる 大問が ある。
+         ★ 形を 教えないと、**資料を 作れと 言われても 形が 分からず**、
+           黙って 話し合い（dialogue）だけに なる（実測で そう だった）。
+         ★ 出しすぎない ように、頼み文の 側で **1 大問に 1〜2 問**に 絞って ある。 */
+      o = Object.assign({}, o, { passage: kp.passage, passageMeta: kp, materials: true,
+        usedCalls: Math.max(0, qreditSafeInt(o.usedCalls, 0)) + (kp.aiCalls || 0) });
+      /* 漢字の 問題は **こちらで 組み立てた**ので、AI に 頼む 数から 引く。
+         引かないと 同じ 数だけ 余分に 作られる。 */
+      if (漢字の問.length && contract.plan) {
+        let 減 = 漢字の問.length;
+        for (const k of Object.keys(contract.plan)) {
+          if (減 <= 0) break;
+          const d = Math.min(減, Math.max(0, contract.plan[k] - 1));
+          contract.plan[k] -= d; 減 -= d;
+        }
+        contract.count = Object.values(contract.plan).reduce((a, b) => a + b, 0);
+      }
+    }
+  }
+  if (o.outline !== false && !o.parts && Array.isArray(o.files) && o.files.length) {
+    const 総数 = Object.values(contract.plan || {}).reduce((a, b) => a + b, 0);
+    if (総数 >= 5) {
+      /* かたまりの 数は 問題数から 決める。1 かたまり 3〜6 問が 目安。
+         多く 割ると 1 回あたり 1 問に なり、AI の 回数だけ 増える。 */
+      /* ★ かたまりの 数は **呼び出しの 予算**で 決める（2026-08-31）。
+         1 かたまり = 少なくとも AI 1 回。1 回の 依頼で 外へ 出せる 回数には
+         天井が あり（実測: 超えると 生成そのものが 落ちて 0 問）、
+         いまの 上限は 16 回。目次に 1 回 使う ので、
+         **6 かたまり まで**に して 作り直しの ぶんを 残す。 */
+      const 欲 = Math.max(3, Math.min(6, Math.round(総数 / 4)));
+      const ol = await aigenOutline(env, o.files, { want: 欲 }).catch(() => null);
+      if (ol && ol.parts && ol.parts.length) {
+        o = Object.assign({}, o, { parts: ol.parts, outlineMeta: ol,
+          usedCalls: Math.max(0, qreditSafeInt(o.usedCalls, 0)) + (ol.aiCalls || 0) });
+      } else {
+        /* ★ 目次が 作れなくても **止めない**。これまでどおり 作る
+           （範囲の 指定が 無いだけ）。できない ことは できないと 残す。 */
+        o = Object.assign({}, o, { outlineMeta: ol || { err: "目次を作れませんでした" } });
+      }
+    }
+  }
+  const 仕上げ = (r) => {
+    /* 本文を 全部の 問題へ 付ける（同じ 本文を 使い回す）。
+       ★ AI が 自分で 別の 本文を 付けて きて いたら **こちらの 本文で 上書き**。
+         そうしないと 試験の 中に 本文が 2 つ 並ぶ。 */
+    if (国語の本文 && Array.isArray(r.questions)) {
+      /* ★ **載せ忘れると 黙って 消える**（2026-09-06）。
+         ここは 本文が 紙面へ 渡る **唯一の 口**。text と underlines だけ
+         載せて いたので、題名・作者・出典・ふりがな・注・空欄は
+         作っても どこにも 出なかった。増やしたら ここも 増やす。 */
+      const 板 = { type: "passage", caption: "次の 文章を 読み、後の 問いに 答えよ。",
+        title: 国語の本文.title, author: 国語の本文.author, source: 国語の本文.source,
+        text: 国語の本文.text, underlines: 国語の本文.underlines,
+        ruby: 国語の本文.ruby, notes: 国語の本文.notes, blanks: 国語の本文.blanks };
+      r.questions.forEach((q) => {
+        const 他 = (Array.isArray(q.materials) ? q.materials : [])
+          .filter((m) => m && m.type !== "passage");
+        /* ★ 1 個だけに して いたので、話し合い（dialogue）が ある 問題では
+           図・表が **そこで 落ちて いた**（2026-09-06）。本文 ＋ 資料 2 個まで。 */
+        q.materials = [板].concat(他.slice(0, 2));
+      });
+    }
+    /* こちらで 組み立てた 漢字の 問題を **先頭へ**（第1問 問1 なので）。 */
+    if (漢字の問.length && Array.isArray(r.questions)) {
+      /* ★ 漢字は **第1問**の もの。印を 付けないと、大問の 一覧
+         （sections）から 漏れて、第1問 だけ 問題数が 合わなく なる。 */
+      漢字の問.forEach((q) => { q.part = 0; q.partTitle = (o.parts && o.parts[0] && o.parts[0].title) || ""; });
+      r.questions = 漢字の問.concat(r.questions);
+      r.made = r.questions.length;
+      r.madeByType = {};
+      r.questions.forEach((q) => { r.madeByType[q.type] = (r.madeByType[q.type] || 0) + 1; });
+      r.planned = (r.planned || 0) + 漢字の問.length;
+    }
+    /* ★ 話し合いは **最後の 1〜2 問**に 付ける（本物も 大問の 後ろに ある）。
+       全問に 付けると 紙面が 会話文だらけに なる。 */
+    if (国語の会話 && Array.isArray(r.questions) && r.questions.length) {
+      const 板 = { type: "dialogue",
+        caption: "次は、本文を 読んだ 生徒たちの 話し合いの 場面である。これを 読み、後の 問いに 答えよ。",
+        text: 国語の会話.text };
+      const 何問 = Math.min(2, r.questions.length);
+      for (let i = r.questions.length - 何問; i < r.questions.length; i++) {
+        const q = r.questions[i];
+        q.materials = (Array.isArray(q.materials) ? q.materials : []).concat([板]);
+      }
+      r.dialogue = 国語の会話;
+    }
+    if (o.passageErr) {
+      r.metrics = r.metrics || {};
+      r.metrics.passageError = o.passageErr;
+    }
+    if (国語の本文) {
+      r.passage = 国語の本文;
+      r.metrics = r.metrics || {};
+      r.metrics.dialogueChars = 国語の会話 ? 国語の会話.text.length : 0;
+      r.metrics = r.metrics || {};
+      r.metrics.passageChars = 国語の本文.text.length;
+      r.metrics.passageUnderlines = (国語の本文.underlines || []).length;
+      r.metrics.kanjiMade = 漢字の問.length;
+      if (o.passageMeta) {
+        r.metrics.aiCalls = (Number(r.metrics.aiCalls) || 0) + (o.passageMeta.aiCalls || 0);
+        r.metrics.passageMs = o.passageMeta.ms || 0;
+        if (o.passageMeta.short) r.metrics.passageShort = o.passageMeta.short;
+        r.metrics.kanjiRaw = o.passageMeta.kanjiRaw || 0;
+        r.metrics.kanjiWhy = o.passageMeta.kanjiWhy || {};
+      }
+    }
+    return aigenAttachOutline(r, o);
+  };
   const t = contract && contract.tail;
+  /* ══ ★ 大問は **並べて 作る**（2026-08-31・訴え「国語の 生成が 遅すぎる」）══
+     これまでは 1 巡に 1 大問ずつ。国語は 大問が 4 つ ある ので、
+     4 回 順番に 待って いた。実測（開発版・20 問・難しい）:
+       本文 20 秒 ＋ 問題 125 秒 ＝ **142 秒**。
+     しかも 呼び出しの 予算が 先に 尽きて、3 回中 2 回は
+       spread が「第1問 だけ」＝ 後ろの 大問が **0 問**だった。
+     大問どうしは 中身が 別（評論／小説／古文／漢文、資料なら 別の 章）で、
+     待つ 理由が ない。**同時に 頼んで 同時に 待つ。**
+     ★ 外へ 出せる 回数の 天井（16）は 同時でも 減らない ので、
+       予算は 大問の 数で 割って 渡す。 */
+  if (!t && Array.isArray(o.parts) && o.parts.filter(Boolean).length >= 2) {
+    return 仕上げ(await aigenGenerateByParts(env, contract, o));
+  }
   if (!t || !contract.plan || !(contract.plan.single_choice > 0)) {
-    return aigenGenerate(env, contract, o);
+    const one = await aigenGenerate(env, contract, o);
+    return 仕上げ(one);
   }
   const totalN = contract.plan.single_choice;
   const tailN = Math.max(1, Math.min(totalN - 1, t.n));
@@ -50514,12 +53126,46 @@ async function aigenGenerateAll(env, contract, o = {}) {
   questions.forEach((q) => { madeByType[q.type] = (madeByType[q.type] || 0) + 1; });
   const planned = mainN + tailN;
   const blocked = r1.blocked || r2.blocked || null;
-  return {
+  return 仕上げ({
     status: blocked && !questions.length ? "blocked"
       : (questions.length >= planned ? "publishable" : "draft_needs_repair"),
     blocked, blockedMessage: r1.blockedMessage || r2.blockedMessage || "",
     questions, planned, made: questions.length, madeByType, metrics
-  };
+  });
+}
+
+/**
+ * 資料の どこから 何問 出たかを 返り値へ 付ける。
+ * ★ **大問は ここで まとめて 返す。** 画面が 数え直すと、
+ *   数えかたが 2 か所に なって いつか ずれる。
+ */
+function aigenAttachOutline(out, o) {
+  const parts = Array.isArray(o && o.parts) ? o.parts : [];
+  if (!out) return out;
+  if (o && o.outlineMeta) {
+    out.metrics = out.metrics || {};
+    out.metrics.outlineMs = o.outlineMeta.ms || 0;
+    out.metrics.outlineCalls = o.outlineMeta.aiCalls || 0;
+    if (o.outlineMeta.err) out.metrics.outlineError = String(o.outlineMeta.err).slice(0, 160);
+    /* 目次に かかった 回数も **正直に** 足す（隠すと 数が 合わない）。 */
+    if (o.outlineMeta.aiCalls) {
+      out.metrics.aiCalls = (Number(out.metrics.aiCalls) || 0) + o.outlineMeta.aiCalls;
+    }
+  }
+  if (!parts.length) return out;
+  const qs = Array.isArray(out.questions) ? out.questions : [];
+  /* 大問（分野ごと）。問題が 1 問も 出なかった かたまりは 出さない。 */
+  const sections = parts.map((p2, i) => ({
+    index: i, title: p2.title || p2.field || ("第" + (i + 1) + "章"),
+    field: p2.field || "", where: p2.where || "",
+    questionIds: qs.filter((q) => q && q.part === i).map((q) => q.id).filter(Boolean),
+    count: qs.filter((q) => q && q.part === i).length
+  })).filter((sec) => sec.count > 0);
+  out.outline = parts;
+  out.sections = sections;
+  /* どこから 何問 出たか。**偏っていないかを 目で 見る ため**。 */
+  out.spread = sections.map((sec) => sec.title + " " + sec.count);
+  return out;
 }
 
 /* ══ クラウド生成を「AI アクティビティ」の台帳へつなぐ ═══════════════
@@ -51922,9 +54568,45 @@ async function handleAiGenQuestions(request, env, ctx) {
        一問一答に 寄せない・ひっかけを 作る・教科を またがない。 */
     exam: body?.exam === true,
     subject: toSafeString(body?.subject || "", 40),
+    /* ★ 難しさ（2026-08-31・訴え「難易度に よって 長さや 中身も 変わる」）。
+       国語の 本文の 長さは ここで 決まる（やさしい 1200〜1800 ／
+       標準 1800〜2600 ／ 難しい 2600〜3600 字）。 */
+    level: toSafeString(body?.level || body?.difficulty || "", 40),
+    /* 生徒の 話し合いを 入れるか。試験ごとに 切れる（既定は 入れる）。 */
+    dialogue: body?.dialogue === false ? false : undefined,
+    /* ══ ★ **人が 決めた 出題範囲**（2026-08-31・訴え）════════════════
+       訴え「構成案を いま 大問ごとに AI が 自動で 割り振って いると 思うけど、
+             これを ユーザーでも 詳しく 調整できる ように して ほしい。
+             あとは 添付ファイルが ある 場合には、ページなどを 選択して
+             各問に 出題する 範囲なども 細かく ユーザーが 指定できる ように」
+       ★ 中の 仕組みは 資料の 目次（aigenOutline）と **同じ 形**を 使う。
+         人が 決めた ものが 来たら、AI に 目次を 作らせない（そちらが 正）。
+       ★ 1 かたまり = 大問 1 つ。count を 書けば その 大問の 問題数に なる。
+         [{ title:"第1問 漢字", field:"漢字", where:"p.4〜p.9", count:5 }, …] */
+    parts: (() => {
+      const rows = Array.isArray(body?.parts) ? body.parts : null;
+      if (!rows || !rows.length) return undefined;
+      const out = rows.slice(0, 12).map((x) => ({
+        title: toSafeString(x && (x.title ?? x.name), 80),
+        field: toSafeString(x && (x.field ?? x.title ?? x.name), 40),
+        where: toSafeString(x && (x.where ?? x.pages ?? x.range), 60),
+        share: Math.max(1, qreditSafeInt(x && x.share, 10)),
+        /* 人が 数を 決めた ときは **その 数を そのまま 守る**。 */
+        count: Math.max(0, qreditSafeInt(x && (x.count ?? x.questions), 0)),
+        topics: Array.isArray(x && x.topics)
+          ? x.topics.map((t) => toSafeString(t, 60)).filter(Boolean).slice(0, 14) : []
+      })).filter((x) => x.title || x.where);
+      return out.length ? out : undefined;
+    })(),
     /* 資料（図・表・グラフ）を 付けるか。画面が はっきり 頼んだ ときだけ。
        既定で 付けると、要らない ところに 飾りの 表が 出る。 */
     materials: body?.materials === true,
+    /* ★ 資料の 目次を 作るか（2026-08-31）。既定は 作る。
+       `outline: false` で 止められる ように して ある。
+       ・**直す前と 比べる ため**（どれだけ 偏りが 減ったかを 数で 出せる）
+       ・万一 目次が 悪さを した ときの 逃げ道
+       止めると 資料の 範囲を 指さなく なる ので、また 前半に 偏る。 */
+    outline: body?.outline === false ? false : undefined,
     forceProvider: dev ? toSafeString(body?.provider || "", 20) || undefined : undefined,
     forceModel: dev ? toSafeString(body?.model || "", 120) || undefined : undefined
   };
@@ -52342,6 +55024,28 @@ async function handleAiGenLayout(request, env) {
   const out = aigenLayoutToProfile(v);
   return json({ ok: true, layout: out,
     metrics: { ms: Date.now() - t0, model: r.model || "", provider: "gemini" } }, 200, request);
+}
+
+async function handleAigenOutline(request, env) {
+  const uid = await aiJobRequireUser(request, env);
+  if (!uid) return json({ code: "UNAUTHORIZED", message: "ログインが必要です。" }, 401, request);
+  const body = await readJsonBody(request, 96 * 1024 * 1024);
+  const files = Array.isArray(body?.files) ? body.files.slice(0, 16).map((f) => {
+    if (!f) return null;
+    if (typeof f.fileUri === "string" && f.fileUri) {
+      return { mimeType: toSafeString(f.mimeType || "application/pdf", 80), fileUri: f.fileUri,
+               keyIndex: Number.isInteger(f.keyIndex) ? f.keyIndex : undefined };
+    }
+    if (typeof f.data === "string" && f.data) {
+      return { mimeType: toSafeString(f.mimeType || "application/pdf", 80), data: f.data };
+    }
+    return null;
+  }).filter(Boolean) : [];
+  if (!files.length) return json({ code: "EMPTY", message: "資料が ありません。" }, 400, request);
+  const want = Math.max(3, Math.min(12, qreditSafeInt(body?.want || 6, 6)));
+  const ol = await aigenOutline(env, files, { want }).catch((e) => ({ parts: [], err: String(e && e.message || e) }));
+  return json({ ok: true, parts: ol.parts || [], ms: ol.ms || 0,
+    aiCalls: ol.aiCalls || 0, model: ol.model || "", err: ol.err || "" }, 200, request);
 }
 
 async function handleAigenDocCheck(request, env) {
@@ -56646,6 +59350,9 @@ async function handleOfficialPresetsGet(request, env) {
         words: officialWordsToChoices(words, r.id),
         subjectId: r.subject_id,
         wordCount: r.word_count,
+        /* ★ 表紙（2026-09-03・訴え「バナー画像を 作って、それぞれ
+           わかりやすく」）。色と 模様だけの SVG（写真は 使わない）。 */
+        appearance: VOCABUTEST_LOOK[Number(r.week)] || null,
         deliveredAt: r.delivered_at
       };
     });
@@ -56672,24 +59379,22 @@ async function eikenAutoDeliver(env) {
     created_at INTEGER NOT NULL DEFAULT 0
   )`).run();
   const now = Date.now();
+  const 生きる = new Set(EIKEN_SCHEDULE.map((x) => `eiken:w${x.w}`));
   for (const sched of EIKEN_SCHEDULE) {
     const deliverMs = Date.parse(sched.d);
     if (!Number.isFinite(deliverMs) || now < deliverMs) continue;
     const presetId = `eiken:w${sched.w}`;
-    const existing = await db.prepare("SELECT id FROM official_presets WHERE id = ?1").bind(presetId).first();
-    if (existing) continue;
-    // Pick words: newCount random from new range + reviewCount random from review range
-    const newPool = _eikenWordsInRange(sched.nf, sched.nt);
-    const picked = _eikenPickRandom(newPool, sched.nc);
-    if (sched.rc > 0 && sched.rf > 0 && sched.rt > 0) {
-      const reviewPool = _eikenWordsInRange(sched.rf, sched.rt);
-      const reviewPicked = _eikenPickRandom(reviewPool, sched.rc);
-      picked.push(...reviewPicked);
-    }
-    // Shuffle final list
-    const words = _eikenPickRandom(picked, picked.length);
+    /* ★ 範囲の 単語を **全部・番号順**（2026-09-03）。
+       前は 乱数で 選んでいたので、同じ 名前でも 中身が 毎回 違い、
+       「200-400」と 書いてあるのに 100 語しか 入っていなかった。 */
+    const words = _eikenWordsInRange(sched.nf, sched.nt);
+    if (!words.length) continue;
+    const 前 = await db.prepare("SELECT word_count FROM official_presets WHERE id = ?1").bind(presetId).first();
+    /* 中身が すでに そろっている ときは 触らない（毎分 書き直さない）。 */
+    if (前 && Number(前.word_count) === words.length) continue;
     await db.prepare(
-      "INSERT INTO official_presets (id, series, week, name, words_json, subject_id, word_count, delivered_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+      "INSERT INTO official_presets (id, series, week, name, words_json, subject_id, word_count, delivered_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) " +
+      "ON CONFLICT(id) DO UPDATE SET name=?4, words_json=?5, word_count=?7, delivered_at=?8"
     ).bind(
       presetId, "eiken", sched.w, sched.n,
       JSON.stringify(words), "sub:english",
@@ -56697,6 +59402,17 @@ async function eikenAutoDeliver(env) {
     ).run();
     console.log(`[EIKEN] Delivered ${presetId}: ${sched.n} (${words.length} words)`);
   }
+  /* ★ まとめた ぶん、要らなく なった 週を 片づける（2026-09-03）。
+     残しておくと 一覧に 11 個 並んだ ままに なる。 */
+  try {
+    const rows = await db.prepare("SELECT id FROM official_presets WHERE series = 'eiken'").all();
+    for (const r of (rows?.results || [])) {
+      const id = String(r.id || "");
+      if (生きる.has(id)) continue;
+      await db.prepare("DELETE FROM official_presets WHERE id = ?1").bind(id).run();
+      console.log("[EIKEN] removed old preset", id);
+    }
+  } catch (e) { /* 片づけに 失敗しても 配信は 通す */ }
 }
 
 async function gradeAutoPromote(env) {
@@ -58536,6 +61252,35 @@ async function liveSystemInstruction(env, userId, o) {
   lines.push("・相手は高校生です。むずかしい言い方をせず、ふつうの言葉で話します。");
   lines.push("・声だけのやりとりなので、箇条書きや記号は読み上げません。文で話します。");
   lines.push("・分からないことは「分からない」と言います。作り話をしません。");
+  lines.push("");
+  /* ══ AI らしい 文章を 書かない（2026-08-31・訴え）════════════════════
+     訴え「AI らしい 文章を 作るのは やめて ほしい。
+           ちゃんと 抽象すぎず、具体的に 書いて ほしい。Live が。」
+     ★ 「具体的に」と 一言 書くだけでは 効かない（今日 何度も 見た）。
+       **何を 書いては いけないか**を 名指しする。
+       AI の 文章が 薄く なる のは、決まった 言い回しが 出る からで、
+       それは 数えられる。 */
+  lines.push("【文章の 書きかた（ここが いちばん 直したい ところ）】");
+  lines.push("★ **AI が 書いた ような 文章に しないでください。**"
+    + "次の 言い回しは **使わないこと**:");
+  lines.push("　・「さまざまな」「多様な」「幅広い」「さらなる」「〜が 重要です」"
+    + "「〜が 求められます」「〜と 言えるでしょう」");
+  lines.push("　・「〜を 通じて 成長したい」「貴社／貴学の 〜に 魅力を 感じ」"
+    + "「学びを 深めたい」「social な 課題の 解決に 貢献したい」");
+  lines.push("　・「まず」「次に」「最後に」で 段落を 始める 三段構え");
+  lines.push("　・結びの 「これからも 頑張って いきたいと 思います」");
+  lines.push("★ 代わりに、**必ず 次の どれかを 1 文に 1 つ 入れます**:");
+  lines.push("　**数**（何回・何人・何時間・何点・何年）／**固有名詞**（場所・書名・教科名）／"
+    + "**その 場の 出来事**（いつ・どこで・誰が・何を した）／**具体的な 動作**");
+  lines.push("　（悪い）「さまざまな 経験を 通じて 成長できました」");
+  lines.push("　（よい）「二年の 夏に、週 3 回 図書室で 後輩 4 人に 数学を 教えた。"
+    + "自分が つまずいた ところを 先に 話すと、質問が 増えた」");
+  lines.push("★ **抽象語で 言い換えない。** 「コミュニケーション能力が 高まった」ではなく"
+    + "「初対面の 相手に 自分から 話しかけて、要件を 3 つに 分けて 伝えられる ように なった」。");
+  lines.push("★ 相手の 文章を 直す ときは、**その 人の 言い回しを 残します。**"
+    + "きれいな 一般論へ 書き換えて しまうと、その 人の 文章では なく なります。");
+  lines.push("★ 事実を 足さない。相手が 書いて いない 出来事・数字を **こちらで 作らない**。"
+    + "具体が 足りない ときは、**何を 書き足せば よいかを 質問**します。");
   lines.push("");
   /* ══ このアプリが 本当にできること（2026-08-15）════════════════════
      ★ ここを書いていなかったので、Lumi は
@@ -64175,6 +66920,46 @@ export default {
     }
 
     const path = (url.pathname || "/").replace(/\/+$/, "") || "/";
+
+    /* ══ 呼びすぎの 関所（2026-09-02）══════════════════════════════════
+       2026-09-01 の 夜、本番が 351,226 回で 止まり、
+       翌朝 9 時（＝ 00:00 UTC の リセット）まで 全員が 開けなく なった。
+       中身は 人の 操作では なく **裏の 定期通信**だった:
+         /api/call/state 10 秒ごと・/api/dm/sync 25 秒ごと・通知 120 秒ごと
+         ＝ タブ 1 つ 開いて いる だけで 1 日 12,816 回。
+
+       画面側の 間隔は 直したが、**画面側だけの 対策は 固くない**。
+       古い 画面が 残って いる／作りを 間違える／誰かが 叩く、で また 増える。
+       ここで **サーバが 上限を 持つ**。
+
+       決めごと:
+         ・止めるのは **裏の 定期通信だけ**。学ぶ・保存する・入る は 絶対に 止めない
+         ・止めかたは **429 と Retry-After**。サイト全体を 落とさない
+         ・数えかたは **その isolate の 記憶だけ**（D1 も KV も 使わない）。
+           数える ために 書き込むと、対策の ほうが 高く つく
+       ══════════════════════════════════════════════════════════════ */
+    {
+      /* ★ 切り札: 何か 起きたら **デプロイ せずに** 止められる ように する。
+         `npx wrangler secret put VQ_THROTTLE_OFF` に 1 を 入れる だけ。
+         対策が 事故に なった とき、直すまでの 逃げ道が 無いと 困る。 */
+      const 見張る = (env && env.VQ_THROTTLE_OFF === "1") ? "" : 定期通信か(path);
+      if (見張る) {
+        const 誰 = request.headers.get("cf-connecting-ip") || "?";
+        const 判 = 呼びすぎ判定(誰 + "|" + 見張る, 見張る);
+        if (!判.ok) {
+          return new Response(JSON.stringify({
+            code: "TOO_FREQUENT",
+            message: "呼び出しが多すぎます。しばらく待ってから開き直してください。",
+            retryAfter: 判.待ち
+          }), { status: 429, headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Retry-After": String(判.待ち),
+            "Cache-Control": "no-store"
+          } });
+        }
+      }
+    }
+
     const isSurvivalRoute = /^\/survival(?:\/|$)/i.test(path);
     const isSurvivalV2Route = /^\/survival-v2(?:\/|$)/i.test(path);
     const isSubscriptionRoute = /^\/(?:subscription|settings\/subscription)(?:\/|$)?/i.test(path);
@@ -64328,7 +67113,19 @@ export default {
          叩けるようにする理由が無い。同一オリジンだけで足りる。 */
     if (isAdminPath(path)) {
       stage = "admin";
-      const adminRes = await handleAdminRequest(request, env, ctx);
+      /* ★ Admin から Qredit・サブスクを 動かせる ように、本体の 関数を
+         **そのまま 渡す**（2026-09-05）。admin.js から import すると
+         輪に なる ので、呼ぶ ときに 渡す。
+         ★ 残高の 動かしかたを 二重に 書かない。台帳（qredit_ledger）にも
+           同じ 形で 残る ので、あとから 追える。 */
+      const adminRes = await handleAdminRequest(request, env, ctx, {
+        qreditGrant, qreditSpend, qreditBuildPayload,
+        qreditLoadBalanceRow, qreditLoadSubscriptionStateRow,
+        /* プランの 呼び名は 本体が 決める（free / edu_pre / pre）。
+           admin 側で 並べ直すと 増えた ときに 食い違う。 */
+        プランを正す: normalizeSubscriptionPlanId,
+        プラン一覧: () => Array.from(SUBSCRIPTION_PLAN_IDS)
+      });
       if (adminRes) return adminRes;
     }
 
@@ -65351,9 +68148,25 @@ export default {
         stage = "insight.review";
         return respond(await handleInsightReview(request, env));
       }
+      /* 文章添削（校正モード）／文章生成（2026-08-31・訴え）。 */
+      /* 1 時間ごとの ひとこと（2026-09-01・訴え） */
+      if (request.method === "POST" && path === "/api/ai/hourly") {
+        stage = "ai.hourly";
+        return respond(await handleHourlyInsight(request, env));
+      }
+
+      if (request.method === "POST" && path === "/api/ai/write") {
+        stage = "ai.write"; return respond(await handleAiWrite(request, env));
+      }
       if (request.method === "POST" && path === "/api/ai/grade") {
         stage = "ai.grade";
         return respond(await handleAiGrade(request, env));
+      }
+      /* ★ 1 問ずつの「次に つなげる 助言」（2026-09-03・訴え）。
+         正解でも 不正解でも 返す。Live（gemini-3.1-flash-live-preview）。 */
+      if (request.method === "POST" && path === "/api/ai/feedback") {
+        stage = "ai.feedback";
+        return respond(await handleAiFeedback(request, env));
       }
       if (request.method === "POST" && path === "/api/aigen/upload") {
         stage = "aigen.upload";
@@ -66170,6 +68983,12 @@ export default {
       if (request.method === "POST" && path === "/api/aigen/layout") {
         stage = "aigen.layout"; return respond(await handleAiGenLayout(request, env));
       }
+      /* ★ 資料の 見取り図だけを 返す 口（2026-08-31・開発版だけ）。
+         「この 資料は どんな 構成か」を 人が 確かめる ため。
+         問題は 作らない ので 速く、AI も 1 回しか 使わない。 */
+      if (request.method === "POST" && path === "/api/aigen/outline") {
+        stage = "aigen.outline"; return respond(await handleAigenOutline(request, env));
+      }
       if (request.method === "POST" && path === "/api/aigen/doccheck") {
         stage = "aigen.doccheck"; return respond(await handleAigenDocCheck(request, env));
       }
@@ -66313,6 +69132,16 @@ export default {
 
       if (request.method === "POST" && path === "/api/admin/eiken-deliver") {
         stage = "eiken.deliver";
+        /* ★ 管理キーを 見る（2026-09-03）。ここは admin.js が 引き受けない
+           ので、**この口は 自分で 守る**。開発版だけは そのまま 通す。 */
+        {
+          const b = await readJsonBody(request, 8 * 1024).catch(() => ({}));
+          const 開発 = String(env?.AI_PROBE_ENABLED || "") === "1"
+            || /-dev\.|localhost|127\.0\.0\.1/.test(String(new URL(request.url).hostname));
+          if (!開発 && !newsIsAdmin(env, b, request)) {
+            return respond(json({ code: "FORBIDDEN", message: "adminKey が無効です。" }, 403, request));
+          }
+        }
         try { await eikenAutoDeliver(env); } catch (e) { return json({ ok: false, error: String(e?.message || e) }, 500); }
         return json({ ok: true, message: "eiken delivery check complete" });
       }
@@ -66674,6 +69503,12 @@ export default {
           || path === "/api/aigen/questions"
           || path === "/api/aigen/intent"
           || path === "/api/aigen/doccheck"
+          /* ★ 資料の 見取り図だけを 返す 口（2026-08-31）。
+             ここへ 足し忘れると **404 に なる**（実測。routes には あるのに 通らない）。 */
+          || path === "/api/aigen/outline"
+          /* ★ 文章添削は 資料を 載せる ので 大きい（ここへ 足し忘れると 404）。 */
+          || path === "/api/ai/write"
+          || path === "/api/ai/hourly"
           || path === "/api/aigen/layout"
           || path === "/api/aigen/revise"
           || path === "/api/aigen/cover"
