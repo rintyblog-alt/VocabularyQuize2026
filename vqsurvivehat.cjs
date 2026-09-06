@@ -62,7 +62,7 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     return { 跡, 進み: ps.map((p) => Math.round(p.progress * 1e4)), 落ち: ps.map((p) => p.respawns | 0) };
   };
   const 素 = 走る("none", 0);
-  ok("**帽子を 変えても 軌跡が 同じ**（王冠）", JSON.stringify(走る("crown", 4).跡) === JSON.stringify(素.跡));
+  ok("**帽子を 変えても 軌跡が 同じ**（リボン）", JSON.stringify(走る("ribbon", 4).跡) === JSON.stringify(素.跡));
   ok("**帽子を 変えても 軌跡が 同じ**（とんがり）", JSON.stringify(走る("party", 9).跡) === JSON.stringify(素.跡));
   ok("進みも 同じ", JSON.stringify(走る("phones", 1).進み) === JSON.stringify(素.進み), { a: 走る("phones", 1).進み, b: 素.進み });
   ok("落ちた 回数も 同じ", JSON.stringify(走る("halo", 11).落ち) === JSON.stringify(素.落ち));
@@ -87,16 +87,51 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
   const 元からある = new Set(Object.values(BEAN_MESHES));
   const 新しい = [...使う形].filter((m) => !元からある.has(m));
   ok("かぶりものが 使う 形は すべて 走る人の 形の 中", 新しい.length === 0, 新しい);
-  ok("形の 種類は 13 以内", 元からある.size <= 13, [...元からある].length);
+  /* ★ 13 → 14 に した（2026-08-31）。
+     足元の 接地影（vs_bean_shade）を 足した ぶん 1 つ 増える。
+     これは かぶりものの ためでは なく **走る人が 床に 着いて いる ことを
+     見せる ため**。粗さを 1 段だけに して 描き回数は 1 回に 抑えた
+     （vqsurviveperf の 描き回数の 目安も 合わせて 直した。2026-08-31 時点は 52）。
+     ★ **ここを 上げる ときは 必ず 描き回数の 目安も 見る。** */
+  ok("形の 種類は 14 以内", 元からある.size <= 14, [...元からある].length);
   let 最大 = 0;
   for (const ht of HATS) 最大 = Math.max(最大, ht.parts.length);
   ok("いちばん 多い 帽子でも 4 部品 以内", 最大 <= 4, 最大);
 
+  節("③' 育ちで 増える（2026-08-31）");
+  {
+    const { HAT_UNLOCK, hatOpen, hatNeed, GROWTH, nextReward } =
+      await import(道("data/world.js"));
+    const 表 = Object.keys(HAT_UNLOCK);
+    const 迷子 = 表.filter((k) => !HATS.some((h) => h.key === k));
+    ok("★ ごほうびの 鍵が すべて 実在する かぶりもの", 迷子.length === 0, 迷子);
+    const 抜け = HATS.map((h) => h.key).filter((k) => HAT_UNLOCK[k] === undefined);
+    ok("すべての かぶりものに 開く 段が ある", 抜け.length === 0, 抜け);
+    const はじめ = 表.filter((k) => HAT_UNLOCK[k] === 0);
+    ok("★ はじめから 使える ものが 3 つ 以上（何も 無い ところから 始めない）",
+      はじめ.length >= 3, はじめ);
+    ok("0 XP では 王冠は まだ", hatOpen("crown", 0) === false);
+    ok("いちばん 上まで 育てば 王冠が 使える",
+      hatOpen("crown", GROWTH[GROWTH.length - 1].at) === true);
+    ok("まだの ときは 何が 要るか 言える", hatNeed("crown").indexOf("大樹") >= 0, hatNeed("crown"));
+    const r = nextReward(0);
+    ok("次の ごほうびが 引ける", !!r && !!r.stage, r && r.stage && r.stage.name);
+    /* いちばん 上の 段に まだ 何も 割り当てて いない、が 起きやすい */
+    const 段ごと = {};
+    for (const k of 表) 段ごと[HAT_UNLOCK[k]] = (段ごと[HAT_UNLOCK[k]] || 0) + 1;
+    const 空の段 = [];
+    for (let i = 1; i < GROWTH.length; i++) if (!段ごと[i]) 空の段.push(GROWTH[i].name);
+    ok("★ どの 段にも ごほうびが ある（空の 段が 無い）", 空の段.length === 0, 空の段);
+  }
+
   節("④ 12 種と 色");
-  ok("12 種 ある", HATS.length === 12, HATS.length);
+  /* ★ 12 → 16（2026-08-31）。育ちの ごほうびを 段ごとに 置く ため。
+     **数を 決め打ちに しない**。「どの 段にも ごほうびが ある」ことは
+     ③' で 見ている ので、ここは 「増えて いる・だぶって いない」だけ 見る。 */
+  ok("かぶりものが 12 種 以上 ある", HATS.length >= 12, HATS.length);
   ok("いちばん上は なし", HATS[0].key === "none" && HATS[0].parts.length === 0, HATS[0]);
-  ok("鍵が だぶらない", new Set(HATS.map((h) => h.key)).size === 12);
-  ok("名前が だぶらない", new Set(HATS.map((h) => h.name)).size === 12);
+  ok("鍵が だぶらない", new Set(HATS.map((h) => h.key)).size === HATS.length, HATS.length);
+  ok("名前が だぶらない", new Set(HATS.map((h) => h.name)).size === HATS.length, HATS.length);
   ok("色は 12 種", HAT_COLORS.length === 12, HAT_COLORS.length);
   ok("色は すべて #rrggbb", HAT_COLORS.every((c) => /^#[0-9a-f]{6}$/i.test(c.hex)), HAT_COLORS.map((c) => c.hex));
   ok("色の 値が 0〜1 に 収まる", HAT_COLORS.every((c) => c.rgb.length === 3 && c.rgb.every((v) => v >= 0 && v <= 1)));
@@ -167,7 +202,7 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       };
       const 前 = 取();
       r.querySelectorAll(".vs-lb-color")[4].click();
-      r.querySelector('.vs-lb-hat[data-hat="crown"]').click();
+      r.querySelector('.vs-lb-hat[data-hat="ribbon"]').click();
       await new Promise((x) => setTimeout(x, 300));
       const 後 = 取();
       return { 舞台: !!lb.stage, 前, 後 };
@@ -176,7 +211,7 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     else {
       ok("立体の 走る人が いる", !!映.前, 映);
       ok("**選んだ 色が すぐ 映る**", JSON.stringify(映.前.c) !== JSON.stringify(映.後.c), 映);
-      ok("**選んだ かぶりものも すぐ 映る**", 映.後.hat === "crown", 映);
+      ok("**選んだ かぶりものも すぐ 映る**", 映.後.hat === "ribbon", 映);
     }
 
     節("⑤ ロビーで えらぶ");
@@ -190,12 +225,12 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       };
     });
     ok("えらぶ 所が 出る", !!並び, 並び);
-    ok("12 種 並ぶ", 並び && 並び.帽子.length === 12, 並び && 並び.帽子.length);
+    ok("すべて 並ぶ", 並び && 並び.帽子.length === HATS.length, 並び && 並び.帽子.length);
     ok("色も 12 個 並ぶ", 並び && 並び.色 === 12, 並び && 並び.色);
 
     await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
-      r.querySelector('.vs-lb-hat[data-hat="crown"]').click();
+      r.querySelector('.vs-lb-hat[data-hat="ribbon"]').click();
       r.querySelector('.vs-lb-hatc[data-hc="11"]').click();
     });
     await 待つ(200);
@@ -205,10 +240,10 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       return { hat: lb.hat, hc: lb.hatColor, 見出し: r.querySelector(".vs-lb-hat-nm").textContent,
         覚え: localStorage.getItem("vq.survive.pick.v1") };
     });
-    ok("えらんだ 帽子が 入る", 選.hat === "crown", 選.hat);
+    ok("えらんだ 帽子が 入る", 選.hat === "ribbon", 選.hat);
     ok("えらんだ 色が 入る", 選.hc === 11, 選.hc);
-    ok("見出しに 名前が 出る", 選.見出し === "王冠", 選.見出し);
-    ok("覚えている", /"hat":"crown"/.test(String(選.覚え)) && /"hatColor":11/.test(String(選.覚え)), String(選.覚え).slice(0, 200));
+    ok("見出しに 名前が 出る", 選.見出し === "リボン", 選.見出し);
+    ok("覚えている", /"hat":"ribbon"/.test(String(選.覚え)) && /"hatColor":11/.test(String(選.覚え)), String(選.覚え).slice(0, 200));
 
     節("⑥ 走っても 描き回数が 増えない");
     const 測る = async (hat) => {
@@ -236,9 +271,9 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       return d;
     };
     const 無 = await 測る("none");
-    const 有 = await 測る("crown");
+    const 有 = await 測る("ribbon");
     console.log("     8 人・帽子なし: 描き " + 無.draws + " / 面 " + 無.tris);
-    console.log("     8 人・王冠    : 描き " + 有.draws + " / 面 " + 有.tris);
+    console.log("     8 人・リボン  : 描き " + 有.draws + " / 面 " + 有.tris);
     ok("8 人 いる", 無.人 === 8 && 有.人 === 8, [無.人, 有.人]);
     ok("帽子ありでも 描き回数が 8 回以上 増えない", 有.draws - 無.draws <= 8, [無.draws, 有.draws]);
     ok("描き回数は 45 回 以内", 有.draws <= 45, 有.draws);
@@ -253,7 +288,7 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
       lb.courseIndex = 0; lb.botCount = 7; lb._render();
       return keys;
     });
-    ok("鍵が 12 個 取れる", 全部.length === 12, 全部.length);
+    ok("鍵が すべて 取れる", 全部.length === HATS.length, 全部.length);
     for (const k of ["tophat", "horn", "donut", "leafhat"]) {
       await pg.evaluate((hat) => {
         const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;

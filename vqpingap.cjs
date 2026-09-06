@@ -150,8 +150,8 @@ async function 走らせる(b, ラベル) {
     let 旧 = 元;
     /* 札の仕組みを外す */
     const i = 旧.indexOf('<script id="vq-boothold">');
+    if (i < 0) throw new Error("vq-boothold が見つかりません（起動の 空白を 防ぐ 仕組みが 失われている）");
     const j = 旧.indexOf("</script>", i) + 9;
-    if (i < 0) throw new Error("vq-boothold が見つかりません");
     旧 = 旧.slice(0, i) + 旧.slice(j);
     /* vq-pin を DOMContentLoaded 待ち＋1200ms 待ちへ戻す */
     const a1 = 旧.indexOf("  if (doc.body) boot();");
@@ -179,7 +179,7 @@ async function 走らせる(b, ラベル) {
       ].join("\n") + 旧.slice(c2);
     }
     旧 = 旧.replace("setInterval(watch, 120);", "setInterval(watch, 800);");
-    const b1 = 旧.indexOf("    if (lastToken) {\n      /* ★ 待たずに");
+    const b1 = 旧.indexOf("    if (lastToken) {\n      var 放す =");
     if (b1 < 0) throw new Error("vq-pin の boot 中身が見つかりません");
     const b2 = 旧.indexOf("    setInterval(watch, 800);", b1);
     旧 = 旧.slice(0, b1) + "    if (lastToken) setTimeout(function () { gate(); }, 1200);\n" + 旧.slice(b2);

@@ -69,6 +69,57 @@ function プリセット(id, name, n) {
 }
 
 (async () => {
+  節("⓪ 控えの 問題（通信が 落ちた とき・まだ ログインして いない 人が 見る もの）");
+  {
+    /* ★ 2026-08-31 に 80 → 200 問に 増やした とき、書き足した 中に
+       **空の 選択肢・別の 言語の 文字・書きかけ** が 6 件 混ざって いた。
+       中身を 目で 全部 見るのは 無理なので、機械で 数える。
+       ここが 壊れると **学ぶ 人に 壊れた 問題を 出す**。 */
+    const src = fs.readFileSync("client/assets/vocabu-survive/data/questions.js", "utf8");
+    const 行 = src.split("\n").filter((l) => /^\s*\[".*\],\s*\d+,\s*"[^"]+"\],?\s*$/.test(l));
+    ok("控えの 問題が 150 問 以上 ある", 行.length >= 150, 行.length);
+
+    /* 1 行ずつ 本物の 配列に する（形が 合わない ものは ここで 落ちる）。 */
+    const 組 = [];
+    const 壊れ = [];
+    for (const l of 行) {
+      try {
+        const v = JSON.parse("[" + l.trim().replace(/,\s*$/, "") + "]")[0];
+        組.push(v);
+      } catch (e) { 壊れ.push(l.trim().slice(0, 70)); }
+    }
+    ok("★ すべて 読める 形に なっている", 壊れ.length === 0, 壊れ.slice(0, 3));
+
+    const 空 = 組.filter((q) => !q[0] || !Array.isArray(q[1]) || q[1].length !== 4
+      || q[1].some((c) => !String(c || "").trim()));
+    ok("★ 見出しが あり、選択肢が 4 つ とも 空でない", 空.length === 0,
+      空.slice(0, 3).map((q) => q[0]));
+
+    const だぶり = 組.filter((q) => new Set(q[1]).size !== 4);
+    ok("★ 同じ 選択肢が 2 つ ない", だぶり.length === 0, だぶり.slice(0, 3).map((q) => q[0]));
+
+    const 位置 = 組.filter((q) => q[2] !== 0);
+    ok("正解は 必ず 0 番（出す ときに 混ぜる 決まり）", 位置.length === 0,
+      位置.slice(0, 3).map((q) => q[0]));
+
+    /* 書きかけ・別の 言語の 文字。**ここが 今回 6 件 出た。** */
+    const 変 = 組.filter((q) => {
+      const t = q[0] + "|" + q[1].join("|");
+      return /[\u0400-\u04FF]/.test(t) || /…/.test(t) || /\bTODO\b|\bXXX\b/.test(t);
+    });
+    ok("★ 書きかけ・別の 言語の 文字が 混ざって いない", 変.length === 0,
+      変.slice(0, 3).map((q) => q[0]));
+
+    const 見出し = 組.map((q) => String(q[0]));
+    const 重 = 見出し.filter((x, i) => 見出し.indexOf(x) !== i && !/正しい つづり/.test(x));
+    ok("同じ 見出しが だぶって いない（つづり問題は 除く）", 重.length === 0, 重.slice(0, 4));
+
+    const 印 = {};
+    組.forEach((q) => { 印[q[3]] = (印[q[3]] || 0) + 1; });
+    ok("印（意味/語彙/…）が 6 種類 以上", Object.keys(印).length >= 6, 印);
+    ok("どの 印にも 10 問 以上 ある", Object.values(印).every((n) => n >= 10), 印);
+  }
+
   const A = await 人を作る(1), B = await 人を作る(2);
 
   節("① 一覧の 口");

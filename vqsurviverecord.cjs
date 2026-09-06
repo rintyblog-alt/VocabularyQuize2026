@@ -166,7 +166,12 @@ function 週の名(ms) {
     const lob = fs.readFileSync("client/assets/vocabu-survive/ui/lobby.js", "utf8");
     ok("成績を 取りに 行く", /\/api\/survive\/stats/.test(lob));
     ok("成績の 欄が ある", /vs-lb-stats/.test(lob));
-    ok("札が 無い ときの 断りが ある", /ログインすると 成績が 残ります/.test(lob));
+    /* ★ 文言を そのまま 探すと **書き直す たびに 落ちる**（2026-08-31 に 落ちた）。
+       見たいのは 「札が 無い 人に 断りを 出して いるか」なので、
+       言葉の 芯だけで 見る。 */
+    ok("札が 無い ときの 断りが ある", /ログインすると[^"]*残ります/.test(lob), (lob.match(/ログインすると[^"]{0,40}/) || [])[0]);
+    /* ★ 札が 無くても **たびの ようす**（育ち・地方）は 出す（2026-08-31）。 */
+    ok("★ 札が 無くても 育ちと 地方は 出す", /_drawJourney\(\)/.test(lob) && /vs-lb-jrn/.test(lob));
     ok("まだ 走っていない ときの 言葉が ある", /まだ 1 回も 走っていません/.test(lob));
     /* 実際の 中身も 見る */
     const st = await api("GET", "/api/survive/stats", undefined, A.token);

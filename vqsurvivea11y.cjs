@@ -224,10 +224,19 @@ function 比(a, b) {
        親を たどって 重ね合わせた 色で 見る。 */
     const 色 = await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      /* ★ color-mix() は `color(srgb r g b / a)` に なる（0〜1 の 値）。
+         rgb() だけ 見ていた ので **透ける 板を 読み落とし**、
+         その 下の 濃い 地を 背景と して 数えて いた。
+         明るい 見た目の とき だけ 落ちる（暗い 見た目では たまたま 通る）。
+         2026-08-31 に 気づいた。両方の 書き方を 受ける。 */
       const 解 = (c) => {
-        const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || "");
-        if (!m) return null;
-        return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] === undefined ? 1 : Number(m[4])];
+        const s = String(c || "");
+        let m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(s);
+        if (m) return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] === undefined ? 1 : Number(m[4])];
+        m = /color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/.exec(s);
+        if (m) return [Number(m[1]) * 255, Number(m[2]) * 255, Number(m[3]) * 255,
+                       m[4] === undefined ? 1 : Number(m[4])];
+        return null;
       };
       const 重ねる = (上, 下) => [0, 1, 2].map((i) => 上[i] * 上[3] + 下[i] * (1 - 上[3])).concat([1]);
       const 実背景 = (e) => {
@@ -278,10 +287,19 @@ function 比(a, b) {
     await 待つ(400);
     const うす = await pg.evaluate(() => {
       const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
+      /* ★ color-mix() は `color(srgb r g b / a)` に なる（0〜1 の 値）。
+         rgb() だけ 見ていた ので **透ける 板を 読み落とし**、
+         その 下の 濃い 地を 背景と して 数えて いた。
+         明るい 見た目の とき だけ 落ちる（暗い 見た目では たまたま 通る）。
+         2026-08-31 に 気づいた。両方の 書き方を 受ける。 */
       const 解 = (c) => {
-        const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || "");
-        if (!m) return null;
-        return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] === undefined ? 1 : Number(m[4])];
+        const s = String(c || "");
+        let m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(s);
+        if (m) return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] === undefined ? 1 : Number(m[4])];
+        m = /color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/.exec(s);
+        if (m) return [Number(m[1]) * 255, Number(m[2]) * 255, Number(m[3]) * 255,
+                       m[4] === undefined ? 1 : Number(m[4])];
+        return null;
       };
       const 重 = (上, 下) => [0, 1, 2].map((i) => 上[i] * 上[3] + 下[i] * (1 - 上[3])).concat([1]);
       const 背 = (e) => {

@@ -10,11 +10,18 @@
    使い方:
      git worktree add /private/tmp/vqbase <起点>
      node vqsurviveregress.cjs
+     （場所を 変えるなら VQ_BASE_TREE=... 。VQ_BASE は 他の 検査で
+       「測る 先の URL」に 使う ので、URL なら 無視する）
    ══════════════════════════════════════════════════════════════════════════ */
 "use strict";
 const { execFileSync } = require("child_process");
 const fs = require("fs");
-const BASE = process.env.VQ_BASE || "/private/tmp/vqbase";
+/* ★ VQ_BASE は **他の 検査では 測る 先の URL**（2026-08-31 に ぶつかった）。
+   ここでは 起点の 作業木の 場所を 指す ので、URL が 入って いたら 無視する。
+   ぶつからない 名前（VQ_BASE_TREE）も 見る。 */
+const BASE = process.env.VQ_BASE_TREE
+  || (/^https?:/i.test(process.env.VQ_BASE || "") ? "" : process.env.VQ_BASE)
+  || "/private/tmp/vqbase";
 const HERE = __dirname;
 
 /* 画面を 触る 検査（サーバ不要）。重い ものは 外す。 */

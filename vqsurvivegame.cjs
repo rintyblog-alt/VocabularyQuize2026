@@ -290,7 +290,24 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
           .filter((b) => !b.classList.contains("vs-hide")).length,
         btnAll: r.querySelectorAll(".vs-res-btns .vs-btn").length,
         btnText: Array.from(r.querySelectorAll(".vs-res-btns .vs-btn"))
-          .filter((b) => !b.classList.contains("vs-hide")).map((b) => b.textContent)
+          .filter((b) => !b.classList.contains("vs-hide")).map((b) => b.textContent),
+        /* ★ 2026-08-31 に 足した もの。**出ている ことを 実際に 数える。** */
+        記章: (() => { const e = r.querySelector(".vs-res-med");
+          return e && !e.classList.contains("vs-hide") ? (e.textContent || "").slice(0, 30) : ""; })(),
+        記章の段: (() => { const e = r.querySelector(".vs-res-medal");
+          return e ? e.getAttribute("data-m") : ""; })(),
+        目標の数: r.querySelectorAll(".vs-res-medt").length,
+        育ち: (() => { const e = r.querySelector(".vs-res-grow");
+          return e && !e.classList.contains("vs-hide") ? (e.textContent || "").slice(0, 30) : ""; })(),
+        育ちの名: (() => { const e = r.querySelector(".vs-res-growname");
+          return e ? e.textContent : ""; })(),
+        XP: (() => { try { return Number(localStorage.getItem("vq.survive.xp.v1") || 0); } catch (e) { return -1; } })(),
+        /* ★ 濃い ボタン（is-mint）の 数。2026-08-31 に 足した。 */
+        濃: Array.from(r.querySelectorAll(".vs-res-btns .vs-btn"))
+          .filter((b) => !b.classList.contains("vs-hide") && b.classList.contains("is-mint"))
+          .map((b) => b.textContent),
+        記章の次: (() => { const e = r.querySelector(".vs-res-medgap");
+          return e ? e.textContent : ""; })()
       };
     });
     ok("結果が 出る", rs.on === true, rs);
@@ -298,11 +315,51 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
     ok("成績が 4 つ 出る（時間/クイズ/戻り/XP）", rs.stats === 4, rs.stats);
     ok("全員の 一覧が 出る", rs.rows >= 4, rs.rows);
     ok("もう一度 / ロビー / 戻る の 3 つ", rs.btns === 3, rs.btnText);
+    /* ★ 濃い ボタンは **1 つだけ**（2026-08-31）。
+       直す前は 「間違えた 単語で もう一度」と 「もう一度」が どちらも
+       濃い 緑で 並び、どちらを 押せば いいのか 分からなかった。 */
+    ok("★ 濃い ボタンは 1 つだけ", rs.濃.length === 1, rs.濃);
+    ok("記章の 次の 目標が 足し引きの 向きまで 書いてある",
+      rs.記章の次 === "" || /縮める/.test(rs.記章の次), rs.記章の次);
     /* ★ 数で 決め打ちしない。ボタンは これからも 増える。
        「その 場面で 出て いない ものが 隠れている」ことだけ 見る。 */
     ok("いま 使えない ボタンは 隠れている（次の ラウンドへ／間違えた 単語で）",
       rs.btnAll > rs.btns && !rs.btnText.some((t) => /次の ラウンドへ|間違えた 単語で/.test(t)),
       [rs.btnAll, rs.btns, rs.btnText]);
+    /* ── 2026-08-31 に 足した もの ── */
+    ok("★ 記章が 出る（コースに 対する 自分）", rs.記章.length > 0, rs.記章);
+    ok("目標タイムが 3 つ 出る（銅・銀・金）", rs.目標の数 === 3, rs.目標の数);
+    ok("★ 種の 育ちが 出る", rs.育ち.length > 0, rs.育ち);
+    ok("育ちの 段に 名前が ある", rs.育ちの名.length > 0, rs.育ちの名);
+    ok("★ XP が 端末に たまる（走る 理由が 積み上がる）", rs.XP > 0, rs.XP);
+
+    節("⑧-b 相手の 強さを えらべる（2026-08-31）");
+    /* ★ これまで **コースの 難しさから 自動で 決めて いた**だけ だった。
+       初めての 人は 難しい コースで 置いて いかれ、慣れた 人は 張り合いが 無い。 */
+    {
+      const r = await pg.evaluate(async () => {
+        const app = window.VocabuSurvive.__app;
+        const lb = app.shell.get("lobby");
+        const 前 = { 札: !!(lb.botLvRow && lb.botLvRow.children.length), 数: lb.botLvRow ? lb.botLvRow.children.length : 0 };
+        /* 「やさしい」を えらんで もう一度 走る */
+        lb.botLevel = "easy"; lb.botCount = 3; lb.mode = "race"; lb._save(); lb._render();
+        const 覚え = localStorage.getItem("vq.survive.pick.v1") || "";
+        const ms = app.shell.get("match");
+        ms.result.hide();
+        await app.startMatch({ courseId: "c01", mode: "race", bots: 3, botLevel: "easy",
+          myName: "あなた", myColor: 0, seed: 5, players: [], noHelp: true });
+        await new Promise((z) => setTimeout(z, 1200));
+        const ms2 = app.shell.get("match");
+        return Object.assign(前, {
+          覚え: /"botLevel":"easy"/.test(覚え),
+          強さ: (ms2.bots || []).map((b) => b.levelKey)
+        });
+      });
+      ok("相手の 強さの 札が 4 つ（おまかせ/やさしい/ふつう/つよい）", r.数 === 4, r);
+      ok("★ えらんだ 強さを 覚えている", r.覚え === true, r.覚え);
+      ok("★ えらんだ 強さが 実際の 相手に 効く",
+        r.強さ.length > 0 && r.強さ.every((x) => x === "easy"), r.強さ);
+    }
 
     節("②-b 音が 本当に 鳴っている");
     /* ★ 音源ファイルは 1 つも 置いていない（著作権と 落とす量）。
@@ -322,11 +379,19 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
         try { a[k] && a[k](); } catch (e) {}
       }
       await new Promise((x) => setTimeout(x, 300));
-      return { osc: window.__osc, buf: window.__buf,
+      const 前 = window.__osc;
+      /* ★ ごほうびの 音（2026-08-31）。**遅らせて 鳴らす**ので 長めに 待つ。 */
+      const ある = { medal: typeof a.medal === "function", grow: typeof a.grow === "function" };
+      try { a.medal && a.medal(3); } catch (e) {}
+      try { a.grow && a.grow(); } catch (e) {}
+      await new Promise((x) => setTimeout(x, 1500));
+      return { osc: window.__osc, buf: window.__buf, ごほうび: window.__osc - 前, ある,
         ctx: a.ctx ? a.ctx.state : "なし", 量: a.volume };
     });
     if (音.なし) console.log("     （音が 用意されていない）");
     else {
+      ok("★ 記章と 育ちの 音が ある", 音.ある.medal && 音.ある.grow, 音.ある);
+      ok("★ ごほうびの 音が 実際に 鳴る", 音.ごほうび >= 4, 音.ごほうび);
       console.log("     作った 音: 発振 " + 音.osc + " / 雑音 " + 音.buf + " / 器 " + 音.ctx);
       ok("音の 器が 動いている", 音.ctx === "running" || 音.ctx === "suspended", 音.ctx);
       ok("**その場で 音を 作っている**", (音.osc + 音.buf) >= 8, 音);

@@ -35,7 +35,13 @@ async function login(pg) {
     document.getElementById("authLoginSubmitBtn").click();
   });
   await pg.waitForFunction(() => document.body.getAttribute("data-ui-v2") === "1", { timeout: 30000 });
-  await pg.waitForTimeout(1800);
+  /* ★ vq2-app（3.3MB）は 起動が 終わってから 読む。決まった 秒数で 待つと
+     大きく なった とたんに 落ちる（2026-09-03 に 実際に 落ちた）。
+     **在るか どうかで 待つ。** */
+  await pg.waitForFunction(
+    () => !!(window.VQ2 && window.VQ2.mockBuilder && window.VQ2.validate
+             && window.VQ2.schema && window.VQ2.store),
+    { timeout: 60000 });
 }
 
 const BASE = [

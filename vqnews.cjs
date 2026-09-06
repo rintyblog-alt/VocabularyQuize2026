@@ -197,10 +197,20 @@ async function unread() {
     ok(dev.n + "：押すと本文が開く", await F(pg, ".art"));
     ok(dev.n + "：題が出る", (await T(pg, ".art h1")).length > 0, await T(pg, ".art h1"));
     ok(dev.n + "：本文が段落で出る", (await N(pg, ".body p")) >= 1);
+    /* ★ 2026-09-03 に 直した。
+       もとは「.body に img が 1 つも 無いこと」を 見ていたが、
+       2026-09-02 に **本文の 中に 画面の 写真を 置ける**ようにしたので、
+       この 見かたでは 正しい 記事が 落ちる。
+       本当に 守りたいのは「打ち込んだ ものが HTML として 動かない」こと:
+         ・script / iframe は 1 つも 作らない
+         ・絵は **自分のところの 道だけ**（外の URL を 読ませない） */
     ok(dev.n + "：本文は文字として出る（HTML にしない）",
        await pg.evaluate(() => {
          const b = document.getElementById("vqNews").shadowRoot.querySelector(".body");
-         return b ? !b.querySelector("script,iframe,img") : false;
+         if (!b) return false;
+         if (b.querySelector("script,iframe,object,embed")) return false;
+         return Array.from(b.querySelectorAll("img"))
+           .every((i) => /^\//.test(i.getAttribute("src") || ""));
        }));
     const link = await pg.evaluate(() => {
       const a = document.getElementById("vqNews").shadowRoot.querySelector(".lnk a");

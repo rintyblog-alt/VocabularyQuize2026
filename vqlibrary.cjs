@@ -136,7 +136,11 @@ const SR = () => {
     /* ── 2. カードの見た目 ── */
     const card = await pg.evaluate(() => {
       const sr = document.getElementById("vqScreens").shadowRoot;
-      const pc = sr.querySelector(".pc");
+      /* ★ 2026-09-03。ホームの 棚（.rail）も **同じ pcHTML** で 描くように
+         なったので、最初の .pc は 隠れている 棚の 札に なる（0x0）。
+         見たいのは **一覧の 札**なので、そちらを 先に 取る。 */
+      const pc = sr.querySelector('[data-sections] .pc') || sr.querySelector("[data-grid] .pc")
+        || sr.querySelector(".pc");
       if (!pc) return { none: true };
       const ban = pc.querySelector(".pc__ban");
       const ico = pc.querySelector(".pc__ico");
@@ -194,10 +198,17 @@ const SR = () => {
       box.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await pg.waitForTimeout(500);
+    /* ★ 2026-09-03。ホームの 棚も 同じ pcHTML で 描くので、
+       影の 根から .pc を 数えると **棚の 札まで 混ざる**（検索で 減らない）。
+       見るのは 一覧（[data-sections] / [data-grid]）の 中だけ。 */
     const searched = await pg.evaluate(() => {
       const sr = document.getElementById("vqScreens").shadowRoot;
-      return { n: sr.querySelectorAll(".pc").length,
-               titles: [].map.call(sr.querySelectorAll(".pc__title"), (x) => x.textContent.trim()) };
+      const 一覧 = sr.querySelectorAll('[data-sections] .pc, [data-grid] .pc');
+      return { n: 一覧.length,
+               titles: [].map.call(一覧, (x) => {
+                 const t = x.querySelector(".pc__title");
+                 return t ? t.textContent.trim() : "";
+               }) };
     });
     ok(d.n + "：検索で絞れる", searched.n >= 1 && searched.titles.every((t) => /数学/.test(t)),
        JSON.stringify(searched.titles));
@@ -247,10 +258,14 @@ const SR = () => {
     /* ── 4. お気に入り ── */
     const favd = await pg.evaluate(() => {
       const sr = document.getElementById("vqScreens").shadowRoot;
-      const f = sr.querySelector(".pc__fav");
+      const 選 = '[data-sections] .pc .pc__fav, [data-grid] .pc .pc__fav';
+      const f = sr.querySelector(選) || sr.querySelector(".pc__fav");
+      const id = f.getAttribute("data-fav");
       const before = f.classList.contains("on");
       f.click();
-      return { before, after: document.getElementById("vqScreens").shadowRoot.querySelector(".pc__fav").classList.contains("on") };
+      const g = document.getElementById("vqScreens").shadowRoot
+        .querySelector('.pc__fav[data-fav="' + id + '"]');
+      return { before, after: g ? g.classList.contains("on") : before, id: id };
     });
     await pg.waitForTimeout(400);
     ok(d.n + "：お気に入りを付け外しできる", favd.before !== favd.after);
@@ -258,8 +273,10 @@ const SR = () => {
     /* ── 5. 詳細 ── */
     await pg.evaluate(() => {
       const sr = document.getElementById("vqScreens").shadowRoot;
-      const pc = [].filter.call(sr.querySelectorAll(".pc"), (x) => /テスト用・英語/.test(x.textContent))[0]
-              || sr.querySelector(".pc");
+      /* ★ 一覧の 札から 選ぶ（棚の 札は 隠れていて 押せない）。 */
+      const 一覧 = sr.querySelectorAll('[data-sections] .pc, [data-grid] .pc');
+      const pc = [].filter.call(一覧, (x) => /テスト用・英語/.test(x.textContent))[0]
+              || 一覧[0] || sr.querySelector(".pc");
       pc.click();
     });
     await pg.waitForTimeout(1200);
@@ -314,8 +331,8 @@ const SR = () => {
       document.documentElement.setAttribute("data-theme-mode", "dark");
       await new Promise((r) => setTimeout(r, 500));
       const sr = document.getElementById("vqScreens").shadowRoot;
-      const pc = sr.querySelector(".pc");
-      const ban = sr.querySelector(".pc__ban");
+      const pc = sr.querySelector('[data-sections] .pc, [data-grid] .pc') || sr.querySelector(".pc");
+      const ban = pc ? pc.querySelector(".pc__ban") : sr.querySelector(".pc__ban");
       return { card: getComputedStyle(pc).backgroundColor, ban: getComputedStyle(ban).backgroundImage.slice(0, 60) };
     });
     const lum = (s) => { const m = String(s).match(/\d+/g); return m ? (+m[0] + +m[1] + +m[2]) / 3 : 255; };

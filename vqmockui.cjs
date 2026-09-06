@@ -40,7 +40,9 @@ async function login(pg) {
     document.getElementById("authLoginSubmitBtn").click();
   });
   await pg.waitForFunction(() => document.body.getAttribute("data-ui-v2") === "1", { timeout: 30000 });
-  await pg.waitForTimeout(1500);
+  /* ★ vq2-app（3.3MB）は 起動が 終わってから 読む。決まった 秒数で 待つと
+     大きく なった とたんに 落ちる（2026-09-03 実測）。在るかで 待つ。 */
+  await pg.waitForFunction(() => !!(window.VQ2 && window.VQ2.quickMock), { timeout: 60000 });
 }
 
 async function openQM(pg) {

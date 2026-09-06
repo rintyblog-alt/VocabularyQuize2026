@@ -78,7 +78,14 @@ async function 通す(br, 壊す, opt) {
     const r = document.querySelector("#appSurvivePage .vq-survive-host").shadowRoot;
     const b = r.querySelector(".vs-help .vs-btn"); if (b) b.click();
   });
+  /* ★ 固定の 待ちだと **合図の 終わりぎわ**で 数えて しまう ことが ある
+     （実測: 1 本目だけ 秒 = 0.0 で 落ちた。冷えた 1 回目は 立ち上がりが 遅い）。
+     時間では なく **走り出した ことが 分かるまで** 待つ。 */
   await 待つ(4200);
+  await pg.waitForFunction(() => {
+    const m = window.VocabuSurvive.__app.shell.get("match");
+    return !!(m && m.sim && m.sim.phase === "running" && m.sim.raceTime > 0.25);
+  }, null, { timeout: 20000, polling: 200 }).catch(() => {});
   const st = await pg.evaluate(() => {
     const m = window.VocabuSurvive.__app.shell.get("match");
     return {

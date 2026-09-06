@@ -273,9 +273,25 @@ const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
         /* ★ はみ出しは **窓を 閉じた ふだんの 姿**で 見る
            （窓は 画面の 真ん中に 出る ので 数え方が 変わる）。 */
         lb._openPane("");
+        /* ★ **横に 流せる 帯の 中は 数えない**（2026-08-31）。
+           スマホの 縦では 遊び方を 横 1 列に 並べて 指で 流す 作りに した。
+           流せる 中身は 定義から 枠の 外へ 出るので、ここで 数えると
+           「はみ出し 19 個」に なるが、**触れるので 困って いない**。
+           見たいのは 「切れて 触れない もの」なので、流せる 親を 持つ
+           ものは 外す。それ以外の はみ出しは これまでどおり 落とす。 */
+        const 流せる = (e) => {
+          let n = e.parentElement;
+          while (n && n.classList && !n.classList.contains("vs-lobby")) {
+            const cs = getComputedStyle(n);
+            if ((cs.overflowX === "auto" || cs.overflowX === "scroll") && n.scrollWidth > n.clientWidth + 2) return true;
+            n = n.parentElement;
+          }
+          return false;
+        };
         let はみ = 0;
         for (const e of r.querySelectorAll(".vs-lobby *")) {
           if (e.closest && e.closest(".vs-lb-pane")) continue;
+          if (流せる(e)) continue;
           const b = e.getBoundingClientRect();
           if (b.width > 0 && (b.right > rb.right + 2 || b.left < rb.left - 2)) はみ++;
         }

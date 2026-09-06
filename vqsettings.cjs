@@ -68,6 +68,11 @@ const pick = (pg, id, val) => pg.evaluate(([id, val]) => {
   if (sel) { sel.value = val; sel.dispatchEvent(new Event("change", { bubbles: true })); return "select"; }
   const seg = r.querySelector('.seg button[data-set="' + id + '"][data-val="' + val + '"]');
   if (seg) { seg.click(); return "seg"; }
+  /* ★ 2026-09-03。選ぶ ものは 落ちる 一覧 では なく **丸（ラジオ）**に なった
+     （訴え「設定の UI を 写真と ほぼ 同じに」）。ここを 足さないと
+     「色が 変わらない」と 出るが、変わらないのは **検査の 押しかた**の ほう。 */
+  const rr = r.querySelector('.rrow[data-set="' + id + '"][data-val="' + val + '"]');
+  if (rr) { rr.click(); return "radio"; }
   const sw = r.querySelector('.sw[data-set="' + id + '"]');
   if (sw) { const on = sw.classList.contains("on"); if (on !== !!val) sw.click(); return "toggle"; }
   const num = r.querySelector('.num__i[data-num="' + id + '"]');
@@ -144,9 +149,24 @@ const cssvar = (pg, n) => pg.evaluate((n) => getComputedStyle(document.documentE
   for (const g of ["display", "learn", "sound", "notif", "ai", "a11y", "data", "help", "about"]) {
     ok("束「" + g + "」が開ける", await nav(pg, g));
     await pg.waitForTimeout(120);
-    const rs = await rows(pg);
-    const want = await pg.evaluate((g) => window.__vqSet.inGroup(g).length, g);
-    ok("束「" + g + "」の行が定義表と同じ数", rs.length === want, rs.length + " vs " + want);
+    /* ★ 2026-09-03。選ぶ ものは 1 つの 設定が **丸の 行 N 本**に なるので、
+       行を 数えても 定義の 数には ならない。見たいのは
+       「定義した 設定が ぜんぶ 画面に 出ているか」なので **id で 数える**。 */
+    const 出 = await pg.evaluate(() => {
+      const r = document.getElementById("vqSettings").shadowRoot;
+      const 表 = Object.create(null);
+      r.querySelectorAll(".body [data-set],.body [data-num],.body [data-action],.body [data-run],.body [data-doc],.body [data-push]")
+        .forEach((el) => {
+          const id = el.getAttribute("data-set") || el.getAttribute("data-num") || "";
+          if (id) 表[id] = 1;
+        });
+      return Object.keys(表);
+    });
+    const 欲 = await pg.evaluate((g) => window.__vqSet.inGroup(g)
+      .filter((s) => s.type !== "action" && s.type !== "info").map((s) => s.id), g);
+    const 欠 = 欲.filter((id) => 出.indexOf(id) < 0);
+    ok("束「" + g + "」の設定がぜんぶ画面に出る", 欠.length === 0,
+      欠.length ? 欠.join(",") : 出.length + " / " + 欲.length);
   }
 
   /* ── ③ 触ると本当に効く ─────────────────────────────────── */

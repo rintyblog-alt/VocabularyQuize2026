@@ -24,6 +24,11 @@
    使い方: VQ_BASE=… node vqbottom.cjs
    ══════════════════════════════════════════════════════════════════════ */
 const { chromium } = require("playwright");
+/* 島と 下端の すきま。#vqMobBar の SAFE_EXTRA と そろえる */
+const SAFE_EXTRA = (() => {
+  const m = /var SAFE_EXTRA = (\d+);/.exec(require("fs").readFileSync(require("path").join(__dirname, "client", "index.html"), "utf8"));
+  return m ? parseInt(m[1], 10) : 8;
+})();
 const BASE = process.env.VQ_BASE || "http://127.0.0.1:8791";
 if (!/127\.0\.0\.1|localhost|-dev\./.test(BASE)) { console.error("本番では実行しません。"); process.exit(2); }
 
@@ -174,16 +179,22 @@ async function boot(br, w, h) {
         アイコンの下: ir ? Math.round(window.innerHeight - ir.bottom) : null,
         varH: Math.round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--vq-mobbar-h")) || 0),
         mainPad: Math.round(parseFloat(getComputedStyle(document.querySelector("main")).paddingBottom) || 0),
-        下端にあるもの: (() => { const e = document.elementFromPoint(195, window.innerHeight - 2); return e ? (e.id || e.tagName) : ""; })()
+        下端にあるもの: (() => { const e = document.elementFromPoint(195, window.innerHeight - 2); return e ? (e.id || e.tagName) : ""; })(),
+        器の当たり: (() => { const b = document.getElementById("vqMobBar"); return b ? getComputedStyle(b).pointerEvents : ""; })()
       };
     });
     console.log("   " + JSON.stringify(m));
     ok("★帯が画面のいちばん下まで届く", m.すきま === 0, m);
-    ok("★画面の最下点は帯が占めている", m.下端にあるもの === "vqMobBar", m.下端にあるもの);
-    /* 34px の安全領域に 12px を足すと 46px の空白ができ、アイコンだけ浮いて見える。
-       「大きいほう」を取れば 34px（ホームバーの帯ぶん）で収まる。 */
-    ok("★アイコンの下の空きが安全領域ぶんだけ（足し算していない）",
-      m.アイコンの下 !== null && Math.abs(m.アイコンの下 - 34) <= 1, { 空き: m.アイコンの下 });
+    /* ★ 2026-09-03 から **浮いた 島**。器は 画面の 下端まで あるが
+       素通し（pointer-events:none）なので、最下点に 出るのは その 下に
+       ある もの。器が 最下点を 取っていない ことは 崩れでは ない。
+       見るべきは「器が 下端まで 届いている」（すきま === 0）の ほう。 */
+    ok("★器は 素通り（島だけが 押せる）", m.器の当たり === "none", m.器の当たり);
+    /* 島は わざと 浮かせる。空きは 安全領域 ＋ すきま(SAFE_EXTRA)。
+       ブラウザは 安全領域 0 なので すきま ぶん だけに なる。 */
+    ok("★島の 下の 空きが すきま ＋ 安全領域",
+      m.アイコンの下 !== null && Math.abs(m.アイコンの下 - (SAFE_EXTRA + 4)) <= 2,
+      { 空き: m.アイコンの下, 期待: SAFE_EXTRA + 4 });
     ok("配る高さも安全領域を含む", Math.abs(m.varH - m.barH) <= 1, { varH: m.varH, barH: m.barH });
     ok("main の余白も追従する", Math.abs(m.mainPad - m.barH) <= 1, { mainPad: m.mainPad, barH: m.barH });
     await pg.context().close();

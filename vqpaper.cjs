@@ -187,7 +187,14 @@ function 材料() {
   見(待 === 1, "確認待ちの数が合う", "確認待ち " + 待);
 
   見(html.includes("採点結果"), "合計の枠が出る");
-  見(/gsum-total">18/.test(html), "総合点が出る（18）");
+  /* ★ 2026-09-03・訴え「素点は赤」で **素点 の 札**を 足したので、
+     数の 直前に <span class="gsum-lb">素点</span> が 入る。
+     見るのは「素点の 欄に 18 が 出ているか」。 */
+  見(/gsum-total"[^>]*>(?:<span class="gsum-lb">素点<\/span>)?18/.test(html), "総合点が出る（18）");
+  見(/gsum-lb">素点</.test(html), "★ 素点の 札が 付く");
+  見(/gsum-total, \.gsum-k \{ color: #C0392B/.test(html) || /gsum-k/.test(html),
+     "★ 知識・技能は 赤の 組（gsum-k）");
+  見(/gsum-th/.test(html), "★ 思考・判断・表現は 青の 組（gsum-th）");
   見(html.includes("/ 35"), "満点が出る（35）");
   見(html.includes("知識・技能"), "観点「知識・技能」が出る");
   見(html.includes("思考・判断・表現"), "観点「思考・判断・表現」が出る");

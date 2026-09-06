@@ -55,11 +55,71 @@ for (const f of 全部) {
 if (文法NG) { console.error("\n" + 文法NG + " 本 落ちました。束ねません。"); process.exit(1); }
 console.log("文法 OK: " + 全部.length + " 本");
 
+/* ══ ②' 見た目の 文（CSS / GLSL）の 中の 注釈を 落とす ══════════════
+   ★ esbuild の --minify は **文字列の 中の 注釈は 落とさない**。
+     この 作りは 見た目を `...` の 中に CSS で 書き、GLSL も 同じ。
+     つまり 書いた 説明が **そのまま 配られて いた**（実測 3 万字）。
+     説明は 作る 人の ため の ものなので、配る ものからは 外す。
+   ★ 安全の ため に 次を 守る:
+     ・触るのは `export const 〇〇_CSS = ` と 〇〇_VS / 〇〇_FS の 中だけ
+     ・注釈の 中に ` や ${ が あれば **触らない**（式を 壊さない）
+     ・落としても 文法が 通る ことを ①で もう一度 見る
+   ★ ここを 直したら 必ず 目でも 見る（node vqsurviveshot.cjs）。 */
+function 説明を外す(src) {
+  const 印 = /export const ([A-Za-z0-9_]*(?:CSS|_VS|_FS))\s*=\s*`/g;
+  let out = "", 前 = 0, m;
+  while ((m = 印.exec(src))) {
+    const 始 = m.index + m[0].length;
+    /* 閉じる ` を 探す。\` は 飛ばす。 */
+    let i = 始;
+    while (i < src.length) {
+      if (src[i] === "\\") { i += 2; continue; }
+      if (src[i] === "`") break;
+      i++;
+    }
+    if (i >= src.length) break;
+    const 中 = src.slice(始, i);
+    let 削 = 中.replace(/\/\*[\s\S]*?\*\//g, (c) => (c.indexOf("`") >= 0 || c.indexOf("${") >= 0) ? c : "");
+    /* ★ 続きの 空白を 1 つに 詰める（CSS / GLSL は 空白の 数を 見ない）。
+       ★ 危ない ところは 触らない:
+         ・${...} の 中（JS の 式）
+         ・"..." '...' の 中（content:"▸" など）
+         ・GLSL の // から 行末まで（改行を 消すと 次の 行まで 注釈に なる）
+       GLSL には // の 注釈が ある ので、改行は **残す**。
+       消すのは 「行の 頭の 字下げ」と 「行末の 空白」だけに する。 */
+    削 = 削.split("\n").map((ln) => ln.replace(/^[ \t]+/, "").replace(/[ \t]+$/, "")).join("\n")
+           .replace(/\n{2,}/g, "\n");
+    out += src.slice(前, 始) + 削;
+    前 = i;
+    印.lastIndex = i;
+  }
+  out += src.slice(前);
+  return out;
+}
+
+const 掃除場 = fs.mkdtempSync(path.join(require("os").tmpdir(), "vq-survive-src-"));
+(function 写す(から, へ) {
+  fs.mkdirSync(へ, { recursive: true });
+  for (const f of fs.readdirSync(から)) {
+    const a = path.join(から, f), b = path.join(へ, f);
+    const st = fs.statSync(a);
+    if (st.isDirectory()) 写す(a, b);
+    else if (f.endsWith(".js")) fs.writeFileSync(b, 説明を外す(fs.readFileSync(a, "utf8")));
+    else fs.copyFileSync(a, b);
+  }
+})(path.join(根, "client/assets/vocabu-survive"), path.join(掃除場, "vocabu-survive"));
+const 入口2 = path.join(掃除場, "vocabu-survive/index.js");
+
 /* ② 束ねる */
 const tmp = path.join(require("os").tmpdir(), "vq-survive-" + process.pid + ".js");
 try {
-  execFileSync("npx", ["esbuild", 入口,
+  execFileSync("npx", ["esbuild", 入口2,
     "--bundle", "--minify", "--format=iife", "--target=es2020",
+    /* ★ 既定の 文字の 出し方は ascii で、日本語が すべて \uXXXX に なる。
+       1 字 3 バイト → **6 バイト**。画面の 文字も 世界観の 文章も 全部 倍。
+       実測: これを 付けるだけで 束が 427KB → 380KB（1 割 以上）。
+       出す ときの 型は application/javascript;charset=utf-8 なので 安全。 */
+    "--charset=utf8",
     /* ★ charset は **既定（ascii）の まま**に する。
        utf8 に すると 生の 大きさは 219→212KB に 減るが、
        **圧縮後は 69.5→71.0KB と 逆に 増えた**（実測）。

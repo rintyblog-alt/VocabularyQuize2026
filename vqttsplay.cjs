@@ -122,6 +122,36 @@ try{localStorage.setItem("app.auth.token.v1","dummy-token-0000000000000000000000
     見("切ったときも **固まらない**",切.固まった!==true);
     見("切ったら Apple の声を 使わない",(切.apple||[]).length===0,JSON.stringify(切.apple));
     見("切ったときも 理由は 出す",/枠を使い切りました/.test(切.reason),切.reason);
+
+    /* ③-b ★ 何も 決めていない ときの **既定**（2026-09-02 に 切へ）。
+       Rinty さん:「システムの TTS だけは やめてね。
+       普通に あの 男女の ちゃんとした 声が 鳴るように」。 */
+    const 既定=await p.evaluate(async()=>{
+      delete window.__vqSet;                      /* 何も 決めていない 状態 */
+      window.__spoke=[];
+      const 待つ=(pr,ms)=>Promise.race([pr,new Promise(r=>setTimeout(()=>r({ok:false,固まった:true}),ms))]);
+      const r=await 待つ(window.VQ2.tts.play("既定の ときの 検査。",{}),12000);
+      return {ok:!!r.ok,source:r.source||"",reason:r.reason||"",apple:window.__spoke.slice()};
+    });
+    見("★★ **既定で 端末の声を 使わない**",(既定.apple||[]).length===0&&既定.source!=="local",
+       JSON.stringify({source:既定.source,apple:既定.apple}));
+    見("★ 既定でも 理由は 出す",/枠を使い切りました/.test(既定.reason),既定.reason);
+
+    /* ③-c ★ **リスニングは 設定に かかわらず 落とさない**。
+       声そのものが 問題の 中身（男女の 会話・速さ）なので、
+       Apple / Google の 声に すり替わると 別の 問題に なる。 */
+    const 聞=await p.evaluate(async()=>{
+      window.__vqSet={get:function(k){return k==="voice.deviceFallback"?true:undefined;}};  /* 入 に しても */
+      window.__spoke=[];
+      const 待つ=(pr,ms)=>Promise.race([pr,new Promise(r=>setTimeout(()=>r({ok:false,固まった:true}),ms))]);
+      const r=await 待つ(window.VQ2.tts.playQuestion(
+        {script:"A: Good morning. B: Good morning."},{}),12000);
+      return {ok:!!r.ok,source:r.source||"",reason:r.reason||"",apple:window.__spoke.slice()};
+    });
+    見("★★ **リスニングは 端末の声へ 落とさない**（設定が 入でも）",
+       (聞.apple||[]).length===0&&聞.source!=="local",
+       JSON.stringify({source:聞.source,apple:聞.apple}));
+    見("★ リスニングでも 理由は 出す",/枠を使い切りました|用意できません/.test(聞.reason),聞.reason);
     await p.close();
 
     /* ④ **iPhone で 実際に 起きる 形**を 作る:
