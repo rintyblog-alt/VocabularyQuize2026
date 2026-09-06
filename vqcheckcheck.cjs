@@ -128,6 +128,40 @@ const 死んだ場所 = [
   見る("★ 消えた 一時の 場所を 既定に して いない", 悪い.length === 0, 悪い);
 }
 
+/* ── ⑥ 地雷の 関門が 生きて いるか ────────────────────────────────────
+   client/v2/build-v2.mjs を そのまま 走らせると、古い client/v2/** で
+   配布物を 上書きし **130万文字ぶんの 作業が まるごと 消える**。
+   関門は 2026-08-30 に 置いた。**黙って 外されて いない**ことを 見張る。
+   ついでに、client/index.html を 書き換える 道具が ほかに 増えて いないかも。 */
+{
+  const 道 = path.join(根, "client", "v2", "build-v2.mjs");
+  if (!fs.existsSync(道)) {
+    見る("★ 地雷の 関門（build-v2.mjs）", true, "道具が 無いので 地雷も 無い");
+  } else {
+    const s = fs.readFileSync(道, "utf8");
+    見る("★ build-v2.mjs の 関門が 生きて いる（VQ2_ALLOW_STALE_BUILD）",
+      /VQ2_ALLOW_STALE_BUILD/.test(s) && /process\.exit\(\s*2\s*\)/.test(s));
+  }
+  /*  client/index.html を 書き換える 道具は build-v2.mjs だけの はず。 */
+  const 書く人 = [];
+  const 掃く = (d) => {
+    for (const f of fs.readdirSync(d, { withFileTypes: true })) {
+      if (/^(node_modules|\.git|_backup|_wip|_bk|exports|test-results)/.test(f.name)) continue;
+      const p2 = path.join(d, f.name);
+      if (f.isDirectory()) { 掃く(p2); continue; }
+      if (!/\.(mjs|cjs|js)$/.test(f.name)) continue;
+      let t = ""; try { t = fs.readFileSync(p2, "utf8"); } catch { continue; }
+      if (/writeFileSync\([^)]{0,40}index\.html|writeFileSync\(\s*TARGET/.test(t)) {
+        書く人.push(path.relative(根, p2));
+      }
+    }
+  };
+  掃く(根);
+  const 許す = new Set(["client/v2/build-v2.mjs"]);
+  const 増えた = 書く人.filter(x => !許す.has(x));
+  見る("★ client/index.html を 書き換える 道具が 増えて いない", 増えた.length === 0, 増えた);
+}
+
 console.log("\n══ まとめ ══\n  合格 " + 合 + " / 不合格 " + 否);
 if (落ち.length) console.log("  落ちた: " + 落ち.join(" / "));
 console.log("");
