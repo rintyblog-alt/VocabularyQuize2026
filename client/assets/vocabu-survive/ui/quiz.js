@@ -141,10 +141,16 @@ export class QuizPanel {
 }
 
 export const QUIZ_CSS = `
+/* ★ 指の 操作盤の 上に 置く（2026-08-31・実写で 気づいた）。
+   「走りながら 答える」が この 遊びの 芯なのに、
+   窓が 画面の 下に 出て **跳ぶ ボタンと 棒を 覆って いた**。
+   答えている 間 走れないなら、止めているのと 同じ。
+   → 指の 操作盤が 出ている ときは 下を 空ける（--vs-quiz-lift）。 */
 .vs-quiz{
   position:absolute; left:0; right:0; bottom:0; z-index:7;
+  --vs-quiz-lift: 0px;
   display:flex; justify-content:center;
-  padding: 0 calc(14px + var(--vs-safe-r)) calc(14px + var(--vs-safe-b)) calc(14px + var(--vs-safe-l));
+  padding: 0 calc(14px + var(--vs-safe-r)) calc(14px + var(--vs-safe-b) + var(--vs-quiz-lift)) calc(14px + var(--vs-safe-l));
   opacity:0; transform:translateY(18px); pointer-events:none;
   transition: opacity .22s ease, transform .22s cubic-bezier(.2,1,.3,1);
 }
@@ -207,5 +213,26 @@ export const QUIZ_CSS = `
 @media (max-height: 460px){
   .vs-quiz-grid{ grid-template-columns:1fr 1fr; gap:6px; }
   .vs-quiz-opt{ min-height:44px; font-size:13px; }
+}
+
+/* 指の 操作盤が 出ている ときだけ 持ち上げる。
+   ・縦   … 跳ぶ ボタン（96px）＋ 余白。棒は 左下に 出るので そこも 空ける
+   ・横   … 画面が 低い ので 少しだけ。代わりに 幅を 狭めて 右下を 空ける */
+.vs-touch[data-on="1"] ~ .vs-quiz{ --vs-quiz-lift: 132px; }
+/* 横向きは 高さが 無い。**4 つを 横 1 列**に して 板を 低く する
+   （2 段だと 画面の 半分を 食い、自分が 見えなく なる。実写で 確認）。 */
+@media (max-height: 520px){
+  .vs-touch[data-on="1"] ~ .vs-quiz{ --vs-quiz-lift: 6px; }
+  .vs-touch[data-on="1"] ~ .vs-quiz .vs-quiz-card{ width:calc(100% - 176px); margin-right:auto; margin-left:0; }
+  .vs-touch[data-on="1"] ~ .vs-quiz .vs-quiz-grid{ grid-template-columns:repeat(4, 1fr); gap:6px; margin-top:7px; }
+  .vs-touch[data-on="1"] ~ .vs-quiz .vs-quiz-opt{ min-height:44px; font-size:12.5px; padding:7px 9px; gap:6px; }
+  .vs-touch[data-on="1"] ~ .vs-quiz .vs-quiz-key{ width:18px; height:18px; font-size:10px; }
+  .vs-touch[data-on="1"] ~ .vs-quiz .vs-quiz-card{ padding:9px 11px 10px; }
+  .vs-touch[data-on="1"] ~ .vs-quiz .vs-quiz-q{ font-size:16px; }
+}
+@media (max-width: 560px){
+  .vs-quiz-opt{ min-height:52px; font-size:14px; }
+  .vs-quiz-grid{ grid-template-columns:1fr 1fr; gap:7px; }
+  .vs-quiz-card{ padding:11px 12px 12px; }
 }
 `;

@@ -63,6 +63,30 @@ export function createContext(canvas, opt = {}) {
   return wrapGL1(gl);
 }
 
+/**
+ * 画素の 傾き（dFdx/dFdy）が 使えるか を 見て、shader の 頭に 付ける 文字を 返す。
+ *
+ * ★ ここで 2 回 はまった（2026-08-31・実測）:
+ *   ① WebGL2 では OES_standard_derivatives は getExtension で **null** を 返す。
+ *      「無い」と 判断して #extension を 外すと、#ifdef が 立たず
+ *      **静かに 効かなく なる**（丸めた 法線の ままに 戻る）。
+ *   ② かと いって WebGL2 でも、shader が ESSL1（#version を 書かない）なら
+ *      dFdx は **拡張を 立てないと 呼べない**
+ *      （'dFdx' : no matching overloaded function found）。
+ *   → 正解は 「WebGL2 でも #extension を 書く」。
+ *     本当に 使えるかは **作ってみて 通ったか**で 決める（renderer 側）。
+ *     #extension は ふつうの 文より 前に 置く。ここで まとめて 作る。
+ */
+export const DERIV_HEADER =
+  "#extension GL_OES_standard_derivatives : enable\n#define VS_DERIV 1\n";
+
+export function derivHeader(gl) {
+  if (gl.__isGL2) return DERIV_HEADER;
+  let ok = false;
+  try { ok = !!gl.getExtension("OES_standard_derivatives"); } catch (e) { ok = false; }
+  return ok ? DERIV_HEADER : "";
+}
+
 /* ── shader ───────────────────────────────────────────────────────────── */
 
 function compile(gl, type, src, name) {

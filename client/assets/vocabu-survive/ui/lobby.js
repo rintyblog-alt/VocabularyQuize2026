@@ -13,19 +13,24 @@
    1 人でも 遊べる（要件）。相手が いない ときは ボットが 入る。
    ══════════════════════════════════════════════════════════════════════════ */
 import { h, svg } from "./shell.js";
-import { listLocalPresets, listSharedPresets } from "../data/questions.js";
+import { listLocalPresets, listSharedPresets, BANK_SIZE } from "../data/questions.js";
 import { PALETTE, BEAN_COLORS, beanByIndex } from "./theme.js";
 import { COURSES, tierOf, TIERS, dailyCourseIndex, todayKey } from "../data/courses.js";
 import { CUP_ROUNDS } from "../game/sim.js";
 import { clearGhost } from "../data/ghost.js";
 import { listMyCourses, getMyCourse, toDef, exportCode, importCode } from "../data/mycourse.js";
 import { themeOf } from "../game/theme3d.js";
+import { worldName } from "../rpg/world/terrain.js";
 import { HATS, HAT_COLORS } from "../game/bean.js";
 import { LobbyStage } from "./lobbystage.js";
 import { SurviveNet, createRoom, roomInfo } from "../net/client.js";
 import { buildCourse } from "../game/course.js";
 import { drawCourseMap } from "./coursemap.js";
 import { HelpCard } from "./hud.js";
+import { 没入したいか, 没入の好み } from "../boot/loading.js";
+import * as Immersive from "./immersive.js";
+import { regionOf, GATE_NAME, hatOpen, hatNeed, nextReward, growthOf, totalXP, localXP,
+         medalOf, nextMedal, targetsOf, bestOf, MEDALS, streak } from "../data/world.js";
 
 const MODES = [
   { key: "race", label: "レース", desc: "先に ゴールした 人が 勝ち", ready: true },
@@ -53,6 +58,10 @@ export class LobbyScreen {
 
     this.courseIndex = 0;
     this.mode = "race";
+    this.遊び = "run";
+    /* さがす（探索）の 支度。種＝世界の 番号。0 は「まだ 選んで いない」 */
+    this.rpgSeed = 0;
+    this.rpgList = null;          /* null＝まだ 読んで いない */
     this.ready = false;
     this.party = [];        /* {id,name,colorIndex,ready,online} */
     this.friends = [];
@@ -66,6 +75,11 @@ export class LobbyScreen {
     this.hat = "none";
     this.hatColor = 0;
     this.recScope = "all";   /* 記録の 範囲: all / week / friends */
+    /* ★ 相手の 人数と 強さは **_restore の 前**に 決める。
+       _build の 中で 初期値を 入れて いた ので、覚えて いた ものを
+       上書きして いた（順番の 事故）。 */
+    this.botCount = 3;
+    this.botLevel = "";      /* "" = おまかせ（コースの 難しさから 自動） */
 
     this._restore();
     this.el = this._build();
@@ -80,6 +94,10 @@ export class LobbyScreen {
       if (raw.recScope === "week" || raw.recScope === "friends" || raw.recScope === "all") this.recScope = raw.recScope;
       if (raw.hat) this.hat = String(raw.hat);
       if (typeof raw.hatColor === "number") this.hatColor = raw.hatColor % HAT_COLORS.length;
+      if (typeof raw.bots === "number") this.botCount = Math.max(0, Math.min(7, raw.bots | 0));
+      if (["", "easy", "normal", "hard"].indexOf(String(raw.botLevel || "")) >= 0) this.botLevel = String(raw.botLevel || "");
+      if (raw.play === "rpg" || raw.play === "run") this.遊び = raw.play;
+      if (typeof raw.rpgSeed === "number") this.rpgSeed = raw.rpgSeed | 0;
       if (raw.qz && typeof raw.qz === "object") {
         this.qz = {
           kind: String(raw.qz.kind || ""), id: String(raw.qz.id || ""),
@@ -103,7 +121,9 @@ export class LobbyScreen {
       localStorage.setItem(PICK_KEY, JSON.stringify({
         course: this.courseIndex, mode: this.mode, color: this.me.colorIndex,
         volume: this.volume, music: this.musicOn, invert: this.invertY, qz: this.qz,
-        hat: this.hat, hatColor: this.hatColor, recScope: this.recScope
+        hat: this.hat, hatColor: this.hatColor, recScope: this.recScope,
+        bots: this.botCount, botLevel: this.botLevel || "",
+        play: this.遊び, rpgSeed: this.rpgSeed
       }));
     } catch (e) {}
   }
@@ -301,12 +321,16 @@ export class LobbyScreen {
          かぶりものは だぶっても かまわない（誰が 誰かは 体の 色で 分かる）。 */
     this.hatRow = h("div", { class: "vs-lb-hats", role: "radiogroup", "aria-label": "かぶりもの" });
     for (const ht of HATS) {
+      /* ★ まだ 手に 入って いない ものも **並べて 見せる**（2026-08-31）。
+         隠すと 「増える」ことが 分からず、走る 理由に ならない。 */
       this.hatRow.appendChild(h("button", {
         class: "vs-lb-hat", type: "button", role: "radio", "data-hat": ht.key,
         "aria-label": ht.name, title: ht.name,
         onclick: () => this._setHat(ht.key)
       }, ht.name));
     }
+    /* 次の ごほうび（育ちの 一言） */
+    this.rewardEl = h("p", { class: "vs-lb-reward" });
     this.hatColorRow = h("div", { class: "vs-lb-hatcolors", role: "radiogroup", "aria-label": "かぶりものの 色" });
     for (let i = 0; i < HAT_COLORS.length; i++) {
       const c = HAT_COLORS[i];
@@ -323,7 +347,7 @@ export class LobbyScreen {
     this.hatName = h("b", { class: "vs-lb-hat-nm", text: "なし" });
     this.hatEl = h("details", { class: "vs-lb-hatbox" },
       h("summary", null, h("span", { text: "かぶりもの: " }), this.hatName),
-      h("div", { class: "vs-lb-qz-body" }, this.hatRow,
+      h("div", { class: "vs-lb-qz-body" }, this.hatRow, this.rewardEl,
         h("div", { class: "vs-lb-lab", text: "色" }), this.hatColorRow,
         h("p", { class: "vs-lb-note", text: "見た目だけです。速さは 変わりません。" })));
 
@@ -339,10 +363,17 @@ export class LobbyScreen {
     /* コース */
     this.tierRow = h("div", { class: "vs-lb-tiers", role: "tablist", "aria-label": "難しさ" });
     for (const t of TIERS) {
-      this.tierRow.appendChild(h("button", {
+      /* ★ 地方ごとの 進み（2026-08-31）。
+         「次は どこへ 行けば いいか」が 一目で 分かる ように、
+         その 地方で **記章を いくつ 取ったか**を 札に 出す。
+         取って いなければ 数を 出さない（0/5 は 気持ちが 下がる）。 */
+      const 数 = h("span", { class: "vs-lb-tier-n vs-mono" });
+      const b = h("button", {
         class: "vs-lb-tier", type: "button", role: "tab", "data-tier": t.key,
         onclick: () => this._jumpTier(t)
-      }, t.label));
+      }, h("span", { text: regionOf(t.key).short }), 数);
+      b.__n = 数; b.__tier = t;
+      this.tierRow.appendChild(b);
     }
     this.courseList = h("div", { class: "vs-lb-courses", role: "listbox", "aria-label": "コース" });
     this.courseCards = [];
@@ -382,6 +413,9 @@ export class LobbyScreen {
          h("span", { class: "vs-lb-mode-d", text: m.ready ? m.desc : "準備中" }));
       this.modeRow.appendChild(b);
     }
+
+    /* さがす の 世界の 一覧 */
+    this.rpgEl = h("div", { class: "vs-lb-worlds" });
 
     /* 集まっている 人 */
     this.partyEl = h("div", { class: "vs-lb-party" });
@@ -452,11 +486,24 @@ export class LobbyScreen {
       class: "vs-btn is-sm is-ghost", type: "button",
       onclick: () => this._clearGhost()
     }, "この コースの 記録を 消す");
-    this.settingsEl = h("details", { class: "vs-lb-settings" },
-      h("summary", null, "設定（画質・音）"),
+    /* ★ 全画面の 好み（2026-08-31）。
+       **できるかどうかを その場で 出す。** 端末に よっては 本当の 全画面が
+       無い（iPhone の Safari）ので、「効くふり」を しない。 */
+    this.fsBtn = h("button", {
+      class: "vs-lb-toggle", type: "button", role: "switch",
+      onclick: () => { 没入の好み(!没入したいか()); this._render(); }
+    }, "全画面で 開く");
+    this.fsNote = h("p", { class: "vs-lb-note" });
+
+    /* ★ 窓を 開いた のに **たたんだ 見出しが 1 行 だけ** 出ていた
+       （実写で 確認）。窓の 中では 開いた ままに する。 */
+    this.settingsEl = h("div", { class: "vs-lb-settings is-open" },
       h("div", { class: "vs-lb-set-body" },
+        h("div", { class: "vs-lb-lab", text: "画面" }),
+        h("div", { class: "vs-lb-togglerow" }, this.fsBtn), this.fsNote,
         h("div", { class: "vs-lb-lab", text: "画質" }), this.qualityRow,
         h("div", { class: "vs-lb-lab", text: "音の 大きさ" }), this.volInput,
+        h("div", { class: "vs-lb-lab", text: "その他" }),
         h("div", { class: "vs-lb-togglerow" }, this.musicBtn, this.invertBtn, this.ghostBtn, this.calmBtn),
         h("div", { class: "vs-lb-togglerow" }, this.ghostClearBtn),
         h("p", { class: "vs-lb-note", text: "画質は 次の 試合から 変わります。" }),
@@ -476,12 +523,23 @@ export class LobbyScreen {
       h("div", { class: "vs-lb-qz-body" }, this.qzList, this.qzNote));
 
     this.botRow = h("div", { class: "vs-lb-bots" });
-    this.botCount = 3;
     for (const n of [0, 1, 3, 5, 7]) {
       this.botRow.appendChild(h("button", {
         class: "vs-lb-bot", type: "button", "data-n": String(n),
-        onclick: () => { this.botCount = n; this._render(); }
+        onclick: () => { this.botCount = n; this._save(); this._render(); }
       }, n === 0 ? "1人で" : (n + 1) + "人"));
+    }
+    /* ★ 相手の 強さ（2026-08-31）。
+       これまで **コースの 難しさから 自動で 決めて いた**だけで、
+       選べなかった。初めての 人は 難しい コースで 置いて いかれ、
+       慣れた 人は やさしい コースで 張り合いが 無い。
+       ★ 既定は 「おまかせ」（これまでと 同じ 動き）。 */
+    this.botLvRow = h("div", { class: "vs-lb-bots", role: "radiogroup", "aria-label": "相手の 強さ" });
+    for (const [k, 名] of [["", "おまかせ"], ["easy", "やさしい"], ["normal", "ふつう"], ["hard", "つよい"]]) {
+      this.botLvRow.appendChild(h("button", {
+        class: "vs-lb-bot", type: "button", role: "radio", "data-lv": k,
+        onclick: () => { this.botLevel = k; this._save(); this._render(); }
+      }, 名));
     }
 
     /* いま 何で 走るか（コース・遊び方）。PLAY の すぐ 上に 出す。 */
@@ -520,6 +578,7 @@ export class LobbyScreen {
 
     this.tileCourse = 窓釦("course", "コース", "えらぶ");
     this.tileLook = 窓釦("look", "きせかえ", "色 と かぶりもの");
+    this.tileLook.classList.add("is-keep");
     this.tileParty = 窓釦("party", "みんなで", "あいことば");
     this.tileMine = 窓釦("mine", "自分の コース", "作る・走る");
 
@@ -548,21 +607,58 @@ export class LobbyScreen {
           }, "⚙"),
           h("button", { class: "vs-lb-x", type: "button", "aria-label": "閉じる", onclick: () => this.onExit() }, "✕"))),
 
+      /* ★ 探索モードへの 入口（2026-09-02）。
+         走る 遊びとは **別の 遊び**なので、遊び方の 並びには 入れない。
+         「もう 1 つの 入口」として 目立つ ところに 置く。 */
+      /* ★ 遊びの 入口（2026-09-02 作り直し）。
+         走る 遊びと 探索は **別もの**。上に 2 枚 並べて、
+         「いま どちらを 遊ぶか」を いちばん 先に 決めさせる。
+         前は 遊び方の 並びに 混ぜて いて、探索が 見つからなかった。 */
+      h("div", { class: "vs-lb-ways", role: "group", "aria-label": "遊びをえらぶ" },
+        h("button", {
+          class: "vs-lb-way is-run" + (this.遊び === "run" ? " is-on" : ""), type: "button",
+          onclick: () => { this.遊び = "run"; this._save(); this._render(); }
+        },
+          h("span", { class: "vs-lb-way-t", text: "はしる" }),
+          h("span", { class: "vs-lb-way-d", text: "コースを走って、門の問題に答える" })),
+        h("button", {
+          class: "vs-lb-way is-rpg" + (this.遊び === "rpg" ? " is-on" : ""), type: "button",
+          onclick: () => { this.遊び = "rpg"; this._save(); this._render(); this._世界を読む(); }
+        },
+          h("span", { class: "vs-lb-way-k", text: "NEW" }),
+          h("span", { class: "vs-lb-way-t", text: "さがす" }),
+          h("span", { class: "vs-lb-way-d", text: "はてしない世界。集める・作る・建てる・戦う" }))),
+
       /* 左下 … これまでの 成績 */
       h("section", { class: "vs-lb-corner is-bl", "data-pane": "stats", "aria-label": "これまで" },
         h("div", { class: "vs-lb-lab", text: "これまで" }), this.statsEl),
 
-      /* 右 … 遊び方と 記録 */
-      h("section", { class: "vs-lb-rail", "aria-label": "遊び方" },
-        h("div", { class: "vs-lb-lab", text: "遊び方" }), this.modeRow,
-        h("div", { class: "vs-lb-lab", text: "門に 出る 問題" }), this.qzEl,
-        h("div", { class: "vs-lb-lab", text: "人数" }), this.botRow),
+      /* ★ 右の 帯と 右下の PLAY を **1 つの 箱**へ（2026-08-31）。
+         PC では display:contents なので 何も 変わらない。
+         スマホの 縦では この 箱ごと 画面の 下へ 敷き、
+         **舞台（自分の キャラクター）が 常に 見える**ように する。
+         前は 遊び方の 板が 舞台を 覆い、しかも 途中で 切れていた（実写）。 */
+      h("div", { class: "vs-lb-bottom" },
+        /* 右 … 遊び方と 記録 */
+        /* ★ さがす の 支度（2026-09-02）。
+           前は 「さがす」を 押した 瞬間に 世界が 始まって いて、
+           **続きか 新しくか を 選べなかった**。ここで 選ばせる。 */
+        h("section", { class: "vs-lb-rail is-rpg", "aria-label": "さがす の 支度" },
+          h("div", { class: "vs-lb-lab", text: "世界" }), this.rpgEl),
+        h("section", { class: "vs-lb-rail is-run", "aria-label": "遊び方" },
+          h("div", { class: "vs-lb-lab", text: "遊び方" }), this.modeRow,
+          h("div", { class: "vs-lb-lab", text: "門に 出る 問題" }), this.qzEl,
+          /* ★ 人数と 強さは **横に 並べる**。縦に 積むと 帯の 下が 切れる
+           （実写で 「相手の 強さ」の 見出しだけ 見えて いた）。 */
+        h("div", { class: "vs-lb-two" },
+          h("div", null, h("div", { class: "vs-lb-lab", text: "人数" }), this.botRow),
+          h("div", null, h("div", { class: "vs-lb-lab", text: "相手の 強さ" }), this.botLvRow))),
 
-      /* 右下 … 大きい PLAY */
-      h("div", { class: "vs-lb-play" },
-        h("div", { class: "vs-lb-tiles" }, this.tileCourse, this.tileLook, this.tileParty, this.tileMine),
-        h("div", { class: "vs-lb-pick" }, this.pickEl),
-        h("div", { class: "vs-lb-actions" }, this.readyBtn, this.startBtn)),
+        /* 右下 … 大きい PLAY */
+        h("div", { class: "vs-lb-play" },
+          h("div", { class: "vs-lb-tiles" }, this.tileCourse, this.tileLook, this.tileParty, this.tileMine),
+          h("div", { class: "vs-lb-pick" }, this.pickEl),
+          h("div", { class: "vs-lb-actions" }, this.readyBtn, this.startBtn))),
 
       /* ── 窓 ── */
       窓("course", "コースを えらぶ",
@@ -578,6 +674,95 @@ export class LobbyScreen {
       窓("setting", "設定", this.settingsEl),
       h("div", { class: "vs-lb-scrim", onclick: () => this._openPane("") }));
   }
+  /* ══ さがす の 世界（2026-09-02）══════════════════════════════════
+     しまって ある 世界を 並べ、続きから 入るか 新しく 作るかを 選ぶ。
+     ★ 読むのは **押した ときだけ**。ロビーを 開く たびに
+       IndexedDB を 触ると、走る だけの 人にも 待ちが 出る。 */
+  async _世界を読む() {
+    if (this._世界読み中) return;
+    this._世界読み中 = true;
+    try {
+      const S = await import("../rpg/sys/save.js");
+      const 種 = await S.一覧();
+      const 一覧 = [];
+      for (const sd of 種) {
+        const j = await S.load(sd);
+        if (!j) continue;
+        一覧.push({ 種: sd, 見: j.見 || {}, t: j.t || 0 });
+      }
+      一覧.sort((a, b) => b.t - a.t);
+      this.rpgList = 一覧;
+      if (!this.rpgSeed && 一覧.length) this.rpgSeed = 一覧[0].種;
+      this._世界を描く();
+    } catch (e) { this.rpgList = []; this._世界を描く(); }
+    this._世界読み中 = false;
+  }
+
+  _世界を描く() {
+    const box = this.rpgEl;
+    if (!box) return;
+    box.textContent = "";
+    if (this.遊び !== "rpg") return;
+    if (this.rpgList === null) {
+      box.appendChild(h("div", { class: "vs-lb-wnote", text: "読んで います…" }));
+      return;
+    }
+    box.appendChild(h("div", { class: "vs-lb-wnote",
+      text: "はてしない 土地を 歩き、集めて、作って、建てて、戦う。門の 言葉に 答えると 強くなる。" }));
+    for (const w of this.rpgList) {
+      const 見 = w.見 || {};
+      const on = this.rpgSeed === w.種;
+      const d = w.t ? new Date(w.t) : null;
+      const 日 = d ? (d.getMonth() + 1) + "/" + d.getDate() : "";
+      box.appendChild(h("button", {
+        class: "vs-lb-world" + (on ? " is-on" : ""), type: "button",
+        onclick: () => { this.rpgSeed = w.種; this._save(); this._render(); }
+      },
+        h("span", { class: "vs-lb-world-n", text: 見.名 || ("世界 " + w.種) }),
+        h("span", { class: "vs-lb-world-d",
+          text: "段位 " + (見.段 || 1) + (見.章 ? "・" + 見.章 : "") + (日 ? "・" + 日 : "") })));
+    }
+    if (!this.rpgList.length) {
+      box.appendChild(h("div", { class: "vs-lb-wnote",
+        text: "まだ 世界が ありません。新しく 作って ください。" }));
+    }
+    /* 新しい 世界。**名前を 先に 見せる**（同じ 種なら 同じ 世界に なる ので、
+       気に入る 名前が 出るまで 押し直せる）。 */
+    const 新種 = this._新種 || (this._新種 = (Date.now() ^ (Math.random() * 0x7fffffff)) & 0x7fffffff);
+    /* ★ 何も 選んで いない ときは **見せて いる 新しい 世界**を そのまま 使う。
+       別の 種で 始めると、名前を 見て 選んだのに 違う 世界に なる。 */
+    if (!this.rpgSeed) this.rpgSeed = 新種;
+    const 既存 = this.rpgList.some((w) => w.種 === this.rpgSeed);
+    box.appendChild(h("button", {
+      class: "vs-lb-world is-new" + (!既存 && this.rpgSeed === 新種 ? " is-on" : ""), type: "button",
+      onclick: () => {
+        if (this.rpgSeed === 新種) {
+          /* もう 選んで いる → 名前を 振り直す */
+          this._新種 = (Date.now() ^ (Math.random() * 0x7fffffff)) & 0x7fffffff;
+          this.rpgSeed = this._新種;
+        } else this.rpgSeed = 新種;
+        this._save(); this._render();
+      }
+    },
+      h("span", { class: "vs-lb-world-n",
+        text: "あたらしい 世界: " + worldName(新種) }),
+      h("span", { class: "vs-lb-world-d",
+        text: !既存 && this.rpgSeed === 新種
+          ? "もう一度 押すと 別の 世界に なる" : "はてしない 土地を 1 から 作る" })));
+    /* 消す（選んで いる ものだけ）*/
+    if (this.rpgSeed && this.rpgList.some((w) => w.種 === this.rpgSeed)) {
+      box.appendChild(h("button", {
+        class: "vs-lb-wdel", type: "button",
+        onclick: async () => {
+          const S = await import("../rpg/sys/save.js");
+          await S.消す(this.rpgSeed);
+          this.rpgSeed = 0; this.rpgList = null; this._save();
+          this._render(); this._世界を読む();
+        }
+      }, "この 世界を 消す"));
+    }
+  }
+
   /* ── 窓の 開け閉め ────────────────────────────────────────────────
      ★ ロビーに 全部 並べると 管理画面に なる。
        ふだんは キャラクターだけ 見せ、要る ものだけ 前へ 出す。 */
@@ -596,9 +781,36 @@ export class LobbyScreen {
   /* ── 立体の 場面 ──────────────────────────────────────────────── */
   _stageOn() {
     if (this.stage || this._stageFailed) return;
+    /* ══ ★ **一度 使った 板は 使い回せない**（2026-09-01・訴え）════════
+       訴え「2 回目以降から ロビーに 戻ると 背景が 黒く なって
+             機能しなく なってしまう やばい バグが ある」
+
+       出どころ:
+         exit() で stage.destroy() → renderer.destroy() を 呼び、その 中で
+         WEBGL_lose_context.loseContext() を 呼んで いる。
+         **失った 文脈は その 板（canvas）に 貼り付く。**
+         同じ 板へ もう一度 getContext("webgl2") を 頼んでも、
+         新しい 文脈は 作られず **同じ 死んだ 文脈**が 返る。
+         だから 2 回目の init() は **出来上がった ふりを して 真っ黒**に なる
+         （失敗しないので 断りも 出ない＝いちばん 分かりにくい 落ちかた）。
+
+       試合の 側は もう これを 知って いた（match._rebuild の
+       「同じ 板は 使えない。失った 文脈は その 板に 貼り付いて いる」）。
+       ロビーにも 同じ 手当てを 入れる。**板ごと 取り替える。** */
+    if (this._stageUsed && this.stageEl) {
+      try {
+        const 新 = h("canvas", { class: "vs-lb-stage", "aria-hidden": "true" });
+        if (this.stageEl.parentNode) this.stageEl.parentNode.replaceChild(新, this.stageEl);
+        else this.stageEl.replaceWith ? this.stageEl.replaceWith(新) : null;
+        this.stageEl = 新;
+      } catch (e) {}
+    }
     try {
       this.stage = new LobbyStage(this.stageEl, (this.app && this.app.settings) || this.settings || {});
       if (!this.stage.init()) { this._stageFailed = true; this.stage = null; return; }
+      /* ★ ここで はじめて「この 板は 使った」。init に 失敗した ときは
+         付けない（次に 開いた ときに もう一度 試せる ように）。 */
+      this._stageUsed = true;
       this._syncStage();
     } catch (e) { this._stageFailed = true; this.stage = null; }
   }
@@ -623,14 +835,21 @@ export class LobbyScreen {
       if (k < c.difficulty) d.setAttribute("data-on", "1");
       dots.appendChild(d);
     }
+    /* ★ 記章（2026-08-31）。ひとりで 走る 理由を 「前の 自分より 速いか」
+       だけに しない。取った ものは 一覧で ひと目で 分かる ように する。 */
+    const med = h("i", { class: "vs-lb-cc-med" });
     const card = h("button", {
       class: "vs-lb-cc", type: "button", role: "option", "data-i": String(i),
       onclick: () => { this.courseIndex = i; this._save(); this._render(); }
     }, sw,
       h("span", { class: "vs-lb-cc-body" },
-        h("span", { class: "vs-lb-cc-no vs-mono", text: String(i + 1).padStart(2, "0") }),
+        h("span", { class: "vs-lb-cc-top" },
+          h("span", { class: "vs-lb-cc-no vs-mono", text: String(i + 1).padStart(2, "0") }),
+          med),
         h("span", { class: "vs-lb-cc-nm", text: c.name }),
         dots));
+    card.__med = med;
+    card.__course = c;
     return card;
   }
 
@@ -653,7 +872,11 @@ export class LobbyScreen {
       this.qzList.appendChild(b);
     };
 
-    行({ kind: "", id: "", owner: 0, name: "内蔵の 単語" }, true, "いつでも 使える 英単語 80");
+    /* ★ 数は **書かない。数える。**
+       控えの 問題を 80 → 200 に 増やした のに ここが 80 の ままで、
+       画面が 嘘を ついて いた（2026-08-31）。 */
+    行({ kind: "", id: "", owner: 0, name: "内蔵の 単語" }, true,
+      "いつでも 使える 英単語 " + BANK_SIZE);
 
     const mine = this._qzMine || [];
     if (mine.length) {
@@ -740,6 +963,7 @@ export class LobbyScreen {
             courseId: got.id, courseDef: toDef(got),
             mode: this.mode === "cup" ? "race" : this.mode,
             bots: this.mode === "timeattack" ? 0 : this.botCount,
+            botLevel: this.botLevel || "",
             myName: this.me.name, myColor: this.me.colorIndex,
             myHat: this.hat, myHatColor: this.hatColor,
             presetKind: this.qz.kind || "", presetId: this.qz.id || "", presetOwner: this.qz.owner || 0,
@@ -759,12 +983,62 @@ export class LobbyScreen {
   }
 
   /** これまでの 成績。札が 無ければ 出さない。 */
+  /* ★ たびの ようす（育ちと 7 つの 地方）。**ログインして いなくても 出す。**
+     育ちも 記章も 端末に たまる ので、札が 無い 人にも 見せられる。
+     数字の 成績（走った 回数・勝率）だけが サーバの もの。 */
+  _drawJourney() {
+    const xp = this._xp();
+    const g = growthOf(xp);
+    const 頭 = h("div", { class: "vs-lb-jrn" });
+    頭.appendChild(h("div", { class: "vs-lb-jrn-top" },
+      h("span", { class: "vs-lb-jrn-l", text: "たねの そだち" }),
+      h("b", { class: "vs-lb-jrn-n", text: g.stage.name }),
+      h("span", { class: "vs-lb-jrn-x vs-mono", text: xp + " XP" })));
+    const bar = h("div", { class: "vs-lb-jrn-bar" });
+    bar.appendChild(h("i", { style: "width:" + Math.round(g.ratio * 100) + "%" }));
+    頭.appendChild(bar);
+    頭.appendChild(h("p", { class: "vs-lb-jrn-lore",
+      text: g.next ? ("つぎの 「" + g.next.name + "」まで あと " + g.toNext + " XP") : g.stage.lore }));
+    /* れんぞく。走った 日が 続いて いる ことを 出す。 */
+    {
+      const r = streak();
+      頭.appendChild(h("p", { class: "vs-lb-jrn-streak", "data-on": r.n > 0 ? "1" : "0" },
+        r.n > 0
+          ? ("れんぞく " + r.n + " 日" + (r.今日 ? "（きょうは 走りました）" : "　きょう 走ると " + (r.n + 1) + " 日目"))
+          : "きょう 走ると れんぞく 1 日目"));
+    }
+    const 旅 = h("div", { class: "vs-lb-jrn-rgs" });
+    for (const t of TIERS) {
+      let 取 = 0, 全 = 0, 金 = 0;
+      for (let k = t.from; k <= t.to && k < COURSES.length; k++) {
+        全++;
+        const m = medalOf(COURSES[k], bestOf(COURSES[k].id));
+        if (m) 取++;
+        if (m === "gold") 金++;
+      }
+      const rg = regionOf(t.key);
+      旅.appendChild(h("button", {
+        class: "vs-lb-jrn-rg", type: "button",
+        "data-done": (取 === 全 && 全 > 0) ? "1" : "0",
+        "data-all": (金 === 全 && 全 > 0) ? "1" : "0",
+        title: rg.lore,
+        onclick: () => { this._jumpTier(t); this._openPane("course"); }
+      },
+        h("span", { class: "vs-lb-jrn-rgn", text: rg.name }),
+        h("span", { class: "vs-lb-jrn-rgb" }, h("i", { style: "width:" + Math.round((取 / Math.max(1, 全)) * 100) + "%" })),
+        h("span", { class: "vs-lb-jrn-rgc vs-mono", text: 取 + "/" + 全 })));
+    }
+    頭.appendChild(旅);
+    this.statsEl.appendChild(頭);
+  }
+
   async _loadStats() {
     if (!this.statsEl) return;
     const tk = (typeof window._authGetToken === "function") ? String(window._authGetToken() || "") : "";
     if (!tk) {
       this.statsEl.textContent = "";
-      this.statsEl.appendChild(h("p", { class: "vs-lb-note", text: "ログインすると 成績が 残ります。" }));
+      this._drawJourney();
+      this.statsEl.appendChild(h("p", { class: "vs-lb-note", text: "ログインすると 走った 回数や 勝率も 残ります。" }));
       return;
     }
     let d = null;
@@ -780,6 +1054,10 @@ export class LobbyScreen {
     } catch (e) { d = null; }
     this.statsEl.textContent = "";
     const st = d && d.stats;
+    this.stats = st || this.stats;
+
+    this._drawJourney();
+
     if (!st) {
       this.statsEl.appendChild(h("p", { class: "vs-lb-note", text: "成績を 読めませんでした。" }));
       return;
@@ -821,7 +1099,23 @@ export class LobbyScreen {
     this._renderQuiz();
   }
 
+  /* いまの XP（サーバの ぶんと 端末の ぶんの 大きい ほう）。 */
+  _xp() {
+    const st = this.stats || {};
+    return totalXP(st.xp || 0);
+  }
+
   _setHat(key) {
+    /* ★ まだの ものは 選ばせない。ただし **押しても 何も 起きない**には
+       しない。何を すれば 手に 入るかを その場で 出す。 */
+    if (!hatOpen(key, this._xp())) {
+      if (this.rewardEl) {
+        this.rewardEl.textContent = hatNeed(key) + "（いまは まだ）";
+        this.rewardEl.setAttribute("data-warn", "1");
+      }
+      return;
+    }
+    if (this.rewardEl) this.rewardEl.removeAttribute("data-warn");
     this.hat = String(key || "none"); this._save(); this._render();
     if (this.net && this.net.setHat) this.net.setHat(this.hat, this.hatColor);
   }
@@ -843,6 +1137,13 @@ export class LobbyScreen {
     this.courseIndex = t.from; this._save(); this._render();
   }
   _start() {
+    /* さがす は 別の 遊び。ここで 分ける。 */
+    if (this.遊び === "rpg") {
+      const 種 = this.rpgSeed || this._新種 || (Date.now() & 0x7fffffff);
+      this.rpgSeed = 種; this._save();
+      if (this.app && this.app.startRpg) this.app.startRpg({ seed: 種 });
+      return;
+    }
     const c = COURSES[this.courseIndex];
     if (this.net && this.roomId) {
       if (!this.isHost) { this.netNote.textContent = "部屋主だけが 始められます。"; return; }
@@ -903,6 +1204,7 @@ export class LobbyScreen {
          0 人で 始めると 1 本目で いきなり 優勝に なって 何も 起きない。 */
       bots: this.mode === "timeattack" ? 0
         : (this.mode === "cup" ? Math.max(3, this.botCount) : this.botCount),
+      botLevel: this.botLevel || "",
       myName: this.me.name,
       myColor: this.me.colorIndex,
       myHat: this.hat,
@@ -1017,22 +1319,50 @@ export class LobbyScreen {
   }
 
   _render() {
+    /* いま どちらの 遊びの 支度か。CSS が これで 出し分ける。 */
+    if (this.el) this.el.setAttribute("data-play", this.遊び);
+    if (this.startBtn) this.startBtn.textContent = this.遊び === "rpg"
+      ? (this.rpgSeed ? "つづきから" : "はじめる") : "スタート";
+    this._世界を描く();
     const c = COURSES[this.courseIndex];
     const th = themeOf(c.theme);
     const tier = tierOf(this.courseIndex);
 
     /* 下見 */
     this.previewEl.textContent = "";
+    /* ★ 下の ほうを 濃く する 1 枚を **同じ background の 中で** 上に 重ねる。
+       別の 要素で 重ねると 順が ぶれる（実写で 文字の 上に 乗った）。 */
     this.previewEl.style.background =
-      "linear-gradient(160deg," + rgb(th.sky.top) + " 0%," + rgb(th.sky.horizon) + " 58%," + rgb(th.floor) + " 100%)";
+      "linear-gradient(180deg, rgba(6,8,24,0) 26%, rgba(6,8,24,.30) 62%, rgba(6,8,24,.56) 100%),"
+      + "linear-gradient(160deg," + rgb(th.sky.top) + " 0%," + rgb(th.sky.horizon) + " 58%," + rgb(th.floor) + " 100%)";
+    /* ★ 地方と その 由来を 出す（2026-08-31・訴え「世界観」）。
+       コース名 だけでは 「ここは どこか」が 分からない。
+       物語は **1 行**。読まなくても 遊べる ように する。 */
+    const 地 = regionOf(tier.key);
     this.previewEl.appendChild(h("div", { class: "vs-lb-pv-in" },
-      h("span", { class: "vs-chip", text: tier.label }),
+      h("div", { class: "vs-lb-pv-top" },
+        h("span", { class: "vs-chip", text: tier.label }),
+        h("span", { class: "vs-lb-pv-rg", text: 地.name })),
       h("h2", { class: "vs-lb-pv-nm", text: c.name }),
+      h("p", { class: "vs-lb-pv-lore", text: 地.lore }),
       h("p", { class: "vs-lb-pv-core", text: c.core }),
       h("div", { class: "vs-lb-pv-meta" },
         h("span", { text: "目安 " + Math.round(c.estimatedDuration / 60 * 10) / 10 + " 分" }),
         h("span", { text: "難しさ " + c.difficulty + " / 10" }),
-        h("span", { text: c.recommendedPlayers[0] + "〜" + c.recommendedPlayers[1] + " 人" }))));
+        h("span", { text: c.recommendedPlayers[0] + "〜" + c.recommendedPlayers[1] + " 人" })),
+      /* 目標タイム。**取った ものは 光らせる。** */
+      (() => {
+        const b = bestOf(c.id), 取 = medalOf(c, b), g = targetsOf(c);
+        const row = h("div", { class: "vs-lb-pv-med" });
+        for (const m of MEDALS.slice().reverse()) {
+          const 済 = 取 === "gold" ? true
+            : 取 === "silver" ? (m.key !== "gold")
+            : 取 === "bronze" ? (m.key === "bronze") : false;
+          row.appendChild(h("span", { class: "vs-lb-pv-m", "data-m": m.key, "data-got": 済 ? "1" : "0" },
+            h("i", null), h("span", { class: "vs-mono", text: fmtTime(g[m.key]) })));
+        }
+        return row;
+      })()));
 
     /* 今日の コース */
     if (this.dailyEl) {
@@ -1041,7 +1371,11 @@ export class LobbyScreen {
       this.dailyEl.textContent = "";
       this.dailyEl.setAttribute("aria-label", "今日の コース " + dc.name + " を えらぶ");
       this.dailyEl.setAttribute("data-on", di === this.courseIndex ? "1" : "0");
-      this.dailyEl.appendChild(h("span", { class: "vs-lb-daily-l", text: "今日の コース" }));
+      /* ★ 狭い 画面では 「の コース」を 落とす（名前の 場所を 空ける）。
+         上の 帯は 名札・札・ボタン 3 つで 詰まって いて、
+         札は 84px まで 縮み **名前が 0 幅**に なっていた（390px の 実写）。 */
+      this.dailyEl.appendChild(h("span", { class: "vs-lb-daily-l" },
+        "今日", h("i", { class: "vs-lb-daily-l2", text: "の コース" })));
       this.dailyEl.appendChild(h("strong", { class: "vs-lb-daily-n", text: dc.name }));
       this.dailyEl.appendChild(h("span", { class: "vs-lb-daily-d", text: todayKey() }));
     }
@@ -1050,10 +1384,29 @@ export class LobbyScreen {
     this._renderRecord(c);
 
     for (let i = 0; i < this.courseCards.length; i++) {
-      this.courseCards[i].setAttribute("aria-selected", i === this.courseIndex ? "true" : "false");
+      const card = this.courseCards[i];
+      card.setAttribute("aria-selected", i === this.courseIndex ? "true" : "false");
+      /* 記章。取って いなければ 何も 出さない（空の 印を 並べない）。 */
+      if (card.__med && card.__course) {
+        const m = medalOf(card.__course, bestOf(card.__course.id));
+        card.__med.setAttribute("data-m", m || "");
+        card.__med.title = m ? (MEDALS.filter((x) => x.key === m)[0] || {}).name + " 記章" : "";
+      }
     }
     for (const b of this.tierRow.children) {
       b.setAttribute("aria-selected", b.getAttribute("data-tier") === tier.key ? "true" : "false");
+      if (b.__n && b.__tier) {
+        let 取 = 0, 全 = 0, 金 = 0;
+        for (let k = b.__tier.from; k <= b.__tier.to && k < COURSES.length; k++) {
+          全++;
+          const m = medalOf(COURSES[k], bestOf(COURSES[k].id));
+          if (m) 取++;
+          if (m === "gold") 金++;
+        }
+        b.__n.textContent = 取 ? (取 + "/" + 全) : "";
+        b.setAttribute("data-done", (取 > 0 && 取 === 全) ? "1" : "0");
+        b.setAttribute("data-all", (金 > 0 && 金 === 全) ? "1" : "0");
+      }
     }
     /* ★ ひとり用の 遊び方は 部屋の 中では 押せなく する。
        押せてしまうと 「始めたのに 自分だけ 別の 遊び」に なる。 */
@@ -1133,14 +1486,48 @@ export class LobbyScreen {
       if (t) t.setAttribute("aria-expanded", this.pane === k ? "true" : "false");
     }
     if (this.hatRow) {
+      const xp = this._xp();
       for (const b of this.hatRow.children) {
-        b.setAttribute("aria-checked", b.getAttribute("data-hat") === this.hat ? "true" : "false");
+        const k = b.getAttribute("data-hat");
+        b.setAttribute("aria-checked", k === this.hat ? "true" : "false");
+        /* まだの ものは 薄く し、要る ものを 名前の 下に 出す。 */
+        const 開 = hatOpen(k, xp);
+        b.setAttribute("data-locked", 開 ? "0" : "1");
+        b.title = 開 ? (b.getAttribute("aria-label") || "") : hatNeed(k);
+      }
+      /* まだの ものを 選んだ ままに しない（育ちが 戻る ことは 無いが 保険）。 */
+      if (!hatOpen(this.hat, xp)) { this.hat = "none"; this._save(); }
+      /* 次に 何が 手に 入るか。**走る 理由**を 1 行で 出す。 */
+      if (this.rewardEl && !this.rewardEl.getAttribute("data-warn")) {
+        const r = nextReward(xp);
+        if (!r) this.rewardEl.textContent = "ぜんぶ 手に 入りました。";
+        else {
+          const 名 = r.hats.map((k) => (HATS.filter((x) => x.key === k)[0] || {}).name).filter(Boolean);
+          this.rewardEl.textContent = "あと " + r.toNext + " XP で 「" + r.stage.name + "」"
+            + (名.length ? "　→ " + 名.join("・") + " が 増える" : "");
+        }
       }
       for (const b of this.hatColorRow.children) {
         b.setAttribute("aria-checked", Number(b.getAttribute("data-hc")) === this.hatColor ? "true" : "false");
       }
       const ht = HATS.filter((x) => x.key === this.hat)[0];
       this.hatName.textContent = ht ? ht.name : "なし";
+    }
+    if (this.botLvRow) {
+      for (const b of this.botLvRow.children) {
+        b.setAttribute("aria-checked", (b.getAttribute("data-lv") || "") === (this.botLevel || "") ? "true" : "false");
+      }
+    }
+    if (this.fsBtn) {
+      const 好 = 没入したいか();
+      this.fsBtn.setAttribute("aria-pressed", 好 ? "true" : "false");
+      /* 本当の 全画面が 使えるか を その場で 見て 書く。 */
+      const 本 = Immersive.realOK && Immersive.realOK(
+        (this.shell && this.shell.host) || null);
+      this.fsNote.textContent = !好
+        ? "START を 押しても 全画面に しません。"
+        : (本 ? "START で 画面いっぱいに します。"
+              : "この 端末は 本当の 全画面が 使えないので、器を 画面いっぱいに 広げます。");
     }
     if (this.ghostBtn) this.ghostBtn.setAttribute("aria-pressed", this.ghostOn ? "true" : "false");
     if (this.calmBtn) this.calmBtn.setAttribute("aria-pressed", this.calmOn ? "true" : "false");
@@ -1260,6 +1647,84 @@ function fmtTime(s) {
 }
 
 export const LOBBY_CSS = `
+/* ── 遊びの 入口（2026-09-02 作り直し）── */
+/* ★ 上の 帯（名前・今日のコース）と 重ならない 高さへ（2026-09-02・実写で 確認）。 */
+.vs-lb-ways{position:absolute;left:50%;top:74px;transform:translateX(-50%);z-index:7;
+  display:flex;gap:10px;align-items:stretch;}
+.vs-lb-way{position:relative;display:flex;flex-direction:column;gap:3px;justify-content:center;
+  min-width:176px;max-width:230px;padding:12px 20px 13px;border-radius:16px;cursor:pointer;text-align:left;
+  border:1px solid rgba(255,255,255,.14);color:#fff;font:inherit;
+  background:rgba(16,14,30,.54);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  box-shadow:0 10px 30px rgba(6,8,26,.34);
+  transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s,border-color .18s;}
+.vs-lb-way:hover{transform:translateY(-2px);box-shadow:0 18px 42px rgba(6,8,26,.46);}
+.vs-lb-way.is-on{border-color:rgba(160,200,255,.52);background:rgba(40,52,110,.62);}
+.vs-lb-way.is-rpg{background:linear-gradient(135deg,rgba(46,58,120,.74),rgba(88,46,124,.68));
+  border-color:rgba(150,190,255,.30);}
+.vs-lb-way.is-rpg:hover{border-color:rgba(190,210,255,.55);}
+/* ★ 遊びで 右の 帯を 出し分ける（2026-09-02）。
+   走る 設定と さがす 設定を 同時に 出すと、どちらの 支度か 分からない。 */
+.vs-lb-rail.is-rpg{display:none;}
+.vs-lobby[data-play="rpg"] .vs-lb-rail.is-run{display:none;}
+.vs-lobby[data-play="rpg"] .vs-lb-rail.is-rpg{display:block;}
+.vs-lobby[data-play="rpg"] .vs-lb-tiles > *:not(.is-keep){display:none;}
+.vs-lobby[data-play="rpg"] .vs-lb-pick{display:none;}
+.vs-lobby[data-play="rpg"] .vs-lb-corner[data-pane="stats"]{display:none;}
+.vs-lobby[data-play="rpg"] .vs-lb-ready{display:none;}
+.vs-lb-worlds{display:flex;flex-direction:column;gap:6px;}
+.vs-lb-world{display:flex;flex-direction:column;gap:2px;text-align:left;
+  padding:9px 11px 10px;border-radius:12px;min-height:44px;
+  border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.055);cursor:pointer;}
+.vs-lb-world:hover{background:rgba(255,255,255,.10);}
+.vs-lb-world.is-on{border-color:rgba(160,200,255,.55);background:rgba(52,66,132,.62);}
+.vs-lb-world.is-new{border-style:dashed;}
+.vs-lb-world-n{font:700 13px/1.35;}
+.vs-lb-world-d{font:500 10.5px/1.45;color:rgba(255,255,255,.66);}
+.vs-lb-wnote{font:500 11px/1.6;color:rgba(255,255,255,.6);padding:4px 2px 6px;}
+.vs-lb-wdel{margin-top:4px;height:36px;border-radius:10px;font:600 11.5px/1;
+  border:1px solid rgba(255,150,150,.28);background:rgba(120,40,40,.30);
+  color:#FFC9C9;cursor:pointer;}
+.vs-lb-wdel:hover{background:rgba(150,50,50,.42);}
+.vs-lb-way-k{position:absolute;right:12px;top:9px;font:800 9px/1;letter-spacing:.2em;color:#9ED0FF;}
+.vs-lb-way-t{font:750 19px/1.25;letter-spacing:.03em;}
+.vs-lb-way-d{font:500 11px/1.5;color:rgba(255,255,255,.68);}
+@media (max-width:900px){
+  .vs-lb-ways{top:64px;gap:7px;}
+  .vs-lb-way{min-width:0;flex:1 1 0;padding:9px 12px 10px;border-radius:13px;}
+  .vs-lb-way-t{font-size:15px;} .vs-lb-way-d{font-size:9.5px;}
+}
+@media (max-width:640px){
+  /* ★ 流れの 中へ 入れると **上の 帯と 重なる**（実写で 確認）。
+     置いた ままで、上の 帯の 下へ 下ろす。 */
+  .vs-lb-ways{top:112px;width:calc(100vw - 20px);gap:8px;}
+  .vs-lb-way{padding:8px 11px 9px;border-radius:12px;max-width:none;}
+  .vs-lb-way-t{font-size:14.5px;} .vs-lb-way-d{font-size:9px;line-height:1.45;}
+  .vs-lb-way-k{right:8px;top:7px;font-size:8px;}
+  .vs-lb-way:hover{transform:none;}
+}
+.vs-lb-rpg{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:7;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:11px 26px 12px;border-radius:16px;cursor:pointer;text-align:center;
+  border:1px solid rgba(150,190,255,.34);
+  background:linear-gradient(135deg,rgba(46,58,120,.80),rgba(88,46,124,.74));
+  box-shadow:0 12px 34px rgba(6,8,26,.44),inset 0 1px 0 rgba(255,255,255,.14);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  color:#fff;font:inherit;transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s;}
+.vs-lb-rpg:hover{transform:translateX(-50%) translateY(-2px);
+  box-shadow:0 18px 44px rgba(6,8,26,.52),inset 0 1px 0 rgba(255,255,255,.20);}
+.vs-lb-rpg-k{font:800 9.5px/1 inherit;letter-spacing:.22em;color:#9ED0FF;}
+.vs-lb-rpg-t{font:750 19px/1.25 inherit;letter-spacing:.02em;}
+.vs-lb-rpg-d{font:500 11.5px/1.5 inherit;color:rgba(255,255,255,.72);}
+@media (max-width:900px){
+  .vs-lb-rpg{top:auto;bottom:calc(100% + 0px);padding:9px 18px 10px;border-radius:13px;}
+  .vs-lb-rpg-t{font-size:16px;} .vs-lb-rpg-d{font-size:10.5px;}
+}
+@media (max-width:640px){
+  .vs-lb-rpg{position:relative;left:auto;top:auto;bottom:auto;transform:none;width:100%;margin:0 0 8px;}
+  .vs-lb-rpg:hover{transform:none;}
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    ロビー = **立体の 舞台 ＋ 浮いている 札**
 
@@ -1340,22 +1805,41 @@ export const LOBBY_CSS = `
 .vs-lb-pane[data-pane="look"] .vs-lb-colors{ gap:6px; }
 .vs-lb-pane[data-pane="look"] .vs-lb-colors{ display:grid; grid-template-columns:repeat(8,1fr); gap:6px; max-width:300px; }
 
+/* ★ PC では 何も しない。位置は これまでどおり それぞれが 決める。 */
+.vs-lb-bottom{ display:contents; }
+
 @media (max-width: 900px){
   /* ★ 狭い ときは **名札を 押した ときだけ** 出す。
      前は まるごと 消していた ので、スマホから 成績を 見られなかった。 */
   .vs-lb-corner.is-bl{ left:10px; right:10px; bottom:150px; width:auto;
     display:none; z-index:6; }
   .vs-lobby[data-pane="stats"] .vs-lb-corner.is-bl{ display:block; }
-  .vs-lb-rail{ right:10px; top:66px; width:min(240px, 46%); max-height:44%; }
+  .vs-lb-rail{ right:10px; top:66px; bottom:auto; width:min(240px, 46%); max-height:44%; }
   .vs-lb-play{ right:10px; left:10px; bottom:10px; width:auto; }
   .vs-lb-tiles{ grid-template-columns:repeat(4, 1fr); }
   .vs-lb-tile-s{ display:none; }
 }
-@media (max-width: 560px){
-  .vs-lb-rail{ position:absolute; left:10px; right:10px; top:auto; bottom:150px;
-    width:auto; max-height:32%; }
-  .vs-lb-who{ padding:4px 10px 4px 4px; }
+
+@media (max-width: 1080px){
+  .vs-lb-grid{ grid-template-columns: 1fr 300px; }
+  /* ★ ここで まるごと 消していた。
+     消すと **色も かぶりものも 友だちも スマホから 触れなく なる**（実機の 幅で 気づいた）。
+     幅が 足りないのは 横に 並べる ときだけ なので、下へ 回して 残す。 */
+  .vs-lb-me{ grid-column: 1 / -1; }
+  /* 名前と 状態は 本体の 画面にも 出ている ので、狭い ときは 省く */
+  .vs-lb-me .vs-lb-merow{ display:none; }
 }
+@media (max-width: 780px){
+  .vs-lb-grid{ grid-template-columns: 1fr; overflow:auto; }
+  .vs-lb-right{ order:-1; }
+  .vs-lb-me{ order:1; }
+  .vs-lb-courses{ grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }
+  .vs-lb-preview{ min-height:130px; }
+  /* 狭い ときは 中の 縦スクロールを やめて、画面ごと 流す。
+     箱の 中を 別々に 動かすと 「下に まだ ある」ことに 気づけない。 */
+  .vs-lb-right, .vs-lb-course, .vs-lb-me{ overflow:visible; max-height:none; }
+}
+
 
 .vs-lobby{ position:absolute; inset:0; display:flex; flex-direction:column;
   background:var(--vs-bg);
@@ -1394,7 +1878,23 @@ export const LOBBY_CSS = `
 
 .vs-lb-preview{ border-radius:var(--vs-r-md); min-height:168px; padding:16px; display:flex; align-items:flex-end;
   position:relative; overflow:hidden; margin-bottom:12px; }
-.vs-lb-pv-in{ position:relative; z-index:1; text-shadow:0 2px 14px rgba(4,6,20,.7); }
+/* ★ 下見の 背景は **その 風景の 空の 色**。明るい 風景（草原・空・氷）だと
+   白い 文字が 沈む（2026-08-31・ライトで 確認）。
+   ★ 覆いを 別の 要素で 重ねる 手は やめた。重なる 順を 数で 決めても
+     効かず、字の 影を 濃くしたら かえって にじんだ（実写で 2 回 失敗）。
+   → **背景そのものを 2 枚 重ね**に する（下見を 作る ところで 入れる）。
+     同じ 1 つの background なので 順が ぶれない。 */
+/* ★★ 真因は 覆いでは なく **字の 色**だった（2026-08-31・3 度目で 分かった）。
+   下見の 文字は 色を 決めて いなかった ので 本体の 字の 色を 継いで いた。
+   明るい 見た目では それが **濃い 灰**に なり、
+   風景の 明るい 空の 上で 沈む。暗い 見た目でだけ たまたま 白かった。
+   → ここは 「写真の 上の 文字」なので **見た目に よらず 白**に する。
+     下を 濃くする 1 枚は 背景の 中に 入れて ある。
+   ★ この 中は 文字列の 中。**逆さ引用符を 書かない**（今日 2 度 やった）。 */
+.vs-lb-pv-in{ position:relative; z-index:1; text-shadow:0 2px 10px rgba(4,6,20,.75), 0 1px 2px rgba(4,6,20,.5); }
+.vs-lb-pv-in, .vs-lb-pv-in *{ color:#fff; }
+.vs-lb-pv-lore, .vs-lb-pv-core, .vs-lb-pv-meta, .vs-lb-pv-m{ color:rgba(255,255,255,.9) !important; }
+.vs-lb-pv-m[data-got="0"]{ opacity:.55; }
 .vs-lb-pv-nm{ font-size:clamp(20px,3.4vw,30px); font-weight:750; margin:6px 0 4px; }
 .vs-lb-pv-core{ font-size:12.5px; color:var(--vs-ink); max-width:44em; line-height:1.6; }
 .vs-lb-pv-meta{ display:flex; gap:12px; margin-top:8px; font-size:11px; color:var(--vs-ink); }
@@ -1403,10 +1903,19 @@ export const LOBBY_CSS = `
 .vs-lb-rec-lab{ font-size:10.5px; font-weight:650; letter-spacing:.06em; color:var(--vs-ink-sub); }
 .vs-lb-rec-v{ font-size:13px; color:${PALETTE.amber}; font-weight:650; }
 .vs-lb-rec-who{ font-size:11px; color:var(--vs-ink-sub); }
+.vs-lb-pv-top{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.vs-lb-pv-rg{ font-size:11.5px; font-weight:700; letter-spacing:.04em;
+  color:var(--vs-ink); opacity:.86; }
+.vs-lb-pv-lore{ font-size:12px; line-height:1.75; color:var(--vs-ink);
+  opacity:.72; margin:4px 0 2px; }
 .vs-lb-tiers{ display:flex; gap:5px; flex-wrap:wrap; margin-bottom:9px; }
-.vs-lb-tier{ height:28px; padding:0 11px; border-radius:var(--vs-r-full); font-size:11.5px; font-weight:700;
+.vs-lb-tier{ display:inline-flex; align-items:center; gap:5px;
+  height:28px; padding:0 11px; border-radius:var(--vs-r-full); font-size:11.5px; font-weight:700;
   background:var(--vs-surface-2); border:1px solid ${PALETTE.line}; color:var(--vs-ink-sub); }
 .vs-lb-tier[aria-selected="true"]{ background:var(--vs-accent); color:var(--vs-accent-ink); border-color:transparent; }
+.vs-lb-tier-n{ font-size:10px; opacity:.72; }
+.vs-lb-tier[data-done="1"]{ border-color:#b9c0cf; }
+.vs-lb-tier[data-all="1"]{ border-color:#e8c05a; box-shadow:0 0 0 1px rgba(232,192,90,.45); }
 .vs-lb-courses{ display:grid; grid-template-columns:repeat(auto-fill,minmax(184px,1fr)); gap:7px; }
 .vs-lb-cc{ display:flex; align-items:stretch; gap:0; border-radius:var(--vs-r-md); overflow:hidden;
   background:var(--vs-surface-2); border:1.5px solid transparent; text-align:left; }
@@ -1415,6 +1924,19 @@ export const LOBBY_CSS = `
 .vs-lb-cc-body{ padding:8px 10px; display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
 .vs-lb-cc-no{ font-size:10px; color:var(--vs-ink-sub); font-weight:650; }
 .vs-lb-cc-nm{ font-size:13px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vs-lb-cc-top{ display:flex; align-items:center; gap:6px; }
+.vs-lb-cc-med{ width:11px; height:11px; border-radius:50%; display:none; flex:0 0 auto;
+  box-shadow:inset 0 -2px 3px rgba(0,0,0,.28); }
+.vs-lb-cc-med[data-m="bronze"]{ display:block; background:#c58a5a; }
+.vs-lb-cc-med[data-m="silver"]{ display:block; background:#b9c0cf; }
+.vs-lb-cc-med[data-m="gold"]{ display:block; background:#e8c05a; box-shadow:inset 0 -2px 3px rgba(0,0,0,.28), 0 0 8px rgba(232,192,90,.75); }
+.vs-lb-pv-med{ display:flex; gap:10px; margin-top:7px; }
+.vs-lb-pv-m{ display:inline-flex; align-items:center; gap:5px; font-size:11px; opacity:.42; }
+.vs-lb-pv-m[data-got="1"]{ opacity:1; }
+.vs-lb-pv-m > i{ width:9px; height:9px; border-radius:50%; }
+.vs-lb-pv-m[data-m="bronze"] > i{ background:#c58a5a; }
+.vs-lb-pv-m[data-m="silver"] > i{ background:#b9c0cf; }
+.vs-lb-pv-m[data-m="gold"] > i{ background:#e8c05a; }
 .vs-lb-cc-diff{ display:flex; gap:2px; margin-top:3px; }
 .vs-lb-cc-d{ width:8px; height:3px; border-radius:var(--vs-r-xs); background:var(--vs-surface-3); }
 .vs-lb-cc-d[data-on="1"]{ background:${PALETTE.amber}; }
@@ -1429,7 +1951,10 @@ export const LOBBY_CSS = `
 .vs-lb-mode-l{ font-size:12.5px; font-weight:650; line-height:1.45; }
 /* 4.39:1 → 明るく する（遊び方の 説明。ここが 読めないと 何の 遊びか 分からない） */
 .vs-lb-mode-d{ font-size:10.5px; color:var(--vs-ink-sub); }
+.vs-lb-two{ display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:start; }
+.vs-lb-two .vs-lb-lab{ margin:10px 0 5px; }
 .vs-lb-bots{ display:flex; gap:5px; flex-wrap:wrap; }
+.vs-lb-bots .vs-lb-bot{ padding:0 9px; font-size:11.5px; }
 .vs-lb-bot{ height:30px; padding:0 12px; border-radius:var(--vs-r-sm); font-size:12px; font-weight:700;
   background:var(--vs-surface-2); border:1px solid ${PALETTE.line}; color:var(--vs-ink-sub); }
 .vs-lb-bot[aria-pressed="true"]{ background:var(--vs-accent); color:var(--vs-accent-ink); border-color:transparent; }
@@ -1473,6 +1998,7 @@ export const LOBBY_CSS = `
 .vs-lb-daily:hover{ background:var(--vs-gold-bg); filter:brightness(1.15); }
 .vs-lb-daily[data-on="1"]{ border-color:var(--vs-gold); background:var(--vs-gold-bg); }
 .vs-lb-daily-l{ flex:0 0 auto; font-size:11px; font-weight:650; color:var(--vs-gold); letter-spacing:.04em; }
+.vs-lb-daily-l2{ font-style:normal; }
 .vs-lb-daily-n{ flex:1 1 auto; font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .vs-lb-daily-d{ flex:0 0 auto; font-size:10.5px; color:var(--vs-ink-sub); }
 .vs-lb-stats{ display:flex; flex-direction:column; gap:1px; margin-bottom:4px; }
@@ -1504,6 +2030,11 @@ export const LOBBY_CSS = `
 .vs-lb-hat:hover{ background:var(--vs-surface-2); }
 .vs-lb-hat[aria-checked="true"]{ border-color:var(--vs-accent); background:var(--vs-accent-soft);
   color:var(--vs-accent-text); font-weight:650; }
+/* まだ 手に 入って いない もの。**消さずに 薄く する**（増える ことが 見える）。 */
+.vs-lb-hat[data-locked="1"]{ opacity:.42; border-style:dashed; }
+.vs-lb-hat[data-locked="1"]::before{ content:"🔒 "; font-size:10px; }
+.vs-lb-reward{ margin:8px 0 2px; font-size:11.5px; line-height:1.7; color:var(--vs-accent-text); }
+.vs-lb-reward[data-warn="1"]{ color:var(--vs-danger-text); }
 .vs-lb-hatcolors{ display:flex; flex-wrap:wrap; gap:5px; }
 .vs-lb-hatc{ width:22px; height:22px; border-radius:50%; border:2px solid transparent;
   cursor:pointer; padding:0; }
@@ -1529,7 +2060,34 @@ export const LOBBY_CSS = `
 .vs-lb-qz-l{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* 3.94:1 → 明るく する（「20 語」「対戦では 使えません」の 添え書き） */
 .vs-lb-qz-s{ flex:0 0 auto; font-size:11px; color:var(--vs-ink-sub); }
+/* ── たびの ようす ─────────────────────────────────────────────── */
+.vs-lb-jrn{ margin-bottom:12px; padding:11px 12px; border-radius:var(--vs-r-md);
+  background:var(--vs-surface-2); border:1px solid var(--vs-line); }
+.vs-lb-jrn-top{ display:flex; align-items:baseline; gap:8px; }
+.vs-lb-jrn-l{ font-size:10.5px; font-weight:650; letter-spacing:.08em; color:var(--vs-ink-sub); }
+.vs-lb-jrn-n{ font-size:16px; font-weight:800; }
+.vs-lb-jrn-x{ margin-left:auto; font-size:11px; color:var(--vs-ink-sub); }
+.vs-lb-jrn-bar{ position:relative; height:5px; margin:7px 0 5px; border-radius:var(--vs-r-full);
+  background:var(--vs-surface-3); overflow:hidden; }
+.vs-lb-jrn-bar > i{ position:absolute; left:0; top:0; height:100%; background:var(--vs-accent); }
+.vs-lb-jrn-lore{ font-size:11px; color:var(--vs-ink-sub); line-height:1.6; }
+.vs-lb-jrn-streak{ margin-top:4px; font-size:11px; color:var(--vs-ink-sub); }
+.vs-lb-jrn-streak[data-on="1"]{ color:var(--vs-accent-text); font-weight:650; }
+.vs-lb-jrn-rgs{ display:flex; flex-direction:column; gap:3px; margin-top:9px; }
+.vs-lb-jrn-rg{ display:flex; align-items:center; gap:8px; width:100%; text-align:left;
+  padding:5px 8px; border-radius:var(--vs-r-xs); border:1px solid transparent;
+  background:transparent; color:var(--vs-ink); font:inherit; font-size:11.5px; cursor:pointer; }
+.vs-lb-jrn-rg:hover{ background:var(--vs-surface-3); }
+.vs-lb-jrn-rg[data-done="1"]{ border-color:#b9c0cf; }
+.vs-lb-jrn-rg[data-all="1"]{ border-color:#e8c05a; }
+.vs-lb-jrn-rgn{ flex:0 0 auto; min-width:7.5em; }
+.vs-lb-jrn-rgb{ position:relative; flex:1 1 auto; height:4px; border-radius:var(--vs-r-full);
+  background:var(--vs-surface-3); overflow:hidden; }
+.vs-lb-jrn-rgb > i{ position:absolute; left:0; top:0; height:100%; background:${PALETTE.amber}; }
+.vs-lb-jrn-rgc{ flex:0 0 auto; font-size:10.5px; color:var(--vs-ink-sub); }
+
 .vs-lb-settings{ margin-top:14px; border-top:1px solid ${PALETTE.line}; padding-top:10px; }
+.vs-lb-settings.is-open{ margin-top:0; border-top:0; padding-top:0; }
 .vs-lb-settings summary{ font-size:12px; font-weight:650; color:var(--vs-ink-sub);
   cursor:pointer; list-style:none; padding:4px 0; }
 .vs-lb-settings summary::-webkit-details-marker{ display:none; }
@@ -1556,23 +2114,107 @@ export const LOBBY_CSS = `
    ここを 0 に して はじめて 縮む。 */
 .vs-lb-grid > *{ min-width: 0; }
 
-@media (max-width: 1080px){
-  .vs-lb-grid{ grid-template-columns: 1fr 300px; }
-  /* ★ ここで まるごと 消していた。
-     消すと **色も かぶりものも 友だちも スマホから 触れなく なる**（実機の 幅で 気づいた）。
-     幅が 足りないのは 横に 並べる ときだけ なので、下へ 回して 残す。 */
-  .vs-lb-me{ grid-column: 1 / -1; }
-  /* 名前と 状態は 本体の 画面にも 出ている ので、狭い ときは 省く */
-  .vs-lb-me .vs-lb-merow{ display:none; }
+
+
+
+/* ══ スマホの 縦（2026-08-31）══════════════════════════════════════
+   ★ 直す前: 遊び方の 板が 舞台の 真ん中に 座り、**自分の キャラクターが
+     見えない**。しかも 板が 途中で 切れて 「クイズラッシュ」が 半分（実写）。
+   ★ 直しかた: 下の ものを **1 枚の 敷き**に まとめ、
+     遊び方は **横に 流れる 札**へ。上は 舞台の ため に 空ける。 */
+/* ★ 横向きの スマホ（高さが 低い）も 同じ 扱いに する（2026-08-31）。
+   直す前は 遊び方の 帯が **上 66px から 下 272px まで**の 指定の ままで、
+   高さ 390px の 画面では **52px しか 出ず**、「レース」の 途中で 切れていた
+   （実写で 確認）。幅の 条件だけ 見ていて 高さを 見ていなかった。 */
+@media (max-width: 560px), (max-height: 500px){
+  .vs-lb-bottom{
+    display:flex; flex-direction:column; gap:7px;
+    position:absolute; left:0; right:0; bottom:0; z-index:4;
+    padding:14px calc(10px + var(--vs-safe-r)) calc(10px + var(--vs-safe-b)) calc(10px + var(--vs-safe-l));
+    /* ★ 色を 直に 書かない（2026-08-31）。明るい 見た目に すると
+       白い 札の 後ろだけ 暗い 帯が 残って 不揃いに 見える。 */
+    background:linear-gradient(180deg, transparent 0%,
+      color-mix(in srgb, var(--vs-bg-deep) 55%, transparent) 26%,
+      color-mix(in srgb, var(--vs-bg-deep) 90%, transparent) 62%);
+    max-height:58%;
+  }
+  /* 遊び方・問題・人数 を **横 1 列**に 流す。切れない・覆わない。 */
+  .vs-lb-rail{
+    position:static; width:auto; max-height:none; right:auto; left:auto; top:auto; bottom:auto;
+    display:flex; align-items:center; gap:7px; padding:7px 9px;
+    overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .vs-lb-rail::-webkit-scrollbar{ display:none; }
+  /* ★ 右へ まだ 続く ことを 見せる。無いと 横に 流せる ことに 気づかない。 */
+  .vs-lb-rail{
+    -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 26px), transparent 100%);
+            mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 26px), transparent 100%);
+  }
+  .vs-lb-rail .vs-lb-lab{ margin:0; flex:0 0 auto; opacity:.72; }
+  .vs-lb-modes{ flex-direction:row; flex-wrap:nowrap; gap:6px; }
+  .vs-lb-mode{ flex:0 0 auto; white-space:nowrap; padding:6px 11px; }
+  /* 「自分の コース」が 2 行に 折れて 札の 高さが 揃わなかった。 */
+  .vs-lb-tile{ padding:7px 8px; }
+  .vs-lb-tile-n{ font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .vs-lb-mode-d{ display:none; }
+  .vs-lb-bots{ flex-wrap:nowrap; }
+  .vs-lb-bot{ flex:0 0 auto; }
+  .vs-lb-qz{ flex:0 0 auto; margin:0; min-width:180px; }
+  .vs-lb-qz-body{ display:none; }        /* 横 1 列では 開かない。窓で 選ぶ */
+  .vs-lb-play{ position:static; width:auto; right:auto; left:auto; bottom:auto; }
+  .vs-lb-who{ padding:4px 10px 4px 4px; }
+  /* ★ いちばん 狭い 実機（320px）では 「今日の コース」が
+     「今…」に なって 読めない。読めない ものは 出さない。
+     （コースを えらぶ 窓の 中に 同じ ものが ある） */
+  @media (max-width: 360px){ .vs-lb-top .vs-lb-daily{ display:none; } }
+  /* ★ 狭い 画面では **コース名が 0 幅に つぶれて** 「今日の コース」しか
+     読めなかった（390px の 実写で 確認）。日付は 縮まない 決まりに して
+     いた ので、名前だけが 犠牲に なっていた。
+     日付は 今日の ことなので 落として よい。名前は 落とせない。 */
+  /* ★ 上の 帯は 名札・今日の 札・ボタン 3 つで 詰まって いて、
+     札は 84px まで 縮み **コース名が 0 幅**に なっていた（390px の 実写）。
+     文字を 削って 押し込むより、**行を 分ける**。
+     空は いくらでも 空いて いる。 */
+  @media (max-width: 560px){
+    .vs-lb-top{ flex-wrap:wrap; row-gap:7px; }
+    .vs-lb-top .vs-lb-daily{ order:3; flex:1 1 100%; max-width:none; width:auto; }
+    .vs-lb-top .vs-lb-daily-d{ margin-left:auto; }
+    .vs-lb-who{ max-width:56%; }
+  }
+  /* 窓は 下から 出る 板に する（真ん中の 小窓は 指では 使いにくい）。 */
+  .vs-lb-pane{ left:0; right:0; top:auto; bottom:0; width:auto;
+    max-height:82%; border-radius:var(--vs-r-lg) var(--vs-r-lg) 0 0;
+    transform:translate(0,14px); }
+  .vs-lb-pane[data-on="1"]{ transform:translate(0,0); }
+  .vs-lb-pane[data-pane="look"]{ left:0; right:0; bottom:0; width:auto; }
+  .vs-lb-pane-body{ padding-bottom:calc(14px + var(--vs-safe-b)); }
 }
-@media (max-width: 780px){
-  .vs-lb-grid{ grid-template-columns: 1fr; overflow:auto; }
-  .vs-lb-right{ order:-1; }
-  .vs-lb-me{ order:1; }
-  .vs-lb-courses{ grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }
-  .vs-lb-preview{ min-height:130px; }
-  /* 狭い ときは 中の 縦スクロールを やめて、画面ごと 流す。
-     箱の 中を 別々に 動かすと 「下に まだ ある」ことに 気づけない。 */
-  .vs-lb-right, .vs-lb-course, .vs-lb-me{ overflow:visible; max-height:none; }
+/* 横向きは 高さが 無い ので さらに 詰める。
+   ★ コースを えらぶ 窓は 下見だけで 画面が 埋まって いた（実写）。
+     横向きは **横に 広い**ので、下見と 形を 左右に 分ける。 */
+@media (max-height: 520px){
+  .vs-lb-preview{ min-height:96px; padding:10px 12px; margin-bottom:8px; }
+  .vs-lb-pv-nm{ font-size:19px; margin:2px 0 2px; }
+  .vs-lb-pv-lore{ display:none; }      /* 由来は 段の 札で 分かる */
+  .vs-lb-pv-core{ font-size:11.5px; }
+  .vs-lb-pv-meta{ margin-top:4px; font-size:10.5px; gap:9px; }
+  .vs-lb-pv-med{ margin-top:4px; gap:8px; }
+  .vs-lb-map{ height:56px; margin:4px 0 2px; }
+  .vs-lb-pane-head{ padding:8px 12px 3px; }
+  .vs-lb-pane-body{ padding:2px 12px 10px; }
+  .vs-lb-courses{ grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:5px; }
+  .vs-lb-cc-body{ padding:5px 8px; }
+  .vs-lb-record{ padding-bottom:5px; font-size:11px; }
 }
+@media (max-height: 500px){
+  .vs-lb-bottom{ max-height:66%; gap:5px; padding-top:10px; }
+  .vs-lb-rail{ padding:5px 8px; }
+  .vs-lb-tiles{ grid-template-columns:repeat(4,1fr); gap:5px; }
+  .vs-lb-tile{ padding:6px 9px; }
+  .vs-lb-pick{ padding:6px 10px; }
+  .vs-lb-actions{ margin-top:0; gap:6px; }
+  .vs-lb-pane{ max-height:88%; }
+}
+
 `;

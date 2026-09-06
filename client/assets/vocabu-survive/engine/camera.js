@@ -48,6 +48,24 @@ export class ThirdPersonCamera {
     this.pitchMax = 1.10;
     this.invertY = false;
     this.sensitivity = 1.0;
+
+    /* ══ 縦長の 画面（スマホ 縦）2026-08-31 ═══════════════════════════
+       ★ 実測: 390×844 の 縦だと 縦横比 0.462。縦 62°の 画角を そのまま
+         使うと **横は 31°しか 見えない**。走る人が 画面の 真ん中を 占め、
+         前も 横も 見えない（実写で 確認）。
+       ★ 直しかたは 2 つ 同時に:
+         ① 横の 画角を 下限で 守る（縦を 広げる。Hor+ と 同じ 考え）
+         ② 狙う点を 上へ ずらす → 走る人が 画面の **下 1/3** に 来て、
+            上の 2/3 が 進む先に なる
+       どちらか 片方だけだと 足りない（片方は 小さく 見えるだけ、
+       もう 片方は 前が 見えないまま）。 */
+    this.minHFov = 40 * Math.PI / 180;   /* 横は これ 以下に しない */
+    this.maxVFov = 82 * Math.PI / 180;   /* 広げすぎると 歪む */
+    this.lift = 0;                        /* 狙う点を 上へ（走る人が 下がる） */
+    this._lift = 0;
+    this.portraitLift = 1.15;
+    this.portraitDist = 1.5;
+    this._aspectDist = 0;
   }
 
   /** 見る向きを 動かす（マウスの 移動量・指の なぞり） */
@@ -84,7 +102,7 @@ export class ThirdPersonCamera {
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
     /* 狙う点 */
-    const tx = this.target[0], ty = this.target[1] + this.height, tz = this.target[2];
+    const tx = this.target[0], ty = this.target[1] + this.height + this._lift, tz = this.target[2];
     /* 望みの 目の 位置 */
     let ox = sy * cp, oy = sp, oz = cy * cp;
     let dist = this.distance;
@@ -126,17 +144,52 @@ export class ThirdPersonCamera {
     this.yaw = dampAngle(this.yaw, this.wantYaw, 13, dt);
     this.pitch = damp(this.pitch, this.wantPitch, 13, dt);
 
+    /* 縦長かどうかで 引きと 持ち上げを 変える。**急に 変えない**
+       （回した 瞬間に カメラが 飛ぶと 酔う）。 */
+    const 縦度 = clamp((0.95 - aspect) / 0.35, 0, 1);   /* 0.95 で 0、0.60 で 1 */
+    this._lift = damp(this._lift, this.lift + this.portraitLift * 縦度, 4, dt);
+    this._aspectDist = damp(this._aspectDist, this.portraitDist * 縦度, 4, dt);
+
     /* 速いほど 少し 引く。速さの 感じが 出る。 */
     const extra = clamp((speed - 4) * 0.16, 0, 1.5);
-    this.distance = damp(this.distance, this.wantDistance + extra, 4.5, dt);
+    this.distance = damp(this.distance, this.wantDistance + extra + this._aspectDist, 4.5, dt);
 
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2.6);
 
     this._place(dt);
 
     /* 速いほど 画角を 広げる。これも 速さの 感じ。 */
-    const fov = this.fov + clamp((speed - 5) * 0.012, 0, 0.16);
-    m4.perspective(this.proj, fov, Math.max(0.2, aspect), this.near, this.far);
+    let fov = this.fov + clamp((speed - 5) * 0.012, 0, 0.16);
+    const a = Math.max(0.2, aspect);
+    /* ★ 横の 画角の 下限を 守る。縦長の 画面で 前が 見えなく なるのを 防ぐ。 */
+    const hf = 2 * Math.atan(Math.tan(fov / 2) * a);
+    if (hf < this.minHFov) {
+      fov = Math.min(this.maxVFov, 2 * Math.atan(Math.tan(this.minHFov / 2) / a));
+    }
+    this.vfov = fov;
+    m4.perspective(this.proj, fov, a, this.near, this.far);
+    m4.multiply(this.viewProj, this.proj, this.view);
+    return this;
+  }
+
+  /**
+   * 好きな 位置から 好きな 点を 見る（見せる 場面 用）。
+   * ★ ふだんの update() の 状態は **壊さない**。
+   *   合図が 終わったら そのまま ふつうの カメラへ 戻れる ように する。
+   * @param {number[]|Float32Array} pos 目の 位置
+   * @param {number[]|Float32Array} look 見る 点
+   * @param {number} aspect 縦横比
+   * @param {number} [fov] 画角（ラジアン）
+   */
+  setFree(pos, look, aspect, fov) {
+    v3.set(this.pos, pos[0], pos[1], pos[2]);
+    v3.set(this.look, look[0], look[1], look[2]);
+    m4.lookAt(this.view, this.pos, this.look, [0, 1, 0]);
+    let f = fov || this.fov;
+    const a = Math.max(0.2, aspect);
+    const hf = 2 * Math.atan(Math.tan(f / 2) * a);
+    if (hf < this.minHFov) f = Math.min(this.maxVFov, 2 * Math.atan(Math.tan(this.minHFov / 2) / a));
+    m4.perspective(this.proj, f, a, this.near, this.far);
     m4.multiply(this.viewProj, this.proj, this.view);
     return this;
   }

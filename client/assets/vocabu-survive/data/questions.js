@@ -107,7 +107,153 @@ const BANK = [
   ["\"Never mind.\" の 意味は？", ["気にしないで", "決して 考えない", "覚えておいて", "心配して"], 0, "会話"],
   ["\"Long time no see.\" の 意味は？", ["久しぶり", "長く 見ないで", "遠くを 見て", "さようなら"], 0, "会話"],
   ["\"I'm running late.\" の 意味は？", ["遅れそうです", "走っています", "遅く 走ります", "後で 走ります"], 0, "会話"],
-  ["\"That makes sense.\" の 意味は？", ["なるほど", "感覚を 作る", "意味が ない", "感じます"], 0, "会話"]
+  ["\"That makes sense.\" の 意味は？", ["なるほど", "感覚を 作る", "意味が ない", "感じます"], 0, "会話"],
+
+  /* ══════════════════════════════════════════════════════════════════════
+     ここから 2026-08-31 に 足した 120 問（合計 200 問）。
+
+     ★ なぜ 足したか: 控えは **通信が 落ちた とき**と **まだ ログインして
+       いない 人**が 見る もの。80 問だと 門 8 つ × 10 走で ひと回りして
+       しまい、「さっきと 同じ 問題」に なる（実測: 1 走 8 問）。
+     ★ 決めごと（元の 80 問と 同じ）:
+       ・正解は **必ず 0 番**（出す ときに 混ぜる ので 偏らない）
+       ・まぎらわしい 選択肢を 1 つは 入れる（4 択が 作業に ならない ように）
+       ・高校で 出る 語を 中心に する
+     ══════════════════════════════════════════════════════════════════════ */
+
+  /* 意味（英→日）＋40 */
+  ["adequate", ["十分な", "余分な", "不足した", "危険な"], 0, "意味"],
+  ["anticipate", ["予期する", "忘れる", "遅らせる", "断る"], 0, "意味"],
+  ["appropriate", ["適切な", "無関係な", "余分な", "不安な"], 0, "意味"],
+  ["assume", ["思い込む", "確かめる", "断る", "忘れる"], 0, "意味"],
+  ["consequence", ["結果", "順序", "会議", "自信"], 0, "意味"],
+  ["contribute", ["貢献する", "妨げる", "断る", "隠す"], 0, "意味"],
+  ["crucial", ["決定的な", "些細な", "偶然の", "退屈な"], 0, "意味"],
+  ["demonstrate", ["実演する", "隠す", "疑う", "壊す"], 0, "意味"],
+  ["distinguish", ["区別する", "混ぜる", "消す", "続ける"], 0, "意味"],
+  ["eliminate", ["取り除く", "加える", "認める", "保つ"], 0, "意味"],
+  ["emphasize", ["強調する", "省略する", "疑う", "遅らせる"], 0, "意味"],
+  ["encounter", ["出会う", "避ける", "見送る", "分ける"], 0, "意味"],
+  ["establish", ["設立する", "廃止する", "貸す", "訪ねる"], 0, "意味"],
+  ["exhausted", ["疲れ果てた", "元気な", "空腹な", "退屈な"], 0, "意味"],
+  ["fundamental", ["基本的な", "表面的な", "一時的な", "余分な"], 0, "意味"],
+  ["identify", ["特定する", "見失う", "隠す", "疑う"], 0, "意味"],
+  ["inevitable", ["避けられない", "任意の", "珍しい", "危険な"], 0, "意味"],
+  ["initiative", ["主導権", "終わり", "失敗", "退屈"], 0, "意味"],
+  ["maintain", ["維持する", "捨てる", "壊す", "借りる"], 0, "意味"],
+  ["moderate", ["適度な", "極端な", "無料の", "危険な"], 0, "意味"],
+  ["neglect", ["怠る", "世話する", "強調する", "招く"], 0, "意味"],
+  ["obstacle", ["障害", "助け", "近道", "記録"], 0, "意味"],
+  ["participate", ["参加する", "欠席する", "断る", "眺める"], 0, "意味"],
+  ["perceive", ["知覚する", "見落とす", "作る", "隠す"], 0, "意味"],
+  ["precise", ["正確な", "曖昧な", "広い", "遅い"], 0, "意味"],
+  ["previous", ["以前の", "次の", "現在の", "永久の"], 0, "意味"],
+  ["reasonable", ["妥当な", "無理な", "高価な", "危険な"], 0, "意味"],
+  ["reject", ["拒む", "受け入れる", "提案する", "遅らせる"], 0, "意味"],
+  ["reliable", ["信頼できる", "怪しい", "壊れやすい", "退屈な"], 0, "意味"],
+  ["resemble", ["似ている", "異なる", "壊す", "集める"], 0, "意味"],
+  ["restore", ["元に戻す", "壊す", "捨てる", "隠す"], 0, "意味"],
+  ["significant", ["重要な", "些細な", "無料の", "偶然の"], 0, "意味"],
+  ["subtle", ["微妙な", "露骨な", "巨大な", "騒々しい"], 0, "意味"],
+  ["sustain", ["支え続ける", "手放す", "壊す", "急ぐ"], 0, "意味"],
+  ["tremendous", ["途方もない", "わずかな", "普通の", "静かな"], 0, "意味"],
+  ["urgent", ["緊急の", "のんびりした", "安全な", "退屈な"], 0, "意味"],
+  ["vague", ["曖昧な", "明確な", "強い", "速い"], 0, "意味"],
+  ["vital", ["きわめて重要な", "不要な", "一時的な", "静かな"], 0, "意味"],
+  ["withdraw", ["引き下がる", "進み出る", "続ける", "加える"], 0, "意味"],
+  ["yield", ["生み出す", "奪う", "隠す", "壊す"], 0, "意味"],
+
+  /* 意味（日→英）＋15 */
+  ["「解決する」に あたる 語は？", ["solve", "salve", "serve", "save"], 0, "語彙"],
+  ["「準備する」に あたる 語は？", ["prepare", "repair", "compare", "prefer"], 0, "語彙"],
+  ["「想像する」に あたる 語は？", ["imagine", "imitate", "immigrate", "improve"], 0, "語彙"],
+  ["「証拠」に あたる 語は？", ["evidence", "evident", "event", "avenue"], 0, "語彙"],
+  ["「目的」に あたる 語は？", ["purpose", "propose", "process", "promise"], 0, "語彙"],
+  ["「文化」に あたる 語は？", ["culture", "capture", "creature", "cultivate"], 0, "語彙"],
+  ["「政府」に あたる 語は？", ["government", "governor", "guidance", "guarantee"], 0, "語彙"],
+  ["「機会」に あたる 語は？", ["opportunity", "opposition", "operation", "optimism"], 0, "語彙"],
+  ["「知識」に あたる 語は？", ["knowledge", "knowing", "acknowledge", "known"], 0, "語彙"],
+  ["「成功する」に あたる 語は？", ["succeed", "success", "successful", "succession"], 0, "語彙"],
+  ["「decide」の 名詞形は？", ["decision", "deciding", "decisive", "decided"], 0, "語彙"],
+  ["「strong」の 名詞形は？", ["strength", "strongly", "stronger", "strengthen"], 0, "語彙"],
+  ["「analyze」の 名詞形は？", ["analysis", "analyzing", "analytic", "analyzer"], 0, "語彙"],
+  ["「high」の 名詞形は？", ["height", "highly", "higher", "heighten"], 0, "語彙"],
+  ["「able」の 名詞形は？", ["ability", "ably", "enable", "abled"], 0, "語彙"],
+
+  /* 同義語 ＋15 */
+  ["important と 最も 近い 語は？", ["significant", "tiny", "usual", "silent"], 0, "同義語"],
+  ["choose と 最も 近い 語は？", ["select", "refuse", "forget", "delay"], 0, "同義語"],
+  ["answer と 最も 近い 語は？", ["reply", "ask", "doubt", "listen"], 0, "同義語"],
+  ["buy と 最も 近い 語は？", ["purchase", "sell", "lend", "borrow"], 0, "同義語"],
+  ["show と 最も 近い 語は？", ["display", "hide", "cover", "close"], 0, "同義語"],
+  ["strange と 最も 近い 語は？", ["odd", "normal", "clear", "safe"], 0, "同義語"],
+  ["enough と 最も 近い 語は？", ["sufficient", "scarce", "extra", "empty"], 0, "同義語"],
+  ["allow と 最も 近い 語は？", ["permit", "forbid", "refuse", "prevent"], 0, "同義語"],
+  ["decrease と 最も 近い 語は？", ["reduce", "expand", "raise", "repeat"], 0, "同義語"],
+  ["think と 最も 近い 語は？", ["consider", "ignore", "shout", "sleep"], 0, "同義語"],
+  ["reach と 最も 近い 語は？", ["arrive at", "leave", "avoid", "delay"], 0, "同義語"],
+  ["explain と 最も 近い 語は？", ["describe", "confuse", "hide", "deny"], 0, "同義語"],
+  ["keep と 最も 近い 語は？", ["retain", "release", "waste", "lose"], 0, "同義語"],
+  ["almost と 最も 近い 語は？", ["nearly", "exactly", "hardly", "rarely"], 0, "同義語"],
+  ["build と 最も 近い 語は？", ["construct", "destroy", "borrow", "carry"], 0, "同義語"],
+
+  /* 反意語 ＋15 */
+  ["expand の 反対は？", ["shrink", "grow", "widen", "stretch"], 0, "反意語"],
+  ["allow の 反対は？", ["forbid", "permit", "accept", "admit"], 0, "反意語"],
+  ["ancient の 名詞の 反対は？", ["modernity", "antiquity", "history", "tradition"], 0, "反意語"],
+  ["victory の 反対は？", ["defeat", "success", "prize", "record"], 0, "反意語"],
+  ["depart の 反対は？", ["arrive", "leave", "exit", "escape"], 0, "反意語"],
+  ["remember の 反対は？", ["forget", "recall", "memorize", "review"], 0, "反意語"],
+  ["useful の 反対は？", ["useless", "helpful", "handy", "practical"], 0, "反意語"],
+  ["frequent の 反対は？", ["rare", "often", "usual", "common"], 0, "反意語"],
+  ["ancient の 語感に 近い 反対は？", ["contemporary", "aged", "antique", "classic"], 0, "反意語"],
+  ["dangerous の 反対は？", ["safe", "risky", "harmful", "serious"], 0, "反意語"],
+  ["full の 反対は？", ["empty", "whole", "entire", "complete"], 0, "反意語"],
+  ["simple の 反対は？", ["complicated", "easy", "plain", "clear"], 0, "反意語"],
+  ["borrow の 反対は？", ["lend", "take", "receive", "keep"], 0, "反意語"],
+  ["encourage の 反対は？", ["discourage", "support", "praise", "help"], 0, "反意語"],
+  ["appear の 反対は？", ["disappear", "arrive", "seem", "look"], 0, "反意語"],
+
+  /* つづり ＋12 */
+  ["正しい つづりは？", ["necessary", "neccessary", "necesary", "nesessary"], 0, "つづり"],
+  ["正しい つづりは？", ["beginning", "begining", "beginnning", "begginning"], 0, "つづり"],
+  ["正しい つづりは？", ["definitely", "definately", "definitly", "defenitely"], 0, "つづり"],
+  ["正しい つづりは？", ["separate", "seperate", "seperete", "separete"], 0, "つづり"],
+  ["正しい つづりは？", ["occurred", "occured", "ocurred", "occureed"], 0, "つづり"],
+  ["正しい つづりは？", ["received", "recieved", "receeved", "receved"], 0, "つづり"],
+  ["正しい つづりは？", ["environment", "enviroment", "envrionment", "environmet"], 0, "つづり"],
+  ["正しい つづりは？", ["restaurant", "restraunt", "restaurent", "resturant"], 0, "つづり"],
+  ["正しい つづりは？", ["immediately", "imediately", "immediatly", "immedietely"], 0, "つづり"],
+  ["正しい つづりは？", ["successful", "succesful", "successfull", "sucessful"], 0, "つづり"],
+  ["正しい つづりは？", ["knowledge", "knowlege", "knowladge", "knowledege"], 0, "つづり"],
+  ["正しい つづりは？", ["opportunity", "oportunity", "opportunety", "oppotunity"], 0, "つづり"],
+
+  /* 文法 ＋12 */
+  ["We have been friends ___ childhood.", ["since", "for", "from", "while"], 0, "文法"],
+  ["I have known him ___ ten years.", ["for", "since", "in", "at"], 0, "文法"],
+  ["If I ___ you, I would apologize.", ["were", "am", "was being", "will be"], 0, "文法"],
+  ["The book ___ by many students.", ["is read", "reads", "is reading", "read"], 0, "文法"],
+  ["He is the man ___ helped me.", ["who", "which", "whose", "whom"], 0, "文法"],
+  ["I'm looking forward to ___ you.", ["seeing", "see", "saw", "be seen"], 0, "文法"],
+  ["This is ___ interesting than that.", ["more", "much", "very", "most"], 0, "文法"],
+  ["She made me ___ the room.", ["clean", "to clean", "cleaning", "cleaned"], 0, "文法"],
+  ["Not only he but also they ___ right.", ["are", "is", "was", "has been"], 0, "文法"],
+  ["___ finished, he went out.", ["Having", "Have", "To have", "Had"], 0, "文法"],
+  ["I don't know ___ to start.", ["where", "which", "that", "whom"], 0, "文法"],
+  ["He speaks English as ___ as you.", ["well", "good", "better", "best"], 0, "文法"],
+
+  /* 会話 ＋11 */
+  ["\"What do you do?\" の 意味は？", ["お仕事は 何ですか", "何を していますか（今）", "どうしますか", "何が 好きですか"], 0, "会話"],
+  ["\"Help yourself.\" の 意味は？", ["ご自由に どうぞ", "自分で 助けて", "手伝って", "気を つけて"], 0, "会話"],
+  ["\"I'll take it.\" の 意味は？", ["これを 買います", "持って いきます", "受け取りません", "取ってください"], 0, "会話"],
+  ["\"Sounds good.\" の 意味は？", ["いいですね", "音が いい", "聞こえます", "うるさい"], 0, "会話"],
+  ["\"Just in case.\" の 意味は？", ["念のため", "この 場合だけ", "箱の 中に", "たまたま"], 0, "会話"],
+  ["\"No wonder.\" の 意味は？", ["どうりで", "不思議だ", "驚かない で", "疑問は ない"], 0, "会話"],
+  ["\"Let me see.\" の 意味は？", ["ええと", "見せて", "会いましょう", "分かりました"], 0, "会話"],
+  ["\"After you.\" の 意味は？", ["お先に どうぞ", "あなたの 後で 行く", "あとで 会おう", "追いかけて"], 0, "会話"],
+  ["\"It doesn't matter.\" の 意味は？", ["かまいません", "物質では ない", "問題です", "重要です"], 0, "会話"],
+  ["\"Keep in touch.\" の 意味は？", ["連絡を 取り合おう", "触って いて", "近づかない で", "手を つないで"], 0, "会話"],
+  ["\"I owe you one.\" の 意味は？", ["借りが できた", "1 つ 持っている", "1 つ あげる", "あなたの ものだ"], 0, "会話"]
 ];
 
 function fromBank(row) {

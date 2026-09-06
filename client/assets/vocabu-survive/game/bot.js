@@ -23,11 +23,19 @@ import { TUNE, STEP } from "./player.js";
 import { topOf, TOUCH, testSolid } from "./physics.js";
 import { mulberry32, clamp } from "../engine/math.js";
 
+/* ★ speed と cap は 別 もの（2026-08-31）。
+     speed … 進みたい 向きの 長さ。**加速だけ**を 変える
+     cap   … 走れる 速さの 上限。ここを 変えないと 少し 走れば 全員 同じ
+   直す前は speed しか なく、30 コースの 実測で
+   「やさしい」と「つよい」の タイムが **0.1 秒まで 同じ**に なっていた。
+   ★ cap を 下げすぎては いけない。走り跳びの 飛距離は 速さで 決まる ので、
+     0.80 まで 落とすと **10 本の コースで 隙間を 越えられなく なった**（実測）。
+     0.90 なら 越えられない コースは 上限なし（1.00）と 同じ 数。 */
 export const BOT_LEVELS = {
-  easy:    { look: 3.0, wobble: 1.30, speed: 0.80, mistake: 0.12, care: 0.55, wait: 0.5 },
-  normal:  { look: 3.8, wobble: 0.80, speed: 0.90, mistake: 0.06, care: 0.80, wait: 0.8 },
-  hard:    { look: 4.6, wobble: 0.40, speed: 0.97, mistake: 0.02, care: 0.95, wait: 1.0 },
-  perfect: { look: 5.2, wobble: 0.00, speed: 1.00, mistake: 0.00, care: 1.00, wait: 1.0 }
+  easy:    { look: 3.0, wobble: 1.30, speed: 0.80, cap: 0.90, mistake: 0.12, care: 0.55, wait: 0.5 },
+  normal:  { look: 3.8, wobble: 0.80, speed: 0.90, cap: 0.95, mistake: 0.06, care: 0.80, wait: 0.8 },
+  hard:    { look: 4.6, wobble: 0.40, speed: 0.97, cap: 0.99, mistake: 0.02, care: 0.95, wait: 1.0 },
+  perfect: { look: 5.2, wobble: 0.00, speed: 1.00, cap: 1.00, mistake: 0.00, care: 1.00, wait: 1.0 }
 };
 
 /* 走り跳びで 届く 距離（vqsurviveplay.cjs の 実測 5.88m）。
@@ -48,6 +56,12 @@ export class Bot {
     /* ★ 腕の **名前**も 覚えておく。勝ち抜きで 次の 本へ 連れて いく ときに
        同じ 腕で 走らせる ため（形だけ 渡すと 腕が 標準へ 戻る）。 */
     this.levelKey = BOT_LEVELS[opt.level] ? opt.level : "normal";
+    /* ★ 強さを **本当に 速さへ 効かせる**（2026-08-31）。
+       進みたい 向きの 長さ（L.speed）は 加速しか 変えず、
+       少し 走れば 全員 上限（8.2m/s）に 届いて しまう。
+       上限そのものを 掛ける ことで はじめて 差が 出る。
+       ★ 人（自分）の Player には 触れない。ここは ボット専用。 */
+    this.p.speedScale = this.level.cap;
     this.seed = ((opt.seed || 1) >>> 0) || 1;
     this.rnd = mulberry32(this.seed);
     this.input = { mx: 0, mz: 0, jump: false, jumpDown: false, dive: false };
@@ -72,6 +86,43 @@ export class Bot {
        「壊れている」ように 見える。長く 進まなければ 中間地点へ 戻す。 */
     this.noProgress = 0;
     this.hopeless = false;
+    /* ★ 同じ ところで 何度 音を 上げたか（2026-08-31）。
+       中間地点へ 戻すだけでは **同じ 仕掛けで また 落ちる**。
+       30 コースを 通しで 走らせると、やさしい 相手 4 人が
+       c03 の 打ち上げ台で 86 回・c26 の 動く床で 何十回 と 落ち、
+       300 秒 走っても 誰も ゴールしなかった（実測）。
+       ★ 飛ばして 先へ 出す のは 嘘に なる ので、
+         **腕を 一時的に 上げて 自分で 抜けさせる**。
+         抜けたら ゆっくり 元の 腕へ 戻す。 */
+    this.giveups = 0;
+    this._bestProg = -1;
+    this._respawnsAtBest = 0;
+  }
+
+  /* いま 使う 腕。詰まる ほど 「完璧」へ 寄せる（3 回で ほぼ 完璧）。 */
+  effLevel() {
+    const B = this.level;
+    const k = Math.min(1, this.giveups * 0.34);
+    if (k <= 0) return B;
+    const P = BOT_LEVELS.perfect;
+    const 完璧 = (B === P);
+    const 混 = (a, b) => a + (b - a) * k;
+    return {
+      look: 混(B.look, P.look), wobble: 混(B.wobble, P.wobble),
+      speed: 混(B.speed, P.speed), cap: 混(B.cap, P.cap),
+      mistake: 混(B.mistake, P.mistake),
+      /* ★ care と wait だけは **下げる**。
+         この 2 つは 「危なそうなら 待つ」の 強さ なので、
+         完璧へ 寄せると **もっと 待つ** ことに なり、
+         待って 詰まって いる 相手は 永久に 動かなく なる
+         （c26 の 動く床で 実測。54% から 一歩も 出なかった）。
+         詰まった ときに 要るのは 慎重さでは なく 思い切り。
+         ★ ただし **もともと 完璧な 腕には 効かせない**。
+           完璧は もう 上が 無い ので、慎重さを 削ると ただ 雑に なる。
+           実際 c26 で 通って いたのが 68% で 止まる ように なった（実測）。 */
+      care: 完璧 ? B.care : B.care * (1 - 0.4 * k),
+      wait: 完璧 ? B.wait : B.wait * (1 - 0.4 * k)
+    };
   }
 
   /* その (x,z) の 足場の 高さ。fromY より 上がりすぎている ものは 見ない。 */
@@ -372,7 +423,10 @@ export class Bot {
   }
 
   decide(t) {
-    const p = this.p, L = this.level, C = this.course;
+    const p = this.p, C = this.course;
+    /* ★ 腕は **毎回 引き直す**（詰まると 上がる ため）。 */
+    const L = this.effLevel();
+    p.speedScale = L.cap;
     const inp = this.input;
     inp.jump = false; inp.dive = false;
     this._tick++;
@@ -399,8 +453,23 @@ export class Bot {
     /* 待っている ぶんも 含めて、本当に 一歩も 進んでいない 時間 */
     if (this.lastProgress >= 0 && prog <= this.lastProgress + 0.02) this.noProgress += STEP;
     else this.noProgress = 0;
-    this.hopeless = this.noProgress > 12;
+    /* 立ち上がりで 1 回だけ 数える（毎コマ 数えると 一気に 完璧に なる）。 */
+    const 詰み = this.noProgress > 12;
+    if (詰み && !this.hopeless) this.giveups++;
+    this.hopeless = 詰み;
     this.lastProgress = prog;
+
+    /* ★ 「止まって いる」より **「同じ 所で 落ち続ける」**ほうが 多い。
+       落ちて 中間地点へ 戻ると 進みは 一度 下がる ので、
+       noProgress では 数えられない（実測: 42 回 落ちても 0 回 しか 立たない）。
+       いちばん 進んだ ところから **何回 落ち直したか**で 数える。 */
+    if (prog > this._bestProg + 8) {
+      this._bestProg = prog;
+      this._respawnsAtBest = p.respawns | 0;
+      if (this.giveups > 0) this.giveups--;      /* 抜けたら ゆっくり 元の 腕へ */
+    }
+    const 落ち直し = (p.respawns | 0) - (this._respawnsAtBest || 0);
+    if (落ち直し >= 3) this.giveups = Math.max(this.giveups, Math.floor(落ち直し / 3));
 
     /* ── 空の 上に いる ── */
     if (!p.grounded) {

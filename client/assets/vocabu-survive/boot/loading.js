@@ -20,6 +20,8 @@ import { ThirdPersonCamera } from "../engine/camera.js";
 import * as MESH from "../engine/mesh.js";
 import { m4, mulberry32, TAU, clamp } from "../engine/math.js";
 import { BeanVisual, registerBeanMeshes } from "../game/bean.js";
+import * as Immersive from "../ui/immersive.js";
+import { TAGLINE, SUBTITLE } from "../data/world.js";
 
 const TITLE = "VOCABUSURVIVE";
 
@@ -29,6 +31,15 @@ const TITLE = "VOCABUSURVIVE";
 const TITLE_SPLIT = "VOCABU".length;
 function titleColorAt(i) {
   return i < TITLE_SPLIT ? "var(--vs-ink)" : "var(--vs-accent)";
+}
+
+/* 全画面で 開くか。既定は **入る**。設定で 切れる。 */
+const FS_KEY = "vq.survive.fullscreen.v1";
+export function 没入したいか() {
+  try { return localStorage.getItem(FS_KEY) !== "0"; } catch (e) { return true; }
+}
+export function 没入の好み(on) {
+  try { localStorage.setItem(FS_KEY, on ? "1" : "0"); } catch (e) {}
 }
 
 export class LoadingScreen {
@@ -83,7 +94,11 @@ export class LoadingScreen {
     }, "START");
     this.startBtn.disabled = false;
 
-    this.hintEl = h("p", { class: "vs-load-hint", text: "クイズを解きながら走る、8人までのアスレチック。" });
+    /* ★ 世界を 1 行で（2026-08-31）。**遊びの 説明より 先に 世界を 出す。**
+       「8 人までの アスレチック」は 作りの 説明で、遊ぶ 気持ちに ならない。 */
+    this.hintEl = h("p", { class: "vs-load-hint" },
+      h("b", { class: "vs-load-tag", text: TAGLINE }),
+      h("span", { class: "vs-load-sub", text: SUBTITLE }));
 
     const bar = h("div", {
       class: "vs-load-bar", role: "progressbar",
@@ -142,6 +157,7 @@ export class LoadingScreen {
       R.addMesh("vs_load_pad", [MESH.cylinder(30, 3.0, 3.2, 0.55, true), MESH.cylinder(14, 3.0, 3.2, 0.55, true)]);
       R.addMesh("vs_load_cube", [MESH.roundedBox(3, 0.16), MESH.roundedBox(1, 0.14)]);
       R.addMesh("vs_load_ring", [MESH.torus(26, 10, 0.5, 0.09), MESH.torus(12, 6, 0.5, 0.09)]);
+      R.addMesh("vs_load_mote", [MESH.sphere(6, 4, 0.5)]);
       registerBeanMeshes(R);
 
       this._cam = new ThirdPersonCamera();
@@ -167,14 +183,25 @@ export class LoadingScreen {
           yawSpin: i === 0 ? 0 : (rnd() - 0.5) * 0.6
         });
       }
-      this._cubes = [];
-      for (let i = 0; i < 26; i++) {
-        this._cubes.push({
-          x: (rnd() - 0.5) * 34, y: 1 + rnd() * 9, z: -4 - rnd() * 26,
-          s: 0.4 + rnd() * 1.1, r: rnd() * TAU, sp: (rnd() - 0.5) * 0.8,
-          c: (() => { const q = BEAN_COLORS[(rnd() * BEAN_COLORS.length) | 0].rgb; return [q[0], q[1], q[2], 1]; })(),
-          bob: rnd() * TAU
+      /* ★ 色とりどりの 立方体 26 個を やめた（2026-08-31）。
+         題字の 上に **茶色い 箱が 重なって 読めなかった**（実写で 確認）。
+         代わりに 昇る 光の 粒。世界（ことばの 種）とも 揃う。
+         ★ 題字と START の 帯（画面の 上 4 割・下 3 割）には 出さない。 */
+      this._motes = [];
+      for (let i = 0; i < 30; i++) {
+        this._motes.push({
+          x: (rnd() - 0.5) * 24, y: rnd() * 12, z: -3 - rnd() * 20,
+          s: 0.05 + rnd() * 0.10, sp: 0.3 + rnd() * 0.5, ph: rnd() * TAU,
+          sway: 0.3 + rnd() * 0.9
         });
+      }
+      /* 遠くの 柱。場所が ある ように 見せる。 */
+      this._pillars = [];
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * TAU + rnd() * 0.25;
+        const r = 24 + rnd() * 14;
+        this._pillars.push({ x: Math.sin(a) * r, z: Math.cos(a) * r - 5,
+          h: 4 + rnd() * 15, w: 0.9 + rnd() * 1.6, r: rnd() * 0.6 });
       }
     } catch (e) {
       /* 立体が 出せなくても 画面は 生きる（文字と START は 出る）。 */
@@ -201,6 +228,17 @@ export class LoadingScreen {
 
   _start() {
     if (this.started) return;
+    /* ★ 全画面へ 入るのは **ここ**（2026-08-31）。
+       Fullscreen API は 「人が 押した その場」でしか 通らない。
+       _go() は 手ごたえの ために 240ms 待って から 移るので、
+       そこで 頼むと **必ず 断られる**（実測）。押した 瞬間に 頼む。
+       断られても 疑似 全画面で 画面いっぱいに なる。 */
+    if (没入したいか()) {
+      try {
+        const 器 = (this.shell && this.shell.host) || null;
+        Immersive.into(器, { landscape: false });
+      } catch (e) {}
+    }
     this.startBtn.disabled = true;
     if (!this.ready) {
       this._pendingStart = true;
@@ -252,11 +290,23 @@ export class LoadingScreen {
     m4.compose(this._mat, 0, -0.10, 0, -this._t * 0.35, 8.0, 2.4, 8.0);
     R.draw("vs_load_ring", this._mat, [0.36, 0.88, 0.72, 1], 0.55, 0.4, 0, 0, 4.1);
 
-    /* 浮いている 四角 */
-    for (const c of this._cubes) {
-      const y = c.y + Math.sin(this._t * 0.8 + c.bob) * 0.35;
-      m4.compose(this._mat, c.x, y, c.z, c.r + this._t * c.sp, c.s, c.s, c.s);
-      R.draw("vs_load_cube", this._mat, c.c, 0.06, 0.30, 0, 0, c.s);
+    /* 遠くの 柱 */
+    for (const p of this._pillars) {
+      m4.compose(this._mat, p.x, -6.6 + p.h / 2, p.z, p.r, p.w, p.h, p.w);
+      R.draw("vs_load_cube", this._mat, [0.24, 0.22, 0.44, 1], 0, 0.18, 0, 0, p.h);
+    }
+    /* 下に 広がる 面。台が 宙に 浮いて 見えない ように する。 */
+    m4.compose(this._mat, 0, -6.8, -3, 0, 110, 1, 110);
+    R.draw("vs_load_pad", this._mat, [0.10, 0.09, 0.22, 1], 0, 0.02, 0, -1, 55);
+
+    /* 昇る 光の 粒 */
+    for (const m of this._motes) {
+      m.y += dt * m.sp;
+      if (m.y > 13) { m.y = -1.2; }
+      const x = m.x + Math.sin(this._t * 0.5 + m.ph) * m.sway;
+      const 明 = 0.55 + 0.45 * Math.sin(this._t * 1.6 + m.ph);
+      m4.compose(this._mat, x, m.y, m.z, 0, m.s, m.s, m.s);
+      R.draw("vs_load_mote", this._mat, [1.0, 0.94, 0.80, 1], 0.85 * 明 + 0.25, 0.2, 0, 0, m.s);
     }
 
     /* 走る人 */
@@ -325,6 +375,12 @@ export const LOADING_CSS = `
   from{ transform:translateY(-26px) scale(.86); opacity:0; }
   to{ transform:none; opacity:1; }
 }
+/* ★ 題字と 一行の 後ろに うっすら 影。立体の 上に 文字を 置く ので、
+   何が 後ろに 来ても 読める ように する（2026-08-31）。 */
+.vs-load-top{ text-shadow:0 2px 14px rgba(4,6,20,.92), 0 1px 3px rgba(4,6,20,.85); }
+.vs-load-tag{ display:block; font-size:15px; font-weight:750; letter-spacing:.02em;
+  color:var(--vs-ink); margin-bottom:3px; }
+.vs-load-sub{ display:block; opacity:.72; }
 .vs-load-hint{
   color:var(--vs-ink-sub); font-size:clamp(12px,2.4vw,15px); max-width:34em;
   text-shadow:0 2px 10px rgba(6,8,24,.9), 0 0 22px rgba(6,8,24,.7);

@@ -13,6 +13,8 @@ import { CSS } from "./ui/theme.js";
 import { LoadingScreen, LOADING_CSS } from "./boot/loading.js";
 import { settingsFor, measure } from "./boot/caps.js";
 import { VERSION, BUILD_DATE } from "./version.js";
+import * as Immersive from "./ui/immersive.js";
+import { 流す as 学びを流す } from "./data/learn.js";
 
 const LOG = "[VocabuSurvive]";
 
@@ -47,6 +49,11 @@ class App {
     this.container = container;
     this.opened = true;
     this._err = "";
+
+    /* ★ 前に 走った ぶんが 置いたまま に なって いれば 流す（2026-08-31）。
+       本体の 道具は あとから 読まれる ので、走り終えた その 時には
+       まだ 来て いない ことが ある。 */
+    try { 学びを流す(); } catch (e) {}
 
     this.caps = measure();
     const forced = (opts && opts.tier) || readSavedTier();
@@ -98,10 +105,13 @@ class App {
          ここで つまずいても ロビーと 試合は もう 動いている。 */
       /* ★ 作る 画面は **立体**（実際の 絵の 中で 置く）。
          一覧で 並べる だけの 旧い 作り（ui/editor.js）は もう 読まない。 */
-      ["コースの 作り方を 用意しています", () => import("./ui/editor3d.js")]
+      ["コースの 作り方を 用意しています", () => import("./ui/editor3d.js")],
+      /* ★ 探索モード（2026-09-02）。いちばん 重いので **最後**に 読む。
+         ここで つまずいても、ロビーと 試合は もう 動いている。 */
+      ["世界を 作っています", () => import("./rpg/screen.js")]
     ];
     const mods = {};
-    const keys = ["audio", "courses", "lobby", "net", "match", "questions", "editor"];
+    const keys = ["audio", "courses", "lobby", "net", "match", "questions", "editor", "rpg"];
     for (let i = 0; i < steps.length; i++) {
       const [label, fn] = steps[i];
       loading.setProgress(i / steps.length, label);
@@ -122,6 +132,11 @@ class App {
   }
 
   async _registerScreens(mods) {
+    /* ★ 読み込みの 途中で 閉じられる ことが ある（2026-08-31・検査で 出た）。
+       close() が shell を null に した あとで ここが 走ると
+       「Cannot read properties of null (reading 'root')」で 落ちる。
+       閉じて いれば **何も しないで 帰る**。あとから 開き直せば また 通る。 */
+    if (!this.opened || !this.shell || !this.shell.root) return;
     if (mods.lobby && mods.lobby.LobbyScreen) {
       addCss(this.shell.root, mods.lobby.LOBBY_CSS || "");
       /* あそび方の 札は ロビーと 試合の 両方で 使う。CSS は HUD 側に ある。 */
@@ -148,6 +163,14 @@ class App {
         onExit: () => this.goLobby()
       });
       this.shell.register("editor", ed);
+    }
+    if (mods.rpg && mods.rpg.RpgScreen) {
+      addCss(this.shell.root, mods.rpg.RPG_CSS || "");
+      const rpg = new mods.rpg.RpgScreen({
+        settings: this.settings, app: this,
+        onExit: () => this.goLobby()
+      });
+      this.shell.register("rpg", rpg);
     }
     if (mods.match && mods.match.MatchScreen) {
       addCss(this.shell.root, mods.match.MATCH_CSS || "");
@@ -181,6 +204,14 @@ class App {
     await this.shell.show("editor", arg);
   }
 
+  /** 探索モードへ。 */
+  async startRpg(arg) {
+    if (!this.shell || !this.shell.get("rpg")) { await this.goLobby(); return; }
+    this.screenName = "rpg";
+    if (this.audio) { try { this.audio.unlock(); this.audio.startMusic("calm"); } catch (e) {} }
+    await this.shell.show("rpg", arg || {});
+  }
+
   async goLobby() {
     if (!this.shell) return;
     if (this.audio) { try { this.audio.startMusic("calm"); } catch (e) {} }
@@ -203,7 +234,15 @@ class App {
   async startMatch(cfg) {
     if (!this.shell || !this.shell.get("match")) { await this.goLobby(); return; }
     this.screenName = "match";
-    if (this.audio) { try { this.audio.unlock(); this.audio.startMusic("run"); } catch (e) {} }
+    /* ★ 曲は **風景ごと**（2026-08-31）。氷でも 溶岩でも 同じ 曲だと、
+       せっかく 10 種類 作った 風景が 耳では 1 つに なる。
+       cfg.theme が 無い ときは これまでどおり "run"。 */
+    if (this.audio) {
+      try {
+        this.audio.unlock();
+        this.audio.startMusic((cfg && cfg.theme) || "run");
+      } catch (e) {}
+    }
     await this.shell.show("match", cfg);
   }
 
@@ -219,6 +258,10 @@ class App {
   /* ── 閉じる ───────────────────────────────────────────────────────── */
   close() {
     if (!this.opened) return;
+    /* ★ 全画面から 必ず 出る（2026-08-31）。
+       出さずに 閉じると 本体へ 戻っても 画面が 全画面の まま 残り、
+       サイドバーが 出て こない。 */
+    try { Immersive.out(); } catch (e) {}
     this.opened = false;
     this.screenName = "";
     if (this.audio) { try { this.audio.destroy(); } catch (e) {} this.audio = null; }
@@ -277,11 +320,14 @@ const api = {
   build: BUILD_DATE,
   open: (container, opts) => app.open(container, opts),
   close: () => app.close(),
+  immersive: Immersive,
   state: () => app.state(),
   setTier: (t) => { saveTier(t); return t; },
   setQuality: (t) => app.setQuality(t),
   /* 通知を 押した ときの 入口。本体が これを 呼ぶ。 */
   joinRoom: (code) => app.joinRoom(code),
+  /* 探索モード（2026-09-02）。本体や 検査から 直に 入れる。 */
+  startRpg: (arg) => app.startRpg(arg),
   /* 検査で 中を 見たいとき用。ふだんは 使わない。 */
   __app: app
 };

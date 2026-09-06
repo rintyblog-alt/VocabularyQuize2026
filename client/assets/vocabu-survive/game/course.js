@@ -34,6 +34,11 @@ import { m4, mulberry32, hashSeed, clamp, lerp, TAU } from "../engine/math.js";
 
 const _m = m4.create();
 
+/* 道の 上面から 土手の 上面までの 落差（m）。
+   ★ ここを 小さく すると 道と 地面が つながって 見え、
+     **落ちる 場所が 分からなく なる**。段差は 残す。 */
+const BANK_DROP = 2.8;
+
 export class Course {
   /**
    * @param {object} def data/courses.js の 1 本
@@ -57,6 +62,9 @@ export class Course {
     this.checkpoints = [];
     this.finish = null;
     this.decor = [];        /* 当たらない 飾り */
+    /* ★ 脇の 土手（2026-08-31）。飾りとは **別の 入れ物**に する。
+       同じ 所へ 入れると 「飾りが 何個 あるか」の 検査が 土手まで 数える。 */
+    this.banks = [];
     this.floors = [];       /* 描く ための 床の 一覧 */
     this.path = [];         /* 中心線 {x,y,z,w,dist} */
     this.spawns = [];
@@ -92,6 +100,7 @@ export class Course {
     this.length = this.path[this.path.length - 1].dist;
     this.endZ = z;
 
+    this._banks();
     this._decorate();
     this.world.build();
     this.built = true;
@@ -291,6 +300,60 @@ export class Course {
     return { cx, y, z: z - len };
   }
 
+  /** コースの 脇の 土手の 上面の 高さ。飾りは ここに 立つ。 */
+  bankTopAt(d) { return this.pointAt(d).y - BANK_DROP; }
+
+  /* ── コースの 脇の 土手（2026-08-31・訴え「周りの 木が 浮いてる」）──
+     ★ 直す前は 木も 岩も **道の 1〜4m 下の 空中に 浮いて いた**。
+       下に 何も 無い ので、遠くの 地面（-26m）との あいだが
+       まる見えに なる。世界が 作りかけに 見える いちばん の 原因。
+     ★ 直しかた: 道の 両脇に **土手を 通す**。
+       ・上面は 道より 2.8m 下。**段差を 残す**ので 落ちる 感じは 壊れない
+       ・内側の 端は その 場所の 道幅から 決める（広い 所でも かぶらない）
+       ・当たり判定は 付けない（飾りと 同じ 入れ物に 入れる）
+       ・形は 増やさない（M.box）。同じ 形なので **描き回数は 増えない**
+       ・隙間（gap）の 所も 土手は 通す。**落ちる 穴は 道の 幅の 中**なので
+         これで 埋まる ことは ない */
+  _banks() {
+    const P = this.palette;
+    const L = this.length;
+    if (!(L > 0)) return;
+    const 幅外 = 96;                 /* 土手の 外側の 端（中心から m）*/
+    const 段 = 10;                   /* 何 m ごとに 1 枚 置くか */
+    const 厚 = 7.2;                  /* 土手の 厚み（横から 見た とき 地面に 見える）*/
+    /* 色は **遠くの 地面と 同じ**。土手と 地平が 同じ 土に 見える。 */
+    const c = P.far ? [P.far[0] * 1.06, P.far[1] * 1.06, P.far[2] * 1.06, 1] : P.floorAlt;
+    let 番 = 0;
+    for (let d = -段 * 0.5; d < L + 段; d += 段) {
+      const a = this.pointAt(Math.max(0, d));
+      const b = this.pointAt(Math.min(L, d + 段));
+      let dx = b.x - a.x, dz = b.z - a.z;
+      const len = Math.hypot(dx, dz);
+      if (len < 1e-4) { dx = 0; dz = -1; } else { dx /= len; dz /= len; }
+      const ry = Math.atan2(dx, dz);
+      /* 右向き（進む 向きの 右手） */
+      const rx = dz, rz = -dx;
+      const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+      /* ★ **同じ 高さの 板を 重ねると ちらつく**（z 争い）。
+         1 枚おきに 1cm 上げ下げして 面を ずらす。 */
+      const my = (a.y + b.y) / 2 - BANK_DROP - 厚 / 2 + ((番++ & 1) ? 0.012 : 0);
+      /* ★ 内側の 端は **落ちる 人が 届かない ところ**まで 逃がす。
+         道から 外れると 横に 8m/s で 飛び出し、消える 高さ（-22m）まで
+         1.3 秒 かかる ので **10m 以上**は 進む。
+         近くに 置くと 「見えている 地面を すり抜けて 落ちる」ことに なり、
+         地面が 無い ときより 壊れて 見える。 */
+      const 内 = Math.max(a.w, b.w) / 2 + 12;
+      const 幅 = 幅外 - 内;
+      if (幅 < 4) continue;
+      for (const side of [-1, 1]) {
+        const cx = mx + rx * side * (内 + 幅 / 2);
+        const cz = mz + rz * side * (内 + 幅 / 2);
+        this.banks.push({ m: M.slab, x: cx, y: my, z: cz, ry,
+          sx: 幅, sy: 厚, sz: 段 * 1.06, c, e: 0, rim: 0.05 });
+      }
+    }
+  }
+
   /* ── 飾り（当たらない）──────────────────────────────────────────────
      ★ 風景 10 種の 差が 「空と 床の 色」だけに なって いた。
        同じ 木と 岩を どこでも 使い回して いたので、
@@ -310,10 +373,48 @@ export class Course {
       const z = -rnd() * Math.abs(this.endZ);
       /* 中心線から どれくらい 離れているか を 見て 外側へ 置く */
       const p = this.pointAt(-z);
-      const off = 10 + rnd() * 26;
+      /* ★ 土手の 上に 立たせる ので、内側の 端より 外へ 出す。
+         近いと 「落ちる 人が すり抜ける 地面」の 上に 木が 立つ。 */
+      const off = 16 + rnd() * 30;
       const x = p.x + side * off;
-      const y = p.y - 1 - rnd() * 3;
+      /* ★ **土手の 上に 立たせる**（2026-08-31）。
+         直す前は 「道より 1〜4m 下」に 置いて いた ので、
+         下に 何も 無く 空中に 浮いて いた。 */
+      const y = p.y - BANK_DROP - 0.3 + rnd() * 0.2;
       kit(置く, { x, y, z, side, off, base: p.y, rnd, P, M, TAU });
+    }
+
+    /* ══ 地方の 目印（2026-08-31・訴え「マップの クオリティ」）══════
+       ★ 走っている 間 「ここは どこか」が 分からなかった。
+         飾りは 風景ごとに 違うが、**どれも 小さくて 遠くから 見えない**。
+       ★ 遠くに 大きな もの（30〜60m）を 1 つ 建てる。
+         これが 見えるだけで 場所に 名前が つく。
+       ★ 決めごと:
+         ・**形は 増やさない**（既にある 10 個の 組み合わせだけ）
+         ・コースの 上には 建てない。中心から 70〜110m 横へ 逃がす
+         ・当たらない（飾りと 同じ 入れ物）
+         ・部品は 12 個まで。増やすと 遠くの 板だけで 描き回数が 増える */
+    const LM = LANDMARK[this.themeName];
+    if (LM) {
+      /* ★ 置き場所は **先の ほう・少し 横**（2026-08-31）。
+         最初 コースの 真ん中の 真横 74m に 置いたら、
+         そこへ 着いた ときには **画面の 外**で、着く 前は 霧の 向こう。
+         結局 一度も 見えなかった（実写で 確認）。
+         霧は drawDistance（高で 200m）で 消えるので、
+         **8 割の 地点**へ 置くと 走っている 間ずっと 前方に 見える。 */
+      const 先 = this.pointAt(this.length * 0.80);
+      const 側 = (this.seed & 1) ? 1 : -1;
+      /* ★ 目印には 印を 付ける（lm）。飾りと 見分けが つかないと、
+         「コースに かぶって いないか」を 機械で 確かめられない。 */
+      const 目印を置く = (o) => { o.lm = 1; this.decor.push(o); };
+      LM(目印を置く, {
+        /* 34m では **近すぎて 目の 前の 茂み**に なった（実写）。
+           先の ほうに 置く ので 横は 広く 取れる。 */
+        x: 先.x + 側 * (62 + rnd() * 26),
+        y: 先.y - 5,
+        z: 先.z,
+        rnd, P, M, TAU
+      });
     }
   }
 
@@ -384,16 +485,27 @@ export class Course {
     const T = this.theme;
     R.sky.top = T.sky.top; R.sky.horizon = T.sky.horizon;
     R.sky.ground = T.sky.ground; R.sky.sun = T.sky.sun;
+    R.sky.stars = T.sky.stars || 0;
+    R.sky.starTint = T.sky.starTint || [1, 0.98, 0.92];
+    /* 遠くの 地平（2026-08-31）。無ければ 出さない（ふりを しない）。 */
+    R.sky.land = T.land || null;
     R.light.dir.set(T.light);
     const l = Math.hypot(T.light[0], T.light[1], T.light[2]) || 1;
     R.light.dir[0] /= l; R.light.dir[1] /= l; R.light.dir[2] /= l;
     R.light.color = T.lightColor;
     R.ambTop = T.ambTop; R.ambBottom = T.ambBottom;
     R.fog.color = T.fog;
+    /* ★ 後処理も 風景ごとに（2026-08-31）。
+       にじみの 強さ・露出・彩度・周辺減光を 変えないと、
+       10 種類 あっても 「色 違いの 同じ 場所」に しか 見えない。
+       後処理が 無い 端末では setGrade が 何も しない（ふりを しない）。 */
+    if (T.grade && R.setGrade) R.setGrade(T.grade);
+    if (R.setGrid) R.setGrid(T.grid || [2.0, 0.10, 18, 62]);
   }
 
   draw(R, t) {
     const P = this.palette;
+    const T = this.theme;
     /* ★ 遠くに 広がる 地面。1 回の 描きで 出せる。
        これが 無いと コースが **宙に 浮いて** 見え、
        落ちた ときも 「どこへ 落ちたのか」が 分からない。
@@ -401,8 +513,26 @@ export class Course {
     if (P.far) {
       const cx = R._camPos ? R._camPos[0] : 0, cz = R._camPos ? R._camPos[2] : 0;
       const y = (this.def.farY === undefined ? -26 : this.def.farY);
-      m4.compose(_m, cx, y, cz, 0, 900, 1, 900);
-      R.draw(M.slab, _m, P.far, 0, 0.02, 0, 0, 900);
+      /* ★ 900 だと **端が 地平の 下 5 度**に 来る（実写）。
+         その 上に 空の 色が 帯に なって 残り、
+         「地面と 空の あいだに 白い 隙間」に 見えた。
+         2400 まで 広げると 端が 地平まで 届く。
+         描き回数は 1 回の まま（大きさを 変えるだけ）。 */
+      m4.compose(_m, cx, y, cz, 0, 2400, 1, 2400);
+      R.draw(M.slab, _m, P.far, 0, 0.02, 0, -1, 2400);
+
+      /* ★ その 上の 「海」（2026-08-31）。
+         溶岩は 溶けた 海、氷は 凍った 海、空は 雲の 海、ネオンは 夜の 水面。
+         ★ caps.js の PRESETS に `water` が **あったのに どこでも 使って
+           いなかった**（できる ふりに なっていた）。ここで 使う。
+         ★ 揺れ（params.w が 正）を 使うので 描き回数は 増えない。
+           床の 印は 負 なので ぶつからない。 */
+      const S = T && T.sea;
+      if (S && R.settings && R.settings.water) {
+        const 明 = S.glow * (0.72 + 0.28 * Math.sin(t * (S.speed || 0.4)));
+        m4.compose(_m, cx, y + (S.y || 1), cz, 0, 2360, 1, 2360);
+        R.draw(M.slab, _m, [S.color[0], S.color[1], S.color[2], 0.9], 明, 0.05, 0, S.sway || 0.2, 2360);
+      }
     }
     /* 床 */
     for (const f of this.floors) {
@@ -418,11 +548,11 @@ export class Course {
         const ang = Math.atan2(f.dy, f.d) * (f.up ? 1 : 1);
         m4.composeXYZ(_m, f.x, f.y, f.z, f.up ? -ang : ang, 0, 0,
           f.w, 0.6, Math.hypot(f.d, f.dy));
-        R.draw(M.slab, _m, c, 0, 0.16, 2, 0, Math.max(f.w, f.d));
+        R.draw(M.slab, _m, c, 0, 0.16, 2, -1, Math.max(f.w, f.d));
         continue;
       }
       m4.compose(_m, f.x, f.y - 0.3, f.z, 0, f.w, 0.6, f.d);
-      R.draw(M.slab, _m, c, 0, 0.16, stripe, 0, Math.max(f.w, f.d));
+      R.draw(M.slab, _m, c, 0, 0.16, stripe, -1, Math.max(f.w, f.d));
       /* 端の 縁取り。落ちる 場所が 分かる。 */
       if (f.kind !== "start" && f.kind !== "finish") {
         for (const side of [-1, 1]) {
@@ -430,6 +560,54 @@ export class Course {
           R.draw(M.slab, _m, P.accent, 0.10, 0.24, 0, 0, f.d);
         }
       }
+    }
+    /* ══ 進む 向きの 矢印（2026-08-31・訴え「マップの クオリティ」）══
+       ★ 直す前は **どちらへ 走れば いいのか 絵が 何も 語って いなかった**。
+         床が 広い ところ・分かれ道・跳んだ あとで 迷う。
+       ★ 床の 上に 平たい 三角を 8m おきに 置く。光は 時間で 前へ 流れる
+         ので、止まって いても 進む 向きが 分かる。
+       ★ 形は **増やさない**（円すいを 寝かせて 潰すだけ）。
+         並べ描きの まとまりが 割れないので 描き回数は 増えない。 */
+    {
+      const A = P.accent;
+      for (const f of this.floors) {
+        if (f.kind === "start" || f.kind === "finish" || f.kind === "cp") continue;
+        if (f.kind === "ramp" || f.d < 10 || f.w < 2.6) continue;
+        const 本数 = Math.min(6, Math.floor(f.d / 9));
+        for (let i = 0; i < 本数; i++) {
+          const zz = f.z + f.d / 2 - (i + 0.5) * (f.d / 本数);
+          /* 光が 前へ 流れる。位置と 時間から 出すので 覚えるものが 無い。 */
+          const ph = (t * 1.5 - zz * 0.10) % 1;
+          const 明 = 0.26 + Math.max(0, 1 - Math.abs(((ph % 1) + 1) % 1 - 0.5) * 4) * 0.62;
+          m4.composeXYZ(_m, f.x, f.y + 0.10, zz, -Math.PI / 2, 0, 0,
+            Math.min(2.4, f.w * 0.30), 2.4, 0.10);
+          R.draw(M.cone, _m, A, 明, 0.18, 0, 0, 2.4);
+        }
+      }
+    }
+
+    /* 出発の 門。ここから 始まる ことが 絵で 分かる。 */
+    for (const f of this.floors) {
+      if (f.kind !== "start") continue;
+      const gx = f.x, gy = f.y, gz = f.z - f.d / 2 + 1.2, gw = f.w * 0.82;
+      /* ★ 帯を 6.6m まで 上げた（2026-08-31）。5.2m だと **跳んだ ときに
+         カメラが 帯の 中へ 入り、画面が 黄色 一色**に なった（実写）。
+         走る人の 背は 1.5m、跳ぶと 2.0m、カメラは そこから さらに 上。 */
+      for (const side of [-1, 1]) {
+        m4.compose(_m, gx + side * gw / 2, gy + 3.3, gz, 0, 0.7, 6.6, 0.7);
+        R.draw(M.cyl, _m, P.metal, 0, 0.22, 0, 0, 6.6);
+      }
+      /* 帯は 薄く。厚いと 走る 先が 見えなく なる（実写で 気づいた）。 */
+      m4.compose(_m, gx, gy + 6.7, gz, 0, gw + 1.0, 0.45, 0.34);
+      R.draw(M.box, _m, P.accent, 0.42, 0.4, 0, 0, gw);
+      m4.compose(_m, gx, gy + 6.25, gz, 0, gw + 1.0, 0.18, 0.30);
+      R.draw(M.box, _m, P.metal, 0, 0.3, 0, 0, gw);
+    }
+
+    /* 脇の 土手（飾りより 先に。上に 立つ ものが あと）*/
+    for (const d of this.banks) {
+      m4.compose(_m, d.x, d.y, d.z, d.ry, d.sx, d.sy, d.sz);
+      R.draw(d.m, _m, d.c, 0, d.rim, 0, 0, Math.max(d.sx, d.sz));
     }
     /* 飾り */
     for (const d of this.decor) {
@@ -452,6 +630,115 @@ export class Course {
      ここを 増やすと 遠くの 板だけで 何百個にも なり、
      並べ描きの 数が 増えて 弱い 端末で 落ちる。
    ══════════════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════════
+   地方の 目印（landmark）
+
+   ★ 走っている 間 「ここは どこか」を 教える 大きな もの。
+     コースの 外側 70〜110m に 1 つだけ 建てる。
+   ★ 受け取る もの: 置く(o) と { x, y, z, rnd, P, M, TAU }
+     置き方は 飾り（decor）と 同じ。当たり判定は 付かない。
+   ★ **部品は 12 個まで。** 形は 既にある 10 個だけ を 使う。
+   ══════════════════════════════════════════════════════════════════════════ */
+const LANDMARK = {
+  /* 草原 … 大きな 木（この 遊びの 芯。ことばの 大樹の 子ども） */
+  meadow(置く, a) {
+    const { x, y, z, P, M, rnd, TAU } = a;
+    置く({ m: M.cyl, x, y: y + 13, z, ry: 0, sx: 4.2, sy: 26, sz: 4.2, c: P.trunk, e: 0, rim: 0.18 });
+    置く({ m: M.ball, x, y: y + 30, z, ry: rnd() * TAU, sx: 19, sy: 14, sz: 19, c: P.leaf, e: 0, rim: 0.22 });
+    置く({ m: M.ball, x: x - 7, y: y + 24, z: z + 5, ry: 0, sx: 11, sy: 9, sz: 11, c: P.leaf, e: 0, rim: 0.22 });
+    置く({ m: M.ball, x: x + 8, y: y + 25, z: z - 4, ry: 0, sx: 12, sy: 9, sz: 12, c: P.leaf, e: 0, rim: 0.22 });
+  },
+  /* 夕暮れ … 風車 */
+  sunset(置く, a) {
+    const { x, y, z, P, M, TAU } = a;
+    置く({ m: M.cyl, x, y: y + 14, z, ry: 0, sx: 5.5, sy: 28, sz: 5.5, c: P.prop, e: 0, rim: 0.2 });
+    置く({ m: M.cone, x, y: y + 31, z, ry: 0, sx: 8, sy: 7, sz: 8, c: P.accent, e: 0.1, rim: 0.3 });
+    for (let i = 0; i < 4; i++) {
+      置く({ m: M.blade, x, y: y + 26, z: z - 4, ry: 0, sx: 2.4, sy: 16, sz: 0.8,
+        c: P.prop, e: 0.04, rim: 0.3, float: 0.18 + i * 0.001, spin: i * (TAU / 4) });
+    }
+  },
+  /* お菓子 … 巨大な 棒つきキャンディ */
+  candy(置く, a) {
+    const { x, y, z, P, M, rnd, TAU } = a;
+    置く({ m: M.post, x, y: y + 12, z, ry: 0, sx: 2.2, sy: 24, sz: 2.2, c: P.prop, e: 0.02, rim: 0.3 });
+    置く({ m: M.ring, x, y: y + 30, z, ry: rnd() * TAU, sx: 18, sy: 18, sz: 3.4, c: P.accent, e: 0.12, rim: 0.4 });
+    置く({ m: M.ring, x, y: y + 30, z, ry: rnd() * TAU, sx: 12, sy: 12, sz: 3.0, c: P.gold, e: 0.12, rim: 0.4 });
+    置く({ m: M.ball, x, y: y + 30, z, ry: 0, sx: 7, sy: 7, sz: 7, c: P.spring, e: 0.1, rim: 0.36 });
+  },
+  /* 氷 … 氷の 尖塔 */
+  ice(置く, a) {
+    const { x, y, z, P, M } = a;
+    置く({ m: M.cone, x, y: y + 22, z, ry: 0, sx: 14, sy: 46, sz: 14, c: P.prop, e: 0.06, rim: 0.45 });
+    置く({ m: M.cone, x: x - 11, y: y + 12, z: z + 7, ry: 0, sx: 8, sy: 26, sz: 8, c: P.prop, e: 0.05, rim: 0.45 });
+    置く({ m: M.cone, x: x + 12, y: y + 9, z: z - 6, ry: 0, sx: 7, sy: 20, sz: 7, c: P.floorAlt, e: 0.04, rim: 0.4 });
+  },
+  /* 溶岩 … 噴き上がる 山 */
+  lava(置く, a) {
+    const { x, y, z, P, M, rnd } = a;
+    置く({ m: M.cone, x, y: y + 17, z, ry: 0, sx: 34, sy: 36, sz: 34, c: P.floorAlt, e: 0, rim: 0.16 });
+    置く({ m: M.cyl, x, y: y + 34, z, ry: 0, sx: 9, sy: 4, sz: 9, c: P.hot, e: 0.9, rim: 0.5 });
+    for (let i = 0; i < 5; i++) {
+      置く({ m: M.dot, x: x + (rnd() - 0.5) * 12, y: y + 40 + rnd() * 16, z: z + (rnd() - 0.5) * 12,
+        ry: 0, sx: 1.6, sy: 1.6, sz: 1.6, c: rnd() < 0.5 ? P.hot : P.warn, e: 1.0, rim: 0.5,
+        float: 0.4 + rnd() * 0.5 });
+    }
+  },
+  /* ネオン … 光る 高い 塔 */
+  neon(置く, a) {
+    const { x, y, z, P, M } = a;
+    置く({ m: M.box, x, y: y + 26, z, ry: 0, sx: 9, sy: 52, sz: 9, c: P.floorAlt, e: 0, rim: 0.24 });
+    for (let i = 0; i < 5; i++) {
+      置く({ m: M.box, x, y: y + 8 + i * 10, z, ry: 0, sx: 10.4, sy: 0.9, sz: 10.4,
+        c: i % 2 ? P.accent : P.gateCurtain, e: 1.0, rim: 0.5 });
+    }
+    置く({ m: M.ball, x, y: y + 55, z, ry: 0, sx: 4.4, sy: 4.4, sz: 4.4, c: P.hot, e: 1.2, rim: 0.5 });
+  },
+  /* 森 … 巨木の 切り株と きのこ */
+  forest(置く, a) {
+    const { x, y, z, P, M, rnd, TAU } = a;
+    置く({ m: M.cyl, x, y: y + 9, z, ry: 0, sx: 22, sy: 18, sz: 22, c: P.trunk, e: 0, rim: 0.18 });
+    置く({ m: M.cyl, x, y: y + 18.4, z, ry: 0, sx: 22.6, sy: 1.2, sz: 22.6, c: P.floorAlt, e: 0, rim: 0.2 });
+    for (let i = 0; i < 3; i++) {
+      const ax = x + (rnd() - 0.5) * 26, az = z + (rnd() - 0.5) * 26;
+      置く({ m: M.post, x: ax, y: y + 4, z: az, ry: 0, sx: 1.6, sy: 8, sz: 1.6, c: P.prop, e: 0, rim: 0.24 });
+      置く({ m: M.ball, x: ax, y: y + 9, z: az, ry: rnd() * TAU, sx: 7, sy: 3.4, sz: 7, c: P.accent, e: 0.05, rim: 0.3 });
+    }
+  },
+  /* 空 … 浮かぶ 島 */
+  sky(置く, a) {
+    const { x, y, z, P, M, rnd, TAU } = a;
+    置く({ m: M.cyl, x, y: y + 26, z, ry: 0, sx: 30, sy: 5, sz: 30, c: P.prop, e: 0.03, rim: 0.3, float: 0.1 });
+    置く({ m: M.cone, x, y: y + 18, z, ry: Math.PI, sx: 26, sy: -20, sz: 26, c: P.floorAlt, e: 0.02, rim: 0.28, float: 0.1 });
+    置く({ m: M.cyl, x: x - 4, y: y + 34, z: z + 3, ry: 0, sx: 2.4, sy: 12, sz: 2.4, c: P.trunk, e: 0, rim: 0.2, float: 0.1 });
+    置く({ m: M.ball, x: x - 4, y: y + 42, z: z + 3, ry: rnd() * TAU, sx: 10, sy: 8, sz: 10, c: P.spring, e: 0.04, rim: 0.26, float: 0.1 });
+  },
+  /* 遺跡 … 崩れた 大門 */
+  ruins(置く, a) {
+    const { x, y, z, P, M, rnd } = a;
+    置く({ m: M.cyl, x: x - 12, y: y + 16, z, ry: 0, sx: 6, sy: 32, sz: 6, c: P.prop, e: 0, rim: 0.2 });
+    置く({ m: M.cyl, x: x + 12, y: y + 11, z, ry: 0, sx: 6, sy: 22, sz: 6, c: P.prop, e: 0, rim: 0.2 });
+    置く({ m: M.box, x: x - 3, y: y + 33, z, ry: 0, sx: 26, sy: 3.4, sz: 6, c: P.floorAlt, e: 0, rim: 0.22 });
+    for (let i = 0; i < 3; i++) {
+      const s = 3 + rnd() * 4;
+      置く({ m: M.box, x: x + (rnd() - 0.5) * 30, y: y + s / 3, z: z + (rnd() - 0.5) * 20,
+        ry: rnd() * 3, sx: s, sy: s * 0.7, sz: s, c: P.prop, e: 0, rim: 0.2 });
+    }
+  },
+  /* 決勝 … ことばの 大樹（この 遊びの 終着点） */
+  arena(置く, a) {
+    const { x, y, z, P, M, rnd, TAU } = a;
+    置く({ m: M.cyl, x, y: y + 21, z, ry: 0, sx: 7.5, sy: 42, sz: 7.5, c: P.metal, e: 0, rim: 0.22 });
+    置く({ m: M.ball, x, y: y + 50, z, ry: rnd() * TAU, sx: 30, sy: 22, sz: 30, c: P.gold, e: 0.35, rim: 0.4 });
+    置く({ m: M.ball, x: x - 13, y: y + 41, z: z + 8, ry: 0, sx: 16, sy: 12, sz: 16, c: P.gold, e: 0.3, rim: 0.4 });
+    置く({ m: M.ball, x: x + 14, y: y + 43, z: z - 7, ry: 0, sx: 17, sy: 13, sz: 17, c: P.gold, e: 0.3, rim: 0.4 });
+    for (let i = 0; i < 4; i++) {
+      置く({ m: M.dot, x: x + (rnd() - 0.5) * 30, y: y + 30 + rnd() * 26, z: z + (rnd() - 0.5) * 30,
+        ry: 0, sx: 1.2, sy: 1.2, sz: 1.2, c: P.spring, e: 0.9, rim: 0.5, float: 0.3 + rnd() * 0.4 });
+    }
+  }
+};
+
 const DECOR_KIT = {
   /* 草原 … まるい 木・岩・花 */
   meadow(置く, a) {

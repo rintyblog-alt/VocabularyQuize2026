@@ -83,6 +83,26 @@ export class QuizGate extends Obstacle {
 
   draw(R) {
     const P = this.course.palette;
+
+    /* ══ 門らしい 形に する（2026-08-31・訴え「マップの クオリティ」）══
+       ★ 直す前は **ただの 額縁が 1 枚**。看板が 無ければ 何の 枠か 分からない。
+       ★ 世界観（[[data/world.js]]）では ここは **「ことばの 門」**。
+         柱 2 本 ＋ 上の 梁 2 本の 鳥居のような 形に すると、
+         遠くの 一目で 「門だ」と 分かる。形は 既にある 筒と 箱だけ。 */
+    const 柱x = this.w / 2 + 0.75;
+    for (const side of [-1, 1]) {
+      this._part(R, M.cyl, this.x + side * 柱x, this.y + (this.h + 1.6) / 2, this.z, 0,
+        0.62, this.h + 1.6, 0.62, P.gateFrame, 0.05, 0.28);
+      /* 足元の 台。柱が 床へ 刺さって 見えない ように する。 */
+      this._part(R, M.box, this.x + side * 柱x, this.y + 0.22, this.z, 0,
+        1.25, 0.44, 1.25, P.metal, 0, 0.24);
+    }
+    /* 上の 梁（2 段）。上ほど 長い。 */
+    this._part(R, M.box, this.x, this.y + this.h + 1.9, this.z, 0,
+      this.w + 3.4, 0.5, 0.9, P.gateFrame, 0.10, 0.34);
+    this._part(R, M.box, this.x, this.y + this.h + 1.35, this.z, 0,
+      this.w + 2.2, 0.34, 0.7, P.metal, 0, 0.3);
+
     /* 枠 */
     m4.compose(_m2, this.x, this.y + this.h / 2 + 0.2, this.z, 0, this.w + 1.4, this.h + 1.6, 0.9);
     R.draw(M.frame, _m2, P.gateFrame, 0.06, 0.3, 0, 0, this.w);
@@ -113,6 +133,20 @@ export class QuizGate extends Obstacle {
     const pulse = 0.5 + 0.5 * Math.sin(this.t * 3.0);
     this._part(R, M.slab, this.x, this.y + 0.06, tz, 0, this.w + 2, 0.1, 0.5,
       this.state === GATE_STATE.ASKING ? P.gold : P.gateFrame, 0.3 + pulse * 0.3, 0.3);
+
+    /* ★ 遠くからも 「次は 門」と 分かる 細い 光（2026-08-31）。
+       開いた あとは 消す（済んだ ものを 光らせ続けない）。 */
+    if (!this.isOpenForMe) {
+      const 色 = this.state === GATE_STATE.ASKING ? P.gold : P.gateCurtain;
+      this._part(R, M.cyl, this.x, this.y + 13, this.z, 0, 0.28, 18, 0.28,
+        色, 0.7 + pulse * 0.3, 0.1);
+    }
+    /* 正解した 直後の 光。上へ 抜ける。 */
+    if (this.state === GATE_STATE.CORRECT && this.open < 1) {
+      const k = 1 - this.open;
+      this._part(R, M.cyl, this.x, this.y + this.h * 0.5 + 12 * (1 - k), this.z, 0,
+        this.w * 0.5 * k, 22, this.w * 0.5 * k, P.spring, 1.2 * k, 0.1);
+    }
   }
 }
 

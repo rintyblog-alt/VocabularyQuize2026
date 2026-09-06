@@ -9,6 +9,7 @@
    ══════════════════════════════════════════════════════════════════════════ */
 import { h, svg } from "./shell.js";
 import { PALETTE, beanByIndex } from "./theme.js";
+import { growthOf, addXP, localXP, medalOf, nextMedal, targetsOf, MEDALS, touchStreak } from "../data/world.js";
 
 const MEDAL = ["🥇", "🥈", "🥉"];
 
@@ -19,6 +20,8 @@ export class ResultPanel {
     this.onReview = (opt && opt.onReview) || (() => {});
     this.onLobby = (opt && opt.onLobby) || (() => {});
     this.onExit = (opt && opt.onExit) || (() => {});
+    /* 音は 使う 側から 渡す（result は 音の 作りを 知らない）。 */
+    this.audio = (opt && opt.audio) || null;
     this.el = this._build();
   }
 
@@ -30,6 +33,10 @@ export class ResultPanel {
     this.bestEl = h("div", { class: "vs-res-best vs-hide" });
     this.splitEl = h("div", { class: "vs-res-spwrap vs-hide" });
     this.cupEl = h("div", { class: "vs-res-cup vs-hide" });
+    /* 種の 育ち（世界観）。積み上がりが 見える 場所。 */
+    this.growEl = h("div", { class: "vs-res-grow vs-hide" });
+    /* コースに 対する 自分（記章） */
+    this.medEl = h("div", { class: "vs-res-med vs-hide" });
     /* ★ 間違えた 単語。**数だけでは 学びに ならない。**
        ここは 学ぶ ための 遊びなので、何を 間違えたのかを 出す。 */
     this.missEl = h("div", { class: "vs-res-miss vs-hide" });
@@ -42,6 +49,8 @@ export class ResultPanel {
         this.bestEl,
         this.cupEl,
         this.statsEl,
+        this.medEl,
+        this.growEl,
         this.noteEl,
         this.missEl,
         this.splitEl,
@@ -58,6 +67,20 @@ export class ResultPanel {
           this.againBtn = h("button", { class: "vs-btn is-mint", type: "button", onclick: () => this.onAgain() }, "もう一度"),
           h("button", { class: "vs-btn is-ghost", type: "button", onclick: () => this.onLobby() }, "ロビーへ"),
           h("button", { class: "vs-btn is-ghost", type: "button", onclick: () => this.onExit() }, "VocabuQuiz へ戻る"))));
+  }
+
+  /* 濃い ボタンを 1 つに 決める。上から 順に 「いま いちばん したい こと」。 */
+  _pickMain() {
+    const 出 = (b) => b && !b.classList.contains("vs-hide");
+    const 順 = [this.nextBtn, this.reviewBtn, this.againBtn];
+    let 主 = null;
+    for (const b of 順) if (!主 && 出(b)) 主 = b;
+    for (const b of 順) {
+      if (!b) continue;
+      const 濃 = (b === 主);
+      b.classList.toggle("is-mint", 濃);
+      b.classList.toggle("is-ghost", !濃);
+    }
   }
 
   _stat(label, value, sub) {
@@ -102,6 +125,77 @@ export class ResultPanel {
     this.statsEl.appendChild(this._stat("クイズ", acc + "%", d.correct + " / " + (d.correct + d.wrong)));
     this.statsEl.appendChild(this._stat("戻された", String(d.respawns), "回"));
     this.statsEl.appendChild(this._stat("XP", "+" + d.xp, ""));
+
+    /* ══ 種の 育ち（2026-08-31・訴え「世界観」）══════════════════════
+       ★ 1 試合の XP だけ 出しても 「で？」で 終わる。
+         **積み上がって いる ことが 見える**と もう 1 本 走りたく なる。
+       ★ 段が 上がった ときだけ 大きく 出す。毎回 祝うと 飽きる。 */
+    {
+      const 前 = localXP();
+      const 後 = addXP(d.xp || 0);
+      const g0 = growthOf(前), g1 = growthOf(後);
+      this.growEl.textContent = "";
+      this.growEl.classList.remove("vs-hide");
+      /* ★ れんぞく（2026-08-31）。**1 試合 終わる たびに 1 回だけ** 進める。
+         ここに 置くのは、結果の 板が 出る＝1 試合 終わった、が 確実な ため。 */
+      const rn = touchStreak();
+      const 上がった = g1.index > g0.index;
+      /* 育った ときだけ 音を 出す。毎回 鳴らすと すぐ うるさく なる。 */
+      if (上がった && this.audio && this.audio.grow) { try { this.audio.grow(); } catch (e) {} }
+      this.growEl.setAttribute("data-up", 上がった ? "1" : "0");
+      this.growEl.appendChild(h("div", { class: "vs-res-growtop" },
+        h("span", { class: "vs-res-growl", text: 上がった ? "そだった！" : "たねの そだち" }),
+        h("b", { class: "vs-res-growname", text: g1.stage.name }),
+        h("span", { class: "vs-res-growxp vs-mono", text: 後 + " XP" })));
+      const bar = h("div", { class: "vs-res-growbar" });
+      bar.appendChild(h("i", { style: "width:" + Math.round(g1.ratio * 100) + "%" }));
+      this.growEl.appendChild(bar);
+      this.growEl.appendChild(h("p", { class: "vs-res-growlore",
+        text: 上がった ? g1.stage.lore
+          : (g1.next ? "つぎの 「" + g1.next.name + "」まで あと " + g1.toNext + " XP" : g1.stage.lore) }));
+      /* れんぞく。切りたく ない ものを 1 つ 出す。 */
+      if (rn.n > 0) {
+        this.growEl.appendChild(h("p", { class: "vs-res-streak", "data-up": rn.伸びた ? "1" : "0" },
+          h("b", { text: "れんぞく " + rn.n + " 日" }),
+          h("span", { text: rn.伸びた
+            ? (rn.初日 ? "　きょうから" : "　きのうから つづいています")
+            : "　きょうは もう 走りました" }),
+          rn.best > rn.n ? h("span", { class: "vs-res-streak-b", text: "　さいこう " + rn.best + " 日" }) : null));
+      }
+    }
+
+    /* ══ 記章（2026-08-31）════════════════════════════════════════════
+       ★ 「2 位」だけでは 上手い 人しか 嬉しくない。
+         **コースに 対する 自分**を 出すと、ひとりでも 前へ 進める。
+       ★ 取れて いない ときは 「あと 何秒」を 出す。数字が あると 次が 来る。 */
+    this.medEl.textContent = "";
+    if (d.courseDef && d.finished) {
+      const m = medalOf(d.courseDef, d.time);
+      const nx = nextMedal(d.courseDef, d.time);
+      this.medEl.classList.remove("vs-hide");
+      this.medEl.setAttribute("data-m", m || "none");
+      const 名 = m ? (MEDALS.filter((x) => x.key === m)[0] || {}).name : "";
+      /* 記章の 音。**初めて 取った ときだけ**（毎回 鳴らすと 意味が 薄れる）。 */
+      if (m && d.medalIsNew && this.audio && this.audio.medal) {
+        try { this.audio.medal(m === "gold" ? 3 : (m === "silver" ? 2 : 1)); } catch (e) {}
+      }
+      this.medEl.appendChild(h("div", { class: "vs-res-medtop" },
+        h("i", { class: "vs-res-medal", "data-m": m || "none" }),
+        h("b", { class: "vs-res-medname", text: m ? 名 + " 記章" : "記章まで あと少し" }),
+        nx ? h("span", { class: "vs-res-medgap vs-mono",
+          /* ★ 「次の 金 まで −4.3 秒」は **足すのか 引くのか 読めない**。
+             タイムの 話なので 「縮める」と 書く（2026-08-31）。 */
+          text: nx.name + "まで あと " + nx.diff.toFixed(1) + " 秒 縮める" }) : null));
+      const g = targetsOf(d.courseDef);
+      const row = h("div", { class: "vs-res-medrow" });
+      for (const mm of MEDALS.slice().reverse()) {
+        const 済 = m === "gold" ? true : m === "silver" ? (mm.key !== "gold")
+          : m === "bronze" ? (mm.key === "bronze") : false;
+        row.appendChild(h("span", { class: "vs-res-medt", "data-m": mm.key, "data-got": 済 ? "1" : "0" },
+          h("i", null), h("span", { class: "vs-mono", text: fmt(g[mm.key]) })));
+      }
+      this.medEl.appendChild(row);
+    } else this.medEl.classList.add("vs-hide");
 
     if (d.newBest) {
       this.bestEl.classList.remove("vs-hide");
@@ -176,6 +270,13 @@ export class ResultPanel {
     this.note("");
     this._missed = ms;
     if (this.reviewBtn) this.reviewBtn.classList.toggle("vs-hide", ms.length < 2 || !!(d.cup && d.cup.next));
+    /* ★ 濃い ボタンは **1 つだけ**（2026-08-31）。
+       直す前は 「間違えた 単語で もう一度」と 「もう一度」が
+       どちらも 濃い 緑で 並び、どちらを 押せば いいのか 分からなかった
+       （実写で 確認）。この 遊びは 覚える ための ものなので、
+       間違えた 単語が ある ときは **そちらを 主**に する。
+       次の ラウンドが ある ときは それが 主。 */
+    this._pickMain();
 
     /* ── 区間の 記録 ────────────────────────────────────────────────
        ★ 「どこで 遅れたか」が 分かるのが 記録の 値打ち。
@@ -249,6 +350,47 @@ function fmt(s) {
 }
 
 export const RESULT_CSS = `
+/* ── 記章 ─────────────────────────────────────────────────────────── */
+.vs-res-med{ margin:10px 0 0; padding:11px 13px; border-radius:var(--vs-r-md);
+  background:var(--vs-surface-2); border:1px solid var(--vs-line); }
+.vs-res-med[data-m="gold"]{ border-color:#e8c05a; background:rgba(232,192,90,.12); }
+.vs-res-med[data-m="silver"]{ border-color:#b9c0cf; }
+.vs-res-med[data-m="bronze"]{ border-color:#c58a5a; }
+.vs-res-medtop{ display:flex; align-items:center; gap:9px; }
+.vs-res-medal{ width:16px; height:16px; border-radius:50%; background:var(--vs-surface-3);
+  box-shadow:inset 0 -3px 5px rgba(0,0,0,.30); flex:0 0 auto; }
+.vs-res-medal[data-m="bronze"]{ background:#c58a5a; }
+.vs-res-medal[data-m="silver"]{ background:#b9c0cf; }
+.vs-res-medal[data-m="gold"]{ background:#e8c05a; box-shadow:inset 0 -3px 5px rgba(0,0,0,.30), 0 0 12px rgba(232,192,90,.8); }
+.vs-res-medname{ font-size:15px; font-weight:750; }
+.vs-res-medgap{ margin-left:auto; font-size:11.5px; color:var(--vs-ink-sub); }
+.vs-res-medrow{ display:flex; gap:12px; margin-top:8px; }
+.vs-res-medt{ display:inline-flex; align-items:center; gap:5px; font-size:11px; opacity:.42; }
+.vs-res-medt[data-got="1"]{ opacity:1; }
+.vs-res-medt > i{ width:9px; height:9px; border-radius:50%; }
+.vs-res-medt[data-m="bronze"] > i{ background:#c58a5a; }
+.vs-res-medt[data-m="silver"] > i{ background:#b9c0cf; }
+.vs-res-medt[data-m="gold"] > i{ background:#e8c05a; }
+
+/* ── 種の 育ち ─────────────────────────────────────────────────────── */
+.vs-res-grow{ margin:10px 0 2px; padding:11px 13px; border-radius:var(--vs-r-md);
+  background:var(--vs-surface-2); border:1px solid var(--vs-line); }
+.vs-res-grow[data-up="1"]{ border-color:var(--vs-accent); background:var(--vs-accent-soft); }
+.vs-res-growtop{ display:flex; align-items:baseline; gap:8px; }
+.vs-res-growl{ font-size:11px; font-weight:650; letter-spacing:.08em; color:var(--vs-ink-sub); }
+.vs-res-grow[data-up="1"] .vs-res-growl{ color:var(--vs-accent-text); }
+.vs-res-growname{ font-size:17px; font-weight:800; }
+.vs-res-growxp{ margin-left:auto; font-size:11.5px; color:var(--vs-ink-sub); }
+.vs-res-growbar{ position:relative; height:6px; margin:8px 0 6px; border-radius:var(--vs-r-full);
+  background:var(--vs-surface-3); overflow:hidden; }
+.vs-res-growbar > i{ position:absolute; left:0; top:0; height:100%; border-radius:var(--vs-r-full);
+  background:var(--vs-accent); transition:width .5s cubic-bezier(.2,1,.3,1); }
+.vs-res-growlore{ font-size:11.5px; line-height:1.7; color:var(--vs-ink-sub); }
+.vs-res-streak{ margin-top:6px; font-size:12px; color:var(--vs-ink); }
+.vs-res-streak[data-up="1"] b{ color:var(--vs-accent-text); }
+.vs-res-streak span{ font-size:11px; color:var(--vs-ink-sub); }
+.vs-res-streak-b{ opacity:.8; }
+
 .vs-res-note{ margin:6px 0 0; padding:7px 10px; border-radius:var(--vs-r-sm); font-size:11.5px;
   line-height:1.7; color:var(--vs-gold);
   background:var(--vs-gold-bg); border:1px solid var(--vs-gold); }
@@ -334,5 +476,36 @@ export const RESULT_CSS = `
   .vs-res-stats{ grid-template-columns:repeat(2,1fr); }
   .vs-res-card{ padding:18px 14px; }
   .vs-res-btns .vs-btn{ flex:1 1 45%; }
+  /* ★ 縦の スマホでも **押す ところを 貼り付ける**（2026-08-31）。
+     成績・記章・育ち・間違えた 単語・一覧 と 縦に 長い ので、
+     「もう一度」は 画面の 下に 隠れて いた。走る たびに 指で 探すのは 良くない。
+     横向き（高さ 520px 未満）には 前から 入れて いたのに 縦を 忘れて いた。 */
+  .vs-res-btns{ position:sticky; bottom:-18px; margin-top:10px;
+    padding:10px 0 6px; background:var(--vs-surface);
+    box-shadow:0 -12px 16px -10px var(--vs-surface); }
+}
+/* ★ 横向きの スマホ（高さ 390px）は **順位しか 見えなかった**
+   （実写で 確認）。中は 流せるが、結果を 見るのに 何度も 指を 動かすのは 良くない。
+   詰めて、成績と 記章と 育ちが **一目で 入る**ように する。 */
+@media (max-height: 520px){
+  .vs-res{ padding: calc(8px + var(--vs-safe-t)) 12px calc(8px + var(--vs-safe-b)); }
+  .vs-res-card{ width:min(860px,100%); padding:12px 14px; }
+  .vs-res-head{ margin-bottom:8px; }
+  .vs-res-title{ font-size:24px; }
+  .vs-res-sub{ font-size:11.5px; }
+  .vs-res-stats{ grid-template-columns:repeat(4,1fr); gap:6px; }
+  .vs-res-stat{ padding:7px 8px; }
+  .vs-res-sv{ font-size:17px; }
+  .vs-res-med, .vs-res-grow{ margin:7px 0 0; padding:8px 11px; }
+  .vs-res-medrow, .vs-res-growbar{ margin-top:5px; }
+  .vs-res-medname, .vs-res-growname{ font-size:14px; }
+  .vs-res-listwrap{ max-height:96px; }
+  /* ★ 押す ところは **必ず 見えている**。
+     流さないと 届かない ボタンは 「無い」のと 同じ。 */
+  .vs-res-btns{ position:sticky; bottom:-12px; margin-top:9px;
+    padding:8px 0 4px; background:var(--vs-surface);
+    box-shadow:0 -10px 14px -8px var(--vs-surface); }
+  .vs-res-btns .vs-btn{ --_h:34px; font-size:12.5px; }
+  .vs-res-best{ margin:6px auto; }
 }
 `;

@@ -14,6 +14,7 @@ function finish(pos, nor, uv, idx) {
   const normal = new Float32Array(nor);
   const uvs = new Float32Array(uv);
   const index = (pos.length / 3 > 65535) ? new Uint32Array(idx) : new Uint16Array(idx);
+  向きをそろえる(position, normal, index);
   let r = 0;
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < position.length; i += 3) {
@@ -25,6 +26,41 @@ function finish(pos, nor, uv, idx) {
     if (z < min[2]) min[2] = z; if (z > max[2]) max[2] = z;
   }
   return { position, normal, uv: uvs, index, bound: { r: Math.sqrt(r), min, max } };
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ★★ 三角の 並べ方を そろえる（2026-09-02）★★
+
+   ここに ある 形は **並べ方の 向きが そろって いなかった**:
+     roundedBox / box / sphere / frame … 法線と 逆
+     capsule / torus / plane          … 法線と 同じ
+   描き手は 裏面を 捨てる（cullFace BACK）ので、逆の 形は
+   **外側の 面が 消えて 中身が 見える**。
+
+   実写で 確かめた 被害:
+     ・砂原の 岩が「地面に 空いた 四角い 穴」に 見えた
+     ・走るモードの 筒が 中まで 見える 土管に なって いた
+     ・洞窟の 壁が 板に 見えた
+
+   直しかたは 1 か所。**面の 法線に 合わせて 2 番目と 3 番目を 入れ替える**。
+   頂点も 面の 数も 増えない。作る ときの 1 回だけ 走る。
+   ══════════════════════════════════════════════════════════════════════ */
+function 向きをそろえる(position, normal, index) {
+  if (!normal || !normal.length) return;
+  for (let k = 0; k < index.length; k += 3) {
+    const A = index[k] * 3, B = index[k + 1] * 3, C = index[k + 2] * 3;
+    const ax = position[B] - position[A], ay = position[B + 1] - position[A + 1], az = position[B + 2] - position[A + 2];
+    const bx = position[C] - position[A], by = position[C + 1] - position[A + 1], bz = position[C + 2] - position[A + 2];
+    const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+    /* 3 頂点の 法線を 足して 見る。1 点だけ 見ると 円錐の てっぺんの ように
+       向きの 決まらない 頂点で 外す。 */
+    const mx = normal[A] + normal[B] + normal[C];
+    const my = normal[A + 1] + normal[B + 1] + normal[C + 1];
+    const mz = normal[A + 2] + normal[B + 2] + normal[C + 2];
+    if (nx * mx + ny * my + nz * mz < 0) {
+      const t = index[k + 1]; index[k + 1] = index[k + 2]; index[k + 2] = t;
+    }
+  }
 }
 
 /* ── 角の 丸い 箱 ────────────────────────────────────────────────────────

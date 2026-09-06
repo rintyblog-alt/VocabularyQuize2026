@@ -110,14 +110,19 @@ export function measure() {
 
 /** 段ごとの 描画の 設定。renderer と game が これだけを 見る。 */
 export const PRESETS = {
-  low:    { shadow: false, shadowSize: 0,    pixelRatio: 0.75, fog: true,  clouds: false, water: false,
-            particles: 0.25, drawDistance: 90,  msaa: 0, targetFps: 30, obstacleDetail: 0 },
+  /* ★ water を low でも true に した（2026-08-31）。
+     いまの 「海」は 下に 広がる 面の 上に **板を 1 枚 足すだけ**で、
+     既にある まとめ描きに 入る ので 描き回数も 面の数も 増えない。
+     切ると 溶岩の コースが **ただ 暗いだけ**に なり、
+     弱い 端末の 人だけ 世界が 別物に なる（実写で 確認）。 */
+  low:    { shadow: false, shadowSize: 0,    pixelRatio: 0.75, fog: true,  clouds: false, water: true,
+            particles: 0.25, drawDistance: 90,  msaa: 0, targetFps: 30, obstacleDetail: 0, 肌: 0 },
   medium: { shadow: true,  shadowSize: 1024, pixelRatio: 1.0,  fog: true,  clouds: false, water: true,
-            particles: 0.6,  drawDistance: 140, msaa: 0, targetFps: 60, obstacleDetail: 1 },
+            particles: 0.6,  drawDistance: 140, msaa: 0, targetFps: 60, obstacleDetail: 1, 肌: 128 },
   high:   { shadow: true,  shadowSize: 2048, pixelRatio: 1.0,  fog: true,  clouds: true,  water: true,
-            particles: 1.0,  drawDistance: 200, msaa: 4, targetFps: 60, obstacleDetail: 2 },
+            particles: 1.0,  drawDistance: 200, msaa: 4, targetFps: 60, obstacleDetail: 2, 肌: 192 },
   ultra:  { shadow: true,  shadowSize: 2048, pixelRatio: 1.25, fog: true,  clouds: true,  water: true,
-            particles: 1.4,  drawDistance: 260, msaa: 4, targetFps: 60, obstacleDetail: 2 }
+            particles: 1.4,  drawDistance: 260, msaa: 4, targetFps: 60, obstacleDetail: 2, 肌: 256 }
 };
 
 /** 手で 選んだ 段（設定画面）を 混ぜて 最終的な 設定を 返す。 */

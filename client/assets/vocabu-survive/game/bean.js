@@ -29,7 +29,12 @@ export const BEAN_MESHES = {
   cone:  "vs_bean_cone",
   disc:  "vs_bean_disc",
   ring:  "vs_bean_ring",
-  bar:   "vs_bean_bar"
+  bar:   "vs_bean_bar",
+  /* ★ 足元の 接地影（2026-08-31）。影の 地図だけでは
+     「床に 着いているのか 浮いているのか」が 分からなかった（実写で 確認）。
+     薄い 円盤を 1 枚 敷く。**影の 焼きからは 外す**（床と 同じ 高さなので
+     焼くと 自分の 影で 縞が 出る）。 */
+  shade: "vs_bean_shade"
 };
 
 /** 形を まとめて 登録する。renderer に 1 回だけ 呼ぶ。 */
@@ -49,6 +54,12 @@ export function registerBeanMeshes(renderer) {
   R.addMesh(BEAN_MESHES.disc,  [MESH.cylinder(14, 0.5, 0.5, 1, true), MESH.cylinder(8, 0.5, 0.5, 1, true)]);
   R.addMesh(BEAN_MESHES.ring,  [MESH.torus(16, 8, 0.5, 0.14), MESH.torus(10, 5, 0.5, 0.14)]);
   R.addMesh(BEAN_MESHES.bar,   [MESH.roundedBox(2, 0.28), MESH.roundedBox(1, 0.24)]);
+  /* ★ 接地影は **粗さを 1 段だけ**に する（2026-08-31）。
+     3 段 持つと 近い 人と 遠い 人で まとまりが 割れ、
+     描き回数が 1 回 では なく 3 回に なる（実測で 40 回を 超えた）。
+     ただの 円盤なので 遠くても 粗く 見えない。 */
+  R.addMesh(BEAN_MESHES.shade, [MESH.cylinder(14, 0.5, 0.5, 1, true)]);
+  if (R.setNoShadow) R.setNoShadow(BEAN_MESHES.shade, true);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -112,6 +123,30 @@ export const HATS = [
     [K.cone, 0, 0.34, 0, 0, 0.44, 0.62, 0.44, 0],
     [K.eye, 0, 0.66, 0, 0, 0.16, 0.16, 0.16, 2]
   ] },
+  /* ★ 4 つ 足した（2026-08-31）。育ちの 段が 8 つ ある のに
+     ごほうびが 1 段に 1 つ しか 無く、途中が 薄かった。
+     ★ 形は 増やさない（既にある 8 つの 組み合わせだけ）。
+     ★ 部品は 4 つまで（描き回数の 目安を 超えない）。 */
+  { key: "star", name: "ほし", parts: [
+    [K.stem, 0, 0.14, 0, 0, 0.05, 0.24, 0.05, 3],
+    [K.cone, 0, 0.44, 0, 0, 0.42, 0.34, 0.42, 0],
+    [K.cone, 0, 0.44, 0, 1.05, 0.42, 0.34, 0.42, 0]
+  ] },
+  { key: "flower", name: "はな", parts: [
+    [K.stem, 0, 0.18, 0, 0, 0.05, 0.30, 0.05, 3],
+    [K.disc, 0, 0.40, 0, 0, 0.52, 0.08, 0.52, 0],
+    [K.disc, 0, 0.40, 0, 0.6, 0.52, 0.08, 0.52, 0],
+    [K.eye, 0, 0.44, 0, 0, 0.20, 0.14, 0.20, 2]
+  ] },
+  { key: "cloud", name: "くも", parts: [
+    [K.eye, -0.20, 0.20, 0, 0, 0.46, 0.36, 0.42, 2],
+    [K.eye, 0.14, 0.26, 0.04, 0, 0.54, 0.44, 0.48, 2],
+    [K.eye, 0.10, 0.18, -0.20, 0, 0.42, 0.32, 0.40, 2]
+  ] },
+  { key: "bolt", name: "いなずま", parts: [
+    [K.bar, 0.04, 0.22, 0, 0.75, 0.20, 0.46, 0.12, 0],
+    [K.bar, -0.08, 0.50, 0, -0.75, 0.20, 0.46, 0.12, 0]
+  ] },
   { key: "leafhat", name: "おおきな葉", parts: [
     [K.leaf, 0.16, 0.14, 0, 0.25, 0.62, 0.10, 0.44, 0],
     [K.stem, -0.16, 0.18, 0, -0.4, 0.05, 0.30, 0.05, 1]
@@ -141,6 +176,7 @@ export function hatByKey(key) {
 
 /* 使い回す 行列（毎フレーム 8 人 × 12 部品 = 96 個 作らない） */
 const _m = m4.create();
+const _sh = new Float32Array(4);   /* 接地影の 色（毎コマ 作らない） */
 
 const WHITE = [1, 1, 1, 1];
 const DARK = [0.09, 0.10, 0.16, 1];
@@ -162,7 +198,7 @@ export class BeanVisual {
     this.tilt = 0;        /* 進む向きへの 傾き */
     this.armSwing = 0;
     this.faceYaw = 0;
-    this.emote = "";      /* "hit" | "cheer" | "stumble" | "" */
+    this.emote = "";      /* "hit" | "cheer" | "stumble" | "win" | "" */
     this.emoteT = 0;
     this.hidden = false;
     /* かぶりもの（見た目だけ）。当たりにも 速さにも 関わらせない。 */
@@ -190,6 +226,7 @@ export class BeanVisual {
     const wantSquash = st.grounded ? 1 : clamp(1 + (st.vy || 0) * 0.030, 0.86, 1.16);
     this.squash = lerp(this.squash, wantSquash, 1 - Math.exp(-14 * dt));
 
+    this.grounded = !!st.grounded;
     this.tilt = lerp(this.tilt, clamp(speed * 0.026, 0, 0.20) + (st.stunned > 0 ? 0.35 : 0), 1 - Math.exp(-10 * dt));
     this.armSwing = lerp(this.armSwing, clamp(speed * 0.13, 0.15, 1.0), 1 - Math.exp(-9 * dt));
     if (this.emoteT > 0) this.emoteT = Math.max(0, this.emoteT - dt);
@@ -208,6 +245,25 @@ export class BeanVisual {
   draw(R, x, y, z, yaw, scale = 1) {
     if (this.hidden) return;
     const s = scale;
+
+    /* ── 足元の 接地影 ──────────────────────────────────────────────
+       ★ 影の 地図（shadow map）は 太陽の 向きに 伸びるので、
+         真下に 何も 出ない ことが ある。「浮いている ように 見える」の
+         いちばんの 原因（実写で 確認）。
+         床に 着いた 高さを 覚えておき、そこへ 薄い 円盤を 1 枚 敷く。
+         高いほど 小さく・薄く する（跳んだ 高さが 目で 分かる）。 */
+    if (this.grounded || this.shadowY === undefined || y < this.shadowY) this.shadowY = y;
+    {
+      const 高 = Math.max(0, y - this.shadowY);
+      const k = clamp(1 - 高 / 4.6, 0.10, 1);
+      const r = (1.02 - 高 * 0.055) * s;
+      if (k > 0.06 && r > 0.14) {
+        _sh[0] = 0; _sh[1] = 0; _sh[2] = 0.02; _sh[3] = 0.36 * k;
+        m4.compose(_m, x, this.shadowY + 0.045, z, 0, Math.max(0.16, r), 0.02, Math.max(0.16, r));
+        R.draw(BEAN_MESHES.shade, _m, _sh, 0, 0, 0, 0, r);
+      }
+    }
+
     const ph = this.phase;
     const sw = this.armSwing;
     const sq = this.squash;
@@ -298,10 +354,13 @@ export class BeanVisual {
     for (const side of [-1, 1]) {
       const swing = Math.sin(ph + (side > 0 ? 0 : Math.PI)) * sw * 0.85;
       const hurt = this.emote === "hit" ? 1.1 : 0;
+      /* ★ 勝ち（ゴール）の 万歳（2026-08-31）。腕を 上へ。
+         emote は 1.3 秒で 消えるので、走り出せば 元に 戻る。 */
+      const win = this.emote === "win" ? 2.0 : 0;   /* 外へ 開いて 上へ（万歳） */
       const ax = x + cy * 0.40 * s * side + sy * 0.02 * s;
       const az = z - sy * 0.40 * s * side + cy * 0.02 * s;
       m4.composeXYZ(_m, ax, bodyY + 0.14 * s, az,
-        swing * 0.9, yaw, side * (0.30 + hurt) - swing * 0.15,
+        (win ? -0.18 : swing * 0.9), yaw, side * (0.30 + hurt + win) - (win ? 0 : swing * 0.15),
         0.20 * s, 0.42 * s, 0.20 * s);
       R.draw(BEAN_MESHES.limb, _m, this.dark, 0, 0.22, 0, 0, s);
     }

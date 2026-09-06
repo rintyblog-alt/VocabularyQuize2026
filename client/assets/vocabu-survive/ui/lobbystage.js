@@ -22,6 +22,9 @@ import { BEAN_COLORS, beanByIndex } from "./theme.js";
 const PAD = "vs_lbs_pad";
 const RING = "vs_lbs_ring";
 const CUBE = "vs_lbs_cube";
+const MOTE = "vs_lbs_mote";   /* 舞う 光の 粒 */
+const PILLAR = "vs_lbs_pillar"; /* 遠くの 柱（風景の 影） */
+const FLOOR = "vs_lbs_floor";  /* 下に 広がる 面 */
 
 export class LobbyStage {
   /**
@@ -50,7 +53,7 @@ export class LobbyStage {
     if (this.renderer || this.failed) return !!this.renderer;
     try {
       const s = Object.assign({}, this.settings, {
-        drawDistance: 90,
+        drawDistance: 140,
         shadowSize: Math.min(1024, this.settings.shadowSize || 1024),
         clouds: false
       });
@@ -59,13 +62,16 @@ export class LobbyStage {
       R.sky.sun = [1.0, 0.86, 0.62];
       R.ambTop = [0.34, 0.32, 0.50];
       R.ambBottom = [0.16, 0.14, 0.24];
-      R.fog.near = 30; R.fog.far = 92;
+      R.fog.near = 34; R.fog.far = 110;
       R.light.dir.set([-0.34, -0.74, -0.58]);
       R.shadowRadius = 8;
 
       R.addMesh(PAD, [MESH.cylinder(30, 2.5, 2.7, 0.6, true), MESH.cylinder(14, 2.5, 2.7, 0.6, true)]);
       R.addMesh(RING, [MESH.torus(26, 10, 0.5, 0.08), MESH.torus(12, 6, 0.5, 0.08)]);
       R.addMesh(CUBE, [MESH.roundedBox(3, 0.16), MESH.roundedBox(1, 0.14)]);
+      R.addMesh(MOTE, [MESH.sphere(6, 4, 0.5)]);
+      R.addMesh(PILLAR, [MESH.roundedBox(1, 0.10)]);
+      R.addMesh(FLOOR, [MESH.cylinder(40, 0.5, 0.5, 1, true)]);
       registerBeanMeshes(R);
 
       this.cam = new ThirdPersonCamera();
@@ -91,15 +97,37 @@ export class LobbyStage {
           hop: rnd() * TAU, speed: 1.4 + rnd() * 1.0
         });
       }
-      this._cubes = [];
-      for (let i = 0; i < 22; i++) {
-        const q = BEAN_COLORS[(rnd() * BEAN_COLORS.length) | 0].rgb;
-        this._cubes.push({
-          x: (rnd() - 0.5) * 30, y: 1.2 + rnd() * 8, z: -6 - rnd() * 22,
-          s: 0.35 + rnd() * 0.9, r: rnd() * TAU, sp: (rnd() - 0.5) * 0.7,
-          c: [q[0], q[1], q[2], 1], bob: rnd() * TAU
+      /* ══ 舞台の 飾りを 建て直す（2026-08-31）════════════════════════
+         ★ 直す前は **色とりどりの 立方体が 22 個 宙に 浮いていた**。
+           作りかけの 置き物に しか 見えない（実写で 確認）。
+         ★ 代わりに:
+             ① 下に 広がる 面（宙に 浮いて 見えない ように する）
+             ② 遠くの 柱の 並び（場所が ある ように 見せる）
+             ③ ゆっくり 昇る 光の 粒（動きを 出す。色は 1 系統だけ）
+           **色は 散らさない。** 散らすと 何を 見れば いいか 分からない。 */
+      this._motes = [];
+      for (let i = 0; i < 34; i++) {
+        this._motes.push({
+          x: (rnd() - 0.5) * 26, y: rnd() * 14, z: -2 - rnd() * 24,
+          s: 0.05 + rnd() * 0.09, sp: 0.28 + rnd() * 0.5, ph: rnd() * TAU,
+          sway: 0.3 + rnd() * 0.8
         });
       }
+      this._pillars = [];
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * TAU + rnd() * 0.2;
+        const r = 26 + rnd() * 12;
+        this._pillars.push({
+          x: Math.sin(a) * r, z: Math.cos(a) * r - 6,
+          h: 5 + rnd() * 16, w: 1.0 + rnd() * 1.8, r: rnd() * 0.6
+        });
+      }
+      /* 台の まわりの 輪。3 本を 別の 速さで 回す。 */
+      this._rings = [
+        { r: 6.6, y: -0.10, sp: -0.30, e: 0.5 },
+        { r: 8.6, y: 0.55, sp: 0.19, e: 0.32 },
+        { r: 11.0, y: -0.35, sp: -0.12, e: 0.22 }
+      ];
       return true;
     } catch (e) {
       this.failed = true;
@@ -129,6 +157,27 @@ export class LobbyStage {
     this._want.top = theme.sky.top.slice();
     this._want.hor = theme.sky.horizon.slice();
     this._want.gnd = (theme.far || theme.sky.ground || theme.floor).slice();
+    /* ★ 色の 調整と 星も 合わせる（2026-08-31）。
+       ここが 揃っていないと 「コースを えらぶと 空気が 変わる」の 半分しか 効かない。 */
+    const R = this.renderer;
+    if (R) {
+      if (theme.grade && R.setGrade) R.setGrade(theme.grade);
+      if (R.setGrid) R.setGrid(theme.grid || [2.5, 0.10, 20, 70]);
+      R.sky.stars = theme.sky.stars || 0;
+      R.sky.starTint = theme.sky.starTint || [1, 0.98, 0.92];
+      R.sky.sun = theme.sky.sun || R.sky.sun;
+      /* ★ 遠くの 地平（2026-08-31・訴え「背景に 土台が ない」）。
+         ロビーは **いちばん 長く 見る 画面**なので こここそ 要る。
+         形は すぐ 差し替え、色は 空と 同じ 速さで 寄せる
+         （色だけ 飛ぶと えらび直す たび ちらつく）。 */
+      const L = theme.land;
+      if (L) {
+        if (!R.sky.land) R.sky.land = { h: L.h, sharp: L.sharp, base: L.base, a: L.a.slice(), b: L.b.slice() };
+        else { R.sky.land.h = L.h; R.sky.land.sharp = L.sharp; R.sky.land.base = L.base; }
+        this._want.landA = L.a.slice();
+        this._want.landB = L.b.slice();
+      } else R.sky.land = null;
+    }
   }
 
   tick(dt) {
@@ -142,6 +191,12 @@ export class LobbyStage {
     const k = Math.min(1, dt * 3.2);
     for (const key of ["top", "hor", "gnd"]) {
       for (let i = 0; i < 3; i++) this._sky[key][i] = lerp(this._sky[key][i], this._want[key][i], k);
+    }
+    if (R.sky.land && this._want.landA) {
+      for (let i = 0; i < 3; i++) {
+        R.sky.land.a[i] = lerp(R.sky.land.a[i], this._want.landA[i], k);
+        R.sky.land.b[i] = lerp(R.sky.land.b[i], this._want.landB[i], k);
+      }
     }
     R.sky.top = this._sky.top;
     R.sky.horizon = this._sky.hor;
@@ -157,13 +212,33 @@ export class LobbyStage {
     /* 台 */
     m4.compose(this._mat, 0, -0.16, 0, this._t * 0.08, 1.05, 1.0, 1.05);
     R.draw(PAD, this._mat, [0.52, 0.55, 0.86, 1], 0, 0.34, 0, 0, 3.2);
-    m4.compose(this._mat, 0, -0.10, 0, -this._t * 0.30, 6.6, 2.2, 6.6);
-    R.draw(RING, this._mat, [0.38, 0.90, 0.74, 1], 0.5, 0.4, 0, 0, 3.5);
+    /* 下に 広がる 面。これが 無いと 台が 宙に 浮いて 見える。
+       ★ 120 だと 端が 地平の 下 4 度で 切れ、その 上に 空の 色の
+         帯が 残った。600 まで 広げて 地平まで 届かせる（描き回数は 同じ）。 */
+    m4.compose(this._mat, 0, -7.2, -4, 0, 600, 1, 600);
+    R.draw(FLOOR, this._mat, [this._sky.gnd[0], this._sky.gnd[1], this._sky.gnd[2], 1], 0, 0.02, 0, -1, 600);
 
-    for (const c of this._cubes) {
-      const y = c.y + Math.sin(this._t * 0.7 + c.bob) * 0.32;
-      m4.compose(this._mat, c.x, y, c.z, c.r + this._t * c.sp, c.s, c.s, c.s);
-      R.draw(CUBE, this._mat, c.c, 0.06, 0.30, 0, 0, c.s);
+    /* 遠くの 柱。場所が ある ように 見せる（形は 1 種類だけ）。 */
+    for (const p of this._pillars) {
+      m4.compose(this._mat, p.x, -7.2 + p.h / 2, p.z, p.r, p.w, p.h, p.w);
+      R.draw(PILLAR, this._mat,
+        [this._sky.hor[0] * 0.55, this._sky.hor[1] * 0.55, this._sky.hor[2] * 0.62, 1], 0, 0.16, 0, 0, p.h);
+    }
+
+    /* 台の まわりの 輪 */
+    for (const g of this._rings) {
+      m4.compose(this._mat, 0, g.y, 0, -this._t * g.sp, g.r, 2.2, g.r);
+      R.draw(RING, this._mat, [0.38, 0.90, 0.74, 1], g.e, 0.4, 0, 0, g.r * 0.5);
+    }
+
+    /* 昇る 光の 粒。**色は 1 系統だけ。** 散らすと 目が 迷う。 */
+    for (const m of this._motes) {
+      m.y += dt * m.sp;
+      if (m.y > 15) { m.y = -1.5; m.ph = Math.random() * TAU; }
+      const x = m.x + Math.sin(this._t * 0.5 + m.ph) * m.sway;
+      const 明 = 0.55 + 0.45 * Math.sin(this._t * 1.7 + m.ph);
+      m4.compose(this._mat, x, m.y, m.z, 0, m.s, m.s, m.s);
+      R.draw(MOTE, this._mat, [1.0, 0.94, 0.80, 1], 0.8 * 明 + 0.3, 0.2, 0, 0, m.s);
     }
 
     /* 後ろの 仲間 */

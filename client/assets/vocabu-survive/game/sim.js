@@ -92,6 +92,11 @@ export class Sim {
       p.slot = i;
       p.lives = this.mode === MODE.SURVIVAL ? this.lives : 0;
       p.eliminated = false;
+      /* ★ 合図の 間の 順位（2026-08-31）。
+         直す前は 0 の まま で、3・2・1 の あいだ 順位表に
+         **「0 あなた 0%」が 4 行** 並んで いた（実写で 確認）。
+         走り出す 前は 並んだ 順を そのまま 出す。 */
+      p.rank = i + 1;
       /* 組は 並びの 順に 交互。人数が 奇数でも 差は 1 人まで。 */
       p.team = this.mode === MODE.TEAM ? (i % 2) : -1;
     }
@@ -187,8 +192,23 @@ export class Sim {
             p.finished = true;
             p.eliminated = true;
             p.finishTime = this.raceTime;
+            /* ★ 落ちた ままに しない（2026-08-31）。
+               脱落しても 1 歩ずつは 進める ので、**そのまま 奈落へ
+               落ち続ける**。300 秒 走らせると y = -700 まで 行った（実測）。
+               観戦の カメラが その 人を 追うと 何も 映らない。
+               最後の 中間地点へ 置いて 止める（生き返りでは ないので 数えない）。 */
+            const 戻 = C.respawnPoint(p.checkpoint, p.slot || 0);
+            p.x = 戻.x; p.y = 戻.y; p.z = 戻.z;
+            p.vx = 0; p.vy = 0; p.vz = 0; p.grounded = false;
+            /* ★ 順位は **下から 詰める**（2026-08-31・実測で 見つけた）。
+               直す前は 「まだ 走って いる 人の 数 ＋ 1」に していた。
+               これは 誰も ゴールして いない ときしか 合わない。
+               先に ゴールした 人が 1 人 いると、走って いる 人の 番号が
+               1 つ ずつ 後ろへ ずれ、**脱落した 人と 同じ 番号**に なる
+               （8 人・1 人 ゴール・1 人 脱落 で 7 位が 2 人、8 位が 空き）。
+               k 人目の 脱落は 必ず N-k+1 位。ゴールした 人の 数に よらない。 */
             const 残り = this.players.filter((q) => !q.finished).length;
-            p.rank = 残り + 1;
+            p.rank = this.players.length - this.eliminated.size + 1;
             this.events.push({ t: "eliminated", p, left: 残り });
           }
         } else {
@@ -222,7 +242,10 @@ export class Sim {
                && this.players.filter((p) => !p.finished).length <= 1) {
       /* 残り 1 人 に なったら 終わり。その 人が 1 位。 */
       const 勝 = this.players.find((p) => !p.finished);
-      if (勝) { 勝.finished = true; 勝.rank = 1; 勝.finishTime = this.raceTime; }
+      /* ★ 「最後の 1 人」は 1 位 とは 限らない（2026-08-31・実測）。
+         サバイバルでも ゴールは あり、先に 着いた 人が いれば
+         その 人たちが 上。1 位で 固定 すると **1 位が 2 人**に なる。 */
+      if (勝) { 勝.finished = true; 勝.rank = this.finishOrder.length + 1; 勝.finishTime = this.raceTime; }
       this.phase = PHASE.FINISHED;
       this.events.push({ t: "lastone", p: 勝 || null });
     }

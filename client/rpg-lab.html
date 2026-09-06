@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VocabuSurvive 探索モード — 実験台</title>
+<style>
+  html,body{margin:0;height:100%;background:#07060e;overflow:hidden;
+    font-family:Inter,"Hiragino Sans","Noto Sans JP",sans-serif;color:#fff}
+  #stage{position:fixed;inset:0}
+  #boot{position:fixed;inset:0;display:grid;place-items:center;z-index:9;
+    color:#9a93c4;font-size:14px;letter-spacing:.04em}
+  #boot.gone{display:none}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="boot">世界を つくっています…</div>
+<script type="module">
+/* 探索モードだけを 単独で 動かす 実験台。
+   ★ 本体（VocabuQuiz）を 通さない ので、見た目の 手直しが 速い。
+   ★ 検査（vqrpg.cjs）も ここを 使う。タブの 都合で 0×0 に ならない。 */
+import { Shell } from "/assets/vocabu-survive/ui/shell.js";
+import { CSS } from "/assets/vocabu-survive/ui/theme.js";
+import { settingsFor } from "/assets/vocabu-survive/boot/caps.js";
+import { RpgScreen, RPG_CSS } from "/assets/vocabu-survive/rpg/screen.js";
+
+const q = new URLSearchParams(location.search);
+const tier = q.get("tier") || "auto";
+const seed = Number(q.get("seed") || 20260902) | 0;
+
+const shell = new Shell(document.getElementById("stage"));
+const st = document.createElement("style");
+st.textContent = RPG_CSS;
+shell.root.appendChild(st);
+
+const settings = settingsFor(tier);
+const rpg = new RpgScreen({ settings, app: null, onExit: () => history.back() });
+shell.register("rpg", rpg);
+window.__rpg = rpg;
+window.__shell = shell;
+window.__settings = settings;
+window.addEventListener("error", (e) => {
+  document.getElementById("boot").textContent = "エラー: " + e.message + " @ " + (e.filename||"").split("/").pop() + ":" + e.lineno;
+  console.error("LAB", e.error && e.error.stack);
+});
+shell.show("rpg", { seed }).then(() => {
+  document.getElementById("boot").className = "gone";
+}).catch((e) => {
+  document.getElementById("boot").textContent = "エラー: " + (e && e.message);
+  console.error("LAB show", e && e.stack);
+});
+</script>
+</body>
+</html>

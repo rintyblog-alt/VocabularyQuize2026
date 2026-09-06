@@ -16,6 +16,9 @@
 import { h, svg } from "./shell.js";
 import { PALETTE } from "./theme.js";
 
+/* 棒の 置き場の 目印を もう 出さない 印 */
+const HOME_KEY = "vq.survive.stickhome.v1";
+
 export class TouchPad {
   /**
    * @param {import("../game/input.js").Input} input
@@ -45,7 +48,29 @@ export class TouchPad {
       svg("path", { d: "M3 15h13a4 4 0 0 0 0-8H9", fill: "none", stroke: "currentColor", "stroke-width": "2.4", "stroke-linecap": "round" }),
       svg("path", { d: "M6 5 3 8l3 3", fill: "none", stroke: "currentColor", "stroke-width": "2.4", "stroke-linecap": "round", "stroke-linejoin": "round" })));
     this.lookArea = h("div", { class: "vs-lookarea", "aria-hidden": "true" });
-    return h("div", { class: "vs-touch" }, this.lookArea, this.stick, this.diveBtn, this.jumpBtn);
+    /* ★ 棒の 出る ところの 目印（2026-08-31）。
+       「押した 場所に 出る」は 良い 作りだが、**初めての 人は
+       どこを 押せば いいか 分からない**（実写で 左下に 何も 無い）。
+       1 度でも 動かしたら 二度と 出さない。 */
+    this.homeEl = h("div", { class: "vs-stickhome", "aria-hidden": "true" },
+      h("i", { class: "vs-stickhome-r" }),
+      h("span", { class: "vs-stickhome-t", text: "ここを なぞって 走る" }));
+    return h("div", { class: "vs-touch" }, this.lookArea, this.homeEl, this.stick, this.diveBtn, this.jumpBtn);
+  }
+
+  /* 目印を 消す。1 度 触れば もう 要らない（覚えて おく）。 */
+  _hideHome() {
+    if (this._homeGone) return;
+    this._homeGone = true;
+    try { this.homeEl.setAttribute("data-off", "1"); } catch (e) {}
+    try { localStorage.setItem(HOME_KEY, "1"); } catch (e) {}
+  }
+  /* 手ごたえ。**無い 端末では 何も しない**（できるふりを しない）。 */
+  _buzz(ms) {
+    try {
+      if (this._noBuzz) return;
+      if (navigator && typeof navigator.vibrate === "function") navigator.vibrate(ms);
+    } catch (e) { this._noBuzz = true; }
   }
 
   _bind() {
@@ -55,8 +80,8 @@ export class TouchPad {
     const start = (e) => {
       if (!this.visible) return;
       const t = e.target;
-      if (t === this.jumpBtn || this.jumpBtn.contains(t)) { I.pressJump(); e.preventDefault(); return; }
-      if (t === this.diveBtn || this.diveBtn.contains(t)) { I.pressDive(); e.preventDefault(); return; }
+      if (t === this.jumpBtn || this.jumpBtn.contains(t)) { I.pressJump(); this._buzz(12); e.preventDefault(); return; }
+      if (t === this.diveBtn || this.diveBtn.contains(t)) { I.pressDive(); this._buzz(8); e.preventDefault(); return; }
       const r = this.el.getBoundingClientRect();
       const x = e.clientX - r.left, y = e.clientY - r.top;
       /* 左半分 かつ 下 3 分の 2 → 棒 */
@@ -66,6 +91,7 @@ export class TouchPad {
         this.stick.style.left = x + "px";
         this.stick.style.top = y + "px";
         this.stick.setAttribute("data-on", "1");
+        this._hideHome();
         this._knob(0, 0);
         e.preventDefault();
         return;
@@ -117,6 +143,12 @@ export class TouchPad {
   }
 
   show(on) {
+    /* 前に 動かした ことが あれば 目印は 出さない。 */
+    try {
+      if (localStorage.getItem(HOME_KEY) === "1") { this._homeGone = true; this.homeEl.setAttribute("data-off", "1"); }
+      else if (on) { this._homeGone = false; this.homeEl.removeAttribute("data-off"); }
+    } catch (e) {}
+
     this.visible = !!on;
     this.el.setAttribute("data-on", on ? "1" : "0");
     if (!on) { this.input.setAxis(0, 0); this.stickId = null; this.lookId = null; }
@@ -144,6 +176,26 @@ export const TOUCH_CSS = `
   background:var(--vs-ink); box-shadow:var(--vs-sh-raised);
   will-change: transform;
 }
+/* 棒の 置き場の 目印。1 度 触ったら 消える。 */
+.vs-stickhome{
+  position:absolute; left:calc(26px + var(--vs-safe-l)); bottom:calc(34px + var(--vs-safe-b));
+  width:112px; display:flex; flex-direction:column; align-items:center; gap:8px;
+  pointer-events:none; opacity:.9; transition:opacity .35s ease;
+}
+.vs-stickhome[data-off="1"]{ opacity:0; }
+.vs-stickhome-r{
+  width:104px; height:104px; border-radius:50%;
+  border:2px dashed var(--vs-line-strong);
+  background:color-mix(in srgb, var(--vs-surface) 24%, transparent);
+  animation: vsHome 2.4s ease-in-out infinite;
+}
+.vs-stickhome-t{
+  font-size:11px; font-weight:650; color:var(--vs-ink);
+  text-shadow:0 1px 6px rgba(4,6,20,.9); white-space:nowrap;
+}
+@keyframes vsHome{ 0%,100%{ transform:scale(1); opacity:.75; } 50%{ transform:scale(1.06); opacity:1; } }
+@media (prefers-reduced-motion:reduce){ .vs-stickhome-r{ animation:none; } }
+
 .vs-tbtn{
   position:absolute; border-radius:50%;
   display:flex; align-items:center; justify-content:center;

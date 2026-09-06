@@ -57,6 +57,14 @@ export class Player {
     /* ★ 通信で 位置が 送られてくる 人。**こちらでは 動かさない。**
        動かすと 2 つの 答えが ぶつかって ガタつく。 */
     this.remote = !!opt.remote;
+    /* ★ 走れる 速さの 倍率（2026-08-31）。**相手の 強さの ため だけ**に ある。
+       直す前は ボットの 「強さ」が 進みたい 向きの 長さ（0.80〜1.00）に
+       しか 効かず、それは **加速だけ**を 変えて 上限は 変えなかった。
+       その ため 少し 走れば 全員 同じ 速さに なり、
+       やさしい 相手も つよい 相手も **タイムが 0.1 秒まで 同じ**に なって
+       いた（30 コースを 走らせて 実測）。「強さ」が 嘘に なっていた。
+       人（自分）は 必ず 1。 */
+    this.speedScale = opt.speedScale === undefined ? 1 : Number(opt.speedScale) || 1;
 
     this.x = 0; this.y = 0; this.z = 0;
     this.vx = 0; this.vy = 0; this.vz = 0;
@@ -173,7 +181,8 @@ export class Player {
     if (this.dive > 0) this.dive = Math.max(0, this.dive - dt);
 
     /* ── 横の 速さ ── */
-    const speedCap = T.maxSpeed * (this.penalty > 0 ? 0.55 : 1) * (this.boost > 0 ? 1.34 : 1);
+    const speedCap = T.maxSpeed * (this.speedScale || 1)
+      * (this.penalty > 0 ? 0.55 : 1) * (this.boost > 0 ? 1.34 : 1);
     if (canControl && mag > 0.02) {
       const a = (this.grounded ? T.accel : T.airAccel) * dt;
       this.vx += mx * a;

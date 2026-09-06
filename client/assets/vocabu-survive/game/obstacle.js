@@ -528,7 +528,11 @@ export class Checkpoint extends Obstacle {
         1.5, 0.9, 0.1, c, 0.2 + this.glow * 0.2, 0.34, 0, 0.06);
     }
     this._part(R, M.box, this.x, this.y + 4.4, this.z, 0, this.w + 0.4, 0.35, 0.35,
-      c, 0.25 + this.glow * 0.25, 0.4);
+      c, 0.75 + this.glow * 0.45, 0.4);
+    /* ★ 通る 前は 「まだ」、通った あとは 「済んだ」が **色と 光で** 分かる。
+       細い 光の 柱を 1 本。ゴールの 柱より 低く して 見分ける。 */
+    this._part(R, M.cyl, this.x, this.y + 11, this.z, 0, 0.34, 16, 0.34,
+      c, (this.reached ? 0.5 : 0.95) + this.glow * 0.3, 0.10);
   }
 }
 
@@ -561,6 +565,21 @@ export class Finish extends Obstacle {
       const c2 = (i % 2) ? [0.10, 0.11, 0.18, 1] : [1, 1, 1, 1];
       this._part(R, M.slab, cx, this.y + 4.2, this.z, 0, this.w / n, 0.7, 0.24, c2, 0.05, 0.2);
     }
+
+    /* ★ 光の 柱（2026-08-31・訴え「マップの クオリティ」）。
+       直す前は **ゴールが どこに あるのか 走っていて 分からなかった**。
+       門は 5m しか なく、次の 曲がりで すぐ 隠れる。
+       にじみ（bloom）が 入った ので、細い 光の 柱を 立てれば
+       壁の 向こうからでも 「あそこだ」と 分かる。
+       ★ 太くしない。太いと 画面を 塞ぎ、跳ぶ 先が 見えなく なる。 */
+    const g = this.course.palette.gold;
+    const 明 = 0.85 + this.glow * 0.35;
+    for (const side of [-1, 1]) {
+      this._part(R, M.cyl, this.x + side * this.w / 2, this.y + 26, this.z, 0,
+        0.7, 46, 0.7, g, 明, 0.10);
+    }
+    /* 上で ひとつに 束ねる。遠くでは これが 目印に なる。 */
+    this._part(R, M.ball, this.x, this.y + 50, this.z, 0, 2.6, 2.6, 2.6, g, 明, 0.4);
   }
 }
 
