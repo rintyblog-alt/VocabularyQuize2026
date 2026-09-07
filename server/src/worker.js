@@ -4273,6 +4273,22 @@ function applyCorsToResponse(response, corsPolicy, request) {
   });
 }
 
+/* ══ 表の 決まりの **署名**（2026-09-07）══════════════════════════════
+   ensureDbSchema の 中身 そのものから 作る。中身が 1 文字でも 変われば
+   署名も 変わるので、**上げ忘れが 起きない**。
+   入れ物ごとに 1 回だけ 作って 覚える（20 万字の 走査は 1 ミリ秒ほど）。 */
+let _dbSchemaSig = "";
+function dbSchemaSignature() {
+  if (_dbSchemaSig) return _dbSchemaSig;
+  try {
+    const src = String(ensureDbSchema);
+    let h = 5381;
+    for (let i = 0; i < src.length; i++) h = (((h * 33) ^ src.charCodeAt(i)) >>> 0);
+    _dbSchemaSig = "v1:" + src.length + ":" + h.toString(36);
+  } catch (e) { _dbSchemaSig = "v1:unknown"; }
+  return _dbSchemaSig;
+}
+
 async function ensureDbSchema(env) {
   if (!env.DB) {
     const err = new Error("DB_NOT_CONFIGURED");
@@ -4285,6 +4301,38 @@ async function ensureDbSchema(env) {
     await _dbSchemaEnsurePromise;
     return;
   }
+
+  /* ══ **261 本の DDL を 毎回の 冷えた 入れ物で 流さない**（2026-09-07）══
+     訴え「そもそも ログインできない」
+
+     何が 起きて いたか（本番で 実測）:
+       ここは **API の ほぼ 全部**の 手前で 走る。中身は
+       CREATE TABLE / CREATE INDEX / 列の 追加 が 261 本。
+       守りは `_dbSchemaEnsured` だけ ―― つまり **入れ物（isolate）ごとに 1 回**。
+       Cloudflare は 入れ物を どんどん 作り直すので、
+       **冷えた 入れ物に 当たった 人は 毎回 261 本ぶん 待たされる。**
+       実測: ログインが 1.1 秒 → 7 秒 → 80 秒超（返らない）と 1 回おきに ばらつく。
+       CPU は 0.17 秒。**ぜんぶ D1 の 往復を 待って いる 時間。**
+       出し直す たびに 入れ物が 全部 冷えるので、その 直後が いちばん ひどい。
+
+     直しかた:
+       ・**署名を 1 つ 読むだけ**で 済ませる（1 クエリ）。
+         合って いれば 261 本は 流さない。
+       ・署名は **この 関数の 中身から 自動で 作る**。
+         手で 上げる 決まりに すると、必ず 忘れる（忘れたら 列が 増えない）。
+       ・合わない ときだけ これまでどおり 全部 流し、終わったら 署名を 書く。
+       ・読めない とき（kv_flags が まだ 無い など）は **全部 流す**。
+         迷ったら 安全な ほうへ。 */
+  try {
+    const 今の = await env.DB.prepare(
+      "SELECT value FROM kv_flags WHERE key = 'schema.signature' LIMIT 1"
+    ).first();
+    if (今の && String(今の.value || "") === dbSchemaSignature()) {
+      _dbSchemaEnsured = true;
+      return;
+    }
+  } catch (e) { /* 表が まだ 無い＝はじめて。下で 全部 作る。 */ }
+
   _dbSchemaEnsurePromise = (async () => {
     const isDurationMetaBug = (err) => /duration/i.test(String(err?.message || ""));
     const runSql = async (sql) => {
@@ -6287,6 +6335,16 @@ async function ensureDbSchema(env) {
       await ensureOfficialAccount(env);
     } catch (offErr) {
       console.warn("[DB] official account seed failed:", String(offErr?.message || offErr));
+    }
+
+    /* ★ 全部 流し終えた 印。次からは **この 1 行を 読むだけ**で 済む。 */
+    try {
+      await env.DB.prepare(
+        "INSERT INTO kv_flags (key, value, updated_at) VALUES ('schema.signature', ?1, ?2)"
+        + " ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at = ?2"
+      ).bind(dbSchemaSignature(), Date.now()).run();
+    } catch (e) {
+      console.warn("[DB] schema signature write failed:", String(e?.message || e));
     }
 
     _dbSchemaEnsured = true;
@@ -69700,6 +69758,16 @@ export default {
   },
   async scheduled(controller, env, ctx) {
     void controller;
+    /* ── 表の 決まりを ここで 整える（2026-09-07）──────────────────
+       ★ もとは **API の たびに**（冷えた 入れ物ごとに）261 本の DDL を
+         流して いた。冷えた 入れ物に 当たった 人は 5〜80 秒 待たされる。
+       ★ いまは 入口では 署名を 1 つ 読むだけ。実際に 流すのは ここ。
+         10 分ごとに 走るので、出し直した あとも すぐ 揃う。
+       ★ 人を 待たせない ところで やる、が 要点。 */
+    ctx.waitUntil((async () => {
+      try { await ensureDbSchema(env); }
+      catch (err) { console.warn("[SCHEDULED] schema ensure failed:", String(err?.message || err)); }
+    })());
     /* ── 止まったままの AI の仕事を畳む ──────────────────────────
        できあがったぶんは残す（made_count > 0 なら partial）。
        ここが無いと「ずっと作成中」が台帳に残り続ける。 */
