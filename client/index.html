@@ -687,7 +687,8 @@ html[data-theme-mode="dark"] .liquid-loading-dots{ background:rgba(154,140,224,.
   var 音源 = "/vq-boot.473dd5a89d.m4a";
   var 大きさ = 0.55;                 /* 起動音は ひかえめに。うるさいと 毎回 いや */
   var フェード秒 = 0.9;
-  var 上限秒 = 20;                   /* どんなに 遅くても ここで 必ず 止める */
+  var 上限秒 = 40;                   /* 音源は 14 秒。**十分 長い** 保険だけ 残す
+                                        （鳴り終われば ended で 自分から 片づく） */
 
   /* ── 出して よいか ───────────────────────────────────────────────
      ★ 設定の「効果音」を 切って いる 人には 鳴らさない。
@@ -707,7 +708,9 @@ html[data-theme-mode="dark"] .liquid-loading-dots{ background:rgba(154,140,224,.
     return true;
   }
 
-  /* 起動が 済んだか。印は 3 つ あるので **どれか 1 つでも**立てば 済み。 */
+  /* 起動が 済んだか。印は 3 つ あるので **どれか 1 つでも**立てば 済み。
+     ★ いまは 「鳴らしはじめて よいか」の 判断にだけ 使う。
+       鳴りはじめた あとは 見ない（最後まで 流す）。 */
   function 済んだか() {
     var el = document.getElementById("authBootSplash");
     if (!el) return true;
@@ -716,6 +719,8 @@ html[data-theme-mode="dark"] .liquid-loading-dots{ background:rgba(154,140,224,.
     return false;
   }
 
+  var 生まれた = Date.now();
+  var 待てる秒 = 6;                   /* 断られた あと、触って 鳴らせる のは この 間だけ */
   var 音 = null, 終わった = false, 輪 = 0, 時計 = 0, 見張り = null;
 
   /* ── 出口は 1 つ ───────────────────────────────────────────────── */
@@ -759,6 +764,8 @@ html[data-theme-mode="dark"] .liquid-loading-dots{ background:rgba(154,140,224,.
       /* 起動の じゃまに しない。音は 後ろで 静かに 取る。 */
       try { 音.setAttribute("preload", "auto"); } catch (e) {}
     } catch (e) { 音 = null; return; }
+    /* ★ 鳴り終わったら 自分で 片づける。ここが 本来の 終わり。 */
+    try { 音.addEventListener("ended", function () { 終わる(true); }, { once: true }); } catch (e) {}
     var p = null;
     try { p = 音.play(); } catch (e) { p = null; }
     if (p && typeof p.catch === "function") {
@@ -779,7 +786,12 @@ html[data-theme-mode="dark"] .liquid-loading-dots{ background:rgba(154,140,224,.
       ["pointerdown", "keydown", "touchstart"].forEach(function (t) {
         document.removeEventListener(t, 一度, true);
       });
-      if (終わった || 済んだか()) return;
+      /* ★ 起動が 済んで いても 鳴らす（2026-09-07）。
+         iPhone は 触るまで 絶対に 鳴らせない ので、
+         「触った ころには 起動が 済んで いて 一生 鳴らない」に なって いた。
+         ただし いつまでも では ない ―― 開いた 直後の うちだけ。 */
+      if (終わった) return;
+      if (Date.now() - 生まれた > 待てる秒 * 1000) return;
       鳴らす();
     };
     ["pointerdown", "keydown", "touchstart"].forEach(function (t) {
@@ -787,29 +799,23 @@ html[data-theme-mode="dark"] .liquid-loading-dots{ background:rgba(154,140,224,.
     });
   }
 
-  /* ── 起動が 済んだら フェード ─────────────────────────────────────
-     消えかたが 何通りか ある（hidden を 付ける／liquid-fade-out を 付ける／
-     body の auth-booting を 外す）。**どれでも 拾える ように** 見張る。 */
-  function 見張りを置く() {
-    try {
-      見張り = new MutationObserver(function () { if (済んだか()) 終わる(false); });
-      var el = document.getElementById("authBootSplash");
-      if (el) 見張り.observe(el, { attributes: true, attributeFilter: ["class"] });
-      if (document.body) 見張り.observe(document.body, { attributes: true, attributeFilter: ["class"] });
-    } catch (e) {}
-    /* 見張りが 効かない ときの 受け皿。0.4 秒ごとに 見る。 */
-    (function 念のため() {
-      if (終わった) return;
-      if (済んだか()) { 終わる(false); return; }
-      setTimeout(念のため, 400);
-    })();
-  }
+  /* ── 起動が 済んでも **最後まで 流す**（2026-09-07・訴え）────────────
+     訴え「ローディングの 音なんだけどさ、ローディングが 終わっても
+           音は 最後まで 流して ほしい。」
+
+     ★ 前は 起動が 済んだ 瞬間に フェードして 止めて いた。
+       起動は 速い ときで 1 秒ほど なので、14 秒の 音が
+       ほとんど 鳴らずに 終わって いた。
+     ★ いまは **鳴りはじめたら 最後まで**。終わりは 音源が 決める。
+     ★ 止めるのは 2 つ だけ:
+         ・画面を 離れた とき（うしろで 鳴りつづけるのは 失礼）
+         ・とても 長い 保険（音源より 十分 長い ところ）
+     ★ 起動が 済んだか どうかは **もう 見ない**。見張りも 置かない。 */
 
   function はじめる() {
     if (!出してよいか()) return;
     document.addEventListener("visibilitychange", 隠れたら);
     時計 = setTimeout(function () { 終わる(false); }, 上限秒 * 1000);
-    見張りを置く();
     鳴らす();
   }
 

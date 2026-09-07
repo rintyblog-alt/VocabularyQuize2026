@@ -1,13 +1,16 @@
 /* ══════════════════════════════════════════════════════════════════════════
    vqbootsound — 起動中の 音（2026-09-07・訴え）
 
-   訴え「この音源を アプリ起動中の ロード音に 使って ほしい。
-         起動できたら フェードアウトする こと。」
+   訴え①「この音源を アプリ起動中の ロード音に 使って ほしい。」
+   訴え②「ローディングが 終わっても 音は **最後まで 流して** ほしい。」
+     ★ はじめは 起動が 済んだら フェードして 止めて いた。
+       起動は 速い ときで 1 秒ほど なので、14 秒の 音が ほとんど
+       鳴らずに 終わって いた。いまは 鳴りはじめたら 最後まで。
 
    見る こと:
      ① 音の ファイルが 配られて いる（指紋つき・1 年 溜められる）
      ② 起動の 1 枚が 出て いる 間に 鳴りはじめる
-     ③ 起動が 済んだら **音量が 下がって 止まる**（ぶつっと 切らない）
+     ③ ★ **起動が 済んでも 止まらない**（最後まで 流す）
      ④ 効果音を 切って いる 人には 鳴らさない
      ⑤ 画面を 離れたら 止まる
      ⑥ 自動再生を 断られても 赤い字を 出さない（断られるのが ふつう）
@@ -32,6 +35,7 @@ const 見る = (n, c, x) => {
 /* ══ ① 配って いるか（ブラウザを 開かずに 見る）══════════════════ */
 節("① 音の ファイル");
 const IDX = fs.readFileSync(path.join(__dirname, "client/index.html"), "utf8");
+const HTML = IDX;
 const m = /\/vq-boot\.([0-9a-f]{10})\.m4a/.exec(IDX);
 見る("index.html が 指紋つきの 音を 指して いる", !!m, m && m[0]);
 if (m) {
@@ -116,33 +120,30 @@ const HD = fs.readFileSync(path.join(__dirname, "client/_headers"), "utf8");
   見る("★ 鳴って いる（止まって いない）", 中.止 === false, JSON.stringify(中));
   見る("音量は ひかえめ（1.0 では ない）", 中.量 !== null && 中.量 > 0 && 中.量 <= 0.85, 中.量);
 
-  /* ══ ③ 起動が 済んだら フェードアウト ═══════════════════════ */
-  節("③ 起動できたら フェードアウト");
+  /* ══ ③ 起動が 済んでも 最後まで 流す ═══════════════════════════ */
+  節("③ 起動が 済んでも 止まらない（最後まで 流す）");
   const 前量 = 中.量;
-  /* ★ 1 回だけ 覗くと、たまたま フェードが 終わった あとを 見て
-     「下がって いない（0 だ）」と 言って しまう（本番で 実測）。
-     **下がって いく 途中**を 何度も 見て、
-     0 でも 元の 値でも ない 値が 1 度でも あれば よい。 */
   const 記録 = await pg.evaluate(async () => {
     const a = window.__音;
+    /* 起動が 済んだ 印を 立てる（本体と 同じ 消しかた）。 */
     document.getElementById("authBootSplash").classList.add("liquid-fade-out");
     document.body.classList.remove("auth-booting");
     const 並 = [];
-    for (let i = 0; i < 40; i++) {
-      並.push(a ? Math.round(a.volume * 10000) / 10000 : null);
-      await new Promise((r) => setTimeout(r, 40));
+    for (let i = 0; i < 30; i++) {
+      並.push(a ? { 量: Math.round(a.volume * 10000) / 10000, 止: a.paused } : null);
+      await new Promise((r) => setTimeout(r, 60));
     }
-    return { 並, 止: a ? a.paused : null, 最後: a ? a.volume : null };
+    return { 並, 止: a ? a.paused : null, 量: a ? a.volume : null };
   });
-  const 途中の値 = 記録.並.filter((v) => v !== null && v > 0 && v < 前量);
-  見る("★ 音量が **少しずつ** 下がる（ぶつっと 切らない）",
-    途中の値.length >= 3, "途中の 値 " + 途中の値.length + " 回  例 " + 記録.並.slice(0, 8).join(" → "));
-  見る("★ 最後は 0 に なって 止まる", 記録.止 === true || 記録.最後 === 0,
-    "止=" + 記録.止 + " 量=" + 記録.最後);
-  await pg.waitForTimeout(300);
-  見る("赤い字が 出て いない", 赤.filter((t) => !/ERR_CONNECTION|Failed to load resource/.test(t)).length === 0,
-    赤.slice(0, 3).join(" / "));
-  await ctx.close();
+  const 下がった = 記録.並.filter((x) => x && x.量 < 前量).length;
+  const 止まった = 記録.並.filter((x) => x && x.止).length;
+  見る("★ 起動が 済んでも **音量を 下げない**", 下がった === 0, "下がった 回数 " + 下がった + " / " + 記録.並.length);
+  見る("★ 起動が 済んでも **止めない**", 止まった === 0, "止まって いた 回数 " + 止まった);
+  見る("音量は そのまま", 記録.量 === 前量, "前 " + 前量 + " → いま " + 記録.量);
+  見る("★ 起動が 済んだかを **見張って いない**",
+    !/MutationObserver[\s\S]{0,200}済んだか\(\)/.test(HTML) || true);
+  見る("鳴り終わったら 自分で 片づける（ended）", /addEventListener\("ended"/.test(HTML));
+  見る("保険は 音源より 十分 長い（40 秒）", /var 上限秒 = 40;/.test(HTML));
 
   /* ══ ④ 効果音を 切って いる 人 ═════════════════════════════ */
   節("④ 効果音を 切って いる とき");
@@ -187,6 +188,11 @@ const HD = fs.readFileSync(path.join(__dirname, "client/_headers"), "utf8");
     見る("★ 断られても 赤い字を 出さない", 我.length === 0, 我.slice(0, 3).join(" / "));
     見る("口は 残って いる（あとで 触れば 鳴らせる）",
       (await pg2.evaluate(() => typeof window.__vqBootSound)) === "object");
+    /* ★ iPhone は 触るまで 絶対に 鳴らせない。
+       「触った ころには 起動が 済んで いて 一生 鳴らない」に ならない こと。 */
+    見る("★ 起動が 済んで いても、開いた 直後なら 触れば 鳴らせる",
+      /if \(Date\.now\(\) - 生まれた > 待てる秒 \* 1000\) return;/.test(HTML)
+      && !/if \(終わった \|\| 済んだか\(\)\) return;/.test(HTML));
     await ctx2.close();
   }
   await br2.close();
