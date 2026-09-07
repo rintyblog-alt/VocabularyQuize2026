@@ -657,7 +657,170 @@ html[data-theme-mode="dark"] .liquid-loading-dots{ background:rgba(154,140,224,.
       </clipPath>
     </defs>
   </svg>
-  <div id="authBootSplash" class="liquid-boot-splash" role="status" aria-live="polite">
+  <script id="vq-boot-sound">
+/* ══════════════════════════════════════════════════════════════════════════
+   起動中の 音（2026-09-07・訴え）
+
+   訴え「この音源を アプリ起動中の ロード音に 使って ほしい。
+         起動できたら フェードアウトする こと。」
+
+   ★ ここに 直に 書く 理由
+     起動の 1 枚（#authBootSplash）と 同じ 一生を 持つ。外の js から 呼ぶと、
+     その js が 届く ころには 起動が 終わって いる ことが ある。
+
+   ★ 自動再生は **断られるのが ふつう**（Chrome / Safari）。
+     人が 一度も 触って いない 画面では 音を 出せない 決まりが ある。
+     だから:
+       ・断られても 黙って 引き下がる（赤い字を 出さない）
+       ・その あと 最初に 触った ときに、まだ 起動中なら 鳴らす
+     ★ 2 回目 からは 音が 溜まって いる ので すぐ 鳴る。
+
+   ★ 止める ところを 1 つに する。
+     起動が 済んだ／画面を 離れた／時間切れ ―― どれでも 同じ 出口を 通る。
+     ここを 分けると「フェードの 途中で もう 一度 鳴る」が 起きる。
+   ══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+  if (window.__vqBootSoundInstalled) return;
+  window.__vqBootSoundInstalled = true;
+
+  var 音源 = "/vq-boot.473dd5a89d.m4a";
+  var 大きさ = 0.55;                 /* 起動音は ひかえめに。うるさいと 毎回 いや */
+  var フェード秒 = 0.9;
+  var 上限秒 = 20;                   /* どんなに 遅くても ここで 必ず 止める */
+
+  /* ── 出して よいか ───────────────────────────────────────────────
+     ★ 設定の「効果音」を 切って いる 人には 鳴らさない。
+       起動音だけ 別扱いに すると「切ったのに 鳴る」に なる。 */
+  function 出してよいか() {
+    try {
+      var s = JSON.parse(localStorage.getItem("wordPractice400.settings.v2") || "{}");
+      if (s && s.sfx === false) return false;
+      /* 大きさも 設定に そろえる。 */
+      if (s && s.sfxVolume === "SMALL") 大きさ = 0.3;
+      else if (s && s.sfxVolume === "LARGE") 大きさ = 0.8;
+    } catch (e) {}
+    /* 起動の 1 枚が 出て いない＝もう 起動は 済んで いる。鳴らさない。 */
+    var el = document.getElementById("authBootSplash");
+    if (!el) return false;
+    if (el.classList.contains("hidden") || el.classList.contains("liquid-fade-out")) return false;
+    return true;
+  }
+
+  /* 起動が 済んだか。印は 3 つ あるので **どれか 1 つでも**立てば 済み。 */
+  function 済んだか() {
+    var el = document.getElementById("authBootSplash");
+    if (!el) return true;
+    if (el.classList.contains("hidden") || el.classList.contains("liquid-fade-out")) return true;
+    if (!document.body || !document.body.classList.contains("auth-booting")) return true;
+    return false;
+  }
+
+  var 音 = null, 終わった = false, 輪 = 0, 時計 = 0, 見張り = null;
+
+  /* ── 出口は 1 つ ───────────────────────────────────────────────── */
+  function 終わる(すぐ) {
+    if (終わった) return;
+    終わった = true;
+    if (時計) { clearTimeout(時計); 時計 = 0; }
+    if (見張り) { try { 見張り.disconnect(); } catch (e) {} 見張り = null; }
+    document.removeEventListener("visibilitychange", 隠れたら);
+    if (!音) return;
+    if (すぐ) { 止める(); return; }
+    /* フェードアウト。**音量を 少しずつ 下げる**（急に 止めると ぶつっと 鳴る）。 */
+    var 始 = (window.performance && performance.now) ? performance.now() : Date.now();
+    var 元 = 音.volume;
+    var 進む = function (t) {
+      if (!音) return;
+      var 経 = ((t || 0) - 始) / 1000;
+      var r = Math.max(0, 1 - 経 / フェード秒);
+      try { 音.volume = Math.max(0, 元 * r * r); } catch (e) {}   /* 二乗＝耳に 自然 */
+      if (r <= 0) { 止める(); return; }
+      輪 = requestAnimationFrame(進む);
+    };
+    輪 = requestAnimationFrame(進む);
+  }
+  function 止める() {
+    if (輪) { cancelAnimationFrame(輪); 輪 = 0; }
+    if (!音) return;
+    try { 音.pause();音.src = ""; 音.load(); } catch (e) {}
+    音 = null;
+  }
+  function 隠れたら() { if (document.hidden) 終わる(true); }
+
+  /* ── 鳴らす ─────────────────────────────────────────────────── */
+  function 鳴らす() {
+    if (終わった || 音) return;
+    if (!出してよいか()) return;
+    try {
+      音 = new Audio(音源);
+      音.preload = "auto";
+      音.volume = 大きさ;
+      /* 起動の じゃまに しない。音は 後ろで 静かに 取る。 */
+      try { 音.setAttribute("preload", "auto"); } catch (e) {}
+    } catch (e) { 音 = null; return; }
+    var p = null;
+    try { p = 音.play(); } catch (e) { p = null; }
+    if (p && typeof p.catch === "function") {
+      p.catch(function () {
+        /* ★ 断られた。**これは ふつうの こと**。
+           人が 一度も 触って いない 画面では 鳴らせない 決まりが ある。
+           次に 触った ときに、まだ 起動中なら 鳴らす。 */
+        止める();
+        待って鳴らす();
+      });
+    }
+  }
+  var 待ち済 = false;
+  function 待って鳴らす() {
+    if (待ち済 || 終わった) return;
+    待ち済 = true;
+    var 一度 = function () {
+      ["pointerdown", "keydown", "touchstart"].forEach(function (t) {
+        document.removeEventListener(t, 一度, true);
+      });
+      if (終わった || 済んだか()) return;
+      鳴らす();
+    };
+    ["pointerdown", "keydown", "touchstart"].forEach(function (t) {
+      document.addEventListener(t, 一度, { capture: true, passive: true });
+    });
+  }
+
+  /* ── 起動が 済んだら フェード ─────────────────────────────────────
+     消えかたが 何通りか ある（hidden を 付ける／liquid-fade-out を 付ける／
+     body の auth-booting を 外す）。**どれでも 拾える ように** 見張る。 */
+  function 見張りを置く() {
+    try {
+      見張り = new MutationObserver(function () { if (済んだか()) 終わる(false); });
+      var el = document.getElementById("authBootSplash");
+      if (el) 見張り.observe(el, { attributes: true, attributeFilter: ["class"] });
+      if (document.body) 見張り.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    } catch (e) {}
+    /* 見張りが 効かない ときの 受け皿。0.4 秒ごとに 見る。 */
+    (function 念のため() {
+      if (終わった) return;
+      if (済んだか()) { 終わる(false); return; }
+      setTimeout(念のため, 400);
+    })();
+  }
+
+  function はじめる() {
+    if (!出してよいか()) return;
+    document.addEventListener("visibilitychange", 隠れたら);
+    時計 = setTimeout(function () { 終わる(false); }, 上限秒 * 1000);
+    見張りを置く();
+    鳴らす();
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", はじめる);
+  else はじめる();
+
+  /* 外から 止められる ように（検査と、ほかの 画面から の 保険）。 */
+  window.__vqBootSound = { stop: function () { 終わる(true); }, fade: function () { 終わる(false); } };
+})();
+</script>
+<div id="authBootSplash" class="liquid-boot-splash" role="status" aria-live="polite">
     <div class="liquid-loading-inner">
       <div class="vqload-stage" aria-hidden="true">
         <span class="vqload-ripple"></span>
