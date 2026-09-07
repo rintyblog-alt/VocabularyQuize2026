@@ -68,6 +68,21 @@ console.log("\n■ DDL の 量");
   見る("★ 200 本を 超えたら 入口で 流しては いけない 量（いまも そう）", n > 200, n + " 本");
 }
 
+console.log("\n■ 署名の 置き場（kv_flags）");
+見る("★ kv_flags を 作って いる（無いと 署名が 一生 書けない）",
+  /CREATE TABLE IF NOT EXISTS kv_flags/.test(SRC));
+見る("★ **本体と 予備の 両方**に 入れて いる（片方だけだと 作られない）",
+  (SRC.match(/CREATE TABLE IF NOT EXISTS kv_flags/g) || []).length >= 2,
+  (SRC.match(/CREATE TABLE IF NOT EXISTS kv_flags/g) || []).length + " か所");
+{
+  /* 本体（ensureDbSchema）の 中に あるか を きちんと 見る。
+     予備（…FallbackNoMeta）にだけ 入れて 「作られない」を 一度 踏んだ。 */
+  const 本体 = 切る("async function ensureDbSchema(env) {");
+  見る("★ **本体の 中**に ある", /CREATE TABLE IF NOT EXISTS kv_flags/.test(本体));
+  const 予備 = 切る("async function ensureDbSchemaFallbackNoMeta(env) {");
+  見る("予備の 中にも ある", /CREATE TABLE IF NOT EXISTS kv_flags/.test(予備));
+}
+
 console.log("\n■ 入口の 呼び出しは 残って いる（自分で 直す 力を 失わない）");
 見る("API の 手前で 呼ばれて いる", /stage = "schema\.ensure";[\s\S]{0,80}await ensureDbSchema\(env\)/.test(SRC));
 

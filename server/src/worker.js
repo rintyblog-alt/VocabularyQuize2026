@@ -3436,6 +3436,18 @@ async function ensureDbSchemaFallbackNoMeta(env) {
          **D1 に 置き直す**。行は 1 本だけ（id='current'）。
        ★ logout_at … ここより 前に 作られた 合言葉は 通さない。
          「全員 ログアウト」を これで 実現する。 */
+    /* ══ 小さな 覚え書き（2026-09-07）══════════════════════════════
+       key と value の 2 つだけ。**作られて いなかった。**
+       参照だけ 3 か所に あり、どれも .catch(() => null) だったので
+       黙って 何も 起きて いなかった:
+         ・毎日の ログイン特典（1 回も 配られて いない）
+         ・表の 決まりの 署名（毎回 263 本の DDL を 流す ことに なる）
+       表が 無い ことに 気づけない 書きかたが いちばん こわい。 */
+    `CREATE TABLE IF NOT EXISTS kv_flags (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL DEFAULT 0
+    )`,
     `CREATE TABLE IF NOT EXISTS maintenance_state (
       id TEXT PRIMARY KEY,
       enabled INTEGER NOT NULL DEFAULT 0,
@@ -4793,6 +4805,20 @@ async function ensureDbSchema(env) {
         reason TEXT NOT NULL DEFAULT '',
         note TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL DEFAULT 0
+      )`,
+      /* ══ 小さな 覚え書き（2026-09-07）══════════════════════════════
+         key と value の 2 つだけ。**作られて いなかった。**
+         参照だけ 3 か所に あり、どれも .catch(() => null) だったので
+         黙って 何も 起きて いなかった:
+           ・毎日の ログイン特典（1 回も 配られて いない）
+           ・表の 決まりの 署名（毎回 263 本の DDL を 流す ことに なる）
+         表が 無い ことに 気づけない 書きかたが いちばん こわい。
+         ★ 予備の 経路（ensureDbSchemaFallbackNoMeta）にも 同じ ものが 要る。
+           片方だけに 入れて 「作られない」を 一度 踏んだ。 */
+      `CREATE TABLE IF NOT EXISTS kv_flags (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL DEFAULT '',
+        updated_at INTEGER NOT NULL DEFAULT 0
       )`,
       `CREATE TABLE IF NOT EXISTS maintenance_state (
         id TEXT PRIMARY KEY,
