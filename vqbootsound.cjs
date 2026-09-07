@@ -119,18 +119,27 @@ const HD = fs.readFileSync(path.join(__dirname, "client/_headers"), "utf8");
   /* ══ ③ 起動が 済んだら フェードアウト ═══════════════════════ */
   節("③ 起動できたら フェードアウト");
   const 前量 = 中.量;
-  await pg.evaluate(() => {
-    /* 起動が 済んだ 印を 立てる（本体と 同じ 消しかた）。 */
+  /* ★ 1 回だけ 覗くと、たまたま フェードが 終わった あとを 見て
+     「下がって いない（0 だ）」と 言って しまう（本番で 実測）。
+     **下がって いく 途中**を 何度も 見て、
+     0 でも 元の 値でも ない 値が 1 度でも あれば よい。 */
+  const 記録 = await pg.evaluate(async () => {
+    const a = window.__音;
     document.getElementById("authBootSplash").classList.add("liquid-fade-out");
     document.body.classList.remove("auth-booting");
+    const 並 = [];
+    for (let i = 0; i < 40; i++) {
+      並.push(a ? Math.round(a.volume * 10000) / 10000 : null);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    return { 並, 止: a ? a.paused : null, 最後: a ? a.volume : null };
   });
+  const 途中の値 = 記録.並.filter((v) => v !== null && v > 0 && v < 前量);
+  見る("★ 音量が **少しずつ** 下がる（ぶつっと 切らない）",
+    途中の値.length >= 3, "途中の 値 " + 途中の値.length + " 回  例 " + 記録.並.slice(0, 8).join(" → "));
+  見る("★ 最後は 0 に なって 止まる", 記録.止 === true || 記録.最後 === 0,
+    "止=" + 記録.止 + " 量=" + 記録.最後);
   await pg.waitForTimeout(300);
-  const 途中 = await 様子(pg);
-  見る("★ 音量が **下がって いる**（ぶつっと 切らない）",
-    途中.量 !== null && 前量 !== null && 途中.量 < 前量 && 途中.量 > 0, "前 " + 前量 + " → 途中 " + 途中.量);
-  await pg.waitForTimeout(1400);
-  const 後 = await 様子(pg);
-  見る("★ 最後は 止まる", 後.止 === true || 後.量 === 0, JSON.stringify(後));
   見る("赤い字が 出て いない", 赤.filter((t) => !/ERR_CONNECTION|Failed to load resource/.test(t)).length === 0,
     赤.slice(0, 3).join(" / "));
   await ctx.close();
