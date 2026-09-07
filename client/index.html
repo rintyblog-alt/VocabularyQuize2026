@@ -14504,13 +14504,27 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
      iOS 16.4 以降、Safari と ホーム画面の アプリで localStorage が
      **分かれる**。Safari で ?diag=safe を 開いても アプリ側に 印が 届かず、
      いちばん 知りたい standalone の 値が 取れなかった。
-     → 下部バーの「設定」を **長押し**すれば アプリの 中から 出せる。 */
-  var 自動 = false;
+     → 下部バーの「設定」を **長押し**すれば アプリの 中から 出せる。
+
+     ★ 2026-09-07・訴え
+       「アプリや Safari で リンクを 開くと この 診断が 出て くるから、
+         普段は 非表示で、下部バーから 設定を 長押しした ときだけに して」
+
+     何が 起きて いたか:
+       ?diag=safe を **一度** 開くと localStorage に 印が 残り、
+       そのあと **開く たびに ずっと** 3.5 秒後に 出て いた。
+       印を 消す 口（?diag=off）は あったが、そんな ものは 覚えて いない。
+
+     直しかた:
+       ・自分から 出るのは **やめる**。出るのは 長押しの ときだけ。
+       ・?diag=safe は「**その 回だけ** 出す」に する（印を 残さない）。
+       ・すでに 残って いる 印は 起動の ときに **黙って 消す**（後始末）。 */
+  var この回だけ = false;
   try {
     var q = String(location.search || "");
-    if (/[?&]diag=safe/.test(q)) localStorage.setItem(KEY, "1");
-    if (/[?&]diag=off/.test(q)) localStorage.removeItem(KEY);
-    自動 = localStorage.getItem(KEY) === "1";
+    if (/[?&]diag=safe/.test(q)) この回だけ = true;
+    /* 昔の 印が 残って いる 人を ここで 助ける。もう 使わない 鍵。 */
+    localStorage.removeItem(KEY);
   } catch (e) {}
 
   function px(v) { return Math.round(parseFloat(v) || 0); }
@@ -14643,8 +14657,10 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
   /* ★ 外から 呼べる 口。下部バーの「設定」の 長押しから 使う。 */
   window.__vqSafeDiag = { 出す: show };
 
-  /* 起動が落ち着いてから出す（先に出すとバーがまだ無くて値が取れない） */
-  function boot() { if (自動) setTimeout(show, 3500); }
+  /* 起動が落ち着いてから出す（先に出すとバーがまだ無くて値が取れない）。
+     ★ 出すのは **?diag=safe を 付けて 開いた その 回だけ**。
+       ふだんは 何も しない。見たい ときは 下部バーの「設定」を 長押し。 */
+  function boot() { if (この回だけ) setTimeout(show, 3500); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 })();
