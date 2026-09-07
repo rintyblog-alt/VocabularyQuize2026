@@ -49570,6 +49570,25 @@ function aigenParseContract(text, opts = {}) {
     /* 「◯◯以外は禁止」は逆の意味。そこは上で扱うので触らない。 */
     const after = norm.slice(dm.index + dm[0].length, dm.index + dm[0].length + 12);
     if (/^\s*(?:は)?\s*(?:禁止|不可|使わないで|だめ|ダメ)/.test(after)) continue;
+    /* ══ 「**それ**以外」は 形式を 名指しして いない（2026-09-07・訴え）══
+       訴え「形式を 大体 指定したら、4択25問 記述25問に なった」
+
+         「50問…。10問4択で **それ以外**を 記述に して ほしい。」
+
+       この「それ」は **さっきの 10 問**を 指して いる。
+       「4択は 作るな」では ない。むしろ 4択を 10 問 作れ、と 書いて ある。
+
+       ところが ここは 「以外」の 前 20 文字を そのまま 形式名として 見て
+       いたので、「10問4択でそれ」の 中の **4択**を 拾って
+         ・single_choice を **禁止**に する
+         ・その 一文を まるごと 消す（banCut）
+       の 2 つを して いた。消えた ぶん、**内訳（10問）も 総数の 位置も
+       失われ**、残った 形式へ 均等に 割られて 25 / 25 に なって いた。
+
+       ★ 「4択以外で」（形式名が すぐ 前）は これまでどおり 禁止。
+       ★ 「それ以外」「これ以外」「残り以外」は **指し示す 言葉**なので
+         形式の 禁止と 読まない。 */
+    if (/(?:それ|其れ|これ|此れ|あれ|それら|これら|その他|そのほか|以上|上記|残り|のこり)\s*$/.test(who)) continue;
     for (const id of Object.keys(AIGEN_ENGINES)) {
       if (aigenEngineNamed(id, who)) { forbidden.add(id); banCut.push(dm[0]); }
     }
@@ -49716,6 +49735,53 @@ function aigenParseContract(text, opts = {}) {
     }
   }
 
+  /* ══ 「10 問 4択で」── **数が 先、形式が 後**（2026-09-07・訴え）══════
+     上の 読み取りは 「4択10問」＝ **形式 → 数** の 順しか 見て いない。
+     だが 人は ふつうに こう 書く:
+
+       「50問 作成して ほしい。形式は …、**10問4択**で それ以外を 記述に して」
+
+     この とき 内訳が 1 つも 拾えず、pinned が 立たず、
+     50 問を 2 形式へ **均等に 割って 25 / 25** に して いた（本番で 実測）。
+     頼んだのは 4択 10・記述 40。**まるで ちがう ものが できる。**
+
+     ★ 数と 形式の 間は **4 文字まで**（「10問を4択」「10問は4択」）。
+       離れて いる ものは 別の 文の 数なので 拾わない。
+     ★ すでに 上で 拾えた 形式は 触らない（そちらの ほうが 確か）。
+     ★ 「N問も作らない」は 内訳では ない ので、打ち消しは 除く。 */
+  for (const [id, e] of Object.entries(AIGEN_ENGINES)) {
+    if (dist[id] !== undefined) continue;
+    for (const a of AIGEN_ENGINE_WORDS[id]) {
+      const 語 = a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp("(\\d{1,3})\\s*" + AIGEN_UNIT + "([^\\d。、\\n]{0,4})" + 語);
+      const m = reqText.match(re);
+      if (!m) continue;
+      /* 数の 前が 打ち消しなら 内訳では ない。 */
+      const before = reqText.slice(Math.max(0, m.index - 10), m.index);
+      if (new RegExp(NEG + "[^。\\n]{0,6}$").test(before)) continue;
+      dist[id] = Math.max(1, Math.min(100, Number(m[1])));
+      distAt[id] = m.index;
+      break;
+    }
+  }
+
+  /* ══ 「それ以外を 記述に して」── **残り 全部**（2026-09-07・訴え）══
+     内訳で 一部だけ 数を 決めて、残りを 別の 形式に する 書きかた。
+     ここを 読まないと、記述の ぶんが 内訳に 入らず、
+     「4択 10 問だけ」に なるか、また 均等割りに 戻る。
+     ★ 数は ここでは 決めない。**総数が 決まってから** 引き算する。 */
+  let restEngine = "";
+  {
+    const 残りの語 = "(?:それ以外|それ以外の|残り|残りは|のこり|他は|ほかは|あとは|後は)";
+    for (const [id, e] of Object.entries(AIGEN_ENGINES)) {
+      for (const a of AIGEN_ENGINE_WORDS[id]) {
+        const 語 = a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp(残りの語 + "[^。\\n]{0,8}" + 語).test(reqText)) { restEngine = id; break; }
+      }
+      if (restEngine) break;
+    }
+  }
+
   /* ══ 同じ数を 2 つ以上の形式が指しているなら、それは「総数」════════
      内訳は形式ごとに **別々に**探しているので、
 
@@ -49789,10 +49855,36 @@ function aigenParseContract(text, opts = {}) {
            全問、語句カードを正しい順番に並べる形式にしてください。」
        2 文目の「カード」を注文と読み、並べ替え 10 問の内訳が消えて
        並べ替え 5 ＋ 暗記カード 5 になっていた。 */
-    const numSent = reqText.split(/[。\n]/).find((s) => /\d{1,3}\s*問/.test(s)) || reqText;
+    /* ★ 見るのは 「**内訳が 書いて あった 文**」（2026-09-07・訴え）。
+       これまでは 「数の ある **いちばん 最初の 文**」を 見て いた。
+
+         「…想定問題を **50問** 作成して ほしい。
+           形式は 説明したいから、**10問4択**で それ以外を 記述に して」
+
+       1 文目には 形式の 言葉が 1 つも 無い ので near が 空に なり、
+       judge が 使ってよい 形式 **全部**（2 つ）に なる。
+       内訳は 1 つ（4択 10）なので 1 < 2 と なり、
+       **せっかく 読めた 内訳を 取り下げて**いた。→ また 均等割り。
+       内訳を 拾った 位置（distAt）から、その 文を 選ぶ。 */
+    const 内訳の位置 = Object.values(distAt).sort((a, b) => a - b)[0];
+    let numSent = reqText;
+    if (内訳の位置 !== undefined) {
+      let 頭 = 0;
+      reqText.split(/([。\n])/).some((部) => {
+        const 次 = 頭 + 部.length;
+        if (内訳の位置 >= 頭 && 内訳の位置 < 次 && !/^[。\n]$/.test(部)) { numSent = 部; return true; }
+        頭 = 次; return false;
+      });
+    } else {
+      numSent = reqText.split(/[。\n]/).find((s) => /\d{1,3}\s*問/.test(s)) || reqText;
+    }
     const near = allowed.filter((id) =>
       AIGEN_ENGINE_WORDS[id].some((a) => numSent.indexOf(a) >= 0));
-    const judge = near.length ? near : allowed;
+    /* ★ 「それ以外は 記述で」の 形式は **数が 付いて いる**ものと 同じに 見る。
+       数は 総数から 引いて 決まる ので、書いて ないのでは なく
+       「残り 全部」と 書いて ある。ここを 数え落とすと、
+       内訳が そろって いない と 見なされて 取り下げられる。 */
+    const judge = (near.length ? near : allowed).filter((id) => id !== restEngine);
     if (Object.keys(dist).length && judge.length > Object.keys(dist).length) {
       if (perEach) judge.forEach((id) => { dist[id] = perEach; });
       else Object.keys(dist).forEach((k) => { delete dist[k]; });
@@ -49915,6 +50007,20 @@ function aigenParseContract(text, opts = {}) {
     const total = Object.values(dist).reduce((a, b) => a + b, 0);
     count = total || 10;
   }
+
+  /* ══ 「それ以外」に **残りの 数**を 入れる（2026-09-07・訴え）══════
+     「50 問。10 問 4択で **それ以外を 記述**に して」
+       → 総数 50、内訳 4択 10 → 記述は 50 − 10 = **40**。
+     ★ 総数が 決まって からでないと 引けない ので ここで やる。
+     ★ 総数の ほうが 小さい／同じ ときは 何も しない
+       （「それ以外」が 0 問に なる 書きかたは 読み違いの 可能性が 高い）。
+     ★ すでに 数が 書いて ある 形式は 触らない。 */
+  if (restEngine && dist[restEngine] === undefined && Object.keys(dist).length) {
+    const 決まったぶん = Object.values(dist).reduce((a, b) => a + b, 0);
+    const 残り = count - 決まったぶん;
+    if (残り >= 1) dist[restEngine] = Math.min(100, 残り);
+  }
+
   /* 内訳が無いときは、使ってよい形式へ均等に割る（端数は前から 1 問ずつ）。 */
   let plan = Object.keys(dist).length ? { ...dist } : null;
   if (!plan) {
@@ -53251,8 +53357,20 @@ async function aigenJobFinish(env, uid, id, out) {
     Math.max(0, qreditSafeInt(out.tokensOut || 0, 0)),
     Math.max(0, qreditSafeInt(out.firstResultMs || 0, 0)),
     JSON.stringify({ questions: out.questions || [] }).slice(0, 400000),
-    toSafeString(out.blocked || "", 40),
-    toSafeString(out.blockedMessage || "", 200),
+    /* ══ 0 問で 終わった とき、**なぜ かを 残す**（2026-09-07・訴え）══
+       訴え「なぜだろう。プリセットが 作れなく なった」
+
+       本番の 台帳を 見た とき、止まった 仕事に 残って いたのは
+       「途中で 止まりました」だけ だった。提供元の 台帳は
+       「呼んだ 3 回・枠切れ 0・エラー ほぼ 0」＝ **AI は 答えて いた**。
+       つまり 答えは 来て いたのに 1 問も 通らなかった のに、
+       **その 理由が どこにも 残って いなかった。**
+
+       落とした 理由（metrics.lastError）は 生成の 中では 数えて いる。
+       それを 台帳へ 移す。次に 同じ ことが 起きた とき、
+       台帳を 見れば 分かる ように する。 */
+    toSafeString(out.blocked || (made === 0 && out.lastError ? "NO_QUESTION" : ""), 40),
+    toSafeString(out.blockedMessage || (made === 0 ? (out.lastError || "") : ""), 200),
     now, id, uid
   ).run();
   return status;
@@ -54649,6 +54767,8 @@ async function handleAiGenQuestions(request, env, ctx) {
         await aigenJobFinish(env, uid, jobId, Object.assign({}, out, {
           aiCalls: out.metrics?.aiCalls, tokensIn: out.metrics?.tokensIn,
           tokensOut: out.metrics?.tokensOut, firstResultMs: out.metrics?.firstResultMs,
+          /* ★ 1 問も できなかった 理由。**これが 無いと 何も 分からない。** */
+          lastError: out.metrics?.lastError || "",
           stages: aigenSnapshot(contract, out.questions || [], out.metrics || {}, "").stages
         }));
         /* 台帳で走らせた生成も、同じように 1 回として数える。
