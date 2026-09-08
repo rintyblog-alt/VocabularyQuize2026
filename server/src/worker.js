@@ -49376,6 +49376,35 @@ const AIGEN_PICK_RE = /(選べ|選びなさい|選択し|最も適当なもの|�
 const AIGEN_WRITE_ENGINES = new Set([
   "free_text", "long_answer", "essay", "english_writing", "source_analysis"
 ]);
+/* ══ 「選べ」を 書き直す（2026-09-09）══════════════════════════════
+   選ばせない 形式で 「選べ」と 書かれて いても、問題そのものは 正しい。
+   **捨てずに 言い回しだけ 直す。** 解く 人が 迷わなければ よい。
+   ★ 語群が 付いて いる ときは 「選べ」で 正しい ので 触らない。 */
+function aigenFixPickWording(q, engineId) {
+  if (!q || typeof q !== "object") return q;
+  if (AIGEN_ENGINES[engineId] && AIGEN_ENGINES[engineId].choiceBased) return q;
+  const 札 = (Array.isArray(q.choices) ? q.choices.filter((c) => String(c || "").trim()).length : 0)
+    + (Array.isArray(q.wordBank) ? q.wordBank.length : 0)
+    + (Array.isArray(q.items) ? q.items.length : 0);
+  if (札 >= 2) return q;                       /* 選ぶ ものが 在る＝そのままで 正しい */
+  const 元 = String(q.question || "");
+  if (!元 || !AIGEN_PICK_RE.test(元)) return q;
+  const 直 = 元
+    .replace(/最も適当なものを[^。]{0,12}?一つ選べ/g, "答えよ")
+    .replace(/最も適当なものを[^。]{0,12}?選びなさい/g, "答えなさい")
+    .replace(/次の(?:うち|中)から[^。]{0,10}?選びなさい/g, "答えなさい")
+    .replace(/次の(?:うち|中)から[^。]{0,10}?選べ/g, "答えよ")
+    .replace(/正しいものを[^。]{0,10}?選びなさい/g, "答えなさい")
+    .replace(/正しいものを[^。]{0,10}?選べ/g, "答えよ")
+    .replace(/当てはまるものを[^。]{0,10}?選びなさい/g, "答えなさい")
+    .replace(/当てはまるものを[^。]{0,10}?選べ/g, "答えよ")
+    .replace(/選びなさい/g, "答えなさい")
+    .replace(/選べ/g, "答えよ")
+    .replace(/選択して(?:ください|下さい)/g, "答えてください");
+  if (直 !== 元) q.question = 直;
+  return q;
+}
+
 function aigenPromptTypeMismatch(q, engineId) {
   if (!q || typeof q !== "object") return null;
   const 文 = String(q.question || q.prompt || "");
@@ -49397,15 +49426,33 @@ function aigenPromptTypeMismatch(q, engineId) {
      ★ 「本文」「文章」だけを 指す ときは 落とさない（本文は 必ず ある）。 */
   const 資 = (Array.isArray(q.materials) ? q.materials : [])
     .filter((m) => m && m.type && m.type !== "passage").length;
-  if (!資 && /(グラフ|図表|表\s*[0-9１-９]|図\s*[0-9１-９]|【資料|資料\s*[0-9１-９Ⅰ-Ⅴ]|写真)/.test(文)) {
+  /* ★ **番号や 【】で 名指しして いる ときだけ**（2026-09-09・訴え）。
+     もとは 「グラフ」「図表」「写真」の 一語でも 落として いた。
+     「次の グラフを 読み取り…」と 書きながら 資料を **これから 作る**
+     形式（グラフの読み取り・表のうめ・複合）まで 巻き込み、
+     本番で **グラフの読み取りが 2 回 呼んで 0 問**に なって いた。
+     名指し（【資料1】【グラフ2】表1 図3）は 「別に 在る はず」の 合図なので
+     そこだけ 見る。一語だけの ときは その 形式の 検査に まかせる。 */
+  const 名指し = /(【\s*(?:資料|グラフ|図|表|写真)[^】]{0,6}】|(?:資料|グラフ|図表|図|表)\s*[0-9１-９Ⅰ-Ⅴ])/;
+  if (!資 && 名指し.test(文)) {
     return "問題文が 図表・資料に 触れて いるのに 資料が 付いて いません";
   }
 
   /* ③ 「選べ」と 言って いるのに 選ぶ ものが 無い。
-     ★ 語群・並べ替え・対応づけ・分類は **別の ところに 札が ある**ので
-       ここでは 見ない（choices が 空でも 正しい）。 */
-  const 札が別 = /^(reorder|matching|classification|table_fill|ordering|word_bank)/.test(String(engineId || ""));
-  if (!札が別 && AIGEN_PICK_RE.test(文)) {
+     ★ **選ばせる 形式（choiceBased）だけ**を 見る（2026-09-09・訴え）。
+
+       もとは 「札が 別に ある 形式」を 名前で 外して いたが、
+       **穴埋めが 抜けて いた**。穴埋めは 「空欄に 入る 語を 選べ」と
+       書かれるのが ふつうなのに 選択肢は 持たない ので、
+       本番で **5 問 中 5 問 とも 捨てられ、0 問**に なって いた
+       （訴え「完全に プリセットを 生成できなく なった」）。
+
+       ★ 選ばせない 形式で 「選べ」と 書かれて いるのは **言い回しの 問題**。
+         問題そのものは 正しいので **捨てない**。
+         言い回しは 下の aigenFixPickWording が 書き直す。
+       ★ 選ばせる 形式で 選択肢が 無いのは **本当に 解けない**ので 捨てる。 */
+  const 選ばせる = !!(AIGEN_ENGINES[engineId] && AIGEN_ENGINES[engineId].choiceBased);
+  if (選ばせる && AIGEN_PICK_RE.test(文)) {
     const n = Array.isArray(q.choices) ? q.choices.filter((c) => String(c || "").trim()).length : 0;
     if (n < 2) {
       return "「選べ」と 書いて あるのに 選択肢が " + n + " 個です";
@@ -49422,6 +49469,9 @@ function aigenValidateOf(engineId, spec, q) {
   /* ★ 形式ごとの 検査を 通った あとに、**問題文との 突き合わせ**（2026-09-06）。
      形式ごとの 検査は その 形式の 中だけを 見るので、
      「文は 穴埋めなのに 形式が 記述」は どの 検査にも 引っかからなかった。 */
+  /* ★ **捨てる 前に 直せる ものは 直す**（2026-09-09）。
+     「選べ」と 書かれた だけで 落として いたのを ここで 止める。 */
+  try { aigenFixPickWording(q, engineId); } catch (e) {}
   const ずれ = aigenPromptTypeMismatch(q, engineId);
   if (ずれ) return ずれ;
   if (spec && typeof spec.check === "function") {
@@ -50431,8 +50481,30 @@ async function aigenAskMulti(env, want, o = {}) {
     const model = o.forceModel || aigenModelFor(env, provider, o.exam ? "exam" : "strong");
     const r = await aigenAskVia(env, provider, model,
       { sys, user, maxTokens, files: o.files || [], groqModels });
-    if (r.ok) return r;
+    /* ══ **「返事が 来た」と「問題が 来た」は 別**（2026-09-09・訴え）══
+       訴え「完全に プリセットを 生成できなく なった」
+            「ちゃんと 全形式が どんな 指示でも 動く ように な！」
+
+       aigenAskVia の ok は **HTTP が 通った**という 意味しか 無い。
+       中身が 空でも ok なので、ここで **そのまま 返して いた**。
+       控えの 提供元が 何本 あっても 一本目で 打ち切られる。
+
+       本番の 実測（穴埋め・同じ 頼みかたを 3 回）:
+         gemini-3.1-flash-lite → 4 件 受け取り → 2 問（合格）
+         gpt-oss-safeguard-20b → **0 件**・1.6 秒 → 0 問
+         gemini-3.5-flash-lite → **0 件**・1.4 秒 → 0 問
+       当たる モデルなら 作れるのに、外れを 引くと そこで 終わって いた。
+       ＝ **同じ 頼みかたでも 作れたり 作れなかったり**の 正体。
+
+       ★ 中身が 空なら **次の 提供元へ 回す**。控えは その ために ある。
+       ★ 全部 空だった ときは、最後の ものを 理由つきで 返す
+         （0 問の まま 黙って 返すと、なぜかが どこにも 残らない）。 */
+    if (r.ok && (r.questions || []).length) return r;
+    if (r.ok) r.reason = r.reason || "EMPTY";
     last = r;
+  }
+  if (last && last.ok && !(last.questions || []).length) {
+    last.error = last.error || "AI が 問題を 1 件も 返しませんでした（控えも 全部）。";
   }
   return last || { ok: false, ms: 0, model: "", provider: "", questions: [], reason: "AI_ERROR", error: "呼べません" };
 }
@@ -51607,6 +51679,11 @@ function aigenSnapshot(contract, accepted, metrics, runningId) {
     currentStage: (AIGEN_ENGINES[runningId] && AIGEN_ENGINES[runningId].label) || runningId || "",
     made: accepted.length,
     planned,
+    /* ★ **0 問で 終わった 理由を 必ず 載せる**（2026-09-09）。
+       これが 無いと「なぜ 作れなかったか」が どこにも 残らない。
+       本番で 実際に 追えなく なった（訴え「なぜだろう」）。 */
+    lastError: metrics.lastError || "",
+    emptyCalls: metrics.emptyCalls || 0,
     aiCalls: metrics.aiCalls,
     tokensIn: metrics.tokensIn,
     tokensReserved: metrics.tokensReserved,
