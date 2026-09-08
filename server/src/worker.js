@@ -47050,6 +47050,11 @@ const AIGEN_ENGINES = {
     rule: "空欄は **【1】【2】…** と書く（全角のすみつきカッコに番号）。番号は 1 から順で、飛ばさない。"
       + "answer は空欄と同じ数の配列にし、【1】から順に対応させる。"
       + "**空欄が 1 つのときも【1】と書き、answer は 1 件の配列にする。**"
+      /* ★ **数を 数えさせる**（2026-09-09・訴え）。
+         「同じ数に する」だけでは 合わない ことが 多かった（本番で 5 問 全滅）。
+         書いた あとに 数えて 確かめる、と 手順で 言うと 合う ように なる。 */
+      + "**書き終えたら 空欄の 数を 数えて、answer の 件数と 同じかを 確かめること。**"
+      + "空欄を 2 つ 書いたなら answer も ちょうど 2 件。多くても 少なくても いけない。"
       + "____ や（　）や〇〇は使わない。選択肢は付けない。",
     /* 書き方のゆれは受け取りのところでそろえてある（aigenBlankNormalize）。
        ここでは **そろった形になっているか**だけを見る。 */
@@ -49405,6 +49410,26 @@ function aigenFixPickWording(q, engineId) {
   return q;
 }
 
+/* ══ 穴埋めの 答えの 形を そろえる（2026-09-09・訴え）════════════════
+   本番の 実測: 「answer の数が空欄の数と合わない」で 5 問 とも 落ちて いた。
+   中身を 見ると **直せる ものが 多い**:
+     ・空欄 1 つ なのに answer が 配列で ない（文字列で 来る）
+     ・answer に 余分が 付いて いる（空欄 2 つ・answer 3 件）
+   どちらも 問題そのものは 正しい。**捨てずに そろえる。**
+   ★ 足りない ほう（空欄 2・答え 1）は 作れない ので 触らない。
+     そこは 理由を 見せて 頼み直す。 */
+function aigenFixBlankAnswers(q, engineId) {
+  if (!q || engineId !== "fill_blank") return q;
+  const 数 = aigenBlankNums(q.question).length;
+  if (!数) return q;
+  if (!Array.isArray(q.answer)) {
+    const v = q.answer === null || q.answer === undefined ? "" : String(q.answer).trim();
+    if (v) q.answer = 数 === 1 ? [v] : v.split(/\s*[、,／\/]\s*/).filter(Boolean);
+  }
+  if (Array.isArray(q.answer) && q.answer.length > 数) q.answer = q.answer.slice(0, 数);
+  return q;
+}
+
 function aigenPromptTypeMismatch(q, engineId) {
   if (!q || typeof q !== "object") return null;
   const 文 = String(q.question || q.prompt || "");
@@ -49472,6 +49497,7 @@ function aigenValidateOf(engineId, spec, q) {
   /* ★ **捨てる 前に 直せる ものは 直す**（2026-09-09）。
      「選べ」と 書かれた だけで 落として いたのを ここで 止める。 */
   try { aigenFixPickWording(q, engineId); } catch (e) {}
+  try { aigenFixBlankAnswers(q, engineId); } catch (e) {}
   const ずれ = aigenPromptTypeMismatch(q, engineId);
   if (ずれ) return ずれ;
   if (spec && typeof spec.check === "function") {
@@ -50304,6 +50330,16 @@ function aigenParseJson(raw) {
    ・形式を黙って別のものへ寄せない（type を見て、その形式の検査を通す）
    ・作れなかったぶんを水増ししない
    ══════════════════════════════════════════════════════════════ */
+/* ══ 空振りが 続いた ときの 控え（2026-09-09・訴え）════════════════
+   訴え「ちゃんと 全形式が どんな 指示でも 動く ように な！」
+   同じ 相手に 同じ 頼みを しても 同じ ものしか 返らない。
+   1 問も 通らなかった 回が 続いたら、順に 別の 提供元へ ずらす。 */
+function aigen空振りの控え(n) {
+  if (!n) return undefined;
+  const 順 = ["gemini", "groq", "workers-ai"];
+  return 順[(n - 1) % 順.length];
+}
+
 async function aigenAskMulti(env, want, o = {}) {
   const items = (want || []).filter((x) => x && AIGEN_ENGINES[x.id] && x.n > 0);
   if (!items.length) return { ok: true, ms: 0, questions: [], model: "", provider: "" };
@@ -50436,7 +50472,14 @@ async function aigenAskMulti(env, want, o = {}) {
     /* ★ **範囲は いちばん 最後に もう一度**（2026-08-31）。 */
     o.part ? "もう一度: 資料の「" + (o.part.title || o.part.field) + "」"
       + (o.part.where ? "（" + o.part.where + "）" : "")
-      + " **だけ**から 作ります。ここ以外の ページの 話は 1 問も 入れないでください。" : ""
+      + " **だけ**から 作ります。ここ以外の ページの 話は 1 問も 入れないでください。" : "",
+    /* ══ **前回 落ちた 理由を そのまま 見せる**（2026-09-09・訴え）══════
+       訴え「ちゃんと 全形式が どんな 指示でも 動く ように な！」
+       同じ 頼みを もう一度 しても 同じ ものが 返る。
+       「headers が 足りない」「正解が 空」と 具体で 言うと 直して くる。
+       ★ **いちばん 最後**に 1 行だけ。長く 足すと 本来の 注文が 薄まる。 */
+    o.直し ? "★ 前の 回は **" + String(o.直し) + "** で 受け取れませんでした。"
+      + "そこを 必ず 直して ください。" : ""
   ].filter(Boolean).join("\n");
 
   let chain = o.forceProvider ? [o.forceProvider]
@@ -50936,7 +50979,14 @@ async function aigenAskOnce(env, engineId, n, o = {}) {
        最後の 一行が いちばん 効く（形式の 決まりで 実証ずみ）。 */
     o.part ? "もう一度: 資料の「" + (o.part.title || o.part.field) + "」"
       + (o.part.where ? "（" + o.part.where + "）" : "")
-      + " **だけ**から 作ります。ここ以外の ページの 話は 1 問も 入れないでください。" : ""
+      + " **だけ**から 作ります。ここ以外の ページの 話は 1 問も 入れないでください。" : "",
+    /* ══ **前回 落ちた 理由を そのまま 見せる**（2026-09-09・訴え）══════
+       訴え「ちゃんと 全形式が どんな 指示でも 動く ように な！」
+       同じ 頼みを もう一度 しても 同じ ものが 返る。
+       「headers が 足りない」「正解が 空」と 具体で 言うと 直して くる。
+       ★ **いちばん 最後**に 1 行だけ。長く 足すと 本来の 注文が 薄まる。 */
+    o.直し ? "★ 前の 回は **" + String(o.直し) + "** で 受け取れませんでした。"
+      + "そこを 必ず 直して ください。" : ""
   ].filter(Boolean).join("\n");
 
   /* 提供元を順に試す。1 本だけに頼ると、その日の枠が尽きた時点で
@@ -52019,6 +52069,8 @@ async function aigenGenerate(env, contract, o = {}) {
   const autoCalls = Math.max(8, Math.min(16, Math.ceil(plannedTotal / 3) + 4 + Math.min(6, 目次数)));
   const maxCalls = Math.max(1, Math.min(16, qreditSafeInt(o.maxCalls || autoCalls, autoCalls)));
   let noProgress = 0;
+  /* ★ **1 問も 通らなかった 回**の 数（2026-09-09）。増えるほど 別の 提供元へ。 */
+  let 空振り = 0;
   /* 解説が短いだけで捨てたもの（最後に書き直して救う） */
   const shortEx = [];
 
@@ -52164,6 +52216,8 @@ async function aigenGenerate(env, contract, o = {}) {
       if (why) {
         metrics.rejected++; pe.ng++;
         metrics.rejectReasons[why] = (metrics.rejectReasons[why] || 0) + 1;
+        /* ★ いちばん 新しい 落とした 理由。次の 頼みで そのまま 見せる。 */
+        metrics.lastReject = why;
         /* ★ **解説が短いだけ**なら、問題そのものは正しい。
            あとで解説だけ書き直して救えるよう、控えておく（2026-08-15）。 */
         if (/^解説が .* 字に足りない$/.test(why) && shortEx.length < 24) {
@@ -52372,8 +52426,26 @@ async function aigenGenerate(env, contract, o = {}) {
     /* 試験モードなら 教科ちがい と「わかりやすすぎる 選択肢」も 見る。 */
       const verdicts = await aigenReview(env, fresh, metrics, o.topic,
         o.exam ? { subject: o.subject || "" } : null);
+    /* ══ **点検で 全部は 取らない**（2026-09-09・訴え）══════════════
+       訴え「ちゃんと 全形式が どんな 指示でも 動く ように な！」
+
+       点検（AI に もう一度 見せて 変な ものを 外す）が、
+       **その 回の 4 問 とも 外して 0 問**に する ことが あった
+       （本番で 自由記述・暗記カード・並べ替えで 実測）。
+       点検は 「あやしい」を 拾う 仕組みで、当たり外れが ある。
+       **1 問も 残らない くらいなら、いちばん まともな ものを 残す。**
+       0 問で 返すのは 利用者に とって いちばん 悪い 結果。 */
+    const 外す数 = verdicts.filter((v) => v && v.ok === false).length;
+    const 全滅 = 外す数 >= fresh.length && accepted.length - 外す数 <= 0;
+    if (全滅) {
+      metrics.reviewKept = (metrics.reviewKept || 0) + 1;
+      metrics.rejectReasons["点検は 全部 外そうと したが 1 問だけ 残した"] =
+        (metrics.rejectReasons["点検は 全部 外そうと したが 1 問だけ 残した"] || 0) + 1;
+    }
     for (let k = fresh.length - 1; k >= 0; k--) {
       if (!verdicts[k] || verdicts[k].ok !== false) continue;
+      /* 全滅する ときは 先頭の 1 問だけ 残す（k===0 を 飛ばす）。 */
+      if (全滅 && k === 0) continue;
       const at = before + k;
       const id = accepted[at].type;
       const pe = metrics.perEngine[id];
@@ -52524,7 +52596,11 @@ async function aigenGenerate(env, contract, o = {}) {
         level: o.level, dialogue: o.dialogue, passage: o.passage,
         /* 資料（図・表・グラフ）。頼まれたときだけ。 */
         materials: !!o.materials,
-        files: o.files, forceProvider: o.forceProvider, forceModel: o.forceModel,
+        files: o.files, forceModel: o.forceModel,
+        /* ★ 外したら 提供元を 替える（2026-09-09）。名指しが あれば そちらが 強い。 */
+        forceProvider: o.forceProvider || aigen空振りの控え(空振り),
+        /* ★ 何が だめだったかを そのまま 伝える。 */
+        直し: 空振り > 0 ? String(metrics.lastReject || "").slice(0, 160) : "",
         /* ★ この回で 使う 資料の 範囲（2026-08-31）。 */
         part: 範 ? 範.part : null,
         /* 天井が近いときは、控えへ回り込まない（0 問で落ちるのを防ぐ） */
@@ -52560,7 +52636,8 @@ async function aigenGenerate(env, contract, o = {}) {
          持ち越すと 1 回ぶん余計に時間がかかる）。 */
       if (!still.length) {
         await reviewFresh(false);
-        if (accepted.length === before) noProgress++;
+        if (accepted.length === before) { noProgress++; 空振り++; }
+        else 空振り = 0;
         continue;
       }
       need.length = 0;
@@ -52757,7 +52834,11 @@ async function aigenGenerate(env, contract, o = {}) {
         .reduce((n, [id, want]) => n + Math.max(0, want - accepted.filter((q) => q.type === id).length), 0);
       /* ★ ここを増やして粘らせたら、天井（Too many subrequests）に当たって
          **0 問で落ちる**回が出た（2026-08-15 実測）。元の 2 に戻す。 */
-      if (noProgress >= 2) break;
+      /* ★ **まだ 1 問も 無い うちは もっと 粘る**（2026-09-09）。
+         2 回で 諦めると、外れの モデルを 2 回 引いた だけで 0 問に なる。
+         できて いる ものが ある なら これまでどおり 2 回で 切り上げる
+         （待たせない ため）。呼び出しの 天井は 別に あるので 増えすぎない。 */
+      if (noProgress >= (accepted.length ? 2 : 5)) break;
     } else noProgress = 0;
     if (metrics.aiCalls >= maxCalls) break;
   }

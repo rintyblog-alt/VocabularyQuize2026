@@ -64,14 +64,21 @@ async function 合言葉を取る() {
   return r.token;
 }
 
-async function 作らせる(token, prompt) {
+/* ★ 試験は 同じ 口を **exam: true ＋ questionTypes** で 叩く（vq-make と 同じ）。
+   聞かれ方の 型・ひっかけ・教科の 縛りが 足されるので、
+   プリセットで 通っても 試験で 落ちる ことが ある。両方 見る。 */
+const 試験 = 引.indexOf("--試験") >= 0;
+
+async function 作らせる(token, prompt, id) {
   const t0 = Date.now();
   let r;
   try {
     const res = await fetch(BASE + "/api/aigen/questions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-      body: JSON.stringify({ prompt, count: 問数 })
+      body: JSON.stringify(試験
+        ? { prompt, count: 問数, exam: true, questionTypes: [id], subject: "理科", level: "標準" }
+        : { prompt, count: 問数 })
     });
     const txt = await res.text();
     try { r = JSON.parse(txt); } catch (e) { r = { ok: false, code: "BAD_JSON", raw: txt.slice(0, 200) }; }
@@ -84,14 +91,14 @@ async function 作らせる(token, prompt) {
 (async () => {
   const token = await 合言葉を取る();
   const 表 = 絞り.length ? 形式.filter(([id]) => 絞り.includes(id)) : 形式;
-  console.log("本番: " + BASE + "　形式 " + 表.length + " 種 × 言い方 " + Math.min(言い方の数, 言い方.length) + " 通り\n");
+  console.log((試験 ? "【試験】" : "【プリセット】") + "本番: " + BASE + "　形式 " + 表.length + " 種 × 言い方 " + Math.min(言い方の数, 言い方.length) + " 通り\n");
   const 結果 = [];
 
   for (const [id, label, 題材] of 表) {
     const 行 = { id, label, 回: [] };
     for (let k = 0; k < Math.min(言い方の数, 言い方.length); k++) {
       const p = 言い方[k](label, 題材);
-      const r = await 作らせる(token, p);
+      const r = await 作らせる(token, p, id);
       const q = (r.questions || []);
       const 出た = q.length;
       /* 頼んだ 形式で 返って きたか（呼び名は 戻される ことが ある）。 */
