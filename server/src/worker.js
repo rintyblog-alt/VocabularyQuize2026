@@ -52050,6 +52050,16 @@ async function aigenGenerate(env, contract, o = {}) {
   /* ★ let（const では ない）。目次が ある ときは 1 回あたりの 数を
      かたまりの 割当まで 抑える ので、**その ぶん 巡る 回数が 要る**。 */
   let maxRounds = Math.max(1, Math.min(12, qreditSafeInt(o.maxRounds || 8, 8)));
+  /* ══ **時間の 予算**（2026-09-09・訴え「生成も できてない」）════════
+     台帳に 載せて 裏で 走らせる 道（track）は、返事を 返した あとに
+     **30 秒 ちょうどで 打ち切られる**（本番のログで 実測: wall 30146ms /
+     30173ms）。50/50 まで 作れて いても、そのあとの 点検で 越えると
+     **仕上げの 1 行が 書けずに 消える**＝画面には 何も 届かない。
+     ★ だから 予算を 持たせる。越えたら **点検を やめて 切り上げる**。
+       作った ものは 捨てない。点検は 出来上がりを 見るだけ なので、
+       ここを 削っても 問題は 減らない。 */
+  const 期限 = Number(o.期限) > 0 ? Number(o.期限) : 0;
+  const 時間切れ = () => 期限 > 0 && Date.now() > 期限;
   /* 呼び出しの上限は問題数に合わせる。30 問を 14 回で作りきるのは無理があり、
      26 問で終わっていた（実測）。1 回あたり平均 4 問として、余裕を 4 回持つ。 */
   const plannedTotal = Object.values(contract.plan).reduce((a, b) => a + b, 0);
@@ -52415,6 +52425,9 @@ async function aigenGenerate(env, contract, o = {}) {
      force は「もう巡回が終わる」とき（揃っていなくても見る）。 */
   async function reviewFresh(force) {
     if (contract.review === false || metrics.blocked) return;
+    /* ★ 予算を 越えたら 見ない（見ている 途中で 消されるより、
+       点検なしでも **手元に 残る** ほうが ずっと よい）。 */
+    if (時間切れ()) { metrics.reviewSkipped = true; return; }
     const before = reviewedUpTo;
     if (accepted.length <= before) return;
     if (!force) {
@@ -52511,6 +52524,7 @@ async function aigenGenerate(env, contract, o = {}) {
   };
 
   for (let round = 0; round < maxRounds; round++) {
+    if (時間切れ()) { metrics.timeBudgetHit = true; break; }
     /* まだ足りない形式だけを集める */
     const need = [];
     for (const [id, want] of Object.entries(contract.plan)) {
@@ -53589,7 +53603,9 @@ async function aigenJobFinish(env, uid, id, out) {
     `UPDATE ai_jobs SET status=?1, progress=?2, current_stage='', stages_json=?3,
        made_count=?4, ai_calls=?5, tokens_in=?6, tokens_out=?7, first_result_ms=?8,
        partial_json=?9, error_code=?10, error_message=?11, completed_at=?12, updated_at=?12
-     WHERE id=?13 AND user_id=?14 AND status IN ('running','partial','failed')`
+     WHERE id=?13 AND user_id=?14
+       AND status IN ('running','partial','failed','completed')
+       AND made_count <= ?4`
   ).bind(
     status,
     status === "completed" ? 1 : aiJobProgressOf(stages),
@@ -54995,11 +55011,31 @@ async function handleAiGenQuestions(request, env, ctx) {
        もう終わっている要求に触ることになる）。 */
     const jobDeviceKey = await deviceKeyFrom(request, env).catch(() => "");
     /* **返事を待たずに走らせる。** これが無いと、画面を閉じた瞬間に止まる。 */
+    /* ══ **26 秒で 必ず 一度 書き出す 見張り**（2026-09-09・訴え）════
+       予算を 入れても、資料が 重い ときは 1 回の 呼び出しが 長い。
+       30 秒で 消される 前に、**そこまでに 出来て いる ぶんを 台帳へ**。
+       あとで 本物の 仕上げが 間に合えば、それが 上書きする。
+       ★ ここが 無いと「50/50 作れて いるのに ずっと 作成中」に なる。 */
+    let 直近 = null;
+    let 書き出した = false;
+    const 見張り = setTimeout(() => {
+      if (!直近 || 書き出した) return;
+      書き出した = true;
+      aigenJobFinish(env, uid, jobId, {
+        planned, made: (直近.partial?.questions || []).length,
+        questions: 直近.partial?.questions || [],
+        aiCalls: 直近.aiCalls, tokensIn: 直近.tokensIn, tokensOut: 直近.tokensOut,
+        firstResultMs: 直近.firstResultMs, stages: 直近.stages
+      }).catch(() => {});
+    }, 26 * 1000);
     ctx.waitUntil((async () => {
       try {
         const out = await aigenGenerateAll(env, contract, Object.assign({}, genOpts, {
-          onProgress: (snap) => aigenJobProgress(env, uid, jobId, snap)
+          /* ★ 点検まで 含めて 24 秒。30 秒の 打ち切りに 当てない。 */
+          期限: Date.now() + 24 * 1000,
+          onProgress: (snap) => { 直近 = snap; return aigenJobProgress(env, uid, jobId, snap); }
         }));
+        clearTimeout(見張り);
         /* 台帳へ載せるときも、頼まれたときの呼び名で残す。 */
         if (Object.keys(typeEcho).length && Array.isArray(out.questions)) {
           out.questions.forEach((q) => {
@@ -55024,7 +55060,9 @@ async function handleAiGenQuestions(request, env, ctx) {
           }).catch(() => null);
         }
       } catch (err) {
+        clearTimeout(見張り);
         /* 落ちたことを台帳へ残す。残さないと「ずっと作成中」になる。 */
+        if (書き出した) return;
         await aigenJobFinish(env, uid, jobId, {
           planned, made: 0, questions: [],
           blocked: "AI_ERROR", blockedMessage: String(err?.message || err).slice(0, 200)
@@ -56623,6 +56661,29 @@ async function handleAiJobGet(request, env, url) {
      120 秒で 打ち切ると **動いている 仕事を 殺し**、そのあと 本当に
      できた ぶんまで 捨てていた（finish が status='running' の ときしか
      書かなかったため）。長めに 取り、finish 側でも 上書きできるように した。 */
+  /* ══ **もう 作り終えて いる 仕事**は、その場で 終わりに する
+     （2026-09-09・訴え「何も 変わってないし、生成も できてない」）════
+     裏の 走り（ctx.waitUntil）は、返事を 返した あとに 消される ことが
+     ある。実測: 50問を 4 回 頼んで **3 回**が「50/50 作れて いるのに
+     status は running のまま」で 止まった。
+     ★ 問題そのものは 途中経過（partial_json）に **毎回 入って いる**。
+       数が 揃って いれば、待たせる 理由は 何も 無い。
+     ★ 点検（reviewFresh）が まだ 走って いる かも しれないので、
+       少しだけ 間を 置く。それでも 画面が 諦める 90 秒より ずっと 早い。 */
+  const 仕上げ待ち = 20 * 1000;
+  if (String(row.status) === "running") {
+    const made0 = Number(row.made_count) || 0;
+    const planned0 = Number(row.planned_count) || 0;
+    if (planned0 > 0 && made0 >= planned0
+        && Date.now() - (Number(row.updated_at) || 0) > 仕上げ待ち) {
+      await env.DB.prepare(
+        `UPDATE ai_jobs SET status='completed', progress=1, current_stage='',
+           completed_at=?1, updated_at=?1
+         WHERE id=?2 AND user_id=?3 AND status='running'`
+      ).bind(Date.now(), id, uid).run().catch(() => null);
+      row = await aiJobFetch(env, uid, id);
+    }
+  }
   const stale = 300 * 1000;
   if (String(row.status) === "running" && Date.now() - (Number(row.updated_at) || 0) > stale) {
     const made = Number(row.made_count) || 0;
@@ -56648,6 +56709,16 @@ async function handleAiJobList(request, env, url) {
      画面が その 仕事を もう 開かない ときは 誰も 畳まないので、
      「作成中」の 帯が **永遠に 残って**いた。
      一覧を 引く この 口でも 同じ 決まりで 畳む。 */
+  /* ★ 上と 同じ 決まりを 一覧でも（画面を 閉じて いた ぶんを 拾う ため）。 */
+  try {
+    await env.DB.prepare(
+      `UPDATE ai_jobs SET status='completed', progress=1, current_stage='',
+         completed_at=?1, updated_at=?1
+       WHERE user_id=?2 AND status='running'
+         AND planned_count > 0 AND made_count >= planned_count
+         AND updated_at < ?3`
+    ).bind(Date.now(), uid, Date.now() - 20 * 1000).run();
+  } catch (e) { /* 畳めなくても 一覧は 返す */ }
   const 止まった = 300 * 1000;
   try {
     const 古 = Date.now() - 止まった;

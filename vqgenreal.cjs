@@ -91,7 +91,32 @@ const 数える = (q) => { const o = {}; for (const x of q) o[x.type] = (o[x.typ
     if (!ok && r.metrics) console.log("      " + JSON.stringify(r.metrics.rejectReasons || {}).slice(0, 160));
   }
 
-  const 全 = 配分.length + 試験.length;
+  /* ── ③ **画面が 通る 道**（track = 台帳に 載せて 裏で 走らせる）─────
+     ★ ここが 訴えの 本体。同期の 口が 通っても、この 道は 別。
+       裏の 走りは **30 秒で 打ち切られる**（本番のログで 実測）ので、
+       仕上げを 書けずに「ずっと 作成中」に なって いた。
+     合否は「**画面が 諦める 90 秒 以内に 中身が 届くか**」。 */
+  console.log("\n【③ 画面が 通る 道（裏で 走らせる）】");
+  for (let k = 1; k <= 3; k++) {
+    const t = Date.now();
+    const s0 = await 頼む(l.token, { prompt: 配分[0][0], count: 50, track: true, orderId: "chk" + Date.now() });
+    let 終 = null;
+    while (Date.now() - t < 92 * 1000) {
+      await new Promise(r => setTimeout(r, 3000));
+      const j = await fetch(BASE + "/api/aijob/get?id=" + s0.jobId,
+        { headers: { Authorization: "Bearer " + l.token } }).then(r => r.json()).catch(() => null);
+      const b = j && j.job;
+      if (b && ["completed", "partial", "failed", "cancelled"].indexOf(b.status) >= 0) { 終 = b; break; }
+    }
+    const q = (終 && 終.partial && 終.partial.questions) || [];
+    /* 満数で なくても よい（足りないぶんは 画面が 次の 巡で 頼む）。
+       **1 問も 届かない**のと **ずっと 作成中**が 不合格。 */
+    const ok = !!終 && q.length > 0;
+    if (!ok) 落++;
+    console.log(`  ${ok ? "✓" : "✗"} ${終 ? 終.status : "終わらない"}  ${q.length}/50  ${秒(t)}`);
+  }
+
+  const 全 = 配分.length + 試験.length + 3;
   console.log(落 ? `\n落ちた ${落}/${全}` : `\nぜんぶ 頼んだ 通りに 作れました（${全}/${全}）`);
   process.exit(落 ? 1 : 0);
 })();
