@@ -47669,6 +47669,84 @@ const AIGEN_VARIANTS = {
     note: "question の **数式の中**に空欄を作る（式は $ で囲む）。" },
 
   /* ── 並べ替え ──────────────────────────────────────────── */
+  /* ══ 2026-09-10 に 足した 11 形式 ══════════════════════════════
+     画面側（vq2-app の def）に 足すだけでは 足りない。
+     **ここに 無いと 頼めない**（AI が 近い 名前へ 逃げ、「形式ちがい」で 全部 捨てられる。
+     実測: 漢文の 訓読順を 3 問 頼んで 15 件 とも 捨てられ 0 問）。
+     note は そのまま AI への 指示に なる。 */
+  mark_digits: { engine: "fill_blank", label: "マーク式の数値（アイウエ）",
+    alias: ["マーク式", "マークシート式", "アイウエ", "共通テスト形式の数値"],
+    note: "空欄は **ア・イ・ウ・エ の順**に 付け、**1 ますに 1 桁だけ** 入れる。"
+      + "answer は 桁ごとに 1 つずつ 並べる。同じ 記号には 同じ 数字。空欄は 6 個まで。" },
+  inflection_blank: { engine: "fill_blank", label: "語形変化",
+    alias: ["語形変化", "語形", "活用形", "適切な形"],
+    note: "**もとの 語を かっこ書きで 必ず 見せる**（( go ) のように）。"
+      + "空欄に 入るのは その 語を 直した 形。思い出して 書かせる 問題では ない。" },
+  chem_coefficients: { engine: "fill_blank", label: "化学反応式の係数",
+    alias: ["化学反応式", "反応式", "係数"],
+    note: "反応式の 係数を **いちばん 簡単な 整数比**で 埋める。係数 1 も 省かない。空欄は 4 個まで。" },
+  pseudocode_blank: { engine: "fill_blank", label: "擬似コード穴埋め",
+    alias: ["擬似コード", "疑似コード", "DNCL"],
+    note: "共通テスト情報Ⅰの 書き方に そろえる"
+      + "（「〜を〜から〜まで 1 ずつ 増やしながら 繰り返す」）。空欄は 2〜3 個。" },
+  sentence_insert: { engine: "single_choice", label: "脱文挿入",
+    alias: ["脱文挿入", "文挿入", "挿入箇所"],
+    note: "本文（passage）に 【1】〜【4】を 順に 置き、選択肢は「【1】」「【2】」…に する。"
+      + "入れる 一文は 問題文に 書く。入る 位置は 1 つに 決まる ように する。" },
+  same_usage_choice: { engine: "single_choice", label: "同じ用法を選ぶ",
+    alias: ["用法", "同じ用法", "識別", "文法の識別"],
+    note: "問題文に 傍線部を 「」で 示し、選択肢は **同じ 語を 含む 別の 文**に する。"
+      + "はたらきが 同じ ものは 1 つだけ。" },
+  kanbun_order: { engine: "reorder", label: "漢文の訓読順",
+    alias: ["漢文", "訓読", "返り点", "訓読順", "白文"],
+    note: "items は **白文の 字を 1 字ずつ**（「不」「読」「書」のように）。"
+      + "answer は **訓読する 順**（「書」「読」「不」）。**3〜6 字**の 句に する。\n"
+      + "★ 1 問ごとに **別の 句**を 使う。同じ 句を 2 回 出さない。\n"
+      + "★ 使える 句の 例（ここから 選ぶ）: 不読書／有備無患／百聞不如一見／"
+      + "温故知新／欲速則不達／過猶不及／不入虎穴不得虎子／良薬苦於口／"
+      + "人生七十古来稀／少年易老学難成／逆鱗／五十歩百歩／推敲／蛇足／杞憂。\n"
+      + "★ question には 「次の 白文を 訓読する 順に 並べなさい。」と 書き、"
+      + "**句そのものは items に 入れる**（question に 並べて 書かない）。" },
+  trace_table: { engine: "table_fill", label: "変数の値の推移表",
+    alias: ["推移表", "トレース", "変数の値"],
+    note: "headers は [\"繰り返し\",\"i\",\"合計\"] のように **3〜4 個**。\n"
+      + "★ rows は **3 行 以上**。**1 行目は 全部 埋める**（見本に する）。\n"
+      + "★ 空ける ところは 空文字 \"\" に し、**その数と answer の数を 必ず 合わせる**。\n"
+      + "★ question に **もとの 擬似コード**を 書く（それが 無いと 追えない）。" },
+  table_conjugation: { engine: "table_fill", label: "活用表の完成",
+    alias: ["活用表", "不規則動詞"],
+    note: "headers は [\"原形\",\"過去形\",\"過去分詞\"]（国語なら [\"基本形\",\"未然形\",\"連用形\"]）。\n"
+      + "★ rows は **3 行 以上**。各行の **1 列目は 必ず 埋める**（原形・基本形）。\n"
+      + "★ 空ける ところは 空文字 \"\" に する。**空文字の 数と answer の 数を 必ず 合わせる**。\n"
+      + "★ question に **どの 語の 表かを 書く**"
+      + "（「次の 活用表（go・eat・take）の 空いた ますを 埋めなさい。」）。"
+      + "全問 同じ 文に すると 同じ 問題と 見なされて 捨てられる。"
+      + "表の 中身を 文で 並べては いけない。" },
+  /* ★ **土台は text_input**（2026-09-10 実測）。`dictation` は それ自体が
+     text_input の 上に 乗る 形式なので、そこを 土台に すると
+     **契約が 空に なり AI を 1 回も 呼ばずに 0 問**で 終わる。
+     読み上げ原稿の 決まりは ここへ 自分で 書く（土台から 継がれない）。 */
+  dictation_word: { engine: "text_input", label: "英単語の書き取り",
+    alias: ["単語書き取り", "英単語の書き取り", "スペリングテスト"],
+    note: "**必ず script（読み上げる原稿）を 入れる。** script は **英単語 1 語だけ**、"
+      + "answer は その 語 そのもの。\n"
+      + "★ question は 「聞こえた 英単語を つづりなさい。（意味：環境）」の ように、"
+      + "**日本語の 意味を 添える**。全問 同じ 文に すると 同じ 問題と 見なされて 捨てられる。",
+    /* ★ 見本の type は **土台の 名前**（text_input）。形式名を 書くと
+       AI が それを そのまま 返し、**全部「形式ちがい」で 捨てられる**（実測 25 件）。 */
+    shape: '{"id":"q1","type":"text_input","question":"聞こえた英単語をつづりなさい。（意味：環境）",'
+      + '"script":"environment","answer":"environment","explanation":"日本語の解説"}',
+    check: (q) => (String(q.script || "").trim() ? null : "script（読み上げる原稿）が無い") },
+  dictation_kanji: { engine: "text_input", label: "漢字の書き取り",
+    alias: ["漢字書き取り", "漢字の書き取り", "漢字テスト"],
+    note: "**必ず script（読み上げる原稿）を 入れる。** script は **文 全体**"
+      + "（漢字に する ところは カタカナで 書く）、answer は **漢字に する 部分だけ**。\n"
+      + "★ question に **その 文**を 添える（「『安全をカクホする。』の カタカナを 漢字で」）。"
+      + "全問 同じ 文に すると 同じ 問題と 見なされて 捨てられる。",
+    shape: '{"id":"q1","type":"text_input","question":"読み上げを聞いて、カタカナの部分を漢字で書きなさい。",'
+      + '"script":"安全をカクホする。","answer":"確保","explanation":"日本語の解説"}',
+    check: (q) => (String(q.script || "").trim() ? null : "script（読み上げる原稿）が無い") },
+
   reorder_words: { engine: "reorder", label: "単語並べ替え", alias: ["単語並べ替え", "単語並び替え"],
     note: "語句を組み立てて **1 つの文**にする形にする。" },
   reorder_english: { engine: "reorder", label: "英作文並べ替え", alias: ["英作文並べ替え", "英文並び替え", "英文並べ替え"],
@@ -49493,6 +49571,29 @@ function aigen穴埋めの本文(q) {
   return 出.join("");
 }
 
+/* ══ 表のうめを そろえる（2026-09-10・訴え）════════════════════════
+   実測: 推移表・活用表を 頼むと「answer の数が 空欄と 合わない」で 全滅した
+   （9 件・13 件）。中身を 見ると **直せる もの**が 多い:
+     ・まるごと 空の 行が 末尾に 付く（そこが 空欄として 数えられる）
+     ・answer が 空欄より 多い（余分が 付く）
+   どちらも 表そのものは 正しい。**捨てずに そろえる。**
+   ★ 足りない ほう（空欄 4・答え 2）は 作れない ので 触らない。 */
+function aigenFixTable(q, engineId) {
+  if (!q || engineId !== "table_fill") return q;
+  if (!Array.isArray(q.rows)) return q;
+  const 空 = (c) => !String(c === null || c === undefined ? "" : c).trim();
+  /* まるごと 空の 行を 落とす（見出しだけの 表に なる のを 防ぐ） */
+  q.rows = q.rows.filter((r0) => Array.isArray(r0) && !r0.every(空));
+  const n = q.rows.reduce((a, r0) => a + r0.filter(空).length, 0);
+  if (!n) return q;
+  if (!Array.isArray(q.answer)) {
+    const v = q.answer === null || q.answer === undefined ? "" : String(q.answer).trim();
+    if (v) q.answer = n === 1 ? [v] : v.split(/\s*[、,／\/]\s*/).filter(Boolean);
+  }
+  if (Array.isArray(q.answer) && q.answer.length > n) q.answer = q.answer.slice(0, n);
+  return q;
+}
+
 function aigenPromptTypeMismatch(q, engineId) {
   if (!q || typeof q !== "object") return null;
   const 文 = String(q.question || q.prompt || "");
@@ -49561,6 +49662,7 @@ function aigenValidateOf(engineId, spec, q) {
      「選べ」と 書かれた だけで 落として いたのを ここで 止める。 */
   try { aigenFixPickWording(q, engineId); } catch (e) {}
   try { aigenFixBlankAnswers(q, engineId); } catch (e) {}
+  try { aigenFixTable(q, engineId); } catch (e) {}
   const ずれ = aigenPromptTypeMismatch(q, engineId);
   if (ずれ) return ずれ;
   if (spec && typeof spec.check === "function") {

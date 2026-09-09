@@ -773,6 +773,125 @@
         legacy: true, legacyType: "formula", supportedSubjects: ["math", "science"],
         defaults: {}, requires: ["answerText"] });
 
+
+  /* ══════════════════════════════════════════════════════════════════
+     追加（2026-09-10・訴え「実用性の高い形式を さらに 作りたい」）
+
+     166 件を id・名前・説明まで 1 つずつ 突き合わせて、
+     **本当に 無い もの**だけ 足した。どれも 既存の エンジンに 乗るので、
+     描画・採点・AI 生成は そのまま 効く（新しい 画面は 作って いない）。
+
+     ★ 足す ときに **必ず 触る 4 か所**（落とすと 黙って 効かない）:
+       ① SETTING_KEYS … 新しい 設定の 鍵は ここに 無いと 保存で 消える
+          （下の 11 件は 既存の 鍵しか 使って いないので 不要）
+       ② ALIAS_WORDS  … 人が 書く 呼び名。無いと「マーク式で 10 問」が
+          4 択に 化ける（実測 2026-08-05 に 同じ 事故）
+       ③ TYPE_DESC    … JSON の 形は エンジン単位で 自動。
+          **何を 作るか**は ここにしか 書けない。無いと 4 択に 寄る
+       ④ vq-help-data … ヘルプに 載らない ＝ 使われない
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* 1. 共通テスト数学・理科の ほぼ全問が この 形。紙面には ア・イ・ウ の 枠が
+        すでに あるのに、**画面（CBT）で 解く 形式が 無かった**。 */
+  def({ id: "mark_digits", name: "マーク式の数値（アイウエ）", shortName: "マーク式数値",
+        category: "blank", engine: "fill_blank",
+        description: "1 ます 1 桁で答えます。符号や分数もますに分けます。ますごとに部分点が付きます。",
+        supportedSubjects: ["math", "science", "info"],
+        defaults: { blankMode: "input", blankCount: 4 }, requires: ["blanks"],
+        example: "x =（ア ± √イウ）/ エ の ア〜エ に入る数を答えなさい。" });
+
+  /* 2. 「語形・活用」で 166 件を 引いて 0 件。中高の 記入型で いちばん 数が 多い。
+        既存の 単語入力は「思い出して 書く」で、**元の 語が 見えて いる**型が 無い。 */
+  def({ id: "inflection_blank", name: "語形変化", category: "blank", engine: "fill_blank",
+        description: "かっこの中の語を、文に合う形へ直して書きます。元の語は見えています。",
+        supportedSubjects: ["english", "japanese"],
+        defaults: { blankMode: "input", blankCount: 3, trimWhitespace: true }, requires: ["blanks"],
+        example: "He ( go ) to Kyoto last week. → went" });
+
+  /* 3. dictation の 定義は 1 つだけだった。毎週の 単語テストの 形が 無い。
+        ★ 1 語は まとめて 1 つと 数える（部分点は 付かない）。単語テストなら それでよい。 */
+  def({ id: "dictation_word", name: "英単語の書き取り", shortName: "単語書き取り",
+        category: "audio", engine: "dictation",
+        description: "聞こえた英単語をつづります。音だけで語をつかめるかを見ます。",
+        icon: "audio", supportsMedia: true, supportsOffline: false, supportedSubjects: ["english"],
+        defaults: { replayLimit: 3, caseSensitive: false }, requires: ["audio", "answerText"],
+        example: "（読み上げ）environment → environment" });
+
+  /* 4. 漢字テストは 本来「聞いて 書く」。和字は 1 字ずつ 割れる ので 字ごとに 部分点。 */
+  def({ id: "dictation_kanji", name: "漢字の書き取り", shortName: "漢字書き取り",
+        category: "audio", engine: "dictation",
+        description: "読み上げを聞いて、線の部分を漢字で書きます。字ごとに部分点が付きます。",
+        icon: "audio", supportsMedia: true, supportsOffline: false, supportedSubjects: ["japanese"],
+        defaults: { replayLimit: 3, requireKanji: true }, requires: ["audio", "answerText"],
+        example: "（読み上げ）「安全をカクホする。」→ 確保" });
+
+  /* 5. 共通テスト英語・英検・現代文で 毎年 出る。既存の 選択式穴埋めは
+        **空欄の 側に 語を 入れる 逆向き**で、位置そのものを 選ばせる 形が 無い。
+        選択肢は【1】〜【4】なので **並べ替えない**。 */
+  def({ id: "sentence_insert", name: "脱文挿入", category: "choice", engine: "single_choice",
+        description: "与えられた 1 文を、本文の【1】〜【4】のどこに入れるかを選びます。",
+        supportedSubjects: ["english", "japanese"],
+        defaults: { choiceCount: 4, shuffleOptions: false, hasContext: true },
+        requires: ["context", "choices2"],
+        example: "次の一文を入れるのに最も適当な箇所を【1】〜【4】から選びなさい。" });
+
+  /* 6. 「用法」で 引いて 0 件。国語文法の 識別（の・ない・られる）、古文の 助動詞、
+        英語の to 不定詞。傍線部は 紙面に すでに ある。 */
+  def({ id: "same_usage_choice", name: "同じ用法を選ぶ", shortName: "用法選択",
+        category: "choice", engine: "single_choice",
+        description: "傍線部と文法上のはたらきが同じものを選びます。識別の問題に使います。",
+        supportedSubjects: ["japanese", "english"],
+        defaults: { choiceCount: 4, shuffleOptions: true, hasContext: true },
+        requires: ["context", "choices2"],
+        example: "傍線部「彼の書いた本」の「の」と同じ用法のものを選びなさい。" });
+
+  /* 7. 「漢文・訓読・返り点」で 引いて 0 件（漢文は 教科名の 判定にしか 出て こない）。
+        ★ 白文は context に 置く。並べ替えても 上に 残る。 */
+  def({ id: "kanbun_order", name: "漢文の訓読順", shortName: "訓読順",
+        category: "reorder", engine: "reorder",
+        description: "白文を、訓読する順に並べます。白文はそのまま上に残ります。",
+        supportedSubjects: ["japanese"],
+        defaults: { itemKind: "word", hasContext: true, orderLabel: "読む順" },
+        requires: ["context", "orderItems"],
+        example: "「不読書」→ 書 → 読 → 不（レ点）" });
+
+  /* 8. 理科の 形式に 反応式が 無かった。答えが 最簡整数比に 一意に 決まる ので
+        自動採点に 向く。 */
+  def({ id: "chem_coefficients", name: "化学反応式の係数", shortName: "反応式の係数",
+        category: "blank", engine: "fill_blank",
+        description: "反応式の係数を、いちばん簡単な整数比で埋めます。係数ごとに部分点が付きます。",
+        supportedSubjects: ["science"],
+        defaults: { blankMode: "input", blankCount: 4 }, requires: ["blanks"],
+        example: "【ア】C3H8 +【イ】O2 →【ウ】CO2 +【エ】H2O" });
+
+  /* 9. 2025 年から 必須に なった 情報Ⅰの 主役。既存の コード入力は 自由記述、
+        流れ図の 並べ替えは 図で、どちらも 本番の 型と 違う。 */
+  def({ id: "pseudocode_blank", name: "擬似コード穴埋め", shortName: "擬似コード",
+        category: "blank", engine: "fill_blank",
+        description: "情報Ⅰの書き方の擬似コードで、空欄を語群から選びます。",
+        supportedSubjects: ["info", "math"],
+        defaults: { blankMode: "select", monospace: true, blankCount: 2 },
+        requires: ["blanks", "blankOptions"],
+        example: "i を 1 から【ア】まで 1 ずつ増やしながら繰り返す" });
+
+  /* 10. 表のうめは 採点も 形も できて いるのに 定義が 1 つだけだった。
+         上の 擬似コードと 対で 出す。 */
+  def({ id: "trace_table", name: "変数の値の推移表", shortName: "推移表",
+        category: "blank", altCategories: ["visual"], engine: "table_fill",
+        description: "繰り返しのたびに変数がどう変わるかを、表の空いたますに書きます。",
+        icon: "grid", supportedSubjects: ["info", "math"],
+        defaults: { blankMode: "input" }, requires: ["table"],
+        example: "｜繰り返し｜i｜合計｜／｜2 回目｜2｜【　】｜" });
+
+  /* 11. 同じく 表のうめ。不規則動詞（原形/過去形/過去分詞）と 用言の 活用表。
+         「表完成」という 名前だけでは AI が まず 選ばない（教科を 指して いない）。 */
+  def({ id: "table_conjugation", name: "活用表の完成", shortName: "活用表",
+        category: "blank", engine: "table_fill",
+        description: "動詞の活用表を完成させます。不規則動詞や用言の活用に使います。",
+        icon: "grid", supportedSubjects: ["english", "japanese"],
+        defaults: { blankMode: "input" }, requires: ["table"],
+        example: "原形 / 過去形 / 過去分詞 … go・【　】・【　】" });
+
   var DEF_BY_ID = Object.create(null);
   DEFS.forEach(function (d) { DEF_BY_ID[d.id] = d; });
 
@@ -835,6 +954,28 @@
     "組み合わせ": "matching", "組合せ": "matching", "対応させ": "matching",
     "分類": "classification",
     "計算": "numeric", "数値": "numeric", "数値入力": "numeric",
+    /* ── 2026-09-10 に 足した 11 形式の 呼び名 ─────────────────────
+       ★ ここが 無いと「マーク式で 10 問」が 4 択に 化ける。
+         名前を 照合するだけでは 指示は ほぼ 通らない（上の 但し書きと 同じ）。 */
+    "マーク式": "mark_digits", "マークシート式": "mark_digits", "アイウエ": "mark_digits",
+    "共通テスト形式の数値": "mark_digits", "桁ごと": "mark_digits",
+    "語形変化": "inflection_blank", "語形": "inflection_blank", "活用形": "inflection_blank",
+    "形を変え": "inflection_blank", "適切な形": "inflection_blank",
+    "単語書き取り": "dictation_word", "英単語の書き取り": "dictation_word",
+    "スペリングテスト": "dictation_word",
+    "漢字書き取り": "dictation_kanji", "漢字の書き取り": "dictation_kanji",
+    "漢字テスト": "dictation_kanji", "書き取り": "dictation_kanji",
+    "脱文挿入": "sentence_insert", "文挿入": "sentence_insert", "一文を入れる": "sentence_insert",
+    "挿入箇所": "sentence_insert",
+    "用法": "same_usage_choice", "同じ用法": "same_usage_choice", "識別": "same_usage_choice",
+    "文法の識別": "same_usage_choice",
+    "漢文": "kanbun_order", "訓読": "kanbun_order", "返り点": "kanbun_order",
+    "訓読順": "kanbun_order", "白文": "kanbun_order",
+    "化学反応式": "chem_coefficients", "反応式": "chem_coefficients", "係数": "chem_coefficients",
+    "擬似コード": "pseudocode_blank", "疑似コード": "pseudocode_blank",
+    "プログラムの穴埋め": "pseudocode_blank", "DNCL": "pseudocode_blank",
+    "推移表": "trace_table", "トレース": "trace_table", "変数の値": "trace_table",
+    "活用表": "table_conjugation", "不規則動詞": "table_conjugation",
     /* 「作文」はレジストリの essay の名前そのもの。ここへ english_writing を
        割り当てていたため「作文を1問」が英作文にも当たっていた（実測 2026-08-05）。
        英語に寄せたいときは「英作文」と書く。 */
@@ -1664,6 +1805,67 @@
 
   /* 形式ごとの上書き。**違うところだけ**書く。 */
   var TYPE_DESC = {
+    /* ── 2026-09-10 に 足した 11 形式 ────────────────────────────
+       ★ JSON の 形は **エンジン単位**で 自動に 付く。
+         「何を 作るか」は ここにしか 書けない。無いと 4 択に 寄る。 */
+    mark_digits: {
+      educationalUse: "共通テストの形（1 ます 1 桁）で答えられるかを確かめる",
+      useWhen: ["答えが数で、桁やルート・分数に分けられる"],
+      note: "空欄は ア・イ・ウ・エ の順に付け、**1 ますに 1 桁だけ**入れること。"
+        + "同じ記号には同じ数字が入る。空欄は 6 個までに抑える（多いと作りきれない）。"
+    },
+    inflection_blank: {
+      educationalUse: "与えられた語を、文に合う形へ直せるかを確かめる",
+      useWhen: ["動詞の活用・比較級・分詞、国語の用言の活用"],
+      note: "**もとの語を かっこ書きで 必ず 見せる**（( go ) のように）。"
+        + "思い出して書かせる問題ではない。"
+    },
+    dictation_word: {
+      educationalUse: "音だけで英単語をつかみ、つづれるかを確かめる",
+      note: "読み上げる語は script に 1 語だけ書く。答えはその語そのもの。"
+    },
+    dictation_kanji: {
+      educationalUse: "読み上げを聞いて漢字で書けるかを確かめる",
+      note: "script には文全体を書き、答えは**漢字にする部分だけ**にすること。"
+    },
+    sentence_insert: {
+      educationalUse: "文章の論理の流れをつかめているかを確かめる",
+      useWhen: ["逆接・具体例・言い換えなど、入る位置が 1 つに決まる"],
+      note: "本文（context）に【1】〜【4】を順に置き、選択肢は「【1】」「【2】」…にする。"
+        + "**選択肢を並べ替えない。** 挿入する一文は問題文に書く。"
+    },
+    same_usage_choice: {
+      educationalUse: "同じ形でもはたらきが違うものを見分けられるかを確かめる",
+      useWhen: ["「の」「ない」「られる」、古文の助動詞、to 不定詞"],
+      note: "本文（context）に傍線部を置き、選択肢は**同じ語を含む別の文**にする。"
+        + "はたらきが同じものは 1 つだけ。"
+    },
+    kanbun_order: {
+      educationalUse: "返り点にしたがって読む順が分かるかを確かめる",
+      useWhen: ["故事成語・論語など、読み順が定まっている短い句"],
+      note: "白文は context に**そのままの並びで**置く。並べるのは 1 字ずつ。"
+        + "長い句は避ける（5 字程度まで）。"
+    },
+    chem_coefficients: {
+      educationalUse: "化学反応式の係数を合わせられるかを確かめる",
+      note: "**いちばん簡単な整数比**で答える。係数 1 も省かず書かせること。"
+        + "空欄は 4 個までに抑える。"
+    },
+    pseudocode_blank: {
+      educationalUse: "情報Ⅰの擬似コードを読み解けるかを確かめる",
+      useWhen: ["繰り返し・条件分岐・配列の基本"],
+      note: "共通テスト情報Ⅰの書き方に合わせる（「〜を〜から〜まで 1 ずつ増やしながら繰り返す」）。"
+        + "空欄は 2〜3 個、語群（blankOptions）は 4〜6 個。"
+    },
+    trace_table: {
+      educationalUse: "繰り返しのたびに変数がどう変わるかを追えるかを確かめる",
+      note: "1 行目は必ず埋めておき、2 行目以降に空きますを作る。列は 3〜4 個まで。"
+    },
+    table_conjugation: {
+      educationalUse: "活用の形をひとまとまりで覚えているかを確かめる",
+      note: "見出しの行（原形／過去形／過去分詞 など）は必ず埋めておく。"
+        + "空きますは 1 行に 1〜2 個。"
+    },
     choice_incorrect: {
       educationalUse: "誤っているものを見分けられるかを確かめる",
       useWhen: ["正しい説明が複数あり、誤りを 1 つだけ混ぜられる"],
@@ -46408,6 +46610,100 @@
         o.push(qbT(43, y + 6, String(i + 1), 8, i === 0 ? QI : QS));
         o.push(qbR(48, y + 1, 15, 3.6, 1.8, i === 0 ? QI : QS));
       });
+      return o.join("");
+    },
+    /* ── 2026-09-10 に 足した 11 形式 ─────────────────────────── */
+    mark_digits: function () {
+      /* ア・イ・ウ・エ の ます。1 ます 1 桁。 */
+      var o = [qbT(11, 14, "x=", 11, QS)];
+      ["\u30a2", "\u30a4", "\u30a6", "\u30a8"].forEach(function (c, i) {
+        var x = 8 + i * 15;
+        o.push(qbO(x, 20, 13, 15, 2, i === 0 ? QI : QS, 1.8));
+        o.push(qbT(x + 6.5, 31, c, 9, i === 0 ? QI : QS));
+      });
+      return o.join("");
+    },
+    inflection_blank: function () {
+      /* かっこの 中の 語 → 直した 形。**もとの 語が 見えて いる**のが 要点。 */
+      return qbT(18, 16, "( go )", 10.5, QS)
+        + qbP("M33 12.5h6M36.5 9.5l3 3-3 3", QI, 1.8)
+        + qbT(55, 16, "went", 10.5, QI)
+        + qbR(9, 27, 54, 4, 2);
+    },
+    dictation_word: function () {
+      return qbSpeaker(9, 8) + qbO(32, 12, 32, 16, 4) + qbT(48, 24, "abc", 11, QI);
+    },
+    dictation_kanji: function () {
+      return qbSpeaker(9, 8) + qbO(32, 8, 32, 24, 4) + qbT(48, 27, "\u6f22", 16, QI);
+    },
+    sentence_insert: function () {
+      /* 本文の 【1】〜【4】の どこに 入れるか。**入る 位置**を 描く。 */
+      var o = [];
+      [0, 1, 2].forEach(function (i) { o.push(qbR(9, 6 + i * 9, 40, 3.4, 1.7)); });
+      [0, 1, 2, 3].forEach(function (i) {
+        o.push(qbO(53, 4 + i * 9, 10, 7, 2, i === 1 ? QI : QS, 1.5));
+        o.push(qbT(58, 10 + i * 9, String(i + 1), 6.5, i === 1 ? QI : QS));
+      });
+      o.push(qbR(9, 33, 34, 4.4, 2.2, QI));
+      o.push(qbP("M46 35.2h6M49 32.6l3 2.6-3 2.6", QI, 1.6));
+      return o.join("");
+    },
+    same_usage_choice: function () {
+      /* 傍線部と 同じ はたらきの もの。**下線**が 要点。 */
+      /* 上に 傍線を 引いた 本文、下に 選択肢。**下線**が 要点。 */
+      var o = [qbR(9, 6, 18, 3.4, 1.7), qbR(29, 6, 14, 3.4, 1.7, QI),
+               qbP("M29 12.5h14", QI, 2.2), qbR(45, 6, 18, 3.4, 1.7)];
+      [18, 27, 36].forEach(function (y, i) {
+        var on = i === 1;
+        o.push(on ? qbCo(13, y, 3.2, QI) + qbC(13, y, 1.6, QI) : qbCo(13, y, 3.2));
+        o.push(qbR(20, y - 1.7, on ? 42 : 30 + i * 5, 3.4, 1.7, on ? QI : QS));
+      });
+      return o.join("");
+    },
+    kanbun_order: function () {
+      /* 白文は そのまま、読む 順だけ 数で 示す。 */
+      var o = [];
+      ["\u4e0d", "\u8aad", "\u66f8"].forEach(function (c, i) {
+        var x = 14 + i * 16;
+        o.push(qbO(x, 6, 13, 14, 2, QS, 1.5));
+        o.push(qbT(x + 6.5, 17, c, 10, QS));
+        o.push(qbT(x + 6.5, 33, String([3, 2, 1][i]), 11, QI));
+      });
+      /* ★ 番号の **上**に 線を 引く。文字の 高さに 重ねると 消し線に 見える。 */
+      o.push(qbP("M12 24h44", QS, 1.4));
+      return o.join("");
+    },
+    chem_coefficients: function () {
+      return qbO(6, 13, 10, 13, 2, QI, 1.8) + qbT(11, 22.5, "2", 9, QI)
+        + qbT(23, 22.5, "H\u2082", 10, QS)
+        + qbT(31, 22.5, "+", 9, QS)
+        + qbO(36, 13, 10, 13, 2, QS, 1.6) + qbT(41, 22.5, "?", 9, QS)
+        + qbT(53, 22.5, "O\u2082", 10, QS)
+        + qbP("M60 20h6M63.5 17.5l2.5 2.5-2.5 2.5", QI, 1.6);
+    },
+    pseudocode_blank: function () {
+      var o = [];
+      [0, 1, 2].forEach(function (i) {
+        o.push(qbR(9 + i * 3, 6 + i * 9, 30 - i * 3, 3.4, 1.7));
+      });
+      o.push(qbO(44, 13, 19, 9, 2, QI, 1.8));
+      o.push(qbP("M60 17l-3-2v4z", QI, 1, QI));
+      o.push(qbR(15, 33, 24, 3.4, 1.7));
+      return o.join("");
+    },
+    trace_table: function () {
+      var o = [qbO(8, 6, 56, 28, 3)];
+      o.push(qbL(26, 6, 26, 34) + qbL(45, 6, 45, 34) + qbL(8, 15, 64, 15) + qbL(8, 24, 64, 24));
+      o.push(qbR(11, 9, 12, 3, 1.5, QS) + qbR(30, 9, 11, 3, 1.5, QS) + qbR(49, 9, 11, 3, 1.5, QS));
+      o.push(qbR(30, 18, 11, 3.4, 1.7) + qbR(49, 27, 11, 3.4, 1.7, QI));
+      return o.join("");
+    },
+    table_conjugation: function () {
+      var o = [qbO(8, 6, 56, 28, 3)];
+      o.push(qbL(26, 6, 26, 34) + qbL(45, 6, 45, 34) + qbL(8, 15, 64, 15));
+      o.push(qbT(17, 12.5, "go", 8, QS));
+      o.push(qbR(30, 9, 11, 3, 1.5, QS) + qbR(49, 9, 11, 3, 1.5, QS));
+      o.push(qbR(11, 22, 12, 3.4, 1.7) + qbR(30, 22, 11, 3.4, 1.7, QI) + qbR(49, 22, 11, 3.4, 1.7, QI));
       return o.join("");
     },
     source_compare: function () {
