@@ -45959,7 +45959,68 @@
        ★ **--vq-ai-subtle は存在しない。** 定義があるのは --vq-ai と --vq-ai-text だけ
        （light/dark の両方に値がある）。無いトークンを書くと予備値に落ちて、
        ダークモードで浮く。地は他の印と同じままにして、**文字の色だけ**変える。 */
-    ".vq2-qt-tag.is-ai{color:var(--vq-ai-text);}"
+    ".vq2-qt-tag.is-ai{color:var(--vq-ai-text);}",
+
+    /* ══ 形式の 表紙（2026-09-10）══════════════════════════════════
+       明るさは **ここで テーマごとに** 決める。絵の 中では 決めない。 */
+    /* ★ **影の DOM の 中なので `html[...]` は 届かない**（2026-09-10 実測）。
+       この 画面は attachShadow の 中に 立つ。外の html に 付いた 印は
+       中の CSS からは 見えず、暗い 画面の 中で **表紙だけ 明るいまま**に なった。
+       器（host）に data-theme が 付く 作りが すでに ある ので、そちらを 見る。 */
+    ":host .vq2-qtp{--qb-l1:90%;--qb-l2:96%;--qb-l3:76%;}",
+    ":host .vq2-qtp .vq2-qb{--qb-ink:hsl(var(--qb-hue) 52% 38%);--qb-ink2:hsl(var(--qb-hue) 34% 62%);--qb-face:hsl(var(--qb-hue) 40% 97%);}",
+    ":host([data-theme=\"dark\"]) .vq2-qtp{--qb-l1:26%;--qb-l2:19%;--qb-l3:36%;}",
+    ":host([data-theme=\"dark\"]) .vq2-qtp .vq2-qb{--qb-ink:hsl(var(--qb-hue) 62% 76%);--qb-ink2:hsl(var(--qb-hue) 32% 54%);--qb-face:hsl(var(--qb-hue) 30% 15%);}",
+    ".vq2-qb{display:block;position:relative;overflow:hidden;aspect-ratio:16/7;",
+      "background:linear-gradient(135deg,hsl(var(--qb-hue) 46% var(--qb-l1)),hsl(var(--qb-hue) 36% var(--qb-l2)));}",
+    ".vq2-qb::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:.5;}",
+    ".vq2-qb[data-pat=\"lines\"]::after{background:repeating-linear-gradient(115deg,transparent 0 13px,hsl(var(--qb-hue) 44% var(--qb-l3)) 13px 15px);}",
+    ".vq2-qb[data-pat=\"grid\"]::after{background:repeating-linear-gradient(0deg,transparent 0 17px,hsl(var(--qb-hue) 40% var(--qb-l3)) 17px 18px),repeating-linear-gradient(90deg,transparent 0 17px,hsl(var(--qb-hue) 40% var(--qb-l3)) 17px 18px);opacity:.3;}",
+    ".vq2-qb[data-pat=\"dots\"]::after{background-image:radial-gradient(hsl(var(--qb-hue) 44% var(--qb-l3)) 1.6px,transparent 1.7px);background-size:14px 14px;}",
+    ".vq2-qb[data-pat=\"paper\"]::after{background:repeating-linear-gradient(0deg,transparent 0 11px,hsl(var(--qb-hue) 40% var(--qb-l3)) 11px 12px);opacity:.34;}",
+    ".vq2-qb-art{position:relative;z-index:2;display:block;width:100%;height:100%;}",
+
+    /* ══ 絵で 見る 並べかた ══════════════════════════════════════ */
+    ".vq2-qtp .vq2-qt-grid.is-cover{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:12px;}",
+    ".vq2-qtp .is-cover .vq2-qt-card{display:block;position:relative;padding:0;overflow:hidden;}",
+    ".vq2-qtp .is-cover .vq2-qt-ic{display:none;}",
+    ".vq2-qtp .is-cover .vq2-qt-body{display:block;padding:10px 12px 12px;}",
+    ".vq2-qtp .is-cover .vq2-qt-fav{position:absolute;right:6px;top:6px;z-index:3;",
+      "background:var(--vq-surface,#fff);border-radius:999px;box-shadow:0 1px 4px rgba(30,20,60,.2);}",
+    ".vq2-qtp .is-cover .vq2-qt-n{font-size:14px;}",
+    ".vq2-qtp .is-cover .vq2-qt-d{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}",
+    ".vq2-qtp .is-cover .vq2-qt-ex{display:none;}",
+    /* 表紙の 上に 出す 札（準備中・いま選択中）は 絵の 邪魔を しない 位置へ */
+    ".vq2-qtp .is-cover .vq2-qt-flag{position:absolute;left:8px;top:8px;z-index:3;height:21px;padding:0 9px;",
+      "border-radius:999px;font-size:10.5px;font-weight:750;display:inline-flex;align-items:center;",
+      "background:rgba(255,255,255,.94);color:#4A4459;box-shadow:0 1px 3px rgba(30,20,60,.16);}",
+    ".vq2-qtp .is-cover .vq2-qt-flag.is-cur{background:var(--vq-accent,#756DB3);color:#fff;}",
+
+    /* ══ 上の 帯（絞り込みが いま 何か 見える ように）══════════════ */
+    ".vq2-qt-active{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:0 2px 2px;}",
+    ".vq2-qt-act{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 6px 0 10px;",
+      "border-radius:999px;font-size:12px;font-weight:650;border:1px solid var(--vq-border,#DED8EE);",
+      "background:var(--vq-accent-subtle,#F2EEFB);color:var(--vq-accent-text,#5F579E);cursor:pointer;font-family:inherit;}",
+    ".vq2-qt-act svg{width:12px;height:12px;}",
+    ".vq2-qt-clr{border:0;background:none;font:inherit;font-size:12px;font-weight:650;cursor:pointer;",
+      "color:var(--vq-text-muted,#7A7391);padding:4px 6px;border-radius:8px;}",
+    ".vq2-qt-clr:hover{background:var(--vq-surface-2,#F6F4FB);}",
+    /* 見かたの 切り替え（絵／一覧） */
+    ".vq2-qt-den{display:inline-flex;gap:2px;border:1px solid var(--vq-border,#DED8EE);border-radius:10px;padding:2px;}",
+    ".vq2-qt-den button{border:0;background:none;font:inherit;font-size:12px;font-weight:650;cursor:pointer;",
+      "padding:4px 9px;border-radius:8px;color:var(--vq-text-muted,#7A7391);display:inline-flex;align-items:center;gap:4px;}",
+    ".vq2-qt-den button.is-on{background:var(--vq-accent-subtle,#F2EEFB);color:var(--vq-accent-text,#5F579E);}",
+    ".vq2-qt-den svg{width:14px;height:14px;}",
+    ".vq2-qt-cnt-row{display:flex;align-items:center;gap:10px;}",
+    /* 狭い 画面では 分類を 横に すべらせる */
+    "@media (max-width:760px){",
+      ".vq2-qtp .vq2-qt-split{display:block;}",
+      ".vq2-qtp .vq2-qt-side{border-right:0;border-bottom:1px solid var(--vq-border-subtle,#ECEAF4);}",
+      ".vq2-qtp .vq2-qt-rails{display:flex;gap:6px;overflow-x:auto;padding:6px 8px;-webkit-overflow-scrolling:touch;}",
+      ".vq2-qtp .vq2-qt-rail{flex:0 0 auto;white-space:nowrap;}",
+      ".vq2-qtp .vq2-qt-sidef{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}",
+      ".vq2-qtp .vq2-qt-grid.is-cover{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}",
+    "}"
   ].join("\n");
 
   function isNum(v) { return typeof v === "number" && isFinite(v); }
@@ -45995,6 +46056,396 @@
   }
 
   /* ══════════════════════════════════════════════════════════════════
+     形式の 表紙（バナー）　2026-09-10・訴え
+     「プリセット一覧のように 形式ごとに バナーを 用意すると 分かりやすい」
+
+     159 種類を 名前と 説明だけで 見分けるのは むり。
+     プリセット一覧の 表紙と 同じ 考えで、**絵は 作らず・読み込まず**
+     その場で 描く。ただし ここは 科目では なく:
+
+       色・模様 … **分類**から（同じ 仲間は 同じ 色みに なる）
+       絵      … **エンジン**から（どう 答える 形式なのかを 描く）
+       色みの ずれ … 形式の id から（隣どうしが 同じ 色に ならない）
+
+     ★ 絵が いちばん 効く。「4択」は 丸が 3 つ 並んで 1 つ 塗られている、
+       「並べ替え」は 番号の 札、「グラフ読み取り」は 棒グラフ。
+       名前を 読まなくても 何の 形式か 分かる。
+     ★ 明るさは テーマ側で 切り替える（--qb-l1/l2/l3/ink）。
+       ここで 決めると ダークモードで 浮く。
+     ══════════════════════════════════════════════════════════════════ */
+  var QT_TONE = {
+    choice:    { hue: 262, pat: "dots"  },
+    text:      { hue: 214, pat: "lines" },
+    blank:     { hue: 194, pat: "paper" },
+    reorder:   { hue: 30,  pat: "grid"  },
+    match:     { hue: 168, pat: "grid"  },
+    visual:    { hue: 294, pat: "dots"  },
+    audio:     { hue: 8,   pat: "lines" },
+    write:     { hue: 344, pat: "paper" },
+    memorize:  { hue: 104, pat: "dots"  },
+    composite: { hue: 238, pat: "grid"  }
+  };
+  function qtHash(s) {
+    var h = 0, t = String(s || "");
+    for (var i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+    return h;
+  }
+
+  /* 絵の 部品。**塗りは 2 色だけ**（濃い＝要点／薄い＝地の文）。
+     色を 増やすと 小さい 絵は かえって 読めなく なる。 */
+  var QI = "var(--qb-ink)";      /* 濃い（そこが 要点） */
+  var QS = "var(--qb-ink2)";     /* 薄い（ただの 中身） */
+  function qbR(x, y, w, h, r, f) {
+    return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h
+      + '" rx="' + (r === undefined ? 2 : r) + '" fill="' + (f || QS) + '"/>';
+  }
+  function qbO(x, y, w, h, r, s, sw) {
+    return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h
+      + '" rx="' + (r === undefined ? 2 : r) + '" fill="none" stroke="' + (s || QS)
+      + '" stroke-width="' + (sw || 1.6) + '"/>';
+  }
+  function qbC(cx, cy, r, f) {
+    return '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + (f || QS) + '"/>';
+  }
+  function qbCo(cx, cy, r, s, sw) {
+    return '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="'
+      + (s || QS) + '" stroke-width="' + (sw || 1.6) + '"/>';
+  }
+  function qbL(x1, y1, x2, y2, s, w) {
+    return '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2
+      + '" stroke="' + (s || QS) + '" stroke-width="' + (w || 1.8) + '" stroke-linecap="round"/>';
+  }
+  function qbP(d, s, w, f) {
+    return '<path d="' + d + '" fill="' + (f || "none") + '" stroke="' + (s || QS)
+      + '" stroke-width="' + (w || 1.8) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+  }
+  function qbT(x, y, t, sz, f) {
+    return '<text x="' + x + '" y="' + y + '" font-size="' + (sz || 12)
+      + '" text-anchor="middle" font-weight="800" fill="' + (f || QI)
+      + '" font-family="inherit">' + t + "</text>";
+  }
+  /* 写真の 枠（画像を 使う 形式で 使い回す） */
+  function qbPhoto(x, y, w, h) {
+    return qbO(x, y, w, h, 3)
+      + qbC(x + w * 0.28, y + h * 0.3, 2.1)
+      + qbP("M" + (x + 3) + " " + (y + h - 3) + "L" + (x + w * 0.42) + " " + (y + h * 0.45)
+        + "L" + (x + w * 0.66) + " " + (y + h - 3) + "Z", QS, 1.6, QS);
+  }
+  /* 音の 印（音声の 形式で 使い回す） */
+  function qbSpeaker(x, y) {
+    return qbP("M" + x + " " + (y + 5) + "h4l5-5v16l-5-5h-4z", QI, 1.6, QI)
+      + qbP("M" + (x + 12) + " " + (y + 4) + "a7 7 0 0 1 0 12", QI, 1.6)
+      + qbP("M" + (x + 15) + " " + (y + 1) + "a11 11 0 0 1 0 18", QS, 1.6);
+  }
+
+  /* 選択式の 行（丸 or 四角 ＋ 中身の 棒）。sel の 行だけ 濃く。 */
+  function qbRows(n, sel, sq) {
+    /* ★ 行の 高さは 5 なので、top + gap*(n-1) + 5 が 40 を 越えない ように。
+       5 行の とき 4/9 のままだと **5 行目が 枠の 外**に 出る（実測）。 */
+    var out = [], top = n === 2 ? 11 : n === 3 ? 6 : n === 4 ? 4 : 2,
+        gap = n === 2 ? 12 : n === 3 ? 11 : n === 4 ? 9 : 7.5;
+    for (var i = 0; i < n; i++) {
+      var y = top + i * gap, on = sel.indexOf(i) >= 0;
+      out.push(sq
+        ? qbO(9, y, 7, 7, 1.6, on ? QI : QS) + (on ? qbP("M10.6 " + (y + 3.6) + "l2 2 3-3.6", QI, 1.7) : "")
+        : (on ? qbCo(12.5, y + 3.5, 3.6, QI) + qbC(12.5, y + 3.5, 1.8, QI) : qbCo(12.5, y + 3.5, 3.6)));
+      out.push(qbR(21, y + 1.4, on ? 38 : 30 + (i * 5) % 17, 4.2, 2.1, on ? QI : QS));
+    }
+    return out.join("");
+  }
+
+  /* エンジンごとの 絵。viewBox は 72×40。 */
+  var QT_ART = {
+    single_choice: function () { return qbRows(3, [1]); },
+    multi_choice:  function () { return qbRows(3, [0, 2], true); },
+    true_false:    function () {
+      return qbCo(24, 20, 8.5, QI, 2.4)
+        + qbL(43, 13, 56, 27, QI, 2.4) + qbL(56, 13, 43, 27, QI, 2.4);
+    },
+    text_input:    function () {
+      return qbO(9, 12, 54, 16, 4) + qbR(14, 18, 22, 4, 2, QI)
+        + qbL(39, 15.5, 39, 24.5, QI, 2);
+    },
+    numeric_input: function () { return qbO(9, 10, 54, 20, 4) + qbT(36, 25, "12", 14); },
+    free_text:     function () {
+      return [qbR(10, 9, 52, 3.4, 1.7), qbR(10, 17, 46, 3.4, 1.7),
+              qbR(10, 25, 50, 3.4, 1.7), qbR(10, 33, 26, 3.4, 1.7, QI)].join("");
+    },
+    fill_blank:    function () {
+      return qbR(9, 12, 16, 4.4, 2.2) + qbO(29, 9, 16, 11, 2.5, QI, 2)
+        + qbR(49, 12, 14, 4.4, 2.2) + qbR(9, 26, 34, 4.4, 2.2) + qbR(47, 26, 16, 4.4, 2.2);
+    },
+    reorder:       function () {
+      var o = [];
+      [["2", 6], ["3", 16], ["1", 26]].forEach(function (r, i) {
+        o.push(qbO(9, r[1], 12, 9, 2.5, i === 2 ? QI : QS));
+        o.push(qbT(15, r[1] + 7.2, r[0], 8, i === 2 ? QI : QS));
+        o.push(qbR(25, r[1] + 2.6, 30 - i * 4, 3.8, 1.9, i === 2 ? QI : QS));
+      });
+      o.push(qbP("M63 12l0 16M60 25l3 3 3-3", QI, 1.8));
+      return o.join("");
+    },
+    matching:      function () {
+      var o = [];
+      [8, 18, 28].forEach(function (y, i) { o.push(qbR(8, y, 16, 7, 2, i === 0 ? QI : QS)); });
+      [8, 18, 28].forEach(function (y, i) { o.push(qbR(48, y, 16, 7, 2, i === 1 ? QI : QS)); });
+      o.push(qbP("M24 11.5C34 11.5 38 21.5 48 21.5", QI, 1.8));
+      o.push(qbP("M24 21.5C34 21.5 38 31.5 48 31.5", QS, 1.6));
+      o.push(qbP("M24 31.5C34 31.5 38 11.5 48 11.5", QS, 1.6));
+      return o.join("");
+    },
+    classification: function () {
+      return [qbR(10, 5, 12, 6, 2, QI), qbR(30, 5, 12, 6, 2), qbR(50, 5, 12, 6, 2),
+              qbP("M16 13v5M36 13v5M56 13v5", QS, 1.5),
+              qbO(8, 21, 26, 14, 3, QI, 1.8), qbO(38, 21, 26, 14, 3)].join("");
+    },
+    flashcard:     function () {
+      return qbO(14, 6, 42, 22, 4) + qbR(9, 12, 42, 22, 4, "var(--qb-face)")
+        + qbO(9, 12, 42, 22, 4, QI, 1.8) + qbR(15, 20, 22, 4.4, 2.2, QI);
+    },
+    chart_read:    function () {
+      return [qbR(11, 22, 8, 13, 1.5), qbR(23, 14, 8, 21, 1.5, QI),
+              qbR(35, 25, 8, 10, 1.5), qbR(47, 9, 8, 26, 1.5),
+              qbL(7, 35.5, 63, 35.5, QS, 1.4)].join("");
+    },
+    table_fill:    function () {
+      var o = [qbO(9, 8, 54, 24, 3)];
+      o.push(qbL(27, 8, 27, 32) + qbL(45, 8, 45, 32) + qbL(9, 16, 63, 16) + qbL(9, 24, 63, 24));
+      o.push(qbR(29, 18, 14, 4.4, 2.2, QI));
+      return o.join("");
+    },
+    image_point:   function () {
+      return qbPhoto(9, 8, 42, 24)
+        + qbP("M56 12a5 5 0 0 1 10 0c0 4-5 10-5 10s-5-6-5-10z", QI, 1.8, QI)
+        + qbC(61, 12, 1.8, "var(--qb-face)");
+    },
+    image_label:   function () {
+      return qbPhoto(9, 8, 34, 24)
+        + qbL(43, 13, 50, 13, QI) + qbR(52, 10.6, 12, 4.6, 2.3, QI)
+        + qbL(43, 24, 50, 24) + qbR(52, 21.6, 12, 4.6, 2.3);
+    },
+    image_choice:  function () {
+      return [qbPhoto(10, 7, 24, 12), qbPhoto(38, 7, 24, 12),
+              qbPhoto(10, 23, 24, 12), qbO(8, 21, 28, 16, 3.5, QI, 2.4),
+              qbPhoto(38, 23, 24, 12)].join("");
+    },
+    audio_choice:  function () {
+      return qbSpeaker(9, 12) + qbCo(38, 14, 3.4) + qbR(45, 12, 18, 4.2, 2.1)
+        + qbCo(38, 26, 3.4, QI) + qbC(38, 26, 1.7, QI) + qbR(45, 24, 18, 4.2, 2.1, QI);
+    },
+    dictation:     function () {
+      return qbSpeaker(9, 6) + qbR(9, 27, 40, 3.6, 1.8) + qbR(53, 27, 10, 3.6, 1.8, QI)
+        + qbL(30, 20, 63, 20, QS, 1.4);
+    },
+    error_correction: function () {
+      /* 誤りの ところに 斜線、上に 直した 形。**どちらが 直しか**が 分かる ように。 */
+      return qbR(9, 24, 14, 4.4, 2.2) + qbR(27, 24, 16, 4.4, 2.2, QS)
+        + qbL(26, 30, 44, 21, QI, 2.2)
+        + qbR(47, 24, 16, 4.4, 2.2)
+        + qbR(27, 10, 16, 4.6, 2.3, QI) + qbP("M35 16.5v4", QI, 1.6);
+    },
+    composite:     function () {
+      var o = [qbO(8, 7, 26, 28, 3), qbR(12, 12, 18, 3, 1.5), qbR(12, 18, 18, 3, 1.5),
+               qbR(12, 24, 12, 3, 1.5)];
+      [8, 19, 30].forEach(function (y, i) {
+        o.push(qbT(42, y + 7, String(i + 1), 8, i === 0 ? QI : QS));
+        o.push(qbR(47, y + 1.6, 16, 4, 2, i === 0 ? QI : QS));
+      });
+      return o.join("");
+    }
+  };
+
+
+  /* ══ **形式ごとの 絵**（エンジンの 絵の 上書き）══════════════════
+     エンジンが 同じでも、人から 見れば まったく 別の 形式が ある。
+     「2択」と「多肢選択」は どちらも single_choice、
+     「作図」と「小論文」は どちらも free_text ——
+     同じ 絵に すると **並べた ときに 見分けが つかない**。
+     ここに 書いた ものだけ 差し替える。書かない ものは エンジンの 絵。 */
+  var QT_ART_ID = {
+    /* ── 選択式: **選択肢の 数**を そのまま 描く ── */
+    choice_2:  function () { return qbRows(2, [0]); },
+    choice_3:  function () { return qbRows(3, [1]); },
+    multiple_choice_single: function () { return qbRows(4, [2]); },
+    choice_5:  function () { return qbRows(5, [1]); },
+    choice_many: function () {
+      var o = [];
+      for (var i = 0; i < 6; i++) {
+        var x = 9 + (i % 2) * 30, y = 7 + Math.floor(i / 2) * 10, on = i === 3;
+        o.push(qbO(x, y, 26, 7, 2, on ? QI : QS) );
+        if (on) o.push(qbR(x + 3, y + 2, 12, 3, 1.5, QI));
+      }
+      return o.join("");
+    },
+    choice_incorrect: function () {
+      return qbRows(3, []) + qbL(9.6, 16.6, 15.4, 22.4, QI, 2.2) + qbL(15.4, 16.6, 9.6, 22.4, QI, 2.2);
+    },
+    choice_none_option: function () {
+      /* 上 2 行は ふつうの 選択肢、いちばん 下だけ「該当なし」。
+         文字は 丸の 右へ 十分 離す（重なると 読めない）。 */
+      /* いちばん 下だけ「該当なし」。行の 位置は **自分で 決める**
+         （qbRows の 2 行は 下に 寄って いて、文字と 重なる）。 */
+      return qbCo(12.5, 9, 3.6) + qbR(21, 6.6, 34, 4.4, 2.2)
+        + qbCo(12.5, 20, 3.6) + qbR(21, 17.6, 28, 4.4, 2.2)
+        + qbCo(12.5, 31, 3.6, QI) + qbC(12.5, 31, 1.8, QI)
+        + qbT(40, 35, "\u8a72\u5f53\u306a\u3057", 10.5, QI);
+    },
+    choice_confidence: function () {
+      return qbRows(2, [0]) + qbR(9, 31, 54, 4.4, 2.2)
+        + qbR(9, 31, 34, 4.4, 2.2, QI);
+    },
+    shape_judge: function () {
+      return qbO(10, 13, 14, 14, 2, QS, 2) + qbP("M38 27l7-13 7 13z", QI, 2.2)
+        + qbCo(60, 20, 7, QS, 2);
+    },
+    photo_judge: function () { return qbPhoto(10, 9, 24, 22) + qbPhoto(38, 9, 24, 22)
+      + qbO(8, 7, 28, 26, 3.5, QI, 2.4); },
+    accent_position: function () {
+      /* 3 つの 音の うち、**2 つ目に 印**。印は 大きく 描かないと 見えない。 */
+      /* 3 つの 音の うち **2 つ目が 高い**（アクセント核）。
+         点や 縦棒を 足すと「÷」に 見えたので、**高さの 線**で 表す。 */
+      return qbR(11, 26, 14, 5, 2.5) + qbR(29, 26, 14, 5, 2.5, QI) + qbR(47, 26, 14, 5, 2.5)
+        + qbP("M11 20h18l0-8h14l0 8h18", QI, 2.4);
+    },
+    choice_calc: function () { return qbT(22, 16, "3+4", 12, QI) + qbRows(2, [0]).replace(/y="[0-9.]+"/g, function (m) { return m; }); },
+    choice_graph_read: function () {
+      return qbR(10, 18, 6, 12, 1.5) + qbR(19, 11, 6, 19, 1.5, QI) + qbR(28, 22, 6, 8, 1.5)
+        + qbL(8, 30.5, 36, 30.5, QS, 1.4)
+        + qbCo(44, 13, 3.2) + qbR(50, 11, 13, 4, 2)
+        + qbCo(44, 25, 3.2, QI) + qbC(44, 25, 1.6, QI) + qbR(50, 23, 13, 4, 2, QI);
+    },
+    /* ── 文字入力: **何を 打つか**を 描く ── */
+    spelling: function () { return qbO(9, 11, 54, 18, 4) + qbT(36, 25, "abc", 13); },
+    kanji_input: function () { return qbO(9, 8, 54, 24, 4) + qbT(36, 26, "\u6f22", 17); },
+    reading_input: function () {
+      return qbT(36, 30, "\u6f22", 16, QS) + qbT(36, 14, "\u304b\u3093", 10, QI);
+    },
+    formula: function () { return qbO(9, 10, 54, 20, 4) + qbT(36, 26, "x\u00b2", 15); },
+    year_input: function () { return qbO(9, 10, 54, 20, 4) + qbT(36, 26, "1192", 14); },
+    code_input: function () {
+      return qbO(9, 9, 54, 22, 4) + qbT(36, 25, "&lt;/&gt;", 13);
+    },
+    unit_input: function () { return qbO(9, 10, 38, 20, 4) + qbR(15, 18, 20, 4.4, 2.2, QI)
+      + qbT(56, 26, "cm", 12); },
+    timed_input: function () {
+      return qbO(9, 12, 36, 16, 4) + qbR(14, 18, 18, 4.4, 2.2, QI)
+        + qbCo(56, 20, 8, QI, 2) + qbP("M56 15v5l3.5 2", QI, 1.8);
+    },
+    hint_initial_input: function () {
+      return qbO(9, 12, 54, 16, 4) + qbT(19, 25, "s", 13) + qbR(27, 18, 8, 4.4, 2.2)
+        + qbR(38, 18, 8, 4.4, 2.2) + qbR(49, 18, 8, 4.4, 2.2);
+    },
+    /* ── 記述: **何を 書くか**を 描く ── */
+    drawing: function () {
+      return qbP("M11 30l7-16 8 10 6-7 9 13z", QI, 2)
+        + qbP("M46 26l12-12 4 4-12 12-5 1z", QS, 1.8);
+    },
+    chart_build: function () {
+      return qbL(11, 8, 11, 32, QS, 1.8) + qbL(11, 32, 63, 32, QS, 1.8)
+        + qbP("M15 27l11-9 10 6 12-14 11 6", QI, 2.2)
+        + qbC(26, 18, 2.2, QI) + qbC(48, 10, 2.2, QI);
+    },
+    summarize: function () {
+      return qbR(9, 5, 54, 3.2, 1.6) + qbR(9, 11, 54, 3.2, 1.6) + qbR(9, 17, 40, 3.2, 1.6)
+        + qbP("M36 22v5M32.5 24.5l3.5 3.5 3.5-3.5", QI, 2)
+        + qbR(22, 31, 28, 4.6, 2.3, QI);
+    },
+    english_writing: function () {
+      return qbT(36, 20, "ABC", 14, QI) + qbR(12, 27, 48, 3, 1.5) + qbR(12, 33, 34, 3, 1.5);
+    },
+    work_steps: function () {
+      return qbT(20, 14, "x=", 10, QI) + qbR(30, 9, 22, 4, 2, QI)
+        + qbT(20, 26, "=", 10) + qbR(30, 21, 28, 4, 2)
+        + qbT(20, 37, "=", 10) + qbR(30, 32, 16, 4, 2);
+    },
+    proof: function () {
+      /* 上に 前提の 行、下に「∴（したがって）」＋ 結論。 */
+      return qbR(10, 6, 44, 3.2, 1.6) + qbR(10, 13, 50, 3.2, 1.6) + qbR(10, 20, 36, 3.2, 1.6)
+        + qbC(13, 29, 1.7, QI) + qbC(19, 29, 1.7, QI) + qbC(16, 34.5, 1.7, QI)
+        + qbR(26, 29, 34, 4.6, 2.3, QI);
+    },
+    quote_evidence: function () {
+      return qbO(8, 6, 34, 28, 3) + qbR(12, 12, 26, 3, 1.5) + qbR(12, 18, 26, 3, 1.5, QI)
+        + qbR(12, 24, 18, 3, 1.5)
+        + qbT(55, 27, "\u201c", 26, QI);
+    },
+    read_aloud_check: function () { return qbMic(); },
+    shadowing: function () { return qbMic(); },
+    pronunciation_score: function () {
+      return qbMic() + qbT(58, 26, "A", 14, QI);
+    },
+    /* ── 暗記・復習 ── */
+    flashcard_speed: function () {
+      return qbO(12, 9, 40, 22, 4) + qbR(18, 18, 20, 4.4, 2.2, QI)
+        + qbCo(57, 27, 7, QI, 2) + qbP("M57 22.5v4.5l3 1.8", QI, 1.7);
+    },
+    review_spaced: function () { return qbLoop() + qbT(36, 25, "3", 12, QI); },
+    review_wrong: function () { return qbLoop() + qbL(32, 16, 40, 24, QI, 2.4) + qbL(40, 16, 32, 24, QI, 2.4); },
+    review_weakness: function () { return qbLoop() + qbP("M36 14l2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z", QI, 1.4, QI); },
+    mastery: function () { return qbLoop() + qbP("M30 20l4.5 4.5 9-9", QI, 3); },
+    /* ── 画像・地図 ── */
+    map_pin: function () { return qbMap() + qbP("M40 12a5 5 0 0 1 10 0c0 4-5 10-5 10s-5-6-5-10z", QI, 1.8, QI); },
+    map_color: function () { return qbMap(true); },
+    coordinate_input: function () {
+      return qbL(10, 34, 62, 34, QS, 1.6) + qbL(16, 6, 16, 34, QS, 1.6)
+        + qbL(16, 22, 44, 22, QS, 1.2) + qbL(44, 22, 44, 34, QS, 1.2)
+        + qbC(44, 22, 3.4, QI);
+    },
+    spot_difference: function () {
+      return qbPhoto(8, 10, 26, 20) + qbPhoto(38, 10, 26, 20)
+        + qbCo(56, 24, 4.4, QI, 2.2);
+    },
+    /* ── 音声 ── */
+    audio_once: function () { return qbSpeaker(14, 12) + qbT(52, 27, "1", 16, QI); },
+    audio_speed: function () { return qbSpeaker(12, 12) + qbP("M40 13l8 7-8 7M50 13l8 7-8 7", QI, 2.4); },
+    /* ── 複合 ── */
+    passage_set: function () {
+      var o = [qbO(8, 5, 28, 32, 3)];
+      for (var i = 0; i < 5; i++) o.push(qbR(12, 10 + i * 5.4, i === 4 ? 12 : 20, 2.6, 1.3));
+      [10, 21, 32].forEach(function (y, i) {
+        o.push(qbT(43, y + 6, String(i + 1), 8, i === 0 ? QI : QS));
+        o.push(qbR(48, y + 1, 15, 3.6, 1.8, i === 0 ? QI : QS));
+      });
+      return o.join("");
+    },
+    source_compare: function () {
+      return qbO(8, 8, 24, 24, 3) + qbR(12, 13, 16, 2.8, 1.4) + qbR(12, 19, 16, 2.8, 1.4)
+        + qbO(40, 8, 24, 24, 3, QI, 1.8) + qbR(44, 13, 16, 2.8, 1.4, QI) + qbR(44, 19, 16, 2.8, 1.4, QI)
+        + qbT(36, 24, "vs", 9);
+    }
+  };
+  /* 上書きで 使い回す 部品 */
+  function qbMic() {
+    return qbP("M30 8h12v14a6 6 0 0 1-12 0z", QI, 1.8, QI)
+      + qbP("M25 20a11 11 0 0 0 22 0", QI, 1.8) + qbL(36, 31, 36, 36, QI, 1.8)
+      + qbP("M14 14v12M19 10v20M9 17v6", QS, 1.8);
+  }
+  function qbLoop() {
+    return qbP("M52 20a16 16 0 1 1-6-12", QI, 2.2) + qbP("M40 6l6.5 2.5L44 15", QI, 2.2);
+  }
+  function qbMap(color) {
+    var o = [qbP("M10 10l14-4 14 5 14-5v24l-14 5-14-5-14 4z", QS, 1.8, color ? "var(--qb-face)" : "none")];
+    o.push(qbP("M24 6v24M38 11v24", QS, 1.5));
+    if (color) {
+      o.push(qbP("M10 10l14-4v24l-14 4z", "none", 0, QI));
+      o.push(qbP("M38 11l14-5v24l-14 5z", "none", 0, QS));
+    }
+    return o.join("");
+  }
+
+  /* 表紙 1 枚。**分類の 色 ＋ 分類の 模様 ＋ 形式（無ければ エンジン）の 絵。** */
+  function qtypeBanner(d) {
+    var tone = QT_TONE[d.category] || QT_TONE.choice;
+    /* 同じ 分類でも 隣どうしが 同じ 色に ならない ように、id で ±11 ずらす。 */
+    var hue = tone.hue + (qtHash(d.id) % 23) - 11;
+    var art = QT_ART_ID[d.id] || QT_ART[d.engine];
+    return '<span class="vq2-qb" data-pat="' + tone.pat + '" style="--qb-hue:' + hue + '" aria-hidden="true">'
+      + '<svg viewBox="0 0 72 40" class="vq2-qb-art">'
+      + (art ? art(d) : qbRows(3, [1]))
+      + "</svg></span>";
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
      形式を選ぶ画面
      ══════════════════════════════════════════════════════════════════ */
   function openPicker(o) {
@@ -46015,7 +46466,15 @@
         availableOnly: true,
         aiOnly: false,
         subject: o.subject || "",
-        view: "all"          /* all | recommend | recent | fav */
+        view: "all",         /* all | recommend | recent | fav */
+        /* ★ 絵で 見るか、一覧で 見るか（2026-09-10・訴え
+           「プリセット一覧のように 形式ごとに バナーを 用意すると 分かりやすい」）。
+           159 種類を 字だけで 見分けるのは むり なので **絵が 既定**。
+           次に 開いた ときも 同じ 見かたに する。 */
+        cover: (function () {
+          try { return root.localStorage.getItem("vq2.qtype.view.v1") !== "list"; }
+          catch (e) { return true; }
+        })()
       };
 
       function results() {
@@ -46049,17 +46508,25 @@
         if (d.supportsAI) marks.push(["LUMI AI", "LUMI（AI）で作れます", "sparkle", "is-ai"]);
         if (d.supportsPartialCredit) marks.push(["部分点", "途中まで合っていれば点が入ります", "check", ""]);
         if (d.supportsMedia) marks.push(["画像・音声", "画像や音声を使えます", "image", ""]);
+        /* ★ 絵で 見る ときは、**札を 表紙の 上**へ 逃がす。
+           名前の 横に 置くと 名前が 折り返して カードの 高さが そろわない。 */
+        var 表紙 = st.cover;
+        var 札 = 表紙
+          ? ((o.current === d.id ? '<span class="vq2-qt-flag is-cur">いま選択中</span>' : "")
+            + (d.status === "beta" ? '<span class="vq2-qt-flag">ベータ</span>' : "")
+            + (d.status === "coming_soon" ? '<span class="vq2-qt-flag">準備中</span>' : ""))
+          : "";
         return '<div class="vq2-qt-card' + (ready ? "" : " is-soon") + (o.current === d.id ? " is-cur" : "") + '"'
           + ' data-qt="' + esc(d.id) + '" tabindex="0" role="option"'
           + ' aria-selected="' + (o.current === d.id ? "true" : "false") + '"'
           + ' aria-disabled="' + (ready ? "false" : "true") + '">'
-          + '<span class="vq2-qt-ic">' + icon(d.icon) + "</span>"
+          + (表紙 ? qtypeBanner(d) + 札 : '<span class="vq2-qt-ic">' + icon(d.icon) + "</span>")
           + '<span class="vq2-qt-body">'
           + '<span class="vq2-qt-h">'
           + '<span class="vq2-qt-n">' + esc(d.name) + "</span>"
-          + (d.status === "beta" ? '<span class="vq2-qt-st is-beta">ベータ</span>' : "")
-          + (d.status === "coming_soon" ? '<span class="vq2-qt-st">準備中</span>' : "")
-          + (o.current === d.id ? '<span class="vq2-qt-st is-cur">いま選択中</span>' : "")
+          + (表紙 ? "" : (d.status === "beta" ? '<span class="vq2-qt-st is-beta">ベータ</span>' : ""))
+          + (表紙 ? "" : (d.status === "coming_soon" ? '<span class="vq2-qt-st">準備中</span>' : ""))
+          + (表紙 ? "" : (o.current === d.id ? '<span class="vq2-qt-st is-cur">いま選択中</span>' : ""))
           + "</span>"
           + '<span class="vq2-qt-d">' + esc(d.description) + "</span>"
           + (d.example ? '<span class="vq2-qt-ex">例：' + esc(d.example) + "</span>" : "")
@@ -46149,13 +46616,46 @@
 
         /* 右：結果 */
         h += '<div class="vq2-qt-main" role="listbox" aria-label="問題の形式">';
-        h += '<div class="vq2-qt-count">' + list.length + " 種類"
-          + (st.q ? "（「" + esc(st.q) + "」で検索）" : "") + "</div>";
+        /* ★ **いま 何で しぼって いるか**を 出す（2026-09-10）。
+           前は 左の チェックを 見に 行かないと 分からず、
+           「0 件しか 出ない」の 理由に たどり着けなかった。 */
+        var 効いている = [];
+        if (st.category) {
+          var cc = null;
+          Q.CATEGORIES.forEach(function (c) { if (c.id === st.category) cc = c; });
+          if (cc) 効いている.push(["cat", cc.label]);
+        }
+        if (st.subject) {
+          var ss = null;
+          Q.SUBJECTS.forEach(function (x) { if (x.id === st.subject) ss = x; });
+          if (ss) 効いている.push(["subject", ss.label]);
+        }
+        if (st.aiOnly) 効いている.push(["aiOnly", "LUMI AI で作れる"]);
+        if (!st.availableOnly) 効いている.push(["availableOnly", "準備中も出す"]);
+        if (st.q) 効いている.push(["q", "「" + st.q + "」"]);
+        if (効いている.length) {
+          h += '<div class="vq2-qt-active">'
+            + 効いている.map(function (x) {
+                return '<button type="button" class="vq2-qt-act" data-off="' + x[0] + '">'
+                  + esc(x[1]) + icon("close") + "</button>";
+              }).join("")
+            + (効いている.length > 1
+                ? '<button type="button" class="vq2-qt-clr" data-off="all">すべて外す</button>' : "")
+            + "</div>";
+        }
+        h += '<div class="vq2-qt-count vq2-qt-cnt-row"><span>' + list.length + " 種類</span>"
+          + '<span class="vq2-top-sp"></span>'
+          + '<span class="vq2-qt-den">'
+          + '<button type="button" data-den="cover"' + (st.cover ? ' class="is-on"' : "")
+          + ' aria-pressed="' + (st.cover ? "true" : "false") + '">' + icon("grid") + "絵で見る</button>"
+          + '<button type="button" data-den="list"' + (!st.cover ? ' class="is-on"' : "")
+          + ' aria-pressed="' + (!st.cover ? "true" : "false") + '">' + icon("list") + "一覧</button>"
+          + "</span></div>";
         if (!list.length) {
           h += U.empty({ icon: "search", title: "見つかりませんでした",
                          body: "別の言葉で探すか、絞り込みを外してください。" });
         } else if (st.view !== "all" || st.q || st.category) {
-          h += '<div class="vq2-qt-grid">' + list.map(cardHtml).join("") + "</div>";
+          h += '<div class="vq2-qt-grid' + (st.cover ? " is-cover" : "") + '">' + list.map(cardHtml).join("") + "</div>";
         } else {
           Q.CATEGORIES.forEach(function (c) {
             var items = byCat[c.id];
@@ -46163,7 +46663,8 @@
             h += '<div class="vq2-qt-sec"><div class="vq2-qt-sech">' + icon(c.icon)
               + "<b>" + esc(c.label) + "</b><span class=\"vq2-muted\">" + esc(c.desc) + "</span>"
               + '<span class="vq2-top-sp"></span><span class="vq2-qt-cnt2">' + items.length + " 種類</span></div>"
-              + '<div class="vq2-qt-grid">' + items.map(cardHtml).join("") + "</div></div>";
+              + '<div class="vq2-qt-grid' + (st.cover ? " is-cover" : "") + '">'
+              + items.map(cardHtml).join("") + "</div></div>";
           });
         }
         h += "</div></div>";
@@ -46215,6 +46716,24 @@
           toggleFav(t.getAttribute("data-fav"));
           render();
         });
+        /* 絵で 見る／一覧。**覚えておく**（毎回 選び直させない）。 */
+        U.on(r, "click", "[data-den]", function (e, t) {
+          var v = t.getAttribute("data-den");
+          st.cover = v === "cover";
+          try { root.localStorage.setItem("vq2.qtype.view.v1", st.cover ? "cover" : "list"); } catch (x) {}
+          keepScroll(); render();
+        });
+        /* 効いている 絞り込みを その場で 外す。 */
+        U.on(r, "click", "[data-off]", function (e, t) {
+          var k = t.getAttribute("data-off");
+          if (k === "all") { st.category = ""; st.subject = ""; st.aiOnly = false; st.availableOnly = true; st.q = ""; }
+          else if (k === "cat") st.category = "";
+          else if (k === "subject") st.subject = "";
+          else if (k === "aiOnly") st.aiOnly = false;
+          else if (k === "availableOnly") st.availableOnly = true;
+          else if (k === "q") st.q = "";
+          mainTop = 0; render();
+        });
         U.on(r, "click", "[data-qt]", function (e, t) {
           if (t.closest("[data-fav]")) return;
           choose(t.getAttribute("data-qt"));
@@ -46222,13 +46741,24 @@
         /* 矢印で隣のカードへ動かせる（形式が多いので、指と目だけに頼らせない） */
         U.on(r, "keydown", "[data-qt]", function (e, t) {
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(t.getAttribute("data-qt")); return; }
-          var dir = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1
-                  : e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-          if (!dir) return;
+          /* ★ **上下は 行ごと**に 動かす（2026-09-10）。
+             絵で 見る ときは 1 行に 何枚も 並ぶ ので、上下で 1 枚ずつ 動くと
+             同じ 行を 横に 這うだけに なり、下まで 行けない。
+             1 行の 枚数は **実際の 位置**から 数える（列数を 決め打ちしない）。 */
+          var yoko = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          var tate = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+          if (!yoko && !tate) return;
           e.preventDefault();
           var all = [].slice.call(app.root.querySelectorAll("[data-qt]"));
           var i = all.indexOf(t);
-          var next = all[i + dir];
+          var step = 1;
+          if (tate) {
+            var y0 = t.getBoundingClientRect().top;
+            for (var k = i + 1; k < all.length; k++) {
+              if (all[k].getBoundingClientRect().top > y0 + 4) { step = k - i; break; }
+            }
+          }
+          var next = all[i + (yoko ? yoko : tate * step)];
           if (next) next.focus();
         });
       }
