@@ -684,6 +684,10 @@
     状.終 = 0;
     var sh = 状.影;
     if (!sh) return;
+    /* ★ 秒数を **消す**（2026-09-10 実測）。時計は 止めて いたが 字が 残り、
+       答え合わせの 最中も「16 秒」と 出たままに なって いた。 */
+    var tm = sh.querySelector("[data-tm]");
+    if (tm) tm.textContent = "";
     /* 自分の 選択肢に 正誤の 色を 付ける */
     var 正 = m.answer;
     sh.querySelectorAll("[data-ch]").forEach(function (el) {
