@@ -49,6 +49,11 @@ class_name = "SurviveRoom"
 name = "CALL_HUB"
 class_name = "CallHub"
 
+# ★ みんなで解く の 部屋（2026-09-10）。**本番の toml だけに 足すと 手元で 落ちる。**
+[[durable_objects.bindings]]
+name = "LIVE_ROOMS"
+class_name = "LiveRoom"
+
 # [ai] は local dev で Cloudflare 認証が要るため既定で除外（認証フロー検証には不要）。
 #   AI機能もローカルで試したい場合はこの下に [ai] / binding="AI" を足し `wrangler login` 済みにする。
 
@@ -155,6 +160,10 @@ tag = "survive-room-v1"
 #   新しい 種類は SQLite 版でしか 作れない（API が 10097 で 断る）。
 #   storage.get / put は SQLite 版でも そのまま 使える。
 new_sqlite_classes = ["SurviveRoom"]
+
+[[migrations]]
+tag = "live-room-v1"
+new_sqlite_classes = ["LiveRoom"]
 
 # ── 写真・動画・ファイルの 3 つめの 置き場（2026-08-19）──────────────
 #   置き場は 上から順に 選ぶ:

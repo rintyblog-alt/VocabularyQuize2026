@@ -37,6 +37,11 @@ class_name = "RoomDO"
 name = "CALL_HUB"
 class_name = "CallHub"
 
+# ★ みんなで解く の 部屋（2026-09-10）。**本番の toml だけに 足すと 手元で 落ちる。**
+[[durable_objects.bindings]]
+name = "LIVE_ROOMS"
+class_name = "LiveRoom"
+
 [ai]
 binding = "AI"
 
@@ -217,6 +222,10 @@ new_classes = ["RoomDO"]
 [[migrations]]
 tag = "call-hub-v1"
 new_sqlite_classes = ["CallHub"]
+
+[[migrations]]
+tag = "live-room-v1"
+new_sqlite_classes = ["LiveRoom"]
 
 # ── 写真・動画・ファイルの 3 つめの 置き場（2026-08-19）──────────────
 #   置き場は 上から順に 選ぶ:
