@@ -152,8 +152,56 @@ const 問 = [
   見る("次の 問題へ 進む", /沸騰/.test(次 || ""), 次);
 
   見る("画面の 例外 0 件", 例外.length === 0, 例外.join(" / ").slice(0, 160));
+
+  /* ⑧ **切れても 戻れるか。**（教室の Wi-Fi は よく 切れる）
+     ここだけ 画面では なく 直に 叩く。画面を 落として 開き直す 代わり。 */
+  await 入り直し();
   終わる(b, 例外);
 })();
+
+async function 入り直し() {
+  const 頼 = (path, o) => fetch(BASE + path, {
+    method: (o && o.method) || "GET",
+    headers: Object.assign({ "Content-Type": "application/json" }, (o && o.h) || {}),
+    body: o && o.body ? JSON.stringify(o.body) : undefined
+  }).then((r) => r.json());
+  const l = await 頼("/api/auth/login", { method: "POST",
+    body: { gradePrefix: "H1", nickname: 名, password: 合 } });
+  const H = { Authorization: "Bearer " + l.token };
+  const c = await 頼("/api/live/create", { method: "POST", h: H,
+    body: { title: "入り直し", questions: [
+      { id: "a", type: "single_choice", question: "1+1は？", choices: ["1", "2", "3"], answer: 1 },
+      { id: "b", type: "single_choice", question: "2+2は？", choices: ["3", "4", "5"], answer: 1 }
+    ], settings: { limit: 60 } } });
+  const PIN = c.pin;
+  const j = await 頼("/api/live/join", { method: "POST", body: { pin: PIN, nickname: "りんと" } });
+  const WS = BASE.replace("https", "wss").replace("http", "ws");
+  const 開 = (k) => new Promise((res) => {
+    const w = new WebSocket(WS + "/ws/live/" + PIN + "?k=" + k);
+    w.受 = []; w.onmessage = (e) => w.受.push(JSON.parse(e.data)); w.onopen = () => res(w);
+  });
+  const host = await 開(c.hostKey); let stu = await 開(j.key);
+  await 待(500);
+  host.send(JSON.stringify({ t: "start" })); await 待(800);
+  stu.send(JSON.stringify({ t: "answer", i: 0, v: 1 })); await 待(1400);
+  const 前 = stu.受.filter((m) => m.t === "reveal").pop();
+  const 点1 = 前 && (前.rank || [])[0] ? 前.rank[0].score : 0;
+  見る("1 問目で 点が 入る", 点1 > 0, 点1 + " 点");
+  stu.close(); await 待(900);
+  const j2 = await 頼("/api/live/join", { method: "POST",
+    body: { pin: PIN, nickname: "りんと", rejoinKey: j.key } });
+  見る("★ 切れても **同じ 人**として 戻れる", !!j2.ok && j2.you === j.you, j2.you);
+  stu = await 開(j2.key); await 待(800);
+  const w = stu.受.find((m) => m.t === "welcome");
+  const 私 = w && (w.room.players || []).find((x) => x.id === j.you);
+  見る("★ 点が 残る", !!私 && 私.score === 点1, 私 ? 私.score + " 点" : "居ない");
+  host.send(JSON.stringify({ t: "next" })); await 待(900);
+  stu.send(JSON.stringify({ t: "answer", i: 1, v: 1 })); await 待(1400);
+  const 後 = stu.受.filter((m) => m.t === "reveal").pop();
+  const 点2 = 後 && (後.rank || [])[0] ? 後.rank[0].score : 0;
+  見る("★ 続きも 数える", 点2 > 点1, 点1 + " → " + 点2);
+  try { host.close(); stu.close(); } catch (e) {}
+}
 
 function 終わる(b, 例外) {
   console.log("\n────────────────────────────────");
