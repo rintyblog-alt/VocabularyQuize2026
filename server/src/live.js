@@ -214,7 +214,12 @@ function 採点(q, v) {
   const t = String(q?.type || "");
   const a = q?.answer;
   /* 選ぶ 形式は **番号**で 比べる（文字は 揺れる） */
-  if (t === "single_choice" || t === "multiple_choice_single" || t === "audio_choice" || t === "image_choice") {
+  /* ★ 呼び名は 形式ごとに 分かれて いる（4択 は multiple_choice_single、
+     2択 は choice_2 …）。**画面側の 出せる形式 と 同じ 顔ぶれに 揃える。**
+     片方だけ 増やすと「出るのに 正誤が 付かない」に なる。 */
+  if (t === "single_choice" || t === "multiple_choice_single"
+      || t === "choice_2" || t === "choice_3" || t === "choice_5" || t === "choice_many"
+      || t === "audio_choice" || t === "image_choice") {
     if (v === null || v === undefined || v === "") return null;
     return String(v) === String(a) ? true : false;
   }
@@ -243,6 +248,12 @@ function 採点(q, v) {
   if (t === "reorder" || t === "ordering") {
     if (!Array.isArray(v) || !Array.isArray(a)) return null;
     return v.map(String).join("|") === a.map(String).join("|");
+  }
+  /* ★ 形式名が 分からなくても、**選択肢が あれば 4択と 同じ 扱い**。
+     画面側も 同じ 見かたで 出して いる（出せるか）。 */
+  if (Array.isArray(q?.choices) && q.choices.length >= 2 && a !== undefined && a !== null) {
+    if (v === null || v === undefined || v === "") return null;
+    return String(v) === String(a);
   }
   /* ★ 知らない 形式は **正誤を 付けない**（null）。
      不正解に すると、記述の 問題が 全員 0 点に なる。 */

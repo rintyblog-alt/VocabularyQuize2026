@@ -71185,6 +71185,10 @@
         + (canDel ? btn({ label: "削除", icon: "trash", variant: "quiet", action: "del" }) : "")
         + '<div class="vq2-top-sp"></div>'
         + (canEdit ? btn({ label: "編集", icon: "settings", action: "edit" }) : "")
+        /* ★ **みんなで解く の 入口を ここにも**（2026-09-10）。
+           左の メニューからしか 入れないと「この プリセットで やる」が
+           2 段に なる。詳細から そのまま 部屋を 作れる ように する。 */
+        + btn({ label: "みんなで", icon: "zap", action: "party", disabled: !startable })
         + btn({ label: "クイズを開始", icon: "play", variant: "primary", action: "start", disabled: !startable })
         + "</div>"
         + (startable ? "" : '<div class="vq2-hint vq2-pd-note">このプリセットには、まだ始められる問題がありません。</div>');
@@ -71248,6 +71252,21 @@
         saveDesc(t.value);
       });
       U.on(app.root, "click", '[data-act="start"]', function () { start(); });
+      /* みんなで解く。この プリセットで 部屋を 作る。 */
+      U.on(app.root, "click", '[data-act="party"]', function () {
+        try {
+          var P = root.__vqParty;
+          if (!P) { app.toast("みんなで解くは まだ 使えません。読み込み直して ください。", "info"); return; }
+          /* この 画面が 持って いる プリセット。**問題が 無ければ 出さない。**
+             （本体でしか 始められない もの＝単語帳 などは 中身を 持って いない） */
+          if (!preset || !(preset.questions || []).length) {
+            app.toast("この プリセットは まだ みんなで解くに 出せません。", "info"); return;
+          }
+          var pr = { id: id, title: title, subject: preset.subject || "", questions: preset.questions };
+          app.close("party");
+          P.作る(pr);
+        } catch (eP) {}
+      });
       U.on(app.root, "click", '[data-act="fav"]', function (e, t) {
         if (!L() || !card) return;
         var on = L().toggleFavorite(card.id, card);

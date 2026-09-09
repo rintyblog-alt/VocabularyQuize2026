@@ -302,9 +302,41 @@
     });
   }
 
+  /* ══ みんなで解くに **出せる 形式**（2026-09-10）════════════════════
+     出せない ものを 混ぜると、選択肢の 無い 文字入力に 化けて
+     **答えようが ない 問題**が 出る。だから 部屋に 入れる 前に よける。
+     ★ よけた ことは 隠さない。何問 よけたかを 先生に 見せる。
+     ★ ここに 足す ときは server/src/live.js の 採点() も 一緒に 直す
+       （こちらだけ 増やすと「出るのに 正誤が 付かない」に なる）。 */
+  var 出せる形式 = {
+    single_choice: 1, multiple_choice_single: 1, choice_2: 1, choice_3: 1, choice_5: 1,
+    multi_choice: 1, multiple_choice_multiple: 1,
+    true_false: 1,
+    text_input: 1, word_input: 1,
+    numeric_input: 1, numeric: 1
+  };
+  function 出せるか(q) {
+    if (!q) return false;
+    var t = String(q.type || "");
+    if (出せる形式[t]) return true;
+    /* 形式名が 分からなくても、**選択肢が あれば 出せる**（4択と 同じ 扱い）。 */
+    return Array.isArray(q.choices) && q.choices.length >= 2;
+  }
+
   function 作る(preset) {
-    var qs = (preset.questions || []).slice(0, 100);
-    if (!qs.length) return;
+    var 全 = (preset.questions || []);
+    var qs = 全.filter(出せるか).slice(0, 100);
+    var よけた = 全.length - qs.length;
+    if (!qs.length) {
+      var o0 = 覆い("<h2 class='vql-h'>この プリセットは まだ 出せません</h2>"
+        + "<p class='vql-sub'>みんなで解くで 出せるのは <b>4択・○×・短答・数値</b> です。"
+        + "記述や 並べ替え、資料の 問題は これから 増やします。</p>"
+        + "<button class='vql-go' data-x>閉じる</button>");
+      o0.影.addEventListener("click", function (e) { if (e.target.closest("[data-x]")) o0.閉じる(); });
+      return;
+    }
+    preset = { id: preset.id, title: preset.title || preset.name, subject: preset.subject, questions: qs };
+    if (よけた) 作った後に伝える = よけた;
     var ov = 覆い("<h2 class='vql-h'>部屋を 作って います…</h2><p class='vql-sub'>少し お待ちください。</p>");
     頼む("/api/live/create", { method: "POST", body: {
       title: preset.title || "みんなで解く",
@@ -318,11 +350,15 @@
         o2.影.addEventListener("click", function (e) { if (e.target.closest("[data-x]")) o2.閉じる(); });
         return;
       }
-      ロビー({ pin: r.pin, key: r.hostKey, you: "p1", host: true, room: r.room, preset: preset });
+      ロビー({ pin: r.pin, key: r.hostKey, you: "p1", host: true, room: r.room,
+               preset: preset, よけた: 作った後に伝える });
+      作った後に伝える = 0;
     }, function () { ov.閉じる(); });
   }
 
   /* ── ロビー（PIN を 大きく 出して 待つ）──────────────────────── */
+  var 作った後に伝える = 0;
+
   function ロビー(s) {
     var ov = 覆い("");
     var conn = null;
@@ -350,7 +386,11 @@
           }).join("") : "<span class='vql-sub' style='margin:0'>まだ 誰も 入って いません。</span>")
         + "</div>"
         + (s.host
-            ? "<button class='vql-go' data-start" + (ps.length ? "" : " disabled") + ">始める（" + ps.length + " 人）</button>"
+            ? ((s.よけた
+                ? "<p class='vql-sub' style='margin:12px 0 0'>★ みんなで解くで 出せない 形式の <b>"
+                  + s.よけた + " 問</b>は、この 部屋から 外しました（記述・並べ替え など）。</p>"
+                : "")
+              + "<button class='vql-go' data-start" + (ps.length ? "" : " disabled") + ">始める（" + ps.length + " 人）</button>")
             : "<p class='vql-sub' style='margin-top:16px;text-align:center'>先生が 始めるのを 待って います…</p>")
       );
     }
