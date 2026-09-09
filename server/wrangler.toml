@@ -34,6 +34,11 @@ class_name = "SurviveRoom"
 name = "CALL_HUB"
 class_name = "CallHub"
 
+# ★ みんなで解く の 部屋（2026-09-10）。1 部屋 = 1 個。PIN から 引く。
+[[durable_objects.bindings]]
+name = "LIVE_ROOMS"
+class_name = "LiveRoom"
+
 [ai]
 binding = "AI"
 
@@ -205,6 +210,13 @@ new_sqlite_classes = ["SurviveRoom"]
 [[migrations]]
 tag = "call-hub-v1"
 new_sqlite_classes = ["CallHub"]
+
+# ★ new_classes では なく **new_sqlite_classes**。
+#   この アカウントの Durable Object は 無料枠なので、
+#   新しい 種類は SQLite 版でしか 作れない（API が 10097 で 断る）。
+[[migrations]]
+tag = "live-room-v1"
+new_sqlite_classes = ["LiveRoom"]
 
 # ── 写真・動画・ファイルの 3 つめの 置き場（2026-08-19）──────────────
 #   置き場は 上から順に 選ぶ:

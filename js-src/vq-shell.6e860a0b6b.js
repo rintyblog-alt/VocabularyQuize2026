@@ -100,6 +100,8 @@
     /* プレイグラウンド（2026-09-07・訴え「理科、社会、数学など…3D/2D で
        シミュレーションが できる もの」）。窓として 重ねて 開く。 */
     { key: "playground", label: "プレイグラウンド", icon: "flask", path: "fn:playground", section: "main", order: 65 },
+    /* みんなで解く（2026-09-10）。PIN で 入る カフート風の 同時プレイ。 */
+    { key: "live", label: "みんなで解く", icon: "zap", path: "fn:live", section: "main", order: 66 },
     /* 文章添削（校正モード）2026-08-31。画面を 切り替えず **重ねて 開く**。 */
     { key: "write", label: "文章添削", icon: "pencil", path: "fn:write", section: "tools", order: 5 },
     { key: "timer", label: "タイマー", icon: "timer", path: "fn:timer", section: "tools", order: 10 },
@@ -503,6 +505,11 @@
       else if (el.dataset.fn === "playground") {
         closeDrawer();
         try { if (window.__vqPlayground) window.__vqPlayground.open(); } catch (eP) {}
+      }
+      /* みんなで解く（2026-09-10）。窓として 重ねて 開く。 */
+      else if (el.dataset.fn === "live") {
+        closeDrawer();
+        try { if (window.__vqParty) window.__vqParty.開く(); } catch (eL) {}
       }
       else if (el.dataset.fn === "write") {
         closeDrawer();

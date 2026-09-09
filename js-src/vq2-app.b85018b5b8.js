@@ -58183,6 +58183,13 @@
               };
             } catch (e) { return null; }
           },
+          /* ══ **みんなで解く の 取っ手**（2026-09-10）════════════════
+             参加者の 帯を 出題画面へ 重ねる には 器が 要る。
+             ★ `U.mount` で 別画面を 作っては いけない —— それは
+               **ほかの V2 画面を 全部 畳む**ので、出題画面が 閉じる。
+               必ず この 影の DOM の 中へ 差し込む。 */
+          画面: app,
+          影: (function () { try { return app.shadow || null; } catch (e) { return null; } })(),
           つぎへ: function () { try { advance(); return true; } catch (e) { return false; } },
           まえへ: function () { try { goto(st.index - 1); return true; } catch (e) { return false; } },
           いくつ目へ: function (n) { try { goto(Math.max(0, Number(n) - 1)); return true; } catch (e) { return false; } },
@@ -58201,6 +58208,14 @@
         var sc = app.root.querySelector("#pMain");
         if (sc) sc.scrollTop = 0;
       }
+      /* ★ **描き終わった**と 知らせる（2026-09-10）。
+         みんなで解く の 帯は 中身を 入れ替えるたびに 消えるので、
+         外から 差し直せる ように する。中身は 渡さない（合図だけ）。 */
+      try {
+        root.dispatchEvent(new CustomEvent("vq:quiz:render", {
+          detail: { index: st.index, id: (current() || {}).id || "" }
+        }));
+      } catch (e) {}
     }
     /* 下の操作列だけを差し替える。回答欄には触らない
        （触ると、運んでいる途中のものが消える）。 */

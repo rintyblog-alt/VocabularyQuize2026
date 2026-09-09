@@ -16,6 +16,13 @@
 import { handleSurviveRequest, isSurvivePath, SurviveRoom } from "./survive.js";
 export { SurviveRoom };
 
+/* ══ みんなで解く（2026-09-10）════════════════════════════════════════
+   中身は src/live.js。**ここへは 入口だけ**（survive.js と 同じ 決まり）。
+     handleLiveRequest … /api/live/* と /ws/live/* を 丸ごと 引き受ける
+     LiveRoom          … 部屋 1 つ = 1 個（Durable Object） */
+import { handleLiveRequest, isLivePath, LiveRoom } from "./live.js";
+export { LiveRoom };
+
 /* ══ DM の 音声通話（2026-08-29）══════════════════════════════════════
    ★ 判定（誰と 通話して よいか）は **calls.js の canCall 1 か所だけ**。
      画面の ボタンを 隠すのは 制御では ない。どの 口からでも ここを 通す。 */
@@ -67765,6 +67772,21 @@ export default {
     /* ── DM の 音声通話（2026-08-29）──────────────────────────────
        ★ ここは flag の 関所より 先に あるので、**自分で** 見る。
          左パネルから 消すだけでは 止まらない（この アプリの 決まり）。 */
+    /* ══ みんなで解く（2026-09-10）════════════════════════════════════
+       ★ 道を /ws/live/ に して あるのは、**api で 始めない** ため。
+         api で 始まる WebSocket は ダウンタイムの 503 に 当たって 落ちる
+         （survive と 同じ 逃がしかた）。
+       ★ 注意: この 注釈の 中に 「アスタリスク2つ + スラッシュ」を 書くと
+         そこで 注釈が 閉じて しまい、続きが コードとして 読まれる（実測で 踏んだ）。 */
+    if (isLivePath(path)) {
+      stage = "live";
+      const r = await handleLiveRequest(request, env, ctx);
+      if (r) {
+        if (r.status === 101) return r;
+        return applyCorsToResponse(r, corsPolicy, request);
+      }
+    }
+
     if (isCallPath(path)) {
       stage = "call";
       const 止 = await flagBlockResponse(env, "/api/dm/threads", { userId: "", isAdmin: false }).catch(() => null);
