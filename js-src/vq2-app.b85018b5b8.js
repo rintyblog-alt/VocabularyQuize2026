@@ -20849,6 +20849,8 @@
         exam: o.exam === true ? true : undefined,
         subject: o.subject || undefined,
         materials: o.materials === true ? true : undefined,
+        /* ★ すでに 作った ぶん（回を またいだ 重複を 止める）。 */
+        avoid: (o.avoid && o.avoid.length) ? o.avoid : undefined,
         track: true,
         /* ★ **同じ注文の 目印**（2026-08-29）。1 回の「作って」は 中で
            2〜3 回に 分けて 頼まれる。画面を 閉じたまま 終わったとき、
@@ -37336,7 +37338,11 @@
           files: files.length ? files : undefined,
           /* ★ 同じ 注文の 目印。1 回の「作って」で 分けて 頼んだ ぶんを
              **1 つの プリセット**へ まとめる ために 使う。 */
-          orderId: o.orderId || undefined
+          orderId: o.orderId || undefined,
+          /* ★ すでに 作った ぶん。サーバは これも 重複の 相手に する。 */
+          avoid: (o.already && o.already.length)
+            ? o.already.slice(-60).map(function (t) { return String(t).slice(0, 80); })
+            : undefined
         };
         /* ★ 台帳に 載せて 作る（クラウド化）。
            ここは **プリセットを 作る 画面（preset-studio）が 通る 道**。
@@ -50122,6 +50128,10 @@
           count: n,
           /* ★ この回で読む資料のかたまり。回るたびに次へ進めるので、
              最後まで回れば資料を全部読んだことになる。 */
+          /* ★ **すでに 作った 問題を 渡す**（2026-09-09・訴え）。
+             回が 変わると サーバの 重複判定は まっさらから 始まる。
+             渡さないと、前の 回と 同じ 題材を もう一度 作って しまう。 */
+          already: collected.map(function (x) { return String(x.prompt || ""); }).filter(Boolean),
           docPart: docParts > 1 ? (docAt % docParts) : 0,
           docParts: docParts > 1 ? docParts : 0,
           /* この回で作ってよい形式。**文章で頼むだけでは守られない。**
@@ -50452,13 +50462,48 @@
 
     function stripCount(text) { return D.stripCount(text); }
     /* 問題文がほぼ同じものを落とす（正規化して比較する） */
+    /* ══ **題材で 見分ける**（2026-09-09・訴え「同じ問題が 重複」）══════
+       ここは 文字が **完全に 同じ** ものしか 落として いなかった。
+       1 回の 注文は 中で 何回かに 分けて 頼まれ、**回が 変われば
+       サーバは 前の 回を 知らない**ので、言い換えた 同じ 問題が
+       そのまま 2 つ 並ぶ。実測（情報Ⅰ・50問）:
+         「統計の分散の定義を示せ」/「統計の分散の定義を述べよ」
+         「正規化の目的は何ですか（4択）」/「正規化の目的を述べよ（記述）」
+       ★ 文の 重なりで 見ては いけない。上は 58%、
+         別ものの「スタックの特徴」/「キューの特徴」が 79% で 逆転する。
+       ★ 見るのは **題材**（言い方と 前置きを 落とした 中身の 語）。
+         実測 6 例 6 正解: 同じ 題材 100% / 別の 題材 67〜75%。 */
+    var 題材の止め語 = {};
+    ["述べよ","述べなさい","説明せよ","説明しなさい","示せ","示しなさい","答えよ","答えなさい",
+     "挙げよ","挙げなさい","書け","書きなさい","選べ","問題","以下","次の","理由","場合","内容",
+     "情報","とは","について","ですか","なさい","しなさい","適切","正しい","誤り","何か"]
+      .forEach(function (w) { 題材の止め語[w] = true; });
+    function 題材(t) {
+      var out = [];
+      var m = String(t || "").replace(/[\s　]+/g, "")
+        .match(/[\u4e00-\u9fa5]{2,}|[\u30a1-\u30f6\u30fc]{2,}|[A-Za-z]{2,}/g) || [];
+      m.forEach(function (w) { if (!題材の止め語[w] && out.indexOf(w) < 0) out.push(w); });
+      return out;
+    }
+    function 題材が同じ(a, b) {
+      if (a.length < 3 || b.length < 3) return false;
+      var h = 0;
+      a.forEach(function (w) { if (b.indexOf(w) >= 0) h++; });
+      return h / Math.min(a.length, b.length) >= 0.9;
+    }
     function dropDuplicates(list, done) {
       var seen = {};
-      done.forEach(function (q) { seen[normPrompt(q.prompt)] = true; });
+      var 題 = [];
+      done.forEach(function (q) {
+        seen[normPrompt(q.prompt)] = true;
+        題.push(題材(q.prompt));
+      });
       return list.filter(function (q) {
         var k = normPrompt(q.prompt);
         if (!k || seen[k]) return false;
-        seen[k] = true;
+        var t = 題材(q.prompt);
+        for (var i = 0; i < 題.length; i++) if (題材が同じ(t, 題[i])) return false;
+        seen[k] = true; 題.push(t);
         return true;
       });
     }

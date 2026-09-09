@@ -58,6 +58,34 @@ async function 頼む(token, body) {
 }
 const 数える = (q) => { const o = {}; for (const x of q) o[x.type] = (o[x.type] || 0) + 1; return o; };
 
+/* ══ **同じ問題・関係ない問題**（2026-09-09・訴え）════════════════════
+   ★ 比べるのは 文 では なく **題材**。文の 重なりで 見ると
+     「分散の定義を示せ／述べよ」（同じ）が 58%、
+     「スタックの特徴／キューの特徴」（別）が 79% で **逆転する**。 */
+const 止め語 = new Set(["述べよ", "述べなさい", "説明せよ", "説明しなさい", "示せ", "示しなさい",
+  "答えよ", "答えなさい", "挙げよ", "挙げなさい", "書け", "書きなさい", "選べ", "問題", "以下",
+  "次の", "理由", "場合", "内容", "情報", "とは", "について", "ですか", "なさい", "しなさい",
+  "適切", "正しい", "誤り", "何か"]);
+const 題材 = (t) => {
+  const o = [];
+  (String(t || "").replace(/[\s　]+/g, "")
+    .match(/[\u4e00-\u9fa5]{2,}|[\u30a1-\u30f6\u30fc]{2,}|[A-Za-z]{2,}/g) || [])
+    .forEach((w) => { if (!止め語.has(w) && o.indexOf(w) < 0) o.push(w); });
+  return o;
+};
+const 同じ題材 = (a, b) => {
+  if (a.length < 3 || b.length < 3) return false;
+  let h = 0; a.forEach((w) => { if (b.indexOf(w) >= 0) h++; });
+  return h / Math.min(a.length, b.length) >= 0.9;
+};
+const 重複を数える = (q) => {
+  const T = q.map((x) => 題材(x.question)); const out = [];
+  for (let i = 0; i < T.length; i++) for (let j = i + 1; j < T.length; j++) {
+    if (同じ題材(T[i], T[j])) out.push([i, j]);
+  }
+  return out;
+};
+
 (async () => {
   const l = await fetch(BASE + "/api/auth/login", {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -96,7 +124,32 @@ const 数える = (q) => { const o = {}; for (const x of q) o[x.type] = (o[x.typ
        裏の 走りは **30 秒で 打ち切られる**（本番のログで 実測）ので、
        仕上げを 書けずに「ずっと 作成中」に なって いた。
      合否は「**画面が 諦める 90 秒 以内に 中身が 届くか**」。 */
-  console.log("\n【③ 画面が 通る 道（裏で 走らせる）】");
+  /* ── ③ 同じ問題が 並ばない・頼んだ 教科から 出ない ─────────────
+     訴え「関係ない問題が 多数 入るのと、同じ問題が 重複して しまっている」。
+     実測（直す前・情報Ⅰ,Ⅱ 50問）: 重複 6 組・数学の 内容 6 問。 */
+  console.log("\n【③ 同じ問題・関係ない問題】");
+  const 教科の外 = [
+    ["情報Ⅰ、Ⅱの全範囲から50問問題を作成してください。4択が10問、その他記述が40問でお願い。", 50,
+      /加法定理|期待値|標準偏差|分散の定義|分位点|標本と母集団|確率分布|四分位|正規分布|信頼区間|順列|組合せ|微分|積分|三角比/, "数学"],
+    ["中学理科の光合成について30問つくって", 30,
+      /鎌倉|江戸|関係代名詞|方程式|因数分解|平安|明治|憲法|裁判所/, "別の教科"],
+  ];
+  for (const [p, n, 外, 名] of 教科の外) {
+    const t = Date.now();
+    const r = await 頼む(l.token, { prompt: p, count: n });
+    const q = r.questions || [];
+    const 重 = 重複を数える(q);
+    const 外れ = q.filter((x) => 外.test(String(x.question)));
+    /* 重複は 0 が 当たり前。教科の 外は 1 割まで（境目の 単元は ある）。 */
+    const ok = q.length >= Math.ceil(n * 0.8) && 重.length === 0 && 外れ.length <= Math.floor(n * 0.1);
+    if (!ok) 落++;
+    console.log(`  ${ok ? "✓" : "✗"} ${q.length}/${n}  ${秒(t)}  重複 ${重.length} 組 / ${名} ${外れ.length} 問`);
+    重.slice(0, 3).forEach(([a, b]) =>
+      console.log(`      重「${q[a].question.slice(0, 30)}」「${q[b].question.slice(0, 30)}」`));
+    外れ.slice(0, 3).forEach((x) => console.log(`      外「${String(x.question).slice(0, 46)}」`));
+  }
+
+  console.log("\n【④ 画面が 通る 道（裏で 走らせる）】");
   for (let k = 1; k <= 3; k++) {
     const t = Date.now();
     const s0 = await 頼む(l.token, { prompt: 配分[0][0], count: 50, track: true, orderId: "chk" + Date.now() });
@@ -116,7 +169,7 @@ const 数える = (q) => { const o = {}; for (const x of q) o[x.type] = (o[x.typ
     console.log(`  ${ok ? "✓" : "✗"} ${終 ? 終.status : "終わらない"}  ${q.length}/50  ${秒(t)}`);
   }
 
-  const 全 = 配分.length + 試験.length + 3;
+  const 全 = 配分.length + 試験.length + 教科の外.length + 3;
   console.log(落 ? `\n落ちた ${落}/${全}` : `\nぜんぶ 頼んだ 通りに 作れました（${全}/${全}）`);
   process.exit(落 ? 1 : 0);
 })();

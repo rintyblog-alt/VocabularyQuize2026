@@ -46892,6 +46892,42 @@ function aigenFitCount(perQ, base) {
    数学 15 問で 63 問つくって 15 問しか残らなかったのはこれ。
    2 文字のつながりで見ると、並びの違いが残るので誤って捨てる数が
    6 組中 3 組 → 1 組に減った（本物の重複を見つける力は変わらず）。 */
+/* ══ **題材で 見分ける**（2026-09-09・訴え「同じ問題が 重複して しまっている」）
+   これまでの 重複判定は 2 つの 穴が あった:
+     ① **同じ 形式どうし しか 見て いない**（past.type !== id で とばす）。
+        「正規化の目的は何ですか（4択）」と「正規化の目的を述べよ（記述）」が
+        両方 残る。実測の 50 問で これが 起きた。
+     ② 文字の 重なり **9 割** でしか 落とさない。日本語の 言い換えは
+        そこまで 似ない。実測:
+          「統計の分散の定義を示せ」/「統計の分散の定義を述べよ」 → 58%（同じ 問題）
+          「スタックの特徴を述べよ」/「キューの特徴を述べよ」     → 79%（別の 問題）
+        **数字を 下げると 別の 問題まで 消える。** 比べる ものが 違う。
+   ★ 比べるのは 文 ではなく **題材**。
+     「述べよ／示せ／説明せよ」の ような 言い方と、教科・学年の 前置きを
+     落として、中身の 語（漢字・カタカナ・英字の かたまり）だけを 見る。
+     実測 6 例 6 正解: 同じ 題材 100% / 別の 題材 67〜75%。 */
+const AIGEN題材の止め語 = new Set([
+  "述べよ", "述べなさい", "説明せよ", "説明しなさい", "示せ", "示しなさい",
+  "答えよ", "答えなさい", "挙げよ", "挙げなさい", "書け", "書きなさい", "選べ",
+  "問題", "以下", "次の", "理由", "場合", "内容", "情報", "とは", "について",
+  "ですか", "なさい", "しなさい", "適切", "正しい", "誤り", "何か"
+]);
+function aigen題材(text) {
+  const t = String(text || "").replace(/[\s　]+/g, "");
+  const 出 = new Set();
+  (t.match(/[一-龠]{2,}|[ァ-ヶー]{2,}|[A-Za-z]{2,}/g) || []).forEach((w) => {
+    if (!AIGEN題材の止め語.has(w)) 出.add(w);
+  });
+  return 出;
+}
+/* 題材の 重なり。**少ないほう**で 割る（言い足しで 薄まらない ように）。 */
+function aigen題材が同じ(a, b) {
+  if (a.size < 3 || b.size < 3) return false;
+  let h = 0;
+  for (const w of a) if (b.has(w)) h++;
+  return h / Math.min(a.size, b.size) >= 0.9;
+}
+
 function aigenBigrams(s) {
   const t = String(s || "");
   const out = new Set();
@@ -47059,7 +47095,13 @@ const AIGEN_ENGINES = {
     /* 書き方のゆれは受け取りのところでそろえてある（aigenBlankNormalize）。
        ここでは **そろった形になっているか**だけを見る。 */
     validate(q) {
-      const nums = aigenBlankNums(q.question);
+      /* ★ **空欄は 本文の 側に あることが 多い**（2026-09-09・訴え）。
+         英語では「次の英文の 空所【1】に 入る 語を 答えよ」と 書き、
+         【1】は materials.passage の 中に ある。question だけ 数えると
+         数が 合わず、正しい 問題を まるごと 落として いた
+         （実測: 英語の 試験で「answer の数が空欄の数と合わない」11 件）。
+         ★ 同じ 番号は 1 つと 数える（question と 本文の 両方に 出る）。 */
+      const nums = aigenBlankNums(aigen穴埋めの本文(q));
       if (!nums.length) return "空欄（【1】）が無い";
       if (nums.some((n, i) => n !== i + 1)) return "空欄の番号が 1 から順になっていない";
       const a = Array.isArray(q.answer) ? q.answer : [];
@@ -49420,7 +49462,7 @@ function aigenFixPickWording(q, engineId) {
      そこは 理由を 見せて 頼み直す。 */
 function aigenFixBlankAnswers(q, engineId) {
   if (!q || engineId !== "fill_blank") return q;
-  const 数 = aigenBlankNums(q.question).length;
+  const 数 = aigenBlankNums(aigen穴埋めの本文(q)).length;
   if (!数) return q;
   if (!Array.isArray(q.answer)) {
     const v = q.answer === null || q.answer === undefined ? "" : String(q.answer).trim();
@@ -49428,6 +49470,20 @@ function aigenFixBlankAnswers(q, engineId) {
   }
   if (Array.isArray(q.answer) && q.answer.length > 数) q.answer = q.answer.slice(0, 数);
   return q;
+}
+
+/* 穴埋めの 空欄は question と 本文（materials.passage）の どちらにも 置ける。
+   両方を つないで、**番号は 重ならない ように 1 つずつ** 並べ直す。 */
+function aigen穴埋めの本文(q) {
+  const 本 = (q && q.materials && typeof q.materials.passage === "string") ? q.materials.passage : "";
+  const 全 = String((q && q.question) || "") + "\n" + 本;
+  const 見た = new Set();
+  const 出 = [];
+  (全.match(/【\s*(\d{1,2})\s*】/g) || []).forEach((m) => {
+    const n = m.replace(/[^\d]/g, "");
+    if (!見た.has(n)) { 見た.add(n); 出.push("【" + n + "】"); }
+  });
+  return 出.join("");
 }
 
 function aigenPromptTypeMismatch(q, engineId) {
@@ -50732,6 +50788,76 @@ const AIGEN_OUTLINE_SCHEMA = {
  * 資料を 順番に 4〜10 個の かたまりへ 分ける。
  * @returns {Promise<{parts:Array, ms:number, aiCalls:number, err:string}>}
  */
+/* ══ **論点の 一覧を 先に 作る**（2026-09-09・訴え
+   「関係ない問題が 多数 入るのと、同じ問題が 重複して しまっている」）════
+
+   資料が ある ときは 目次（aigenOutline）で 範囲を 割り当てて いた。
+   **資料が 無い ときは 何も 割り当てて いなかった。**
+   その結果:
+     ・同じ 題材を 何度も 作る（「統計の 分散の 定義」が 2 回）
+     ・頼まれた 範囲の 外へ はみ出す（情報Ⅰ・Ⅱ を 頼んで
+       「確率の 加法定理」「期待値の 計算式」「標準偏差の 計算式」——
+       これは **数学**で、情報の 範囲では ない。実測 50 問中 6 問）
+
+   ★ 直しかた: **先に 論点を 並べさせ、回ごとに 1 つずつ 割り当てる。**
+     資料つきと 同じ 仕組み（parts）に そのまま 載せる。
+     AI に 範囲を 判じさせるのは **1 回だけ**で 済み、
+     そのあとは「この 論点だけ」と 言えば よい。
+   ★ 呼び出しは 1 回 増えるが、速い モデルで 2〜4 秒。
+     重複で 作り直す ほうが ずっと 高く つく。 */
+async function aigen論点(env, prompt, o = {}) {
+  const out = { parts: [], ms: 0, aiCalls: 0, err: "", model: "", provider: "" };
+  const t0 = Date.now();
+  const 欲しい数 = Math.max(4, Math.min(12, qreditSafeInt(o.want || 8, 8)));
+  const user = [
+    "次の 頼みを 読んで、**出題する 論点の 一覧**を 作ってください。問題は 作りません。",
+    "",
+    "【頼み】", String(prompt || "").slice(0, 1200), "",
+    "★ 頼まれた 範囲を、重ならない " + 欲しい数 + " 個 前後の 論点に 分けます。",
+    "★ **頼まれた 教科・科目の 中だけ**で 分けてください。",
+    "　近い 教科（数学・物理・現代社会 など）へ はみ出しては いけません。",
+    "　例:「情報Ⅰ・Ⅱ」なら 確率・期待値・標準偏差は **数学** なので 入れません。",
+    "★ 論点どうしが 重ならない ように します（同じ ことを 2 つに 分けない）。",
+    "★ 頼みに 単元名が 書いて あれば、それを そのまま 使います。",
+    "それぞれに 次を 書きます:",
+    "　title … 論点の 名前（教科書の 単元名のように 短く）",
+    "　field … 大きな 分野の 名前",
+    "　where … 空文字で かまいません（資料は ありません）",
+    "　topics … その 論点に 含まれる 項目を 並べた もの（3〜8 個）",
+    "　share … 全体に 占める 大きさ（整数。**合計が 100**）"
+  ].join("\n");
+  const sys = "あなたは 出題範囲を 論点に 分ける 人です。JSON だけを 返します。";
+  for (const provider of aigenProviders(env)) {
+    const model = aigenModelFor(env, provider, "fast");
+    if (!model) continue;
+    const r = await aigenAskVia(env, provider, model, {
+      sys, user, maxTokens: 2000, responseSchema: AIGEN_OUTLINE_SCHEMA
+    }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
+    out.aiCalls++;
+    if (!r || !r.ok) { out.err = String(r?.error || "呼べません").slice(0, 160); continue; }
+    let j = r.parsed;
+    if (!j && typeof r.text === "string") { try { j = JSON.parse(r.text); } catch (e) {} }
+    const rows = (j && Array.isArray(j.parts)) ? j.parts : [];
+    const parts = rows.map((x) => ({
+      title: toSafeString(x && x.title, 80),
+      field: toSafeString((x && x.field) || (x && x.title), 40),
+      where: "",
+      share: Math.max(1, qreditSafeInt(x && x.share, 10)),
+      topics: Array.isArray(x && x.topics)
+        ? x.topics.map((t) => toSafeString(t, 60)).filter(Boolean).slice(0, 10) : [],
+      /* ★ 資料は 無い。この印が 無いと「資料の…」と 言って しまう。 */
+      資料なし: true
+    })).filter((x) => x.title).slice(0, 12);
+    if (parts.length) {
+      out.parts = parts; out.model = r.model || model; out.provider = provider;
+      break;
+    }
+    out.err = out.err || "論点が 空でした";
+  }
+  out.ms = Date.now() - t0;
+  return out;
+}
+
 async function aigenOutline(env, files, o = {}) {
   const out = { parts: [], ms: 0, aiCalls: 0, err: "", model: "", provider: "" };
   if (!Array.isArray(files) || !files.length) return out;
@@ -50826,7 +50952,10 @@ function aigenPartNote(part) {
   const 名 = part.title || part.field || "この範囲";
   return [
     "【この回で 使う 範囲（ここが いちばん 大事）】",
-    "資料の **「" + 名 + "」**" + (part.where ? "（" + part.where + "）" : "") + " **だけ**から 作ります。",
+    /* ★ 資料が 無い ときは「資料の」と 言わない（2026-09-09）。
+       言うと AI が「資料が 見当たらない」と 判じて 作らなく なる。 */
+    (part.資料なし ? "**「" + 名 + "」**" : "資料の **「" + 名 + "」**")
+      + (part.where ? "（" + part.where + "）" : "") + " **だけ**から 作ります。",
     "★ この 範囲の 外から 作っては いけません。**1 問も** です。",
     "★ 範囲の 中でも **先頭に 寄せないで**、前・中・後ろから 均等に 取ります。",
     /* ★ 見出しを 並べる のが いちばん 効く（2026-08-31 実測）。
@@ -52058,6 +52187,8 @@ async function aigenGenerate(env, contract, o = {}) {
      ★ だから 予算を 持たせる。越えたら **点検を やめて 切り上げる**。
        作った ものは 捨てない。点検は 出来上がりを 見るだけ なので、
        ここを 削っても 問題は 減らない。 */
+  /* 前の 回の ぶんは 毎回 作り直さない（問題ごとに 作ると 重い）。 */
+  const 既出の題材 = (Array.isArray(o.既出) ? o.既出 : []).map(aigen題材).filter((x) => x.size >= 3);
   const 期限 = Number(o.期限) > 0 ? Number(o.期限) : 0;
   const 時間切れ = () => 期限 > 0 && Date.now() > 期限;
   /* 呼び出しの上限は問題数に合わせる。30 問を 14 回で作りきるのは無理があり、
@@ -52309,6 +52440,21 @@ async function aigenGenerate(env, contract, o = {}) {
          1 文字だと並びが消えるので、数字や語だけが違う別問題まで
          同じ扱いになっていた（実測 2026-08-13: 数学 15 問で 63 問つくって
          15 問しか残らなかった原因）。 */
+      /* ★ **形式を またいで 題材で 見る**（2026-09-09・訴え）。
+         下の 重なり判定は 同じ 形式どうし しか 見ない ので、
+         4択と 記述で 同じ ことを 聞く 問題が そのまま 残って いた。 */
+      if (!dup) {
+        const 題 = aigen題材(q.question);
+        for (const past of accepted) {
+          if (aigen題材が同じ(題, aigen題材(past.question))) { dup = true; break; }
+        }
+        /* ★ 前の 回の ぶんとも 比べる（回を またいだ 重複）。 */
+        if (!dup) {
+          for (const t of 既出の題材) {
+            if (aigen題材が同じ(題, t)) { dup = true; break; }
+          }
+        }
+      }
       if (!dup) {
         const cur = aigenBigrams(norm(disc));
         if (cur.size >= 6) {
@@ -52379,7 +52525,16 @@ async function aigenGenerate(env, contract, o = {}) {
         const 床 = Math.floor(深.min * 0.6);
         const 長 = q.choices.map((c) => String(c || "").length);
         const 平均 = 長.reduce((a, b) => a + b, 0) / 長.length;
-        if (平均 < 床) {
+        /* ★ **英語の 語を 選ばせる 問題は 短くて 当たり前**（2026-09-09・訴え）。
+           who / which / that / whose に 18 字の 床を かけると
+           英文法が まるごと 落ちる（実測: 英語の 試験 25 問中 11 問が
+           「選択肢が短い」で 消え、15/25 で 終わった）。
+           選択肢が すべて 半角（英語）で 短い ときは 数えない。 */
+        const 英語の語 = q.choices.every((c) => {
+          const t = String(c || "").trim();
+          return t && t.length <= 24 && !/[^\x20-\x7e]/.test(t);
+        });
+        if (!英語の語 && 平均 < 床) {
           metrics.rejected++;
           metrics.rejectReasons["選択肢が短い"] = (metrics.rejectReasons["選択肢が短い"] || 0) + 1;
           pe.ng++;
@@ -52601,9 +52756,9 @@ async function aigenGenerate(env, contract, o = {}) {
         uniqueAnswers: !!contract.uniqueAnswers,
         usedAnswers: contract.uniqueAnswers
           ? accepted.map((q) => aigenAnswerKey(q)).filter(Boolean).slice(-40) : null,
-        avoid: (o.avoidSeed || [])
-          .concat(accepted.slice(-12).map((q) => String(q.question || "").slice(0, 60)).filter(Boolean))
-          .slice(-40),
+        avoid: (o.avoidSeed || []).concat(o.既出 || [])
+          .concat(accepted.slice(-24).map((q) => String(q.question || "").slice(0, 60)).filter(Boolean))
+          .slice(-48),
         /* 試験モード（聞かれ方・ひっかけ・教科の 縛り）。 */
         exam: !!o.exam, subject: o.subject,
         /* ★ 難しさ・話し合いの 有無（2026-08-31・国語の 本文の 長さが 決まる）。 */
@@ -52717,7 +52872,12 @@ async function aigenGenerate(env, contract, o = {}) {
         usedAnswers: contract.uniqueAnswers
           ? accepted.map((q) => aigenAnswerKey(q)).filter(Boolean).slice(-40) : null,
         retryNote: jb.prev && jb.prev.lastReason ? jb.prev.lastReason : "",
-        avoid: (o.avoidSeed || []).concat(jb.made).slice(-40),
+        /* ★ 既出は **形式を またいで** 伝える（2026-09-09・訴え）。
+           jb.made は その 形式で 作った ぶん だけ。4択で 聞いた ことを
+           記述で もう一度 聞く のを 止められなかった。 */
+        avoid: (o.avoidSeed || []).concat(o.既出 || []).concat(jb.made)
+          .concat(accepted.slice(-24).map((x) => String(x.question || "").slice(0, 60)))
+          .filter(Boolean).slice(-48),
         truncs: jb.prev && jb.prev.truncs ? jb.prev.truncs : 0,
         files: o.files,
         /* ★ この回で 使う 資料の 範囲（2026-08-31）。 */
@@ -53323,6 +53483,36 @@ async function aigenGenerateAll(env, contract, o = {}) {
         /* ★ 目次が 作れなくても **止めない**。これまでどおり 作る
            （範囲の 指定が 無いだけ）。できない ことは できないと 残す。 */
         o = Object.assign({}, o, { outlineMeta: ol || { err: "目次を作れませんでした" } });
+      }
+    }
+  }
+  /* ══ **資料が 無い ときは 論点を 作る**（2026-09-09・訴え
+     「関係ない問題が 多数 入る／同じ問題が 重複する」）════════════════
+     資料つきは 上で 目次を 作って 範囲を 割り当てて いた。
+     資料なしは **何も 割り当てて いなかった** ので、
+     ・同じ 題材を 何度も 作る
+     ・頼まれた 教科の 外（情報Ⅰ を 頼んで 数学の 統計）へ はみ出す
+     が 起きて いた。実測 50 問中 6 問が 数学。
+     ★ 少ない ときは 要らない（1 回で 作り切れる）。12 問 以上から。 */
+  if (o.outline !== false && !o.parts && !(Array.isArray(o.files) && o.files.length)) {
+    const 総数 = Object.values(contract.plan || {}).reduce((a, b) => a + b, 0);
+    /* ★ **少ない ときは 作らない**（2026-09-09 実測）。
+       12 問で 論点を 3 つに 分けたら 1 回 4 問 ずつに なり、
+       時間内に 埋まらず 11/12 に なった。重複と はみ出しは
+       数が 多い ときに 効いて くる ので、25 問 から。 */
+    if (総数 >= 25) {
+      /* ★ 論点は **粗く 分ける**（2026-09-09 実測）。
+         8 個に 分けたら 1 回あたり 6 問 しか 作れず、
+         50 問 埋めるのに 8 回 以上 かかって 時間内に 終わらなかった
+         （50問 → 20/50）。範囲を 縛るのが 目的 なので 3〜5 個で 足りる。 */
+      const 欲 = Math.max(3, Math.min(5, Math.round(総数 / 12)));
+      const lp = await aigen論点(env, o.topic || "", { want: 欲 }).catch(() => null);
+      if (lp && lp.parts && lp.parts.length >= 2) {
+        o = Object.assign({}, o, { parts: lp.parts, outlineMeta: lp,
+          usedCalls: Math.max(0, qreditSafeInt(o.usedCalls, 0)) + (lp.aiCalls || 0) });
+      } else {
+        /* ★ 作れなくても 止めない（範囲の 指定が 無いだけ）。 */
+        o = Object.assign({}, o, { outlineMeta: lp || { err: "論点を作れませんでした" } });
       }
     }
   }
@@ -54940,6 +55130,13 @@ async function handleAiGenQuestions(request, env, ctx) {
   const dev = String(env?.AI_PROBE_ENABLED || "") === "1";
   const genOpts = {
     topic: prompt + 時事の材料, files, maxRounds: body?.maxRounds, maxCalls: body?.maxCalls,
+    /* ★ **前の 回で すでに 作った 問題**（2026-09-09・訴え「同じ問題が 重複」）。
+       1 回の 注文は 中で 何回かに 分けて 頼まれる。回が 変わると
+       こちらの 重複判定は まっさらから 始まる ので、画面が 持っている
+       ぶんを 渡して もらう。ここを 見ないと **回を またいだ 重複**は
+       誰も 止められない。 */
+    既出: Array.isArray(body?.avoid)
+      ? body.avoid.map((x) => toSafeString(x, 120)).filter(Boolean).slice(-60) : [],
     /* 試験モードか（2026-08-30）。プリセット作成とは 頼みかたが 違う。
        一問一答に 寄せない・ひっかけを 作る・教科を またがない。 */
     exam: body?.exam === true,
