@@ -32,6 +32,11 @@ function 定数(名) {
 const 場 = [
   定数("AIGEN_BLANK_MARK_RE"), 定数("AIGEN_PICK_RE"),
   "const AIGEN_WRITE_ENGINES = new Set(['free_text','long_answer','essay','english_writing','source_analysis']);",
+  /* ★ **AIGEN_ENGINES も 要る**（2026-09-09 に 決まり③が 参照するように なった）。
+     本体から 表 ごと 持って くると 巨大に なるので、この 検査で 要る
+     「選ばせる 形式か どうか」だけを 写す。増えたら ここへ 足す。 */
+  "const AIGEN_ENGINES = new Proxy({}, { get: (_, k) => ({ choiceBased:"
+    + " ['single_choice','multi_choice','true_false','audio_choice','image_choice'].indexOf(String(k)) >= 0 }) });",
   抜く("aigenBlankNums"), 抜く("aigenPromptTypeMismatch"),
   "return aigenPromptTypeMismatch;"
 ].join("\n");

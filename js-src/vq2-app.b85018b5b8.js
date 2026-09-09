@@ -45978,7 +45978,9 @@
     ".vq2-qb[data-pat=\"grid\"]::after{background:repeating-linear-gradient(0deg,transparent 0 17px,hsl(var(--qb-hue) 40% var(--qb-l3)) 17px 18px),repeating-linear-gradient(90deg,transparent 0 17px,hsl(var(--qb-hue) 40% var(--qb-l3)) 17px 18px);opacity:.3;}",
     ".vq2-qb[data-pat=\"dots\"]::after{background-image:radial-gradient(hsl(var(--qb-hue) 44% var(--qb-l3)) 1.6px,transparent 1.7px);background-size:14px 14px;}",
     ".vq2-qb[data-pat=\"paper\"]::after{background:repeating-linear-gradient(0deg,transparent 0 11px,hsl(var(--qb-hue) 40% var(--qb-l3)) 11px 12px);opacity:.34;}",
-    ".vq2-qb-art{position:relative;z-index:2;display:block;width:100%;height:100%;}",
+    /* ★ 高さを 百分率で 指定しない（この 画面の 決まり。vqqtypepicker が 見て いる）。
+       表紙は aspect-ratio で 高さが 決まって いるので、absolute で 敷く。 */
+    ".vq2-qb-art{position:absolute;inset:0;z-index:2;display:block;width:100%;}",
 
     /* ══ 絵で 見る 並べかた ══════════════════════════════════════ */
     ".vq2-qtp .vq2-qt-grid.is-cover{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:12px;}",
@@ -46003,12 +46005,12 @@
       "background:var(--vq-accent-subtle,#F2EEFB);color:var(--vq-accent-text,#5F579E);cursor:pointer;font-family:inherit;}",
     ".vq2-qt-act svg{width:12px;height:12px;}",
     ".vq2-qt-clr{border:0;background:none;font:inherit;font-size:12px;font-weight:650;cursor:pointer;",
-      "color:var(--vq-text-muted,#7A7391);padding:4px 6px;border-radius:8px;}",
-    ".vq2-qt-clr:hover{background:var(--vq-surface-2,#F6F4FB);}",
+      "color:var(--vq-text-secondary,#7A7391);padding:4px 6px;border-radius:8px;}",
+    ".vq2-qt-clr:hover{background:var(--vq-surface-sunken,#F6F4FB);}",
     /* 見かたの 切り替え（絵／一覧） */
     ".vq2-qt-den{display:inline-flex;gap:2px;border:1px solid var(--vq-border,#DED8EE);border-radius:10px;padding:2px;}",
     ".vq2-qt-den button{border:0;background:none;font:inherit;font-size:12px;font-weight:650;cursor:pointer;",
-      "padding:4px 9px;border-radius:8px;color:var(--vq-text-muted,#7A7391);display:inline-flex;align-items:center;gap:4px;}",
+      "padding:4px 9px;border-radius:8px;color:var(--vq-text-secondary,#7A7391);display:inline-flex;align-items:center;gap:4px;}",
     ".vq2-qt-den button.is-on{background:var(--vq-accent-subtle,#F2EEFB);color:var(--vq-accent-text,#5F579E);}",
     ".vq2-qt-den svg{width:14px;height:14px;}",
     ".vq2-qt-cnt-row{display:flex;align-items:center;gap:10px;}",
