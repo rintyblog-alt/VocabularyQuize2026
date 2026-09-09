@@ -51,12 +51,17 @@ const 問 = [
   const B2 = await 開く("生徒B", { width: 390, height: 840 });
   見る("3 枚とも __vqParty が ある", true);
 
-  /* ① 部屋を 作る */
+  /* ① 部屋を 作る
+     ★ **札は アプリと 同じ 鍵に 置く**（2026-09-10・訴え
+       「ログインして いるのに 部屋を 作れない」）。
+       前は 検査が `wordPractice400.auth.token` という **自分で 決めた 鍵**へ
+       置いて いた。画面側も 同じ 間違いを して いた ので **両方 間違ったまま
+       通って いた**。本物の 置き場（app.auth.token.v1）に 揃える。 */
   const pin = await T.evaluate(async ({ qs, 名, 合 }) => {
     const l = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ gradePrefix: "H1", nickname: 名, password: 合 }) }).then((r) => r.json());
     if (!l.token) return "ログイン不可";
-    localStorage.setItem("wordPractice400.auth.token", l.token);
+    localStorage.setItem("app.auth.token.v1", l.token);
     window.__vqParty.作る({ id: "t1", title: "検査", questions: qs });
     for (let i = 0; i < 60; i++) {
       await new Promise((r) => setTimeout(r, 300));

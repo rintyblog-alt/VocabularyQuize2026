@@ -66,20 +66,29 @@ async function 止められているか(env, uid) {
   if (st === "suspended" && until && new Date(until).getTime() < Date.now()) return false;
   return true;
 }
+/* ★ **断る 理由を 分ける**（2026-09-10・訴え「ログインして いるのに 部屋を
+   作れない」）。ぜんぶ「ログインが 要ります」に して いたので、
+   暗証番号を 確かめて いないだけの 人が **何を すれば よいか 分からなかった**。 */
 async function 人を引く(request, env) {
   const m = /^Bearer\s+(.+)$/i.exec(String(request.headers.get("Authorization") || ""));
   const token = m ? m[1].trim() : "";
-  if (!token || !env || !env.DB) return null;
+  if (!token) return { だめ: "NO_TOKEN", message: "部屋を 作るには ログインが 要ります。" };
+  if (!env || !env.DB) return { だめ: "NO_DB", message: "いま 部屋を 作れません。少し 待って ください。" };
   const hash = await sha256Hex(token);
   const row = await env.DB.prepare(
     "SELECT s.user_id AS userId, s.pin_ok_at AS pinOkAt, u.nickname AS nickname, u.pin_hash AS pinHash"
     + " FROM auth_sessions s JOIN users u ON u.id = s.user_id"
     + " WHERE s.token_hash = ?1 AND s.expires_at > ?2 LIMIT 1"
   ).bind(hash, Date.now()).first().catch(() => null);
-  if (!row) return null;
-  if (String(row.pinHash || "") && !(N(row.pinOkAt, 0) > 0)) return null;
+  if (!row) return { だめ: "EXPIRED", message: "ログインの 期限が 切れて います。入り直して ください。" };
+  if (String(row.pinHash || "") && !(N(row.pinOkAt, 0) > 0)) {
+    return { だめ: "PIN_REQUIRED",
+      message: "暗証番号を 確かめて から 部屋を 作れます。一度 ホームへ 戻って 暗証番号を 入れて ください。" };
+  }
   const uid = N(row.userId, 0);
-  if (await 止められているか(env, uid)) return null;
+  if (await 止められているか(env, uid)) {
+    return { だめ: "BLOCKED", message: "いま この 機能は ご利用いただけません。" };
+  }
   return { uid, nickname: S(row.nickname, 40) };
 }
 
@@ -142,8 +151,12 @@ export async function handleLiveRequest(request, env, ctx) {
      ★ 作る 人だけ ログインが 要る（誰の プリセットかを 残す ため）。 */
   if (request.method === "POST" && path === "/api/live/create") {
     const 人 = await 人を引く(request, env);
-    const uid = 人 ? 人.uid : 0;
-    if (!uid) return J({ ok: false, code: "UNAUTHORIZED", message: "部屋を 作るには ログインが 要ります。" }, 401);
+    if (!人 || 人.だめ) {
+      return J({ ok: false, code: 人 ? 人.だめ : "UNAUTHORIZED",
+        message: (人 && 人.message) || "部屋を 作るには ログインが 要ります。" },
+        人 && 人.だめ === "NO_DB" ? 503 : 401);
+    }
+    const uid = 人.uid;
     let body = null;
     try { body = await request.json(); } catch (e) { body = null; }
     const qs = Array.isArray(body?.questions) ? body.questions.slice(0, MAX_QUESTIONS) : [];

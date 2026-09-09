@@ -46216,15 +46216,16 @@
     ".vq2-qt-den button.is-on{background:var(--vq-accent-subtle,#F2EEFB);color:var(--vq-accent-text,#5F579E);}",
     ".vq2-qt-den svg{width:14px;height:14px;}",
     ".vq2-qt-cnt-row{display:flex;align-items:center;gap:10px;}",
-    /* 狭い 画面では 分類を 横に すべらせる */
-    "@media (max-width:760px){",
-      ".vq2-qtp .vq2-qt-split{display:block;}",
-      ".vq2-qtp .vq2-qt-side{border-right:0;border-bottom:1px solid var(--vq-border-subtle,#ECEAF4);}",
-      ".vq2-qtp .vq2-qt-rails{display:flex;gap:6px;overflow-x:auto;padding:6px 8px;-webkit-overflow-scrolling:touch;}",
-      ".vq2-qtp .vq2-qt-rail{flex:0 0 auto;white-space:nowrap;}",
-      ".vq2-qtp .vq2-qt-sidef{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}",
-      ".vq2-qtp .vq2-qt-grid.is-cover{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}",
-    "}"
+    /* ══ 狭い 画面（2026-09-10 の 直し）════════════════════════════
+       ★ **媒体クエリを 自分で 書いては いけない。**
+         この 画面には もとから `.is-mobile` の 指定が あり、
+         `.vq2-qt-split` は **grid の 行**で 高さを 区切って いる
+         （`grid-template-rows: auto minmax(0,1fr)`）。
+         そこへ `display:block` を かぶせたら 高さの 区切りが 消え、
+         `.vq2-qt-main` の `overflow-y:auto` が 効かなく なって
+         **一覧が まったく スクロールできなく なった**（訴え・実測）。
+       ★ ここで 足すのは **表紙の 並びだけ**。骨組みには 触らない。 */
+    ".is-mobile .vq2-qt-grid.is-cover{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}"
   ].join("\n");
 
   function isNum(v) { return typeof v === "number" && isFinite(v); }

@@ -58,12 +58,20 @@
   };
 
   /* ══ 通信 ══════════════════════════════════════════════════════════ */
+  /* ★ 札の 置き場は **app.auth.token.v1**（2026-09-10・訴え
+     「ログインして いるのに 部屋を 作れない」）。
+     `VQ2.auth` は **存在しない**し、`wordPractice400.auth.token` も 違う。
+     DM（vq-dm.js:38）と 通話（vq-call.js:27）が 使って いる 鍵に そろえる。
+     ★ 検査が 自分で 偽の 鍵を 置いて いたので、間違ったまま 通って いた。 */
+  var TOKEN_KEY = "app.auth.token.v1";
+  function 札() {
+    try { return String(root.localStorage.getItem(TOKEN_KEY) || "").trim(); } catch (e) { return ""; }
+  }
   function 頼む(path, o) {
     o = o || {};
     var h = { "Content-Type": "application/json" };
     try {
-      var t = root.VQ2 && root.VQ2.auth && root.VQ2.auth.token && root.VQ2.auth.token();
-      if (!t) { try { t = root.localStorage.getItem("wordPractice400.auth.token"); } catch (e) {} }
+      var t = 札();
       if (t) h.Authorization = "Bearer " + t;
     } catch (e) {}
     return root.fetch(API + path, {
