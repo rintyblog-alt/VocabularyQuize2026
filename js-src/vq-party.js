@@ -52,10 +52,264 @@
     "#3E63DD", "#46A758", "#D6409F", "#5B5BD6"
   ];
   var 色 = function (i) { return COLORS[(Number(i) || 0) % COLORS.length]; };
-  var 頭文字 = function (name) {
-    var s = String(name || "").trim();
-    return s ? s.slice(0, 2) : "？";
-  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     キャラクター（2026-09-10）
+     訴え ①「キャラクターとかも あると いいかもね」
+          ②「キャラクターが シンプルすぎる。作り込んで」
+          ③「面白くない。もっと ボディも あるような」
+
+     ★ **全身**で 描く。顔だけでは 誰が 誰か 分かっても 面白く ない。
+     ★ 絵は **読み込まない。その場で 描く。**
+       1000 人ぶんの 画像を 取りに 行ったら 教室の 回線は もたない。
+     ★ 何に なるかは **サーバが 決めた 数 1 つ**から 割り出す。
+       同じ 名前なら いつも 同じ 姿。
+     ★ 重ねる 順は 後ろから:
+         しっぽ → あし → からだ → うで → あたま(みみ) → かお → かざり
+       同じ 色の 上に 同じ 色で 描くと 消える ので、**輪郭を 必ず 付ける**。
+
+     すがた 10 × 服 6 × うで 3 × 目 8 × 口 7 × 飾り 9 × ほお 2
+     ＝ 181,440 通り。
+     ══════════════════════════════════════════════════════════════════ */
+  var 濃 = "#241F30";                 /* 輪郭・目・口（どの 色の 上でも 読める） */
+  var 肌 = "#FFF6EC";                 /* 顔と 手の 地 */
+  var 線 = "' stroke='" + 濃 + "' stroke-width='3' stroke-linejoin='round' stroke-linecap='round'";
+
+  /* ── みみ・つの（頭の 後ろ）と しっぽ（いちばん 後ろ）── */
+  var すがた = [
+    { 名: "ねこ",
+      みみ: "<path d='M22 22L27 -8l24 22z'/><path d='M78 22L73 -8 49 14z'/>"
+        + "<path d='M29 18L32 2l11 12z' fill='rgba(255,255,255,.55)' stroke='none'/>"
+        + "<path d='M71 18L68 2 57 14z' fill='rgba(255,255,255,.55)' stroke='none'/>",
+      しっぽ: "<path d='M70 108q26 4 22-16-2-10-11-8' fill='none' stroke-width='9'/>" },
+    { 名: "くま",
+      みみ: "<circle cx='24' cy='16' r='13'/><circle cx='76' cy='16' r='13'/>"
+        + "<circle cx='24' cy='16' r='6' fill='rgba(255,255,255,.55)' stroke='none'/>"
+        + "<circle cx='76' cy='16' r='6' fill='rgba(255,255,255,.55)' stroke='none'/>",
+      しっぽ: "<circle cx='74' cy='104' r='8'/>" },
+    { 名: "うさぎ",
+      みみ: "<ellipse cx='36' cy='-2' rx='8' ry='24'/><ellipse cx='64' cy='-2' rx='8' ry='24'/>"
+        + "<ellipse cx='36' cy='0' rx='3.6' ry='16' fill='rgba(255,255,255,.6)' stroke='none'/>"
+        + "<ellipse cx='64' cy='0' rx='3.6' ry='16' fill='rgba(255,255,255,.6)' stroke='none'/>",
+      しっぽ: "<circle cx='75' cy='104' r='9' fill='#fff'/>" },
+    { 名: "きつね",
+      みみ: "<path d='M16 24L24 -12l26 26z'/><path d='M84 24L76 -12 50 14z'/>"
+        + "<path d='M25 20L29 0l12 14z' fill='rgba(255,255,255,.5)' stroke='none'/>"
+        + "<path d='M75 20L71 0 59 14z' fill='rgba(255,255,255,.5)' stroke='none'/>",
+      しっぽ: "<path d='M70 110q28 0 24-20-3-12-14-8-10 4-10 14z'/>"
+        + "<path d='M88 92q6 6 3 14' fill='#fff' stroke='none' opacity='.65'/>" },
+    { 名: "とり",
+      みみ: "<path d='M50 -14c9 0 12 10 9 16H41c-3-6 0-16 9-16z'/>",
+      しっぽ: "<path d='M70 104l22 8-22 8z'/>" },
+    { 名: "ロボ",
+      みみ: "<rect x='46' y='-16' width='8' height='26' rx='4'/><circle cx='50' cy='-18' r='8'/>"
+        + "<rect x='12' y='32' width='11' height='22' rx='5'/><rect x='77' y='32' width='11' height='22' rx='5'/>",
+      しっぽ: "" },
+    { 名: "おばけ",
+      みみ: "<path d='M50 -8c20 0 30 14 30 32v10H20V24C20 6 30-8 50-8z'/>",
+      しっぽ: "" },
+    { 名: "ドラゴン",
+      みみ: "<path d='M30 18L18-14l26 18z'/><path d='M70 18L82-14 56 4z'/>",
+      しっぽ: "<path d='M68 108q26 2 24-16l10 6-2-16-12 8q-8-6-20 4z'/>" },
+    { 名: "ぱんだ",
+      みみ: "<circle cx='23' cy='16' r='13' fill='" + 濃 + "'/><circle cx='77' cy='16' r='13' fill='" + 濃 + "'/>",
+      しっぽ: "<circle cx='74' cy='105' r='7' fill='" + 濃 + "'/>" },
+    { 名: "ひつじ",
+      みみ: "<circle cx='26' cy='14' r='14'/><circle cx='50' cy='2' r='16'/><circle cx='74' cy='14' r='14'/>",
+      しっぽ: "<circle cx='73' cy='104' r='8'/>" },
+    /* ── 人間（2026-09-10・訴え「人間も 入れて いいし」）──────────
+       ★ 髪は **後ろ（みみ）と 前（まえ）の 2 枚**で 描く。
+         後ろだけだと 顔の 円に 隠れて 坊主に 見える。 */
+    { 名: "人間・ショート",
+      みみ: "<path d='M50 0c-24 0-36 16-36 38v26h72V38C86 16 74 0 50 0z'/>",
+      まえ: "<path d='M50 4c-21 0-33 14-34 32 4-12 12-18 22-16l6 10 6-10c10-2 18 4 22 16C83 18 71 4 50 4z'/>",
+      しっぽ: "" },
+    { 名: "人間・ツインテール",
+      みみ: "<path d='M50 0c-24 0-36 16-36 38v22h72V38C86 16 74 0 50 0z'/>"
+        + "<ellipse cx='9' cy='58' rx='12' ry='24'/><ellipse cx='91' cy='58' rx='12' ry='24'/>"
+        + "<circle cx='11' cy='32' r='9'/><circle cx='89' cy='32' r='9'/>",
+      まえ: "<path d='M50 4c-21 0-33 14-34 32 5-13 13-19 23-17l5 11 5-11c10-2 18 4 23 17C83 18 71 4 50 4z'/>",
+      しっぽ: "" },
+    { 名: "人間・おだんご",
+      みみ: "<circle cx='50' cy='-10' r='15'/>"
+        + "<path d='M50 0c-24 0-36 16-36 38v20h72V38C86 16 74 0 50 0z'/>",
+      まえ: "<path d='M50 4c-21 0-33 14-34 32 11-8 20-13 34-13s23 5 34 13C83 18 71 4 50 4z'/>",
+      しっぽ: "" },
+    /* ── オリジナル（訴え「オリジナルキャラクターとかも」）────────── */
+    { 名: "スライム",
+      みみ: "<path d='M50 -6c-4 10-10 12-10 18h20c0-6-6-8-10-18z'/>"
+        + "<path d='M14 66q0-30 36-30t36 30q0 8-8 8H22q-8 0-8-8z' opacity='.55'/>",
+      しっぽ: "<path d='M22 108q28 10 56 0v8q-28 10-56 0z' opacity='.6'/>" },
+    { 名: "ほしのこ",
+      みみ: "<path d='M50 -24l7.6 15.4 17 2.5-12.3 12 2.9 16.9L50 34.8 34.8 42.8l2.9-16.9-12.3-12 17-2.5z'/>",
+      しっぽ: "<path d='M74 100l4 8 9 1.3-6.5 6.3 1.5 8.9-8-4.2-8 4.2 1.5-8.9-6.5-6.3 9-1.3z'/>" },
+    { 名: "きのこ",
+      みみ: "<path d='M50 -8c-24 0-38 16-38 30 0 6 6 8 38 8s38-2 38-8c0-14-14-30-38-30z'/>"
+        + "<circle cx='30' cy='14' r='6' fill='#fff' stroke='none' opacity='.75'/>"
+        + "<circle cx='62' cy='8' r='7' fill='#fff' stroke='none' opacity='.75'/>"
+        + "<circle cx='74' cy='22' r='4.5' fill='#fff' stroke='none' opacity='.75'/>",
+      しっぽ: "" }
+  ];
+
+  /* ── 服（からだ）。x30〜70・y72〜114 に 収める ── */
+  var 服 = [
+    /* ふつう */ function () {
+      return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z'/>";
+    },
+    /* パーカー */ function () {
+      return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z'/>"
+        + "<path d='M36 70q14 14 28 0' fill='none'/>"
+        + "<rect x='40' y='92' width='20' height='12' rx='4' fill='rgba(255,255,255,.3)'/>";
+    },
+    /* ワンピース */ function () {
+      return "<path d='M50 68c-11 0-16 6-16 14l-8 26c-1 6 6 8 24 8s25-2 24-8l-8-26c0-8-5-14-16-14z'/>"
+        + "<path d='M32 96h36' fill='none' stroke-width='2.6' opacity='.55'/>";
+    },
+    /* しましま */ function () {
+      return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z'/>"
+        + "<path d='M31 84h38M31 96h38' fill='none' stroke='rgba(255,255,255,.5)' stroke-width='6'/>";
+    },
+    /* つなぎ */ function () {
+      return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z' fill='" + 肌 + "'/>"
+        + "<path d='M34 84h32v22c0 6-4 10-16 10s-16-4-16-10z'/>"
+        + "<path d='M38 84V72M62 84V72' fill='none'/>";
+    },
+    /* マント */ function () {
+      return "<path d='M50 66c-18 0-28 12-30 30l-4 22h68l-4-22c-2-18-12-30-30-30z' opacity='.9'/>"
+        + "<path d='M50 68c-12 0-18 8-18 20v18c0 6 4 10 18 10s18-4 18-10V88c0-12-6-20-18-20z' fill='" + 肌 + "'/>";
+    }
+  ];
+
+  /* ── うで（3 とおり）──
+     ★ **2 度 描く**（2026-09-10 実測）。1 度だけだと 輪郭の 色（濃）で
+       塗られて **黒い 棒**に 見える。太い 濃 の 上に 細い 肌 を 重ねる。 */
+  function 腕(d) {
+    return "<path d='" + d + "' fill='none' stroke='" + 濃 + "' stroke-width='13' stroke-linecap='round'/>"
+      + "<path d='" + d + "' fill='none' stroke='" + 肌 + "' stroke-width='8' stroke-linecap='round'/>";
+  }
+  function 手(x, y, r0) {
+    return "<circle cx='" + x + "' cy='" + y + "' r='" + r0 + "' fill='" + 肌
+      + "' stroke='" + 濃 + "' stroke-width='3'/>";
+  }
+  var うで = [
+    /* おろす */ function () {
+      return 腕("M31 84q-8 6-7 18") + 腕("M69 84q8 6 7 18") + 手(24, 104, 6.5) + 手(76, 104, 6.5);
+    },
+    /* てをふる */ function () {
+      return 腕("M31 84q-10 2-12-14") + 腕("M69 84q8 6 7 18") + 手(19, 68, 7) + 手(76, 104, 6.5);
+    },
+    /* こしに て */ function () {
+      return 腕("M31 84q-12 4-6 16 4 5 10 3") + 腕("M69 84q12 4 6 16-4 5-10 3");
+    }
+  ];
+
+  /* ── あし ── */
+  function あし() {
+    return "<rect x='36' y='106' width='11' height='18' rx='5.5' fill='" + 肌 + "'/>"
+      + "<rect x='53' y='106' width='11' height='18' rx='5.5' fill='" + 肌 + "'/>"
+      + "<ellipse cx='39' cy='124' rx='10' ry='6.5'/><ellipse cx='61' cy='124' rx='10' ry='6.5'/>";
+  }
+
+  /* ── 目 ── */
+  var 目 = [
+    "<circle cx='38' cy='40' r='5'/><circle cx='62' cy='40' r='5'/>"
+      + "<circle cx='40' cy='38' r='1.8' fill='#fff'/><circle cx='64' cy='38' r='1.8' fill='#fff'/>",
+    "<path d='M32 42q6-10 12 0' fill='none' stroke-width='4.4'/><path d='M56 42q6-10 12 0' fill='none' stroke-width='4.4'/>",
+    "<path d='M38 33l2.4 5 5.4.8-4 3.8.9 5.4-4.7-2.5-4.7 2.5.9-5.4-4-3.8 5.4-.8z'/>"
+      + "<path d='M62 33l2.4 5 5.4.8-4 3.8.9 5.4-4.7-2.5-4.7 2.5.9-5.4-4-3.8 5.4-.8z'/>",
+    "<rect x='32' y='38' width='12' height='4.4' rx='2.2'/><rect x='56' y='38' width='12' height='4.4' rx='2.2'/>",
+    "<circle cx='38' cy='40' r='5'/><circle cx='40' cy='38' r='1.8' fill='#fff'/>"
+      + "<path d='M56 42q6-10 12 0' fill='none' stroke-width='4.4'/>",
+    "<circle cx='37' cy='40' r='7'/><circle cx='63' cy='40' r='7'/>"
+      + "<circle cx='40' cy='37' r='2.5' fill='#fff'/><circle cx='66' cy='37' r='2.5' fill='#fff'/>",
+    "<path d='M32 40q6 8 12 0' fill='none' stroke-width='4.4'/><path d='M56 40q6 8 12 0' fill='none' stroke-width='4.4'/>",
+    "<path d='M38 35a5 5 0 1 1-4.6 3' fill='none' stroke-width='3.2'/>"
+      + "<path d='M62 35a5 5 0 1 1-4.6 3' fill='none' stroke-width='3.2'/>"
+  ];
+
+  /* ── 口 ── */
+  var 口 = [
+    "<path d='M43 53q7 9 14 0' fill='none' stroke-width='4.2'/>",
+    "<ellipse cx='50' cy='55' rx='5' ry='6'/>",
+    "<rect x='44' y='53' width='12' height='4' rx='2'/>",
+    "<path d='M43 52q3.5 5 7 0' fill='none' stroke-width='3.6'/><path d='M50 52q3.5 5 7 0' fill='none' stroke-width='3.6'/>",
+    "<path d='M43 58q7-9 14 0' fill='none' stroke-width='4.2'/>",
+    "<path d='M41 52q10 10 19 1' fill='none' stroke-width='4'/>",
+    "<path d='M43 52q7 8 14 0' fill='none' stroke-width='4'/>"
+      + "<path d='M49 57q4 7 8 1z' fill='#E5484D' stroke='none'/>"
+  ];
+
+  /* ── 飾り ── */
+  var 飾り = [
+    function () { return ""; },
+    /* とんがり帽 */ function (c) {
+      return "<path d='M50 -22L70 10H30z' fill='" + c + 線 + "/>"
+        + "<circle cx='50' cy='-22' r='5' fill='#fff'" + 線 + "/>";
+    },
+    /* リボン */ function () {
+      return "<g transform='translate(72,14)'><path d='M0 0L-13-8v16z' fill='#E93D82'" + 線 + "/>"
+        + "<path d='M0 0l13-8v16z' fill='#E93D82'" + 線 + "/>"
+        + "<circle cx='0' cy='0' r='4' fill='#fff'" + 線 + "/></g>";
+    },
+    /* めがね */ function () {
+      return "<g fill='none' stroke='" + 濃 + "' stroke-width='2.8'>"
+        + "<circle cx='38' cy='40' r='11'/><circle cx='62' cy='40' r='11'/>"
+        + "<path d='M49 40h4M27 38l-6-3M73 38l6-3'/></g>";
+    },
+    /* ヘッドホン */ function (c) {
+      return "<path d='M20 40a30 30 0 0 1 60 0' fill='none' stroke='" + 濃 + "' stroke-width='6'/>"
+        + "<rect x='11' y='36' width='15' height='22' rx='7' fill='" + c + 線 + "/>"
+        + "<rect x='74' y='36' width='15' height='22' rx='7' fill='" + c + 線 + "/>";
+    },
+    /* 王冠 */ function () {
+      return "<path d='M30 12l6-18 8 11 6-15 6 15 8-11 6 18z' fill='#FFB224'" + 線 + "/>"
+        + "<circle cx='50' cy='-12' r='3.4' fill='#E93D82' stroke='none'/>";
+    },
+    /* マフラー */ function (c) {
+      return "<path d='M30 66q20 10 40 0v9q-20 10-40 0z' fill='" + c + 線 + "/>"
+        + "<path d='M62 74l7 20 9-4-7-18z' fill='" + c + 線 + "/>";
+    },
+    /* おはな */ function () {
+      return "<g transform='translate(74,16)'>"
+        + "<circle cx='0' cy='-7' r='5' fill='#E93D82'/><circle cx='6.6' cy='-2.2' r='5' fill='#E93D82'/>"
+        + "<circle cx='4.1' cy='5.7' r='5' fill='#E93D82'/><circle cx='-4.1' cy='5.7' r='5' fill='#E93D82'/>"
+        + "<circle cx='-6.6' cy='-2.2' r='5' fill='#E93D82'/><circle cx='0' cy='0' r='3.6' fill='#FFB224'/></g>";
+    },
+    /* はね（背中） */ function () {
+      return "<path d='M28 78q-20-14-22 4 12 6 22 2z' fill='#fff' opacity='.9'" + 線 + "/>"
+        + "<path d='M72 78q20-14 22 4-12 6-22 2z' fill='#fff' opacity='.9'" + 線 + "/>";
+    }
+  ];
+
+  /* 数 1 つ から すべてを 割り出す。 */
+  function 顔(face, c) {
+    var n = Math.max(0, Number(face) || 0);
+    var sg = すがた[n % すがた.length];
+    var fk = 服[Math.floor(n / 10) % 服.length];
+    var ud = うで[Math.floor(n / 60) % うで.length];
+    var me = 目[Math.floor(n / 180) % 目.length];
+    var kt = 口[Math.floor(n / 1440) % 口.length];
+    var kz = 飾り[Math.floor(n / 10080) % 飾り.length];
+    var ho = Math.floor(n / 90720) % 2;
+    var 塗 = " fill='" + c + "' stroke='" + 濃 + "' stroke-width='3' stroke-linejoin='round' stroke-linecap='round'";
+    return "<svg viewBox='-8 -30 116 168' class='vqlf' aria-hidden='true'>"
+      + "<g" + 塗 + ">"
+      + sg.しっぽ                       /* しっぽ（いちばん 後ろ） */
+      + あし()
+      + fk(c)                           /* 服 */
+      + ud()                            /* うで */
+      + sg.みみ                         /* みみ・つの（頭の 後ろ） */
+      + "</g>"
+      /* 顔 */
+      + "<circle cx='50' cy='40' r='29' fill='" + 肌 + "' stroke='" + 濃 + "' stroke-width='3'/>"
+      /* ★ 前髪は **顔の 前**（後ろだけだと 顔の 円に 隠れて 坊主に 見える） */
+      + (sg.まえ ? "<g" + 塗 + ">" + sg.まえ + "</g>" : "")
+      + (ho ? "<ellipse cx='29' cy='48' rx='6.5' ry='4.2' fill='#E93D82' opacity='.45'/>"
+            + "<ellipse cx='71' cy='48' rx='6.5' ry='4.2' fill='#E93D82' opacity='.45'/>" : "")
+      + "<g fill='" + 濃 + "' stroke='" + 濃 + "' stroke-linecap='round'>" + me + kt + "</g>"
+      + kz(c)
+      + "</svg>";
+  }
 
   /* ══ 通信 ══════════════════════════════════════════════════════════ */
   /* ★ 札の 置き場は **app.auth.token.v1**（2026-09-10・訴え
@@ -112,7 +366,7 @@
 
   /* ══ 見た目 ══════════════════════════════════════════════════════ */
   var CSS = [
-    ".vql{position:fixed;inset:0;z-index:2147483400;display:flex;align-items:center;justify-content:center;",
+    ".vql{position:fixed;inset:0;z-index:2147483640;display:flex;align-items:center;justify-content:center;",
       "background:rgba(20,16,40,.62);backdrop-filter:blur(6px);font-family:inherit;}",
     ".vql-card{width:min(520px,92vw);max-height:88vh;overflow:auto;background:var(--vq-surface,#fff);",
       "color:var(--vq-text,#2B2836);border-radius:22px;padding:26px 24px 22px;box-shadow:0 24px 70px rgba(20,10,50,.36);}",
@@ -125,10 +379,26 @@
     ".vql-b:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(80,60,140,.16);}",
     ".vql-b b{font-size:15px;}",
     ".vql-b span{font-size:12.5px;color:var(--vq-text-secondary,#7A7589);line-height:1.6;}",
-    ".vql-pin{width:100%;font-size:34px;font-weight:800;letter-spacing:.22em;text-align:center;",
-      "padding:14px 10px;border-radius:14px;border:2px solid var(--vq-border,#DED8EE);background:var(--vq-bg,#FCFBFE);",
-      "color:inherit;font-family:inherit;text-transform:uppercase;}",
-    ".vql-pin:focus{outline:none;border-color:var(--vq-accent,#756DB3);}",
+    /* ══ PIN は **1 文字ずつ マス**（2026-09-10・訴え「もっと 良い デザインに」）
+       1 本の 入力欄だと 何文字 入れたか 分からず、打ち間違いに 気づけない。
+       ★ 打つ ところは **見えない 入力欄 1 つ**（入力の 仕組みは 1 本のまま）。
+         マスは その 上に 描くだけ。こう しないと 変換や 貼り付けが 壊れる。 */
+    ".vql-pinbox{position:relative;margin:6px 0 4px;}",
+    ".vql-pin{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;",
+      "font-size:16px;font-family:inherit;color:transparent;background:transparent;caret-color:transparent;",
+      "letter-spacing:2.2em;text-indent:1.1em;cursor:pointer;}",
+    ".vql-cells{display:flex;gap:7px;justify-content:center;pointer-events:none;}",
+    ".vql-cell{flex:1 1 0;max-width:56px;aspect-ratio:3/4;border-radius:12px;",
+      "border:2px solid var(--vq-border,#DED8EE);background:var(--vq-bg,#FCFBFE);",
+      "display:flex;align-items:center;justify-content:center;",
+      "font-size:26px;font-weight:800;transition:border-color .14s,transform .14s;}",
+    ".vql-cell.is-fix{background:var(--vq-accent,#756DB3);border-color:transparent;color:#fff;}",
+    ".vql-cell.is-on{border-color:var(--vq-accent,#756DB3);transform:translateY(-2px);}",
+    ".vql-cell.is-now{border-color:var(--vq-accent,#756DB3);}",
+    ".vql-cell.is-now::after{content:'';width:2px;height:26px;background:var(--vq-accent,#756DB3);",
+      "border-radius:2px;animation:vqlblink 1s steps(1) infinite;}",
+    "@keyframes vqlblink{50%{opacity:0}}",
+    ".vql-hint{text-align:center;font-size:12px;color:var(--vq-text-secondary,#7A7589);margin:8px 0 0;}",
     ".vql-in{width:100%;font-size:16px;padding:12px 14px;border-radius:12px;border:1px solid var(--vq-border,#DED8EE);",
       "background:var(--vq-bg,#FCFBFE);color:inherit;font-family:inherit;}",
     ".vql-go{width:100%;height:52px;margin-top:14px;border:0;border-radius:14px;cursor:pointer;",
@@ -144,6 +414,51 @@
       "background:var(--vq-surface-sunken,#F6F4FB);font-size:13px;font-weight:650;}",
     ".vql-av{width:26px;height:26px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;",
       "color:#fff;font-size:11px;font-weight:800;}"
+  ].join("");
+
+  /* ══ 待機画面（Discord の 通話画面のような タイル）══════════════ */
+  var 待CSS = [
+    /*
+       タイルを 敷きつめ、**裏に その人の アイコンを ぼかして 置く**。
+       ★ 覆いの 中の 小さな 箱では なく **全画面**に する（1000 人 並ぶ）。 */
+    ".vqw{position:fixed;inset:0;z-index:2147483600;background:var(--vq-bg,#0f0d18);",
+      "color:var(--vq-text,#2B2836);display:flex;flex-direction:column;font-family:inherit;}",
+    ".vqw-h{flex:0 0 auto;display:flex;align-items:center;gap:14px;padding:14px 20px;}",
+    ".vqw-pin{font-size:clamp(26px,4vw,44px);font-weight:800;letter-spacing:.18em;",
+      "font-variant-numeric:tabular-nums;}",
+    ".vqw-lab{font-size:12px;font-weight:700;color:var(--vq-text-secondary,#7A7589);}",
+    ".vqw-n{margin-left:auto;font-size:15px;font-weight:750;}",
+    ".vqw-grid{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 16px 20px;",
+      "display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));align-content:start;}",
+    ".vqw-t{position:relative;aspect-ratio:16/11;border-radius:14px;overflow:hidden;",
+      "background:var(--vq-surface-sunken,#1a1728);display:flex;align-items:center;justify-content:center;}",
+    /* ★ 裏の ボカシ。**同じ 絵を 大きく 引き伸ばして ぼかす**（Discord と 同じ 作り）。 */
+    ".vqw-bg{position:absolute;inset:-26%;filter:blur(24px) saturate(1.6);opacity:.5;",
+      "display:flex;align-items:center;justify-content:center;}",
+    ".vqw-bg .vqlf{width:100%;height:100%;}",
+    ".vqw-av{position:relative;z-index:2;width:46%;max-width:96px;aspect-ratio:1;border-radius:999px;",
+      "display:flex;align-items:center;justify-content:center;overflow:visible;",
+      "box-shadow:0 8px 22px rgba(0,0,0,.32);}",
+    ".vqw-av .vqlf{width:100%;height:100%;display:block;}",
+    ".vqw-name{position:absolute;left:8px;bottom:8px;z-index:3;max-width:calc(100% - 16px);",
+      "padding:3px 9px;border-radius:8px;background:rgba(10,8,20,.7);color:#fff;",
+      "font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}",
+    ".vqw-badge{position:absolute;right:8px;top:8px;z-index:3;height:20px;padding:0 8px;border-radius:999px;",
+      "background:rgba(10,8,20,.62);color:#fff;font-size:10.5px;font-weight:750;",
+      "display:inline-flex;align-items:center;}",
+    ".vqw-t.is-host{outline:2px solid var(--vq-accent,#756DB3);outline-offset:-2px;}",
+    ".vqw-t.is-off{opacity:.42;}",
+    ".vqw-more{display:flex;align-items:center;justify-content:center;border-radius:14px;",
+      "background:var(--vq-surface-sunken,#1a1728);aspect-ratio:16/11;font-size:14px;font-weight:750;",
+      "color:var(--vq-text-secondary,#7A7589);text-align:center;padding:10px;}",
+    ".vqw-foot{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:12px;",
+      "padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));}",
+    ".vqw-go{height:54px;min-width:220px;border:0;border-radius:999px;cursor:pointer;font-family:inherit;",
+      "background:var(--vq-accent,#756DB3);color:#fff;font-size:17px;font-weight:800;}",
+    ".vqw-go[disabled]{opacity:.4;cursor:default;}",
+    ".vqw-x{height:54px;width:54px;border:0;border-radius:999px;cursor:pointer;",
+      "background:var(--vq-surface-sunken,#1a1728);color:var(--vq-text-secondary,#7A7589);font-size:15px;}",
+    ".vqw-wait{text-align:center;font-size:14px;color:var(--vq-text-secondary,#7A7589);}",
   ].join("");
 
   /* 覆いを 1 枚 出す（入口・ロビー・結果 用）。
@@ -182,7 +497,8 @@
     ".vqlb-i.is-done{background:var(--vq-accent-subtle,#F2EEFB);}",
     ".vqlb-i.is-off{opacity:.4;}",
     ".vqlb-av{width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;",
-      "color:#fff;font-size:12px;font-weight:800;flex:0 0 auto;}",
+      "color:#fff;font-size:12px;font-weight:800;flex:0 0 auto;overflow:hidden;}",
+    ".vqlb-av .vqlf{width:100%;height:100%;display:block;}",
     ".vqlb-n{font-size:10.5px;font-weight:700;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}",
     ".vqlb-a{font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;color:#fff;max-width:100%;",
       "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}",
@@ -219,7 +535,7 @@
       + "<b>ログインは 要りません</b>。</p>"
       + "<div class='vql-row'>"
       + "<button class='vql-b' data-go='make'><b>部屋を 作る</b><span>自分の プリセットで 出題します。PIN が 出ます。</span></button>"
-      + "<button class='vql-b' data-go='join'><b>PIN で 入る</b><span>先生や 友だちから 聞いた 6 文字を 入れます。</span></button>"
+      + "<button class='vql-b' data-go='join'><b>PIN で 入る</b><span>聞いた 6 文字を 入れます。</span></button>"
       + "</div>"
     );
     ov.影.addEventListener("click", function (e) {
@@ -239,22 +555,51 @@
   function 入る画面(pin0) {
     var ov = 覆い(
       "<h2 class='vql-h'>PIN で 入る</h2>"
-      + "<p class='vql-sub'>先生の 画面に 出ている <b>6 文字</b>（V から 始まります）を 入れてください。</p>"
-      + "<input class='vql-pin' data-pin maxlength='6' placeholder='V _ _ _ _ _' value='" + esc(pin0 || "") + "' autocomplete='off' spellcheck='false'>"
-      + "<div style='height:10px'></div>"
+      + "<p class='vql-sub'>部屋の <b>6 文字</b>を 入れてください。"
+      + "はじめの <b>V</b> は 入れなくて かまいません。</p>"
+      + "<div class='vql-pinbox'>"
+      + "<div class='vql-cells' data-cells></div>"
+      /* ★ 打つ ところは 1 つだけ（貼り付け・変換・スマホの 予測を 壊さない） */
+      + "<input class='vql-pin' data-pin maxlength='6' autocomplete='one-time-code' "
+      + "inputmode='latin' autocapitalize='characters' spellcheck='false' value='" + esc(pin0 || "") + "'>"
+      + "</div>"
+      + "<div style='height:14px'></div>"
       + "<input class='vql-in' data-nick maxlength='16' placeholder='ニックネーム（みんなに 見えます）'>"
+      + "<p class='vql-hint'>名前は あとから 変えられません。みんなに 見えます。</p>"
       + "<div class='vql-err' data-err></div>"
       + "<button class='vql-go' data-join>入る</button>"
     );
     var sh = ov.影;
     var pinEl = sh.querySelector("[data-pin]"), nickEl = sh.querySelector("[data-nick]");
+    var cells = sh.querySelector("[data-cells]");
     var err = sh.querySelector("[data-err]"), go = sh.querySelector("[data-join]");
-    pinEl.focus();
-    /* 6 文字 入ったら 名前へ 送る（打ち直させない） */
+    /* マスを 描く。1 文字目は **V で 固定**（間違えようが ない）。 */
+    function マス() {
+      var v = pinEl.value;
+      var h = "<span class='vql-cell is-fix'>V</span>";
+      for (var i = 1; i < 6; i++) {
+        var c = v[i] || "";
+        h += "<span class='vql-cell" + (c ? " is-on" : (v.length === i ? " is-now" : "")) + "'>"
+          + esc(c) + "</span>";
+      }
+      cells.innerHTML = h;
+    }
+    function そろえる() {
+      var v = pinEl.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      /* V を 打っても 打たなくても よい ように、先頭の V は 足して そろえる。 */
+      if (v && v[0] !== "V") v = "V" + v;
+      pinEl.value = v.slice(0, 6);
+      マス();
+    }
+    そろえる();
+    setTimeout(function () { try { pinEl.focus(); } catch (e) {} }, 60);
+    cells.parentNode.addEventListener("click", function () { try { pinEl.focus(); } catch (e) {} });
     pinEl.addEventListener("input", function () {
-      pinEl.value = pinEl.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+      そろえる();
       if (pinEl.value.length === 6) nickEl.focus();
     });
+    pinEl.addEventListener("blur", マス);
+    pinEl.addEventListener("focus", マス);
     var 送る = function () {
       var pin = pinEl.value.trim().toUpperCase(), nick = nickEl.value.trim();
       if (!/^V[0-9A-Z]{5}$/.test(pin)) { err.textContent = "PIN は V で 始まる 6 文字です。"; return; }
@@ -313,7 +658,7 @@
   /* ══ みんなで解くに **出せる 形式**（2026-09-10）════════════════════
      出せない ものを 混ぜると、選択肢の 無い 文字入力に 化けて
      **答えようが ない 問題**が 出る。だから 部屋に 入れる 前に よける。
-     ★ よけた ことは 隠さない。何問 よけたかを 先生に 見せる。
+     ★ よけた ことは 隠さない。何問 よけたかを 作った 人に 見せる。
      ★ ここに 足す ときは server/src/live.js の 採点() も 一緒に 直す
        （こちらだけ 増やすと「出るのに 正誤が 付かない」に なる）。 */
   var 出せる形式 = {
@@ -364,51 +709,79 @@
     }, function () { ov.閉じる(); });
   }
 
-  /* ── ロビー（PIN を 大きく 出して 待つ）──────────────────────── */
+  /* 作った ときに「よけた 問題数」を 待機画面へ 渡す ための 一時の 置き場。
+     ★ ロビーを 差し替えた ときに この 宣言ごと 落として しまい、
+       部屋を 作った 瞬間に 落ちて いた（実測）。 */
   var 作った後に伝える = 0;
 
+  /* ── 待機画面（Discord の 通話画面のような タイル）─────────────
+     訴え「参加者待機画面には、ユーザーの アイコンと 裏には ボカシ。
+          Discord 通話画面のような UI 表示に したい。参加者は 最大 1000 人に」
+     ★ 1000 人 ぜんぶは 描かない。**サーバが 先頭 60 人だけ 配る**ので、
+       残りは 数で 出す（黙って 減らさない）。 */
   function ロビー(s) {
-    var ov = 覆い("");
+    var old = q("#vqPartyWait");
+    if (old) old.remove();
+    var host = doc.createElement("div");
+    host.id = "vqPartyWait";
+    var sh = host.attachShadow({ mode: "open" });
+    sh.innerHTML = "<style>" + CSS + 待CSS + "</style><div class='vqw'>"
+      + "<div class='vqw-h'></div><div class='vqw-grid'></div><div class='vqw-foot'></div></div>";
+    doc.body.appendChild(host);
+
     var conn = null;
     function 描く(room) {
       var ps = (room && room.players || []).filter(function (p) { return !p.host; });
-      /* ★ **立場で 出す ことばを 変える**（2026-09-10 実測）。
-         参加した 人にも「この PIN を 伝えて ください」と 出て いて、
-         自分が 何を すれば よいのか 分からなかった。 */
-      ov.書く(
-        (s.host
-          ? "<h2 class='vql-h'>この PIN を 伝えて ください</h2>"
-          : "<h2 class='vql-h'>入りました</h2>")
-        + "<div class='vql-code'>" + esc(s.pin) + "</div>"
-        + (s.host
-            ? "<p class='vql-sub' style='text-align:center'>参加する 人は「みんなで解く」→「PIN で 入る」。"
-              + "<b>ログインは 要りません。</b></p>"
-            : "<p class='vql-sub' style='text-align:center'>この 画面の まま お待ちください。"
-              + "先生が 始めると、問題が 出ます。</p>")
-        + "<div style='font-size:12.5px;font-weight:700;color:var(--vq-text-secondary,#7A7589)'>"
-        + "入って いる 人　" + ps.length + " 人</div>"
-        + "<div class='vql-people'>"
-        + (ps.length ? ps.map(function (p) {
-            return "<span class='vql-p'><span class='vql-av' style='background:" + 色(p.color) + "'>"
-              + esc(頭文字(p.name)) + "</span>" + esc(p.name) + "</span>";
-          }).join("") : "<span class='vql-sub' style='margin:0'>まだ 誰も 入って いません。</span>")
-        + "</div>"
-        + (s.host
-            ? ((s.よけた
-                ? "<p class='vql-sub' style='margin:12px 0 0'>★ みんなで解くで 出せない 形式の <b>"
-                  + s.よけた + " 問</b>は、この 部屋から 外しました（記述・並べ替え など）。</p>"
-                : "")
-              + "<button class='vql-go' data-start" + (ps.length ? "" : " disabled") + ">始める（" + ps.length + " 人）</button>")
-            : "<p class='vql-sub' style='margin-top:16px;text-align:center'>先生が 始めるのを 待って います…</p>")
-      );
+      var 総 = (room && typeof room.count === "number") ? room.count : ps.length;
+      var 残 = Math.max(0, 総 - ps.length);
+      sh.querySelector(".vqw-h").innerHTML =
+        "<div><div class='vqw-lab'>" + (s.host ? "この PIN を 伝えて ください" : "入りました") + "</div>"
+        + "<div class='vqw-pin'>" + esc(s.pin) + "</div></div>"
+        + "<div class='vqw-n'>" + 総 + " 人</div>";
+
+      var 箱 = sh.querySelector(".vqw-grid");
+      if (!ps.length) {
+        箱.innerHTML = "<div class='vqw-more' style='grid-column:1/-1;aspect-ratio:auto;padding:40px 10px'>"
+          + (s.host ? "PIN を 伝えると、ここに 参加者が 並びます。" : "ほかの 人を 待って います…") + "</div>";
+      } else {
+        箱.innerHTML = ps.map(function (p) {
+          var c = 色(p.color);
+          var f = 顔(p.face, c);
+          return "<div class='vqw-t" + (p.online ? "" : " is-off") + "'"
+            /* ★ 地は **しっかり 色**（13% だと 洗い色に なって Discord と 別物に 見えた） */
+            + " style='background:linear-gradient(158deg," + c + "," + c + "b0)'"
+            + " title='" + esc(p.name) + "'>"
+            /* ★ 裏は **同じ 絵を 引き伸ばして ぼかす**（Discord と 同じ 作り） */
+            + "<span class='vqw-bg' style='background:" + c + "'>" + f + "</span>"
+            + "<span class='vqw-av' style='background:" + c + "'>" + f + "</span>"
+            + "<span class='vqw-name'>" + esc(p.name) + "</span>"
+            + (p.online ? "" : "<span class='vqw-badge'>はなれた</span>")
+            + "</div>";
+        }).join("")
+          + (残 ? "<div class='vqw-more'>ほか <b>" + 残 + " 人</b><br>（多いので 表示は " + ps.length + " 人まで）</div>" : "");
+      }
+
+      sh.querySelector(".vqw-foot").innerHTML = s.host
+        ? ((s.よけた
+            ? "<div class='vqw-wait'>出せない 形式の " + s.よけた + " 問は 外しました</div>" : "")
+          + "<button class='vqw-x' data-quit aria-label='やめる'>✕</button>"
+          + "<button class='vqw-go' data-start" + (総 ? "" : " disabled") + ">始める（" + 総 + " 人）</button>")
+        : "<div class='vqw-wait'>始まるのを 待って います…</div>"
+          + "<button class='vqw-x' data-quit aria-label='やめる'>✕</button>";
     }
     描く(s.room);
+
     conn = つなぐ(s.pin, s.key, function (m) {
       if (m.t === "welcome" || m.t === "room") 描く(m.room);
-      if (m.t === "q") { ov.閉じる(); 出題へ(s, conn, m); }
+      if (m.t === "q") { try { host.remove(); } catch (e) {} 出題へ(s, conn, m); }
     });
-    ov.影.addEventListener("click", function (e) {
+    sh.addEventListener("click", function (e) {
       if (e.target.closest && e.target.closest("[data-start]")) conn.送る({ t: "start" });
+      if (e.target.closest && e.target.closest("[data-quit]")) {
+        try { conn.閉じる(); } catch (x) {}
+        try { host.remove(); } catch (x) {}
+        場 = null;
+      }
     });
     場 = { s: s, conn: conn, room: s.room };
   }
@@ -494,7 +867,7 @@
   var 面CSS = [
     /* ★ 重なりは **いちばん 上**（2026-09-10 実測）。
        2147482900 だと 初回案内の 下に 隠れて、動いて いるのに 見えなかった。 */
-    ".vqls{position:fixed;inset:0;z-index:2147483300;background:var(--vq-bg,#FCFBFE);color:var(--vq-text,#2B2836);",
+    ".vqls{position:fixed;inset:0;z-index:2147483550;background:var(--vq-bg,#FCFBFE);color:var(--vq-text,#2B2836);",
       "display:flex;flex-direction:column;font-family:inherit;}",
     ".vqls-h{flex:0 0 auto;padding:12px 16px;display:flex;align-items:center;gap:10px;",
       "border-bottom:1px solid var(--vq-border-subtle,#ECEAF4);font-size:13px;}",
@@ -629,7 +1002,9 @@
              許可して いない 人は アイコンのまま（訴えの とおり）。 */
           var 中 = 見
             ? "<span class='vqlb-a' style='background:" + 色(p.color) + "'>" + esc(答えの字(状.q, v)) + "</span>"
-            : "<span class='vqlb-av' style='background:" + 色(p.color) + "'>" + esc(頭文字(p.name)) + "</span>";
+            /* ★ アイコンは **キャラクター**（頭文字では ない）。
+               待機画面と 同じ 顔が 出題中も 並ぶ ので、誰が 誰か 分かる。 */
+            : "<span class='vqlb-av' style='background:" + 色(p.color) + "'>" + 顔(p.face, 色(p.color)) + "</span>";
           return "<div class='" + cls + "' title='" + esc(p.name) + "'>" + 中
             + "<span class='vqlb-n'>" + esc(p.name) + "</span>"
             + "<span class='vqlb-s'>" + (p.score || 0) + "</span></div>";
@@ -716,7 +1091,7 @@
       + "</div>"
       + "<div class='vqls-rank'>"
       + (状.rank || []).slice(0, 10).map(function (r) {
-          return "<div><span class='vqlb-av' style='background:" + 色(r.color) + "'>" + esc(頭文字(r.name))
+          return "<div><span class='vqlb-av' style='background:" + 色(r.color) + "'>" + 顔(r.face, 色(r.color))
             + "</span><span>" + r.rank + ". " + esc(r.name) + "</span><b>" + r.score + "</b></div>";
         }).join("")
       + "</div>";
@@ -745,7 +1120,7 @@
       + "<div class='vqls-rank'>"
       + (m.rank || []).map(function (r) {
           var 金 = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : "";
-          return "<div><span class='vqlb-av' style='background:" + 色(r.color) + "'>" + esc(頭文字(r.name))
+          return "<div><span class='vqlb-av' style='background:" + 色(r.color) + "'>" + 顔(r.face, 色(r.color))
             + "</span><span>" + 金 + " " + r.rank + ". " + esc(r.name) + "</span><b>" + r.score + " 点</b></div>";
         }).join("")
       + "</div>";

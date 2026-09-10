@@ -26,12 +26,35 @@ const PIN_LEN = 6;
    声で 伝えたり 手で 書いたり する ので、ここは けちらない。 */
 const PIN_CHARS = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;   /* 6 時間で 消える */
-const MAX_PLAYERS = 60;
+/* ★ 1000 人（2026-09-10・訴え「参加者は 最大 1000 人に」）。
+   ただし **人数を 増やす だけでは 壊れる**。
+   部屋の 姿を 丸ごと 配ると 1 人 約 80 バイト × 1000 人 ＝ 80KB。
+   入室の たびに 全員へ 配れば 1 回で 80MB。だから:
+     ・配る 人の 一覧は **先頭 SHOW 人まで**（総数は 別に 送る）
+     ・部屋の 姿は **まとめて 1.2 秒に 1 回**（入室が 続く ときに 効く）
+     ・順位は **上位 100 位まで** */
+const MAX_PLAYERS = 1000;
+const SHOW_PLAYERS = 60;     /* 一覧で 配る 人数 */
+const SHOW_RANK = 100;       /* 順位で 配る 人数 */
+const ROOM_PUSH_MS = 1200;   /* 部屋の 姿を 配る 間隔 */
 const MAX_QUESTIONS = 100;
 const NICK_MAX = 16;
 
 /* 人ごとの 色。**12 色まで**。並んだ ときに 隣どうしが 似ない 順に した。 */
 const PLAYER_COLORS = 12;
+/* ★ キャラクター（2026-09-10・訴え「キャラクターとかも あると いいかもね」）。
+   絵は 画面側が 描く。ここは **どの 顔かを 決める だけ**（0〜N）。
+   ニックネームから 決める ので、同じ 名前なら いつも 同じ 顔に なる。 */
+/* ★ 種類は 多く 取る（2026-09-10・訴え「キャラクターが シンプルすぎる」）。
+   画面側が この 数から **すがた・目・口・飾り**を 割り出す ので、
+   ここが 小さいと 同じ 顔ばかりに なる。 */
+const FACES = 40320;
+function 顔を決める(name, n) {
+  let h = 0;
+  const t = String(name || "");
+  for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+  return (h + n) % FACES;
+}
 
 const J = (o, s) => new Response(JSON.stringify(o), {
   status: s || 200,
@@ -172,7 +195,7 @@ export async function handleLiveRequest(request, env, ctx) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pin: p, hostUid: uid,
-          hostName: S(body?.hostName, NICK_MAX) || S(人.nickname, NICK_MAX) || "先生",
+          hostName: S(body?.hostName, NICK_MAX) || S(人.nickname, NICK_MAX) || "ホスト",
           title: S(body?.title, 60) || "みんなで解く",
           questions: qs,
           settings: body?.settings || {}
@@ -312,12 +335,34 @@ export class LiveRoom {
       total: (r.questions || []).length,
       at: r.at,
       settings: r.settings,
-      players: Object.values(r.players).map((p) => ({
-        id: p.id, name: p.name, color: p.color, online: p.online,
-        share: !!p.share, score: p.score, streak: p.streak,
-        answered: !!p.answeredAt, host: !!p.host
-      }))
+      /* ★ 全員ぶんは 配らない。**数は 別に 送る。** */
+      count: Object.keys(r.players).length - 1,          /* 作った 人を 除く */
+      online: Object.values(r.players).filter((p) => p.online && !p.host).length,
+      answered: (function () {
+        const i = r.cur;
+        return Object.values(r.players).filter((p) => !p.host && p.answers[i] !== undefined).length;
+      })(),
+      shown: SHOW_PLAYERS,
+      /* 見せる 順: 回答を 見せて いる 人 → つないで いる 人 → 入った 順。
+         **1000 人 いても 大事な 人が 先に 来る。** */
+      players: Object.values(r.players)
+        .sort((a, b) => (b.share - a.share) || (b.online - a.online)
+          || (b.host - a.host) || (Number(a.id.slice(1)) - Number(b.id.slice(1))))
+        .slice(0, SHOW_PLAYERS)
+        .map((p) => ({
+          id: p.id, name: p.name, color: p.color, face: p.face, online: p.online,
+          share: !!p.share, score: p.score, streak: p.streak,
+          answered: !!p.answeredAt, host: !!p.host
+        }))
     };
+  }
+  /* ★ 部屋の 姿は **まとめて** 配る（入室が 続く ときに 効く）。 */
+  _room送る() {
+    if (this._roomT) return;
+    this._roomT = setTimeout(() => {
+      this._roomT = null;
+      try { this._all({ t: "room", room: this._public() }); } catch (e) {}
+    }, ROOM_PUSH_MS);
   }
   /* 配る 問題。**answer と explanation は 落とす。** */
   _maskQ(i) {
@@ -363,7 +408,7 @@ export class LiveRoom {
         pin: S(b?.pin, PIN_LEN),
         title: S(b?.title, 60),
         hostUid: N(b?.hostUid, 0),
-        hostName: S(b?.hostName, NICK_MAX) || "先生",
+        hostName: S(b?.hostName, NICK_MAX) || "ホスト",
         hostKey,
         at: Date.now(),
         phase: "lobby",              /* lobby | q | reveal | end */
@@ -376,13 +421,14 @@ export class LiveRoom {
           limit: CL(b?.settings?.limit, 0, 300) || 20,
           /* 答え合わせを 出すか */
           reveal: b?.settings?.reveal !== false,
-          /* 参加者が 自分で 進めるか（既定は 先生が 進める） */
+          /* 参加者が 自分で 進めるか（既定は 作った 人が 進める） */
           selfPaced: b?.settings?.selfPaced === true
         },
         players: {
           [hostId]: {
-            id: hostId, key: hostKey, name: S(b?.hostName, NICK_MAX) || "先生",
-            color: 0, host: true, online: false, share: false,
+            id: hostId, key: hostKey, name: S(b?.hostName, NICK_MAX) || "ホスト",
+            color: 0, face: 顔を決める(S(b?.hostName, NICK_MAX) || "ホスト", 0),
+            host: true, online: false, share: false,
             score: 0, streak: 0, best: 0, answers: {}, answeredAt: 0, live: null
           }
         }
@@ -428,12 +474,13 @@ export class LiveRoom {
       const id = "p" + (this.room.nextId++);
       const key = randomKey();
       this.room.players[id] = {
-        id, key, name, color: 数 % PLAYER_COLORS, host: false, online: false,
+        id, key, name, color: 数 % PLAYER_COLORS, face: 顔を決める(name, 数),
+        host: false, online: false,
         share: false, score: 0, streak: 0, best: 0, answers: {}, answeredAt: 0, live: null,
         uid: N(b?.uid, 0)
       };
       await this._save();
-      this._all({ t: "room", room: this._public() });
+      this._room送る();
       return J({ ok: true, you: id, key, room: this._public() });
     }
 
@@ -470,7 +517,7 @@ export class LiveRoom {
       q: this.room.phase === "lobby" ? null : this._maskQ(this.room.cur),
       curAt: this.room.curAt
     });
-    this._all({ t: "room", room: this._public() });
+    this._room送る();
     this._save();
   }
 
@@ -478,7 +525,7 @@ export class LiveRoom {
     const me = this.room && this.room.players[id];
     if (me) { me.online = false; me.live = null; }
     this.sessions.delete(id);
-    this._all({ t: "room", room: this._public() });
+    this._room送る();
     this._save();
   }
 
@@ -493,11 +540,11 @@ export class LiveRoom {
     const t = String(m.t || "");
 
     /* ── 回答を みんなに 見せる／隠す ────────────────────────────
-       ★ **本人が 決める。** 先生が 勝手に 開けられない。 */
+       ★ **本人が 決める。** ほかの 人が 勝手に 開けられない。 */
     if (t === "share") {
       me.share = m.on === true;
       if (!me.share) me.live = null;
-      this._all({ t: "room", room: this._public() });
+      this._room送る();
       if (me.share && me.live !== null) this._all({ t: "live", id, v: me.live });
       return this._save();
     }
@@ -528,7 +575,7 @@ export class LiveRoom {
       return;
     }
 
-    /* ── ここから 先は 先生だけ ──────────────────────────────── */
+    /* ── ここから 先は 作った 人だけ ──────────────────────────────── */
     if (!me.host) return;
 
     if (t === "start") {
@@ -616,7 +663,10 @@ export class LiveRoom {
       t: "reveal", i,
       answer: r.settings.reveal ? (q ? q.answer : null) : null,
       explanation: r.settings.reveal ? (q ? (q.explanation || "") : "") : "",
-      results: 結果,
+      /* ★ 明細も 上限（1000 人ぶん 配らない）。見せて いる 人と 上位を 先に。 */
+      results: 結果.sort((a, b) => (b.gain - a.gain) || 0).slice(0, SHOW_PLAYERS),
+      正解数: 結果.filter((x) => x.ok === true).length,
+      回答数: 結果.filter((x) => x.v !== null && x.v !== undefined).length,
       rank: this._順位()
     });
     this._all({ t: "room", room: this._public() });
@@ -627,7 +677,9 @@ export class LiveRoom {
     return Object.values(this.room.players)
       .filter((p) => !p.host)
       .sort((a, b) => b.score - a.score || b.best - a.best || a.name.localeCompare(b.name))
-      .map((p, i) => ({ rank: i + 1, id: p.id, name: p.name, color: p.color, score: p.score, best: p.best }));
+      .slice(0, SHOW_RANK)
+      .map((p, i) => ({ rank: i + 1, id: p.id, name: p.name, color: p.color,
+                        face: p.face, score: p.score, best: p.best }));
   }
 
   _end() {

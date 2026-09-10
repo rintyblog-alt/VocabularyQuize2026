@@ -63,10 +63,12 @@ const 問 = [
     if (!l.token) return "ログイン不可";
     localStorage.setItem("app.auth.token.v1", l.token);
     window.__vqParty.作る({ id: "t1", title: "検査", questions: qs });
+    /* ★ 待機画面は 覆い（#vqPartyOverlay）では なく **全画面**（#vqPartyWait）。
+       2026-09-10 に Discord 風の タイルへ 作り替えた ので 印が 変わった。 */
     for (let i = 0; i < 60; i++) {
       await new Promise((r) => setTimeout(r, 300));
-      const h = document.querySelector("#vqPartyOverlay");
-      const t = h && h.shadowRoot.querySelector(".vql-code");
+      const h = document.querySelector("#vqPartyWait");
+      const t = h && h.shadowRoot.querySelector(".vqw-pin");
       if (t && t.textContent.trim()) return t.textContent.trim();
     }
     return "出ない";
@@ -79,25 +81,35 @@ const 問 = [
   const 入る = async (p, n) => {
     await p.evaluate(() => window.__vqParty.入る());
     await 待(500);
+    /* ★ **V を 打たずに** 入れられるか（マスの 1 文字目は 固定）。 */
     await p.evaluate(({ pin, n }) => {
       const sh = document.querySelector("#vqPartyOverlay").shadowRoot;
       const a = sh.querySelector("[data-pin]"), b3 = sh.querySelector("[data-nick]");
-      a.value = pin; a.dispatchEvent(new Event("input", { bubbles: true }));
+      a.value = pin.slice(1); a.dispatchEvent(new Event("input", { bubbles: true }));
       b3.value = n; sh.querySelector("[data-join]").click();
     }, { pin, n });
     await 待(1800);
   };
   await 入る(A, "りんと"); await 入る(B2, "はると");
   const 生 = await A.evaluate(() => {
-    const h = document.querySelector("#vqPartyOverlay");
-    return h ? h.shadowRoot.querySelector(".vql-card").textContent.replace(/\s+/g, " ").slice(0, 40) : "なし";
+    const h = document.querySelector("#vqPartyWait");
+    return h ? h.shadowRoot.querySelector(".vqw-lab").textContent.trim() : "なし";
   });
-  見る("★ ログインせずに 入れる（生徒の ロビー）", 生.indexOf("入りました") === 0, 生);
-  const 人 = await T.evaluate(() => document.querySelector("#vqPartyOverlay").shadowRoot.querySelectorAll(".vql-p").length);
-  見る("先生の ロビーに 2 人 出る", 人 === 2, String(人) + " 人");
+  見る("★ ログインせずに 入れる（生徒の 待機画面）", 生 === "入りました", 生);
+  const 様子 = await T.evaluate(() => {
+    const sh = document.querySelector("#vqPartyWait").shadowRoot;
+    return { 枚: sh.querySelectorAll(".vqw-t").length,
+      顔: sh.querySelectorAll(".vqw-av .vqlf").length,
+      ぼかし: sh.querySelectorAll(".vqw-bg").length,
+      人数: (sh.querySelector(".vqw-n") || {}).textContent };
+  });
+  見る("先生の 待機画面に 2 人 出る", 様子.枚 === 2, JSON.stringify(様子));
+  /* ★ 訴えの とおりに なって いるか: **アイコンと 裏の ボカシ**。 */
+  見る("★ 顔（キャラクター）が 出る", 様子.顔 === 2, String(様子.顔));
+  見る("★ 裏に ボカシが ある", 様子.ぼかし === 2, String(様子.ぼかし));
 
   /* ③ 始める */
-  await T.evaluate(() => document.querySelector("#vqPartyOverlay").shadowRoot.querySelector("[data-start]").click());
+  await T.evaluate(() => document.querySelector("#vqPartyWait").shadowRoot.querySelector("[data-start]").click());
   await 待(2400);
   const 面 = (p) => p.evaluate(() => {
     const h = document.querySelector("#vqPartyStage");
