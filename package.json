@@ -11,5 +11,10 @@
     "check:new": "node vqall.cjs --all --since 7 --jobs 4 --timeout 120",
     "check:list": "node vqall.cjs --all --ai --list",
     "dev": "cd server && ./dev-local.sh echo"
+  },
+  "devDependencies": {
+    "jsqr": "^1.4.0",
+    "playwright": "^1.53.0",
+    "qrcode": "^1.5.4"
   }
 }

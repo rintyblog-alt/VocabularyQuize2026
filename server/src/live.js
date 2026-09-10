@@ -117,7 +117,14 @@ async function 人を引く(request, env) {
 
 /* ══ 経路の 見分け ══════════════════════════════════════════════════════ */
 export function isLivePath(path) {
-  return path.startsWith("/api/live/") || path.startsWith("/ws/live/");
+  /* ★ 短い 道 `/v/PIN` は **参加者の 入口**（2026-09-10・訴え
+     「参加者は どこから 参加すんのよ」）。
+     ※ 注釈の 中に「アスタリスク2つ＋スラッシュ」を 書くと そこで 注釈が
+       閉じる。この 罠は 9/10 に 2 回 踏んだ。
+     左の メニューを 開いて PIN を 打つ、しか 道が 無かった。
+     この 短い 道を 紙に 書いたり QR に したり して 配れる ように する。 */
+  return path.startsWith("/api/live/") || path.startsWith("/ws/live/")
+    || /^\/v\/[A-Za-z0-9]{1,8}$/.test(path);
 }
 
 function randomPin() {
@@ -151,6 +158,31 @@ export async function handleLiveRequest(request, env, ctx) {
   if (!isLivePath(path)) return null;
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+
+  /* ── `/v/PIN` … 参加者の 入口。**トップの 画面を そのまま 返す。**
+     画面側は 開いた ときに この 道を 見て、PIN を 入れた 状態で 開く。
+     ★ 302 で /?pin= へ 飛ばすと 履歴が 汚れ、戻るで 行き来する。
+       中身を そのまま 返す。 */
+  if (/^\/v\//.test(path)) {
+    const pin = validPin(path.slice(3));
+    if (env.ASSETS && typeof env.ASSETS.fetch === "function") {
+      /* ★ 資産は **index.html を 名指しで** 取る（2026-09-10 実測）。
+         この 資産は html_handling = "none" なので、"/" では 返って こない
+         （302 に 落ちて、参加者は トップへ 飛ばされるだけ だった）。 */
+      const res = await env.ASSETS.fetch(new Request(new URL("/index.html", request.url).toString(), {
+        headers: request.headers
+      })).catch(() => null);
+      if (res && res.status === 200) {
+        const h = new Headers(res.headers);
+        h.set("Cache-Control", "no-store");
+        /* 画面が すぐ 読めるように、PIN を 印として 添える。 */
+        if (pin) h.set("X-VQ-Live-Pin", pin);
+        return new Response(res.body, { status: 200, headers: h });
+      }
+    }
+    return new Response("", { status: 302, headers: { Location: "/?pin=" + encodeURIComponent(pin) } });
+  }
+
   if (!env.LIVE_ROOMS) return J({ ok: false, code: "NOT_READY", message: "みんなで解くは まだ 使えません。" }, 503);
 
   /* ── つなぐ（WebSocket）──────────────────────────────────────────

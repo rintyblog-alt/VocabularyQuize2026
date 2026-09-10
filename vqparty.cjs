@@ -12,6 +12,7 @@
    ══════════════════════════════════════════════════════════════════════════ */
 "use strict";
 const { chromium } = require("playwright");
+const jsQR = require("jsqr");
 const 引 = process.argv.slice(2);
 const 値 = (k, d) => { const i = 引.indexOf(k); return i >= 0 && 引[i + 1] ? 引[i + 1] : d; };
 const BASE = 値("--base", process.env.VQ_BASE || "https://www.vocabuquiz.app");
@@ -76,6 +77,54 @@ const 問 = [
   /* ★ PIN は **V で 始まる 6 文字**。見まちがえない 字だけ。 */
   見る("★ PIN が V で 始まる 6 文字", /^V[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{5}$/.test(pin), pin);
   if (!/^V/.test(pin)) { 終わる(b, 例外); return; }
+
+  /* ①' **参加の 入口**（2026-09-10・訴え「参加者は どこから 参加すんのよ」）
+     PIN を 出すだけでは 入れない。QR と 短い URL を 出し、
+     **QR が 本当に 読める**ことと、**その URL から 入れる**ことを 測る。 */
+  const 案内 = await T.evaluate(() => {
+    const sh = document.querySelector("#vqPartyWait").shadowRoot;
+    const u = sh.querySelector("[data-url]");
+    return { QR: !!sh.querySelector(".vqw-qr svg"), URL: u ? u.textContent.trim() : "" };
+  });
+  見る("★ 参加の URL が 出る", /\/v\/V[0-9A-Z]{5}$/.test(案内.URL), 案内.URL);
+  見る("QR が 出る", 案内.QR);
+  if (案内.QR) {
+    const box = await T.evaluate(() => {
+      const r0 = document.querySelector("#vqPartyWait").shadowRoot
+        .querySelector(".vqw-qr").getBoundingClientRect();
+      return { x: r0.x, y: r0.y, w: r0.width, h: r0.height };
+    });
+    const png = await T.screenshot({ clip: { x: box.x, y: box.y, width: box.w, height: box.h }, scale: "css" });
+    const img = await T.evaluate(async (b64) => {
+      const im = new Image(); im.src = "data:image/png;base64," + b64; await im.decode();
+      const c = document.createElement("canvas"), S2 = 4;
+      c.width = im.width * S2; c.height = im.height * S2;
+      const x = c.getContext("2d"); x.imageSmoothingEnabled = false;
+      x.drawImage(im, 0, 0, c.width, c.height);
+      return { w: c.width, h: c.height, data: Array.from(x.getImageData(0, 0, c.width, c.height).data) };
+    }, png.toString("base64"));
+    const 読 = jsQR(new Uint8ClampedArray(img.data), img.w, img.h);
+    /* ★ **描けた だけでは 意味が ない。** 自作の 符号化は 描けたのに
+       読み取り器に 通らなかった（実測 4/4 失敗）。毎回 読んで 確かめる。 */
+    見る("★★ QR が **本当に 読める**", !!(読 && /\/v\/V[0-9A-Z]{5}$/.test(読.data)), 読 ? 読.data : "読めない");
+  }
+
+  /* ①'' その URL を 開くと PIN が 入った 状態で 出るか */
+  {
+    const p2 = await b.newPage({ viewport: { width: 390, height: 844 } });
+    await p2.addInitScript(() => { try { localStorage.setItem("vq.install.hide.v1", "1"); } catch (e) {} });
+    await p2.goto(BASE + "/v/" + pin, { waitUntil: "domcontentloaded", timeout: 90000 });
+    await p2.waitForFunction(() => !!window.__vqParty, { timeout: 90000 });
+    await 待(2500);
+    const 入 = await p2.evaluate(() => {
+      const h = document.querySelector("#vqPartyOverlay");
+      if (!h) return { 出た: false };
+      return { 出た: true,
+        マス: [...h.shadowRoot.querySelectorAll(".vql-cell")].map((x) => x.textContent).join("") };
+    });
+    見る("★ URL を 開くと PIN が 入って いる", 入.出た && 入.マス === pin, JSON.stringify(入));
+    await p2.close();
+  }
 
   /* ② 入る（ログインして いない 端末から） */
   const 入る = async (p, n) => {

@@ -77,11 +77,18 @@
   var 濃 = "#2A2233";                       /* 輪郭 */
   var 細 = "#4A3F55";                       /* 中の 線（細い） */
 
-  /* 肌・髪・瞳は **その人の 色とは 別**に 決める（服だけが その人の 色）。 */
-  var 肌色 = [
-    ["#FFE9D6", "#F6CDAE"], ["#FBD9BC", "#EDBA94"],
-    ["#EFC098", "#DCA173"], ["#D2996B", "#B87A4E"], ["#A9714A", "#8C5834"]
-  ];
+  /* ══ 肌の 色は **割り当てない**（2026-09-10・訴え）════════════════
+     訴え「これ 黒人と 白人の 差別に なる。いまは グローバル化だから、
+          これは あかんよ いくらなんでも」
+
+     ★ **そのとおり。** 直前まで ニックネームの ハッシュから
+       肌の 色を 5 段階で 割り当てて いた。
+       本人が 選んで いないのに、名前から 人種的な 見た目を 機械が 決める、
+       という 作りに なって いた。理由の ない 割り当ては しない。
+     ★ ここは **中立の 1 色**（生きものの 絵の 地）に する。
+       見分けは **すがた・髪の色・瞳・服・飾り**で 十分 付く。
+     ★ 見た目を 選びたい 人は 自分で 選べる ように する（入る ときに 選ぶ）。 */
+  var 肌 = ["#FBEBDA", "#F0D4BC"];
   var 髪色 = [
     ["#3B3247", "#241D2E"], ["#6B4A33", "#4A3122"], ["#C79B57", "#A47B3C"],
     ["#D9534F", "#A93B37"], ["#E88BB4", "#C96694"], ["#5B79D6", "#3B57AC"],
@@ -316,7 +323,7 @@
     var mu = 眉[Math.floor(n / 1728) % 眉.length];
     var kt = 口[Math.floor(n / 8640) % 口.length];
     var kz = 飾り[Math.floor(n / 60480) % 飾り.length];
-    var sk = 肌色[Math.floor(n / 3) % 肌色.length];
+    var sk = 肌;
     var hr = 髪色[Math.floor(n / 7) % 髪色.length];
     var ir = 瞳色[Math.floor(n / 11) % 瞳色.length];
     var ho = Math.floor(n / 13) % 2;
@@ -371,6 +378,27 @@
       + "<g fill='none' stroke='" + 濃 + "' stroke-linecap='round'>" + kt + "</g>"
       + kz(c)
       + "</svg>";
+  }
+
+  /* ══ QR（2026-09-10・訴え「参加者は どこから 参加すんのよ」）════════
+     ★ **自作を やめた。** 自分で 組んだ 符号化は 441 ます 中 100 ます 違い、
+       読み取り器に 通らなかった（実測）。**読めない QR は 出さない。**
+       実績の ある もの（qrcode）を **束ねて 持つ**（外から 読み込まない）。
+       入口の 読み込みには 足さず、**必要に なった ときだけ**取りに 行く。
+     ★ 読めるかは 検査で 毎回 測る（vqparty の「QR が 本当に 読める」）。 */
+  var QRけた = null;
+  function QRを描く(text) {
+    if (!root.__vqQR) return "";
+    try { return root.__vqQR(text, 4); } catch (e) { return ""; }
+  }
+  function QRを用意(cb) {
+    if (root.__vqQR) { cb(true); return; }
+    if (QRけた === "だめ") { cb(false); return; }
+    var el = doc.createElement("script");
+    el.src = (root.__vqQRSrc || "/js/vq-qr.826430d916.js");
+    el.onload = function () { cb(!!root.__vqQR); };
+    el.onerror = function () { QRけた = "だめ"; cb(false); };
+    doc.head.appendChild(el);
   }
 
   /* ══ 通信 ══════════════════════════════════════════════════════════ */
@@ -490,6 +518,16 @@
       "font-variant-numeric:tabular-nums;}",
     ".vqw-lab{font-size:12px;font-weight:700;color:var(--vq-text-secondary,#7A7589);}",
     ".vqw-n{margin-left:auto;font-size:15px;font-weight:750;}",
+    /* ★ **参加の しかた**（2026-09-10・訴え「参加者は どこから 参加すんのよ」）。
+       PIN を 出すだけでは 入れない。**どこを 開くか**を 並べて 出す。 */
+    ".vqw-how{flex:0 0 auto;display:flex;gap:16px;align-items:center;padding:0 20px 12px;flex-wrap:wrap;}",
+    ".vqw-qr{width:132px;height:132px;flex:0 0 auto;border-radius:12px;overflow:hidden;background:#fff;padding:6px;}",
+    ".vqw-qr svg{width:100%;height:100%;display:block;}",
+    ".vqw-way{font-size:13.5px;line-height:1.9;}",
+    ".vqw-url{display:inline-flex;align-items:center;gap:8px;margin-top:4px;}",
+    ".vqw-url b{font-size:17px;font-weight:800;letter-spacing:.02em;}",
+    ".vqw-copy{border:1px solid var(--vq-border,#DED8EE);background:var(--vq-surface,#fff);color:inherit;",
+      "border-radius:8px;height:30px;padding:0 11px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;}",
     ".vqw-grid{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 16px 20px;",
       "display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(126px,1fr));align-content:start;}",
     ".vqw-t{position:relative;aspect-ratio:1/1;border-radius:14px;overflow:hidden;",
@@ -776,6 +814,16 @@
   /* 作った ときに「よけた 問題数」を 待機画面へ 渡す ための 一時の 置き場。
      ★ ロビーを 差し替えた ときに この 宣言ごと 落として しまい、
        部屋を 作った 瞬間に 落ちて いた（実測）。 */
+  /* 参加の 道。**短い ほうを 出す**（黒板に 書ける・口で 言える）。 */
+  function 参加のURL(pin) {
+    var h = "";
+    try { h = location.host.replace(/^www\./, ""); } catch (e) { h = "vocabuquiz.app"; }
+    return h + "/v/" + pin;
+  }
+  function 参加のURL完全(pin) {
+    try { return location.origin + "/v/" + pin; } catch (e) { return "https://vocabuquiz.app/v/" + pin; }
+  }
+
   var 作った後に伝える = 0;
 
   /* ── 待機画面（Discord の 通話画面のような タイル）─────────────
@@ -790,7 +838,8 @@
     host.id = "vqPartyWait";
     var sh = host.attachShadow({ mode: "open" });
     sh.innerHTML = "<style>" + CSS + 待CSS + "</style><div class='vqw'>"
-      + "<div class='vqw-h'></div><div class='vqw-grid'></div><div class='vqw-foot'></div></div>";
+      + "<div class='vqw-h'></div><div class='vqw-how'></div>"
+      + "<div class='vqw-grid'></div><div class='vqw-foot'></div></div>";
     doc.body.appendChild(host);
 
     var conn = null;
@@ -802,6 +851,28 @@
         "<div><div class='vqw-lab'>" + (s.host ? "この PIN を 伝えて ください" : "入りました") + "</div>"
         + "<div class='vqw-pin'>" + esc(s.pin) + "</div></div>"
         + "<div class='vqw-n'>" + 総 + " 人</div>";
+
+      /* ★ **どこから 入るか**を 出すのは 作った 人の 画面だけ。 */
+      var how = sh.querySelector(".vqw-how");
+      if (s.host) {
+        if (!how.dataset.done) {
+          how.dataset.done = "1";
+          how.innerHTML = "<div class='vqw-qr' data-qr></div>"
+            + "<div class='vqw-way'>参加する 人は、この どちらかで 入れます。"
+            + "<b style='color:var(--vq-accent-text,#5F579E)'>ログインは 要りません。</b><br>"
+            + "① QR を スマホの カメラで 読む<br>"
+            + "② 下の ページを 開いて、名前を 入れる"
+            + "<div class='vqw-url'><b data-url>" + esc(参加のURL(s.pin)) + "</b>"
+            + "<button class='vqw-copy' data-copy>コピー</button></div></div>";
+          QRを用意(function (ok) {
+            var box = sh.querySelector("[data-qr]");
+            if (!box) return;
+            if (ok) box.innerHTML = QRを描く(参加のURL完全(s.pin));
+            /* ★ 出せない ときは **黙って 空にしない**。②が ある ことを 伝える。 */
+            else box.outerHTML = "";
+          });
+        }
+      } else { how.innerHTML = ""; }
 
       var 箱 = sh.querySelector(".vqw-grid");
       if (!ps.length) {
@@ -840,6 +911,15 @@
       if (m.t === "q") { try { host.remove(); } catch (e) {} 出題へ(s, conn, m); }
     });
     sh.addEventListener("click", function (e) {
+      if (e.target.closest && e.target.closest("[data-copy]")) {
+        var b2 = e.target.closest("[data-copy]");
+        try {
+          root.navigator.clipboard.writeText(参加のURL完全(s.pin));
+          b2.textContent = "コピーしました";
+          setTimeout(function () { b2.textContent = "コピー"; }, 1600);
+        } catch (x) { b2.textContent = "コピーできません"; }
+        return;
+      }
       if (e.target.closest && e.target.closest("[data-start]")) conn.送る({ t: "start" });
       if (e.target.closest && e.target.closest("[data-quit]")) {
         try { conn.閉じる(); } catch (x) {}
@@ -1226,6 +1306,25 @@
       受ける(m);
     });
   };
+
+  /* ══ `/v/PIN` で 開いた ときは、その まま 入る 画面へ ══════════════
+     ★ これが 無いと URL を 配っても トップが 開くだけで 入れない。 */
+  function 道から開く() {
+    var pin = "";
+    try {
+      var m = /^\/v\/([A-Za-z0-9]{1,8})\/?$/.exec(location.pathname || "");
+      if (m) pin = String(m[1]).toUpperCase();
+      if (!pin) {
+        var q2 = new URLSearchParams(location.search || "");
+        pin = String(q2.get("pin") || "").toUpperCase();
+      }
+    } catch (e) {}
+    if (!/^V[0-9A-Z]{5}$/.test(pin)) return;
+    /* 道は きれいに して おく（戻るで 行き来しない ように）。 */
+    try { history.replaceState(null, "", "/"); } catch (e) {}
+    setTimeout(function () { 入る画面(pin); }, 400);
+  }
+  道から開く();
 
   root.__vqParty = {
     開く: 開く,
