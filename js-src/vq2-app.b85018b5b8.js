@@ -40466,8 +40466,15 @@
     } catch (e) {}
     return "";
   }
-  function serverSpeak(text, o) {
+  /* ★ **自分の 順番を 受け取る**（2026-09-10・訴え
+     「モバイルだと リスニング再生が うまく いかない」）。
+     もとは 下で `器で鳴らす(..., playSeq)` と **その時点の 最新**を
+     渡して いた。通信が 遅れて 返って きた **古い 頼み**が
+     最新を 名乗って 器を 奪い、いま 鳴っている 音を 止めて いた。
+     モバイルは 回線が 揺れる ぶん、この 追い越しが 起きやすい。 */
+  function serverSpeak(text, o, mySeq) {
     o = o || {};
+    if (mySeq === undefined) mySeq = playSeq;
     var h = { "Content-Type": "application/json" };
     try {
       var tok = root.localStorage.getItem("app.auth.token.v1");
@@ -40492,8 +40499,20 @@
       } else if (!送る声) 送る声 = vname;
     } catch (e) { if (!送る声) 送る声 = vname; }
     var 段2 = 段にする(str(text), { voice: 送る声, speed: Number(o.rate) || 1 });
+    /* ★ **見切りを 付ける**（2026-09-10・訴え）。
+       もとは AbortController も 時間切れも 無かった。
+       モバイルは 電波が 途切れると 応答が 何十秒も 返らず、
+       そのあいだ 画面は「用意しています」の まま。
+       しかも 諦めた あと もう一度 取りに 行くので **待ちが 2 倍**に なる。
+       15 秒で 切る。切った ことは 黙らずに 返す。 */
+    var 中止 = null, 時間切れ = 0;
+    try {
+      中止 = new AbortController();
+      時間切れ = root.setTimeout(function () { try { 中止.abort(); } catch (e) {} }, 15000);
+    } catch (e) { 中止 = null; }
     return fetch(apiBase() + "/api/tts/speak", {
       method: "POST", headers: h,
+      signal: 中止 ? 中止.signal : undefined,
       body: JSON.stringify(段2
         ? { segments: 段2 }
         : { text: str(text), lang: o.lang || "", voice: 送る声 })
@@ -40512,13 +40531,39 @@
       var model = res.headers.get("x-vq-tts-model") || "";
       return res.blob().then(function (blob) {
         /* ★ ここも new Audio していた（2026-08-28 まで）。同じ 器を 使う。 */
-        return 器で鳴らす(blob, o, { seconds: 0, voice: "", source: "server" }, playSeq)
+        /* ★ **playSeq では なく 自分の 順番**。ここが 事故の 元だった。 */
+        if (mySeq !== playSeq) return { ok: false, superseded: true, reason: "" };
+        return 器で鳴らす(blob, o, { seconds: 0, voice: "", source: "server" }, mySeq)
           .then(function (out) { if (out && out.ok) out.model = model; return out; });
       });
-    }).catch(function () {
-      return { ok: false, reason: "サーバへつながりませんでした。" };
+    }).catch(function (e) {
+      var 切れた = e && (e.name === "AbortError" || String(e).indexOf("abort") >= 0);
+      return { ok: false, 中断: !!切れた,
+        わけ: 切れた ? "時間内に 返って きませんでした" : "",
+        reason: 切れた
+          ? "音声が 時間内に 用意できませんでした（電波の 弱いところかも しれません）。"
+          : "サーバへつながりませんでした。" };
+    }).then(function (x) {
+      try { if (時間切れ) root.clearTimeout(時間切れ); } catch (e) {}
+      return x;
     });
   }
+
+  /* ══ 画面を 離れたら 止める（2026-09-10・訴え）════════════════════
+     iOS は 背面化・画面ロック・着信で 音を 止めるが、こちらは
+     **鳴っている つもりの まま**に なる。次に 戻って きたとき
+     「押しても 何も 起きない」に 見える（前の 再生が 終わって いない）。
+     ★ 隠れたら その場で 片づける。**戻ったときに 押せば ちゃんと 鳴る。** */
+  (function 画面から離れたら() {
+    if (root.__vqTtsLeaveHook) return;
+    root.__vqTtsLeaveHook = true;
+    var 片づける = function () {
+      try { if (root.document && root.document.visibilityState === "visible") return; } catch (e) {}
+      try { stop(); } catch (e) {}
+    };
+    try { root.document.addEventListener("visibilitychange", 片づける); } catch (e) {}
+    try { root.addEventListener("pagehide", function () { try { stop(); } catch (e) {} }); } catch (e) {}
+  })();
 
   /* ── 端末の読み上げ（最後の受け皿）────────────────────────────── */
   function canSpeakLocal() { return !!(root.speechSynthesis && root.SpeechSynthesisUtterance); }
@@ -40783,7 +40828,19 @@
         見張り = root.setTimeout(function () {
           /* ★ **自分の ばんで なければ 器に 触らない**（2026-08-28）。
              ここで 触ると、いま 鳴っている 別の 再生を 止めてしまう。 */
+          var 進んだ = 0;
+          try { 進んだ = Number(a.currentTime) || 0; } catch (e) {}
           if (私のばん()) 止める(a);
+          /* ★ **一度も 進んで いなければ 失敗**（2026-09-10・訴え）。
+             もとは 打ち切りを いつも ok:true で 返して いたので、
+             1 秒も 鳴って いないのに「読み上げました」と 記録され、
+             次の 問題へ 進んで しまって いた（モバイルで よく 起きる）。
+             0.15 秒は 測り誤差の 逃げ。 */
+          if (進んだ < 0.15) {
+            出す({ ok: false, 打ち切り: true, 無音: true,
+                   reason: "音が 始まりませんでした。もう一度 押して ください。" });
+            return;
+          }
           出す({ ok: true, seconds: r.seconds, voice: r.voice, 打ち切り: true,
                  source: r.cached ? "cache" : (r.source || (bridgeReady() ? "bridge" : "server")) });
         }, Math.min(180000, 上限));
@@ -40828,7 +40885,20 @@
     鍵を開ける();
     return 器で鳴らす(住所, o, { seconds: Number(o.seconds) || 0, voice: "", source: "file" }, mySeq);
   }
+  /* 本番の 再生が 音を 待って いる あいだだけ 立てる。
+     必ず 下ろす（下ろし忘れると 先読みが 二度と 走らない）。 */
+  function 用意を数える(p) {
+    用意中++;
+    var 下ろす = function (v) { 用意中 = Math.max(0, 用意中 - 1); return v; };
+    return p.then(下ろす, function (e) { 下ろす(); throw e; });
+  }
+
   function play(text, o) {
+    /* ★ 中身は そのまま。**外側で「用意中」を 数える**だけ
+       （2026-09-10）。こうして おくと 先読みが 本再生に 道を ゆずる。 */
+    return 用意を数える(play中身(text, o));
+  }
+  function play中身(text, o) {
     o = o || {};
     stop();
     var mySeq = ++playSeq;
@@ -40900,7 +40970,7 @@
          （容量いっぱい 等）ときに 失敗として 返ることがある。
          鳴らすだけなら まだ できる。 */
       if (!bridgeReady()) {
-        var sr2 = serverSpeak(text, o);
+        var sr2 = serverSpeak(text, o, mySeq);
         return sr2.then(function (x) {
           if (mySeq !== playSeq) return { ok: false, superseded: true, reason: "" };
           if (x && x.ok) return x;
@@ -41010,10 +41080,18 @@
      ★ 失敗しても 何も 言わない。先読みは あくまで おまけで、
        本番の 再生は これまでどおり その場で 作れる。 */
   var 先読み中 = Object.create(null);
+  /* ★ **いま 音を 用意して いる 最中か**（2026-09-10・訴え）。
+     `isPlaying()` は 器が 鳴って いる ときしか 真に ならない。
+     音を 取りに 行って いる あいだ（いちばん 待たされる ところ）は
+     偽なので、そこへ 先読みが 重なって **同じ 細い 回線を 取り合って**
+     いた。モバイルでは これが「なかなか 鳴らない」の 大きな 元。 */
+  var 用意中 = 0;
   function warm(text, o) {
     o = o || {};
     var t = str(text).trim();
     if (!t) return Promise.resolve({ ok: false, reason: "原稿がありません。" });
+    /* 本番の 再生が 音を 待って いる あいだは 先読みを しない。 */
+    if (用意中 > 0) return Promise.resolve({ ok: false, 見送り: true, reason: "いま 再生の 用意中です。" });
     var voice = str(o.voice) || defaultVoiceFor(t);
     if (!bridgeReady()) voice = サーバの声名(voice, t);
     var speed = Number(o.speed) || 1;
