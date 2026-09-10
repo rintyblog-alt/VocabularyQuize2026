@@ -56,257 +56,319 @@
   /* ══════════════════════════════════════════════════════════════════
      キャラクター（2026-09-10）
      訴え ①「キャラクターとかも あると いいかもね」
-          ②「キャラクターが シンプルすぎる。作り込んで」
-          ③「面白くない。もっと ボディも あるような」
+          ②「シンプルすぎる。作り込んで」③「もっと ボディも あるような」
+          ④「動物・オリジナル・人間も」
+          ⑤「まだ 安っぽい。顔の 表情や パーツ、色を 変えたり。
+             もっと リアルに したい 質感を。アニメっぽく」
 
-     ★ **全身**で 描く。顔だけでは 誰が 誰か 分かっても 面白く ない。
-     ★ 絵は **読み込まない。その場で 描く。**
-       1000 人ぶんの 画像を 取りに 行ったら 教室の 回線は もたない。
-     ★ 何に なるかは **サーバが 決めた 数 1 つ**から 割り出す。
-       同じ 名前なら いつも 同じ 姿。
-     ★ 重ねる 順は 後ろから:
-         しっぽ → あし → からだ → うで → あたま(みみ) → かお → かざり
-       同じ 色の 上に 同じ 色で 描くと 消える ので、**輪郭を 必ず 付ける**。
+     ★ アニメ調に する ために 足した もの:
+       ・**目**を 作り込む（白目 → 虹彩の ぼかし → ひとみ → ハイライト 2 つ
+         → 上まぶたの 影 → まつ毛）。ここが いちばん 効く。
+       ・**眉**。表情の 半分は 眉で 決まる。
+       ・**肌・髪・瞳を 別々の 色**に する（服だけが その人の 色）。
+       ・**陰影**（あごの下・体の わき・髪の つや）。
+       ・輪郭は **外を 太く・中を 細く**。
 
-     すがた 10 × 服 6 × うで 3 × 目 8 × 口 7 × 飾り 9 × ほお 2
-     ＝ 181,440 通り。
+     ★ 絵は 読み込まない。その場で 描く（1000 人ぶんの 画像は 回線が もたない）。
+     ★ 何に なるかは サーバが 決めた 数 1 つから 割り出す（同じ 名前 → 同じ 姿）。
+     ★ ぼかしの id は **1 枚ごとに 別**に する。同じ id を 使うと
+       同じ 画面の ほかの 絵に 引きずられる。
      ══════════════════════════════════════════════════════════════════ */
-  var 濃 = "#241F30";                 /* 輪郭・目・口（どの 色の 上でも 読める） */
-  var 肌 = "#FFF6EC";                 /* 顔と 手の 地 */
-  var 線 = "' stroke='" + 濃 + "' stroke-width='3' stroke-linejoin='round' stroke-linecap='round'";
+  var 濃 = "#2A2233";                       /* 輪郭 */
+  var 細 = "#4A3F55";                       /* 中の 線（細い） */
 
-  /* ── みみ・つの（頭の 後ろ）と しっぽ（いちばん 後ろ）── */
+  /* 肌・髪・瞳は **その人の 色とは 別**に 決める（服だけが その人の 色）。 */
+  var 肌色 = [
+    ["#FFE9D6", "#F6CDAE"], ["#FBD9BC", "#EDBA94"],
+    ["#EFC098", "#DCA173"], ["#D2996B", "#B87A4E"], ["#A9714A", "#8C5834"]
+  ];
+  var 髪色 = [
+    ["#3B3247", "#241D2E"], ["#6B4A33", "#4A3122"], ["#C79B57", "#A47B3C"],
+    ["#D9534F", "#A93B37"], ["#E88BB4", "#C96694"], ["#5B79D6", "#3B57AC"],
+    ["#9A6BD6", "#7449B0"], ["#59A87A", "#3C8058"], ["#C9CBD6", "#A0A3B2"],
+    ["#4FB0AE", "#31908E"], ["#E0873F", "#BB6725"], ["#F2EDE6", "#D5CCC0"]
+  ];
+  var 瞳色 = ["#4A7FD6", "#8B5BC4", "#3F9E7A", "#C25A4E", "#C08A2E",
+              "#4AA8B8", "#B8558F", "#5C5F86", "#7A4E2E", "#2E7D8F"];
+
+  /* ── みみ・つの・髪（後ろ）と しっぽ、まえ（前髪）── */
   var すがた = [
-    { 名: "ねこ",
-      みみ: "<path d='M22 22L27 -8l24 22z'/><path d='M78 22L73 -8 49 14z'/>"
-        + "<path d='M29 18L32 2l11 12z' fill='rgba(255,255,255,.55)' stroke='none'/>"
-        + "<path d='M71 18L68 2 57 14z' fill='rgba(255,255,255,.55)' stroke='none'/>",
+    { 名: "ねこ", 毛: 1,
+      うしろ: "<path d='M22 22L27 -8l24 22z'/><path d='M78 22L73 -8 49 14z'/>",
+      うえ: "<path d='M29 18L32 2l11 12z' fill='#F6B8C8' stroke='none' opacity='.9'/>"
+        + "<path d='M71 18L68 2 57 14z' fill='#F6B8C8' stroke='none' opacity='.9'/>",
       しっぽ: "<path d='M70 108q26 4 22-16-2-10-11-8' fill='none' stroke-width='9'/>" },
-    { 名: "くま",
-      みみ: "<circle cx='24' cy='16' r='13'/><circle cx='76' cy='16' r='13'/>"
-        + "<circle cx='24' cy='16' r='6' fill='rgba(255,255,255,.55)' stroke='none'/>"
-        + "<circle cx='76' cy='16' r='6' fill='rgba(255,255,255,.55)' stroke='none'/>",
+    { 名: "くま", 毛: 1,
+      うしろ: "<circle cx='24' cy='16' r='13'/><circle cx='76' cy='16' r='13'/>",
+      うえ: "<circle cx='24' cy='16' r='6' fill='#F6B8C8' stroke='none' opacity='.85'/>"
+        + "<circle cx='76' cy='16' r='6' fill='#F6B8C8' stroke='none' opacity='.85'/>",
       しっぽ: "<circle cx='74' cy='104' r='8'/>" },
-    { 名: "うさぎ",
-      みみ: "<ellipse cx='36' cy='-2' rx='8' ry='24'/><ellipse cx='64' cy='-2' rx='8' ry='24'/>"
-        + "<ellipse cx='36' cy='0' rx='3.6' ry='16' fill='rgba(255,255,255,.6)' stroke='none'/>"
-        + "<ellipse cx='64' cy='0' rx='3.6' ry='16' fill='rgba(255,255,255,.6)' stroke='none'/>",
+    { 名: "うさぎ", 毛: 1,
+      うしろ: "<ellipse cx='36' cy='-2' rx='8' ry='24'/><ellipse cx='64' cy='-2' rx='8' ry='24'/>",
+      うえ: "<ellipse cx='36' cy='0' rx='3.6' ry='16' fill='#F6B8C8' stroke='none' opacity='.9'/>"
+        + "<ellipse cx='64' cy='0' rx='3.6' ry='16' fill='#F6B8C8' stroke='none' opacity='.9'/>",
       しっぽ: "<circle cx='75' cy='104' r='9' fill='#fff'/>" },
-    { 名: "きつね",
-      みみ: "<path d='M16 24L24 -12l26 26z'/><path d='M84 24L76 -12 50 14z'/>"
-        + "<path d='M25 20L29 0l12 14z' fill='rgba(255,255,255,.5)' stroke='none'/>"
-        + "<path d='M75 20L71 0 59 14z' fill='rgba(255,255,255,.5)' stroke='none'/>",
+    { 名: "きつね", 毛: 1,
+      うしろ: "<path d='M16 24L24 -12l26 26z'/><path d='M84 24L76 -12 50 14z'/>",
+      うえ: "<path d='M25 20L29 0l12 14z' fill='#F6B8C8' stroke='none' opacity='.9'/>"
+        + "<path d='M75 20L71 0 59 14z' fill='#F6B8C8' stroke='none' opacity='.9'/>",
       しっぽ: "<path d='M70 110q28 0 24-20-3-12-14-8-10 4-10 14z'/>"
-        + "<path d='M88 92q6 6 3 14' fill='#fff' stroke='none' opacity='.65'/>" },
-    { 名: "とり",
-      みみ: "<path d='M50 -14c9 0 12 10 9 16H41c-3-6 0-16 9-16z'/>",
+        + "<path d='M86 92q7 6 4 15' fill='#fff' stroke='none' opacity='.6'/>" },
+    { 名: "とり", 毛: 1,
+      うしろ: "<path d='M50 -14c9 0 12 10 9 16H41c-3-6 0-16 9-16z'/>",
       しっぽ: "<path d='M70 104l22 8-22 8z'/>" },
-    { 名: "ロボ",
-      みみ: "<rect x='46' y='-16' width='8' height='26' rx='4'/><circle cx='50' cy='-18' r='8'/>"
-        + "<rect x='12' y='32' width='11' height='22' rx='5'/><rect x='77' y='32' width='11' height='22' rx='5'/>",
+    { 名: "ロボ", 毛: 0,
+      うしろ: "<rect x='46' y='-16' width='8' height='26' rx='4'/><circle cx='50' cy='-18' r='8'/>"
+        + "<rect x='12' y='34' width='11' height='22' rx='5'/><rect x='77' y='34' width='11' height='22' rx='5'/>",
       しっぽ: "" },
-    { 名: "おばけ",
-      みみ: "<path d='M50 -8c20 0 30 14 30 32v10H20V24C20 6 30-8 50-8z'/>",
+    { 名: "おばけ", 毛: 0,
+      うしろ: "<path d='M50 -8c20 0 30 14 30 32v10H20V24C20 6 30-8 50-8z'/>",
       しっぽ: "" },
-    { 名: "ドラゴン",
-      みみ: "<path d='M30 18L18-14l26 18z'/><path d='M70 18L82-14 56 4z'/>",
+    { 名: "ドラゴン", 毛: 1,
+      うしろ: "<path d='M30 18L18-14l26 18z'/><path d='M70 18L82-14 56 4z'/>",
       しっぽ: "<path d='M68 108q26 2 24-16l10 6-2-16-12 8q-8-6-20 4z'/>" },
-    { 名: "ぱんだ",
-      みみ: "<circle cx='23' cy='16' r='13' fill='" + 濃 + "'/><circle cx='77' cy='16' r='13' fill='" + 濃 + "'/>",
-      しっぽ: "<circle cx='74' cy='105' r='7' fill='" + 濃 + "'/>" },
-    { 名: "ひつじ",
-      みみ: "<circle cx='26' cy='14' r='14'/><circle cx='50' cy='2' r='16'/><circle cx='74' cy='14' r='14'/>",
+    { 名: "ぱんだ", 毛: 0,
+      うしろ: "<circle cx='23' cy='16' r='13' fill='#2A2233'/><circle cx='77' cy='16' r='13' fill='#2A2233'/>",
+      しっぽ: "<circle cx='74' cy='105' r='7' fill='#2A2233'/>" },
+    { 名: "ひつじ", 毛: 1,
+      うしろ: "<circle cx='26' cy='14' r='14'/><circle cx='50' cy='2' r='16'/><circle cx='74' cy='14' r='14'/>",
       しっぽ: "<circle cx='73' cy='104' r='8'/>" },
-    /* ── 人間（2026-09-10・訴え「人間も 入れて いいし」）──────────
-       ★ 髪は **後ろ（みみ）と 前（まえ）の 2 枚**で 描く。
-         後ろだけだと 顔の 円に 隠れて 坊主に 見える。 */
-    { 名: "人間・ショート",
-      みみ: "<path d='M50 0c-24 0-36 16-36 38v26h72V38C86 16 74 0 50 0z'/>",
+    /* ── 人間。髪は **後ろ・前・つや** の 3 枚 ── */
+    { 名: "人間・ショート", 毛: 1,
+      うしろ: "<path d='M50 0c-24 0-36 16-36 38v26h72V38C86 16 74 0 50 0z'/>",
       まえ: "<path d='M50 4c-21 0-33 14-34 32 4-12 12-18 22-16l6 10 6-10c10-2 18 4 22 16C83 18 71 4 50 4z'/>",
+      つや: "<path d='M32 16q10-8 20-6' fill='none' stroke='#fff' stroke-width='3.4' opacity='.5' stroke-linecap='round'/>",
       しっぽ: "" },
-    { 名: "人間・ツインテール",
-      みみ: "<path d='M50 0c-24 0-36 16-36 38v22h72V38C86 16 74 0 50 0z'/>"
+    { 名: "人間・ツインテール", 毛: 1,
+      うしろ: "<path d='M50 0c-24 0-36 16-36 38v22h72V38C86 16 74 0 50 0z'/>"
         + "<ellipse cx='9' cy='58' rx='12' ry='24'/><ellipse cx='91' cy='58' rx='12' ry='24'/>"
         + "<circle cx='11' cy='32' r='9'/><circle cx='89' cy='32' r='9'/>",
       まえ: "<path d='M50 4c-21 0-33 14-34 32 5-13 13-19 23-17l5 11 5-11c10-2 18 4 23 17C83 18 71 4 50 4z'/>",
+      つや: "<path d='M34 14q9-7 18-5' fill='none' stroke='#fff' stroke-width='3.4' opacity='.5' stroke-linecap='round'/>",
       しっぽ: "" },
-    { 名: "人間・おだんご",
-      みみ: "<circle cx='50' cy='-10' r='15'/>"
-        + "<path d='M50 0c-24 0-36 16-36 38v20h72V38C86 16 74 0 50 0z'/>",
+    { 名: "人間・おだんご", 毛: 1,
+      うしろ: "<circle cx='50' cy='-10' r='15'/><path d='M50 0c-24 0-36 16-36 38v20h72V38C86 16 74 0 50 0z'/>",
       まえ: "<path d='M50 4c-21 0-33 14-34 32 11-8 20-13 34-13s23 5 34 13C83 18 71 4 50 4z'/>",
+      つや: "<path d='M33 18q11-8 22-6' fill='none' stroke='#fff' stroke-width='3.4' opacity='.5' stroke-linecap='round'/>",
       しっぽ: "" },
-    /* ── オリジナル（訴え「オリジナルキャラクターとかも」）────────── */
-    { 名: "スライム",
-      みみ: "<path d='M50 -6c-4 10-10 12-10 18h20c0-6-6-8-10-18z'/>"
-        + "<path d='M14 66q0-30 36-30t36 30q0 8-8 8H22q-8 0-8-8z' opacity='.55'/>",
-      しっぽ: "<path d='M22 108q28 10 56 0v8q-28 10-56 0z' opacity='.6'/>" },
-    { 名: "ほしのこ",
-      みみ: "<path d='M50 -24l7.6 15.4 17 2.5-12.3 12 2.9 16.9L50 34.8 34.8 42.8l2.9-16.9-12.3-12 17-2.5z'/>",
+    /* ── オリジナル ── */
+    { 名: "スライム", 毛: 0,
+      うしろ: "<path d='M50 -6c-4 10-10 12-10 18h20c0-6-6-8-10-18z'/>"
+        + "<path d='M14 66q0-30 36-30t36 30q0 8-8 8H22q-8 0-8-8z' opacity='.5'/>",
+      しっぽ: "<path d='M22 108q28 10 56 0v8q-28 10-56 0z' opacity='.55'/>" },
+    { 名: "ほしのこ", 毛: 0,
+      うしろ: "<path d='M50 -24l7.6 15.4 17 2.5-12.3 12 2.9 16.9L50 34.8 34.8 42.8l2.9-16.9-12.3-12 17-2.5z'/>",
       しっぽ: "<path d='M74 100l4 8 9 1.3-6.5 6.3 1.5 8.9-8-4.2-8 4.2 1.5-8.9-6.5-6.3 9-1.3z'/>" },
-    { 名: "きのこ",
-      みみ: "<path d='M50 -8c-24 0-38 16-38 30 0 6 6 8 38 8s38-2 38-8c0-14-14-30-38-30z'/>"
-        + "<circle cx='30' cy='14' r='6' fill='#fff' stroke='none' opacity='.75'/>"
-        + "<circle cx='62' cy='8' r='7' fill='#fff' stroke='none' opacity='.75'/>"
-        + "<circle cx='74' cy='22' r='4.5' fill='#fff' stroke='none' opacity='.75'/>",
+    { 名: "きのこ", 毛: 0,
+      うしろ: "<path d='M50 -8c-24 0-38 16-38 30 0 6 6 8 38 8s38-2 38-8c0-14-14-30-38-30z'/>",
+      うえ: "<circle cx='30' cy='14' r='6' fill='#fff' stroke='none' opacity='.8'/>"
+        + "<circle cx='62' cy='8' r='7' fill='#fff' stroke='none' opacity='.8'/>"
+        + "<circle cx='74' cy='22' r='4.5' fill='#fff' stroke='none' opacity='.8'/>",
       しっぽ: "" }
   ];
 
-  /* ── 服（からだ）。x30〜70・y72〜114 に 収める ── */
+  /* ── 服 ── */
   var 服 = [
-    /* ふつう */ function () {
-      return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z'/>";
-    },
-    /* パーカー */ function () {
-      return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z'/>"
-        + "<path d='M36 70q14 14 28 0' fill='none'/>"
-        + "<rect x='40' y='92' width='20' height='12' rx='4' fill='rgba(255,255,255,.3)'/>";
-    },
-    /* ワンピース */ function () {
-      return "<path d='M50 68c-11 0-16 6-16 14l-8 26c-1 6 6 8 24 8s25-2 24-8l-8-26c0-8-5-14-16-14z'/>"
-        + "<path d='M32 96h36' fill='none' stroke-width='2.6' opacity='.55'/>";
-    },
-    /* しましま */ function () {
-      return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z'/>"
-        + "<path d='M31 84h38M31 96h38' fill='none' stroke='rgba(255,255,255,.5)' stroke-width='6'/>";
-    },
-    /* つなぎ */ function () {
-      return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z' fill='" + 肌 + "'/>"
-        + "<path d='M34 84h32v22c0 6-4 10-16 10s-16-4-16-10z'/>"
-        + "<path d='M38 84V72M62 84V72' fill='none'/>";
-    },
-    /* マント */ function () {
-      return "<path d='M50 66c-18 0-28 12-30 30l-4 22h68l-4-22c-2-18-12-30-30-30z' opacity='.9'/>"
-        + "<path d='M50 68c-12 0-18 8-18 20v18c0 6 4 10 18 10s18-4 18-10V88c0-12-6-20-18-20z' fill='" + 肌 + "'/>";
-    }
+    function () { return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z'/>"; },
+    function () { return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z'/>"
+      + "<path d='M36 70q14 14 28 0' fill='none' stroke='" + 細 + "' stroke-width='2.4'/>"
+      + "<rect x='40' y='92' width='20' height='12' rx='4' fill='rgba(0,0,0,.16)' stroke='none'/>"; },
+    function () { return "<path d='M50 68c-11 0-16 6-16 14l-8 26c-1 6 6 8 24 8s25-2 24-8l-8-26c0-8-5-14-16-14z'/>"
+      + "<path d='M32 96h36' fill='none' stroke='rgba(255,255,255,.45)' stroke-width='3'/>"; },
+    function () { return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z'/>"
+      + "<path d='M31 84h38M31 96h38' fill='none' stroke='rgba(255,255,255,.5)' stroke-width='6'/>"; },
+    function (c, sk) { return "<path d='M50 68c-13 0-20 8-20 20v18c0 6 4 10 20 10s20-4 20-10V88c0-12-7-20-20-20z' fill='" + sk + "'/>"
+      + "<path d='M34 84h32v22c0 6-4 10-16 10s-16-4-16-10z'/>"
+      + "<path d='M38 84V72M62 84V72' fill='none' stroke-width='4'/>"; },
+    function () { return "<path d='M50 66c-18 0-28 12-30 30l-4 22h68l-4-22c-2-18-12-30-30-30z' opacity='.85'/>"
+      + "<path d='M50 68c-12 0-18 8-18 20v18c0 6 4 10 18 10s18-4 18-10V88c0-12-6-20-18-20z'/>"; }
   ];
 
-  /* ── うで（3 とおり）──
-     ★ **2 度 描く**（2026-09-10 実測）。1 度だけだと 輪郭の 色（濃）で
-       塗られて **黒い 棒**に 見える。太い 濃 の 上に 細い 肌 を 重ねる。 */
-  function 腕(d) {
+  /* ── うで（太い 輪郭 の 上に 細い 肌）── */
+  function 腕(d, sk) {
     return "<path d='" + d + "' fill='none' stroke='" + 濃 + "' stroke-width='13' stroke-linecap='round'/>"
-      + "<path d='" + d + "' fill='none' stroke='" + 肌 + "' stroke-width='8' stroke-linecap='round'/>";
+      + "<path d='" + d + "' fill='none' stroke='" + sk + "' stroke-width='8' stroke-linecap='round'/>";
   }
-  function 手(x, y, r0) {
-    return "<circle cx='" + x + "' cy='" + y + "' r='" + r0 + "' fill='" + 肌
-      + "' stroke='" + 濃 + "' stroke-width='3'/>";
+  function 手(x, y, r0, sk) {
+    return "<circle cx='" + x + "' cy='" + y + "' r='" + r0 + "' fill='" + sk
+      + "' stroke='" + 濃 + "' stroke-width='2.6'/>";
   }
   var うで = [
-    /* おろす */ function () {
-      return 腕("M31 84q-8 6-7 18") + 腕("M69 84q8 6 7 18") + 手(24, 104, 6.5) + 手(76, 104, 6.5);
-    },
-    /* てをふる */ function () {
-      return 腕("M31 84q-10 2-12-14") + 腕("M69 84q8 6 7 18") + 手(19, 68, 7) + 手(76, 104, 6.5);
-    },
-    /* こしに て */ function () {
-      return 腕("M31 84q-12 4-6 16 4 5 10 3") + 腕("M69 84q12 4 6 16-4 5-10 3");
-    }
+    function (sk) { return 腕("M31 84q-8 6-7 18", sk) + 腕("M69 84q8 6 7 18", sk) + 手(24, 104, 6.5, sk) + 手(76, 104, 6.5, sk); },
+    function (sk) { return 腕("M31 84q-10 2-12-14", sk) + 腕("M69 84q8 6 7 18", sk) + 手(19, 68, 7, sk) + 手(76, 104, 6.5, sk); },
+    function (sk) { return 腕("M31 84q-12 4-6 16 4 5 10 3", sk) + 腕("M69 84q12 4 6 16-4 5-10 3", sk); }
   ];
-
-  /* ── あし ── */
-  function あし() {
-    return "<rect x='36' y='106' width='11' height='18' rx='5.5' fill='" + 肌 + "'/>"
-      + "<rect x='53' y='106' width='11' height='18' rx='5.5' fill='" + 肌 + "'/>"
-      + "<ellipse cx='39' cy='124' rx='10' ry='6.5'/><ellipse cx='61' cy='124' rx='10' ry='6.5'/>";
+  /* ★ 足は **くつ**として 描く（2026-09-10 実測）。
+     塗りを 決めずに 楕円を 置いて いたので、黒い かたまりが
+     ぷかぷか 浮いて 見えて いた。 */
+  function あし(sk, c) {
+    return "<rect x='36' y='104' width='11' height='16' rx='5.5' fill='" + sk + "' stroke='" + 濃 + "' stroke-width='2.6'/>"
+      + "<rect x='53' y='104' width='11' height='16' rx='5.5' fill='" + sk + "' stroke='" + 濃 + "' stroke-width='2.6'/>"
+      + "<path d='M32 118h13v5q0 4-4 4h-9q-3 0-3-3z' fill='" + c + "' stroke='" + 濃 + "' stroke-width='2.6' stroke-linejoin='round'/>"
+      + "<path d='M68 118H55v5q0 4 4 4h9q3 0 3-3z' fill='" + c + "' stroke='" + 濃 + "' stroke-width='2.6' stroke-linejoin='round'/>"
+      + "<path d='M32 122h13M68 122H55' fill='none' stroke='rgba(255,255,255,.45)' stroke-width='2'/>";
   }
 
-  /* ── 目 ── */
-  var 目 = [
-    "<circle cx='38' cy='40' r='5'/><circle cx='62' cy='40' r='5'/>"
-      + "<circle cx='40' cy='38' r='1.8' fill='#fff'/><circle cx='64' cy='38' r='1.8' fill='#fff'/>",
-    "<path d='M32 42q6-10 12 0' fill='none' stroke-width='4.4'/><path d='M56 42q6-10 12 0' fill='none' stroke-width='4.4'/>",
-    "<path d='M38 33l2.4 5 5.4.8-4 3.8.9 5.4-4.7-2.5-4.7 2.5.9-5.4-4-3.8 5.4-.8z'/>"
-      + "<path d='M62 33l2.4 5 5.4.8-4 3.8.9 5.4-4.7-2.5-4.7 2.5.9-5.4-4-3.8 5.4-.8z'/>",
-    "<rect x='32' y='38' width='12' height='4.4' rx='2.2'/><rect x='56' y='38' width='12' height='4.4' rx='2.2'/>",
-    "<circle cx='38' cy='40' r='5'/><circle cx='40' cy='38' r='1.8' fill='#fff'/>"
-      + "<path d='M56 42q6-10 12 0' fill='none' stroke-width='4.4'/>",
-    "<circle cx='37' cy='40' r='7'/><circle cx='63' cy='40' r='7'/>"
-      + "<circle cx='40' cy='37' r='2.5' fill='#fff'/><circle cx='66' cy='37' r='2.5' fill='#fff'/>",
-    "<path d='M32 40q6 8 12 0' fill='none' stroke-width='4.4'/><path d='M56 40q6 8 12 0' fill='none' stroke-width='4.4'/>",
-    "<path d='M38 35a5 5 0 1 1-4.6 3' fill='none' stroke-width='3.2'/>"
-      + "<path d='M62 35a5 5 0 1 1-4.6 3' fill='none' stroke-width='3.2'/>"
+  /* ══ 目。**ここが アニメらしさの 芯**。7 つの 部品で できて いる。 ══ */
+  var 目形 = [
+    { 名: "まる",   rx: 8.6, ry: 10.6, ふた: 0.30, まつ: 1 },
+    { 名: "たれ",   rx: 8.8, ry: 9.6,  ふた: 0.34, まつ: 1, かたむき: 8 },
+    { 名: "つり",   rx: 8.4, ry: 9.4,  ふた: 0.34, まつ: 1, かたむき: -8 },
+    { 名: "おおきい", rx: 9.8, ry: 12.2, ふた: 0.26, まつ: 1 },
+    { 名: "ほそ",   rx: 8.6, ry: 7.4,  ふた: 0.42, まつ: 0 },
+    { 名: "きらきら", rx: 9.4, ry: 11.4, ふた: 0.24, まつ: 1, ほし: 1 }
+  ];
+  function 片目(x, y, g, ir, id, 左) {
+    var k = g.かたむき ? (" transform='rotate(" + (左 ? g.かたむき : -g.かたむき) + " " + x + " " + y + ")'") : "";
+    var 上 = y - g.ry + g.ry * g.ふた * 2;
+    return "<g" + k + ">"
+      /* 白目 */
+      + "<ellipse cx='" + x + "' cy='" + y + "' rx='" + g.rx + "' ry='" + g.ry + "' fill='#FFFDF9'/>"
+      /* 虹彩（上が 濃く 下が 明るい ぼかし） */
+      + "<clipPath id='" + id + "'><ellipse cx='" + x + "' cy='" + y + "' rx='" + g.rx + "' ry='" + g.ry + "'/></clipPath>"
+      + "<g clip-path='url(#" + id + ")'>"
+      + "<circle cx='" + x + "' cy='" + (y + 0.6) + "' r='" + (g.rx * 0.82) + "' fill='url(#" + id + "i)'/>"
+      + "<circle cx='" + x + "' cy='" + (y + 1.4) + "' r='" + (g.rx * 0.42) + "' fill='#1B1424'/>"
+      /* まぶたの 影 */
+      + "<ellipse cx='" + x + "' cy='" + (上 - g.ry * 0.9) + "' rx='" + (g.rx * 1.1) + "' ry='" + (g.ry * 0.7)
+      + "' fill='rgba(20,12,30,.28)'/>"
+      + "</g>"
+      /* ハイライト 2 つ */
+      + "<ellipse cx='" + (x - g.rx * 0.32) + "' cy='" + (y - g.ry * 0.36) + "' rx='" + (g.rx * 0.26)
+      + "' ry='" + (g.ry * 0.22) + "' fill='#fff' transform='rotate(-20 " + x + " " + y + ")'/>"
+      + "<circle cx='" + (x + g.rx * 0.34) + "' cy='" + (y + g.ry * 0.3) + "' r='" + (g.rx * 0.13) + "' fill='rgba(255,255,255,.85)'/>"
+      + (g.ほし ? "<path d='M" + (x + g.rx * 0.3) + " " + (y - g.ry * 0.5)
+          + "l1.6 3.2 3.5.5-2.6 2.5.6 3.5-3.1-1.7-3.1 1.7.6-3.5-2.6-2.5 3.5-.5z' fill='#fff' opacity='.9'/>" : "")
+      /* 外の 線と まつ毛 */
+      + "<ellipse cx='" + x + "' cy='" + y + "' rx='" + g.rx + "' ry='" + g.ry
+      + "' fill='none' stroke='" + 濃 + "' stroke-width='2.2'/>"
+      + "<path d='M" + (x - g.rx) + " " + (y - g.ry * 0.5) + "q" + g.rx + " " + (-g.ry * 0.8) + " "
+      + (g.rx * 2) + " 0' fill='none' stroke='" + 濃 + "' stroke-width='3.4' stroke-linecap='round'/>"
+      + (g.まつ ? "<path d='M" + (x + g.rx * 0.95) + " " + (y - g.ry * 0.62) + "l4.5-3.4' fill='none' stroke='"
+          + 濃 + "' stroke-width='2.6' stroke-linecap='round'/>" : "")
+      + "</g>";
+  }
+
+  /* ── 眉（表情の 半分は ここ）── */
+  var 眉 = [
+    "M31 30q6-4 12-1M57 29q6-3 12 1",          /* ふつう */
+    "M31 32q6-6 12-2M57 30q6-4 12 2",          /* 上がり */
+    "M31 28q6 2 12 3M57 31q6-1 12-3",          /* 下がり */
+    "M32 29h11M57 29h11",                      /* まっすぐ */
+    "M31 33q6-8 12-1M57 32q6-7 12 1"           /* おこり */
   ];
 
-  /* ── 口 ── */
+  /* ── 口（小さく・アニメ調）── */
   var 口 = [
-    "<path d='M43 53q7 9 14 0' fill='none' stroke-width='4.2'/>",
-    "<ellipse cx='50' cy='55' rx='5' ry='6'/>",
-    "<rect x='44' y='53' width='12' height='4' rx='2'/>",
-    "<path d='M43 52q3.5 5 7 0' fill='none' stroke-width='3.6'/><path d='M50 52q3.5 5 7 0' fill='none' stroke-width='3.6'/>",
-    "<path d='M43 58q7-9 14 0' fill='none' stroke-width='4.2'/>",
-    "<path d='M41 52q10 10 19 1' fill='none' stroke-width='4'/>",
-    "<path d='M43 52q7 8 14 0' fill='none' stroke-width='4'/>"
-      + "<path d='M49 57q4 7 8 1z' fill='#E5484D' stroke='none'/>"
+    "<path d='M45 60q5 6 10 0' fill='none' stroke-width='2.8'/>",
+    "<path d='M45 62q5-6 10 0' fill='none' stroke-width='2.8'/>",
+    "<ellipse cx='50' cy='61' rx='3.4' ry='4.4' fill='#8E3B4E' stroke='none'/>"
+      + "<ellipse cx='50' cy='62.6' rx='2.2' ry='2.4' fill='#D2596B' stroke='none'/>",
+    "<path d='M44 59q6 8 12 0' fill='none' stroke-width='2.8'/>"
+      + "<path d='M45.4 60.4q4.6 5 9.2 0z' fill='#C4576A' stroke='none'/>",
+    "<path d='M46 60h8' fill='none' stroke-width='2.8'/>",
+    "<path d='M44 59q3 4 6 0q3 4 6 0' fill='none' stroke-width='2.6'/>",
+    "<path d='M45 59q5 6 10 0' fill='none' stroke-width='2.8'/>"
+      + "<path d='M49 63q3 5 6 1z' fill='#E5697E' stroke='none'/>"
   ];
 
   /* ── 飾り ── */
   var 飾り = [
     function () { return ""; },
-    /* とんがり帽 */ function (c) {
-      return "<path d='M50 -22L70 10H30z' fill='" + c + 線 + "/>"
-        + "<circle cx='50' cy='-22' r='5' fill='#fff'" + 線 + "/>";
-    },
-    /* リボン */ function () {
-      return "<g transform='translate(72,14)'><path d='M0 0L-13-8v16z' fill='#E93D82'" + 線 + "/>"
-        + "<path d='M0 0l13-8v16z' fill='#E93D82'" + 線 + "/>"
-        + "<circle cx='0' cy='0' r='4' fill='#fff'" + 線 + "/></g>";
-    },
-    /* めがね */ function () {
-      return "<g fill='none' stroke='" + 濃 + "' stroke-width='2.8'>"
-        + "<circle cx='38' cy='40' r='11'/><circle cx='62' cy='40' r='11'/>"
-        + "<path d='M49 40h4M27 38l-6-3M73 38l6-3'/></g>";
-    },
-    /* ヘッドホン */ function (c) {
-      return "<path d='M20 40a30 30 0 0 1 60 0' fill='none' stroke='" + 濃 + "' stroke-width='6'/>"
-        + "<rect x='11' y='36' width='15' height='22' rx='7' fill='" + c + 線 + "/>"
-        + "<rect x='74' y='36' width='15' height='22' rx='7' fill='" + c + 線 + "/>";
-    },
-    /* 王冠 */ function () {
-      return "<path d='M30 12l6-18 8 11 6-15 6 15 8-11 6 18z' fill='#FFB224'" + 線 + "/>"
-        + "<circle cx='50' cy='-12' r='3.4' fill='#E93D82' stroke='none'/>";
-    },
-    /* マフラー */ function (c) {
-      return "<path d='M30 66q20 10 40 0v9q-20 10-40 0z' fill='" + c + 線 + "/>"
-        + "<path d='M62 74l7 20 9-4-7-18z' fill='" + c + 線 + "/>";
-    },
-    /* おはな */ function () {
-      return "<g transform='translate(74,16)'>"
-        + "<circle cx='0' cy='-7' r='5' fill='#E93D82'/><circle cx='6.6' cy='-2.2' r='5' fill='#E93D82'/>"
-        + "<circle cx='4.1' cy='5.7' r='5' fill='#E93D82'/><circle cx='-4.1' cy='5.7' r='5' fill='#E93D82'/>"
-        + "<circle cx='-6.6' cy='-2.2' r='5' fill='#E93D82'/><circle cx='0' cy='0' r='3.6' fill='#FFB224'/></g>";
-    },
-    /* はね（背中） */ function () {
-      return "<path d='M28 78q-20-14-22 4 12 6 22 2z' fill='#fff' opacity='.9'" + 線 + "/>"
-        + "<path d='M72 78q20-14 22 4-12 6-22 2z' fill='#fff' opacity='.9'" + 線 + "/>";
-    }
+    function (c) { return "<path d='M50 -22L70 10H30z' fill='" + c + "' stroke='" + 濃 + "' stroke-width='2.8'/>"
+      + "<circle cx='50' cy='-22' r='5' fill='#fff' stroke='" + 濃 + "' stroke-width='2.6'/>"; },
+    function () { return "<g transform='translate(74,12)'><path d='M0 0L-13-8v16z' fill='#E93D82' stroke='" + 濃 + "' stroke-width='2.4'/>"
+      + "<path d='M0 0l13-8v16z' fill='#E93D82' stroke='" + 濃 + "' stroke-width='2.4'/>"
+      + "<circle cx='0' cy='0' r='4' fill='#fff' stroke='" + 濃 + "' stroke-width='2.4'/></g>"; },
+    function () { return "<g fill='none' stroke='" + 濃 + "' stroke-width='2.4'>"
+      + "<rect x='26' y='36' width='22' height='18' rx='6'/><rect x='52' y='36' width='22' height='18' rx='6'/>"
+      + "<path d='M48 44h4M24 40l-6-3M76 40l6-3'/></g>"
+      + "<rect x='26' y='36' width='22' height='18' rx='6' fill='rgba(255,255,255,.22)' stroke='none'/>"
+      + "<rect x='52' y='36' width='22' height='18' rx='6' fill='rgba(255,255,255,.22)' stroke='none'/>"; },
+    function (c) { return "<path d='M20 40a30 30 0 0 1 60 0' fill='none' stroke='" + 濃 + "' stroke-width='6'/>"
+      + "<rect x='11' y='36' width='15' height='22' rx='7' fill='" + c + "' stroke='" + 濃 + "' stroke-width='2.6'/>"
+      + "<rect x='74' y='36' width='15' height='22' rx='7' fill='" + c + "' stroke='" + 濃 + "' stroke-width='2.6'/>"; },
+    function () { return "<path d='M30 12l6-18 8 11 6-15 6 15 8-11 6 18z' fill='url(#kin)' stroke='" + 濃 + "' stroke-width='2.6'/>"
+      + "<circle cx='50' cy='-12' r='3.4' fill='#E93D82'/>"; },
+    function (c) { return "<path d='M30 66q20 10 40 0v9q-20 10-40 0z' fill='" + c + "' stroke='" + 濃 + "' stroke-width='2.6'/>"
+      + "<path d='M62 74l7 20 9-4-7-18z' fill='" + c + "' stroke='" + 濃 + "' stroke-width='2.6'/>"; },
+    function () { return "<g transform='translate(76,14)'>"
+      + "<circle cx='0' cy='-7' r='5' fill='#E93D82'/><circle cx='6.6' cy='-2.2' r='5' fill='#E93D82'/>"
+      + "<circle cx='4.1' cy='5.7' r='5' fill='#E93D82'/><circle cx='-4.1' cy='5.7' r='5' fill='#E93D82'/>"
+      + "<circle cx='-6.6' cy='-2.2' r='5' fill='#E93D82'/><circle cx='0' cy='0' r='3.6' fill='#FFD36B'/></g>"; },
+    function () { return "<path d='M28 78q-20-14-22 4 12 6 22 2z' fill='#fff' opacity='.92' stroke='" + 濃 + "' stroke-width='2.4'/>"
+      + "<path d='M72 78q20-14 22 4-12 6-22 2z' fill='#fff' opacity='.92' stroke='" + 濃 + "' stroke-width='2.4'/>"; }
   ];
 
-  /* 数 1 つ から すべてを 割り出す。 */
-  function 顔(face, c) {
+  var 顔連番 = 0;
+
+  /* o.顔だけ = true で **頭だけ**（帯や 順位の 小さな 丸 用）。
+     全身の まま 30px の 丸に 入れると 豆粒に なって 誰か 分からない。 */
+  function 顔(face, c, o) {
+    o = o || {};
     var n = Math.max(0, Number(face) || 0);
+    /* ★ ぼかしの id は 1 枚ごとに 別に する（同じ id だと 引きずられる）。 */
+    var u = "vqc" + (顔連番++);
     var sg = すがた[n % すがた.length];
-    var fk = 服[Math.floor(n / 10) % 服.length];
-    var ud = うで[Math.floor(n / 60) % うで.length];
-    var me = 目[Math.floor(n / 180) % 目.length];
-    var kt = 口[Math.floor(n / 1440) % 口.length];
-    var kz = 飾り[Math.floor(n / 10080) % 飾り.length];
-    var ho = Math.floor(n / 90720) % 2;
-    var 塗 = " fill='" + c + "' stroke='" + 濃 + "' stroke-width='3' stroke-linejoin='round' stroke-linecap='round'";
-    return "<svg viewBox='-8 -30 116 168' class='vqlf' aria-hidden='true'>"
-      + "<g" + 塗 + ">"
-      + sg.しっぽ                       /* しっぽ（いちばん 後ろ） */
-      + あし()
-      + fk(c)                           /* 服 */
-      + ud()                            /* うで */
-      + sg.みみ                         /* みみ・つの（頭の 後ろ） */
-      + "</g>"
+    var fk = 服[Math.floor(n / 16) % 服.length];
+    var ud = うで[Math.floor(n / 96) % うで.length];
+    var eg = 目形[Math.floor(n / 288) % 目形.length];
+    var mu = 眉[Math.floor(n / 1728) % 眉.length];
+    var kt = 口[Math.floor(n / 8640) % 口.length];
+    var kz = 飾り[Math.floor(n / 60480) % 飾り.length];
+    var sk = 肌色[Math.floor(n / 3) % 肌色.length];
+    var hr = 髪色[Math.floor(n / 7) % 髪色.length];
+    var ir = 瞳色[Math.floor(n / 11) % 瞳色.length];
+    var ho = Math.floor(n / 13) % 2;
+    var 毛 = sg.毛 ? hr[0] : c;
+    var 毛暗 = sg.毛 ? hr[1] : c;
+
+    var 塗毛 = " fill='url(#" + u + "h)' stroke='" + 濃 + "' stroke-width='3' stroke-linejoin='round' stroke-linecap='round'";
+    var 塗服 = " fill='url(#" + u + "b)' stroke='" + 濃 + "' stroke-width='3' stroke-linejoin='round' stroke-linecap='round'";
+
+    var 枠 = o.顔だけ ? "8 -34 84 92" : "-10 -36 120 176";
+    return "<svg viewBox='" + 枠 + "' class='vqlf' aria-hidden='true'>"
+      + "<defs>"
+      + "<linearGradient id='" + u + "h' x1='0' y1='0' x2='0' y2='1'>"
+      + "<stop offset='0' stop-color='" + 毛 + "'/><stop offset='1' stop-color='" + 毛暗 + "'/></linearGradient>"
+      + "<linearGradient id='" + u + "b' x1='0' y1='0' x2='0' y2='1'>"
+      + "<stop offset='0' stop-color='" + c + "'/><stop offset='1' stop-color='" + c + "' stop-opacity='.72'/></linearGradient>"
+      + "<linearGradient id='" + u + "s' x1='0' y1='0' x2='0' y2='1'>"
+      + "<stop offset='0' stop-color='" + sk[0] + "'/><stop offset='1' stop-color='" + sk[1] + "'/></linearGradient>"
+      + "<radialGradient id='" + u + "Li' cx='.5' cy='.72' r='.62'>"
+      + "<stop offset='0' stop-color='" + ir + "' stop-opacity='.35'/><stop offset='1' stop-color='" + ir + "'/></radialGradient>"
+      + "<radialGradient id='" + u + "Ri' cx='.5' cy='.72' r='.62'>"
+      + "<stop offset='0' stop-color='" + ir + "' stop-opacity='.35'/><stop offset='1' stop-color='" + ir + "'/></radialGradient>"
+      + "<linearGradient id='kin' x1='0' y1='0' x2='0' y2='1'>"
+      + "<stop offset='0' stop-color='#FFD980'/><stop offset='1' stop-color='#D99A16'/></linearGradient>"
+      + "</defs>"
+      /* 後ろ（しっぽ・耳・髪） */
+      + "<g" + 塗毛 + ">" + sg.しっぽ + "</g>"
+      + あし(sk[0], c)
+      + "<g" + 塗服 + ">" + fk(c, sk[0]) + "</g>"
+      /* 体の わきの 影 */
+      + "<path d='M32 88q4 14 2 24' fill='none' stroke='rgba(20,12,30,.16)' stroke-width='5'/>"
+      + ud(sk[0])
+      + "<g" + 塗毛 + ">" + sg.うしろ + "</g>"
+      + (sg.うえ ? "<g>" + sg.うえ + "</g>" : "")
       /* 顔 */
-      + "<circle cx='50' cy='40' r='29' fill='" + 肌 + "' stroke='" + 濃 + "' stroke-width='3'/>"
-      /* ★ 前髪は **顔の 前**（後ろだけだと 顔の 円に 隠れて 坊主に 見える） */
-      + (sg.まえ ? "<g" + 塗 + ">" + sg.まえ + "</g>" : "")
-      + (ho ? "<ellipse cx='29' cy='48' rx='6.5' ry='4.2' fill='#E93D82' opacity='.45'/>"
-            + "<ellipse cx='71' cy='48' rx='6.5' ry='4.2' fill='#E93D82' opacity='.45'/>" : "")
-      + "<g fill='" + 濃 + "' stroke='" + 濃 + "' stroke-linecap='round'>" + me + kt + "</g>"
+      + "<ellipse cx='50' cy='42' rx='28' ry='29.5' fill='url(#" + u + "s)' stroke='" + 濃 + "' stroke-width='3'/>"
+      /* あごの下の 影 */
+      + "<path d='M28 52q22 26 44 0' fill='none' stroke='rgba(20,12,30,.10)' stroke-width='7'/>"
+      /* 前髪 */
+      + (sg.まえ ? "<g" + 塗毛 + ">" + sg.まえ + "</g>" + (sg.つや || "") : "")
+      /* ほお */
+      + (ho ? "<ellipse cx='28' cy='52' rx='6.5' ry='4' fill='#F0808F' opacity='.45'/>"
+            + "<ellipse cx='72' cy='52' rx='6.5' ry='4' fill='#F0808F' opacity='.45'/>" : "")
+      /* 眉 */
+      + "<path d='" + mu + "' fill='none' stroke='" + (sg.毛 ? 毛暗 : 濃) + "' stroke-width='3' stroke-linecap='round'/>"
+      /* 目 */
+      + 片目(36, 45, eg, ir, u + "L", true)
+      + 片目(64, 45, eg, ir, u + "R", false)
+      /* 鼻 */
+      + "<path d='M50 54q1.6 1.6 0 3' fill='none' stroke='rgba(60,40,50,.45)' stroke-width='1.8' stroke-linecap='round'/>"
+      /* 口 */
+      + "<g fill='none' stroke='" + 濃 + "' stroke-linecap='round'>" + kt + "</g>"
       + kz(c)
       + "</svg>";
   }
@@ -429,16 +491,18 @@
     ".vqw-lab{font-size:12px;font-weight:700;color:var(--vq-text-secondary,#7A7589);}",
     ".vqw-n{margin-left:auto;font-size:15px;font-weight:750;}",
     ".vqw-grid{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 16px 20px;",
-      "display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));align-content:start;}",
-    ".vqw-t{position:relative;aspect-ratio:16/11;border-radius:14px;overflow:hidden;",
+      "display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(126px,1fr));align-content:start;}",
+    ".vqw-t{position:relative;aspect-ratio:1/1;border-radius:14px;overflow:hidden;",
       "background:var(--vq-surface-sunken,#1a1728);display:flex;align-items:center;justify-content:center;}",
     /* ★ 裏の ボカシ。**同じ 絵を 大きく 引き伸ばして ぼかす**（Discord と 同じ 作り）。 */
     ".vqw-bg{position:absolute;inset:-26%;filter:blur(24px) saturate(1.6);opacity:.5;",
       "display:flex;align-items:center;justify-content:center;}",
     ".vqw-bg .vqlf{width:100%;height:100%;}",
-    ".vqw-av{position:relative;z-index:2;width:46%;max-width:96px;aspect-ratio:1;border-radius:999px;",
-      "display:flex;align-items:center;justify-content:center;overflow:visible;",
-      "box-shadow:0 8px 22px rgba(0,0,0,.32);}",
+    /* ★ 立ち姿を **大きく**（2026-09-10 実測）。丸に 押し込めると
+       全身が 豆粒に なって 誰か 分からない。 */
+    ".vqw-av{position:relative;z-index:2;height:96%;aspect-ratio:120/176;",
+      "display:flex;align-items:flex-end;justify-content:center;overflow:visible;",
+      "filter:drop-shadow(0 6px 10px rgba(0,0,0,.35));}",
     ".vqw-av .vqlf{width:100%;height:100%;display:block;}",
     ".vqw-name{position:absolute;left:8px;bottom:8px;z-index:3;max-width:calc(100% - 16px);",
       "padding:3px 9px;border-radius:8px;background:rgba(10,8,20,.7);color:#fff;",
@@ -447,9 +511,9 @@
       "background:rgba(10,8,20,.62);color:#fff;font-size:10.5px;font-weight:750;",
       "display:inline-flex;align-items:center;}",
     ".vqw-t.is-host{outline:2px solid var(--vq-accent,#756DB3);outline-offset:-2px;}",
-    ".vqw-t.is-off{opacity:.42;}",
+    ".vqw-t.is-off{opacity:.6;filter:saturate(.5);}",
     ".vqw-more{display:flex;align-items:center;justify-content:center;border-radius:14px;",
-      "background:var(--vq-surface-sunken,#1a1728);aspect-ratio:16/11;font-size:14px;font-weight:750;",
+      "background:var(--vq-surface-sunken,#1a1728);aspect-ratio:1/1;font-size:14px;font-weight:750;",
       "color:var(--vq-text-secondary,#7A7589);text-align:center;padding:10px;}",
     ".vqw-foot{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:12px;",
       "padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));}",
@@ -749,7 +813,7 @@
           var f = 顔(p.face, c);
           return "<div class='vqw-t" + (p.online ? "" : " is-off") + "'"
             /* ★ 地は **しっかり 色**（13% だと 洗い色に なって Discord と 別物に 見えた） */
-            + " style='background:linear-gradient(158deg," + c + "," + c + "b0)'"
+            + " style='background:linear-gradient(168deg," + c + "," + c + "99)'"
             + " title='" + esc(p.name) + "'>"
             /* ★ 裏は **同じ 絵を 引き伸ばして ぼかす**（Discord と 同じ 作り） */
             + "<span class='vqw-bg' style='background:" + c + "'>" + f + "</span>"
@@ -1004,7 +1068,7 @@
             ? "<span class='vqlb-a' style='background:" + 色(p.color) + "'>" + esc(答えの字(状.q, v)) + "</span>"
             /* ★ アイコンは **キャラクター**（頭文字では ない）。
                待機画面と 同じ 顔が 出題中も 並ぶ ので、誰が 誰か 分かる。 */
-            : "<span class='vqlb-av' style='background:" + 色(p.color) + "'>" + 顔(p.face, 色(p.color)) + "</span>";
+            : "<span class='vqlb-av' style='background:" + 色(p.color) + "'>" + 顔(p.face, 色(p.color), { 顔だけ: true }) + "</span>";
           return "<div class='" + cls + "' title='" + esc(p.name) + "'>" + 中
             + "<span class='vqlb-n'>" + esc(p.name) + "</span>"
             + "<span class='vqlb-s'>" + (p.score || 0) + "</span></div>";
@@ -1091,7 +1155,7 @@
       + "</div>"
       + "<div class='vqls-rank'>"
       + (状.rank || []).slice(0, 10).map(function (r) {
-          return "<div><span class='vqlb-av' style='background:" + 色(r.color) + "'>" + 顔(r.face, 色(r.color))
+          return "<div><span class='vqlb-av' style='background:" + 色(r.color) + "'>" + 顔(r.face, 色(r.color), { 顔だけ: true })
             + "</span><span>" + r.rank + ". " + esc(r.name) + "</span><b>" + r.score + "</b></div>";
         }).join("")
       + "</div>";
@@ -1120,7 +1184,7 @@
       + "<div class='vqls-rank'>"
       + (m.rank || []).map(function (r) {
           var 金 = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : "";
-          return "<div><span class='vqlb-av' style='background:" + 色(r.color) + "'>" + 顔(r.face, 色(r.color))
+          return "<div><span class='vqlb-av' style='background:" + 色(r.color) + "'>" + 顔(r.face, 色(r.color), { 顔だけ: true })
             + "</span><span>" + 金 + " " + r.rank + ". " + esc(r.name) + "</span><b>" + r.score + " 点</b></div>";
         }).join("")
       + "</div>";
