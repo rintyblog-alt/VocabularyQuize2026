@@ -123,7 +123,20 @@ export function isLivePath(path) {
        閉じる。この 罠は 9/10 に 2 回 踏んだ。
      左の メニューを 開いて PIN を 打つ、しか 道が 無かった。
      この 短い 道を 紙に 書いたり QR に したり して 配れる ように する。 */
-  return path.startsWith("/api/live/") || path.startsWith("/ws/live/")
+  /* ★★ **道を まとめて 引き受けては いけない**（2026-09-10・訴え
+     「ルミが 反応しなく なった。起動しなく なった。繋ぎ直しに なって しまう」）。
+
+     もとは `path.startsWith("/api/live/")` で その 下を **丸ごと**
+     引き受けて いた。ところが **Lumi の 音声会話の 入口が
+     `/api/live/token`** で、そこを こちらが 横取りして
+     「そのような 口は ありません」を 返して いた。
+     札が 取れないので Lumi は 起動できず、繋ぎ直しを くり返す。
+
+     ★ 引き受けるのは **自分の 道だけ**。前方一致で 名乗らない。 */
+  return path === "/api/live/create"
+    || path === "/api/live/info"
+    || path === "/api/live/join"
+    || path.startsWith("/ws/live/")
     || /^\/v\/[A-Za-z0-9]{1,8}$/.test(path);
 }
 
