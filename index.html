@@ -186145,6 +186145,19 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
   function plan(req) {
     req = req || {};
     var issues = [];
+    /* ── 指示文から読み取った細かい注文（2026-09-11）────────────────
+       domain/askspec.js が「800語で」「5択で」「80字以内で記述」などを
+       読み取って object にしたもの。**画面の選択より、こちらを優先する。**
+       わざわざ書いたものを無視しないため。
+       読み取れなかった項目は undefined なので、既定はそのまま生きる。 */
+    var ask = req.ask || {};
+    if (ask.examLevel) req = Object.assign({}, req, { examLevel: ask.examLevel });
+    if (ask.difficulty) req = Object.assign({}, req, {
+      difficulty: ask.difficulty === "hard" ? "hard"
+                : ask.difficulty === "easy" ? "easy"
+                : ask.difficulty === "mixed" ? "mixed" : req.difficulty
+    });
+    if (ask.figures !== undefined) req = Object.assign({}, req, { figures: !!ask.figures });
     var totalPoints = Math.round(Number(req.totalPoints) || 100);
     if (!(totalPoints > 0)) { totalPoints = 100; issues.push({ severity: "low", message: "満点が不正だったため 100 点にしました。" }); }
 
@@ -186238,8 +186251,15 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       return {
         kind: K.id,
         /* 傍線部・空欄の数は設問数から決める。設問より多く引いても使い道がない。 */
-        underlines: o.underlines != null ? o.underlines : Math.max(1, Math.min(4, counts[i] - 1)),
-        blanks: o.blanks != null ? o.blanks : Math.max(0, Math.min(3, counts[i] - 2)),
+        underlines: o.underlines != null ? o.underlines
+                  : isNum(ask.underlines) ? ask.underlines
+                  : Math.max(1, Math.min(4, counts[i] - 1)),
+        blanks: o.blanks != null ? o.blanks
+              : isNum(ask.blanks) ? ask.blanks
+              : Math.max(0, Math.min(3, counts[i] - 2)),
+        /* 本文の長さの指定。passage.lengthRange がこれを見る。 */
+        chars: o.chars || passageCharsFor(ask, K),
+        scale: o.scale != null ? o.scale : ask.passageScale,
         figures: o.figures !== false && (K.figures || []).length > 0,
         topic: str(o.topic)
       };
@@ -186261,7 +186281,10 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
             type: s.type,
             points: s.points,
             difficulty: s.difficulty,
-            expectedChars: WRITTEN[s.type] ? expectedCharsFor(s.type, s.points) : null
+            /* 字数の指定があれば、配点から決めた目安より **指定を優先する**。 */
+            expectedChars: WRITTEN[s.type]
+              ? (isNum(ask.writeChars) ? Math.round(ask.writeChars) : expectedCharsFor(s.type, s.points))
+              : null
           };
         })
       };
@@ -186288,6 +186311,8 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
            難しいのかを書かないと、語が難しいだけの問題が返ってくる。 */
       examLevel: str(req.examLevel) || "school",
       instruction: str(req.instruction).slice(0, 1200),
+      /* 読み取った注文はそのまま持ち歩く。依頼文（promptFor）がこれを書き出す。 */
+      ask: ask,
       sections: sections,
       totalQuestions: slots.length,
       /* 自己申告ではなく実際の合計。verify() がこれを見る。 */
@@ -186295,6 +186320,17 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       balanced: sum === totalPoints,
       issues: issues
     };
+  }
+
+  function isNum(v) { return typeof v === "number" && v === v && v !== Infinity && v !== -Infinity; }
+
+  /* 本文の長さの指定を、その長文の単位（語／字）に合うときだけ使う。
+     語と字を取り違えると、800 語のつもりが 800 字になって半分以下になる。 */
+  function passageCharsFor(ask, K) {
+    if (!ask || !K) return null;
+    if (K.unit === "語" && ask.passageWords) return ask.passageWords.slice();
+    if (K.unit === "字" && ask.passageChars) return ask.passageChars.slice();
+    return null;
   }
 
   function enabledTypes(map) {
@@ -186860,6 +186896,16 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       lines.push(str(ctx.instruction).trim());
       lines.push("");
     }
+    /* ── 指示から読み取った細かい注文（2026-09-11）────────────────
+       「5択で」「80字以内で記述」「選択肢は紛らわしく」「解説は詳しく」など、
+       **数や形がはっきり書いてあったもの**を、レベルの説明より先に置く。
+       読み取れなかった項目は 1 行も出さない（決め打ちを混ぜない）。 */
+    var askLines = (VQ2.askspec && ctx.ask) ? VQ2.askspec.promptLines(ctx.ask) : [];
+    if (askLines.length) {
+      lines.push("【必ず守る形（指示から読み取ったもの）】");
+      askLines.forEach(function (t) { lines.push(t); });
+      lines.push("");
+    }
     lines.push("【このレベルで求めること】");
     LV.want.forEach(function (t) { lines.push("・" + t); });
     if (LV.avoid.length) {
@@ -187169,6 +187215,7 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
         figures: p.figures !== false,
         examLevel: p.examLevel,
         instruction: p.instruction,
+        ask: p.ask || {},
         avoid: madeSoFar()
       };
 
@@ -201639,6 +201686,26 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
     return (list[0] && list[0].id) || "source_set";
   }
 
+  /* 本文の長さ。**指示されたものが最優先**。
+     ctx.chars … [下限, 上限]（利用者が「800語で」と書いたときに入る）
+     ctx.scale … 0.7 / 1.4 など（「短めに」「長めに」）
+     どちらも無ければ、その種類の目安をそのまま使う。
+     ここで一度に決めて、依頼文と合否判定の**両方が同じ数**を見るようにする。
+     （以前は依頼文だけ変えて判定は目安のままだったので、
+       指示どおりに書かせたのに「短すぎます」と落ちていた。） */
+  function lengthRange(K, ctx) {
+    ctx = ctx || {};
+    var d = K.targetChars;
+    var c = ctx.chars;
+    if (c && c.length === 2) {
+      var lo = Math.round(Number(c[0])), hi = Math.round(Number(c[1]));
+      if (isFinite(lo) && isFinite(hi) && lo > 0 && hi >= lo) return [lo, hi];
+    }
+    var s = Number(ctx.scale);
+    if (isFinite(s) && s > 0.2 && s < 4) return [Math.round(d[0] * s), Math.round(d[1] * s)];
+    return [d[0], d[1]];
+  }
+
   /* ══════════════════════════════════════════════════════════════════
      2) 本文を書かせる依頼文
 
@@ -201649,9 +201716,10 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
   function promptFor(kindId, ctx) {
     ctx = ctx || {};
     var K = kind(kindId) || kind("source_set");
-    var lo = K.targetChars[0], hi = K.targetChars[1];
-    var unders = Math.max(0, Math.min(6, ctx.underlines == null ? 3 : ctx.underlines));
-    var blanks = Math.max(0, Math.min(6, ctx.blanks == null ? 2 : ctx.blanks));
+    var R = lengthRange(K, ctx);
+    var lo = R[0], hi = R[1];
+    var unders = Math.max(0, Math.min(8, ctx.underlines == null ? 3 : ctx.underlines));
+    var blanks = Math.max(0, Math.min(8, ctx.blanks == null ? 2 : ctx.blanks));
     var figOk = (K.figures || []).length > 0 && ctx.figures !== false;
 
     var L = [];
@@ -201690,6 +201758,16 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
         });
       }
       L.push("  **図に書いた数値は、本文の記述と必ず一致させてください。**");
+    }
+
+    /* 利用者がわざわざ書いた注文は、種類ごとの決まりより上に置く。
+       ここに出さないと、指示欄に書いても本文へ届かない。 */
+    var orders = (ctx.orders || []).filter(function (x) { return str(x).trim(); });
+    if (str(ctx.instruction).trim() || orders.length) {
+      L.push("");
+      L.push("【作る人からの注文（いちばん優先してください）】");
+      if (str(ctx.instruction).trim()) L.push(clean(ctx.instruction));
+      orders.forEach(function (o) { L.push(str(o)); });
     }
 
     L.push("");
@@ -201913,8 +201991,9 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
     if (!p || !clean(p.text)) return ["本文がありません"];
     var K = kind(p.kind) || kind("source_set");
     var len = p.length != null ? p.length : measure(p.text, K.lang);
-    var lo = Math.floor(K.targetChars[0] * 0.6);      /* 少し短いのは通す。半分以下は通さない */
-    var hi = Math.ceil(K.targetChars[1] * 1.6);
+    var R = lengthRange(K, opts);                     /* 指示された長さがあればそれで見る */
+    var lo = Math.floor(R[0] * 0.6);                  /* 少し短いのは通す。半分以下は通さない */
+    var hi = Math.ceil(R[1] * 1.6);
     if (len < lo) out.push("本文が短すぎます（" + len + K.unit + "。" + lo + K.unit + "以上にしてください）");
     if (len > hi) out.push("本文が長すぎます（" + len + K.unit + "。" + hi + K.unit + "以下にしてください）");
 
@@ -202021,8 +202100,339 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
     KINDS: KINDS, UNDER_MARKS: UNDER_MARKS, BLANK_MARKS: BLANK_MARKS,
     kind: kind, kindsFor: kindsFor, defaultKindFor: defaultKindFor,
     promptFor: promptFor, parse: parse, prepare: prepare, check: check,
+    lengthRange: lengthRange,
     measure: measure, underlinesIn: underlinesIn, blanksIn: blanksIn,
     questionHint: questionHint, summaryLine: summaryLine, toBlock: toBlock
+  };
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+
+/* ───────── domain/askspec.js ───────── */
+/* ══════════════════════════════════════════════════════════════════════
+   指示文の読み取り（AskSpec）
+
+   なぜ要るか:
+     試験モードの細かいところ（本文の長さ・選択肢の数・記述の字数・
+     解説の詳しさ・選択肢の紛らわしさ・傍線部や空欄の数）は、
+     これまで **コードの中の決め打ち**だった。画面にも出ていないので、
+     利用者は変えようがない。指示欄へ書いても届かない。
+
+   ここでやること:
+     ① 指示欄の自然文から、**具体的な数と言葉**を読み取る。
+        「本文は800語で」「5択にして」「80字以内で記述」
+        「解説は詳しく」「選択肢は紛らわしく」「傍線部を5か所」
+     ② 読み取った結果を **人が読める形**でも返す（notes）。
+        前に「指示が届いていない」ことに気づけなかったのは、
+        届いたかどうかが画面のどこにも出ていなかったから。
+        **読み取ったことを見せる。** 読み取れなかったものは黙らない。
+     ③ 読み取れた値は、そのまま
+          ・枠づくり（MockCompiler.plan）
+          ・設問の依頼文（promptFor）
+          ・本文の依頼文（passage.promptFor）
+        へ渡す。画面の設定より **指示文のほうを優先する**
+        （わざわざ書いたものを無視しない）。
+
+   読み取れなかったものは undefined のまま返す。
+   **決め打ちの値をここで作らない。** 呼び出し側の既定に任せる。
+   ══════════════════════════════════════════════════════════════════════ */
+(function (root) {
+  "use strict";
+  var VQ2 = root.VQ2 || (root.VQ2 = {});
+
+  function str(v) { return v === undefined || v === null ? "" : String(v); }
+  function isNum(v) { return typeof v === "number" && isFinite(v); }
+
+  /* 全角の数字・記号をそろえる。読み取りの取りこぼしはここで大半が消える。 */
+  function normalize(text) {
+    return str(text)
+      .replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .replace(/[Ａ-Ｚａ-ｚ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .replace(/[～〜]/g, "~").replace(/[　]/g, " ");
+  }
+
+  /* 漢数字も読む（「五択」「三か所」）。qtypes が持っているものを使い、
+     読めないときだけここで簡単に読む。 */
+  function num(s) {
+    var t = str(s).trim();
+    if (/^\d+(\.\d+)?$/.test(t)) return Number(t);
+    try {
+      if (VQ2.qtypes && VQ2.qtypes.readNumber) {
+        var n = VQ2.qtypes.readNumber(t);
+        if (isNum(n)) return n;
+      }
+    } catch (e) {}
+    var K = { 〇: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+    if (K[t] !== undefined) return K[t];
+    var m = /^十([一二三四五六七八九])$/.exec(t);
+    if (m) return 10 + K[m[1]];
+    m = /^([二三四五六七八九])十([一二三四五六七八九])?$/.exec(t);
+    if (m) return K[m[1]] * 10 + (m[2] ? K[m[2]] : 0);
+    return NaN;
+  }
+
+  var NUMWORD = "([0-9]+|[〇一二三四五六七八九十]+)";
+
+  /* 最初に当たったものを返す。当たらなければ null。 */
+  function find(text, patterns) {
+    for (var i = 0; i < patterns.length; i++) {
+      var m = patterns[i].exec(text);
+      if (m) return m;
+    }
+    return null;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     読み取り
+     ══════════════════════════════════════════════════════════════════ */
+  function parse(text) {
+    var t = normalize(text);
+    var out = {}, notes = [], unsure = [];
+
+    function set(key, value, note) {
+      if (value === undefined || value === null) return;
+      if (typeof value === "number" && !isFinite(value)) return;
+      out[key] = value;
+      if (note) notes.push(note);
+    }
+
+    /* ── 本文の長さ ─────────────────────────────────────────────
+       「800語」「1200字」「本文は2000字程度」「300〜400語」 */
+    var mw = find(t, [
+      new RegExp("本文[^。\\n]{0,8}?" + NUMWORD + "\\s*~\\s*" + NUMWORD + "\\s*語"),
+      new RegExp(NUMWORD + "\\s*~\\s*" + NUMWORD + "\\s*語"),
+      new RegExp("本文[^。\\n]{0,8}?" + NUMWORD + "\\s*語")
+    ]);
+    /* 「本文」と書かれていない、ただの「◯◯語」。
+       英作文の語数（「60語で書かせて」）と取り違えないよう、
+       **本文と呼べる長さのときだけ**本文の指定として読む。 */
+    if (!mw) {
+      var mwLoose = new RegExp(NUMWORD + "\\s*語(?:程度|くらい|ほど|前後|以内|以上)?").exec(t);
+      if (mwLoose && num(mwLoose[1]) >= 120) mw = mwLoose;
+    }
+    if (mw) {
+      var w1 = num(mw[1]), w2 = mw[2] ? num(mw[2]) : NaN;
+      var lo = isNum(w2) ? w1 : Math.round(w1 * 0.85);
+      var hi = isNum(w2) ? w2 : Math.round(w1 * 1.15);
+      if (lo >= 30 && hi <= 4000 && hi >= lo) {
+        set("passageWords", [lo, hi], "本文の長さ: " + lo + "〜" + hi + " 語");
+      } else unsure.push("本文の語数（" + w1 + "）は 30〜4000 の間で書いてください");
+    }
+    var mc = find(t, [
+      new RegExp("本文[^。\\n]{0,8}?" + NUMWORD + "\\s*~\\s*" + NUMWORD + "\\s*字"),
+      new RegExp(NUMWORD + "\\s*~\\s*" + NUMWORD + "\\s*字"),
+      new RegExp("本文[^。\\n]{0,8}?" + NUMWORD + "\\s*字"),
+      new RegExp(NUMWORD + "\\s*字(?:程度|くらい|ほど|前後)")
+    ]);
+    if (mc) {
+      var c1 = num(mc[1]), c2 = mc[2] ? num(mc[2]) : NaN;
+      var clo = isNum(c2) ? c1 : Math.round(c1 * 0.85);
+      var chi = isNum(c2) ? c2 : Math.round(c1 * 1.15);
+      /* 記述の字数（「80字以内で答えよ」）と取り違えないよう、
+         本文と呼べる長さのときだけ本文の指定として読む。 */
+      if (clo >= 300 && chi <= 12000 && chi >= clo) {
+        set("passageChars", [clo, chi], "本文の長さ: " + clo + "〜" + chi + " 字");
+      }
+    }
+    if (!mw && !mc) {
+      if (/(本文|長文)[^。\n]{0,6}(長め|長く)/.test(t)) set("passageScale", 1.4, "本文は長めに");
+      else if (/(本文|長文)[^。\n]{0,6}(短め|短く)/.test(t)) set("passageScale", 0.7, "本文は短めに");
+    }
+
+    /* ── 傍線部・空欄の数 ───────────────────────────────────── */
+    var mu = find(t, [new RegExp("(?:傍線部?|下線部?)[^。\\n]{0,6}?" + NUMWORD + "\\s*(?:か所|箇所|つ|個)")]);
+    if (mu) {
+      var u = num(mu[1]);
+      if (u >= 0 && u <= 8) set("underlines", u, "傍線部: " + u + " か所");
+      else unsure.push("傍線部の数（" + u + "）は 0〜8 で書いてください");
+    }
+    var mb = find(t, [new RegExp("空欄[^。\\n]{0,6}?" + NUMWORD + "\\s*(?:か所|箇所|つ|個)")]);
+    if (mb) {
+      var b = num(mb[1]);
+      if (b >= 0 && b <= 8) set("blanks", b, "空欄: " + b + " か所");
+      else unsure.push("空欄の数（" + b + "）は 0〜8 で書いてください");
+    }
+
+    /* ── 選択肢の数 ─────────────────────────────────────────
+       「5択」「選択肢は6つ」「四択で」 */
+    var mo = find(t, [
+      new RegExp(NUMWORD + "\\s*択"),
+      new RegExp("選択肢[^。\\n]{0,6}?" + NUMWORD + "\\s*(?:つ|個)")
+    ]);
+    if (mo) {
+      var o = num(mo[1]);
+      if (o >= 2 && o <= 10) set("choiceCount", o, "選択肢: " + o + " つ");
+      else unsure.push("選択肢の数（" + o + "）は 2〜10 で書いてください");
+    }
+
+    /* ── 記述の字数 ─────────────────────────────────────────
+       「80字以内」「100字程度で記述」「40〜60字で」 */
+    var WROTE = "(?:記述|説明|論述|要約|作文|答え|まとめ)";
+    var ABOUT = "(?:程度|くらい|ほど|前後|以内|以下)?";
+    var mt = find(t, [
+      new RegExp(WROTE + "[^。\\n]{0,10}?" + NUMWORD + "\\s*~\\s*" + NUMWORD + "\\s*字"),
+      new RegExp(WROTE + "[^。\\n]{0,10}?" + NUMWORD + "\\s*字"),
+      /* 数が先に来る言い方（「40〜60字で記述」「100字程度で説明」）。
+         「程度」「以内」をはさんでも読み落とさないようにする。 */
+      new RegExp(NUMWORD + "\\s*~\\s*" + NUMWORD + "\\s*字" + ABOUT + "[^。\\n]{0,6}?" + WROTE),
+      new RegExp(NUMWORD + "\\s*字" + ABOUT + "\\s*(?:で|にて)?\\s*[^。\\n]{0,6}?" + WROTE),
+      new RegExp(NUMWORD + "\\s*字(?:以内|以下)")
+    ]);
+    if (mt) {
+      var k1 = num(mt[1]), k2 = mt[2] ? num(mt[2]) : NaN;
+      var chars = isNum(k2) ? Math.round((k1 + k2) / 2) : k1;
+      if (chars >= 10 && chars <= 1200) set("writeChars", chars, "記述の字数: 約 " + chars + " 字");
+      else unsure.push("記述の字数（" + chars + "）は 10〜1200 で書いてください");
+    }
+
+    /* ── 英作文の語数 ───────────────────────────────────────── */
+    var me = find(t, [new RegExp("(?:英作文|英文|英語)[^。\\n]{0,10}?" + NUMWORD + "\\s*語")]);
+    if (me && !out.passageWords) {
+      var ew = num(me[1]);
+      if (ew >= 10 && ew <= 500) set("writeWords", ew, "英作文の語数: 約 " + ew + " 語");
+    }
+
+    /* ── 出題のレベル ───────────────────────────────────────── */
+    var LEVEL = [
+      [/共通テスト|センター|大学入学共通/, "common", "共通テスト"],
+      [/難関|二次|個別試験|記述式の入試|東大|京大|旧帝/, "entrance", "難関大の個別試験"],
+      [/教科書|基礎|基本の確認|用語の確認/, "textbook", "教科書の確認"],
+      [/定期試験|中間|期末|school/, "school", "定期試験"]
+    ];
+    for (var li = 0; li < LEVEL.length; li++) {
+      if (LEVEL[li][0].test(t)) { set("examLevel", LEVEL[li][1], "出題のレベル: " + LEVEL[li][2]); break; }
+    }
+
+    /* ── 難易度の配分 ───────────────────────────────────────── */
+    if (/難しめ|難しく|ハイレベル|やや難|difficult/.test(t)) set("difficulty", "hard", "難易度: 難しめ");
+    else if (/易しめ|やさしめ|易しく|簡単に/.test(t)) set("difficulty", "easy", "難易度: 易しめ");
+    else if (/難易度[はをも]?\s*混ぜ|易しい.{0,6}難しい/.test(t)) set("difficulty", "mixed", "難易度: 混ぜる");
+
+    /* ── 選択肢の紛らわしさ ─────────────────────────────────── */
+    if (/紛らわし|まぎらわし|ひっかけ|引っ掛け|迷わせ|判断に迷/.test(t))
+      set("distractors", "hard", "選択肢: 紛らわしくする");
+    else if (/素直な選択肢|選択肢[はを]?\s*(?:はっきり|明確|分かりやす)/.test(t))
+      set("distractors", "easy", "選択肢: はっきり見分けられるようにする");
+
+    /* ── 解説の詳しさ ───────────────────────────────────────── */
+    if (/解説[はをも]?\s*(?:詳し|くわし|丁寧|ていねい)/.test(t))
+      set("explainDetail", "long", "解説: 詳しく書く");
+    else if (/解説[はをも]?\s*(?:簡潔|短く|みじかく|一行)/.test(t))
+      set("explainDetail", "short", "解説: 短く書く");
+
+    /* ── 図表 ───────────────────────────────────────────────── */
+    if (/図[はをも]?\s*(?:入れない|なし|不要|いらない)|図表[はをも]?\s*(?:入れない|なし|不要)/.test(t))
+      set("figures", false, "図表: 入れない");
+    else if (/図[はをも]?\s*(?:必ず|入れて|付けて|つけて)|図表[はをも]?\s*(?:必ず|入れて)|グラフ[はをも]?\s*(?:必ず|入れて)/.test(t))
+      set("figures", true, "図表: 必ず入れる");
+
+    /* ── 場面の設定（共通テストらしさ）─────────────────────────── */
+    var SCENE = [
+      [/生徒[^。\n]{0,6}(?:会話|話し合い|やりとり)|会話文/, "生徒どうしの会話の形にする"],
+      [/レポート|下書き|ワークシート/, "生徒が書いたレポートの下書きを示す"],
+      [/発表|プレゼン|スライド/, "発表用の資料（スライド・メモ）を示す"],
+      [/日常|身近な場面|生活の場面/, "日常の場面に置き換える"],
+      [/新聞|記事|広告|ポスター|パンフレット|案内/, "実際に読む形の資料（案内・記事など）にする"]
+    ];
+    var scenes = [];
+    SCENE.forEach(function (g) { if (g[0].test(t)) scenes.push(g[1]); });
+    if (scenes.length) set("scenes", scenes, "場面: " + scenes.join(" / "));
+
+    /* ── 設問の問い方 ───────────────────────────────────────── */
+    var ASK = [
+      [/どういうことか|内容説明/, "「どういうことか」（内容説明）"],
+      [/なぜか|理由/, "「なぜか」（理由説明）"],
+      [/主旨|要旨|全体を通して/, "本文全体の主旨"],
+      [/表現の(?:特徴|工夫)|表現について/, "表現の特徴とその効果"],
+      [/心情|気持ち/, "登場人物の心情"],
+      [/接続語|接続詞/, "空欄に入る接続語"],
+      [/誤って|誤りを|適当でないもの/, "「誤っているもの」を選ばせる"],
+      [/すべて選/, "当てはまるものをすべて選ばせる"],
+      [/並べ替え|並び替え|順に/, "順番に並べ替えさせる"],
+      [/英作文|英文を書/, "英作文"],
+      [/和訳|日本語に(?:直|訳)/, "和訳"],
+      [/要約/, "要約"]
+    ];
+    var asks = [];
+    ASK.forEach(function (g) { if (g[0].test(t)) asks.push(g[1]); });
+    if (asks.length) set("askStyles", asks, "問い方: " + asks.join(" / "));
+
+    /* ── 答え方 ─────────────────────────────────────────────── */
+    if (/マーク式|マークシート|記号で答え/.test(t)) set("answerStyle", "mark", "答え方: 記号（マーク式）");
+    else if (/記述式|自分の言葉で/.test(t)) set("answerStyle", "write", "答え方: 記述");
+
+    /* ── 出典・根拠 ─────────────────────────────────────────── */
+    if (/根拠[はをも]?\s*(?:示|書)|行番号/.test(t))
+      set("showEvidence", true, "解説に、本文のどこが根拠かを書かせる");
+
+    return { values: out, notes: notes, unsure: unsure, empty: !notes.length };
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     依頼文へ書き出す
+
+     読み取った値を、そのまま AI への言葉にする。
+     **読み取れなかった項目は 1 行も書かない**（決め打ちを混ぜない）。
+     ══════════════════════════════════════════════════════════════════ */
+  function promptLines(v) {
+    v = v || {};
+    var L = [];
+    if (isNum(v.choiceCount)) L.push("・選択肢は " + v.choiceCount + " つにしてください。");
+    if (isNum(v.writeChars)) L.push("・記述の設問は " + v.writeChars + " 字程度で答えられるようにしてください。");
+    if (isNum(v.writeWords)) L.push("・英作文は " + v.writeWords + " 語程度で書けるようにしてください。");
+    if (v.distractors === "hard")
+      L.push("・選択肢は **4 つとももっともらしく** し、どこか 1 か所だけが本文・資料と食い違うようにしてください。"
+        + "正解だけが長い／詳しいということが無いようにしてください。");
+    if (v.distractors === "easy")
+      L.push("・選択肢は違いがはっきり分かるようにしてください。ひっかけは入れないでください。");
+    if (v.explainDetail === "long")
+      L.push("・解説は、根拠と考え方の道すじまで書いてください（3〜5 文）。"
+        + "ただし問題文や選択肢を言い直さないでください。");
+    if (v.explainDetail === "short")
+      L.push("・解説は 1 文で、理由だけを書いてください。");
+    if (v.showEvidence)
+      L.push("・解説には「本文のどこが根拠か」を、語句を引用して示してください。");
+    if (v.answerStyle === "mark")
+      L.push("・答えは記号で選ぶ形にしてください（自分の言葉で書かせる設問を作らないでください）。");
+    if (v.answerStyle === "write")
+      L.push("・自分の言葉で書かせる設問にしてください。");
+    if (v.askStyles && v.askStyles.length) {
+      L.push("・次の問い方を入れてください（同じ形ばかりにしないでください）。");
+      v.askStyles.forEach(function (a) { L.push("　- " + a); });
+    }
+    if (v.scenes && v.scenes.length) {
+      L.push("・場面の作り方:");
+      v.scenes.forEach(function (a) { L.push("　- " + a); });
+    }
+    return L;
+  }
+
+  /* 本文の長さの指定（passage.promptFor へ渡す）。
+     語か字かは長文の種類が決めるので、両方返して選ばせる。 */
+  function passageRange(v, kind) {
+    v = v || {};
+    var K = (VQ2.passage && VQ2.passage.kind) ? VQ2.passage.kind(kind) : null;
+    var unit = K ? K.unit : "字";
+    if (unit === "語" && v.passageWords) return v.passageWords.slice();
+    if (unit === "字" && v.passageChars) return v.passageChars.slice();
+    /* 単位が違う指定しか無いときは、そのまま使わない（語と字を取り違えない）。 */
+    if (isNum(v.passageScale) && K) {
+      return [Math.round(K.targetChars[0] * v.passageScale),
+              Math.round(K.targetChars[1] * v.passageScale)];
+    }
+    return null;
+  }
+
+  /* 画面に出す 1 行ずつの説明（読み取れたこと／読み取れなかったこと）。 */
+  function summary(res) {
+    if (!res) return [];
+    var out = res.notes.map(function (n) { return { kind: "ok", text: n }; });
+    res.unsure.forEach(function (n) { out.push({ kind: "warn", text: n }); });
+    return out;
+  }
+
+  VQ2.askspec = {
+    parse: parse, promptLines: promptLines, passageRange: passageRange,
+    summary: summary, normalize: normalize, readNumber: num
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);
 
@@ -235135,6 +235545,23 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
   }
 
   /* 畳める見出し。開閉の状態だけを外から受け取る（描画そのものは純関数）。 */
+  /* 出題のレベルの説明。**言葉は mock-compile-run の表と揃える**
+     （画面だけ変えても、AI へ飛ぶ文は変わらない）。
+
+     ★ ここは open() の中に置いてはいけない。
+       open() は最後まで走りきる前に render() を呼ぶ。var の代入はそこまで
+       届いていないので、設定画面を開いた瞬間に
+       「Cannot read properties of undefined」で **Quick Mock が開かなくなる**
+       （2026-09-11 実測）。画面から動かない定数はモジュールの側に置く。 */
+  var EXAM_LEVEL_HINT = {
+    textbook: "教科書に太字で出る語と基本事項を確かめます。1 手で解けます。",
+    school: "授業で扱う典型的な問い方です。2 手までで解けます。",
+    common: "知識をそのまま聞きません。資料・図表・会話を突き合わせて考えさせ、"
+      + "選択肢は 4 つとももっともらしくします。共通テストの作りに合わせます。",
+    entrance: "初めて見る題材をその場で整理させます。分野をまたぎ、根拠を問います。"
+  };
+  function examLevelHint(v) { return EXAM_LEVEL_HINT[v] || EXAM_LEVEL_HINT.school; }
+
   function accHtml(key, title, summary, body, on) {
     return '<div class="vq2-acc"><button type="button" class="vq2-acc-h" data-acc="' + key + '"'
       + ' aria-expanded="' + !!on + '">'
@@ -235255,7 +235682,7 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       dirty: false,
       cancelled: false,
       /* 設定画面の開閉。細かい設定は既定で畳んでおく（管理画面に見せない） */
-      open: { detail: false, paper: false, layout: false },
+      open: { detail: false, paper: false, layout: false, format: false },
       /* 紙面デザインのプレビュー（開発者向け・作った紙面そのもの） */
       layoutPreview: null,
       /* Typst。ソースと組版の結果を持つ（既定は何も無い） */
@@ -235465,6 +235892,17 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
         passageKind: "",
         passageCount: 1,
         figuresOn: true,
+        /* ── 細かい形式（2026-09-11）──────────────────────────────
+           これまで **コードの中の決め打ち**で、画面にも指示欄にも出て
+           いなかったところ。0 / "auto" は「おまかせ」＝これまでどおり。
+           指示欄に数が書いてあれば、そちらが優先される（domain/askspec.js）。 */
+        passageLength: "auto",   /* auto | short | long | 数値（語/字） */
+        choiceCount: 0,          /* 0 = おまかせ（4 択のまま） */
+        writeChars: 0,           /* 0 = 配点から決める */
+        explainDetail: "auto",   /* auto | short | long */
+        distractors: "auto",     /* auto | easy | hard */
+        underlineCount: -1,      /* -1 = 設問数から決める */
+        blankCount: -1,
         answerSheet: true, answerKeyBooklet: true,
         paperSize: "A4", orientation: "portrait", spread: false,
         writingDirection: "horizontal", engine: "auto",
@@ -235695,6 +236133,11 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       if (types.length) lines.push("含める問題形式: " + types.join("・"));
       lines.push("難易度: " + (s.difficulty === "mixed" ? "易しい問題から難しい問題まで混ぜる" : DIFF_JA[s.difficulty] || "標準"));
       lines.push("出題のレベル: " + examLevelHint(s.examLevel));
+      /* 細かい形式の指定（指示欄と設定欄から読み取ったもの）。
+         構成案づくりにも同じ条件を見せる。ここに出さないと、
+         構成案は 4 択のつもりで立て、設問だけ 5 択になる。 */
+      var askL = (VQ2.askspec ? VQ2.askspec.promptLines(askNow().values) : []);
+      if (askL.length) { lines.push(""); lines.push("【細かい形式】"); askL.forEach(function (x) { lines.push(x); }); }
       if (promptOnly) {
         /* 資料が無いので、資料に関する指示は書かない（無い資料を指させない）。
            代わりに、確かでないことを書かせないための歯止めを置く。 */
@@ -235792,6 +236235,94 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       });
     }
 
+    /* ══════════════════════════════════════════════════════════
+       細かい注文をひとまとめにする（2026-09-11）
+
+       出どころは 2 つある。
+         ① 画面の欄（本文の長さ・選択肢の数・解説の詳しさ…）
+         ② 指示欄に書かれた文（「本文は800語で」「5択で」…）
+       **②が勝つ。** わざわざ書いたものを画面の既定で上書きしない。
+
+       読み取った結果は画面にも出す（askSummary）。
+       前に「指示が届いていない」ことに誰も気づけなかったのは、
+       届いたかどうかがどこにも出ていなかったから。
+       ══════════════════════════════════════════════════════════ */
+    var _askCache = { key: null, res: null };
+    function askNow() {
+      var s = st.settings;
+      var key = (st.instruction || "") + "\u0000" + [
+        s.passageLength, s.choiceCount, s.writeChars, s.explainDetail,
+        s.distractors, s.underlineCount, s.blankCount, s.examLevel,
+        s.difficulty, s.figuresOn, s.passageKind
+      ].join("|");
+      /* open() は最後まで走る前に render() を呼ぶので、
+         この var はまだ代入されていないことがある（上の EXAM_LEVEL_HINT と同じ罠）。
+         読むほうだけ気をつければよい。代入は巻き上げられた変数へ普通に入る。 */
+      if (_askCache && _askCache.key === key) return _askCache.res;
+
+      /* ① 画面の欄。おまかせ（auto / 0 / -1）のものは入れない。 */
+      var base = {}, from = [];
+      var K = (VQ2.passage && s.passageKind) ? VQ2.passage.kind(s.passageKind) : null;
+      if (!K && VQ2.passage) K = VQ2.passage.kind(VQ2.passage.defaultKindFor(s.subject));
+      var lenNum = Number(s.passageLength);
+      if (isFinite(lenNum) && lenNum > 0 && K) {
+        var lo = Math.round(lenNum * 0.85), hi = Math.round(lenNum * 1.15);
+        base[K.unit === "語" ? "passageWords" : "passageChars"] = [lo, hi];
+        from.push("本文の長さ: " + lo + "〜" + hi + " " + K.unit + "（設定欄）");
+      } else if (s.passageLength === "long") { base.passageScale = 1.4; from.push("本文は長めに（設定欄）"); }
+      else if (s.passageLength === "short") { base.passageScale = 0.7; from.push("本文は短めに（設定欄）"); }
+      if (Number(s.choiceCount) >= 2) {
+        base.choiceCount = Math.round(Number(s.choiceCount));
+        from.push("選択肢: " + base.choiceCount + " つ（設定欄）");
+      }
+      if (Number(s.writeChars) >= 10) {
+        base.writeChars = Math.round(Number(s.writeChars));
+        from.push("記述の字数: 約 " + base.writeChars + " 字（設定欄）");
+      }
+      if (s.explainDetail === "long" || s.explainDetail === "short") {
+        base.explainDetail = s.explainDetail;
+        from.push("解説: " + (s.explainDetail === "long" ? "詳しく" : "短く") + "（設定欄）");
+      }
+      if (s.distractors === "hard" || s.distractors === "easy") {
+        base.distractors = s.distractors;
+        from.push("選択肢: " + (s.distractors === "hard" ? "紛らわしくする" : "はっきり見分けられるようにする") + "（設定欄）");
+      }
+      if (Number(s.underlineCount) >= 0) {
+        base.underlines = Math.round(Number(s.underlineCount));
+        from.push("傍線部: " + base.underlines + " か所（設定欄）");
+      }
+      if (Number(s.blankCount) >= 0) {
+        base.blanks = Math.round(Number(s.blankCount));
+        from.push("空欄: " + base.blanks + " か所（設定欄）");
+      }
+
+      /* ② 指示欄の文。読み取れたものは①を上書きする。 */
+      var parsed = (VQ2.askspec && VQ2.askspec.parse)
+        ? VQ2.askspec.parse(st.instruction)
+        : { values: {}, notes: [], unsure: [], empty: true };
+      var values = Object.assign({}, base, parsed.values);
+
+      var res = {
+        values: values,
+        rows: from.map(function (t) { return { kind: "set", text: t }; })
+          .concat((VQ2.askspec ? VQ2.askspec.summary(parsed) : [])),
+        unsure: parsed.unsure
+      };
+      _askCache = { key: key, res: res };
+      return res;
+    }
+
+    /* 指示文から読み取ったもののうち、**本文の書き方に効くもの**だけを
+       本文の依頼文へ渡す。設問の形（選択肢の数・記述の字数）は本文には要らない。 */
+    function passageOrders() {
+      var A = askNow().values, L = [];
+      (A.scenes || []).forEach(function (x) { L.push("・" + x); });
+      if (A.askStyles && A.askStyles.length)
+        L.push("・あとでこういう問い方をします。そこを問える所に傍線部・空欄を置いてください: "
+          + A.askStyles.join(" / "));
+      return L;
+    }
+
     /* 大問ごとに本文を作る。うまくいかなければ 2 回までやり直す。
        それでも駄目なら **長文をあきらめて、ふつうの設問として作る**
        （試験そのものを作れなくしない）。 */
@@ -235811,15 +236342,26 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
         var tries = 0;
         function attempt(extra) {
           tries++;
+          /* 本文の長さ・傍線部の数などは plan が持っている。
+             plan は MC.plan が指示文（askspec）を読んで作ったもの。
+             **依頼と合否判定で同じ数を見る**（片方だけ変えると、
+             指示どおりに書かせたのに「短すぎます」で落ちる）。 */
+          var lenOpt = { chars: plan.chars, scale: plan.scale };
           var prompt = P.promptFor(plan.kind, {
             topic: plan.topic || st.instruction.trim() || s.title,
             grade: s.grade, underlines: plan.underlines, blanks: plan.blanks,
             figures: plan.figures,
+            chars: lenOpt.chars, scale: lenOpt.scale,
+            instruction: st.instruction,
+            orders: passageOrders(),
             sourceOnly: !s.allowExternalKnowledge && !!((sel && sel.included) || []).length
           }) + (extra ? "\n\n【前回の作り直しの理由】\n" + extra : "");
           return askText(prompt).then(function (raw) {
             var pas = P.prepare(P.parse(raw, plan.kind));
-            var bad = P.check(pas, { underlines: plan.underlines, blanks: plan.blanks });
+            var bad = P.check(pas, {
+              underlines: plan.underlines, blanks: plan.blanks,
+              chars: lenOpt.chars, scale: lenOpt.scale
+            });
             if (!bad.length) {
               out[sec.number] = pas;
               chat.log("done", "大問" + sec.number + " の本文ができました（" + P.summaryLine(pas) + "）");
@@ -235922,7 +236464,10 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
            **ここを渡していなかったので、指示欄の文が設問づくりに
            届いていなかった**（構成案にしか効いていなかった）。 */
         examLevel: s.examLevel,
-        instruction: st.instruction
+        instruction: st.instruction,
+        /* 指示欄から読み取った細かい注文（本文の長さ・選択肢の数・記述の字数…）。
+           画面の選択より、こちらが優先される（domain/askspec.js）。 */
+        ask: askNow().values
       });
 
       /* 指示文に書かれた「形式ごとの個数」を枠へ反映する（契約 §5）。
@@ -235933,6 +236478,12 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       var typeFit = refill
         ? { changed: 0, applied: [], notes: [] }
         : applyTypeDistribution(p, typeReq2.typeDistribution, s.types);
+
+      /* 何を読み取ったかを走る前に出す。**届いたかどうかを見せる。**
+         前は指示欄に書いても届いたか分からなかった（実測でも届いていなかった）。 */
+      if (!refill) askNow().rows.forEach(function (row) {
+        chat.log(row.kind === "warn" ? "warn" : "info", "指示を読み取りました: " + row.text);
+      });
 
       /* 枠の段階で分かる無理は、AI を呼ぶ前に伝える。 */
       (p.issues || []).forEach(function (i) {
@@ -239070,16 +239621,104 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       return accHtml("passage", "長文・図表", sum, body, !!st.open.passage);
     }
 
-    /* 出題のレベルの説明。**言葉は mock-compile-run の表と揃える**
-       （画面だけ変えても、AI へ飛ぶ文は変わらない）。 */
-    var EXAM_LEVEL_HINT = {
-      textbook: "教科書に太字で出る語と基本事項を確かめます。1 手で解けます。",
-      school: "授業で扱う典型的な問い方です。2 手までで解けます。",
-      common: "知識をそのまま聞きません。資料・図表・会話を突き合わせて考えさせ、"
-        + "選択肢は 4 つとももっともらしくします。共通テストの作りに合わせます。",
-      entrance: "初めて見る題材をその場で整理させます。分野をまたぎ、根拠を問います。"
+    /* 細かい形式の欄のキー。入力の受け口と描き直しの判定で共有する。 */
+    var FORMAT_KEYS = {
+      passageLength: 1, choiceCount: 1, writeChars: 1,
+      explainDetail: 1, distractors: 1, underlineCount: 1, blankCount: 1
     };
-    function examLevelHint(v) { return EXAM_LEVEL_HINT[v] || EXAM_LEVEL_HINT.school; }
+
+    /* ══════════════════════════════════════════════════════════
+       細かい形式の欄（2026-09-11）
+
+       ここに並ぶものは、これまで **コードの中の決め打ち**だった。
+       4 択・解説 2 文以内・記述は配点から字数を決める、など。
+       画面にも出ていないので、利用者は変えようがなかった。
+
+       どれも既定は「おまかせ」＝これまでと同じ動き。
+       指示欄に数が書いてあれば、そちらが勝つ（下の欄は無視される）。
+       ══════════════════════════════════════════════════════════ */
+    function formatPickerHtml(s) {
+      var P = VQ2.passage;
+      var K = P ? (P.kind(s.passageKind) || P.kind(P.defaultKindFor(s.subject))) : null;
+      var unit = K ? K.unit : "字";
+      var ask = askNow().values;
+
+      var bits = [];
+      bits.push(s.choiceCount >= 2 ? s.choiceCount + " 択" : "選択肢おまかせ");
+      bits.push(s.explainDetail === "long" ? "解説くわしく"
+        : s.explainDetail === "short" ? "解説みじかく" : "解説おまかせ");
+      if (s.passageOn) bits.push(s.passageLength === "auto" ? "本文おまかせ"
+        : s.passageLength === "long" ? "本文長め"
+        : s.passageLength === "short" ? "本文短め" : "本文 " + s.passageLength + unit);
+
+      var lenOpts = [{ value: "auto", label: "おまかせ（" + (K ? K.targetChars[0] + "〜" + K.targetChars[1] + unit : "種類ごとの目安") + "）" },
+                     { value: "short", label: "短め（目安の 7 割）" },
+                     { value: "long", label: "長め（目安の 1.4 倍）" }];
+      /* 数で指定したいときのために、よく使う長さを並べておく。 */
+      (unit === "語" ? [200, 300, 400, 500, 600, 800, 1000] : [800, 1200, 1600, 2000, 2500, 3000, 4000])
+        .forEach(function (n) { lenOpts.push({ value: String(n), label: n + " " + unit + "前後" }); });
+
+      var body = "";
+      if (s.passageOn) {
+        body += '<div class="vq2-grid c2">'
+          + field({ label: "本文の長さ", type: "select", key: "passageLength",
+                    value: String(s.passageLength || "auto"), options: lenOpts })
+          + field({ label: "傍線部の数（-1 でおまかせ）", type: "number", key: "underlineCount",
+                    value: s.underlineCount, min: -1, max: 8 })
+          + "</div>"
+          + '<div class="vq2-grid c2" style="margin-top:12px">'
+          + field({ label: "空欄の数（-1 でおまかせ）", type: "number", key: "blankCount",
+                    value: s.blankCount, min: -1, max: 8 })
+          + "</div>";
+      }
+      body += '<div class="vq2-grid c2" style="margin-top:' + (s.passageOn ? "12px" : "0") + '">'
+        + field({ label: "選択肢の数（0 でおまかせ）", type: "number", key: "choiceCount",
+                  value: s.choiceCount, min: 0, max: 10 })
+        + field({ label: "記述の字数（0 で配点から決める）", type: "number", key: "writeChars",
+                  value: s.writeChars, min: 0, max: 1200 })
+        + "</div>"
+        + '<div class="vq2-grid c2" style="margin-top:12px">'
+        + field({ label: "選択肢の作り", type: "select", key: "distractors", value: s.distractors || "auto",
+                  options: [{ value: "auto", label: "おまかせ" },
+                            { value: "hard", label: "紛らわしくする（共通テスト風）" },
+                            { value: "easy", label: "はっきり見分けられるようにする" }] })
+        + field({ label: "解説の詳しさ", type: "select", key: "explainDetail", value: s.explainDetail || "auto",
+                  options: [{ value: "auto", label: "おまかせ（理由だけ 2 文以内）" },
+                            { value: "short", label: "短く（1 文）" },
+                            { value: "long", label: "詳しく（根拠と道すじ 3〜5 文）" }] })
+        + "</div>"
+        + '<p class="vq2-hint" style="margin-top:8px">'
+        + "ここの欄より、指示欄に書いた文のほうが優先されます。"
+        + "「本文は800語で」「5択で」「80字以内で記述」「選択肢は紛らわしく」のように書けば、そのとおりに作ります。</p>"
+        + askSummaryHtml();
+
+      if (ask.choiceCount) bits.push("指示 " + ask.choiceCount + " 択");
+      return accHtml("format", "細かい形式", bits.join(" ／ "), body, !!st.open.format);
+    }
+
+    /* 指示欄から何を読み取ったかを、そのまま見せる。
+       **読み取れたかどうかが分からないのがいちばん困る。**
+       前は「共通テストレベルで」と書いても届いていたのか分からなかった。 */
+    function askSummaryHtml() {
+      var res = askNow();
+      var rows = res.rows || [];
+      if (!rows.length) {
+        return '<div class="vq2-hint" style="margin-top:12px;padding:10px;border:1px dashed var(--vq2-line,#d6d6d6);border-radius:8px">'
+          + "指示欄からは、まだ細かい形式の指定を読み取っていません。</div>";
+      }
+      var h = '<div style="margin-top:12px;padding:10px;border:1px solid var(--vq2-line,#d6d6d6);border-radius:8px">'
+        + '<strong style="font-size:12px">指示から読み取ったこと</strong><ul style="margin:6px 0 0;padding-left:18px">';
+      rows.forEach(function (r) {
+        h += '<li style="font-size:12px;line-height:1.7'
+          + (r.kind === "warn" ? ";color:var(--vq2-warn,#b45309)" : "") + '">'
+          + esc(r.text) + "</li>";
+      });
+      h += "</ul>";
+      if (res.unsure && res.unsure.length)
+        h += '<p class="vq2-hint" style="margin-top:6px">読み取れなかったものは、上の欄で指定してください。</p>';
+      h += "</div>";
+      return h;
+    }
 
     function setupDetailHtml() {
       var s = st.settings;
@@ -239106,6 +239745,7 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
         + "</div>"
         + typesPicker()
         + passagePickerHtml(s)
+        + formatPickerHtml(s)
         /* 「根拠のあつかい」の欄は外した。**資料を付けたかどうかで決まる**ので、
            選ばせても増える判断が無い。付ければ資料だけ、付けなければ指示だけ。 */
         + '<div style="margin-top:16px">'
@@ -239766,6 +240406,16 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       U.on(r, "change", "[data-key]", function (e, t) {
         var k = t.getAttribute("data-key");
         if (k === "sourceOnly") { st.settings.allowExternalKnowledge = !t.checked; return; }
+        /* 指示欄から手が離れたら、何を読み取ったかを出し直す。
+           打っている最中に描き直すと入力位置が飛ぶので、離れたときだけ。 */
+        if (k === "instruction") {
+          st.instruction = t.value;
+          if (!askNow().rows.length) return;
+          st.open.detail = true; st.open.format = true;
+          st.passagesReady = false; st.passages = {};
+          renderLeft();
+          return;
+        }
         if (k.indexOf("q.") === 0) { editQuestion(k.slice(2), t); return; }
         /* 紙面の微調整（§41）。空欄に戻したら「指定なし」へ戻す
            （0 を入れたことにすると、解答欄が 0 行の紙面が出る）。 */
@@ -239799,6 +240449,17 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
           st.open.passage = true;
           /* 条件を変えたら本文は作り直す（前の本文を使い回さない）。 */
           st.passagesReady = false; st.passages = {};
+          renderLeft();
+          return;
+        }
+        /* 細かい形式の欄。変えたら「指示から読み取ったこと」も出し直す。
+           本文の長さ・傍線部・空欄を変えたときは本文も作り直す。 */
+        if (FORMAT_KEYS && FORMAT_KEYS[k]) {
+          st.settings[k] = t.type === "number" ? Number(t.value) : t.value;
+          st.open.format = true;
+          if (k === "passageLength" || k === "underlineCount" || k === "blankCount") {
+            st.passagesReady = false; st.passages = {};
+          }
           renderLeft();
           return;
         }
