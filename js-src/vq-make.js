@@ -122,6 +122,17 @@
     "input:focus,textarea:focus{outline:2px solid var(--vq-border-focus,#9A8CE0);outline-offset:-1px}",
     "textarea{min-height:96px;line-height:1.8;resize:vertical}",
     ".hint{font-size:12px;line-height:1.7;color:var(--vq-text-secondary,#6B6480)}",
+    /* 指示から 読み取った こと（2026-09-11）。届いたか どうかを 見せる。 */
+    ".vm-read{list-style:none;margin:0;padding:8px 10px;display:flex;flex-direction:column;gap:5px;"
+      + "border:1px solid var(--vq-border-subtle,#E7E4EF);border-radius:10px;"
+      + "background:var(--vq-surface-sunken,rgba(127,127,140,.06))}",
+    ".vm-read li{font-size:12px;line-height:1.6;padding-left:16px;position:relative}",
+    ".vm-read li::before{position:absolute;left:0;top:0}",
+    ".vm-read li.txt::before{content:'✓';color:var(--vq-success,#2E7D5B);font-weight:700}",
+    ".vm-read li.box::before{content:'·';font-weight:700;opacity:.7}",
+    ".vm-read li.ng{color:var(--vq-warning-text,#B45309)}",
+    ".vm-read li.ng::before{content:'!';font-weight:700}",
+    ".vm-read small{opacity:.6;margin-left:4px}",
     ".chips{display:flex;flex-wrap:wrap;gap:7px}",
     ".chip{min-height:44px;padding:0 16px;border-radius:999px;font-size:13.5px;",
       "display:inline-flex;align-items:center;",
@@ -305,8 +316,78 @@
       /* 資料の 渡しかた。"はやい"＝本文の 文字だけ／"そのまま"＝PDF を 読ませる。
          既定は はやい（文字が 取れている ときだけ 効く）。 */
       資料の渡し: "はやい",
+      /* ── 細かい形式（2026-09-11）──────────────────────────────
+         これまで **中の 決め打ち**で、画面にも 指示欄にも 出て いなかった
+         ところ。4 択・解説は 2 文以内・記述は 配点から 字数を 決める、など。
+         0 と "auto" は 「おまかせ」＝ これまでと 同じ 動き。
+         **指示欄に 数が 書いて あれば、そちらが 勝つ**（VQ2.askspec）。 */
+      出題のレベル: "school",
+      選択肢の数: 0,
+      記述の字数: 0,
+      選択肢の作り: "auto",
+      解説の詳しさ: "auto",
       layoutMode: "current", answerSheetMode: "current"
     };
+  }
+
+  /* ══ 指示から 読み取る（2026-09-11）══════════════════════════════
+     出どころは 2 つ。① 上の 欄 ② 「ほかに 伝えること」に 書いた 文。
+     **② が 勝つ。** わざわざ 書いた ものを 欄の 既定で 上書き しない。
+
+     読み取った ものは 画面にも 出す（読み取り欄）。
+     前に「指示が 届いて いない」ことに 誰も 気づけ なかったのは、
+     届いたか どうかが どこにも 出て いなかった から。 */
+  var LEVEL並 = [
+    { id: "textbook", label: "教科書の 確認" },
+    { id: "school",   label: "定期試験" },
+    { id: "common",   label: "共通テスト（思考力）" },
+    { id: "entrance", label: "難関大の 個別試験" }
+  ];
+  var LEVEL説明 = {
+    textbook: "教科書に 太字で 出る 語と 基本事項を 確かめます。1 手で 解けます。",
+    school: "授業で 扱う 典型的な 問い方です。2 手までで 解けます。",
+    common: "知識を そのまま 聞きません。資料・図表・会話を 突き合わせて 考えさせ、"
+      + "選択肢は 4 つとも もっともらしく します。",
+    entrance: "初めて 見る 題材を その場で 整理させます。分野を またぎ、根拠を 問います。"
+  };
+  function 読み取り() {
+    var c = st.条件, 欄 = {}, 行 = [];
+    if (c.選択肢の数 >= 2) { 欄.choiceCount = c.選択肢の数; 行.push({ 印: "欄", 文: "選択肢: " + c.選択肢の数 + " つ" }); }
+    if (c.記述の字数 >= 10) { 欄.writeChars = c.記述の字数; 行.push({ 印: "欄", 文: "記述の 字数: 約 " + c.記述の字数 + " 字" }); }
+    if (c.選択肢の作り === "hard" || c.選択肢の作り === "easy") {
+      欄.distractors = c.選択肢の作り;
+      行.push({ 印: "欄", 文: "選択肢: " + (c.選択肢の作り === "hard" ? "紛らわしく する" : "はっきり 見分けられる ように する") });
+    }
+    if (c.解説の詳しさ === "long" || c.解説の詳しさ === "short") {
+      欄.explainDetail = c.解説の詳しさ;
+      行.push({ 印: "欄", 文: "解説: " + (c.解説の詳しさ === "long" ? "詳しく" : "短く") });
+    }
+    if (c.出題のレベル) 欄.examLevel = c.出題のレベル;
+
+    var A = null;
+    try { var V = VQ2(); A = V && V.askspec ? V.askspec.parse(c.instruction) : null; } catch (e) { A = null; }
+    var 値 = A ? Object.assign({}, 欄, A.values) : 欄;
+    if (A) {
+      A.notes.forEach(function (n) { 行.push({ 印: "文", 文: n }); });
+      A.unsure.forEach(function (n) { 行.push({ 印: "だめ", 文: n }); });
+    }
+    return { 値: 値, 行: 行, 読めたか: !!A };
+  }
+
+  /* 読み取った ことを そのまま 並べる。読めなかった ものは 黙らない。 */
+  function 読み取り欄() {
+    var r = 読み取り();
+    if (!r.行.length) {
+      return '<div class="row vm-readrow"><label>指示から 読み取った こと</label>'
+        + '<div class="hint">まだ 何も 読み取って いません。'
+        + "上の 欄に 書くか、「ほかに 伝えること」に 数で 書いて ください。</div></div>";
+    }
+    return '<div class="row vm-readrow"><label>指示から 読み取った こと</label><ul class="vm-read">'
+      + r.行.map(function (x) {
+          return '<li class="' + (x.印 === "だめ" ? "ng" : x.印 === "欄" ? "box" : "txt") + '">'
+            + esc(x.文) + (x.印 === "欄" ? "<small>（上の 欄）</small>" : "") + "</li>";
+        }).join("")
+      + "</ul></div>";
   }
   /* 紙面の 型。**実際に 組めるものだけ** 並べる（動くふりを しない）。 */
   function 紙面の型() {
@@ -778,7 +859,36 @@
       + '<textarea id="vm-inst" data-f="instruction" data-o="cond" maxlength="1200"'
       + ' placeholder="例）配った授業プリントの範囲だけで。記述は 40 字以内でまとめさせる問題を 2 問。">'
       + esc(c.instruction) + "</textarea>"
-      + '<div class="hint">範囲・出したい形式の 比率・字数の 指定などを 書くと そのとおりに 寄せます。</div></div>';
+      + '<div class="hint">範囲・出したい形式の 比率・字数の 指定などを 書くと そのとおりに 寄せます。'
+      + "「本文は 800 語で」「5 択で」「80 字以内で 記述」「選択肢は 紛らわしく」のように "
+      + "<b>数や 言葉で 書けば、そのとおりに 作ります</b>。</div></div>";
+
+    /* ── 出題の レベル（2026-09-11）──────────────────────────────
+       「難しさ」は 易しい 問題と 難しい 問題の 配分。
+       こちらは **水準そのもの**。別の 軸なので 欄を 分ける。 */
+    h += 選び欄("出題の レベル", "出題のレベル", c.出題のレベル, LEVEL並)
+      + '<p class="hint">' + esc(LEVEL説明[c.出題のレベル] || LEVEL説明.school) + "</p>";
+
+    /* ── 細かい形式（2026-09-11）─────────────────────────────────
+       ここに 並ぶ ものは、これまで 中の 決め打ちで 変えようが なかった。
+       既定は 全部 おまかせ＝ これまでと 同じ 動き。 */
+    h += '<div class="row two">'
+      + 数欄("選択肢の 数（0 で おまかせ）", "選択肢の数", c.選択肢の数, 0, 10)
+      + 数欄("記述の 字数（0 で 配点から）", "記述の字数", c.記述の字数, 0, 1200)
+      + "</div>"
+      + 選び欄("選択肢の 作り", "選択肢の作り", c.選択肢の作り, [
+          { id: "auto", label: "おまかせ" },
+          { id: "hard", label: "紛らわしく する（共通テスト風）" },
+          { id: "easy", label: "はっきり 見分けられる ように する" }])
+      + 選び欄("解説の 詳しさ", "解説の詳しさ", c.解説の詳しさ, [
+          { id: "auto",  label: "おまかせ（理由だけ 2 文以内）" },
+          { id: "short", label: "短く（1 文）" },
+          { id: "long",  label: "詳しく（根拠と 道すじ 3〜5 文）" }]);
+
+    /* ── 読み取った ことを 見せる ───────────────────────────────
+       **届いたか どうかが 分からないのが いちばん 困る。**
+       前は「共通テスト レベルで」と 書いても、効いたのか 分からなかった。 */
+    h += 読み取り欄();
 
     h += "</div>";
 
@@ -2049,6 +2159,12 @@
          名乗らせて おけば、欄を 増やしても 同じ 間違いに ならない。 */
       if (t.dataset.o === "cond") {
         st.条件[f] = String(t.value || "");
+        /* 打っている 最中に 描き直すと 入力位置が 飛ぶ。
+           読み取り欄だけを 差し替える（入力欄は 触らない）。 */
+        if (f === "instruction") {
+          var 箱 = root.querySelector(".vm-readrow");
+          if (箱) 箱.outerHTML = 読み取り欄();
+        }
         return;
       }
       if (f === "instructions") {
@@ -2138,7 +2254,14 @@
         sectionCount: c.sectionCount, questionCount: c.questionCount,
         types: c.types, difficulty: c.difficulty,
         allowExternalKnowledge: st.資料.length === 0,
-        requireSources: st.資料.length > 0
+        requireSources: st.資料.length > 0,
+        /* ★ 指示欄に 書いた ことを **枠と 依頼文へ 届かせる**（2026-09-11）。
+           これまで instruction は ここへ 渡って いなかったので、
+           「共通テスト レベルで」と 書いても 問題そのものには 効かなかった。
+           ask は それを 数と 言葉に 読み取った もの（VQ2.askspec）。 */
+        examLevel: c.出題のレベル,
+        instruction: c.instruction,
+        ask: 読み取り().値
       });
     } catch (e) {
       st.err = "この条件では 枠を 作れませんでした：" + String((e && e.message) || e).slice(0, 120);
