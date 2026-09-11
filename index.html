@@ -46760,6 +46760,20 @@ html body #authGate#authGate.vqa .auth-v2-complete .auth-v2-cta{ max-width:280px
 }
 
 </style>
+<style id="vq-ai-badge-style">
+/* AI（LUMI）が作ったものの印。2026/09/14 0:00 以降に作られたものには必ず出す。
+   紫の淡い地に濃い字。ほかのバッジ（配信・公開中）と並んでも読み分けられる色。 */
+.app-library-state-badge.is-ai{
+  background:linear-gradient(135deg,#ede9fe,#f5f3ff);
+  color:#6d28d9;border-color:#ddd6fe;font-weight:800;letter-spacing:.02em;
+}
+.app-library-draft-kicker .app-library-state-badge.is-ai{ margin-left:8px; }
+.pick-ai{
+  margin-left:8px;padding:1px 7px;border-radius:999px;
+  background:#ede9fe;color:#6d28d9;
+  font-size:11px;font-weight:800;vertical-align:middle;white-space:nowrap;
+}
+</style>
 </head>
 <body class="app-tabs-visible auth-booting" data-app-tab="home" data-ui-v2="0">
   <!-- ロード画面 2 枚が共通で使う塗りの定義。id が重複しないよう、ここに 1 度だけ置く。
@@ -76203,6 +76217,43 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
           return formatDateTime(n);
         }
       }
+      /* ── AI が作ったものの見分け（2026-09-14 から）────────────────
+         LUMI（AI）が作ったプリセットと試験には、一覧で必ず印を出す。
+
+         2026/09/14 0:00（日本時間）以降に作られたものは、保存のときに
+         generatedBy を入れているので確実に見分けられる。それより前に
+         作られたものは印が無いので、問題ごとの createdBy から分かるぶん
+         だけを拾う。手で作った古いプリセットに後から AI の印を付けない
+         ため、推測はこの日付より後のものに限る。 */
+      const VQ_AI_BADGE_FROM = Date.parse("2026-09-14T00:00:00+09:00");
+      const VQ_AI_MAKERS = { lumi: 1, ai: 1 };
+      const VQ_AI_BADGE_LABEL = "AI生成";
+
+      function _vqAiMaker(v){
+        return !!VQ_AI_MAKERS[String(v || "").toLowerCase()];
+      }
+      function _vqIsAiGenerated(rec){
+        if (!rec || typeof rec !== "object") return false;
+        /* 保存のときに残した印。これがあれば日付によらず確かなもの。 */
+        if (_vqAiMaker(rec.generatedBy)) return true;
+        if (rec.spec && _vqAiMaker(rec.spec.generatedBy)) return true;
+        /* 印が無いものは、2026/09/14 以降に作られたものだけ中身から推し量る。 */
+        const t = Date.parse(String(rec.createdAt || ""));
+        if (!Number.isFinite(t) || t < VQ_AI_BADGE_FROM) return false;
+        const qs = Array.isArray(rec.questions) ? rec.questions : null;
+        return !!(qs && qs.some((q) => q && _vqAiMaker(q.createdBy)));
+      }
+      function _vqAiBadgeEl(){
+        const chip = _appLibraryStateBadge(VQ_AI_BADGE_LABEL, "ai");
+        chip.title = "AI（LUMI）が作ったものです";
+        return chip;
+      }
+      try {
+        window._vqIsAiGenerated = _vqIsAiGenerated;
+        window.VQ_AI_BADGE_FROM = VQ_AI_BADGE_FROM;
+        window.VQ_AI_BADGE_LABEL = VQ_AI_BADGE_LABEL;
+      } catch (e) {}
+
       function _appLibraryStateBadge(label, kind = ""){
         const chip = document.createElement("span");
         chip.className = `app-library-state-badge${kind ? ` is-${kind}` : ""}`;
@@ -76266,6 +76317,9 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
         const card = document.createElement("article");
         card.className = "app-library-item";
         if (opts.kind) card.dataset.kind = String(opts.kind);
+        /* AI が作ったものかどうかを **値のまま**持たせる。新しい一覧は
+           このカードを読み取って描くので、バッジの文字を探さずに済む。 */
+        if (opts.aiGenerated) card.dataset.aiGenerated = "1";
         /* ★ 数は **値のまま**持たせる（2026-08-15）。
            新しい一覧はこのカードを読み取って描いているが、これまでは
            バッジの文字（「保存 12」）を正規表現で拾うしかなく、
@@ -76461,7 +76515,7 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
           card.innerHTML = `
             <div class="app-library-draft-top">
               <div class="app-library-draft-copy">
-                <div class="app-library-draft-kicker">${escapeHtml(statusJa)}</div>
+                <div class="app-library-draft-kicker">${escapeHtml(statusJa)}<span class="app-library-state-badge is-ai" title="AI（LUMI）が作っています">AI生成</span></div>
                 <div class="app-library-draft-title">${escapeHtml(String(r.title || "作成中の試験"))}</div>
                 <div class="app-library-draft-meta">${escapeHtml(bits.filter(Boolean).join(" / "))}</div>
               </div>
@@ -76638,6 +76692,8 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
             ..._appLibraryModeBadgeEls(p.modes || {}),
             ..._appLibraryTagBadgeEls(p.tagIds, 2)
           ];
+          const presetIsAi = _vqIsAiGenerated(p);
+          if (presetIsAi) badges.unshift(_vqAiBadgeEl());
           if (publicMeta.isPublic){
             badges.unshift(_appLibraryStateBadge("公開中", "public"));
           }
@@ -76671,7 +76727,8 @@ ${recentChat ? "最近の発言: " + recentChat : ""}
               _appCreateActionButton("編集", "editCustom", p.id, "btn secondary"),
               _appLibraryActionMenu(moreActions)
             ],
-            { kind: "mine", updatedLabel: _appLibraryRelativeUpdated(p.updatedAt || 0) }
+            { kind: "mine", updatedLabel: _appLibraryRelativeUpdated(p.updatedAt || 0),
+              aiGenerated: presetIsAi }
           );
           mFrag.appendChild(card);
         }
@@ -95208,6 +95265,41 @@ actionタイプ:
       /* ── NEWS ── */
       // Built-in (default) articles
       const _appNewsDefaultData = [
+        {
+          id: "news-004",
+          category: "お知らせ",
+          title: "AIが作ったプリセット・試験に「AI生成」の印を付けます",
+          date: "2026年9月14日",
+          summary: "2026年9月14日 0:00 以降に LUMI が作ったプリセットと試験には、一覧で「AI生成」と分かる印が必ず付きます。誰が作ったものかが、開かなくても分かるようになります。",
+          body: `2026年9月14日 0:00（日本時間）から、LUMI（アプリの AI）が作ったプリセットと試験に「AI生成」の印を付けます。
+
+なぜ付けるのか
+
+LUMI に頼めば、話しかけるだけで問題が作れます。便利なぶん、出来上がったものが一覧に並ぶと、自分で作ったものと見分けが付かなくなっていました。学校やクラスで配るとき、それが人の手によるものか AI によるものかは、中身を読む前に分かったほうがいいはずです。そこで、作った時点で印を残し、一覧にそのまま出すことにしました。
+
+どこに出るか
+
+・プリセット一覧（マイプリセット）のカード
+・新しいプリセット画面のカード
+・「作成中の試験」のカード
+・投稿にプリセットや試験を添えるときの選択画面
+
+印は紫の小さなバッジで「AI生成」と出ます。触れると「AI（LUMI）が作ったものです」と表示されます。
+
+どれに付くか
+
+2026年9月14日 0:00 以降に作られたものには必ず付きます。LUMI との会話から作ったプリセット、カメラで読み取って作ったプリセット、Quick Mock で作った試験が対象です。
+
+それより前に作ったものには、原則として付きません。当時は誰が作ったかを記録していなかったため、後から見分けようとすると、手で作ったものに AI の印を付けてしまうおそれがあるからです。ただし問題ごとに記録が残っているものは、そこから分かるぶんだけ印が付きます。
+
+印を消すことはできません。作った経緯を後から書き換えられると、印の意味が無くなるためです。
+
+AI が作ったものの質について
+
+印は「AI が作った」という事実を示すだけで、出来が悪いという意味ではありません。ただ、AI が作った問題は必ず人が目を通してから配ってください。特に固有名詞や年号、計算を含む問題は、間違いが混ざることがあります。Quick Mock では、未解決の指摘がある試験に「要修正」が付いたまま保存されます。そちらも合わせてご確認ください。
+
+— VocabuQuiz 運営チーム`
+        },
         {
           id: "news-003",
           category: "新機能",
@@ -143949,9 +144041,16 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
              String((x.subjects && x.subjects[0] && (x.subjects[0].label || x.subjects[0].name)) || x.subject || "")]
           : [String(sp.subject || ""), (sp.sections || []).length ? (sp.sections || []).length + " 大問" : "",
              sp.totalPoints ? sp.totalPoints + " 点" : ""];
+        /* AI（LUMI）が作ったものには印を付ける。 */
+        var aiChip = "";
+        try {
+          if (window._vqIsAiGenerated && window._vqIsAiGenerated(x)) {
+            aiChip = '<span class="pick-ai">' + esc(window.VQ_AI_BADGE_LABEL || "AI生成") + "</span>";
+          }
+        } catch (e) {}
         h += '<button class="pick-i" data-a="pick-one" data-id="' + esc(id) + '">'
           + '<span class="att-ico">' + svg(kind === "preset" ? "preset" : "mock") + "</span>"
-          + '<span class="att-b"><span class="att-t">' + esc(t) + "</span>"
+          + '<span class="att-b"><span class="att-t">' + esc(t) + aiChip + "</span>"
           + '<span class="att-s">' + esc(s2.filter(Boolean).join(" · ")) + "</span></span></button>";
       });
     }
@@ -147663,6 +147762,8 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
         id: id, kind: kind, title: title, subject: subject, count: count, unit: unit,
         author: author, iconName: iconName, iconColor: iconColor, tags: tags, saveCount: saveCount,
         viewCount: viewCount, favoriteCount: favCount, forkCount: numAttr("data-fork-count"),
+        /* AI が作ったかどうかは data-* から読む（バッジの文字を探さない）。 */
+        isAiGenerated: it.getAttribute("data-ai-generated") === "1",
         isPublic: !!it.querySelector(".app-library-state-badge.is-public"),
         updatedLabel: txt(it.querySelector(".app-library-item-updated")),
         actions: acts
@@ -147875,6 +147976,8 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
     ".pc__kind .ms{font-size:13px;}" +
     ".pc__kind.is-official{background:var(--vq-accent,#756DB3);color:#fff;}" +
     ".pc__kind.is-new{background:var(--vq-warning,#E5A85F);color:#3B2A0C;}" +
+    /* AI（LUMI）が作ったものの印 */
+    ".pc__kind.is-ai{background:#EDE9FE;color:#5B21B6;}" +
     ".pc__fav{position:absolute;right:8px;top:8px;width:34px;height:34px;border-radius:50%;border:0;cursor:pointer;background:rgba(255,255,255,.92);color:#9E98AC;display:grid;place-items:center;box-shadow:0 1px 3px rgba(30,20,60,.16);z-index:2;}" +
     ".pc__fav.on{color:#E0A31C;}.pc__fav .ms{font-size:19px;}.pc__fav:hover{background:#fff;}" +
     ".pc__fav:not(.on) .ms{font-variation-settings:'FILL' 0;}" +
@@ -148195,6 +148298,10 @@ html[data-vq-ui="bloom"] body[data-ui-v2="1"] .card:not([style*="gradient"]):not
       if (c.visibility === "public") out.push('<span class="pc__kind">' + ms("public") + "公開中</span>");
     } else {
       out.push('<span class="pc__kind">' + ms("public") + "公開</span>");
+    }
+    if (c.isAiGenerated) {
+      out.push('<span class="pc__kind is-ai" title="AI（LUMI）が作ったものです">'
+        + ms("auto_awesome") + "AI生成</span>");
     }
     if (c.isNew) out.push('<span class="pc__kind is-new">' + ms("fiber_new") + "NEW</span>");
     return '<div class="pc__kinds">' + out.join("") + "</div>";
@@ -168570,7 +168677,8 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       });
     });
     var p = S2.emptyPreset({ name: 名, questions: 問ら,
-                             description: "カメラで 読み取った問題を まとめたもの" });
+                             description: "カメラで 読み取った問題を まとめたもの",
+                             generatedBy: "lumi" });
     try { ST2.savePreset(p, { ownerId: ST2.currentOwnerId ? ST2.currentOwnerId() : "local" }); }
     catch (e2) { return { だめ: "保存できませんでした（" + String(e2 && e2.message).slice(0, 60) + "）" }; }
     var 要確認 = 箱.filter(function (x) { return x.自信 > 0 && x.自信 < 0.6; }).length;
@@ -168622,7 +168730,7 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
     try {
       /* ★ 入れ物の口は save ではなく **put**（実測で 分かった。
          save だと「そんな関数は 無い」で 落ちていた）。 */
-      var rec = ST2.mocks.put({ id: spec.id, title: 題, spec: spec },
+      var rec = ST2.mocks.put({ id: spec.id, title: 題, spec: spec, generatedBy: "lumi" },
         { ownerId: ST2.currentOwnerId ? ST2.currentOwnerId() : "local" });
       var id = (rec && rec.id) || spec.id;
       if (QM && QM.open) QM.open({ mockId: id });
@@ -172142,7 +172250,9 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
     }
     var 題 = Q文(a && a.title).trim().slice(0, 80);
     if (!題) return { だめ: "何のプリセットか、title を入れてください。" };
-    var p = S.emptyPreset({ name: 題, description: Q文(a && a.description).slice(0, 400) });
+    var p = S.emptyPreset({ name: 題, description: Q文(a && a.description).slice(0, 400),
+                            /* LUMI が作ったものだと分かるように残す */
+                            generatedBy: "lumi" });
     p.questions = [];
     作り中.p = p;
     var n = Math.floor(Number(a && a.count));
@@ -176398,6 +176508,9 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
          空なら、原稿の言語から自動で決める。 */
       audio: { voice: "", speed: 1 },
       questions: [], revision: 1,
+      /* 誰が作ったか。AI（LUMI）が作ったものは一覧で見分けられるように
+         印を残す。手で作ったものは空のまま。 */
+      generatedBy: "",
       createdAt: nowIso(), updatedAt: nowIso()
     };
     if (overrides) for (var k in overrides) p[k] = overrides[k];
@@ -178552,6 +178665,7 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       appearance: readAppearance(p.appearance),
       questions: cards.map(cardToQuestion),
       revision: isNum(p.revision) ? p.revision : 1,
+      generatedBy: str(p.generatedBy),
       createdAt: str(p.createdAt) || null,
       updatedAt: str(p.updatedAt) || null,
       migratedFrom: "v1",
@@ -178593,6 +178707,10 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
     put("tagIds", clone(v2.tagIds) || [], !(v2.tagIds && v2.tagIds.length));
     put("tags", clone(v2.tags) || [], !(v2.tags && v2.tags.length));
     put("appearance", readAppearance(v2.appearance), isEmptyAppearance(v2.appearance));
+    /* 誰が作ったか（AI か手か）と、作った日時。一覧は V1 の写しを読むので、
+       ここで落とすと「AI生成」の印が出せなくなる。 */
+    put("generatedBy", str(v2.generatedBy), !str(v2.generatedBy));
+    put("createdAt", str(v2.createdAt), !str(v2.createdAt));
 
     var questions = Array.isArray(v2.questions) ? v2.questions : [];
     var cards = questions.map(questionToCard);
@@ -188354,6 +188472,8 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       canEdit: false, canDelete: false, canPublish: false, canFork: true, canReport: false,
       /* 本体ライブラリ（DOM）から来たときだけ入るもの */
       kind: "", officialKind: "", countUnit: "問", updatedLabel: "", actions: [], hasDetail: false,
+      /* AI（LUMI）が作ったものか。一覧に印を出すために持つ。 */
+      isAiGenerated: false,
       raw: null
     };
   }
@@ -188494,6 +188614,7 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
     c.officialKind = k.note;
     c.ownerName = k.owner || str(x.author) || "名前のない人";
     c.ownerHandle = str(x.handle);
+    c.isAiGenerated = !!x.isAiGenerated;
     c.ownerAvatarUrl = safeImage(x.avatarUrl);
     c.isOwnedByCurrentUser = kind === "mine";
     c.visibility = kind === "mine" ? (x.isPublic ? "public" : "private") : "public";
@@ -229742,6 +229863,9 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
         id: st.spec.id, kind: "mock", title: st.spec.title,
         spec: st.spec, manifest: st.manifest || null,
         createdAt: st.spec.createdAt,
+        /* Quick Mock は AI に構成案と問題を作らせて組み立てる。
+           一覧で「AI が作ったもの」と分かるように印を残す。 */
+        generatedBy: String((st.spec && st.spec.generatedBy) || "ai"),
         /* 残っている指摘。あとから開いたときに、どこが未完成か分かるように。 */
         requiresReview: errs.length > 0 || structProbs.length > 0,
         openIssues: errs.slice(0, 50).map(function (x) {
