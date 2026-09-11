@@ -1350,12 +1350,23 @@
      ★ 使えない 本文（短すぎる・空欄の 答えが 無い・図が 描けない）は
        **やり直す**。3 回 駄目なら 長文を あきらめて ふつうに 作る
        （試験そのものを 作れなく しない）。 */
+  /* ★ **時間切れを 必ず 置く**（2026-09-11）。
+     返事が 来ない まま 黙って 待ち続けると、進みの バーは 動かないのに
+     中では 何も 起きていない、という いちばん 困る 止まりかたに なる。
+     90 秒で 切って 次へ 進む（長文を あきらめて ふつうに 作る）。 */
+  var 本文の待ち = 90000;
   function 文を頼む(prompt) {
     var url = "";
     try { url = String(window.CHAT_AI_API_URL || (apiBase() + "/api/ai/chat")); } catch (e) {}
     if (!url || !window.fetch) return Promise.reject(new Error("NO_CHAT_API"));
     var cid = "vqmake-psg-" + Date.now() + "-" + Math.floor(Math.random() * 1e6);
+    var ac = null, 時計 = null;
+    try { ac = new AbortController(); } catch (e) { ac = null; }
+    var 切れた = false;
+    if (ac) 時計 = setTimeout(function () { 切れた = true; try { ac.abort(); } catch (e) {} }, 本文の待ち);
+    function 片付け() { if (時計) { clearTimeout(時計); 時計 = null; } }
     return window.fetch(url, {
+      signal: ac ? ac.signal : undefined,
       method: "POST", headers: 頭(),
       body: JSON.stringify({
         conversationId: cid, mode: "standard",
@@ -1389,7 +1400,11 @@
         });
       })();
     }).then(function (t) {
+      片付け();
       return String(t || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    }, function (e) {
+      片付け();
+      throw 切れた ? new Error("本文の 返事が " + (本文の待ち / 1000) + " 秒 来ませんでした") : e;
     });
   }
 
@@ -1401,16 +1416,33 @@
     if (!P || !仕事.length) return Promise.resolve(出);
     var c = st.条件, 読 = 読み取り().値;
     var i = 0;
+    /* ★ **バーを 動かす**（2026-09-11）。
+       本文づくりは 1 大問 30〜60 秒 かかる。ここで バーが 止まったままだと、
+       中で 動いて いるのか 止まって いるのか 分からない
+       （訴え「バーも 増えないし、長いし」）。本文の 段も 数えて 出す。 */
+    st.進み = { done: 0, total: 仕事.length, made: 0, madeTotal: p2.totalQuestions,
+                stage: "本文を 書いています（0 / " + 仕事.length + " 大問）" };
+    進みを塗る();
     function 次() {
       if (st.止めたい || i >= 仕事.length) return Promise.resolve(出);
       var sec = 仕事[i++], 計 = sec.passagePlan, K = P.kind(計.kind);
-      if (st.進み) st.進み.stage = "大問" + sec.number + " の 本文を 書いています";
+      if (st.進み) {
+        st.進み.done = i - 1;
+        st.進み.total = 仕事.length;
+        st.進み.stage = "大問" + sec.number + " の 本文を 書いています（"
+          + i + " / " + 仕事.length + " 大問）";
+      }
       進みを塗る();
       記す("step", "大問" + sec.number + " の 本文を 書いています（"
         + ((K && K.label) || 計.kind) + "）");
       var 回 = 0;
       function 試す(理由) {
         回++;
+        if (st.進み && 回 > 1) {
+          st.進み.stage = "大問" + sec.number + " の 本文を 書き直しています（"
+            + 回 + " 回目 / 3）";
+          進みを塗る();
+        }
         var 依 = P.promptFor(計.kind, {
           topic: String(c.instruction || "").trim() || (st.表紙 && st.表紙.subject) || "",
           grade: (st.表紙 && st.表紙.grade) || "",
@@ -1439,7 +1471,11 @@
       return 試す("").catch(function (e) {
         記す("warn", "大問" + sec.number + " の 本文を 作れませんでした（"
           + 日本語に((e && e.message) || "") + "）。長文なしで 作ります。");
-      }).then(次);
+      }).then(function () {
+        if (st.進み) st.進み.done = i;
+        進みを塗る();
+        return 次();
+      });
     }
     return 次();
   }
