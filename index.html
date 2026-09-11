@@ -186279,6 +186279,15 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       requireSources: req.requireSources !== false,
       /* 図を問題用紙に入れるか。依頼文に図の書き方を書くかどうかがこれで決まる。 */
       figures: req.figures !== false,
+      /* ── 出題のレベルと、作り手の注文（2026-09-11 追加）──────────
+         ★ これまで **利用者が指示欄に書いた文が、設問づくりの依頼文へ
+           1 文字も届いていなかった**（実測: promptFor が受け取る ctx に
+           instruction が無い）。「共通テストレベルで」と書いても、
+           構成案には効くが、問題そのものには効かない状態だった。
+         ★ 難易度も「難しい」の一語しか渡していなかった。何をもって
+           難しいのかを書かないと、語が難しいだけの問題が返ってくる。 */
+      examLevel: str(req.examLevel) || "school",
+      instruction: str(req.instruction).slice(0, 1200),
       sections: sections,
       totalQuestions: slots.length,
       /* 自己申告ではなく実際の合計。verify() がこれを見る。 */
@@ -186840,6 +186849,23 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
     if (ctx.subject) lines.push("科目: " + ctx.subject);
     if (ctx.grade) lines.push("学年: " + ctx.grade);
     lines.push("大問" + req.sectionNumber + (req.sectionTitle ? "「" + req.sectionTitle + "」" : ""));
+    var LV = EXAM_LEVEL[str(ctx.examLevel)] || EXAM_LEVEL.school;
+    lines.push("出題のレベル: " + LV.label);
+    lines.push("");
+    /* ── 作り手の注文（2026-09-11）────────────────────────────────
+       利用者が指示欄に書いた文。**いちばん上に、そのまま置く。**
+       要約したり言い換えたりすると、頼んだ通りにならない。 */
+    if (str(ctx.instruction).trim()) {
+      lines.push("【作る人からの注文（いちばん優先してください）】");
+      lines.push(str(ctx.instruction).trim());
+      lines.push("");
+    }
+    lines.push("【このレベルで求めること】");
+    LV.want.forEach(function (t) { lines.push("・" + t); });
+    if (LV.avoid.length) {
+      lines.push("【このレベルで避けること】");
+      LV.avoid.forEach(function (t) { lines.push("・" + t); });
+    }
     lines.push("");
     /* ── 長文つきの大問（2026-09-11）─────────────────────────────
        本文は先に作ってある。**本文をそのまま渡し、そこからだけ作らせる。**
@@ -186907,9 +186933,55 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
     matching: "組み合わせ", numeric: "数値", formula: "数式", essay: "論述",
     english_writing: "英作文", source_analysis: "資料読解"
   };
-  var DIFF_JA = { easy: "易しい", standard: "標準", hard: "難しい" };
+  /* ══ 難しさ（2026-09-11）══════════════════════════════════════════
+     「難しい」の一語だけを渡していたので、**語彙が難しいだけの問題**が
+     返ってきていた。何をすれば難しくなるのかを書く。 */
+  var DIFF_JA = {
+    easy:     "易しい（1 手で解ける。知っていれば答えられる）",
+    standard: "標準（2〜3 手。手がかりを 1 つ組み合わせる）",
+    hard:     "難しい（複数の手がかりを組み合わせないと解けない。"
+            + "選択肢はどれももっともらしくする）"
+  };
+  /* ══ 出題のレベル ══════════════════════════════════════════════════
+     「難しさの配分」とは別の軸。どの試験の水準で作るか。
+     共通テストの実際の作りに合わせてある（複数の資料・会話・場面設定）。 */
+  var EXAM_LEVEL = {
+    textbook: {
+      label: "教科書の確認（用語と基本事項）",
+      want: ["教科書に太字で出てくる語と、その意味を確かめる",
+             "1 つの事実がわかれば答えられるようにする",
+             "選択肢は違いがはっきり分かるものにする"],
+      avoid: ["ひねった言い回し", "複数の知識を組み合わせないと解けない設問"]
+    },
+    school: {
+      label: "定期試験（授業で扱った範囲の標準）",
+      want: ["授業で扱う典型的な問い方にする",
+             "2 手までで解ける道すじにする",
+             "正解の根拠が問題文か資料の中にある"],
+      avoid: ["初めて見る題材だけで解かせること", "重箱の隅をつつく知識"]
+    },
+    common: {
+      label: "大学入学共通テスト（思考力・判断力）",
+      want: ["**知識をそのまま聞かない。** 知っていることを使って考えさせる",
+             "資料・図表・会話・場面を示し、それと本文を突き合わせて判断させる",
+             "日常や学習の場面に置き換える（生徒の発表、レポートの下書き、部活の計画など）",
+             "選択肢は 4 つとも一見もっともらしくし、**どこか 1 か所だけ**が本文と食い違うようにする",
+             "「誤っているもの」「当てはまるものをすべて」など、読み方を変える設問も混ぜる"],
+      avoid: ["用語をそのまま答えさせるだけの設問",
+              "本文を読まなくても常識で解ける設問",
+              "正解だけが明らかに長い／明らかに詳しい選択肢"]
+    },
+    entrance: {
+      label: "難関大の個別試験（初見の題材を自分で整理する）",
+      want: ["初めて見る題材を示し、その場で条件を整理させる",
+             "分野をまたいで考えさせる",
+             "答えだけでなく、なぜそうなるかの根拠を問う",
+             "記述では、字数の中で筋道を立てさせる"],
+      avoid: ["暗記だけで答えが出る設問", "手順をなぞるだけの設問"]
+    }
+  };
   function typeLabel(t) { return TYPE_JA[t] || t; }
-  function diffLabel(d) { return DIFF_JA[d] || "標準"; }
+  function diffLabel(d) { return DIFF_JA[d] || DIFF_JA.standard; }
 
   /* 科目に合う図の一覧（domain/figures.js が唯一の出どころ）。
      科目が分からないときは、どの科目でも使える基本の図だけにする。
@@ -187095,6 +187167,8 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
         sourceOnly: p.sourceMode === "source-only",
         requireSources: p.requireSources,
         figures: p.figures !== false,
+        examLevel: p.examLevel,
+        instruction: p.instruction,
         avoid: madeSoFar()
       };
 
@@ -235371,6 +235445,9 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
         title: "", subject: "", grade: "", audience: "",
         durationMinutes: 50, totalPoints: 100, sectionCount: 5,
         questionCount: 0, difficulty: "mixed",
+        /* 出題のレベル（どの試験の水準で作るか）。
+           「難易度」は易しい問題と難しい問題の配分、こちらは水準そのもの。 */
+        examLevel: "school",
         types: { multiple_choice_single: true, true_false: true, short_answer: true, long_answer: true, source_analysis: false },
         choiceRatio: 60, writtenRatio: 20,
         allowExternalKnowledge: false, requireSources: true,
@@ -235617,6 +235694,7 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       if (s.questionCount) lines.push("設問数: 約 " + s.questionCount + " 問");
       if (types.length) lines.push("含める問題形式: " + types.join("・"));
       lines.push("難易度: " + (s.difficulty === "mixed" ? "易しい問題から難しい問題まで混ぜる" : DIFF_JA[s.difficulty] || "標準"));
+      lines.push("出題のレベル: " + examLevelHint(s.examLevel));
       if (promptOnly) {
         /* 資料が無いので、資料に関する指示は書かない（無い資料を指させない）。
            代わりに、確かでないことを書かせないための歯止めを置く。 */
@@ -235839,7 +235917,12 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
         blueprint: st.blueprint,
         /* 長文をつける大問。前から順に付ける（第1問が長文になる）。 */
         passages: passagePlanFor(s),
-        figures: s.figuresOn !== false
+        figures: s.figuresOn !== false,
+        /* 出題のレベルと、指示欄に書かれた注文。
+           **ここを渡していなかったので、指示欄の文が設問づくりに
+           届いていなかった**（構成案にしか効いていなかった）。 */
+        examLevel: s.examLevel,
+        instruction: st.instruction
       });
 
       /* 指示文に書かれた「形式ごとの個数」を枠へ反映する（契約 §5）。
@@ -238987,6 +239070,17 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
       return accHtml("passage", "長文・図表", sum, body, !!st.open.passage);
     }
 
+    /* 出題のレベルの説明。**言葉は mock-compile-run の表と揃える**
+       （画面だけ変えても、AI へ飛ぶ文は変わらない）。 */
+    var EXAM_LEVEL_HINT = {
+      textbook: "教科書に太字で出る語と基本事項を確かめます。1 手で解けます。",
+      school: "授業で扱う典型的な問い方です。2 手までで解けます。",
+      common: "知識をそのまま聞きません。資料・図表・会話を突き合わせて考えさせ、"
+        + "選択肢は 4 つとももっともらしくします。共通テストの作りに合わせます。",
+      entrance: "初めて見る題材をその場で整理させます。分野をまたぎ、根拠を問います。"
+    };
+    function examLevelHint(v) { return EXAM_LEVEL_HINT[v] || EXAM_LEVEL_HINT.school; }
+
     function setupDetailHtml() {
       var s = st.settings;
       return '<div class="vq2-grid c2">'
@@ -238994,9 +239088,17 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
         + field({ label: "設問数（0 でおまかせ）", type: "number", key: "questionCount", value: s.questionCount, min: 0, max: 200 })
         + "</div>"
         + '<div class="vq2-grid c2" style="margin-top:12px">'
-        + field({ label: "難易度", type: "select", key: "difficulty", value: s.difficulty,
+        + field({ label: "難易度の配分", type: "select", key: "difficulty", value: s.difficulty,
                   options: [{ value: "mixed", label: "混ぜる（おすすめ）" }, { value: "easy", label: "易しめ" },
                             { value: "normal", label: "標準" }, { value: "hard", label: "難しめ" }] })
+        + field({ label: "出題のレベル", type: "select", key: "examLevel", value: s.examLevel || "school",
+                  options: [{ value: "textbook", label: "教科書の確認" },
+                            { value: "school", label: "定期試験" },
+                            { value: "common", label: "共通テスト（思考力）" },
+                            { value: "entrance", label: "難関大の個別試験" }] })
+        + "</div>"
+        + '<p class="vq2-hint" style="margin-top:6px">' + esc(examLevelHint(s.examLevel)) + "</p>"
+        + '<div class="vq2-grid c2" style="margin-top:12px">'
         + field({ label: "学年", key: "grade", value: s.grade, placeholder: "高校3年" })
         + "</div>"
         + '<div class="vq2-grid c2" style="margin-top:12px">'
@@ -239686,6 +239788,11 @@ html:not(.vq-ms-ready) .ms{ visibility: hidden; }
         }
         /* 長文の設定は、その下に出す欄（種類・大問の数・説明）を変える。
            描き直さないと、チェックを入れても欄が出ない。 */
+        if (k === "examLevel") {
+          st.settings.examLevel = t.value;
+          renderLeft();
+          return;
+        }
         if (k === "passageOn" || k === "passageKind" || k === "passageCount") {
           st.settings[k] = t.type === "checkbox" ? t.checked
             : (t.type === "number" ? Number(t.value) : t.value);
