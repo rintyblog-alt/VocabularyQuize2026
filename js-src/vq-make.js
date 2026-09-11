@@ -322,6 +322,13 @@
          0 と "auto" は 「おまかせ」＝ これまでと 同じ 動き。
          **指示欄に 数が 書いて あれば、そちらが 勝つ**（VQ2.askspec）。 */
       出題のレベル: "school",
+      /* ── 長文（2026-09-11）──────────────────────────────────────
+         大問ぜんぶで 1 つの 本文を 読ませる 形（英語長文・国語の 評論／小説）。
+         本文は **設問より 先に** 作る。同時に 頼むと、本文に 無い ことを
+         問う 設問が できて 解けない 紙に なる。 */
+      長文: false,
+      長文の種類: "",
+      長文の数: 1,
       選択肢の数: 0,
       記述の字数: 0,
       選択肢の作り: "auto",
@@ -350,6 +357,33 @@
       + "選択肢は 4 つとも もっともらしく します。",
     entrance: "初めて 見る 題材を その場で 整理させます。分野を またぎ、根拠を 問います。"
   };
+  /* 長文の 種類。科目から 既定を 決める（英語→実用文、国語→評論）。 */
+  function 長文の並び() {
+    try {
+      var P = VQ2() && VQ2().passage;
+      if (!P) return [];
+      return P.kindsFor(st.表紙 && st.表紙.subject)
+        .map(function (k) { return { id: k.id, label: k.label }; });
+    } catch (e) { return []; }
+  }
+  function 長文の既定() {
+    try {
+      var P = VQ2() && VQ2().passage;
+      return P ? P.defaultKindFor(st.表紙 && st.表紙.subject) : "";
+    } catch (e) { return ""; }
+  }
+  /* MC.plan へ渡す「どの 大問に どの 長文を 付けるか」。前から 順に 付ける。 */
+  function 長文の計画() {
+    var c = st.条件;
+    if (!c.長文) return [];
+    var 種 = c.長文の種類 || 長文の既定();
+    if (!種) return [];
+    var n = Math.max(1, Math.min(Number(c.長文の数) || 1, Number(c.sectionCount) || 1));
+    var 出 = [];
+    for (var i = 0; i < n; i++) 出.push({ kind: 種, figures: c.materials !== false });
+    return 出;
+  }
+
   function 読み取り() {
     var c = st.条件, 欄 = {}, 行 = [];
     if (c.選択肢の数 >= 2) { 欄.choiceCount = c.選択肢の数; 行.push({ 印: "欄", 文: "選択肢: " + c.選択肢の数 + " つ" }); }
@@ -863,6 +897,30 @@
       + "「本文は 800 語で」「5 択で」「80 字以内で 記述」「選択肢は 紛らわしく」のように "
       + "<b>数や 言葉で 書けば、そのとおりに 作ります</b>。</div></div>";
 
+    /* ── 長文（2026-09-11）──────────────────────────────────────── */
+    var 長並 = 長文の並び();
+    if (長並.length) {
+      var 種 = c.長文の種類 || 長文の既定();
+      h += '<div class="row"><label>長文（英語長文・国語の 評論／小説）</label>'
+        + '<button type="button" class="tg' + (c.長文 ? " is-on" : "") + '" data-a="psg-on">'
+        + (c.長文 ? "入れる" : "入れない") + "</button>"
+        + '<div class="hint">大問 まるごとで 1 つの 本文を 読ませます。'
+        + "本文を **先に** 書かせ、設問は その 本文からだけ 作ります。"
+        + "傍線部・空欄・語注・出典が 付きます。</div></div>";
+      if (c.長文) {
+        h += 選び欄("長文の 種類", "長文の種類", 種, 長並)
+          + 数欄("長文を 付ける 大問の 数", "長文の数", c.長文の数, 1,
+                 Math.max(1, Number(c.sectionCount) || 1));
+        var K = null;
+        try { K = VQ2().passage.kind(種); } catch (e) {}
+        if (K) {
+          h += '<p class="hint">' + esc(K.brief) + "　本文は "
+            + K.targetChars[0] + "〜" + K.targetChars[1] + K.unit
+            + "。指示欄に「本文は 800 語で」と 書けば その 長さに します。</p>";
+        }
+      }
+    }
+
     /* ── 出題の レベル（2026-09-11）──────────────────────────────
        「難しさ」は 易しい 問題と 難しい 問題の 配分。
        こちらは **水準そのもの**。別の 軸なので 欄を 分ける。 */
@@ -1281,6 +1339,109 @@
       if (tok) h.Authorization = "Bearer " + String(tok).replace(/^"|"$/g, "");
     } catch (e) {}
     return h;
+  }
+
+  /* ══ 本文を 書かせる（2026-09-11）══════════════════════════════
+     ★ **本文と 設問を 同時に 作らせない。** 本文が 先。
+       設問は そのあとで、できあがった 本文を 見ながら 作る
+       （でないと 本文に 無い ことを 問う 設問が できる）。
+     ★ 問題を 作る 口（/api/aigen/questions）は 決まった 形しか 返せない。
+       本文のような 長い 文章は 通らないので、素の 文の 口を 使う。
+     ★ 使えない 本文（短すぎる・空欄の 答えが 無い・図が 描けない）は
+       **やり直す**。3 回 駄目なら 長文を あきらめて ふつうに 作る
+       （試験そのものを 作れなく しない）。 */
+  function 文を頼む(prompt) {
+    var url = "";
+    try { url = String(window.CHAT_AI_API_URL || (apiBase() + "/api/ai/chat")); } catch (e) {}
+    if (!url || !window.fetch) return Promise.reject(new Error("NO_CHAT_API"));
+    var cid = "vqmake-psg-" + Date.now() + "-" + Math.floor(Math.random() * 1e6);
+    return window.fetch(url, {
+      method: "POST", headers: 頭(),
+      body: JSON.stringify({
+        conversationId: cid, mode: "standard",
+        text: prompt, message: prompt,
+        messages: [{ role: "user", content: prompt }],
+        stream: true,
+        context: { conversationId: cid, app: "VocabuQuiz", purpose: "exam-passage" }
+      })
+    }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      if (!r.body || !r.body.getReader) return r.text();
+      var rd = r.body.getReader(), dec = new TextDecoder(), buf = "", out = "";
+      return (function pump() {
+        return rd.read().then(function (x) {
+          if (x.done) return out;
+          buf += dec.decode(x.value, { stream: true });
+          var ls = buf.split("\n"); buf = ls.pop() || "";
+          ls.forEach(function (ln) {
+            var l = ln.trim();
+            if (!l || l.charAt(0) === ":" || l.indexOf("data:") !== 0) return;
+            var d = l.slice(5).trim();
+            if (d === "[DONE]") return;
+            try {
+              var j = JSON.parse(d);
+              var ch = j.response || (j.choices && j.choices[0] && j.choices[0].delta
+                && j.choices[0].delta.content) || "";
+              if (ch) out += ch;
+            } catch (e) { if (d) out += d; }
+          });
+          return pump();
+        });
+      })();
+    }).then(function (t) {
+      return String(t || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    });
+  }
+
+  /* 大問ごとに 本文を 作る。できた ものだけ 返す（{ 大問番号: 本文 }）。 */
+  function 本文を作る(p2) {
+    var V = VQ2(), P = V && V.passage;
+    var 仕事 = (p2.sections || []).filter(function (s2) { return s2.passagePlan; });
+    var 出 = {};
+    if (!P || !仕事.length) return Promise.resolve(出);
+    var c = st.条件, 読 = 読み取り().値;
+    var i = 0;
+    function 次() {
+      if (st.止めたい || i >= 仕事.length) return Promise.resolve(出);
+      var sec = 仕事[i++], 計 = sec.passagePlan, K = P.kind(計.kind);
+      if (st.進み) st.進み.stage = "大問" + sec.number + " の 本文を 書いています";
+      進みを塗る();
+      記す("step", "大問" + sec.number + " の 本文を 書いています（"
+        + ((K && K.label) || 計.kind) + "）");
+      var 回 = 0;
+      function 試す(理由) {
+        回++;
+        var 依 = P.promptFor(計.kind, {
+          topic: String(c.instruction || "").trim() || (st.表紙 && st.表紙.subject) || "",
+          grade: (st.表紙 && st.表紙.grade) || "",
+          underlines: 計.underlines, blanks: 計.blanks, figures: 計.figures,
+          chars: 計.chars, scale: 計.scale,
+          instruction: c.instruction,
+          orders: (読.scenes || []).map(function (x) { return "・" + x; })
+        }) + (理由 ? "\n\n【前回の 作り直しの 理由】\n" + 理由 : "");
+        return 文を頼む(依).then(function (raw) {
+          var pas = P.prepare(P.parse(raw, 計.kind));
+          var だめ = P.check(pas, { underlines: 計.underlines, blanks: 計.blanks,
+                                    chars: 計.chars, scale: 計.scale });
+          if (!だめ.length) {
+            出[sec.number] = pas;
+            記す("done", "大問" + sec.number + " の 本文が できました（"
+              + P.summaryLine(pas) + "）");
+            return;
+          }
+          if (回 < 3) {
+            記す("warn", "大問" + sec.number + " の 本文を 作り直します（" + だめ[0] + "）");
+            return 試す(だめ.join("\n"));
+          }
+          記す("warn", "大問" + sec.number + " は 長文なしで 作ります（" + だめ[0] + "）");
+        });
+      }
+      return 試す("").catch(function (e) {
+        記す("warn", "大問" + sec.number + " の 本文を 作れませんでした（"
+          + 日本語に((e && e.message) || "") + "）。長文なしで 作ります。");
+      }).then(次);
+    }
+    return 次();
   }
 
   /* ══ 教科ならではの 一言だけ AI に 足させる（2026-08-30・訴え）════
@@ -2030,6 +2191,7 @@
       }
       if (a === "go") { 条件へ(); return; }
       if (a === "back-cover") { st.err = ""; 開く("表紙"); return; }
+      if (a === "psg-on") { st.条件.長文 = !st.条件.長文; 描く(); return; }
       if (a === "pass") {
         st.条件.資料の渡し = el.dataset.v;
         描く();
@@ -2261,7 +2423,11 @@
            ask は それを 数と 言葉に 読み取った もの（VQ2.askspec）。 */
         examLevel: c.出題のレベル,
         instruction: c.instruction,
-        ask: 読み取り().値
+        ask: 読み取り().値,
+        /* 長文を 付ける 大問（前から 順に）。本文そのものは まだ 無い。
+           MR.run に 渡す ときに opts.passages で 差し込む。 */
+        passages: 長文の計画(),
+        figures: c.materials !== false
       });
     } catch (e) {
       st.err = "この条件では 枠を 作れませんでした：" + String((e && e.message) || e).slice(0, 120);
@@ -2606,8 +2772,19 @@
       資料を言った = true;
     }
 
+    /* ★ 本文は **設問より 先**（2026-09-11）。できた ものだけ 渡す。
+       作れなかった 大問は passages に 入らないので、ふつうの 設問に なる。 */
+    var 本文ら = (o.refill && st.本文) ? Promise.resolve(st.本文) : 本文を作る(p2);
+    本文ら.then(function (本) {
+      st.本文 = 本 || {};
+      走らせる(本 || {});
+    });
+    return;
+
+    function 走らせる(本) {
     MR.run({
       plan: p2,
+      passages: 本,
       filled: o.refill && st.結果 ? st.結果.filled : null,
       label: "vq-make",
       /* ★ 一度に 出てこない件（2026-08-30・訴え）。
@@ -2770,7 +2947,8 @@
           throw e;
         });
       }
-    }).then(function (res) {
+    })
+.then(function (res) {
       st.走っている = false;
       st.結果 = res;
       仕上げる(res, 表紙);
@@ -2781,6 +2959,8 @@
       記す("err", st.err);
       描く();
     });
+    }
+
   }
 
   /* 根拠（sourceReferences）の 名前を、添付の 名前へ そろえる。

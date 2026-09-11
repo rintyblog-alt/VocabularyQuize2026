@@ -24040,6 +24040,6599 @@
 })(typeof globalThis !== "undefined" ? globalThis : this);
 
 
+/* ───────── domain/figures.js ───────── */
+/* ══════════════════════════════════════════════════════════════════════
+   作図エンジン（Figure Engine）
+
+   なぜ要るか:
+     試験の紙面には図が要る。数学の三角形・グラフ・箱ひげ図、英語リスニングの
+     絵、理科の模式図。ところが **AI に SVG を書かせると形にならない。**
+     三角形の 3 辺が 3・4・5 でも、返ってくる座標は 3・4・5 になっていない。
+     円周上の点は円から外れ、円グラフの扇は合計 100% にならない。
+
+   ここでの決め方:
+     ★ AI には **図の「寸法」だけ**を書かせる（[[図: triangle | sss=3,4,5 ]]）。
+     ★ 座標は **このコードが計算する**。余弦定理・正弦定理・投影・目盛りの
+       刻み、すべて計算で出す。だから必ず形になる。
+     ★ 計算が成り立たない指定（3 辺が三角形にならない、合計が 0 の円グラフ、
+       ラベルと値の数が合わない）は **描かない**。間違った図を出すより、
+       図が無いほうがましで、さらに「作れなかった」と言えるほうがよい。
+       → check() が理由を返し、呼び出し側（Quick Mock の gate）が設問ごと落とす。
+
+   使い方:
+     VQ2.figures.has(text)            本文に図の記法があるか
+     VQ2.figures.split(text)          [{t:"text",v} | {t:"fig",spec}] へ割る
+     VQ2.figures.parse(src)           "triangle | sss=3,4,5" → spec
+     VQ2.figures.check(spec)          [] なら描ける。中身は描けない理由
+     VQ2.figures.svg(spec, opts)      SVG 文字列（描けないときは null）
+     VQ2.figures.render(text, opts)   本文の記法をぜんぶ SVG へ置き換えた HTML
+     VQ2.figures.KINDS                使える図の一覧（AI への説明に使う）
+
+   記法:
+     [[図: kind | key=value | key=value ]]
+     [[fig: ...]] / [[図1: ...]] / [[図ア: ...]] も同じ（見出しは caption になる）
+
+   出す SVG について:
+     ・外から来た文字列は必ず esc() を通す（AI が書いた値は未信頼）。
+     ・スクリプトもイベント属性も外部参照も出さない。図形と文字だけ。
+     ・色は黒と灰だけ。白黒印刷で読めることが最優先（試験の紙面）。
+     ・viewBox は必ず付ける。幅は呼び出し側（紙面）が決める。
+   ══════════════════════════════════════════════════════════════════════ */
+(function (root) {
+  "use strict";
+  var VQ2 = root.VQ2 || (root.VQ2 = {});
+
+  /* ══════════════════════════════════════════════════════════════════
+     0) 下ごしらえ
+     ══════════════════════════════════════════════════════════════════ */
+  function esc(s) {
+    return String(s === undefined || s === null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function str(v) { return v === undefined || v === null ? "" : String(v); }
+  function isNum(v) { return typeof v === "number" && isFinite(v); }
+  function num(v, dflt) {
+    if (typeof v === "number") return isFinite(v) ? v : dflt;
+    var s = str(v).trim().replace(/[，,]/g, "");
+    if (!s) return dflt;
+    var n = Number(s);
+    return isFinite(n) ? n : dflt;
+  }
+  /* 小数は 3 桁まで。SVG が長くなるだけで、紙の上では見えない。 */
+  function f(n) {
+    if (!isFinite(n)) return "0";
+    var v = Math.round(n * 1000) / 1000;
+    return String(v === 0 ? 0 : v);
+  }
+  function rad(deg) { return deg * Math.PI / 180; }
+  function deg(r) { return r * 180 / Math.PI; }
+  function listOf(v) {
+    return str(v).split(/[|,、，]/).map(function (x) { return x.trim(); })
+      .filter(function (x) { return x !== ""; });
+  }
+  function numsOf(v) {
+    return str(v).split(/[|,、，\s]+/).map(function (x) { return x.trim(); })
+      .filter(function (x) { return x !== ""; })
+      .map(function (x) { return Number(x); });
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     1) 記法を読む
+
+     [[図: kind | k=v | k=v]]
+     値に | や ] を書きたいことは無いので、区切りはこれで足りる。
+     ══════════════════════════════════════════════════════════════════ */
+  var FIG_RE = /\[\[\s*(?:図|fig|Fig|FIG|グラフ|表図)\s*([^\]:：|]{0,12}?)\s*[:：]\s*([^\]]*?)\s*\]\]/g;
+
+  function has(text) {
+    FIG_RE.lastIndex = 0;
+    return FIG_RE.test(str(text));
+  }
+
+  /* 本文を「文字」と「図」へ割る。図の前後の文は必ず残す。 */
+  function split(text) {
+    var s = str(text), out = [], last = 0, m;
+    FIG_RE.lastIndex = 0;
+    while ((m = FIG_RE.exec(s))) {
+      if (m.index > last) out.push({ t: "text", v: s.slice(last, m.index) });
+      var spec = parse(m[2]);
+      if (spec) {
+        var tag = str(m[1]).trim();
+        if (tag && !spec.caption) spec.caption = "図" + tag;
+        else if (tag) spec.label = "図" + tag;
+      }
+      out.push({ t: "fig", spec: spec, src: m[0] });
+      last = m.index + m[0].length;
+    }
+    if (last < s.length) out.push({ t: "text", v: s.slice(last) });
+    return out;
+  }
+
+  /* "triangle | sss=3,4,5 | caption=△ABC" → {kind, sss, caption} */
+  function parse(src) {
+    var s = str(src).trim();
+    if (!s) return null;
+    var parts = s.split("|").map(function (x) { return x.trim(); });
+    var kind = canonicalKind(parts.shift());
+    if (!kind) return null;
+    var spec = { kind: kind };
+    parts.forEach(function (p) {
+      if (!p) return;
+      var i = p.indexOf("=");
+      if (i < 0) { spec[p.toLowerCase()] = true; return; }
+      var k = p.slice(0, i).trim().toLowerCase();
+      var v = p.slice(i + 1).trim();
+      if (k) spec[k] = v;
+    });
+    return spec;
+  }
+
+  /* 呼び名のゆれを吸収する。AI は日本語でも英語でも書く。 */
+  var KIND_ALIAS = {
+    "棒グラフ": "bar", "bar": "bar", "barchart": "bar", "棒": "bar",
+    "折れ線": "line", "折れ線グラフ": "line", "line": "line", "linechart": "line",
+    "円グラフ": "pie", "pie": "pie", "piechart": "pie",
+    "帯グラフ": "stackbar", "stackbar": "stackbar", "積み上げ": "stackbar",
+    "散布図": "scatter", "scatter": "scatter", "scatterplot": "scatter",
+    "ヒストグラム": "hist", "hist": "hist", "histogram": "hist", "度数分布": "hist",
+    "箱ひげ図": "box", "box": "box", "boxplot": "box", "箱ひげ": "box",
+    "ドットプロット": "dot", "dot": "dot", "dotplot": "dot",
+    "グラフ": "graph", "graph": "graph", "関数": "graph", "関数グラフ": "graph",
+    "座標": "graph", "放物線": "graph",
+    "数直線": "numberline", "numberline": "numberline", "numline": "numberline",
+    "三角形": "triangle", "triangle": "triangle",
+    "直角三角形": "rtriangle", "rtriangle": "rtriangle", "righttriangle": "rtriangle",
+    "多角形": "polygon", "polygon": "polygon", "正多角形": "polygon",
+    "四角形": "quad", "quad": "quad", "平行四辺形": "quad", "台形": "quad",
+    "円": "circle", "circle": "circle", "円周角": "circle", "おうぎ形": "circle", "扇形": "circle",
+    "立体": "solid", "solid": "solid", "直方体": "solid", "円柱": "solid", "円錐": "solid",
+    "角柱": "solid", "角錐": "solid", "球": "solid",
+    "時計": "clock", "clock": "clock",
+    "ベン図": "venn", "venn": "venn",
+    "樹形図": "tree", "tree": "tree",
+    "方眼": "grid", "grid": "grid", "格子": "grid",
+    "見取り図": "plan", "plan": "plan", "座席": "plan", "配置図": "plan", "間取り": "plan",
+    "流れ図": "flow", "flow": "flow", "フローチャート": "flow", "手順": "flow",
+    "天びん": "balance", "balance": "balance",
+    "地図": "route", "route": "route", "経路": "route",
+    "カレンダー": "calendar", "calendar": "calendar",
+    "温度計": "thermo", "thermo": "thermo",
+    "矢印": "arrow", "arrow": "arrow", "関係図": "arrow",
+    /* ── 2026-09-11 に足した図の、日本語の言い方 ── */
+    "角度": "angle", "平行線": "parallels", "同位角": "parallels", "錯角": "parallels",
+    "相似": "similar", "合同": "similar",
+    "内接円": "incircle", "外接円": "incircle",
+    "座標平面": "coordfig", "座標図形": "coordfig",
+    "対称": "symmetry", "線対称": "symmetry", "点対称": "symmetry",
+    "作図": "compass", "垂直二等分線": "compass", "二等分線": "compass",
+    "三角比": "trig", "単位円": "unitcircle",
+    "展開図": "net", "投影図": "projection", "積み木": "blocks", "立方体の展開図": "net",
+    "回路": "circuit", "回路図": "circuit", "電気回路": "circuit",
+    "てこ": "lever", "力": "forces", "力の矢印": "forces",
+    "光": "ray", "反射": "ray", "屈折": "ray", "凸レンズ": "ray", "レンズ": "ray",
+    "波": "wave", "振り子": "pendulum", "斜面": "incline",
+    "ビーカー": "beaker", "試験管": "beaker", "メスシリンダー": "beaker", "実験器具": "beaker",
+    "ばね": "spring", "ばねばかり": "spring",
+    "分子": "molecule", "分子モデル": "molecule",
+    "天体": "orbit", "公転": "orbit", "月の満ち欠け": "moonphase", "月": "moonphase",
+    "地層": "strata",
+    "横棒グラフ": "barh", "横棒": "barh",
+    "度数分布多角形": "freqpoly", "累積相対度数": "cumulative", "累積度数": "cumulative",
+    "幹葉図": "stem", "レーダー": "radar", "レーダーチャート": "radar",
+    "人口ピラミッド": "poppyramid", "絵グラフ": "pictograph", "二元表": "twoway",
+    "クロス集計": "twoway",
+    "テープ図": "tape", "割合の図": "tape", "面積図": "areamodel", "分数": "fraction",
+    "数列": "sequence",
+    "年表": "timeline", "等高線": "contour", "方位": "compassrose", "方位記号": "compassrose",
+    "フローチャート": "flowchart", "判断": "flowchart", "2進数": "binary", "二進数": "binary",
+    "時間割": "timetable", "時刻表": "timetable", "天気": "weather", "週間天気": "weather",
+    "道案内": "signpost", "標識": "signpost", "レシート": "receipt", "値札": "receipt",
+    "動作": "stickman", "人": "stickman", "棒人間": "stickman",
+    "吹き出し": "speech", "会話": "speech",
+    "絵": "icons", "イラスト": "icons", "ピクトグラム": "icons",
+    "絵を選ぶ": "choices4", "イラスト選択": "choices4",
+    "場面": "scene", "部屋": "scene",
+    "原稿用紙": "genkou", "作文用紙": "genkou",
+    "係り受け": "bunsetsu", "文節": "bunsetsu",
+    "文の要素": "svoc", "時制": "tenseline", "時間軸": "tenseline",
+    "雨温図": "climate", "気候": "climate", "気候グラフ": "climate",
+    "議席": "seats", "三角グラフ": "trianglegraph",
+    "組織図": "orgchart", "系統図": "orgchart",
+    "日本地図": "jpmap", "白地図": "jpmap", "都道府県": "jpmap",
+    "生態ピラミッド": "foodpyramid", "食物連鎖": "foodpyramid",
+    "太陽の動き": "sunpath", "日周運動": "sunpath", "南中高度": "sunpath",
+    "磁石": "magnet", "磁界": "magnet",
+    "人体": "body", "からだ": "body", "消化": "body", "循環": "body",
+    "植物": "plant", "細胞": "cell",
+    "論理回路": "logicgate", "論理ゲート": "logicgate",
+    "ネットワーク": "network", "スタック": "stackqueue", "キュー": "stackqueue",
+    "座標空間": "axes3d", "空間座標": "axes3d"
+  };
+  /* 図の id そのものは、必ずその図として読む。
+     ★ 前方一致の受け皿より **先に** 見ること。
+       先に前方一致を見ると barh が bar に、flowchart が flow に化ける
+       （実測: 横棒グラフを頼むと縦棒が出て、判断つき流れ図が直線の流れ図になった）。 */
+  function canonicalKind(w) {
+    var k = str(w).trim().toLowerCase().replace(/\s+/g, "");
+    if (!k) return null;
+    if (KIND_BY_ID[k]) return k;                 /* id そのもの */
+    if (KIND_ALIAS[k]) return KIND_ALIAS[k];     /* 決めてある言い換え */
+    /* 「棒グラフ（気温）」のような書き方。**いちばん長く一致するもの**を採る
+       （短いものから採ると、上の取り違えと同じことが起きる）。 */
+    var hit = null, hitLen = 0;
+    Object.keys(KIND_ALIAS).forEach(function (a) {
+      if (k.indexOf(a) === 0 && a.length > hitLen) { hit = KIND_ALIAS[a]; hitLen = a.length; }
+    });
+    Object.keys(KIND_BY_ID).forEach(function (a) {
+      if (k.indexOf(a) === 0 && a.length > hitLen) { hit = a; hitLen = a.length; }
+    });
+    return hit;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     2) 図の一覧（AI への説明。ここが唯一の出どころ）
+     ══════════════════════════════════════════════════════════════════ */
+  var KINDS = [
+    { id: "bar", label: "棒グラフ", subjects: ["math", "social", "science", "english", "info"],
+      keys: "x=項目, y=値（x と同じ数）, y2=第2系列, names=系列名, title=, unit=, ymin=, ymax=",
+      example: "[[図: bar | title=月別降水量 | unit=mm | x=4月,5月,6月,7月 | y=120,145,180,160 ]]" },
+    { id: "line", label: "折れ線グラフ", subjects: ["math", "social", "science", "info"],
+      keys: "x=項目, y=値, y2=, y3=, names=, title=, unit=, ymin=, ymax=",
+      example: "[[図: line | title=人口の推移 | unit=万人 | x=1990,2000,2010,2020 | y=52,58,61,59 ]]" },
+    { id: "pie", label: "円グラフ", subjects: ["math", "social", "info"],
+      keys: "labels=区分, values=値（合計は自動で 100% 扱い）, title=",
+      example: "[[図: pie | title=科目の好み | labels=国語,数学,英語,理科 | values=12,9,15,6 ]]" },
+    { id: "stackbar", label: "帯グラフ", subjects: ["math", "social", "info"],
+      keys: "labels=区分, values=値, title=",
+      example: "[[図: stackbar | title=通学手段 | labels=徒歩,自転車,バス | values=14,20,6 ]]" },
+    { id: "scatter", label: "散布図", subjects: ["math", "science", "info"],
+      keys: "points=x,y の組を空白区切り, xlabel=, ylabel=, title=",
+      example: "[[図: scatter | xlabel=気温(℃) | ylabel=売上(万円) | points=18,22 21,26 25,33 28,41 31,45 ]]" },
+    { id: "hist", label: "ヒストグラム", subjects: ["math", "info"],
+      keys: "bins=階級の境目（値より 1 つ多い）, freq=度数, xlabel=, title=",
+      example: "[[図: hist | xlabel=得点 | bins=0,20,40,60,80,100 | freq=2,5,11,9,3 ]]" },
+    { id: "box", label: "箱ひげ図", subjects: ["math", "info"],
+      keys: "names=系列名, data=最小,Q1,中央,Q3,最大 を系列ごとに ; で区切る, xlabel=",
+      example: "[[図: box | names=A組,B組 | data=32,48,60,71,88;40,52,63,74,95 ]]" },
+    { id: "dot", label: "ドットプロット", subjects: ["math", "info"],
+      keys: "values=データ（同じ値は積み上がる）, xlabel=",
+      example: "[[図: dot | xlabel=点数 | values=3,4,4,5,5,5,6,6,7 ]]" },
+    { id: "graph", label: "関数のグラフ（座標平面）", subjects: ["math"],
+      keys: "f=式（x の式）, f2=, f3=, xmin=, xmax=, ymin=, ymax=, points=x,y の組, labels=点の名前",
+      example: "[[図: graph | f=x^2-2*x-3 | xmin=-3 | xmax=5 | ymin=-5 | ymax=6 ]]" },
+    { id: "numberline", label: "数直線", subjects: ["math"],
+      keys: "min=, max=, step=, marks=印を付ける値, range=範囲（-1<=x<3 のように書く）",
+      example: "[[図: numberline | min=-3 | max=5 | step=1 | range=-1<=x<3 ]]" },
+    { id: "triangle", label: "三角形", subjects: ["math"],
+      keys: "sss=3辺 / sas=辺,角,辺 / asa=角,辺,角, names=頂点名, show=sides,angles, height=1 で高さの線",
+      example: "[[図: triangle | sss=6,8,10 | names=A,B,C | show=sides,angles ]]" },
+    { id: "rtriangle", label: "直角三角形", subjects: ["math"],
+      keys: "a=底辺, b=高さ（斜辺は計算する）, names=, show=sides,angles",
+      example: "[[図: rtriangle | a=3 | b=4 | names=A,B,C | show=sides ]]" },
+    { id: "polygon", label: "正多角形", subjects: ["math"],
+      keys: "n=頂点の数, r=外接円の半径, names=, show=angles, diagonalsfrom=頂点名",
+      example: "[[図: polygon | n=6 | names=A,B,C,D,E,F ]]" },
+    { id: "quad", label: "四角形", subjects: ["math"],
+      keys: "type=rect|square|parallelogram|trapezoid|rhombus, a=上底/幅, b=下底, h=高さ, angle=, names=",
+      example: "[[図: quad | type=trapezoid | a=4 | b=9 | h=5 | names=A,B,C,D | show=sides ]]" },
+    { id: "circle", label: "円・おうぎ形", subjects: ["math"],
+      keys: "r=半径, points=名前:角度（度）を並べる, chords=A-B, radii=A,B, sector=開始角,中心角, tangent=A, center=O, show=angles",
+      example: "[[図: circle | r=1 | center=O | points=A:90,B:210,C:330 | chords=A-B,B-C,C-A | radii=A,B ]]" },
+    { id: "solid", label: "立体（等角投影）", subjects: ["math"],
+      keys: "type=cuboid|cube|cylinder|cone|sphere|prism|pyramid, w=, d=, h=, r=, n=底面の角数, show=edges,labels",
+      example: "[[図: solid | type=cuboid | w=6 | d=4 | h=3 | show=labels ]]" },
+    { id: "clock", label: "時計", subjects: ["english", "math"],
+      keys: "time=7:20（時針は分のぶんだけ進む）, digital=1 でデジタル表示も出す",
+      example: "[[図: clock | time=7:20 ]]" },
+    { id: "venn", label: "ベン図", subjects: ["math", "info"],
+      keys: "labels=集合名（2 つか 3 つ）, values=領域の数, title=",
+      example: "[[図: venn | labels=英語,数学 | values=12,8,5 ]]" },
+    { id: "tree", label: "樹形図", subjects: ["math"],
+      keys: "levels=各段の枝を / で区切る, title=",
+      example: "[[図: tree | levels=表,裏/表,裏 ]]" },
+    { id: "grid", label: "方眼・格子", subjects: ["math"],
+      keys: "cols=, rows=, marks=列,行 の組, labels=1 で番地",
+      example: "[[図: grid | cols=6 | rows=4 | marks=2,3 5,1 ]]" },
+    { id: "plan", label: "見取り図・座席表", subjects: ["english", "social"],
+      keys: "cols=, rows=, cells=番地:名前 を並べる, front=前方の表示",
+      example: "[[図: plan | cols=4 | rows=3 | front=黒板 | cells=1,1:Ken 3,2:Mary ]]" },
+    { id: "flow", label: "流れ図", subjects: ["info", "science", "social"],
+      keys: "steps=手順を , で区切る, title=",
+      example: "[[図: flow | steps=仮説を立てる,実験する,結果を記録する,考察する ]]" },
+    { id: "balance", label: "てんびん", subjects: ["math", "science"],
+      keys: "left=左の中身, right=右の中身, tilt=left|right|even",
+      example: "[[図: balance | left=x+3 | right=8 | tilt=even ]]" },
+    { id: "route", label: "経路図", subjects: ["english", "social", "math"],
+      keys: "nodes=地点名, edges=A-B:距離 を並べる, title=",
+      example: "[[図: route | nodes=駅,学校,公園 | edges=駅-学校:600,学校-公園:400 | title=道のり(m) ]]" },
+    { id: "calendar", label: "カレンダー", subjects: ["english", "social"],
+      keys: "year=, month=, marks=日:印 を並べる, title=",
+      example: "[[図: calendar | year=2026 | month=5 | marks=3:試合,17:遠足 ]]" },
+    { id: "thermo", label: "温度計・目盛り", subjects: ["science", "english"],
+      keys: "min=, max=, value=, unit=",
+      example: "[[図: thermo | min=-10 | max=40 | value=23 | unit=℃ ]]" },
+    { id: "arrow", label: "関係図（矢印）", subjects: ["social", "science", "info"],
+      keys: "nodes=箱の中身, edges=A>B:ことば を並べる",
+      example: "[[図: arrow | nodes=原因,結果 | edges=原因>結果:だから ]]" },
+    /* ── 平面図形（追加）───────────────────────────────────── */
+    { id: "angle", label: "角", subjects: ["math"],
+      keys: "angle=角の大きさ（度）, names=頂点,辺A,辺B",
+      example: "[[図: angle | angle=52 | names=O,A,B ]]" },
+    { id: "parallels", label: "平行線と角", subjects: ["math"],
+      keys: "angle=交わる角（度）, show=同位角|錯角, a=手前の角の名, b=向こうの角の名",
+      example: "[[図: parallels | angle=58 | show=錯角 | a=x | b=y ]]" },
+    { id: "similar", label: "相似・合同な三角形", subjects: ["math"],
+      keys: "sss=3辺, scale=相似比（1 なら合同）, names1=, names2=",
+      example: "[[図: similar | sss=3,4,5 | scale=1.8 | names1=A,B,C | names2=D,E,F ]]" },
+    { id: "incircle", label: "内接円・外接円", subjects: ["math"],
+      keys: "sss/sas/asa=三角形の寸法, type=in|out, names=, show=1 で半径を出す",
+      example: "[[図: incircle | sss=6,8,10 | type=in | names=A,B,C | show=1 ]]" },
+    { id: "sector", label: "おうぎ形", subjects: ["math"],
+      keys: "r=半径, angle=中心角（度）, center=中心の名, show=1 で弧の長さと面積",
+      example: "[[図: sector | r=6 | angle=120 | center=O | show=1 ]]" },
+    { id: "coordfig", label: "座標平面上の図形", subjects: ["math"],
+      keys: "points=x,y の組, names=点の名, xmin/xmax/ymin/ymax=, close=0 で結ばない",
+      example: "[[図: coordfig | points=1,1 5,1 5,4 | names=A,B,C ]]" },
+    { id: "vector", label: "ベクトル", subjects: ["math"],
+      keys: "vectors=名前:x,y を ; で区切る, sum=1 で和も描く",
+      example: "[[図: vector | vectors=a:3,1;b:1,3 | sum=1 ]]" },
+    { id: "symmetry", label: "線対称・点対称", subjects: ["math"],
+      keys: "points=x,y の組, type=line|point",
+      example: "[[図: symmetry | points=1,1 3,1 2,3 | type=line ]]" },
+    { id: "compass", label: "作図（コンパス）", subjects: ["math"],
+      keys: "type=perp（垂直二等分線）|angle（角の二等分線）, angle=",
+      example: "[[図: compass | type=perp ]]" },
+    { id: "trig", label: "三角比", subjects: ["math"],
+      keys: "angle=角（度）, hyp=斜辺, show=1 で sin/cos/tan",
+      example: "[[図: trig | angle=35 | hyp=10 | show=1 ]]" },
+    { id: "unitcircle", label: "単位円", subjects: ["math"],
+      keys: "angle=角（度）",
+      example: "[[図: unitcircle | angle=120 ]]" },
+
+    /* ── 立体（追加）───────────────────────────────────────── */
+    { id: "net", label: "展開図", subjects: ["math"],
+      keys: "type=cube|cuboid|cylinder|cone|prism|pyramid, w/d/h/r/l/n=寸法, show=1 で寸法",
+      example: "[[図: net | type=cylinder | r=3 | h=8 | show=1 ]]" },
+    { id: "projection", label: "投影図", subjects: ["math"],
+      keys: "w=幅, d=奥行き, h=高さ, show=1 で寸法",
+      example: "[[図: projection | w=6 | d=4 | h=3 | show=1 ]]" },
+    { id: "blocks", label: "積み木", subjects: ["math"],
+      keys: "cols=, rows=, stacks=列,行:段数 を並べる, show=1 で個数",
+      example: "[[図: blocks | cols=3 | rows=3 | stacks=1,1:3 2,1:2 1,2:1 | show=1 ]]" },
+
+    /* ── 理科 ───────────────────────────────────────────────── */
+    { id: "circuit", label: "回路図", subjects: ["science"],
+      keys: "parts=電池,抵抗,電球,電流計,電圧計,スイッチ, type=直列|並列",
+      example: "[[図: circuit | parts=電池,電球,スイッチ | type=直列 ]]" },
+    { id: "lever", label: "てこ", subjects: ["science", "math"],
+      keys: "leftweight=, leftdist=, rightweight=, rightdist=（つり合いも計算する）",
+      example: "[[図: lever | leftweight=20 | leftdist=30 | rightweight=30 | rightdist=20 ]]" },
+    { id: "forces", label: "力の矢印", subjects: ["science"],
+      keys: "forces=名前:大きさ:向き(度) を ; で区切る, object=box|ball, show=1 で大きさ",
+      example: "[[図: forces | forces=重力:10:270;垂直抗力:10:90 | object=box | show=1 ]]" },
+    { id: "ray", label: "光（反射・屈折・凸レンズ）", subjects: ["science"],
+      keys: "type=reflect|refract|lens, angle=入射角, n=屈折率, f=焦点距離, a=物体までの距離, height=",
+      example: "[[図: ray | type=lens | f=4 | a=10 | height=3 ]]" },
+    { id: "wave", label: "波", subjects: ["science"],
+      keys: "amplitude=振幅, waves=波の数",
+      example: "[[図: wave | amplitude=2 | waves=2.5 ]]" },
+    { id: "pendulum", label: "振り子", subjects: ["science"],
+      keys: "angle=振れ角（度）, length=糸の長さ(m), show=1 で周期",
+      example: "[[図: pendulum | angle=28 | length=1 | show=1 ]]" },
+    { id: "incline", label: "斜面", subjects: ["science"],
+      keys: "angle=傾き（度）, show=1 で分力",
+      example: "[[図: incline | angle=30 | show=1 ]]" },
+    { id: "beaker", label: "実験器具", subjects: ["science"],
+      keys: "type=beaker|tube|cylinder, level=中身の割合(%), label=",
+      example: "[[図: beaker | type=cylinder | level=60 | label=水 50mL ]]" },
+    { id: "spring", label: "ばねばかり", subjects: ["science"],
+      keys: "force=力(N), k=ばね定数(N/cm)",
+      example: "[[図: spring | force=2 | k=0.5 ]]" },
+    { id: "molecule", label: "分子モデル", subjects: ["science"],
+      keys: "atoms=元素:x:y を ; で区切る, bonds=1-2（= は二重、≡ は三重）, name=",
+      example: "[[図: molecule | atoms=O:0:0;H:-1:-0.8;H:1:-0.8 | bonds=1-2,1-3 | name=水 H2O ]]" },
+    { id: "orbit", label: "天体の位置", subjects: ["science"],
+      keys: "angle=地球の位置（度）, moon=月の位置（度）, title=",
+      example: "[[図: orbit | angle=45 | moon=120 ]]" },
+    { id: "moonphase", label: "月の満ち欠け", subjects: ["science"],
+      keys: "phases=0〜1 を並べる（0 新月・0.5 満月）, names=",
+      example: "[[図: moonphase | phases=0,0.25,0.5,0.75 | names=新月,上弦,満月,下弦 ]]" },
+    { id: "strata", label: "地層", subjects: ["science", "social"],
+      keys: "layers=名前:厚さ を ; で区切る",
+      example: "[[図: strata | layers=れき岩:2;砂岩:3;泥岩:1.5;凝灰岩:0.5 ]]" },
+
+    /* ── 統計（追加）───────────────────────────────────────── */
+    { id: "barh", label: "横棒グラフ", subjects: ["social", "math", "info"],
+      keys: "x=項目, y=値, title=, unit=, show=1 で数値",
+      example: "[[図: barh | title=好きな教科 | x=国語,数学,英語 | y=12,9,15 | show=1 ]]" },
+    { id: "freqpoly", label: "度数分布多角形", subjects: ["math", "info"],
+      keys: "bins=階級の境目, freq=度数, bars=1 でヒストグラムも重ねる",
+      example: "[[図: freqpoly | bins=0,20,40,60,80,100 | freq=2,5,11,9,3 | bars=1 ]]" },
+    { id: "cumulative", label: "累積相対度数", subjects: ["math", "info"],
+      keys: "bins=階級の境目, freq=度数",
+      example: "[[図: cumulative | bins=0,20,40,60,80,100 | freq=2,5,11,9,3 ]]" },
+    { id: "stem", label: "幹葉図", subjects: ["math", "info"],
+      keys: "values=データ, unit=幹の単位（既定 10）",
+      example: "[[図: stem | values=32,35,41,44,44,52,57,61 ]]" },
+    { id: "radar", label: "レーダーチャート", subjects: ["social", "info", "math"],
+      keys: "labels=項目, values=値, values2=比べる相手, max=",
+      example: "[[図: radar | labels=読解,聴解,語彙,文法,作文 | values=8,6,7,9,5 | max=10 ]]" },
+    { id: "poppyramid", label: "人口ピラミッド", subjects: ["social"],
+      keys: "ages=年齢層, male=, female=",
+      example: "[[図: poppyramid | ages=0-14,15-64,65- | male=12,58,30 | female=11,56,38 ]]" },
+    { id: "pictograph", label: "絵グラフ", subjects: ["social", "math"],
+      keys: "labels=項目, values=値, unit=1 個ぶんの量, per=単位の名",
+      example: "[[図: pictograph | labels=1組,2組,3組 | values=30,45,25 | unit=10 | per=人 ]]" },
+    { id: "twoway", label: "二元表", subjects: ["math", "social", "info"],
+      keys: "cols=, rows=, values=左上から行ごとに並べる, title=",
+      example: "[[図: twoway | cols=賛成,反対 | rows=1年,2年 | values=18,7,14,11 ]]" },
+
+    /* ── 数の図 ─────────────────────────────────────────────── */
+    { id: "tape", label: "テープ図（割合）", subjects: ["math", "social"],
+      keys: "labels=区分, values=値, total=全体（省略なら合計）",
+      example: "[[図: tape | labels=読書,運動,その他 | values=12,8,5 ]]" },
+    { id: "areamodel", label: "面積図", subjects: ["math"],
+      keys: "rows=縦の分け方, cols=横の分け方, show=1 で積を出す",
+      example: "[[図: areamodel | rows=20,3 | cols=10,4 | show=1 ]]" },
+    { id: "fraction", label: "分数の図", subjects: ["math"],
+      keys: "denominator=分母, numerator=分子, type=circle|bar",
+      example: "[[図: fraction | denominator=8 | numerator=3 | type=circle ]]" },
+    { id: "sequence", label: "数列", subjects: ["math"],
+      keys: "values=項の値, title=, show=1 で値を出す",
+      example: "[[図: sequence | values=3,6,12,24,48 | show=1 ]]" },
+
+    /* ── 社会・情報 ─────────────────────────────────────────── */
+    { id: "timeline", label: "年表", subjects: ["social"],
+      keys: "events=年:出来事 を ; で区切る, dir=横|縦, from=, to=",
+      example: "[[図: timeline | events=1868:明治維新;1889:大日本帝国憲法;1894:日清戦争 ]]" },
+    { id: "contour", label: "等高線", subjects: ["social", "science"],
+      keys: "levels=線の本数, base=いちばん低い高さ, interval=間隔(m)",
+      example: "[[図: contour | levels=5 | base=100 | interval=10 ]]" },
+    { id: "compassrose", label: "方位", subjects: ["social"],
+      keys: "（指定はありません）",
+      example: "[[図: compassrose ]]" },
+    { id: "flowchart", label: "判断つき流れ図", subjects: ["info", "science"],
+      keys: "steps=文 を ; で区切る（末尾が ? なら判断）, title=",
+      example: "[[図: flowchart | steps=はじめ;点数は60以上か?;合格;おわり ]]" },
+    { id: "binary", label: "2 進数", subjects: ["info", "math"],
+      keys: "value=10 進数, bits=桁数",
+      example: "[[図: binary | value=45 | bits=8 ]]" },
+
+    /* ── 英語・生活 ─────────────────────────────────────────── */
+    { id: "timetable", label: "時間割・時刻表", subjects: ["english", "social"],
+      keys: "cols=列見出し, rows=行見出し, cells=行,列:中身 を ; で区切る, title=",
+      example: "[[図: timetable | cols=Mon,Tue,Wed | rows=1,2,3 | cells=1,1:Math;1,2:English;2,3:P.E. ]]" },
+    { id: "weather", label: "週間天気", subjects: ["english", "social", "science"],
+      keys: "days=曜日, weather=晴|曇|雨|雪, high=最高気温, low=最低気温",
+      example: "[[図: weather | days=Mon,Tue,Wed,Thu | weather=晴,曇,雨,晴 | high=24,21,18,25 | low=14,13,12,15 ]]" },
+    { id: "signpost", label: "道案内の標識", subjects: ["english", "social"],
+      keys: "signs=右|左:行き先 を ; で区切る",
+      example: "[[図: signpost | signs=右:Station 500m;左:Museum 200m ]]" },
+    { id: "receipt", label: "レシート・値札", subjects: ["english", "math"],
+      keys: "items=品名:個数:単価 を ; で区切る, shop=, currency=（合計は計算する）",
+      example: "[[図: receipt | shop=School Shop | items=Notebook:2:120;Pen:1:80 ]]" },
+    { id: "stickman", label: "人の動作（リスニングの絵）", subjects: ["english"],
+      keys: "poses=stand|walk|run|sit|read|eat|sleep|raise|write|carry を並べる, names=",
+      example: "[[図: stickman | poses=read,eat,walk,sleep | names=A,B,C,D ]]" },
+    { id: "speech", label: "吹き出しの会話", subjects: ["english"],
+      keys: "lines=話し手:せりふ を ; で区切る",
+      example: "[[図: speech | lines=Ken:Where are you going?;Mary:To the library. ]]" },
+    /* ── 絵の素材（リスニングの挿絵）──────────────────────── */
+    { id: "icons", label: "絵を並べる", subjects: ["english", "japanese", "social", "science"],
+      keys: "items=絵の名前（時計は clock:8:15 のように値を付ける）, labels=下に出す文字",
+      example: "[[図: icons | items=apple,bus,book,clock:8:15 | labels=A,B,C,D ]]" },
+    { id: "choices4", label: "4 つの絵から選ぶ", subjects: ["english"],
+      keys: "items=絵を 2〜4 個, labels=記号（既定は ①②③④）",
+      example: "[[図: choices4 | items=clock:8:15,clock:8:45,clock:9:15,clock:9:45 ]]" },
+    { id: "scene", label: "場面（部屋・店・駅）", subjects: ["english", "japanese"],
+      keys: "place=場所の名, items=置くものを 1〜6 個",
+      example: "[[図: scene | place=教室 | items=desk,chair,clock:10:30,window ]]" },
+
+    /* ── 国語・英語 ─────────────────────────────────────────── */
+    { id: "genkou", label: "原稿用紙", subjects: ["japanese"],
+      keys: "cols=1 行の字数, rows=行数",
+      example: "[[図: genkou | cols=20 | rows=8 ]]" },
+    { id: "bunsetsu", label: "文の係り受け", subjects: ["japanese"],
+      keys: "words=文節 を , で区切る, links=1>3 のように番号で結ぶ",
+      example: "[[図: bunsetsu | words=白い,大きな,犬が,ゆっくり,歩く | links=1>3,2>3,4>5,3>5 ]]" },
+    { id: "svoc", label: "文の要素（SVOC）", subjects: ["english"],
+      keys: "parts=語句:役割 を ; で区切る",
+      example: "[[図: svoc | parts=He:S;gave:V;me:O;a book:O ]]" },
+    { id: "tenseline", label: "時制の時間軸", subjects: ["english"],
+      keys: "points=ことがら:位置(-10〜10) を ; で区切る（0 が今）",
+      example: "[[図: tenseline | points=I lost my key:-6;I can't find it now:0 ]]" },
+
+    /* ── 社会 ───────────────────────────────────────────────── */
+    { id: "climate", label: "雨温図", subjects: ["social", "science"],
+      keys: "temp=12 か月の気温, rain=12 か月の降水量, title=",
+      example: "[[図: climate | title=東京 | temp=5,6,9,14,19,22,26,27,24,18,13,8 | rain=52,56,118,125,138,168,154,168,210,198,93,51 ]]" },
+    { id: "seats", label: "議席（半円グラフ）", subjects: ["social"],
+      keys: "labels=会派, values=議席数, title=",
+      example: "[[図: seats | labels=A党,B党,C党,その他 | values=230,120,80,35 ]]" },
+    { id: "trianglegraph", label: "三角グラフ", subjects: ["social"],
+      keys: "points=名前:a,b,c（合計 100）を ; で区切る, labels=3 つの頂点の名",
+      example: "[[図: trianglegraph | points=日本:1,26,73;タイ:31,23,46 | labels=第1次,第2次,第3次 ]]" },
+    { id: "orgchart", label: "組織図・系統図", subjects: ["social", "info"],
+      keys: "nodes=段:名前 を ; で区切る（段は 1 から）",
+      example: "[[図: orgchart | nodes=1:国会;2:衆議院;2:参議院 ]]" },
+    { id: "jpmap", label: "日本の位置図（模式）", subjects: ["social"],
+      keys: "marks=塗る都道府県, labels=県名:出す文字, names=1 で県名を出す（正確な海岸線ではなく位置関係の図）",
+      example: "[[図: jpmap | marks=北海道,東京,大阪,福岡 | names=1 ]]" },
+
+    /* ── 理科（模式図）───────────────────────────────────────── */
+    { id: "foodpyramid", label: "生態ピラミッド", subjects: ["science"],
+      keys: "levels=上から順に並べる",
+      example: "[[図: foodpyramid | levels=大形の肉食動物,小形の肉食動物,草食動物,植物 ]]" },
+    { id: "sunpath", label: "太陽の日周運動", subjects: ["science"],
+      keys: "lat=緯度, dec=赤緯（夏至 +23.4／春秋分 0／冬至 -23.4）",
+      example: "[[図: sunpath | lat=35 | dec=23.4 ]]" },
+    { id: "magnet", label: "磁界", subjects: ["science"],
+      keys: "（指定はありません）",
+      example: "[[図: magnet ]]" },
+    { id: "body", label: "からだのつくり", subjects: ["science"],
+      keys: "type=digest（消化）|circulate（循環）",
+      example: "[[図: body | type=digest ]]" },
+    { id: "plant", label: "植物のつくり", subjects: ["science"],
+      keys: "（指定はありません）",
+      example: "[[図: plant ]]" },
+    { id: "cell", label: "細胞", subjects: ["science"],
+      keys: "type=plant（植物）|animal（動物）",
+      example: "[[図: cell | type=plant ]]" },
+
+    /* ── 情報・数学 ─────────────────────────────────────────── */
+    { id: "logicgate", label: "論理回路", subjects: ["info"],
+      keys: "type=AND|OR|NOT|NAND|NOR|XOR, show=1 で真理値表",
+      example: "[[図: logicgate | type=NAND | show=1 ]]" },
+    { id: "network", label: "ネットワーク図", subjects: ["info"],
+      keys: "nodes=機器名, links=A-B, type=star でスター型",
+      example: "[[図: network | nodes=ルータ,PC1,PC2,PC3 | type=star ]]" },
+    { id: "stackqueue", label: "スタック・キュー", subjects: ["info"],
+      keys: "items=中身, type=stack|queue",
+      example: "[[図: stackqueue | items=A,B,C | type=stack ]]" },
+    { id: "axes3d", label: "座標空間", subjects: ["math"],
+      keys: "points=名前:x,y,z を ; で区切る",
+      example: "[[図: axes3d | points=P:2,3,4;Q:4,1,2 ]]" }
+  ];
+  var KIND_BY_ID = {};
+  KINDS.forEach(function (k) { KIND_BY_ID[k.id] = k; });
+
+  /* 図の仲間分け。**一覧を切り詰めるときに、仲間ごとに 1 つずつ拾う**ために使う。
+     素に先頭から 8 個取ると、数学に渡す一覧が統計グラフだけになり、
+     図形の問題が 1 問も作れなくなる（実測: triangle が候補に入らなかった）。 */
+  var FAMILY = {
+    bar: "chart", line: "chart", pie: "chart", stackbar: "chart",
+    scatter: "plot", hist: "plot", box: "plot", dot: "plot",
+    graph: "func", numberline: "func",
+    triangle: "geom", rtriangle: "geom", polygon: "geom", quad: "geom", circle: "geom",
+    solid: "solid",
+    clock: "life", calendar: "life", plan: "life", route: "life", thermo: "life",
+    venn: "logic", tree: "logic", flow: "logic", arrow: "logic", balance: "logic", grid: "logic",
+    angle: "geom", parallels: "geom", similar: "geom", incircle: "geom", sector: "geom",
+    coordfig: "geom", vector: "geom", symmetry: "geom", compass: "geom", trig: "geom",
+    unitcircle: "func", sequence: "func", fraction: "num", areamodel: "num", tape: "num",
+    net: "solid", projection: "solid", blocks: "solid",
+    circuit: "sci", lever: "sci", forces: "sci", ray: "sci", wave: "sci", pendulum: "sci",
+    incline: "sci", beaker: "sci", spring: "sci", molecule: "sci", orbit: "sci",
+    moonphase: "sci", strata: "sci",
+    barh: "chart", freqpoly: "plot", cumulative: "plot", stem: "plot", radar: "chart",
+    poppyramid: "chart", pictograph: "chart", twoway: "chart",
+    timeline: "logic", contour: "life", compassrose: "life", flowchart: "logic", binary: "logic",
+    timetable: "life", weather: "life", signpost: "life", receipt: "life",
+    stickman: "life", speech: "life",
+    icons: "pic", choices4: "pic", scene: "pic",
+    genkou: "lang", bunsetsu: "lang", svoc: "lang", tenseline: "lang",
+    climate: "chart", seats: "chart", trianglegraph: "chart",
+    orgchart: "logic", jpmap: "life",
+    foodpyramid: "sci", sunpath: "sci", magnet: "sci", body: "sci", plant: "sci", cell: "sci",
+    logicgate: "logic", network: "logic", stackqueue: "logic", axes3d: "geom"
+  };
+
+  /* AI へ渡す説明文。科目で絞れる。
+     limit を付けたときは、仲間ごとに 1 つずつ順番に拾う（偏らせない）。 */
+  function catalogText(subject, limit) {
+    var list = KINDS.filter(function (k) {
+      return !subject || !k.subjects.length || k.subjects.indexOf(subject) >= 0;
+    });
+    if (limit && list.length > limit) {
+      var byFam = {}, fams = [];
+      list.forEach(function (k) {
+        var f = FAMILY[k.id] || "other";
+        if (!byFam[f]) { byFam[f] = []; fams.push(f); }
+        byFam[f].push(k);
+      });
+      var picked = [], round = 0;
+      while (picked.length < limit) {
+        var added = 0;
+        for (var i = 0; i < fams.length && picked.length < limit; i++) {
+          var g = byFam[fams[i]];
+          if (g[round]) { picked.push(g[round]); added++; }
+        }
+        if (!added) break;
+        round++;
+      }
+      /* もとの並び（やさしい順）に戻してから出す。 */
+      list = KINDS.filter(function (k) { return picked.indexOf(k) >= 0; });
+    }
+    return list.map(function (k) {
+      return "・" + k.label + "（" + k.id + "）… " + k.keys + "\n  例: " + k.example;
+    }).join("\n");
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     3) 描ける図かどうかを確かめる
+
+     ここが「正確な図」の要。おかしな指定は **描かない**。
+     戻り値は理由の配列。空なら描ける。
+     ══════════════════════════════════════════════════════════════════ */
+  function check(spec) {
+    var out = [];
+    if (!spec || !spec.kind) return ["図の種類が読み取れません"];
+    var K = spec.kind;
+    if (!KIND_BY_ID[K]) return ["使えない図の種類です: " + spec.kind];
+
+    function needNums(key, minLen) {
+      var v = numsOf(spec[key]);
+      if (!v.length) { out.push(key + " に数がありません"); return null; }
+      if (v.some(function (x) { return !isFinite(x); })) { out.push(key + " に数でないものがあります"); return null; }
+      if (minLen && v.length < minLen) { out.push(key + " は " + minLen + " 個以上必要です"); return null; }
+      return v;
+    }
+
+    if (K === "bar" || K === "line") {
+      var xs = listOf(spec.x), ys = needNums("y", 1);
+      if (!xs.length) out.push("x（項目）がありません");
+      if (ys && xs.length && ys.length !== xs.length)
+        out.push("x が " + xs.length + " 個なのに y が " + ys.length + " 個です（数をそろえてください）");
+      ["y2", "y3"].forEach(function (k) {
+        if (spec[k] == null) return;
+        var v = numsOf(spec[k]);
+        if (v.length !== xs.length) out.push(k + " の数が x と合いません");
+      });
+    } else if (K === "pie" || K === "stackbar") {
+      var pl = listOf(spec.labels), pv = needNums("values", 1);
+      if (!pl.length) out.push("labels（区分）がありません");
+      if (pv && pl.length && pv.length !== pl.length)
+        out.push("labels が " + pl.length + " 個なのに values が " + pv.length + " 個です");
+      if (pv && pv.some(function (x) { return x < 0; })) out.push("values に負の数があります");
+      if (pv && pv.reduce(function (a, b) { return a + b; }, 0) <= 0) out.push("values の合計が 0 です");
+    } else if (K === "scatter") {
+      var pts = pointsOf(spec.points);
+      if (pts.length < 2) out.push("points が 2 組以上必要です（例: points=1,2 3,4）");
+    } else if (K === "hist") {
+      var bins = needNums("bins", 2), fr = needNums("freq", 1);
+      if (bins && fr && bins.length !== fr.length + 1)
+        out.push("bins は freq より 1 つ多く必要です（bins " + bins.length + " / freq " + fr.length + "）");
+      if (bins) for (var bi = 1; bi < bins.length; bi++)
+        if (bins[bi] <= bins[bi - 1]) { out.push("bins が小さい順になっていません"); break; }
+      if (fr && fr.some(function (x) { return x < 0; })) out.push("freq に負の数があります");
+    } else if (K === "box") {
+      var sets = boxSetsOf(spec.data);
+      if (!sets.length) out.push("data がありません（例: data=32,48,60,71,88）");
+      sets.forEach(function (s, i) {
+        if (s.length !== 5) { out.push((i + 1) + " 組目の data は 最小,Q1,中央,Q3,最大 の 5 つで書いてください"); return; }
+        for (var k = 1; k < 5; k++) if (s[k] < s[k - 1]) { out.push((i + 1) + " 組目の data が小さい順になっていません"); break; }
+      });
+    } else if (K === "dot") {
+      if (!numsOf(spec.values).length) out.push("values がありません");
+    } else if (K === "graph") {
+      var fs = ["f", "f2", "f3"].filter(function (k) { return str(spec[k]).trim(); });
+      var hasPts = pointsOf(spec.points).length > 0;
+      if (!fs.length && !hasPts) out.push("f（式）か points がありません");
+      fs.forEach(function (k) {
+        var e = compile(spec[k]);
+        if (!e) out.push(k + " の式を読み取れません: " + str(spec[k]));
+      });
+      var gx0 = num(spec.xmin, -5), gx1 = num(spec.xmax, 5);
+      if (!(gx1 > gx0)) out.push("xmax は xmin より大きくしてください");
+    } else if (K === "numberline") {
+      var n0 = num(spec.min, 0), n1 = num(spec.max, 10), st = num(spec.step, 1);
+      if (!(n1 > n0)) out.push("max は min より大きくしてください");
+      if (!(st > 0)) out.push("step は正の数にしてください");
+      if ((n1 - n0) / st > 60) out.push("目盛りが多すぎます（step を大きくしてください）");
+      if (spec.range != null && !parseRange(spec.range)) out.push("range を読み取れません（例: -1<=x<3）");
+    } else if (K === "triangle") {
+      var t = solveTriangle(spec);
+      if (t.error) out.push(t.error);
+    } else if (K === "rtriangle") {
+      var ra = num(spec.a, 0), rb = num(spec.b, 0);
+      if (!(ra > 0) || !(rb > 0)) out.push("a と b は正の数にしてください");
+    } else if (K === "polygon") {
+      var pn = Math.round(num(spec.n, 0));
+      var ppts = pointsOf(spec.points);
+      if (!ppts.length) {
+        if (!(pn >= 3)) out.push("n は 3 以上にしてください");
+        if (pn > 20) out.push("n は 20 までにしてください");
+      }
+    } else if (K === "quad") {
+      var qt = str(spec.type || "rect").toLowerCase();
+      if (["rect", "square", "parallelogram", "trapezoid", "rhombus"].indexOf(qt) < 0)
+        out.push("type は rect / square / parallelogram / trapezoid / rhombus のどれかにしてください");
+      var qa = num(spec.a, 0), qh = num(spec.h, 0);
+      if (!(qa > 0)) out.push("a は正の数にしてください");
+      if (qt !== "square" && !(qh > 0)) out.push("h（高さ）は正の数にしてください");
+      if (qt === "trapezoid" && !(num(spec.b, 0) > 0)) out.push("台形には b（下底）が要ります");
+      if (qt === "parallelogram") {
+        var pa = num(spec.angle, 60);
+        if (!(pa > 0 && pa < 180)) out.push("angle は 0 と 180 の間にしてください");
+      }
+    } else if (K === "circle") {
+      if (!(num(spec.r, 1) > 0)) out.push("r は正の数にしてください");
+      var cp = circlePoints(spec);
+      if (cp.error) out.push(cp.error);
+      if (spec.sector != null) {
+        var sv = numsOf(spec.sector);
+        if (sv.length !== 2) out.push("sector は 開始角,中心角 の 2 つで書いてください");
+        else if (!(sv[1] > 0 && sv[1] <= 360)) out.push("sector の中心角は 0 より大きく 360 までにしてください");
+      }
+      (listOf(spec.chords)).forEach(function (c) {
+        var ab = c.split(/[-–ー]/);
+        if (ab.length !== 2) { out.push("chords は A-B の形で書いてください: " + c); return; }
+        if (!cp.byName || !cp.byName[ab[0].trim()] || !cp.byName[ab[1].trim()])
+          out.push("chords が points に無い点を指しています: " + c);
+      });
+    } else if (K === "solid") {
+      var sT = str(spec.type || "cuboid").toLowerCase();
+      if (["cuboid", "cube", "box", "cylinder", "cone", "sphere", "prism", "pyramid"].indexOf(sT) < 0)
+        out.push("type が使えないものです: " + sT);
+      if (sT === "cylinder" || sT === "cone" || sT === "sphere") {
+        if (!(num(spec.r, 0) > 0)) out.push("r は正の数にしてください");
+        if (sT !== "sphere" && !(num(spec.h, 0) > 0)) out.push("h は正の数にしてください");
+      } else if (sT === "prism" || sT === "pyramid") {
+        /* 角柱・角錐は「底面の角数・外接円の半径・高さ」で決まる。
+           直方体と同じ w/d/h を要求すると、正しい指定まで弾かれる。 */
+        var sn = Math.round(num(spec.n, 3));
+        if (!(sn >= 3 && sn <= 12)) out.push("n は 3 から 12 にしてください");
+        if (!(num(spec.r, 0) > 0)) out.push("r（底面の外接円の半径）は正の数にしてください");
+        if (!(num(spec.h, 0) > 0)) out.push("h（高さ）は正の数にしてください");
+      } else {
+        if (!(num(spec.w, sT === "cube" ? num(spec.a, 0) : 0) > 0) && !(num(spec.a, 0) > 0))
+          out.push("w（幅）は正の数にしてください");
+        if (sT !== "cube" && !(num(spec.h, 0) > 0)) out.push("h（高さ）は正の数にしてください");
+      }
+    } else if (K === "clock") {
+      var tm = parseTime(spec.time);
+      if (!tm) out.push("time を読み取れません（例: time=7:20）");
+    } else if (K === "venn") {
+      var vl = listOf(spec.labels);
+      if (vl.length !== 2 && vl.length !== 3) out.push("labels は 2 つか 3 つにしてください");
+      var vv = numsOf(spec.values);
+      if (vv.length) {
+        var needV = vl.length === 3 ? 7 : 3;
+        if (vv.length !== needV) out.push("labels が " + vl.length + " つなら values は " + needV + " 個必要です");
+        if (vv.some(function (x) { return x < 0; })) out.push("values に負の数があります");
+      }
+    } else if (K === "tree") {
+      var lv = str(spec.levels).split("/").map(function (x) { return listOf(x); })
+        .filter(function (x) { return x.length; });
+      if (!lv.length) out.push("levels がありません（例: levels=表,裏/表,裏）");
+      if (lv.length > 4) out.push("levels は 4 段までにしてください");
+      var leaves = lv.reduce(function (a, b) { return a * b.length; }, 1);
+      if (leaves > 32) out.push("枝が多すぎます（" + leaves + " 本）");
+    } else if (K === "grid" || K === "plan") {
+      var gc = Math.round(num(spec.cols, 0)), gr = Math.round(num(spec.rows, 0));
+      if (!(gc >= 1 && gc <= 20)) out.push("cols は 1 から 20 にしてください");
+      if (!(gr >= 1 && gr <= 20)) out.push("rows は 1 から 20 にしてください");
+    } else if (K === "flow") {
+      var fst = listOf(spec.steps);
+      if (fst.length < 2) out.push("steps は 2 つ以上にしてください");
+      if (fst.length > 8) out.push("steps は 8 つまでにしてください");
+    } else if (K === "balance") {
+      if (!str(spec.left).trim() || !str(spec.right).trim()) out.push("left と right の両方が要ります");
+    } else if (K === "route") {
+      var rn = listOf(spec.nodes);
+      if (rn.length < 2) out.push("nodes は 2 つ以上にしてください");
+      if (rn.length > 8) out.push("nodes は 8 つまでにしてください");
+      listOf(spec.edges).forEach(function (e) {
+        var ab = e.split(":")[0].split(/[-–ー]/);
+        if (ab.length !== 2 || rn.indexOf(ab[0].trim()) < 0 || rn.indexOf(ab[1].trim()) < 0)
+          out.push("edges が nodes に無い地点を指しています: " + e);
+      });
+    } else if (K === "calendar") {
+      var cy = Math.round(num(spec.year, 0)), cm = Math.round(num(spec.month, 0));
+      if (!(cy >= 1900 && cy <= 2200)) out.push("year を 1900〜2200 で書いてください");
+      if (!(cm >= 1 && cm <= 12)) out.push("month を 1〜12 で書いてください");
+    } else if (K === "thermo") {
+      var t0 = num(spec.min, 0), t1 = num(spec.max, 100), tv = num(spec.value, NaN);
+      if (!(t1 > t0)) out.push("max は min より大きくしてください");
+      if (!isNum(tv)) out.push("value がありません");
+      else if (tv < t0 || tv > t1) out.push("value が min と max の外にあります");
+    } else if (K === "arrow") {
+      var an = listOf(spec.nodes);
+      if (an.length < 2) out.push("nodes は 2 つ以上にしてください");
+      if (an.length > 8) out.push("nodes は 8 つまでにしてください");
+    }
+    /* ══ 追加した図の検査（2026-09-11）══════════════════════════════
+       ここも「描けないものは描かない」を守る。寸法が図にならない指定は
+       すべてここで落とし、設問ごと作り直させる。 */
+    else if (K === "angle") {
+      var an = num(spec.angle, 60);
+      if (!(an > 0 && an < 180)) out.push("angle は 0 と 180 の間にしてください");
+    } else if (K === "parallels") {
+      var pa2 = num(spec.angle, 55);
+      if (!(pa2 > 10 && pa2 < 170)) out.push("angle は 10 と 170 の間にしてください");
+    } else if (K === "similar") {
+      var st2 = solveTriangle({ sss: str(spec.sss) || "3,4,5" });
+      if (st2.error) out.push(st2.error);
+      if (!(num(spec.scale, 1.6) > 0)) out.push("scale は正の数にしてください");
+    } else if (K === "incircle") {
+      var it2 = solveTriangle(spec);
+      if (it2.error) out.push(it2.error);
+    } else if (K === "sector") {
+      if (!(num(spec.r, 1) > 0)) out.push("r は正の数にしてください");
+      var sa2 = num(spec.angle, 120);
+      if (!(sa2 > 0 && sa2 <= 360)) out.push("angle は 0 より大きく 360 までにしてください");
+    } else if (K === "coordfig") {
+      if (pointsOf(spec.points).length < 2) out.push("points が 2 組以上必要です");
+    } else if (K === "vector") {
+      var vv2 = str(spec.vectors || spec.v).split(/[;；]/).filter(function (t) {
+        return numsOf((t.split(/[:：]/)[1] || t)).length === 2;
+      });
+      if (!vv2.length) out.push("vectors を 名前:x,y の形で書いてください");
+      if (vv2.length > 4) out.push("vectors は 4 本までにしてください");
+    } else if (K === "symmetry") {
+      if (pointsOf(spec.points).length < 3) out.push("points が 3 組以上必要です");
+    } else if (K === "compass") {
+      var ca2 = num(spec.angle, 70);
+      if (/angle|角/.test(str(spec.type)) && !(ca2 > 0 && ca2 < 180))
+        out.push("angle は 0 と 180 の間にしてください");
+    } else if (K === "trig") {
+      var ta2 = num(spec.angle, 35);
+      if (!(ta2 > 0 && ta2 < 90)) out.push("angle は 0 と 90 の間にしてください");
+      if (!(num(spec.hyp, 10) > 0)) out.push("hyp は正の数にしてください");
+    } else if (K === "unitcircle") {
+      if (!isNum(num(spec.angle, 120))) out.push("angle を数で書いてください");
+    } else if (K === "net") {
+      var nt = str(spec.type || "cuboid").toLowerCase();
+      if (["cube", "cuboid", "box", "cylinder", "cone", "prism", "pyramid"].indexOf(nt) < 0)
+        out.push("type が使えないものです: " + nt);
+      else if (nt === "cube") { if (!(num(spec.a, num(spec.w, 0)) > 0)) out.push("a（1 辺）は正の数にしてください"); }
+      else if (nt === "cuboid" || nt === "box") {
+        if (!(num(spec.w, 0) > 0 && num(spec.d, 0) > 0 && num(spec.h, 0) > 0))
+          out.push("w・d・h は正の数にしてください");
+      } else if (nt === "cylinder") {
+        if (!(num(spec.r, 0) > 0 && num(spec.h, 0) > 0)) out.push("r と h は正の数にしてください");
+      } else if (nt === "cone") {
+        var cr = num(spec.r, 0), cl = num(spec.l, num(spec.h, 0));
+        if (!(cr > 0) || !(cl > 0)) out.push("r と l（母線）は正の数にしてください");
+        else if (cl <= cr) out.push("母線 l は半径 r より長くしてください（展開図になりません）");
+      } else {
+        var nn = Math.round(num(spec.n, 4));
+        if (!(nn >= 3 && nn <= 8)) out.push("n は 3 から 8 にしてください");
+        if (!(num(spec.r, 0) > 0 && num(spec.h, 0) > 0)) out.push("r と h は正の数にしてください");
+      }
+    } else if (K === "projection") {
+      if (!(num(spec.w, 0) > 0 && num(spec.d, 0) > 0 && num(spec.h, 0) > 0))
+        out.push("w・d・h は正の数にしてください");
+    } else if (K === "blocks") {
+      var bc = Math.round(num(spec.cols, 3)), br = Math.round(num(spec.rows, 3));
+      if (!(bc >= 1 && bc <= 8) || !(br >= 1 && br <= 8)) out.push("cols と rows は 1 から 8 にしてください");
+    } else if (K === "circuit") {
+      if (!listOf(spec.parts).length) out.push("parts がありません");
+      if (listOf(spec.parts).length > 5) out.push("parts は 5 つまでにしてください");
+    } else if (K === "lever") {
+      ["leftweight", "leftdist", "rightweight", "rightdist"].forEach(function (k) {
+        if (!(num(spec[k], 0) > 0)) out.push(k + " は正の数にしてください");
+      });
+    } else if (K === "forces") {
+      var ff = str(spec.forces).split(/[;；]/).filter(function (t) {
+        var m = t.split(/[:：]/);
+        return isNum(Number(m[1])) && isNum(Number(m[2])) && Number(m[1]) > 0;
+      });
+      if (!ff.length) out.push("forces を 名前:大きさ:向き(度) の形で書いてください");
+      if (ff.length > 5) out.push("forces は 5 本までにしてください");
+    } else if (K === "ray") {
+      var rk = str(spec.type || "reflect").toLowerCase();
+      if (/refl|反射/.test(rk)) {
+        var ra2 = num(spec.angle, 40);
+        if (!(ra2 > 0 && ra2 < 90)) out.push("angle は 0 と 90 の間にしてください");
+      } else if (/refr|屈折/.test(rk)) {
+        var ia = num(spec.angle, 45), nn2 = num(spec.n, 1.5);
+        if (!(ia > 0 && ia < 90)) out.push("angle は 0 と 90 の間にしてください");
+        if (!(nn2 > 0)) out.push("n は正の数にしてください");
+        else if (Math.abs(Math.sin(rad(ia)) / nn2) > 1) out.push("この入射角と屈折率では全反射になり、屈折の図が描けません");
+      } else {
+        var lf = num(spec.f, 4), la = num(spec.a, 10);
+        if (!(lf > 0)) out.push("f（焦点距離）は正の数にしてください");
+        if (!(la > 0)) out.push("a（物体までの距離）は正の数にしてください");
+        else if (Math.abs(la - lf) < 1e-9) out.push("物体が焦点の位置にあると像ができません（a と f をずらしてください）");
+      }
+    } else if (K === "wave") {
+      if (!(num(spec.amplitude, 1) > 0)) out.push("amplitude は正の数にしてください");
+      var wv = num(spec.waves, 2.5);
+      if (!(wv > 0 && wv <= 12)) out.push("waves は 0 より大きく 12 までにしてください");
+    } else if (K === "pendulum") {
+      var pd = num(spec.angle, 28);
+      if (!(pd > 0 && pd < 90)) out.push("angle は 0 と 90 の間にしてください");
+      if (!(num(spec.length, 1) > 0)) out.push("length は正の数にしてください");
+    } else if (K === "incline") {
+      var ic = num(spec.angle, 30);
+      if (!(ic > 0 && ic < 90)) out.push("angle は 0 と 90 の間にしてください");
+    } else if (K === "beaker") {
+      var bl = num(spec.level, 60);
+      if (!(bl >= 0 && bl <= 100)) out.push("level は 0 から 100 にしてください");
+    } else if (K === "spring") {
+      if (!(num(spec.force, 2) >= 0)) out.push("force は 0 以上にしてください");
+      if (!(num(spec.k, 1) > 0)) out.push("k は正の数にしてください");
+    } else if (K === "molecule") {
+      var at = str(spec.atoms).split(/[;；]/).filter(function (t) {
+        var m = t.split(/[:：]/);
+        return str(m[0]).trim() && isNum(Number(m[1])) && isNum(Number(m[2]));
+      });
+      if (!at.length) out.push("atoms を 元素:x:y の形で書いてください");
+      if (at.length > 12) out.push("atoms は 12 個までにしてください");
+      listOf(spec.bonds).forEach(function (b) {
+        var m = b.split(/[-=≡]/).map(function (x) { return x.trim(); });
+        if (m.length !== 2 || !(Number(m[0]) >= 1 && Number(m[0]) <= at.length)
+            || !(Number(m[1]) >= 1 && Number(m[1]) <= at.length))
+          out.push("bonds は 1-2 のように atoms の番号で書いてください: " + b);
+      });
+    } else if (K === "orbit") {
+      if (!isNum(num(spec.angle, 45))) out.push("angle を数で書いてください");
+    } else if (K === "moonphase") {
+      var ph = numsOf(spec.phases);
+      if (ph.length && ph.some(function (x) { return !(x >= 0 && x <= 1); }))
+        out.push("phases は 0 から 1 で書いてください（0 が新月、0.5 が満月）");
+      if (ph.length > 8) out.push("phases は 8 個までにしてください");
+    } else if (K === "strata") {
+      var sl = str(spec.layers).split(/[;；]/).filter(function (t) {
+        var m = t.split(/[:：]/);
+        return str(m[0]).trim() && Number(m[1] || 1) > 0;
+      });
+      if (!sl.length) out.push("layers を 名前:厚さ の形で書いてください");
+      if (sl.length > 8) out.push("layers は 8 層までにしてください");
+    } else if (K === "barh") {
+      var bx = listOf(spec.x), by = numsOf(spec.y);
+      if (!bx.length) out.push("x（項目）がありません");
+      if (bx.length !== by.length) out.push("x と y の数が合いません");
+      if (bx.length > 12) out.push("項目は 12 までにしてください");
+    } else if (K === "freqpoly" || K === "cumulative") {
+      var fb = numsOf(spec.bins), ff2 = numsOf(spec.freq);
+      if (fb.length < 2) out.push("bins が足りません");
+      else if (fb.length !== ff2.length + 1)
+        out.push("bins は freq より 1 つ多く必要です（bins " + fb.length + " / freq " + ff2.length + "）");
+      if (ff2.some(function (x) { return x < 0; })) out.push("freq に負の数があります");
+      if (K === "cumulative" && ff2.reduce(function (a, b) { return a + b; }, 0) <= 0)
+        out.push("freq の合計が 0 です");
+    } else if (K === "stem") {
+      var sv = numsOf(spec.values);
+      if (sv.length < 2) out.push("values が 2 個以上必要です");
+      if (sv.some(function (x) { return x < 0; })) out.push("values に負の数があります");
+      if (!(num(spec.unit, 10) > 0)) out.push("unit は正の数にしてください");
+    } else if (K === "radar") {
+      var rl = listOf(spec.labels), rv = numsOf(spec.values);
+      if (rl.length < 3) out.push("labels は 3 つ以上にしてください");
+      if (rl.length !== rv.length) out.push("labels と values の数が合いません");
+      if (rv.some(function (x) { return x < 0; })) out.push("values に負の数があります");
+      var rm = num(spec.max, Math.max.apply(null, rv.concat([0])));
+      if (!(rm > 0)) out.push("max は正の数にしてください");
+      if (rv.some(function (x) { return x > rm; })) out.push("values が max を超えています");
+    } else if (K === "poppyramid") {
+      var pg = listOf(spec.ages), pm = numsOf(spec.male), pf = numsOf(spec.female);
+      if (!pg.length) out.push("ages がありません");
+      if (pg.length !== pm.length || pg.length !== pf.length)
+        out.push("ages・male・female の数をそろえてください");
+      if (pm.concat(pf).some(function (x) { return x < 0; })) out.push("負の数があります");
+    } else if (K === "pictograph") {
+      var gl = listOf(spec.labels), gv = numsOf(spec.values), gu = num(spec.unit, 10);
+      if (!gl.length) out.push("labels がありません");
+      if (gl.length !== gv.length) out.push("labels と values の数が合いません");
+      if (!(gu > 0)) out.push("unit は正の数にしてください");
+      else if (gv.some(function (x) { return x / gu > 20; })) out.push("1 行の絵が多すぎます（unit を大きくしてください）");
+    } else if (K === "twoway") {
+      var tc = listOf(spec.cols), tr = listOf(spec.rows), tv = numsOf(spec.values);
+      if (!tc.length || !tr.length) out.push("cols と rows が要ります");
+      else if (tv.length !== tc.length * tr.length)
+        out.push("values は " + (tc.length * tr.length) + " 個必要です（いまは " + tv.length + " 個）");
+      if (tc.length > 6 || tr.length > 8) out.push("表が大きすぎます");
+    } else if (K === "tape") {
+      var pl2 = listOf(spec.labels), pv2 = numsOf(spec.values);
+      if (!pl2.length) out.push("labels がありません");
+      if (pl2.length !== pv2.length) out.push("labels と values の数が合いません");
+      if (pv2.some(function (x) { return x < 0; })) out.push("values に負の数があります");
+      var tt2 = num(spec.total, pv2.reduce(function (a, b) { return a + b; }, 0));
+      if (!(tt2 > 0)) out.push("合計が 0 です");
+      if (pv2.reduce(function (a, b) { return a + b; }, 0) > tt2 + 1e-9)
+        out.push("values の合計が total を超えています");
+    } else if (K === "areamodel") {
+      var ar = numsOf(spec.rows), ac = numsOf(spec.cols);
+      if (!ar.length || !ac.length) out.push("rows と cols が要ります");
+      if (ar.concat(ac).some(function (x) { return !(x > 0); })) out.push("rows と cols は正の数にしてください");
+      if (ar.length > 4 || ac.length > 4) out.push("分け方は 4 つまでにしてください");
+    } else if (K === "fraction") {
+      var fd = Math.round(num(spec.denominator, num(spec.n, 4)));
+      var fn2 = Math.round(num(spec.numerator, num(spec.m, 1)));
+      if (!(fd >= 1 && fd <= 24)) out.push("分母は 1 から 24 にしてください");
+      if (!(fn2 >= 0 && fn2 <= fd)) out.push("分子は 0 以上、分母以下にしてください");
+    } else if (K === "sequence") {
+      if (numsOf(spec.values).length < 2) out.push("values が 2 個以上必要です");
+      if (numsOf(spec.values).length > 20) out.push("values は 20 個までにしてください");
+    } else if (K === "timeline") {
+      var te = str(spec.events).split(/[;；]/).filter(function (t) {
+        var m = t.split(/[:：]/);
+        return isNum(Number(m[0])) && str(m.slice(1).join(":")).trim();
+      });
+      if (te.length < 2) out.push("events は 2 つ以上必要です（年:出来事）");
+      if (te.length > 12) out.push("events は 12 までにしてください");
+      var ys2 = te.map(function (t) { return Number(t.split(/[:：]/)[0]); });
+      if (ys2.length && Math.max.apply(null, ys2) === Math.min.apply(null, ys2))
+        out.push("年がすべて同じでは年表になりません");
+    } else if (K === "contour") {
+      var cl2 = Math.round(num(spec.levels, 5));
+      if (!(cl2 >= 2 && cl2 <= 10)) out.push("levels は 2 から 10 にしてください");
+      if (!(num(spec.interval, 10) > 0)) out.push("interval は正の数にしてください");
+    } else if (K === "compassrose") {
+      /* 指定は無い。いつでも描ける。 */
+    } else if (K === "flowchart") {
+      var fs2 = str(spec.steps).split(/[;；]/).map(function (t) { return t.trim(); }).filter(Boolean);
+      if (fs2.length < 2) out.push("steps は 2 つ以上にしてください");
+      if (fs2.length > 8) out.push("steps は 8 つまでにしてください");
+    } else if (K === "binary") {
+      var bv = Math.round(num(spec.value, 0)), bb = Math.round(num(spec.bits, 8));
+      if (!(bb >= 1 && bb <= 16)) out.push("bits は 1 から 16 にしてください");
+      else if (!(bv >= 0 && bv < Math.pow(2, bb)))
+        out.push("value は 0 以上 " + (Math.pow(2, bb) - 1) + " 以下にしてください（" + bb + " 桁）");
+    } else if (K === "timetable") {
+      if (!listOf(spec.cols).length || !listOf(spec.rows).length) out.push("cols と rows が要ります");
+      if (listOf(spec.cols).length > 7) out.push("cols は 7 までにしてください");
+      if (listOf(spec.rows).length > 10) out.push("rows は 10 までにしてください");
+    } else if (K === "weather") {
+      var wd = listOf(spec.days), ww = listOf(spec.weather);
+      if (!wd.length) out.push("days がありません");
+      if (wd.length !== ww.length) out.push("days と weather の数が合いません");
+      if (wd.length > 7) out.push("days は 7 までにしてください");
+      var wh = numsOf(spec.high), wl = numsOf(spec.low);
+      if (wh.length && wl.length) {
+        if (wh.length !== wd.length || wl.length !== wd.length) out.push("high と low の数が days と合いません");
+        else for (var wi = 0; wi < wh.length; wi++)
+          if (wh[wi] < wl[wi]) { out.push("最高気温が最低気温より低い日があります"); break; }
+      }
+    } else if (K === "signpost") {
+      var sg = str(spec.signs).split(/[;；]/).filter(function (t) { return str(t.split(/[:：]/)[0]).trim(); });
+      if (!sg.length) out.push("signs を 向き:行き先 の形で書いてください");
+      if (sg.length > 5) out.push("signs は 5 つまでにしてください");
+    } else if (K === "receipt") {
+      var ri = str(spec.items).split(/[;；]/).filter(function (t) {
+        var m = t.split(/[:：]/);
+        return str(m[0]).trim() && isNum(Number(m[2] != null ? m[2] : m[1]));
+      });
+      if (!ri.length) out.push("items を 品名:個数:単価 の形で書いてください");
+      if (ri.length > 8) out.push("items は 8 つまでにしてください");
+    } else if (K === "stickman") {
+      var ps = listOf(spec.poses || spec.pose);
+      if (!ps.length) out.push("poses がありません");
+      if (ps.length > 4) out.push("poses は 4 つまでにしてください");
+      var known = ["stand", "walk", "run", "sit", "read", "eat", "sleep", "raise", "write", "carry"];
+      ps.forEach(function (x) { if (known.indexOf(x) < 0) out.push("使えない動作です: " + x + "（" + known.join("/") + "）"); });
+    } else if (K === "speech") {
+      var sp2 = str(spec.lines).split(/[;；]/).filter(function (t) {
+        return str(t.split(/[:：]/).slice(1).join(":")).trim();
+      });
+      if (!sp2.length) out.push("lines を 話し手:せりふ の形で書いてください");
+      if (sp2.length > 6) out.push("lines は 6 つまでにしてください");
+    }
+    else if (K === "icons" || K === "choices4" || K === "scene") {
+      var its = listOf(spec.items).map(iconItem);
+      if (!its.length) out.push("items がありません");
+      var ng = its.filter(function (i) { return !i.ok; });
+      if (ng.length) out.push("使えない絵です: " + ng.map(function (i) { return i.name; }).join("・")
+        + "（使えるもの: " + ICON_NAMES.join(" / ") + "）");
+      if (K === "choices4" && (its.length < 2 || its.length > 4)) out.push("items は 2〜4 個にしてください");
+      if (K === "icons" && its.length > 6) out.push("items は 6 個までにしてください");
+      if (K === "scene" && its.length > 6) out.push("items は 6 個までにしてください");
+      its.forEach(function (i) {
+        if (i.name === "clock" && i.arg && !parseTime(i.arg)) out.push("時計の時刻を読み取れません: " + i.arg);
+      });
+    } else if (K === "genkou") {
+      var gc = Math.round(num(spec.cols, 20)), gr = Math.round(num(spec.rows, 10));
+      if (!(gc >= 4 && gc <= 30)) out.push("cols は 4 から 30 にしてください");
+      if (!(gr >= 2 && gr <= 20)) out.push("rows は 2 から 20 にしてください");
+    } else if (K === "bunsetsu") {
+      var bws = listOf(spec.words);
+      if (bws.length < 2) out.push("words は 2 つ以上にしてください");
+      if (bws.length > 10) out.push("words は 10 までにしてください");
+      listOf(spec.links).forEach(function (t) {
+        var m = t.split(/[>＞→-]/).map(function (x) { return Number(x.trim()); });
+        if (!(m[0] >= 1 && m[0] <= bws.length && m[1] >= 1 && m[1] <= bws.length))
+          out.push("links が words の番号の外を指しています: " + t);
+      });
+    } else if (K === "svoc") {
+      var sps = str(spec.parts).split(/[;；]/).filter(function (t) { return str(t.split(/[:：]/)[0]).trim(); });
+      if (sps.length < 2) out.push("parts は 2 つ以上にしてください");
+      if (sps.length > 8) out.push("parts は 8 つまでにしてください");
+    } else if (K === "tenseline") {
+      var tps = str(spec.points).split(/[;；]/).map(function (t) {
+        var m = t.split(/[:：]/);
+        return { t: str(m[0]).trim(), at: Number(m[1]) };
+      }).filter(function (p) { return p.t; });
+      if (!tps.length) out.push("points を ことがら:位置 の形で書いてください");
+      if (tps.length > 6) out.push("points は 6 つまでにしてください");
+      tps.forEach(function (p) {
+        if (!(p.at >= -10 && p.at <= 10)) out.push("位置は -10 から 10 にしてください: " + p.t);
+      });
+    } else if (K === "climate") {
+      var tm = numsOf(spec.temp), rn = numsOf(spec.rain);
+      if (tm.length !== 12) out.push("temp は 12 か月ぶん必要です（いまは " + tm.length + " 個）");
+      if (rn.length !== 12) out.push("rain は 12 か月ぶん必要です（いまは " + rn.length + " 個）");
+      if (rn.some(function (x) { return x < 0; })) out.push("rain に負の数があります");
+    } else if (K === "seats") {
+      var sl2 = listOf(spec.labels), sv2 = numsOf(spec.values);
+      if (!sl2.length) out.push("labels がありません");
+      if (sl2.length !== sv2.length) out.push("labels と values の数が合いません");
+      if (sv2.some(function (x) { return x < 0; })) out.push("values に負の数があります");
+      var st3 = sv2.reduce(function (a, b) { return a + b; }, 0);
+      if (!(st3 > 0)) out.push("values の合計が 0 です");
+      if (st3 > 800) out.push("議席が多すぎます");
+    } else if (K === "trianglegraph") {
+      var tg = str(spec.points).split(/[;；]/).map(function (t) {
+        var m = t.split(/[:：]/);
+        return numsOf(m.length > 1 ? m[1] : m[0]);
+      }).filter(function (v) { return v.length; });
+      if (!tg.length) out.push("points を 名前:a,b,c の形で書いてください");
+      tg.forEach(function (v, i) {
+        if (v.length !== 3) { out.push((i + 1) + " つめの points は 3 つの数で書いてください"); return; }
+        var s4 = v[0] + v[1] + v[2];
+        if (Math.abs(s4 - 100) > 1.5) out.push((i + 1) + " つめの合計が " + s4 + " です（100 にしてください）");
+      });
+    } else if (K === "orgchart") {
+      var on = str(spec.nodes).split(/[;；]/).map(function (t) {
+        var m = t.split(/[:：]/);
+        return { lv: Math.round(Number(m[0])), name: str(m.slice(1).join(":")).trim() };
+      }).filter(function (n) { return n.name; });
+      if (on.length < 2) out.push("nodes は 2 つ以上にしてください");
+      if (on.length > 16) out.push("nodes は 16 までにしてください");
+      on.forEach(function (n) {
+        if (!(n.lv >= 1 && n.lv <= 5)) out.push("段は 1 から 5 にしてください: " + n.name);
+      });
+    } else if (K === "jpmap") {
+      var jn = Object.keys(JP_GRID);
+      listOf(spec.marks).forEach(function (t) {
+        if (jn.indexOf(t.replace(/[都府県]$/, "")) < 0) out.push("知らない都道府県です: " + t);
+      });
+    } else if (K === "foodpyramid") {
+      var fl = listOf(spec.levels);
+      if (fl.length < 2) out.push("levels は 2 段以上にしてください");
+      if (fl.length > 5) out.push("levels は 5 段までにしてください");
+    } else if (K === "sunpath") {
+      var la = num(spec.lat, 35), de = num(spec.dec, 0);
+      if (!(la >= -66 && la <= 66)) out.push("lat は -66 から 66 にしてください");
+      if (!(de >= -23.5 && de <= 23.5)) out.push("dec は -23.4 から 23.4 にしてください");
+      var al = 90 - Math.abs(la) + de;
+      if (!(al > 0 && al <= 90)) out.push("この緯度と赤緯では太陽が地平線の上に出ません（南中高度 " + al.toFixed(1) + "°）");
+    } else if (K === "magnet" || K === "plant") {
+      /* 指定は無い。いつでも描ける。 */
+    } else if (K === "body") {
+      var bt = str(spec.type || "digest").toLowerCase();
+      if (!/digest|消化|circ|循環/.test(bt)) out.push("type は digest か circulate にしてください");
+    } else if (K === "cell") {
+      var ct2 = str(spec.type || "animal").toLowerCase();
+      if (!/plant|植物|animal|動物/.test(ct2)) out.push("type は plant か animal にしてください");
+    } else if (K === "logicgate") {
+      var lg = str(spec.type || "and").toUpperCase();
+      if (["AND", "OR", "NOT", "NAND", "NOR", "XOR"].indexOf(lg) < 0)
+        out.push("type は AND / OR / NOT / NAND / NOR / XOR のどれかにしてください");
+    } else if (K === "network") {
+      var nn3 = listOf(spec.nodes);
+      if (nn3.length < 2) out.push("nodes は 2 つ以上にしてください");
+      if (nn3.length > 8) out.push("nodes は 8 つまでにしてください");
+      if (!/star|スター/.test(str(spec.type))) {
+        var lk = listOf(spec.links);
+        if (!lk.length) out.push("links がありません（star 型にするなら type=star）");
+        lk.forEach(function (l) {
+          var ab = l.split(/[-–ー]/).map(function (x) { return x.trim(); });
+          if (ab.length !== 2 || nn3.indexOf(ab[0]) < 0 || nn3.indexOf(ab[1]) < 0)
+            out.push("links が nodes に無い機器を指しています: " + l);
+        });
+      }
+    } else if (K === "stackqueue") {
+      var si = listOf(spec.items);
+      if (!si.length) out.push("items がありません");
+      if (si.length > 8) out.push("items は 8 つまでにしてください");
+    } else if (K === "axes3d") {
+      var ap = str(spec.points).split(/[;；]/).map(function (t) {
+        var m = t.split(/[:：]/);
+        return numsOf(m.length > 1 ? m[1] : m[0]);
+      }).filter(function (v) { return v.length; });
+      if (!ap.length) out.push("points を 名前:x,y,z の形で書いてください");
+      ap.forEach(function (v, i) {
+        if (v.length !== 3) out.push((i + 1) + " つめの points は x,y,z の 3 つで書いてください");
+      });
+      if (ap.length > 6) out.push("points は 6 つまでにしてください");
+    }
+    return out;
+  }
+
+  /* "1,2 3,4" → [[1,2],[3,4]] */
+  function pointsOf(v) {
+    return str(v).split(/[\s;；]+/).map(function (p) { return p.trim(); })
+      .filter(Boolean)
+      .map(function (p) {
+        var xy = p.split(/[,，]/).map(function (x) { return Number(x.trim()); });
+        return (xy.length === 2 && isFinite(xy[0]) && isFinite(xy[1])) ? xy : null;
+      })
+      .filter(Boolean);
+  }
+  /* "1,2,3,4,5;6,7,8,9,10" → [[..],[..]] */
+  function boxSetsOf(v) {
+    return str(v).split(/[;；]/).map(function (s) { return numsOf(s); })
+      .filter(function (a) { return a.length; });
+  }
+  function parseTime(v) {
+    var m = str(v).trim().match(/^(\d{1,2})\s*[:：時]\s*(\d{1,2})?/);
+    if (!m) return null;
+    var h = Number(m[1]), mi = Number(m[2] || 0);
+    if (!(h >= 0 && h <= 24) || !(mi >= 0 && mi < 60)) return null;
+    return { h: h % 12, m: mi, h24: h };
+  }
+  /* "-1<=x<3" → {lo, loEq, hi, hiEq} */
+  function parseRange(v) {
+    var s = str(v).replace(/\s+/g, "").replace(/≦/g, "<=").replace(/≧/g, ">=").replace(/＜/g, "<").replace(/＞/g, ">");
+    var m = s.match(/^(-?\d+(?:\.\d+)?)(<=?|≤)x(<=?|≤)(-?\d+(?:\.\d+)?)$/);
+    if (m) return { lo: Number(m[1]), loEq: m[2] !== "<", hi: Number(m[4]), hiEq: m[3] !== "<" };
+    m = s.match(/^x(<=?|≤)(-?\d+(?:\.\d+)?)$/);
+    if (m) return { lo: null, hi: Number(m[2]), hiEq: m[1] !== "<" };
+    m = s.match(/^x(>=?|≥)(-?\d+(?:\.\d+)?)$/);
+    if (m) return { lo: Number(m[2]), loEq: m[1] !== ">", hi: null };
+    return null;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     4) 式を読む（関数グラフ用）
+
+     eval は使わない。使える記号を決めて、自分で組み立てる。
+     数・x・+ - * / ^ ・( )・sin cos tan sqrt abs log exp だけ。
+     ══════════════════════════════════════════════════════════════════ */
+  var FUNCS = {
+    sin: Math.sin, cos: Math.cos, tan: Math.tan, sqrt: Math.sqrt,
+    abs: Math.abs, log: Math.log, exp: Math.exp,
+    asin: Math.asin, acos: Math.acos, atan: Math.atan
+  };
+  function compile(src) {
+    var s = str(src).replace(/\s+/g, "").replace(/[＋]/g, "+").replace(/[－−ー]/g, "-")
+      .replace(/[×＊]/g, "*").replace(/[÷／]/g, "/").replace(/[（]/g, "(").replace(/[）]/g, ")")
+      .replace(/^y=/, "").replace(/^f\(x\)=/, "");
+    if (!s) return null;
+    if (!/^[0-9xXπ+\-*/^().,a-z]*$/i.test(s)) return null;
+    var pos = 0;
+    function peek() { return s.charAt(pos); }
+    function eat(c) { if (s.charAt(pos) === c) { pos++; return true; } return false; }
+    function expr() {
+      var v = term();
+      if (v === null) return null;
+      for (;;) {
+        if (eat("+")) { var r = term(); if (r === null) return null; v = mk("+", v, r); }
+        else if (eat("-")) { var r2 = term(); if (r2 === null) return null; v = mk("-", v, r2); }
+        else return v;
+      }
+    }
+    function term() {
+      var v = unary();
+      if (v === null) return null;
+      for (;;) {
+        if (eat("*")) { var r = unary(); if (r === null) return null; v = mk("*", v, r); }
+        else if (eat("/")) { var r2 = unary(); if (r2 === null) return null; v = mk("/", v, r2); }
+        else if (/[0-9x(]/i.test(peek()) && v.implicitOk) {   /* 2x / 3(x+1) の暗黙の掛け算 */
+          var r3 = unary(); if (r3 === null) return null; v = mk("*", v, r3);
+        }
+        else return v;
+      }
+    }
+    function unary() {
+      if (eat("-")) { var v = unary(); return v === null ? null : mk("neg", v, null); }
+      if (eat("+")) return unary();
+      return power();
+    }
+    function power() {
+      var b = atom();
+      if (b === null) return null;
+      if (eat("^")) { var e = unary(); if (e === null) return null; return mk("^", b, e); }
+      return b;
+    }
+    function atom() {
+      var c = peek();
+      if (c === "(") {
+        pos++;
+        var v = expr();
+        if (v === null || !eat(")")) return null;
+        v = { fn: v.fn, implicitOk: true };
+        return v;
+      }
+      var m = /^[0-9]+(\.[0-9]+)?/.exec(s.slice(pos));
+      if (m) { pos += m[0].length; var n = Number(m[0]); return { fn: function () { return n; }, implicitOk: true }; }
+      if (/^[xX]/.test(s.slice(pos))) { pos++; return { fn: function (x) { return x; }, implicitOk: true }; }
+      if (s.slice(pos, pos + 1) === "π") { pos++; return { fn: function () { return Math.PI; }, implicitOk: true }; }
+      if (s.slice(pos, pos + 2).toLowerCase() === "pi") { pos += 2; return { fn: function () { return Math.PI; }, implicitOk: true }; }
+      var fm = /^[a-z]+/i.exec(s.slice(pos));
+      if (fm && FUNCS[fm[0].toLowerCase()]) {
+        pos += fm[0].length;
+        if (!eat("(")) return null;
+        var a = expr();
+        if (a === null || !eat(")")) return null;
+        var g = FUNCS[fm[0].toLowerCase()];
+        return { fn: function (x) { return g(a.fn(x)); }, implicitOk: true };
+      }
+      return null;
+    }
+    function mk(op, a, b) {
+      var fn;
+      if (op === "+") fn = function (x) { return a.fn(x) + b.fn(x); };
+      else if (op === "-") fn = function (x) { return a.fn(x) - b.fn(x); };
+      else if (op === "*") fn = function (x) { return a.fn(x) * b.fn(x); };
+      else if (op === "/") fn = function (x) { return a.fn(x) / b.fn(x); };
+      else if (op === "^") fn = function (x) { return Math.pow(a.fn(x), b.fn(x)); };
+      else fn = function (x) { return -a.fn(x); };
+      return { fn: fn, implicitOk: false };
+    }
+    var tree = expr();
+    if (tree === null || pos !== s.length) return null;
+    /* 一度でも数になることを確かめる（読めても計算できない式を弾く） */
+    var probe = tree.fn(1);
+    if (typeof probe !== "number") return null;
+    return tree.fn;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     5) 三角形を解く（余弦定理・正弦定理）
+
+     ここが「正確な図」の心臓。3 辺でも 2 辺夾角でも 1 辺 2 角でも、
+     **同じ座標系の実際の頂点**まで落とす。
+     ══════════════════════════════════════════════════════════════════ */
+  function solveTriangle(spec) {
+    var a, b, c;                 /* 辺の長さ。a=BC, b=CA, c=AB（向かい合う頂点の名） */
+    if (spec.sss != null) {
+      var v = numsOf(spec.sss);
+      if (v.length !== 3) return { error: "sss は 3 つの辺で書いてください" };
+      if (v.some(function (x) { return !(x > 0); })) return { error: "辺の長さは正の数にしてください" };
+      a = v[0]; b = v[1]; c = v[2];
+      /* 三角不等式。ここを通さないと「閉じない三角形」になる。 */
+      if (a + b <= c || b + c <= a || c + a <= b)
+        return { error: "この 3 辺（" + v.join(", ") + "）では三角形になりません" };
+    } else if (spec.sas != null) {
+      var s2 = numsOf(spec.sas);
+      if (s2.length !== 3) return { error: "sas は 辺,角,辺 の 3 つで書いてください" };
+      var p = s2[0], ang = s2[1], q = s2[2];
+      if (!(p > 0) || !(q > 0)) return { error: "辺の長さは正の数にしてください" };
+      if (!(ang > 0 && ang < 180)) return { error: "角は 0 と 180 の間にしてください" };
+      /* 挟まれた角を頂点 A に置く。AB = p、AC = q。
+         向かい合う辺 BC は余弦定理で出す: a² = p² + q² − 2pq·cos A */
+      c = p;                                             /* AB */
+      b = q;                                             /* CA */
+      a = Math.sqrt(p * p + q * q - 2 * p * q * Math.cos(rad(ang)));
+    } else if (spec.asa != null) {
+      var s3 = numsOf(spec.asa);
+      if (s3.length !== 3) return { error: "asa は 角,辺,角 の 3 つで書いてください" };
+      var A = s3[0], side = s3[1], B = s3[2];
+      if (!(A > 0) || !(B > 0) || A + B >= 180)
+        return { error: "2 つの角の和は 180 より小さくしてください" };
+      if (!(side > 0)) return { error: "辺の長さは正の数にしてください" };
+      var C = 180 - A - B;
+      /* 正弦定理。side は A と B に挟まれた辺＝AB=c */
+      c = side;
+      var k = c / Math.sin(rad(C));
+      a = k * Math.sin(rad(A));
+      b = k * Math.sin(rad(B));
+    } else {
+      a = 3; b = 4; c = 5;       /* 何も書かれていなければ 3・4・5 */
+    }
+    /* 頂点の座標。B を原点、C を x 軸上に置き、A を余弦定理で決める。
+       BC = a, AB = c, CA = b。
+         cos B = (a² + c² − b²) / (2ac) */
+    var cosB = (a * a + c * c - b * b) / (2 * a * c);
+    if (!(cosB >= -1 && cosB <= 1)) return { error: "この寸法では三角形になりません" };
+    var B2 = Math.acos(cosB);
+    var pts = {
+      B: [0, 0],
+      C: [a, 0],
+      A: [c * Math.cos(B2), c * Math.sin(B2)]
+    };
+    var cosA = (b * b + c * c - a * a) / (2 * b * c);
+    var cosC = (a * a + b * b - c * c) / (2 * a * b);
+    return {
+      sides: { a: a, b: b, c: c },
+      angles: { A: deg(Math.acos(Math.max(-1, Math.min(1, cosA)))),
+                B: deg(B2),
+                C: deg(Math.acos(Math.max(-1, Math.min(1, cosC)))) },
+      pts: pts
+    };
+  }
+
+  /* 円周上の点。角度は「真上から反時計回り」で数えるほうが人の感覚に合う。 */
+  function circlePoints(spec) {
+    var r = num(spec.r, 1);
+    var list = [], byName = {};
+    var src = str(spec.points).trim();
+    if (!src) return { list: [], byName: {} };
+    var bad = null;
+    src.split(/[,，\s]+/).filter(Boolean).forEach(function (p) {
+      var m = p.split(/[:：]/);
+      if (m.length !== 2) { bad = bad || ("points は 名前:角度 の形で書いてください: " + p); return; }
+      var nm = m[0].trim(), ang = Number(m[1]);
+      if (!nm || !isFinite(ang)) { bad = bad || ("points の角度を読み取れません: " + p); return; }
+      var t = rad(90 - ang);            /* 真上 = 0 度、時計回りを正にする */
+      var pt = { name: nm, deg: ang, x: r * Math.cos(t), y: -r * Math.sin(t) };
+      list.push(pt); byName[nm] = pt;
+    });
+    if (bad) return { error: bad, list: list, byName: byName };
+    return { list: list, byName: byName };
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     6) SVG を組む
+     ══════════════════════════════════════════════════════════════════ */
+  var INK = "#111", SUB = "#666", FILL = "#e9e9e9", LIGHT = "#c8c8c8";
+
+  function Canvas(w, h) {
+    this.w = w; this.h = h; this.body = [];
+  }
+  Canvas.prototype.add = function (s) { this.body.push(s); return this; };
+  Canvas.prototype.line = function (x1, y1, x2, y2, o) {
+    o = o || {};
+    return this.add('<line x1="' + f(x1) + '" y1="' + f(y1) + '" x2="' + f(x2) + '" y2="' + f(y2)
+      + '" stroke="' + (o.stroke || INK) + '" stroke-width="' + (o.w || 1.2) + '"'
+      + (o.dash ? ' stroke-dasharray="' + o.dash + '"' : "")
+      + (o.cap ? ' stroke-linecap="' + o.cap + '"' : "") + "/>");
+  };
+  Canvas.prototype.poly = function (pts, o) {
+    o = o || {};
+    var d = pts.map(function (p) { return f(p[0]) + "," + f(p[1]); }).join(" ");
+    return this.add("<" + (o.open ? "polyline" : "polygon") + ' points="' + d + '"'
+      + ' fill="' + (o.fill || "none") + '" stroke="' + (o.stroke || INK) + '"'
+      + ' stroke-width="' + (o.w || 1.2) + '"'
+      + (o.dash ? ' stroke-dasharray="' + o.dash + '"' : "")
+      + ' stroke-linejoin="round"/>');
+  };
+  Canvas.prototype.rect = function (x, y, w, h, o) {
+    o = o || {};
+    return this.add('<rect x="' + f(x) + '" y="' + f(y) + '" width="' + f(Math.max(0, w))
+      + '" height="' + f(Math.max(0, h)) + '" fill="' + (o.fill || "none") + '"'
+      + ' stroke="' + (o.stroke || INK) + '" stroke-width="' + (o.w || 1.2) + '"'
+      + (o.rx ? ' rx="' + o.rx + '"' : "")
+      + (o.dash ? ' stroke-dasharray="' + o.dash + '"' : "") + "/>");
+  };
+  Canvas.prototype.circle = function (cx, cy, r, o) {
+    o = o || {};
+    return this.add('<circle cx="' + f(cx) + '" cy="' + f(cy) + '" r="' + f(Math.max(0, r))
+      + '" fill="' + (o.fill || "none") + '" stroke="' + (o.stroke || INK) + '"'
+      + ' stroke-width="' + (o.w || 1.2) + '"'
+      + (o.dash ? ' stroke-dasharray="' + o.dash + '"' : "") + "/>");
+  };
+  Canvas.prototype.ellipse = function (cx, cy, rx, ry, o) {
+    o = o || {};
+    return this.add('<ellipse cx="' + f(cx) + '" cy="' + f(cy) + '" rx="' + f(Math.max(0, rx))
+      + '" ry="' + f(Math.max(0, ry)) + '" fill="' + (o.fill || "none") + '"'
+      + ' stroke="' + (o.stroke || INK) + '" stroke-width="' + (o.w || 1.2) + '"'
+      + (o.dash ? ' stroke-dasharray="' + o.dash + '"' : "") + "/>");
+  };
+  Canvas.prototype.path = function (d, o) {
+    o = o || {};
+    return this.add('<path d="' + d + '" fill="' + (o.fill || "none") + '"'
+      + ' stroke="' + (o.stroke || INK) + '" stroke-width="' + (o.w || 1.2) + '"'
+      + (o.dash ? ' stroke-dasharray="' + o.dash + '"' : "") + "/>");
+  };
+  /* 文字。anchor は start / middle / end、baseline は上下の合わせ方。 */
+  Canvas.prototype.text = function (x, y, s, o) {
+    o = o || {};
+    var t = str(s);
+    if (!t) return this;
+    return this.add('<text x="' + f(x) + '" y="' + f(y) + '" font-size="' + (o.size || 11) + '"'
+      + ' fill="' + (o.fill || INK) + '"'
+      + ' text-anchor="' + (o.anchor || "middle") + '"'
+      + ' dominant-baseline="' + (o.baseline || "middle") + '"'
+      + (o.weight ? ' font-weight="' + o.weight + '"' : "")
+      + (o.style ? ' font-style="' + o.style + '"' : "")
+      + (o.rotate ? ' transform="rotate(' + f(o.rotate) + ' ' + f(x) + ' ' + f(y) + ')"' : "")
+      + ">" + esc(t) + "</text>");
+  };
+  /* 矢印。マーカーは使わない（印刷側で消えることがある）。線分で描く。
+     両端に付けたいときは both:true。 */
+  Canvas.prototype.arrow = function (x1, y1, x2, y2, o) {
+    o = o || {};
+    this.line(x1, y1, x2, y2, o);
+    this.head(x2, y2, Math.atan2(y2 - y1, x2 - x1), o);
+    if (o.both) this.head(x1, y1, Math.atan2(y1 - y2, x1 - x2), o);
+    return this;
+  };
+  Canvas.prototype.head = function (x, y, a, o) {
+    o = o || {};
+    var L = o.head || 5.5;
+    return this.poly([[x, y],
+      [x - L * Math.cos(a - 0.36), y - L * Math.sin(a - 0.36)],
+      [x - L * Math.cos(a + 0.36), y - L * Math.sin(a + 0.36)]],
+      { fill: o.stroke || INK, stroke: o.stroke || INK, w: 0.4 });
+  };
+
+  /* ══ 図を「丁寧に」描くための小物（2026-09-11 追加）══════════════
+     ここまでは線と文字しか無かったので、
+       ・グラフの曲線が枠の外へはみ出す
+       ・等しい辺・等しい角の印が無い
+       ・寸法（何 cm か）を示す線が無い
+     という、試験の図としては足りない絵になっていた。
+     ══════════════════════════════════════════════════════════════ */
+
+  /* 切り抜き。**枠の外へはみ出した曲線を紙に出さない。**
+     実測: y の範囲を外れた放物線が、枠の上に水平な線として出ていた。 */
+  Canvas.prototype.clipRect = function (id, x, y, w, h) {
+    this.defs = this.defs || [];
+    this.defs.push('<clipPath id="' + id + '"><rect x="' + f(x) + '" y="' + f(y)
+      + '" width="' + f(w) + '" height="' + f(h) + '"/></clipPath>');
+    return this;
+  };
+  Canvas.prototype.begin = function (attr) { return this.add("<g " + attr + ">"); };
+  Canvas.prototype.end = function () { return this.add("</g>"); };
+
+  /* 等しい辺の印（線分の中ほどに直交する短い線を n 本）。 */
+  Canvas.prototype.tick = function (p, q, n, o) {
+    o = o || {};
+    n = Math.max(1, Math.min(3, n || 1));
+    var mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+    var a = Math.atan2(q[1] - p[1], q[0] - p[0]);
+    var nx = -Math.sin(a), ny = Math.cos(a);
+    var L = o.len || 5, gap = o.gap || 3.2;
+    for (var i = 0; i < n; i++) {
+      var t = (i - (n - 1) / 2) * gap;
+      var cx = mx + Math.cos(a) * t, cy = my + Math.sin(a) * t;
+      this.line(cx - nx * L / 2, cy - ny * L / 2, cx + nx * L / 2, cy + ny * L / 2,
+                { w: o.w || 1.1, stroke: o.stroke || INK });
+    }
+    return this;
+  };
+  /* 寸法線（両端に矢印、真ん中に長さ）。図形の外側へ少し離して引く。 */
+  Canvas.prototype.dim = function (p, q, label, o) {
+    o = o || {};
+    var off = o.offset == null ? 12 : o.offset;
+    var a = Math.atan2(q[1] - p[1], q[0] - p[0]);
+    var nx = -Math.sin(a) * off, ny = Math.cos(a) * off;
+    var p2 = [p[0] + nx, p[1] + ny], q2 = [q[0] + nx, q[1] + ny];
+    this.line(p[0], p[1], p2[0], p2[1], { w: 0.6, stroke: SUB });
+    this.line(q[0], q[1], q2[0], q2[1], { w: 0.6, stroke: SUB });
+    this.arrow(p2[0], p2[1], q2[0], q2[1], { w: 0.9, stroke: SUB, head: 4.4, both: true });
+    if (label) {
+      var mx = (p2[0] + q2[0]) / 2, my = (p2[1] + q2[1]) / 2;
+      var up = Math.abs(Math.cos(a)) > 0.5;
+      this.text(mx + (up ? 0 : -8), my + (up ? -7 : 0), label,
+                { size: o.size || 10, fill: INK, anchor: up ? "middle" : "end" });
+    }
+    return this;
+  };
+  /* 平行の印（辺の中ほどに「＞」を n 個）。 */
+  Canvas.prototype.chev = function (p, q, n, o) {
+    o = o || {};
+    n = Math.max(1, Math.min(3, n || 1));
+    var mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+    var a = Math.atan2(q[1] - p[1], q[0] - p[0]);
+    var L = o.len || 4.5, gap = o.gap || 4;
+    for (var i = 0; i < n; i++) {
+      var t = (i - (n - 1) / 2) * gap;
+      var cx = mx + Math.cos(a) * t, cy = my + Math.sin(a) * t;
+      this.poly([[cx - L * Math.cos(a - 0.7), cy - L * Math.sin(a - 0.7)], [cx, cy],
+                 [cx - L * Math.cos(a + 0.7), cy - L * Math.sin(a + 0.7)]],
+                { open: true, w: o.w || 1.1, stroke: o.stroke || INK });
+    }
+    return this;
+  };
+
+  Canvas.prototype.out = function (opts) {
+    opts = opts || {};
+    var cls = opts.className ? ' class="' + esc(opts.className) + '"' : "";
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + f(this.w) + " " + f(this.h) + '"'
+      + ' width="100%" role="img"' + cls
+      + (opts.title ? ' aria-label="' + esc(opts.title) + '"' : ' aria-hidden="true"')
+      + ' font-family="\'Hiragino Sans\',\'Yu Gothic\',\'Noto Sans JP\',sans-serif">'
+      + (opts.title ? "<title>" + esc(opts.title) + "</title>" : "")
+      + (this.defs && this.defs.length ? "<defs>" + this.defs.join("") + "</defs>" : "")
+      + '<rect width="100%" height="100%" fill="#fff"/>'
+      + this.body.join("") + "</svg>";
+  };
+
+  /* 目盛りのきりのよい刻み（1・2・5 × 10ⁿ）。
+     ここを「最大値÷5」にすると 37.4 のような目盛りが出て読めない。 */
+  function niceStep(span, want) {
+    if (!(span > 0)) return 1;
+    var raw = span / Math.max(1, want || 5);
+    var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+    var n = raw / mag;
+    var s = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+    return s * mag;
+  }
+  function niceBounds(lo, hi, want) {
+    if (lo === hi) { lo -= 1; hi += 1; }
+    var st = niceStep(hi - lo, want);
+    return { lo: Math.floor(lo / st) * st, hi: Math.ceil(hi / st) * st, step: st };
+  }
+  /* 目盛りの文字。0.30000000000000004 を出さない。 */
+  function tickLabel(v, step) {
+    var dp = step < 1 ? Math.min(4, Math.ceil(-Math.log(step) / Math.LN10)) : 0;
+    var s = v.toFixed(dp);
+    if (dp) s = s.replace(/\.?0+$/, "");
+    return s === "-0" ? "0" : s;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     7) 図ごとの描き方
+     ══════════════════════════════════════════════════════════════════ */
+  var DRAW = {};
+
+  /* ── 棒グラフ / 折れ線 ─────────────────────────────────────── */
+  function xySeries(spec) {
+    var out = [], names = listOf(spec.names);
+    ["y", "y2", "y3"].forEach(function (k, i) {
+      if (spec[k] == null) return;
+      var v = numsOf(spec[k]);
+      if (v.length) out.push({ name: names[i] || (out.length ? "系列" + (out.length + 1) : ""), values: v });
+    });
+    return out;
+  }
+  function plotFrame(c, box, opt) {
+    /* 枠と目盛り。box = {x, y, w, h} は描画領域（軸の内側）。 */
+    var lo = opt.lo, hi = opt.hi, step = opt.step;
+    for (var v = lo; v <= hi + step / 1e6; v += step) {
+      var y = box.y + box.h - (v - lo) / (hi - lo) * box.h;
+      c.line(box.x, y, box.x + box.w, y, { stroke: v === 0 ? SUB : LIGHT, w: v === 0 ? 1 : 0.6 });
+      c.text(box.x - 5, y, tickLabel(v, step), { anchor: "end", size: 10, fill: SUB });
+    }
+    c.line(box.x, box.y, box.x, box.y + box.h, { w: 1.2 });
+    c.line(box.x, box.y + box.h, box.x + box.w, box.y + box.h, { w: 1.2 });
+  }
+  function legendOf(c, series, x, y) {
+    if (series.length < 2) return;
+    var cx = x;
+    series.forEach(function (s, i) {
+      c.rect(cx, y - 5, 10, 10, { fill: i === 0 ? INK : "#fff", w: 1 });
+      c.text(cx + 14, y, s.name || ("系列" + (i + 1)), { anchor: "start", size: 10 });
+      cx += 20 + (str(s.name).length || 3) * 11;
+    });
+  }
+
+  DRAW.bar = function (spec) {
+    var xs = listOf(spec.x), ser = xySeries(spec);
+    var W = 440, H = 260, box = { x: 52, y: str(spec.title) ? 34 : 16, w: 368, h: 0 };
+    box.h = H - box.y - 46;
+    var all = ser.reduce(function (a, s) { return a.concat(s.values); }, []);
+    var lo0 = Math.min(0, Math.min.apply(null, all)), hi0 = Math.max.apply(null, all);
+    var nb = niceBounds(num(spec.ymin, lo0), num(spec.ymax, hi0), 5);
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    if (str(spec.unit)) c.text(box.x - 4, box.y - 8, "(" + spec.unit + ")", { anchor: "end", size: 10, fill: SUB });
+    plotFrame(c, box, nb);
+    var slot = box.w / xs.length, gap = slot * 0.22;
+    var bw = (slot - gap * 2) / Math.max(1, ser.length);
+    xs.forEach(function (lab, i) {
+      ser.forEach(function (s, k) {
+        var v = s.values[i];
+        if (!isNum(v)) return;
+        var y0 = box.y + box.h - (Math.max(nb.lo, Math.min(0, v)) - nb.lo) / (nb.hi - nb.lo) * box.h;
+        var y1 = box.y + box.h - (v - nb.lo) / (nb.hi - nb.lo) * box.h;
+        c.rect(box.x + slot * i + gap + bw * k, Math.min(y0, y1), bw, Math.abs(y1 - y0),
+               { fill: k === 0 ? "#333" : "#fff", w: 1 });
+      });
+      c.text(box.x + slot * i + slot / 2, box.y + box.h + 14, lab, { size: 10 });
+    });
+    legendOf(c, ser, box.x, H - 12);
+    return c.out({ title: str(spec.title) || "棒グラフ" });
+  };
+
+  DRAW.line = function (spec) {
+    var xs = listOf(spec.x), ser = xySeries(spec);
+    var W = 440, H = 260, box = { x: 52, y: str(spec.title) ? 34 : 16, w: 368, h: 0 };
+    box.h = H - box.y - 46;
+    var all = ser.reduce(function (a, s) { return a.concat(s.values); }, []);
+    var nb = niceBounds(num(spec.ymin, Math.min.apply(null, all)), num(spec.ymax, Math.max.apply(null, all)), 5);
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    if (str(spec.unit)) c.text(box.x - 4, box.y - 8, "(" + spec.unit + ")", { anchor: "end", size: 10, fill: SUB });
+    plotFrame(c, box, nb);
+    var slot = box.w / Math.max(1, xs.length - 1);
+    ser.forEach(function (s, k) {
+      var pts = [];
+      s.values.forEach(function (v, i) {
+        if (!isNum(v)) return;
+        pts.push([box.x + slot * i, box.y + box.h - (v - nb.lo) / (nb.hi - nb.lo) * box.h]);
+      });
+      c.poly(pts, { open: true, w: 1.6, dash: k ? "5 3" : null });
+      pts.forEach(function (p) {
+        if (k === 0) c.circle(p[0], p[1], 3, { fill: INK, w: 0 });
+        else c.rect(p[0] - 2.6, p[1] - 2.6, 5.2, 5.2, { fill: "#fff", w: 1.2 });
+      });
+    });
+    xs.forEach(function (lab, i) {
+      c.text(box.x + slot * i, box.y + box.h + 14, lab, { size: 10 });
+    });
+    legendOf(c, ser, box.x, H - 12);
+    return c.out({ title: str(spec.title) || "折れ線グラフ" });
+  };
+
+  DRAW.pie = function (spec) {
+    var labels = listOf(spec.labels), values = numsOf(spec.values);
+    var total = values.reduce(function (a, b) { return a + b; }, 0);
+    var W = 420, H = 250, cx = 130, cy = H / 2 + (str(spec.title) ? 8 : 0), r = 88;
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    c.circle(cx, cy, r, { w: 1.2 });
+    var acc = 0;
+    var shades = ["#3a3a3a", "#7a7a7a", "#b4b4b4", "#e0e0e0", "#565656", "#969696", "#cfcfcf", "#ededed"];
+    values.forEach(function (v, i) {
+      var a0 = acc / total * 360, a1 = (acc + v) / total * 360;
+      acc += v;
+      /* 角度は 値/合計×360 そのもの。真上から時計回り。 */
+      var t0 = rad(a0 - 90), t1 = rad(a1 - 90);
+      var x0 = cx + r * Math.cos(t0), y0 = cy + r * Math.sin(t0);
+      var x1 = cx + r * Math.cos(t1), y1 = cy + r * Math.sin(t1);
+      var large = (a1 - a0) > 180 ? 1 : 0;
+      c.path("M" + f(cx) + " " + f(cy) + " L" + f(x0) + " " + f(y0)
+        + " A" + f(r) + " " + f(r) + " 0 " + large + " 1 " + f(x1) + " " + f(y1) + " Z",
+        { fill: shades[i % shades.length], w: 1 });
+      /* 割合は四捨五入して出す（合計が 100 にならないときは出さない） */
+      var tm = rad((a0 + a1) / 2 - 90);
+      var pct = Math.round(v / total * 1000) / 10;
+      if (a1 - a0 >= 24)
+        c.text(cx + r * 0.62 * Math.cos(tm), cy + r * 0.62 * Math.sin(tm), pct + "%",
+               { size: 10, fill: i < 2 ? "#fff" : INK });
+    });
+    labels.forEach(function (lab, i) {
+      var y = cy - r + 14 * i + 6;
+      c.rect(258, y - 5, 10, 10, { fill: shades[i % shades.length], w: 1 });
+      c.text(274, y, lab + "  " + values[i], { anchor: "start", size: 10.5 });
+    });
+    return c.out({ title: str(spec.title) || "円グラフ" });
+  };
+
+  DRAW.stackbar = function (spec) {
+    var labels = listOf(spec.labels), values = numsOf(spec.values);
+    var total = values.reduce(function (a, b) { return a + b; }, 0);
+    var W = 440, H = str(spec.title) ? 130 : 110, x0 = 30, w = W - 60, y = H - 62;
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    var shades = ["#3a3a3a", "#7a7a7a", "#b4b4b4", "#e0e0e0", "#565656", "#969696"];
+    var acc = 0;
+    values.forEach(function (v, i) {
+      var xw = v / total * w, xx = x0 + acc / total * w;
+      acc += v;
+      c.rect(xx, y, xw, 34, { fill: shades[i % shades.length], w: 1 });
+      var pct = Math.round(v / total * 1000) / 10;
+      if (xw > 34) c.text(xx + xw / 2, y + 17, pct + "%", { size: 10, fill: i < 2 ? "#fff" : INK });
+      if (xw > 28) c.text(xx + xw / 2, y + 46, labels[i] || "", { size: 10 });
+    });
+    /* 0% と 100% の目盛り */
+    c.text(x0, y - 8, "0%", { size: 9.5, fill: SUB });
+    c.text(x0 + w, y - 8, "100%", { size: 9.5, fill: SUB });
+    return c.out({ title: str(spec.title) || "帯グラフ" });
+  };
+
+  DRAW.scatter = function (spec) {
+    var pts = pointsOf(spec.points);
+    var W = 400, H = 300, box = { x: 54, y: str(spec.title) ? 34 : 18, w: 322, h: 0 };
+    box.h = H - box.y - 46;
+    var xsv = pts.map(function (p) { return p[0]; }), ysv = pts.map(function (p) { return p[1]; });
+    var xb = niceBounds(num(spec.xmin, Math.min.apply(null, xsv)), num(spec.xmax, Math.max.apply(null, xsv)), 5);
+    var yb = niceBounds(num(spec.ymin, Math.min.apply(null, ysv)), num(spec.ymax, Math.max.apply(null, ysv)), 5);
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    plotFrame(c, box, yb);
+    for (var v = xb.lo; v <= xb.hi + xb.step / 1e6; v += xb.step) {
+      var x = box.x + (v - xb.lo) / (xb.hi - xb.lo) * box.w;
+      c.line(x, box.y, x, box.y + box.h, { stroke: LIGHT, w: 0.6 });
+      c.text(x, box.y + box.h + 13, tickLabel(v, xb.step), { size: 10, fill: SUB });
+    }
+    c.line(box.x, box.y, box.x, box.y + box.h, { w: 1.2 });
+    c.line(box.x, box.y + box.h, box.x + box.w, box.y + box.h, { w: 1.2 });
+    pts.forEach(function (p) {
+      c.circle(box.x + (p[0] - xb.lo) / (xb.hi - xb.lo) * box.w,
+               box.y + box.h - (p[1] - yb.lo) / (yb.hi - yb.lo) * box.h, 3.2, { fill: "#222", w: 0 });
+    });
+    if (str(spec.xlabel)) c.text(box.x + box.w / 2, H - 10, spec.xlabel, { size: 10.5 });
+    if (str(spec.ylabel)) c.text(13, box.y + box.h / 2, spec.ylabel, { size: 10.5, rotate: -90 });
+    return c.out({ title: str(spec.title) || "散布図" });
+  };
+
+  DRAW.hist = function (spec) {
+    var bins = numsOf(spec.bins), freq = numsOf(spec.freq);
+    var W = 420, H = 270, box = { x: 46, y: str(spec.title) ? 34 : 18, w: 352, h: 0 };
+    box.h = H - box.y - 44;
+    var nb = niceBounds(0, Math.max.apply(null, freq), 5);
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    plotFrame(c, box, nb);
+    /* 階級の幅は実際の値の幅に比例させる（幅が違う階級でも正しく見える） */
+    var span = bins[bins.length - 1] - bins[0];
+    freq.forEach(function (v, i) {
+      var x0 = box.x + (bins[i] - bins[0]) / span * box.w;
+      var x1 = box.x + (bins[i + 1] - bins[0]) / span * box.w;
+      var y1 = box.y + box.h - (v - nb.lo) / (nb.hi - nb.lo) * box.h;
+      c.rect(x0, y1, x1 - x0, box.y + box.h - y1, { fill: "#d5d5d5", w: 1 });
+    });
+    bins.forEach(function (b, i) {
+      var x = box.x + (b - bins[0]) / span * box.w;
+      c.text(x, box.y + box.h + 13, tickLabel(b, 1), { size: 9.5, fill: SUB });
+    });
+    if (str(spec.xlabel)) c.text(box.x + box.w / 2, H - 8, spec.xlabel, { size: 10.5 });
+    return c.out({ title: str(spec.title) || "ヒストグラム" });
+  };
+
+  DRAW.box = function (spec) {
+    var sets = boxSetsOf(spec.data), names = listOf(spec.names);
+    var W = 420, H = 80 + sets.length * 58, box = { x: 76, y: str(spec.title) ? 36 : 20, w: 308, h: sets.length * 58 };
+    var all = sets.reduce(function (a, s) { return a.concat(s); }, []);
+    var nb = niceBounds(Math.min.apply(null, all), Math.max.apply(null, all), 5);
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    var X = function (v) { return box.x + (v - nb.lo) / (nb.hi - nb.lo) * box.w; };
+    for (var v = nb.lo; v <= nb.hi + nb.step / 1e6; v += nb.step) {
+      c.line(X(v), box.y, X(v), box.y + box.h, { stroke: LIGHT, w: 0.6 });
+      c.text(X(v), box.y + box.h + 14, tickLabel(v, nb.step), { size: 10, fill: SUB });
+    }
+    sets.forEach(function (s, i) {
+      var cy = box.y + 29 + i * 58, hh = 16;
+      c.line(X(s[0]), cy, X(s[1]), cy, { w: 1.2 });                    /* 下ひげ */
+      c.line(X(s[3]), cy, X(s[4]), cy, { w: 1.2 });                    /* 上ひげ */
+      c.line(X(s[0]), cy - hh / 2, X(s[0]), cy + hh / 2, { w: 1.2 });  /* 最小 */
+      c.line(X(s[4]), cy - hh / 2, X(s[4]), cy + hh / 2, { w: 1.2 });  /* 最大 */
+      c.rect(X(s[1]), cy - hh, X(s[3]) - X(s[1]), hh * 2, { fill: "#fff", w: 1.4 });
+      c.line(X(s[2]), cy - hh, X(s[2]), cy + hh, { w: 1.8 });          /* 中央値 */
+      c.text(box.x - 8, cy, names[i] || ("第" + (i + 1) + "群"), { anchor: "end", size: 10.5 });
+    });
+    if (str(spec.xlabel)) c.text(box.x + box.w / 2, H - 8, spec.xlabel, { size: 10.5 });
+    return c.out({ title: str(spec.title) || "箱ひげ図" });
+  };
+
+  DRAW.dot = function (spec) {
+    var vals = numsOf(spec.values).sort(function (a, b) { return a - b; });
+    var lo = Math.floor(Math.min.apply(null, vals)), hi = Math.ceil(Math.max.apply(null, vals));
+    var counts = {};
+    var maxC = 0;
+    vals.forEach(function (v) { counts[v] = (counts[v] || 0) + 1; maxC = Math.max(maxC, counts[v]); });
+    var W = 420, base = 40 + maxC * 13, H = base + 40;
+    var c = new Canvas(W, H);
+    var x0 = 30, w = W - 60;
+    var span = Math.max(1, hi - lo);
+    c.line(x0 - 8, base, x0 + w + 8, base, { w: 1.2 });
+    for (var v = lo; v <= hi; v++) {
+      var x = x0 + (v - lo) / span * w;
+      c.line(x, base, x, base + 5, { w: 1 });
+      c.text(x, base + 16, String(v), { size: 10 });
+      for (var k = 0; k < (counts[v] || 0); k++) c.circle(x, base - 8 - k * 13, 4.4, { fill: "#333", w: 0 });
+    }
+    if (str(spec.xlabel)) c.text(W / 2, H - 8, spec.xlabel, { size: 10.5 });
+    return c.out({ title: "ドットプロット" });
+  };
+
+  /* ── 関数のグラフ ──────────────────────────────────────────── */
+  /* ══ 関数のグラフ（座標平面）══════════════════════════════════════
+     ★ 2026-09-11 に作り直した。前は次の 3 つが壊れていた（実測）。
+       ① y の範囲を外れた曲線が **枠の外へ出て**、紙面の上に
+          水平な線が引かれていた（放物線の両肩）。
+       ② x の軸の名前が右上の角に浮いていて、軸を指していなかった。
+       ③ 矢印が枠の外まで伸びていた。
+     直し方: 枠で切り抜く（clipPath）。軸の名前は軸の先に置く。
+     矢印は枠の内側で止める。
+     ══════════════════════════════════════════════════════════════ */
+  var GRAPH_UID = 0;
+  DRAW.graph = function (spec) {
+    var x0 = num(spec.xmin, -5), x1 = num(spec.xmax, 5);
+    var fns = ["f", "f2", "f3"].map(function (k) { return str(spec[k]).trim() ? compile(spec[k]) : null; });
+    var names = listOf(spec.names);
+    var extraPts = pointsOf(spec.points), ptNames = listOf(spec.labels);
+
+    /* y の範囲を書いていなければ、実際に計算した値から決める。
+       とびとびに大きくなる式（1/x など）に引きずられないよう、
+       外れ値は四分位で切ってから範囲を決める。 */
+    var y0 = num(spec.ymin, NaN), y1 = num(spec.ymax, NaN);
+    if (!isNum(y0) || !isNum(y1)) {
+      var vals = [];
+      fns.forEach(function (fn) {
+        if (!fn) return;
+        for (var i = 0; i <= 240; i++) {
+          var x = x0 + (x1 - x0) * i / 240, y = fn(x);
+          if (isFinite(y) && Math.abs(y) < 1e6) vals.push(y);
+        }
+      });
+      extraPts.forEach(function (p) { vals.push(p[1]); });
+      if (!vals.length) vals = [-5, 5];
+      vals.sort(function (a, b) { return a - b; });
+      var lo = vals[Math.floor(vals.length * 0.02)], hi = vals[Math.floor(vals.length * 0.98)];
+      var b = niceBounds(Math.min(0, lo), Math.max(0, hi), 5);
+      if (!isNum(y0)) y0 = b.lo;
+      if (!isNum(y1)) y1 = b.hi;
+    }
+
+    var W = 380, H = 340, pad = 30;
+    var bw = W - pad * 2, bh = H - pad * 2;
+    var X = function (x) { return pad + (x - x0) / (x1 - x0) * bw; };
+    var Y = function (y) { return pad + bh - (y - y0) / (y1 - y0) * bh; };
+    var c = new Canvas(W, H);
+    var clip = "gclip" + (++GRAPH_UID);
+    c.clipRect(clip, pad, pad, bw, bh);
+
+    var xs = niceStep(x1 - x0, 8), ys = niceStep(y1 - y0, 8);
+
+    /* ① 方眼 */
+    for (var gx = Math.ceil(x0 / xs - 1e-9) * xs; gx <= x1 + 1e-9; gx += xs)
+      c.line(X(gx), pad, X(gx), pad + bh, { stroke: "#e6e6e6", w: 0.6 });
+    for (var gy = Math.ceil(y0 / ys - 1e-9) * ys; gy <= y1 + 1e-9; gy += ys)
+      c.line(pad, Y(gy), pad + bw, Y(gy), { stroke: "#e6e6e6", w: 0.6 });
+
+    /* ② 軸。0 が範囲の中にあるときだけ実線で引く。
+       矢印の先は **枠の内側**。外へ出すと紙面の他の要素に重なる。 */
+    var hasY = x0 <= 0 && 0 <= x1, hasX = y0 <= 0 && 0 <= y1;
+    if (hasY) c.arrow(X(0), pad + bh, X(0), pad + 2, { w: 1.3 });
+    if (hasX) c.arrow(pad, Y(0), pad + bw - 2, Y(0), { w: 1.3 });
+
+    /* ③ 目盛りの数字。軸があるときは軸ぞい、無ければ枠の外。 */
+    var axY = hasX ? Y(0) : pad + bh;       /* x の目盛りを書く高さ */
+    var axX = hasY ? X(0) : pad;            /* y の目盛りを書く横位置 */
+    for (var tx = Math.ceil(x0 / xs - 1e-9) * xs; tx <= x1 + 1e-9; tx += xs) {
+      if (hasY && Math.abs(tx) < 1e-9) continue;
+      c.line(X(tx), axY - 3, X(tx), axY + 3, { w: 1 });
+      c.text(X(tx), axY + 12, tickLabel(tx, xs), { size: 9.5, fill: SUB });
+    }
+    for (var ty = Math.ceil(y0 / ys - 1e-9) * ys; ty <= y1 + 1e-9; ty += ys) {
+      if (hasX && Math.abs(ty) < 1e-9) continue;
+      c.line(axX - 3, Y(ty), axX + 3, Y(ty), { w: 1 });
+      c.text(axX - 7, Y(ty), tickLabel(ty, ys), { anchor: "end", size: 9.5, fill: SUB });
+    }
+    if (hasX && hasY) c.text(X(0) - 8, Y(0) + 11, "O", { anchor: "end", size: 11 });
+
+    /* ④ 曲線。**枠で切り抜く。** 切らないと枠の外へ線が伸びる。
+       分母 0 などの不連続では線をつなげない。 */
+    c.begin('clip-path="url(#' + clip + ')"');
+    fns.forEach(function (fn, k) {
+      if (!fn) return;
+      var run = [], segs = [], N = 900;
+      var prev = null;
+      for (var i = 0; i <= N; i++) {
+        var x = x0 + (x1 - x0) * i / N, y = fn(x);
+        var ok = isFinite(y);
+        /* 値が飛んだ（漸近線をまたいだ）ときも切る。 */
+        if (ok && prev !== null && Math.abs(y - prev) > (y1 - y0) * 4) ok = false;
+        if (ok) {
+          /* 枠の外でも 1 画面ぶんまでは座標を作る（切り抜きで隠れる）。
+             作らないと、枠のふちで線が水平に寝てしまう。 */
+          var yy = Math.max(y0 - (y1 - y0), Math.min(y1 + (y1 - y0), y));
+          run.push([X(x), Y(yy)]);
+          prev = y;
+        } else {
+          if (run.length > 1) segs.push(run);
+          run = []; prev = null;
+        }
+      }
+      if (run.length > 1) segs.push(run);
+      segs.forEach(function (seg) {
+        c.path("M" + seg.map(function (p) { return f(p[0]) + " " + f(p[1]); }).join(" L"),
+               { w: 1.8, dash: k === 1 ? "7 4" : k === 2 ? "2 3" : null });
+      });
+    });
+    /* 領域の塗り（y > f(x) / y < f(x)）。式の下か上かだけを塗る。 */
+    var fill = str(spec.fill).toLowerCase();
+    if (fns[0] && (fill === "above" || fill === "below" || fill === "上" || fill === "下")) {
+      var up = fill === "above" || fill === "上";
+      var d = [], N2 = 400;
+      for (var i2 = 0; i2 <= N2; i2++) {
+        var x2 = x0 + (x1 - x0) * i2 / N2, y2 = fns[0](x2);
+        if (!isFinite(y2)) y2 = up ? y1 : y0;
+        d.push([X(x2), Y(Math.max(y0 - 1, Math.min(y1 + 1, y2)))]);
+      }
+      d.push([X(x1), up ? pad : pad + bh]);
+      d.push([X(x0), up ? pad : pad + bh]);
+      c.poly(d, { fill: "#dcdcdc", stroke: "none", w: 0 });
+    }
+    /* 点 */
+    extraPts.forEach(function (p, i) {
+      var open = /^o/i.test(str(ptNames[i]));
+      c.circle(X(p[0]), Y(p[1]), 3.6, { fill: open ? "#fff" : INK, w: open ? 1.4 : 0 });
+    });
+    c.end();
+
+    /* 点の名前は切り抜きの外（枠の際でも読めるように） */
+    extraPts.forEach(function (p, i) {
+      var nm = str(ptNames[i]).replace(/^o/i, "");
+      if (!nm) return;
+      var px = X(p[0]), py = Y(p[1]);
+      c.text(Math.min(W - 12, Math.max(12, px + 10)), Math.max(12, py - 10), nm,
+             { size: 11.5, weight: "bold" });
+    });
+
+    /* ⑤ 枠と軸の名前。名前は **軸の先**に置く（角に浮かせない）。 */
+    c.rect(pad, pad, bw, bh, { stroke: "#999", w: 0.9 });
+    if (hasX) c.text(pad + bw - 4, Y(0) - 11, str(spec.xlabel) || "x",
+                     { anchor: "end", size: 12, style: "italic" });
+    else c.text(pad + bw / 2, H - 6, str(spec.xlabel) || "x", { size: 11 });
+    if (hasY) c.text(X(0) + 11, pad + 8, str(spec.ylabel) || "y",
+                     { anchor: "start", size: 12, style: "italic" });
+    else c.text(12, pad + bh / 2, str(spec.ylabel) || "y", { size: 11, rotate: -90 });
+
+    /* 式の名前（2 本以上のとき） */
+    var shown = fns.map(function (fn, i) { return fn ? i : -1; }).filter(function (i) { return i >= 0; });
+    if (shown.length > 1) {
+      shown.forEach(function (i, k) {
+        var yy = pad + 12 + k * 14;
+        c.line(pad + 8, yy, pad + 30, yy, { w: 1.8, dash: i === 1 ? "7 4" : i === 2 ? "2 3" : null });
+        c.text(pad + 34, yy, names[i] || ("y = " + str(spec[["f", "f2", "f3"][i]])),
+               { anchor: "start", size: 10 });
+      });
+    }
+    if (str(spec.title)) c.text(W / 2, 12, spec.title, { size: 12.5, weight: "bold" });
+    return c.out({ title: str(spec.title) || "グラフ" });
+  };
+
+  DRAW.numberline = function (spec) {
+    var lo = num(spec.min, 0), hi = num(spec.max, 10), step = num(spec.step, 1);
+    var W = 420, H = 84, x0 = 26, w = W - 52, y = 48;
+    var c = new Canvas(W, H);
+    var X = function (v) { return x0 + (v - lo) / (hi - lo) * w; };
+    c.arrow(x0 - 14, y, x0 + w + 14, y, { w: 1.3 });
+    for (var v = lo; v <= hi + step / 1e6; v += step) {
+      c.line(X(v), y - 5, X(v), y + 5, { w: 1.1 });
+      c.text(X(v), y + 18, tickLabel(v, step), { size: 10 });
+    }
+    var rg = spec.range != null ? parseRange(spec.range) : null;
+    if (rg) {
+      var a = rg.lo == null ? lo : rg.lo, b = rg.hi == null ? hi : rg.hi;
+      c.line(X(a), y - 13, X(b), y - 13, { w: 3.2, cap: "butt" });
+      if (rg.lo != null) c.circle(X(a), y - 13, 4.2, { fill: rg.loEq ? INK : "#fff", w: 1.4 });
+      else c.arrow(X(a) + 8, y - 13, X(a) - 6, y - 13, { w: 1.6 });
+      if (rg.hi != null) c.circle(X(b), y - 13, 4.2, { fill: rg.hiEq ? INK : "#fff", w: 1.4 });
+      else c.arrow(X(b) - 8, y - 13, X(b) + 6, y - 13, { w: 1.6 });
+    }
+    listOf(spec.marks).forEach(function (mk) {
+      var mv = Number(mk);
+      if (!isFinite(mv)) return;
+      c.circle(X(mv), y, 4, { fill: INK, w: 0 });
+      c.text(X(mv), y - 14, String(mk), { size: 10.5, weight: "bold" });
+    });
+    return c.out({ title: "数直線" });
+  };
+
+  /* ── 図形 ──────────────────────────────────────────────────── */
+  /* 実座標（数学の向き）→ 画面座標（y が下向き）へ、縦横比を保ったまま入れる。 */
+  function fitter(pts, W, H, pad) {
+    var xs = pts.map(function (p) { return p[0]; }), ys = pts.map(function (p) { return p[1]; });
+    var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+    var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+    var sw = Math.max(1e-6, maxX - minX), sh = Math.max(1e-6, maxY - minY);
+    /* **縦横で違う倍率を使わない。** 使うと正三角形が正三角形でなくなる。 */
+    var s = Math.min((W - pad * 2) / sw, (H - pad * 2) / sh);
+    var ox = (W - sw * s) / 2 - minX * s;
+    var oy = (H - sh * s) / 2 + maxY * s;
+    return {
+      s: s,
+      p: function (pt) { return [ox + pt[0] * s, oy - pt[1] * s]; }
+    };
+  }
+  /* 頂点の外側へラベルを置く（重心と反対の向きへ逃がす） */
+  function outward(P, cen, d) {
+    var dx = P[0] - cen[0], dy = P[1] - cen[1];
+    var L = Math.sqrt(dx * dx + dy * dy) || 1;
+    return [P[0] + dx / L * d, P[1] + dy / L * d];
+  }
+  function centroid(pts) {
+    var sx = 0, sy = 0;
+    pts.forEach(function (p) { sx += p[0]; sy += p[1]; });
+    return [sx / pts.length, sy / pts.length];
+  }
+  /* 角の印。半径 r の弧を実際の 2 辺の間に描く。 */
+  function angleArc(c, V, A, B, r, label) {
+    var a1 = Math.atan2(A[1] - V[1], A[0] - V[0]);
+    var a2 = Math.atan2(B[1] - V[1], B[0] - V[0]);
+    var d = a2 - a1;
+    while (d <= -Math.PI) d += 2 * Math.PI;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    var sweep = d > 0 ? 1 : 0;
+    var p1 = [V[0] + r * Math.cos(a1), V[1] + r * Math.sin(a1)];
+    var p2 = [V[0] + r * Math.cos(a2), V[1] + r * Math.sin(a2)];
+    c.path("M" + f(p1[0]) + " " + f(p1[1]) + " A" + f(r) + " " + f(r) + " 0 0 " + sweep
+      + " " + f(p2[0]) + " " + f(p2[1]), { w: 1, stroke: SUB });
+    if (label) {
+      var am = a1 + d / 2;
+      c.text(V[0] + (r + 12) * Math.cos(am), V[1] + (r + 12) * Math.sin(am), label, { size: 10, fill: SUB });
+    }
+  }
+  /* 直角の印（小さな四角） */
+  function rightAngle(c, V, A, B, r) {
+    var a1 = Math.atan2(A[1] - V[1], A[0] - V[0]);
+    var a2 = Math.atan2(B[1] - V[1], B[0] - V[0]);
+    var p1 = [V[0] + r * Math.cos(a1), V[1] + r * Math.sin(a1)];
+    var p2 = [V[0] + r * Math.cos(a2), V[1] + r * Math.sin(a2)];
+    var p3 = [p1[0] + p2[0] - V[0], p1[1] + p2[1] - V[1]];
+    c.poly([p1, p3, p2], { open: true, w: 1, stroke: SUB });
+  }
+  function midLabel(c, P, Q, cen, text) {
+    var mx = (P[0] + Q[0]) / 2, my = (P[1] + Q[1]) / 2;
+    var o = outward([mx, my], cen, 13);
+    c.text(o[0], o[1], text, { size: 10.5 });
+  }
+  function showSet(spec) {
+    var s = str(spec.show).toLowerCase();
+    return { sides: /side|辺/.test(s), angles: /angle|角/.test(s), all: /all|すべて/.test(s) };
+  }
+  /* 長さの表示。整数ならそのまま、そうでなければ小数 1 桁。 */
+  /* 丸数字。①〜⑳ まで。範囲の外は素の数字にする（見えない字を出さない）。 */
+  function circled(n) {
+    if (n >= 1 && n <= 20) return String.fromCharCode(0x2460 + n - 1);
+    return String(n);
+  }
+  function lenText(v) {
+    var r1 = Math.round(v * 10) / 10;
+    return String(Math.abs(r1 - Math.round(r1)) < 1e-9 ? Math.round(r1) : r1);
+  }
+
+  DRAW.triangle = function (spec) {
+    var t = solveTriangle(spec);
+    if (t.error) return null;
+    var names = listOf(spec.names);
+    var nA = names[0] || "A", nB = names[1] || "B", nC = names[2] || "C";
+    var W = 320, H = 260;
+    var raw = [t.pts.A, t.pts.B, t.pts.C];
+    var fit = fitter(raw, W, H, 34);
+    var A = fit.p(t.pts.A), B = fit.p(t.pts.B), C = fit.p(t.pts.C);
+    var cen = centroid([A, B, C]);
+    var c = new Canvas(W, H);
+    c.poly([A, B, C], { fill: "#fafafa", w: 1.6 });
+    var sh = showSet(spec);
+    [[A, nA], [B, nB], [C, nC]].forEach(function (p) {
+      var o = outward(p[0], cen, 15);
+      c.text(o[0], o[1], p[1], { size: 12.5, weight: "bold" });
+    });
+    if (sh.sides || sh.all) {
+      midLabel(c, B, C, cen, lenText(t.sides.a));
+      midLabel(c, C, A, cen, lenText(t.sides.b));
+      midLabel(c, A, B, cen, lenText(t.sides.c));
+    }
+    if (sh.angles || sh.all) {
+      [[A, B, C, t.angles.A], [B, C, A, t.angles.B], [C, A, B, t.angles.C]].forEach(function (g) {
+        var v = Math.round(g[3] * 10) / 10;
+        if (Math.abs(v - 90) < 0.05) rightAngle(c, g[0], g[1], g[2], 12);
+        else angleArc(c, g[0], g[1], g[2], 18, lenText(v) + "°");
+      });
+    }
+    /* 高さの補助線（底辺 BC への垂線）。足の位置も計算で出す。 */
+    if (spec.height) {
+      var bx = t.pts.B, cx2 = t.pts.C, ax = t.pts.A;
+      var vx = cx2[0] - bx[0], vy = cx2[1] - bx[1];
+      var tt = ((ax[0] - bx[0]) * vx + (ax[1] - bx[1]) * vy) / (vx * vx + vy * vy);
+      var foot = fit.p([bx[0] + vx * tt, bx[1] + vy * tt]);
+      c.line(A[0], A[1], foot[0], foot[1], { dash: "4 3", w: 1.1, stroke: SUB });
+      rightAngle(c, foot, A, B, 9);
+    }
+    return c.out({ title: "三角形" });
+  };
+
+  DRAW.rtriangle = function (spec) {
+    var a = num(spec.a, 3), b = num(spec.b, 4);
+    var hyp = Math.sqrt(a * a + b * b);
+    var names = listOf(spec.names);
+    var pts = { C: [0, 0], B: [a, 0], A: [0, b] };   /* C が直角 */
+    var W = 300, H = 250;
+    var fit = fitter([pts.A, pts.B, pts.C], W, H, 34);
+    var A = fit.p(pts.A), B = fit.p(pts.B), C = fit.p(pts.C);
+    var cen = centroid([A, B, C]);
+    var c = new Canvas(W, H);
+    c.poly([A, B, C], { fill: "#fafafa", w: 1.6 });
+    rightAngle(c, C, A, B, 12);
+    [[A, names[0] || "A"], [B, names[1] || "B"], [C, names[2] || "C"]].forEach(function (p) {
+      var o = outward(p[0], cen, 15);
+      c.text(o[0], o[1], p[1], { size: 12.5, weight: "bold" });
+    });
+    var sh = showSet(spec);
+    if (sh.sides || sh.all || !str(spec.show)) {
+      midLabel(c, C, B, cen, lenText(a));
+      midLabel(c, C, A, cen, lenText(b));
+      midLabel(c, A, B, cen, lenText(hyp));
+    }
+    if (sh.angles || sh.all) {
+      angleArc(c, B, C, A, 18, lenText(deg(Math.atan2(b, a))) + "°");
+      angleArc(c, A, B, C, 18, lenText(deg(Math.atan2(a, b))) + "°");
+    }
+    return c.out({ title: "直角三角形" });
+  };
+
+  DRAW.polygon = function (spec) {
+    var custom = pointsOf(spec.points);
+    var raw, n;
+    if (custom.length >= 3) { raw = custom; n = custom.length; }
+    else {
+      n = Math.round(num(spec.n, 5));
+      var r = num(spec.r, 1);
+      raw = [];
+      /* 正 n 角形。頂点は 360/n ごと。真上から反時計回り。 */
+      for (var i = 0; i < n; i++) {
+        var t = rad(90 + 360 * i / n);
+        raw.push([r * Math.cos(t), r * Math.sin(t)]);
+      }
+    }
+    var names = listOf(spec.names);
+    var W = 300, H = 290;
+    var fit = fitter(raw, W, H, 32);
+    var P = raw.map(fit.p);
+    var cen = centroid(P);
+    var c = new Canvas(W, H);
+    c.poly(P, { fill: "#fafafa", w: 1.6 });
+    P.forEach(function (p, i) {
+      var o = outward(p, cen, 15);
+      if (names[i]) c.text(o[0], o[1], names[i], { size: 12, weight: "bold" });
+    });
+    /* 指定された頂点からの対角線 */
+    var from = str(spec.diagonalsfrom).trim();
+    var fi = names.indexOf(from);
+    if (fi >= 0) {
+      P.forEach(function (p, i) {
+        if (i === fi || i === (fi + 1) % n || i === (fi + n - 1) % n) return;
+        c.line(P[fi][0], P[fi][1], p[0], p[1], { dash: "5 3", w: 1, stroke: SUB });
+      });
+    }
+    var sh = showSet(spec);
+    if ((sh.angles || sh.all) && custom.length < 3) {
+      /* 正 n 角形の内角は必ず (n-2)*180/n */
+      c.text(cen[0], cen[1], lenText((n - 2) * 180 / n) + "°", { size: 11, fill: SUB });
+    }
+    if (spec.circum) c.circle(cen[0], cen[1], Math.sqrt(Math.pow(P[0][0] - cen[0], 2) + Math.pow(P[0][1] - cen[1], 2)),
+                              { dash: "4 3", w: 1, stroke: SUB });
+    return c.out({ title: "多角形" });
+  };
+
+  DRAW.quad = function (spec) {
+    var type = str(spec.type || "rect").toLowerCase();
+    var a = num(spec.a, 6), b = num(spec.b, a), h = num(spec.h, 4);
+    var raw;
+    if (type === "square") { h = a; raw = [[0, 0], [a, 0], [a, a], [0, a]]; }
+    else if (type === "rect") raw = [[0, 0], [a, 0], [a, h], [0, h]];
+    else if (type === "parallelogram") {
+      var ang = num(spec.angle, 60);
+      var dx = h / Math.tan(rad(ang));      /* 高さ h を保ったまま傾ける */
+      raw = [[0, 0], [a, 0], [a + dx, h], [dx, h]];
+    } else if (type === "rhombus") {
+      var an2 = num(spec.angle, 60);
+      var dx2 = a * Math.cos(rad(an2)), dy2 = a * Math.sin(rad(an2));
+      raw = [[0, 0], [a, 0], [a + dx2, dy2], [dx2, dy2]];
+    } else {                                 /* trapezoid: 上底 a / 下底 b */
+      var off = (b - a) / 2;
+      raw = [[0, 0], [b, 0], [b - off, h], [off, h]];
+    }
+    var names = listOf(spec.names);
+    var W = 330, H = 250;
+    var fit = fitter(raw, W, H, 34);
+    var P = raw.map(fit.p), cen = centroid(P);
+    var c = new Canvas(W, H);
+    c.poly(P, { fill: "#fafafa", w: 1.6 });
+    P.forEach(function (p, i) {
+      if (!names[i]) return;
+      var o = outward(p, cen, 15);
+      c.text(o[0], o[1], names[i], { size: 12, weight: "bold" });
+    });
+    var sh = showSet(spec);
+    if (sh.sides || sh.all) {
+      for (var i = 0; i < raw.length; i++) {
+        var j = (i + 1) % raw.length;
+        var L = Math.sqrt(Math.pow(raw[j][0] - raw[i][0], 2) + Math.pow(raw[j][1] - raw[i][1], 2));
+        midLabel(c, P[i], P[j], cen, lenText(L));
+      }
+    }
+    if (spec.height && type !== "square" && type !== "rect") {
+      /* 高さの線は「上の辺の左端から下の辺へ下ろす垂線」。長さは h そのもの。 */
+      var top = P[3];
+      var footR = fit.p([raw[3][0], 0]);
+      c.line(top[0], top[1], footR[0], footR[1], { dash: "4 3", w: 1.1, stroke: SUB });
+      rightAngle(c, footR, top, P[1], 9);
+      c.text((top[0] + footR[0]) / 2 - 12, (top[1] + footR[1]) / 2, lenText(h), { size: 10.5, fill: SUB });
+    }
+    return c.out({ title: "四角形" });
+  };
+
+  DRAW.circle = function (spec) {
+    var r = num(spec.r, 1);
+    var cp = circlePoints(spec);
+    if (cp.error) return null;
+    var W = 300, H = 300, cx = W / 2, cy = H / 2, R = 104;
+    var sc = R / r;
+    var c = new Canvas(W, H);
+    var P = function (pt) { return [cx + pt.x * sc, cy + pt.y * sc]; };
+    /* おうぎ形（中心角を実際の角度で塗る） */
+    if (spec.sector != null) {
+      var sv = numsOf(spec.sector), a0 = sv[0], span = sv[1];
+      var t0 = rad(90 - a0), t1 = rad(90 - (a0 + span));
+      var x0 = cx + R * Math.cos(t0), y0 = cy - R * Math.sin(t0);
+      var x1 = cx + R * Math.cos(t1), y1 = cy - R * Math.sin(t1);
+      c.path("M" + f(cx) + " " + f(cy) + " L" + f(x0) + " " + f(y0)
+        + " A" + f(R) + " " + f(R) + " 0 " + (span > 180 ? 1 : 0) + " 1 " + f(x1) + " " + f(y1) + " Z",
+        { fill: "#ededed", w: 1.4 });
+      c.text(cx + 26 * Math.cos(rad(90 - a0 - span / 2)), cy - 26 * Math.sin(rad(90 - a0 - span / 2)),
+             lenText(span) + "°", { size: 10.5, fill: SUB });
+    }
+    c.circle(cx, cy, R, { w: 1.6 });
+    var oName = str(spec.center).trim();
+    if (oName) {
+      c.circle(cx, cy, 2.6, { fill: INK, w: 0 });
+      c.text(cx - 11, cy + 11, oName, { size: 11.5, weight: "bold" });
+    }
+    /* 弦 */
+    listOf(spec.chords).forEach(function (s) {
+      var ab = s.split(/[-–ー]/).map(function (x) { return x.trim(); });
+      var p = cp.byName[ab[0]], q = cp.byName[ab[1]];
+      if (!p || !q) return;
+      var pp = P(p), qq = P(q);
+      c.line(pp[0], pp[1], qq[0], qq[1], { w: 1.4 });
+    });
+    /* 半径 */
+    listOf(spec.radii).forEach(function (nm) {
+      var p = cp.byName[nm.trim()];
+      if (!p) return;
+      var pp = P(p);
+      c.line(cx, cy, pp[0], pp[1], { w: 1.3 });
+    });
+    /* 接線（点での接線は半径と直交する。長さは見た目で決めてよいが向きは厳密） */
+    listOf(spec.tangent).forEach(function (nm) {
+      var p = cp.byName[nm.trim()];
+      if (!p) return;
+      var pp = P(p);
+      var ux = -(pp[1] - cy), uy = pp[0] - cx;
+      var L = Math.sqrt(ux * ux + uy * uy) || 1;
+      c.line(pp[0] - ux / L * 62, pp[1] - uy / L * 62, pp[0] + ux / L * 62, pp[1] + uy / L * 62,
+             { w: 1.2, dash: "6 3" });
+      rightAngle(c, pp, [cx, cy], [pp[0] + ux / L * 20, pp[1] + uy / L * 20], 9);
+    });
+    /* 点と名前。**円周上に必ず乗っている**（座標を三角関数で出しているため） */
+    cp.list.forEach(function (p) {
+      var pp = P(p);
+      c.circle(pp[0], pp[1], 3, { fill: INK, w: 0 });
+      var ox = (pp[0] - cx), oy = (pp[1] - cy), L = Math.sqrt(ox * ox + oy * oy) || 1;
+      c.text(pp[0] + ox / L * 15, pp[1] + oy / L * 15, p.name, { size: 12, weight: "bold" });
+    });
+    /* 中心角・円周角の表示 */
+    var sh = showSet(spec);
+    if ((sh.angles || sh.all) && cp.list.length >= 2 && oName) {
+      var p0 = P(cp.list[0]), p1 = P(cp.list[1]);
+      var d = Math.abs(cp.list[1].deg - cp.list[0].deg) % 360;
+      angleArc(c, [cx, cy], p0, p1, 30, lenText(Math.min(d, 360 - d)) + "°");
+    }
+    return c.out({ title: "円" });
+  };
+
+  /* ── 立体（等角投影）─────────────────────────────────────────
+     奥行きは 30° の方向へ、実寸の 0.5 倍で描く（カバリエ図法）。
+     この比は figure ごとに変えない。変えると同じ立体が別物に見える。 */
+  var DEPTH_K = 0.5, DEPTH_A = rad(30);
+  DRAW.solid = function (spec) {
+    var type = str(spec.type || "cuboid").toLowerCase();
+    if (type === "box") type = "cuboid";
+    var W = 300, H = 260;
+    var c = new Canvas(W, H);
+    var showLabels = /label|寸法/.test(str(spec.show)) || spec.show === true;
+
+    if (type === "sphere") {
+      var r = num(spec.r, 3), R = 84;
+      c.circle(W / 2, H / 2, R, { fill: "#fafafa", w: 1.6 });
+      c.ellipse(W / 2, H / 2, R, R * 0.3, { dash: "5 3", w: 1, stroke: SUB });
+      c.line(W / 2, H / 2, W / 2 + R, H / 2, { w: 1.2 });
+      c.circle(W / 2, H / 2, 2.4, { fill: INK, w: 0 });
+      if (showLabels) c.text(W / 2 + R / 2, H / 2 - 10, "r = " + lenText(r), { size: 10.5 });
+      return c.out({ title: "球" });
+    }
+    if (type === "cylinder" || type === "cone") {
+      var r2 = num(spec.r, 3), h2 = num(spec.h, 6);
+      /* 半径と高さの比は実寸どおり。楕円の横半径＝R、縦半径＝R×0.32（見込み角）。 */
+      var maxW = 96, maxH = 150;
+      var s = Math.min(maxW / r2, maxH / h2);
+      var R2 = r2 * s, Hh = h2 * s, ry = R2 * 0.32;
+      var cxx = W / 2, top = (H - Hh) / 2 + 6;
+      if (type === "cylinder") {
+        c.path("M" + f(cxx - R2) + " " + f(top) + " L" + f(cxx - R2) + " " + f(top + Hh)
+          + " A" + f(R2) + " " + f(ry) + " 0 0 0 " + f(cxx + R2) + " " + f(top + Hh)
+          + " L" + f(cxx + R2) + " " + f(top) + " Z", { fill: "#fafafa", w: 1.5 });
+        c.ellipse(cxx, top + Hh, R2, ry, { dash: "5 3", w: 1, stroke: SUB });
+        c.path("M" + f(cxx - R2) + " " + f(top + Hh) + " A" + f(R2) + " " + f(ry)
+          + " 0 0 0 " + f(cxx + R2) + " " + f(top + Hh), { w: 1.5 });
+        c.ellipse(cxx, top, R2, ry, { fill: "#f2f2f2", w: 1.5 });
+      } else {
+        c.poly([[cxx, top], [cxx - R2, top + Hh], [cxx + R2, top + Hh]], { fill: "#fafafa", w: 1.5 });
+        c.ellipse(cxx, top + Hh, R2, ry, { dash: "5 3", w: 1, stroke: SUB });
+        c.path("M" + f(cxx - R2) + " " + f(top + Hh) + " A" + f(R2) + " " + f(ry)
+          + " 0 0 0 " + f(cxx + R2) + " " + f(top + Hh), { w: 1.5 });
+      }
+      c.line(cxx, top + Hh, cxx, top, { dash: "4 3", w: 1, stroke: SUB });
+      if (showLabels) {
+        c.text(cxx + 8, top + Hh / 2, "h = " + lenText(h2), { anchor: "start", size: 10.5 });
+        c.text(cxx + R2 / 2, top + Hh + ry + 13, "r = " + lenText(r2), { size: 10.5 });
+      }
+      return c.out({ title: type === "cone" ? "円錐" : "円柱" });
+    }
+    if (type === "prism" || type === "pyramid") {
+      var n = Math.round(num(spec.n, 3)), rr = num(spec.r, 3), hh = num(spec.h, 6);
+      var s2 = Math.min(84 / rr, 130 / hh);
+      var Rb = rr * s2, Hb = hh * s2;
+      var cxb = W / 2, cyb = H / 2 + Hb / 2;
+      var base = [];
+      for (var i = 0; i < n; i++) {
+        var t = rad(90 + 360 * i / n);
+        base.push([cxb + Rb * Math.cos(t), cyb - Rb * Math.sin(t) * 0.36]);
+      }
+      if (type === "prism") {
+        var top2 = base.map(function (p) { return [p[0], p[1] - Hb]; });
+        c.poly(base, { fill: "#f4f4f4", w: 1, dash: "5 3", stroke: SUB });
+        for (var k = 0; k < n; k++) c.line(base[k][0], base[k][1], top2[k][0], top2[k][1], { w: 1.3 });
+        c.poly(top2, { fill: "#fafafa", w: 1.5 });
+      } else {
+        var apex = [cxb, cyb - Hb];
+        c.poly(base, { fill: "#f4f4f4", w: 1, dash: "5 3", stroke: SUB });
+        base.forEach(function (p) { c.line(apex[0], apex[1], p[0], p[1], { w: 1.3 }); });
+        c.circle(apex[0], apex[1], 2, { fill: INK, w: 0 });
+      }
+      if (showLabels) c.text(cxb + Rb + 6, cyb - Hb / 2, "h = " + lenText(hh), { anchor: "start", size: 10.5 });
+      return c.out({ title: type === "prism" ? "角柱" : "角錐" });
+    }
+    /* 直方体・立方体 */
+    var w3 = num(spec.w, num(spec.a, 6));
+    var d3 = num(spec.d, type === "cube" ? w3 : num(spec.a, 4));
+    var h3 = num(spec.h, type === "cube" ? w3 : 3);
+    if (type === "cube") { d3 = w3; h3 = w3; }
+    var dx = d3 * DEPTH_K * Math.cos(DEPTH_A), dy = d3 * DEPTH_K * Math.sin(DEPTH_A);
+    var sp = Math.min(190 / (w3 + dx), 180 / (h3 + dy));
+    var w = w3 * sp, h = h3 * sp, ox = dx * sp, oy = dy * sp;
+    var x0 = (W - (w + ox)) / 2, y0 = (H - (h + oy)) / 2 + oy;
+    var A = [x0, y0], B = [x0 + w, y0], C = [x0 + w, y0 - h], D = [x0, y0 - h];
+    var A2 = [A[0] + ox, A[1] - oy], B2 = [B[0] + ox, B[1] - oy],
+        C2 = [C[0] + ox, C[1] - oy], D2 = [D[0] + ox, D[1] - oy];
+    c.poly([A2, B2, C2, D2], { fill: "#f2f2f2", w: 1, dash: "5 3", stroke: SUB });
+    c.line(A[0], A[1], A2[0], A2[1], { dash: "5 3", w: 1, stroke: SUB });
+    c.poly([D, D2, C2, C], { fill: "#f6f6f6", w: 1.3 });
+    c.poly([B, B2, C2, C], { fill: "#ececec", w: 1.3 });
+    c.poly([A, B, C, D], { fill: "#fbfbfb", w: 1.6 });
+    if (showLabels) {
+      c.text((A[0] + B[0]) / 2, A[1] + 14, lenText(w3), { size: 10.5 });
+      c.text(A[0] - 12, (A[1] + D[1]) / 2, lenText(h3), { size: 10.5 });
+      c.text((B[0] + B2[0]) / 2 + 10, (B[1] + B2[1]) / 2 + 8, lenText(d3), { size: 10.5 });
+    }
+    return c.out({ title: type === "cube" ? "立方体" : "直方体" });
+  };
+
+  /* ── 時計 ──────────────────────────────────────────────────── */
+  DRAW.clock = function (spec) {
+    var tm = parseTime(spec.time);
+    if (!tm) return null;
+    var W = 190, H = spec.digital ? 218 : 190, cx = 95, cy = 95, R = 78;
+    var c = new Canvas(W, H);
+    c.circle(cx, cy, R, { fill: "#fff", w: 2 });
+    for (var i = 0; i < 60; i++) {
+      var t = rad(i * 6 - 90);
+      var big = i % 5 === 0;
+      c.line(cx + (R - (big ? 9 : 4)) * Math.cos(t), cy + (R - (big ? 9 : 4)) * Math.sin(t),
+             cx + (R - 1) * Math.cos(t), cy + (R - 1) * Math.sin(t), { w: big ? 1.6 : 0.7 });
+    }
+    for (var k = 1; k <= 12; k++) {
+      var tk = rad(k * 30 - 90);
+      c.text(cx + (R - 20) * Math.cos(tk), cy + (R - 20) * Math.sin(tk), String(k), { size: 12 });
+    }
+    /* ★ 時針は「分のぶんだけ進む」。7:20 の短針は 7 ちょうどを指さない。 */
+    var ah = rad((tm.h + tm.m / 60) * 30 - 90);
+    var am = rad(tm.m * 6 - 90);
+    c.line(cx, cy, cx + R * 0.5 * Math.cos(ah), cy + R * 0.5 * Math.sin(ah), { w: 4, cap: "round" });
+    c.line(cx, cy, cx + R * 0.76 * Math.cos(am), cy + R * 0.76 * Math.sin(am), { w: 2.4, cap: "round" });
+    c.circle(cx, cy, 3.4, { fill: INK, w: 0 });
+    if (spec.digital)
+      c.text(cx, H - 14, (tm.h24 < 10 ? "0" : "") + tm.h24 + ":" + (tm.m < 10 ? "0" : "") + tm.m,
+             { size: 15, weight: "bold" });
+    return c.out({ title: "時計" });
+  };
+
+  /* ── ベン図 ─────────────────────────────────────────────────
+     2 円は半径 R、中心間の距離を R にする（重なりが必ず生まれる）。
+     3 円は正三角形の頂点に置く。 */
+  DRAW.venn = function (spec) {
+    var labels = listOf(spec.labels), vals = numsOf(spec.values);
+    var three = labels.length === 3;
+    var W = 340, H = three ? 300 : 230, R = three ? 78 : 82;
+    var cx = W / 2, cy = three ? 128 : H / 2, c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    if (!three) {
+      var d = R;                      /* 中心間の距離 */
+      var c1 = [cx - d / 2, cy], c2 = [cx + d / 2, cy];
+      c.circle(c1[0], c1[1], R, { w: 1.6 });
+      c.circle(c2[0], c2[1], R, { w: 1.6 });
+      c.text(c1[0] - R + 8, cy - R - 6, labels[0] || "A", { anchor: "start", size: 12, weight: "bold" });
+      c.text(c2[0] + R - 8, cy - R - 6, labels[1] || "B", { anchor: "end", size: 12, weight: "bold" });
+      if (vals.length === 3) {
+        c.text(c1[0] - R / 2.4, cy, String(vals[0]), { size: 13 });
+        c.text(cx, cy, String(vals[1]), { size: 13 });
+        c.text(c2[0] + R / 2.4, cy, String(vals[2]), { size: 13 });
+      }
+    } else {
+      var rr = R * 0.62;
+      var cs = [0, 120, 240].map(function (a) {
+        var t = rad(a - 90);
+        return [cx + rr * Math.cos(t), cy + rr * Math.sin(t)];
+      });
+      cs.forEach(function (p, i) {
+        c.circle(p[0], p[1], R, { w: 1.6 });
+        var t = rad(i * 120 - 90);
+        c.text(cx + (rr + R + 12) * Math.cos(t), cy + (rr + R + 12) * Math.sin(t), labels[i] || "",
+               { size: 12, weight: "bold" });
+      });
+      if (vals.length === 7) {
+        /* 只の 3 個・2 個の重なり 3 個・真ん中 1 個 の順 */
+        cs.forEach(function (p, i) {
+          var t = rad(i * 120 - 90);
+          c.text(cx + (rr + R * 0.52) * Math.cos(t), cy + (rr + R * 0.52) * Math.sin(t), String(vals[i]), { size: 12 });
+        });
+        [[0, 1], [1, 2], [2, 0]].forEach(function (pair, k) {
+          var mx = (cs[pair[0]][0] + cs[pair[1]][0]) / 2, my = (cs[pair[0]][1] + cs[pair[1]][1]) / 2;
+          var ux = mx - cx, uy = my - cy, L = Math.sqrt(ux * ux + uy * uy) || 1;
+          c.text(mx + ux / L * R * 0.42, my + uy / L * R * 0.42, String(vals[3 + k]), { size: 12 });
+        });
+        c.text(cx, cy, String(vals[6]), { size: 12 });
+      }
+    }
+    return c.out({ title: str(spec.title) || "ベン図" });
+  };
+
+  /* ── 樹形図 ─────────────────────────────────────────────────
+     枝の数は levels の掛け算そのもの。位置は等分。 */
+  DRAW.tree = function (spec) {
+    var levels = str(spec.levels).split("/").map(function (x) { return listOf(x); })
+      .filter(function (x) { return x.length; });
+    var leaves = levels.reduce(function (a, b) { return a * b.length; }, 1);
+    var rowH = 62, W = 120 + levels.length * 110, H = 30 + leaves * 26;
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 14, spec.title, { size: 12.5, weight: "bold" });
+    var top = str(spec.title) ? 28 : 14;
+    var boxW = 62, colGap = 110;
+    /* 再帰で置く。各段は親の区間を等分する。 */
+    (function place(depth, y0, y1, px, py) {
+      if (depth >= levels.length) return;
+      var opts = levels[depth], seg = (y1 - y0) / opts.length;
+      opts.forEach(function (lab, i) {
+        var cy = y0 + seg * (i + 0.5);
+        var cx = 40 + depth * colGap;
+        if (px != null) c.line(px, py, cx - boxW / 2, cy, { w: 1.1 });
+        c.rect(cx - boxW / 2, cy - 11, boxW, 22, { fill: "#fff", w: 1.2, rx: 3 });
+        c.text(cx, cy, lab, { size: 11 });
+        place(depth + 1, y0 + seg * i, y0 + seg * (i + 1), cx + boxW / 2, cy);
+      });
+    })(0, top, H - 8, null, null);
+    return c.out({ title: "樹形図" });
+  };
+
+  /* ── 方眼・見取り図 ─────────────────────────────────────────── */
+  DRAW.grid = function (spec) {
+    var cols = Math.round(num(spec.cols, 6)), rows = Math.round(num(spec.rows, 4));
+    var cell = Math.min(40, Math.floor(400 / cols), Math.floor(260 / rows));
+    var W = cols * cell + 40, H = rows * cell + 40;
+    var c = new Canvas(W, H);
+    var x0 = 28, y0 = 12;
+    for (var i = 0; i <= cols; i++) c.line(x0 + i * cell, y0, x0 + i * cell, y0 + rows * cell, { stroke: "#bbb", w: 0.8 });
+    for (var j = 0; j <= rows; j++) c.line(x0, y0 + j * cell, x0 + cols * cell, y0 + j * cell, { stroke: "#bbb", w: 0.8 });
+    c.rect(x0, y0, cols * cell, rows * cell, { w: 1.4 });
+    if (spec.labels) {
+      for (var a = 1; a <= cols; a++) c.text(x0 + (a - 0.5) * cell, y0 + rows * cell + 13, String(a), { size: 10, fill: SUB });
+      for (var b = 1; b <= rows; b++) c.text(x0 - 10, y0 + (b - 0.5) * cell, String(b), { size: 10, fill: SUB });
+    }
+    pointsOf(spec.marks).forEach(function (m) {
+      var cxm = x0 + (m[0] - 0.5) * cell, cym = y0 + (m[1] - 0.5) * cell;
+      if (m[0] < 1 || m[0] > cols || m[1] < 1 || m[1] > rows) return;
+      c.circle(cxm, cym, cell * 0.28, { fill: "#333", w: 0 });
+    });
+    return c.out({ title: "方眼" });
+  };
+
+  DRAW.plan = function (spec) {
+    var cols = Math.round(num(spec.cols, 4)), rows = Math.round(num(spec.rows, 3));
+    var cw = Math.min(74, Math.floor(400 / cols)), ch = Math.min(46, Math.floor(220 / rows));
+    var W = cols * cw + 40, H = rows * ch + (str(spec.front) ? 62 : 30);
+    var c = new Canvas(W, H);
+    var x0 = 20, y0 = str(spec.front) ? 46 : 14;
+    if (str(spec.front)) {
+      c.rect(x0, 12, cols * cw, 22, { fill: "#eee", w: 1.2 });
+      c.text(x0 + cols * cw / 2, 23, spec.front, { size: 11 });
+    }
+    var byCell = {};
+    str(spec.cells).split(/\s+/).filter(Boolean).forEach(function (t) {
+      var p = t.split(/[:：]/);
+      if (p.length !== 2) return;
+      byCell[p[0].replace(/[，]/g, ",").trim()] = p[1].trim();
+    });
+    for (var r = 1; r <= rows; r++) {
+      for (var q = 1; q <= cols; q++) {
+        var x = x0 + (q - 1) * cw, y = y0 + (r - 1) * ch;
+        var nm = byCell[q + "," + r];
+        c.rect(x + 3, y + 3, cw - 6, ch - 6, { fill: nm ? "#ececec" : "#fff", w: 1.1, rx: 3 });
+        c.text(x + cw / 2, y + ch / 2, nm || "", { size: 10.5 });
+      }
+    }
+    return c.out({ title: "配置図" });
+  };
+
+  DRAW.flow = function (spec) {
+    var steps = listOf(spec.steps);
+    var bw = 190, bh = 38, gap = 22;
+    var W = 240, H = 20 + steps.length * (bh + gap);
+    var c = new Canvas(W, H);
+    var x = (W - bw) / 2;
+    steps.forEach(function (s, i) {
+      var y = 10 + i * (bh + gap);
+      c.rect(x, y, bw, bh, { fill: "#fafafa", w: 1.3, rx: 4 });
+      c.text(W / 2, y + bh / 2, s, { size: 11 });
+      if (i < steps.length - 1) c.arrow(W / 2, y + bh, W / 2, y + bh + gap - 2, { w: 1.3 });
+    });
+    return c.out({ title: str(spec.title) || "流れ図" });
+  };
+
+  DRAW.balance = function (spec) {
+    var tilt = str(spec.tilt || "even").toLowerCase();
+    var W = 320, H = 190, cx = W / 2, top = 44;
+    var c = new Canvas(W, H);
+    var ang = tilt === "left" ? 8 : tilt === "right" ? -8 : 0;
+    var arm = 106;
+    var lx = cx - arm * Math.cos(rad(ang)), ly = top + arm * Math.sin(rad(ang));
+    var rx = cx + arm * Math.cos(rad(ang)), ry = top - arm * Math.sin(rad(ang));
+    c.line(lx, ly, rx, ry, { w: 2.4 });
+    c.poly([[cx, top], [cx - 22, H - 30], [cx + 22, H - 30]], { fill: "#eee", w: 1.4 });
+    c.rect(cx - 40, H - 30, 80, 9, { fill: "#ddd", w: 1.2 });
+    [[lx, ly, str(spec.left)], [rx, ry, str(spec.right)]].forEach(function (p) {
+      c.line(p[0], p[1], p[0], p[1] + 26, { w: 1.1 });
+      c.rect(p[0] - 40, p[1] + 26, 80, 30, { fill: "#fff", w: 1.3, rx: 3 });
+      c.text(p[0], p[1] + 41, p[2], { size: 12 });
+    });
+    return c.out({ title: "てんびん" });
+  };
+
+  DRAW.route = function (spec) {
+    var nodes = listOf(spec.nodes);
+    var W = 380, H = 260, cx = W / 2, cy = H / 2 + 6, R = 92;
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 12.5, weight: "bold" });
+    var pos = {};
+    nodes.forEach(function (n, i) {
+      var t = rad(-90 + 360 * i / nodes.length);
+      pos[n] = [cx + R * Math.cos(t), cy + R * Math.sin(t)];
+    });
+    listOf(spec.edges).forEach(function (e) {
+      var head = e.split(":");
+      var ab = head[0].split(/[-–ー]/).map(function (x) { return x.trim(); });
+      var p = pos[ab[0]], q = pos[ab[1]];
+      if (!p || !q) return;
+      c.line(p[0], p[1], q[0], q[1], { w: 1.4 });
+      if (head[1]) c.text((p[0] + q[0]) / 2, (p[1] + q[1]) / 2 - 8, head[1].trim(), { size: 10.5, fill: SUB });
+    });
+    nodes.forEach(function (n) {
+      var p = pos[n];
+      c.circle(p[0], p[1], 20, { fill: "#fff", w: 1.5 });
+      c.text(p[0], p[1], n, { size: 10.5 });
+    });
+    return c.out({ title: str(spec.title) || "経路図" });
+  };
+
+  DRAW.calendar = function (spec) {
+    var y = Math.round(num(spec.year, 2026)), m = Math.round(num(spec.month, 1));
+    /* 曜日は実際のカレンダーどおり（Date で出す。作り話をしない）。 */
+    var first = new Date(Date.UTC(y, m - 1, 1));
+    var startDow = first.getUTCDay();
+    var days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    var weeks = Math.ceil((startDow + days) / 7);
+    var cw = 52, ch = 38, W = cw * 7 + 24, H = 60 + weeks * ch;
+    var c = new Canvas(W, H);
+    c.text(W / 2, 16, str(spec.title) || (y + "年 " + m + "月"), { size: 13, weight: "bold" });
+    var x0 = 12, y0 = 32;
+    ["日", "月", "火", "水", "木", "金", "土"].forEach(function (d, i) {
+      c.text(x0 + cw * (i + 0.5), y0 + 10, d, { size: 10.5, fill: i === 0 ? "#a33" : i === 6 ? "#36a" : SUB });
+    });
+    var marks = {};
+    str(spec.marks).split(/\s+/).filter(Boolean).forEach(function (t) {
+      var p = t.split(/[:：]/);
+      if (p.length === 2) marks[Number(p[0])] = p[1];
+    });
+    for (var d = 1; d <= days; d++) {
+      var idx = startDow + d - 1;
+      var col = idx % 7, rowi = Math.floor(idx / 7);
+      var x = x0 + col * cw, yy = y0 + 20 + rowi * ch;
+      c.rect(x, yy, cw, ch, { stroke: "#ccc", w: 0.8, fill: marks[d] ? "#eee" : "#fff" });
+      c.text(x + 11, yy + 11, String(d), { size: 10.5, anchor: "middle" });
+      if (marks[d]) c.text(x + cw / 2, yy + 26, marks[d], { size: 8.5, fill: SUB });
+    }
+    return c.out({ title: "カレンダー" });
+  };
+
+  DRAW.thermo = function (spec) {
+    var lo = num(spec.min, 0), hi = num(spec.max, 100), v = num(spec.value, 0);
+    var W = 130, H = 250, cx = 44, top = 22, bot = H - 40, R = 15;
+    var c = new Canvas(W, H);
+    var Y = function (x) { return bot - (x - lo) / (hi - lo) * (bot - top); };
+    c.rect(cx - 8, top, 16, bot - top, { fill: "#fff", w: 1.4, rx: 8 });
+    c.circle(cx, bot + 12, R, { fill: "#ddd", w: 1.4 });
+    c.rect(cx - 5, Y(v), 10, bot + 6 - Y(v), { fill: "#888", w: 0 });
+    c.circle(cx, bot + 12, R - 3, { fill: "#888", w: 0 });
+    var st = niceStep(hi - lo, 5);
+    for (var t = Math.ceil(lo / st) * st; t <= hi + 1e-9; t += st) {
+      c.line(cx + 8, Y(t), cx + 14, Y(t), { w: 1 });
+      c.text(cx + 18, Y(t), tickLabel(t, st), { anchor: "start", size: 10, fill: SUB });
+    }
+    c.text(W / 2, 12, lenText(v) + str(spec.unit || ""), { size: 12, weight: "bold" });
+    return c.out({ title: "温度計" });
+  };
+
+  DRAW.arrow = function (spec) {
+    var nodes = listOf(spec.nodes);
+    var bw = 108, bh = 40, gap = 46;
+    var W = 40 + nodes.length * (bw + gap) - gap, H = 120;
+    var c = new Canvas(Math.max(W, 200), H);
+    var pos = {};
+    nodes.forEach(function (n, i) {
+      var x = 20 + i * (bw + gap);
+      pos[n] = [x + bw / 2, H / 2];
+      c.rect(x, H / 2 - bh / 2, bw, bh, { fill: "#fafafa", w: 1.3, rx: 4 });
+      c.text(x + bw / 2, H / 2, n, { size: 11 });
+    });
+    listOf(spec.edges).forEach(function (e) {
+      var head = e.split(":");
+      var ab = head[0].split(">").map(function (x) { return x.trim(); });
+      var p = pos[ab[0]], q = pos[ab[1]];
+      if (!p || !q) return;
+      var dir = q[0] > p[0] ? 1 : -1;
+      c.arrow(p[0] + dir * (bw / 2 + 4), p[1], q[0] - dir * (bw / 2 + 4), q[1], { w: 1.4 });
+      if (head[1]) c.text((p[0] + q[0]) / 2, p[1] - 14, head[1].trim(), { size: 10, fill: SUB });
+    });
+    return c.out({ title: "関係図" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-B) 平面図形（2026-09-11 追加）
+
+     どれも「寸法から座標を計算する」。目で合わせた座標は 1 つも無い。
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── 角 ─────────────────────────────────────────────────────
+     1 点から 2 本の半直線。角の大きさは指定どおりに開く。 */
+  DRAW.angle = function (spec) {
+    var deg1 = num(spec.angle, 60);
+    var names = listOf(spec.names);
+    var W = 280, H = 210, V = [56, H - 46], L = 190;
+    var c = new Canvas(W, H);
+    var a1 = 0, a2 = -rad(deg1);
+    var A = [V[0] + L * Math.cos(a1), V[1] + L * Math.sin(a1)];
+    var B = [V[0] + L * Math.cos(a2), V[1] + L * Math.sin(a2)];
+    c.line(V[0], V[1], A[0], A[1], { w: 1.6 });
+    c.line(V[0], V[1], B[0], B[1], { w: 1.6 });
+    if (Math.abs(deg1 - 90) < 0.05) rightAngle(c, V, A, B, 14);
+    else angleArc(c, V, A, B, 26, lenText(deg1) + "°");
+    c.circle(V[0], V[1], 2.4, { fill: INK, w: 0 });
+    c.text(V[0] - 10, V[1] + 10, names[0] || "O", { size: 12, weight: "bold" });
+    c.text(A[0] + 10, A[1], names[1] || "A", { size: 12, weight: "bold" });
+    c.text(B[0] + 10, B[1] - 6, names[2] || "B", { size: 12, weight: "bold" });
+    return c.out({ title: "角" });
+  };
+
+  /* ── 平行線と角 ───────────────────────────────────────────
+     2 本の平行線を 1 本の直線が横切る。同位角・錯角・同側内角を示せる。 */
+  DRAW.parallels = function (spec) {
+    var deg1 = num(spec.angle, 55);
+    var show = str(spec.show).toLowerCase();
+    var W = 340, H = 240, c = new Canvas(W, H);
+    var y1 = 78, y2 = 168, x0 = 26, x1 = W - 26;
+    c.line(x0, y1, x1, y1, { w: 1.5 });
+    c.line(x0, y2, x1, y2, { w: 1.5 });
+    c.chev([x0 + 40, y1], [x0 + 80, y1], 1, {});
+    c.chev([x0 + 40, y2], [x0 + 80, y2], 1, {});
+    c.text(x1 - 4, y1 - 10, str(spec.l1) || "ℓ", { anchor: "end", size: 11.5, style: "italic" });
+    c.text(x1 - 4, y2 - 10, str(spec.l2) || "m", { anchor: "end", size: 11.5, style: "italic" });
+    /* 横切る直線。傾きは指定の角から決まる。 */
+    var t = rad(deg1);
+    var cx = W / 2;
+    var dx = (y2 - y1) / Math.tan(t);
+    var P1 = [cx - dx / 2, y1], P2 = [cx + dx / 2, y2];
+    var ext = 46;
+    var ux = (P2[0] - P1[0]), uy = (P2[1] - P1[1]);
+    var len = Math.sqrt(ux * ux + uy * uy);
+    c.line(P1[0] - ux / len * ext, P1[1] - uy / len * ext,
+           P2[0] + ux / len * ext, P2[1] + uy / len * ext, { w: 1.5 });
+    /* 角の印。同位角どうしは同じ印にする。 */
+    var right1 = [x1, y1], left1 = [x0, y1], right2 = [x1, y2], left2 = [x0, y2];
+    var up = [P1[0] - ux / len * ext, P1[1] - uy / len * ext];
+    var dn = [P2[0] + ux / len * ext, P2[1] + uy / len * ext];
+    angleArc(c, P1, right1, dn, 22, str(spec.a) || ("a"));
+    if (/同位|corresponding/.test(show)) angleArc(c, P2, right2, dn, 22, str(spec.b) || "b");
+    else if (/錯|alternate/.test(show)) angleArc(c, P2, left2, up, 22, str(spec.b) || "b");
+    else angleArc(c, P2, left2, dn, 22, str(spec.b) || "b");
+    c.circle(P1[0], P1[1], 2.2, { fill: INK, w: 0 });
+    c.circle(P2[0], P2[1], 2.2, { fill: INK, w: 0 });
+    return c.out({ title: "平行線と角" });
+  };
+
+  /* ── 相似・合同な三角形 ───────────────────────────────────
+     同じ形の三角形を 2 つ、倍率をかけて並べる。**倍率どおりに拡大する。** */
+  DRAW.similar = function (spec) {
+    var t = solveTriangle({ sss: str(spec.sss) || "3,4,5" });
+    if (t.error) return null;
+    var k = num(spec.scale, 1.6);
+    if (!(k > 0)) return null;
+    var n1 = listOf(spec.names1), n2 = listOf(spec.names2);
+    var W = 420, H = 250;
+    var raw = [t.pts.A, t.pts.B, t.pts.C];
+    /* 2 つ並べたときの全体を 1 つの座標系に置く（倍率が見た目に出る） */
+    var span = Math.max.apply(null, raw.map(function (p) { return p[0]; }))
+             - Math.min.apply(null, raw.map(function (p) { return p[0]; }));
+    var gap = span * 0.95;        /* 名前どうしがぶつからない間隔（実測で 0.45 では C と E が重なった） */
+    var all = raw.concat(raw.map(function (p) { return [p[0] * k + span + gap, p[1] * k]; }));
+    var fit = fitter(all, W, H, 30);
+    var P1 = raw.map(fit.p), P2 = all.slice(3).map(fit.p);
+    var c = new Canvas(W, H);
+    [[P1, n1, ["A", "B", "C"]], [P2, n2, ["D", "E", "F"]]].forEach(function (g) {
+      var pts = g[0], nm = g[1], dflt = g[2];
+      c.poly(pts, { fill: "#fafafa", w: 1.6 });
+      var cen = centroid(pts);
+      pts.forEach(function (p, i) {
+        var o = outward(p, cen, 15);
+        c.text(o[0], o[1], nm[i] || dflt[i], { size: 12, weight: "bold" });
+      });
+      /* 対応する辺に同じ数の印を付ける（どこが対応するか分かるように） */
+      c.tick(pts[0], pts[1], 1, {});
+      c.tick(pts[1], pts[2], 2, {});
+      c.tick(pts[2], pts[0], 3, {});
+    });
+    c.text(W / 2, H - 8, (Math.abs(k - 1) < 1e-9 ? "合同" : "相似比 1 : " + lenText(k)),
+           { size: 11, fill: SUB });
+    return c.out({ title: "相似な三角形" });
+  };
+
+  /* ── 内接円・外接円 ─────────────────────────────────────────
+     半径も中心も **計算で出す**（内心は角の二等分線の交点、外心は垂直二等分線の交点）。 */
+  DRAW.incircle = function (spec) {
+    var t = solveTriangle(spec);
+    if (t.error) return null;
+    var names = listOf(spec.names);
+    var W = 300, H = 280;
+    var A = t.pts.A, B = t.pts.B, C = t.pts.C;
+    var a = t.sides.a, b = t.sides.b, c0 = t.sides.c;
+    /* 内心 = (a·A + b·B + c·C) / (a+b+c)。内接円の半径 = 面積 / s */
+    var s = (a + b + c0) / 2;
+    var area = Math.sqrt(Math.max(0, s * (s - a) * (s - b) * (s - c0)));
+    var I = [(a * A[0] + b * B[0] + c0 * C[0]) / (a + b + c0),
+             (a * A[1] + b * B[1] + c0 * C[1]) / (a + b + c0)];
+    var r = area / s;
+    /* 外心 = 垂直二等分線の交点。外接円の半径 = abc / (4·面積) */
+    var R = a * b * c0 / (4 * area);
+    var d = 2 * (A[0] * (B[1] - C[1]) + B[0] * (C[1] - A[1]) + C[0] * (A[1] - B[1]));
+    var ux = ((A[0] * A[0] + A[1] * A[1]) * (B[1] - C[1])
+            + (B[0] * B[0] + B[1] * B[1]) * (C[1] - A[1])
+            + (C[0] * C[0] + C[1] * C[1]) * (A[1] - B[1])) / d;
+    var uy = ((A[0] * A[0] + A[1] * A[1]) * (C[0] - B[0])
+            + (B[0] * B[0] + B[1] * B[1]) * (A[0] - C[0])
+            + (C[0] * C[0] + C[1] * C[1]) * (B[0] - A[0])) / d;
+    var O = [ux, uy];
+    var mode = str(spec.type || "in").toLowerCase();
+    var wantOut = /out|外/.test(mode);
+    /* 外接円も入るように、円の端まで含めて収める */
+    var pts = [A, B, C];
+    if (wantOut) pts = pts.concat([[O[0] - R, O[1] - R], [O[0] + R, O[1] + R]]);
+    var fit = fitter(pts, W, H, 26);
+    var c = new Canvas(W, H);
+    var pA = fit.p(A), pB = fit.p(B), pC = fit.p(C);
+    if (wantOut) c.circle(fit.p(O)[0], fit.p(O)[1], R * fit.s, { w: 1.3, stroke: SUB });
+    c.poly([pA, pB, pC], { fill: "none", w: 1.7 });
+    if (!wantOut) {
+      c.circle(fit.p(I)[0], fit.p(I)[1], r * fit.s, { w: 1.3, stroke: SUB });
+      c.circle(fit.p(I)[0], fit.p(I)[1], 2.2, { fill: INK, w: 0 });
+      c.text(fit.p(I)[0] + 9, fit.p(I)[1] + 9, "I", { size: 11.5, weight: "bold" });
+      if (spec.show) c.text(W / 2, H - 8, "内接円の半径 r = " + lenText(r), { size: 10.5, fill: SUB });
+    } else {
+      c.circle(fit.p(O)[0], fit.p(O)[1], 2.2, { fill: INK, w: 0 });
+      c.text(fit.p(O)[0] + 9, fit.p(O)[1] + 9, "O", { size: 11.5, weight: "bold" });
+      if (spec.show) c.text(W / 2, H - 8, "外接円の半径 R = " + lenText(R), { size: 10.5, fill: SUB });
+    }
+    var cen = centroid([pA, pB, pC]);
+    [[pA, names[0] || "A"], [pB, names[1] || "B"], [pC, names[2] || "C"]].forEach(function (g) {
+      var o = outward(g[0], cen, 15);
+      c.text(o[0], o[1], g[1], { size: 12, weight: "bold" });
+    });
+    return c.out({ title: wantOut ? "外接円" : "内接円" });
+  };
+
+  /* ── おうぎ形（単独）────────────────────────────────────── */
+  DRAW.sector = function (spec) {
+    var r = num(spec.r, 1), ang = num(spec.angle, 120);
+    var W = 280, H = 260, cx = W / 2, cy = H / 2 + 10, R = 96;
+    var c = new Canvas(W, H);
+    var t0 = rad(90), t1 = rad(90 - ang);
+    var x0 = cx + R * Math.cos(t0), y0 = cy - R * Math.sin(t0);
+    var x1 = cx + R * Math.cos(t1), y1 = cy - R * Math.sin(t1);
+    c.path("M" + f(cx) + " " + f(cy) + " L" + f(x0) + " " + f(y0)
+      + " A" + f(R) + " " + f(R) + " 0 " + (ang > 180 ? 1 : 0) + " 1 " + f(x1) + " " + f(y1) + " Z",
+      { fill: "#f0f0f0", w: 1.7 });
+    angleArc(c, [cx, cy], [x0, y0], [x1, y1], 30, lenText(ang) + "°");
+    c.circle(cx, cy, 2.4, { fill: INK, w: 0 });
+    c.text(cx - 11, cy + 11, str(spec.center) || "O", { size: 11.5, weight: "bold" });
+    /* 半径の長さと、弧の長さ・面積（計算して出す） */
+    c.dim([cx, cy], [x0, y0], lenText(r), { offset: -13 });
+    if (spec.show) {
+      var arc = 2 * Math.PI * r * ang / 360, ar = Math.PI * r * r * ang / 360;
+      c.text(W / 2, H - 16, "弧の長さ = " + arc.toFixed(2) + " ／ 面積 = " + ar.toFixed(2),
+             { size: 10, fill: SUB });
+    }
+    return c.out({ title: "おうぎ形" });
+  };
+
+  /* ── 座標平面上の図形 ─────────────────────────────────────
+     点の座標を与えると、方眼つきの座標平面へ正しく置く。 */
+  DRAW.coordfig = function (spec) {
+    var pts = pointsOf(spec.points), names = listOf(spec.names);
+    if (!pts.length) return null;
+    var xs = pts.map(function (p) { return p[0]; }), ys = pts.map(function (p) { return p[1]; });
+    var x0 = num(spec.xmin, Math.min(0, Math.min.apply(null, xs) - 1));
+    var x1 = num(spec.xmax, Math.max(0, Math.max.apply(null, xs) + 1));
+    var y0 = num(spec.ymin, Math.min(0, Math.min.apply(null, ys) - 1));
+    var y1 = num(spec.ymax, Math.max(0, Math.max.apply(null, ys) + 1));
+    var W = 330, H = 320, pad = 28;
+    var bw = W - pad * 2, bh = H - pad * 2;
+    /* 縦横の目盛りの間隔をそろえる（そろえないと正方形が長方形に見える） */
+    var sc = Math.min(bw / (x1 - x0), bh / (y1 - y0));
+    var ox = pad + (bw - (x1 - x0) * sc) / 2, oy = pad + bh - (bh - (y1 - y0) * sc) / 2;
+    var X = function (x) { return ox + (x - x0) * sc; };
+    var Y = function (y) { return oy - (y - y0) * sc; };
+    var c = new Canvas(W, H);
+    for (var gx = Math.ceil(x0); gx <= x1; gx++)
+      c.line(X(gx), Y(y0), X(gx), Y(y1), { stroke: "#e6e6e6", w: 0.6 });
+    for (var gy = Math.ceil(y0); gy <= y1; gy++)
+      c.line(X(x0), Y(gy), X(x1), Y(gy), { stroke: "#e6e6e6", w: 0.6 });
+    if (y0 <= 0 && 0 <= y1) c.arrow(X(x0), Y(0), X(x1), Y(0), { w: 1.2 });
+    if (x0 <= 0 && 0 <= x1) c.arrow(X(0), Y(y0), X(0), Y(y1), { w: 1.2 });
+    for (var tx = Math.ceil(x0); tx <= x1; tx++)
+      if (tx) c.text(X(tx), Y(0) + 11, String(tx), { size: 9, fill: SUB });
+    for (var ty = Math.ceil(y0); ty <= y1; ty++)
+      if (ty) c.text(X(0) - 7, Y(ty), String(ty), { anchor: "end", size: 9, fill: SUB });
+    c.text(X(0) - 7, Y(0) + 11, "O", { anchor: "end", size: 10.5 });
+    var P = pts.map(function (p) { return [X(p[0]), Y(p[1])]; });
+    if (P.length >= 3 && spec.close !== "0") c.poly(P, { fill: "#f2f2f2", w: 1.7 });
+    else if (P.length === 2) c.line(P[0][0], P[0][1], P[1][0], P[1][1], { w: 1.7 });
+    P.forEach(function (p, i) {
+      c.circle(p[0], p[1], 3.4, { fill: INK, w: 0 });
+      var nm = names[i] || String.fromCharCode(65 + i);
+      c.text(p[0] + 10, p[1] - 10, nm + "(" + pts[i][0] + ", " + pts[i][1] + ")",
+             { anchor: "start", size: 9.5 });
+    });
+    return c.out({ title: "座標平面" });
+  };
+
+  /* ── ベクトル ───────────────────────────────────────────── */
+  DRAW.vector = function (spec) {
+    var vs = str(spec.vectors || spec.v).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      var xy = numsOf(m.length > 1 ? m[1] : m[0]);
+      return { name: m.length > 1 ? m[0].trim() : "", x: xy[0], y: xy[1] };
+    }).filter(function (v) { return isNum(v.x) && isNum(v.y); });
+    if (!vs.length) return null;
+    var sum = str(spec.sum) === "1" || spec.sum === true;
+    var all = vs.slice();
+    if (sum && vs.length >= 2) {
+      var sx = 0, sy = 0;
+      vs.forEach(function (v) { sx += v.x; sy += v.y; });
+      all.push({ name: str(spec.sumname) || "a + b", x: sx, y: sy, isSum: true });
+    }
+    var xs = all.map(function (v) { return v.x; }).concat([0]);
+    var ys = all.map(function (v) { return v.y; }).concat([0]);
+    var x0 = Math.min.apply(null, xs) - 1, x1 = Math.max.apply(null, xs) + 1;
+    var y0 = Math.min.apply(null, ys) - 1, y1 = Math.max.apply(null, ys) + 1;
+    var W = 320, H = 300, pad = 26;
+    var sc = Math.min((W - pad * 2) / (x1 - x0), (H - pad * 2) / (y1 - y0));
+    var ox = pad + (W - pad * 2 - (x1 - x0) * sc) / 2 - x0 * sc;
+    var oy = pad + (H - pad * 2 + (y1 - y0) * sc) / 2 + y0 * sc;
+    var X = function (x) { return ox + x * sc; }, Y = function (y) { return oy - y * sc; };
+    var c = new Canvas(W, H);
+    for (var gx = Math.ceil(x0); gx <= x1; gx++) c.line(X(gx), Y(y0), X(gx), Y(y1), { stroke: "#ececec", w: 0.6 });
+    for (var gy = Math.ceil(y0); gy <= y1; gy++) c.line(X(x0), Y(gy), X(x1), Y(gy), { stroke: "#ececec", w: 0.6 });
+    c.arrow(X(x0), Y(0), X(x1), Y(0), { w: 1.1, stroke: SUB });
+    c.arrow(X(0), Y(y0), X(0), Y(y1), { w: 1.1, stroke: SUB });
+    all.forEach(function (v, i) {
+      c.arrow(X(0), Y(0), X(v.x), Y(v.y), { w: v.isSum ? 2.2 : 1.8, head: 7,
+                                            dash: v.isSum ? "6 3" : null });
+      if (v.name) c.text(X(v.x / 2) + 12, Y(v.y / 2) - 8, v.name, { size: 11.5, weight: "bold" });
+    });
+    c.text(X(0) - 8, Y(0) + 11, "O", { anchor: "end", size: 10.5 });
+    return c.out({ title: "ベクトル" });
+  };
+
+  /* ── 対称（線対称・点対称）───────────────────────────────── */
+  DRAW.symmetry = function (spec) {
+    var pts = pointsOf(spec.points);
+    if (pts.length < 3) return null;
+    var kind = /point|点/.test(str(spec.type)) ? "point" : "line";
+    var img = pts.map(function (p) {
+      return kind === "point" ? [-p[0], -p[1]] : [-p[0], p[1]];
+    });
+    var all = pts.concat(img);
+    var W = 340, H = 280;
+    var fit = fitter(all.concat([[0, 0]]), W, H, 34);
+    var c = new Canvas(W, H);
+    var O = fit.p([0, 0]);
+    if (kind === "line") {
+      c.line(O[0], 14, O[0], H - 14, { w: 1.3, dash: "7 4", stroke: SUB });
+      c.text(O[0], 8, "対称の軸", { size: 9.5, fill: SUB });
+    } else {
+      c.circle(O[0], O[1], 3, { fill: INK, w: 0 });
+      c.text(O[0] + 10, O[1] + 10, "O", { size: 11, weight: "bold" });
+    }
+    c.poly(pts.map(fit.p), { fill: "#f4f4f4", w: 1.7 });
+    c.poly(img.map(fit.p), { fill: "none", w: 1.4, dash: "5 3" });
+    /* 対応する点を細い線で結ぶ */
+    pts.forEach(function (p, i) {
+      var a = fit.p(p), b = fit.p(img[i]);
+      c.line(a[0], a[1], b[0], b[1], { w: 0.6, dash: "2 3", stroke: "#bbb" });
+      c.circle(a[0], a[1], 2.6, { fill: INK, w: 0 });
+      c.circle(b[0], b[1], 2.6, { fill: "#fff", w: 1.1 });
+      c.text(a[0] - 9, a[1] - 9, String.fromCharCode(65 + i), { size: 10.5, weight: "bold" });
+      c.text(b[0] + 9, b[1] - 9, String.fromCharCode(65 + i) + "′", { size: 10.5, weight: "bold" });
+    });
+    return c.out({ title: kind === "point" ? "点対称" : "線対称" });
+  };
+
+  /* ── 作図（垂直二等分線・角の二等分線）─────────────────────
+     コンパスの弧も、実際にその半径で描く。 */
+  DRAW.compass = function (spec) {
+    var kind = str(spec.type || "perp").toLowerCase();
+    var W = 320, H = 250, c = new Canvas(W, H);
+    if (/angle|角/.test(kind)) {
+      var V = [56, H - 52], L = 200, ang = num(spec.angle, 70);
+      var A = [V[0] + L, V[1]];
+      var B = [V[0] + L * Math.cos(-rad(ang)), V[1] + L * Math.sin(-rad(ang))];
+      c.line(V[0], V[1], A[0], A[1], { w: 1.6 });
+      c.line(V[0], V[1], B[0], B[1], { w: 1.6 });
+      var r1 = 70;
+      var P = [V[0] + r1, V[1]];
+      var Q = [V[0] + r1 * Math.cos(-rad(ang)), V[1] + r1 * Math.sin(-rad(ang))];
+      /* 頂点を中心とする弧 */
+      c.path("M" + f(P[0]) + " " + f(P[1]) + " A" + f(r1) + " " + f(r1) + " 0 0 0 "
+        + f(Q[0]) + " " + f(Q[1]), { w: 0.9, dash: "4 3", stroke: SUB });
+      /* P, Q を中心とする等半径の弧の交点＝二等分線上の点 */
+      var r2 = 58;
+      var mid = [(P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2];
+      var dxy = [Q[0] - P[0], Q[1] - P[1]];
+      var dl = Math.sqrt(dxy[0] * dxy[0] + dxy[1] * dxy[1]);
+      var hh = Math.sqrt(Math.max(0, r2 * r2 - (dl / 2) * (dl / 2)));
+      var nx = -dxy[1] / dl, ny = dxy[0] / dl;
+      var Kp = [mid[0] - nx * hh, mid[1] - ny * hh];
+      [P, Q].forEach(function (ct) {
+        c.circle(ct[0], ct[1], r2, { w: 0.7, dash: "3 3", stroke: "#bbb" });
+        c.circle(ct[0], ct[1], 2.4, { fill: INK, w: 0 });
+      });
+      c.line(V[0], V[1], V[0] + (Kp[0] - V[0]) * 2.1, V[1] + (Kp[1] - V[1]) * 2.1,
+             { w: 1.5, dash: "8 3" });
+      c.circle(Kp[0], Kp[1], 2.6, { fill: INK, w: 0 });
+      c.text(W - 10, 16, "角の二等分線", { anchor: "end", size: 10.5, fill: SUB });
+      angleArc(c, V, A, [Kp[0], Kp[1]], 34, lenText(ang / 2) + "°");
+    } else {
+      var A2 = [58, H / 2 + 26], B2 = [W - 58, H / 2 + 26];
+      c.line(A2[0], A2[1], B2[0], B2[1], { w: 1.6 });
+      c.circle(A2[0], A2[1], 2.6, { fill: INK, w: 0 });
+      c.circle(B2[0], B2[1], 2.6, { fill: INK, w: 0 });
+      c.text(A2[0] - 10, A2[1] + 10, "A", { size: 11.5, weight: "bold" });
+      c.text(B2[0] + 10, B2[1] + 10, "B", { size: 11.5, weight: "bold" });
+      /* 弧が枠から出ないよう、上下の余白から半径の上限を決める */
+      var d2 = (B2[0] - A2[0]);
+      var room = Math.min(A2[1] - 24, H - 14 - A2[1]);
+      var r3 = Math.min(d2 * 0.62, Math.sqrt(room * room + (d2 / 2) * (d2 / 2)) * 0.98);
+      if (r3 <= d2 / 2) r3 = d2 * 0.56;
+      [A2, B2].forEach(function (ct) { c.circle(ct[0], ct[1], r3, { w: 0.8, dash: "3 3", stroke: "#bbb" }); });
+      var m2 = [(A2[0] + B2[0]) / 2, A2[1]];
+      var h2 = Math.sqrt(Math.max(0, r3 * r3 - (d2 / 2) * (d2 / 2)));
+      c.line(m2[0], m2[1] - h2 - 8, m2[0], m2[1] + h2 + 8, { w: 1.5, dash: "8 3" });
+      c.circle(m2[0], m2[1] - h2, 2.6, { fill: INK, w: 0 });
+      c.circle(m2[0], m2[1] + h2, 2.6, { fill: INK, w: 0 });
+      rightAngle(c, m2, A2, [m2[0], m2[1] - h2], 10);
+      c.tick(A2, m2, 1, {});
+      c.tick(m2, B2, 1, {});
+      c.text(W - 10, 16, "垂直二等分線", { anchor: "end", size: 10.5, fill: SUB });
+    }
+    return c.out({ title: "作図" });
+  };
+
+  /* ── 三角比 ─────────────────────────────────────────────
+     直角三角形に、辺の名前（対辺・隣辺・斜辺）と角を入れる。 */
+  DRAW.trig = function (spec) {
+    var ang = num(spec.angle, 35);
+    if (!(ang > 0 && ang < 90)) return null;
+    var hyp = num(spec.hyp, 10);
+    var a = hyp * Math.sin(rad(ang));      /* 対辺 */
+    var b = hyp * Math.cos(rad(ang));      /* 隣辺 */
+    var pts = { C: [0, 0], B: [b, 0], A: [0, a] };
+    var W = 330, H = 250;
+    var fit = fitter([pts.A, pts.B, pts.C], W, H, 42);
+    var A = fit.p(pts.A), B = fit.p(pts.B), C = fit.p(pts.C);
+    var c = new Canvas(W, H);
+    c.poly([A, B, C], { fill: "#fafafa", w: 1.7 });
+    rightAngle(c, C, A, B, 13);
+    angleArc(c, B, C, A, 24, lenText(ang) + "°");
+    var cen = centroid([A, B, C]);
+    midLabel(c, C, A, cen, str(spec.opp) || ("対辺 " + lenText(a)));
+    midLabel(c, C, B, cen, str(spec.adj) || ("隣辺 " + lenText(b)));
+    midLabel(c, A, B, cen, str(spec.hypname) || ("斜辺 " + lenText(hyp)));
+    if (spec.show) {
+      c.text(W / 2, H - 10,
+        "sin = " + Math.sin(rad(ang)).toFixed(3) + " ／ cos = " + Math.cos(rad(ang)).toFixed(3)
+        + " ／ tan = " + Math.tan(rad(ang)).toFixed(3), { size: 10, fill: SUB });
+    }
+    return c.out({ title: "三角比" });
+  };
+
+  /* ── 単位円と三角比 ─────────────────────────────────────── */
+  DRAW.unitcircle = function (spec) {
+    var ang = num(spec.angle, 120);
+    var W = 320, H = 320, cx = W / 2, cy = H / 2, R = 110;
+    var c = new Canvas(W, H);
+    for (var g = -1; g <= 1; g++) {
+      if (!g) continue;
+      c.line(cx + g * R, cy - R - 18, cx + g * R, cy + R + 18, { stroke: "#e8e8e8", w: 0.6 });
+      c.line(cx - R - 18, cy + g * R, cx + R + 18, cy + g * R, { stroke: "#e8e8e8", w: 0.6 });
+      c.text(cx + g * R, cy + 12, String(g), { size: 9, fill: SUB });
+      c.text(cx - 8, cy + g * R, String(-g), { anchor: "end", size: 9, fill: SUB });
+    }
+    c.arrow(cx - R - 20, cy, cx + R + 20, cy, { w: 1.1, stroke: SUB });
+    c.arrow(cx, cy + R + 20, cx, cy - R - 20, { w: 1.1, stroke: SUB });
+    c.circle(cx, cy, R, { w: 1.6 });
+    var t = rad(ang);
+    var px = cx + R * Math.cos(t), py = cy - R * Math.sin(t);
+    c.line(cx, cy, px, py, { w: 1.7 });
+    c.line(px, py, px, cy, { w: 1.2, dash: "4 3", stroke: SUB });
+    c.line(px, cy, cx, cy, { w: 1.2, dash: "4 3", stroke: SUB });
+    angleArc(c, [cx, cy], [cx + 40, cy], [px, py], 30, lenText(ang) + "°");
+    c.circle(px, py, 3.6, { fill: INK, w: 0 });
+    c.text(px + (Math.cos(t) >= 0 ? 12 : -12), py - 12,
+           "P(" + Math.cos(t).toFixed(3) + ", " + Math.sin(t).toFixed(3) + ")",
+           { anchor: Math.cos(t) >= 0 ? "start" : "end", size: 10 });
+    c.text(cx - 9, cy + 12, "O", { anchor: "end", size: 10.5 });
+    c.text(cx + R + 14, cy - 10, "x", { size: 11, style: "italic" });
+    c.text(cx + 11, cy - R - 14, "y", { size: 11, style: "italic" });
+    c.text((px + cx) / 2, cy - 11, "cos", { size: 9.5, fill: SUB });
+    c.text(px + (Math.cos(t) >= 0 ? 14 : -14), (py + cy) / 2, "sin", { size: 9.5, fill: SUB });
+    return c.out({ title: "単位円" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-C) 立体・展開図・投影図
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── 展開図 ─────────────────────────────────────────────────
+     面の大きさは寸法どおり。**辺の長さが合っていないと組み立たない。** */
+  DRAW.net = function (spec) {
+    var type = str(spec.type || "cuboid").toLowerCase();
+    var W = 360, H = 300, c = new Canvas(W, H);
+    var label = !!spec.show;
+
+    if (type === "cube") {
+      var a = num(spec.a, num(spec.w, 4));
+      if (!(a > 0)) return null;
+      var u = Math.min(58, Math.floor(Math.min((W - 30) / 4, (H - 30) / 3)));
+      var x0 = (W - u * 4) / 2, y0 = (H - u * 3) / 2;
+      /* 十字型。1 段目 1 枚、2 段目 4 枚、3 段目 1 枚 */
+      var cells = [[1, 0], [0, 1], [1, 1], [2, 1], [3, 1], [1, 2]];
+      cells.forEach(function (p, i) {
+        c.rect(x0 + p[0] * u, y0 + p[1] * u, u, u, { fill: "#fafafa", w: 1.4 });
+        c.text(x0 + p[0] * u + u / 2, y0 + p[1] * u + u / 2, String(i + 1), { size: 11, fill: SUB });
+      });
+      if (label) c.text(W / 2, H - 8, "1 辺 " + lenText(a), { size: 10.5 });
+      return c.out({ title: "立方体の展開図" });
+    }
+    if (type === "cuboid" || type === "box") {
+      var w = num(spec.w, 6), d = num(spec.d, 4), h = num(spec.h, 3);
+      if (!(w > 0 && d > 0 && h > 0)) return null;
+      /* 横: d + w + d + w ／ 縦: d + h + d。実寸の比をそのまま使う。 */
+      var totalW = d * 2 + w * 2, totalH = d * 2 + h;
+      var s = Math.min((W - 34) / totalW, (H - 40) / totalH);
+      var X0 = (W - totalW * s) / 2, Y0 = (H - totalH * s) / 2;
+      var box = function (x, y, ww, hh, t) {
+        c.rect(X0 + x * s, Y0 + y * s, ww * s, hh * s, { fill: "#fafafa", w: 1.3 });
+        if (t) c.text(X0 + (x + ww / 2) * s, Y0 + (y + hh / 2) * s, t, { size: 9.5, fill: SUB });
+      };
+      box(d, 0, w, d, "上");
+      box(0, d, d, h, "側");
+      box(d, d, w, h, "前");
+      box(d + w, d, d, h, "側");
+      box(d + w + d, d, w, h, "後");
+      box(d, d + h, w, d, "下");
+      if (label) {
+        c.text(X0 + (d + w / 2) * s, Y0 + totalH * s + 12, "たて " + lenText(w), { size: 10 });
+        c.text(X0 - 8, Y0 + (d + h / 2) * s, lenText(h), { anchor: "end", size: 10 });
+      }
+      return c.out({ title: "直方体の展開図" });
+    }
+    if (type === "cylinder") {
+      var r = num(spec.r, 3), hh2 = num(spec.h, 8);
+      if (!(r > 0 && hh2 > 0)) return null;
+      /* 側面は長方形。**横の長さは 2πr**（ここを適当にすると巻けない） */
+      var side = 2 * Math.PI * r;
+      var s2 = Math.min((W - 40) / side, (H - 40) / (hh2 + r * 4));
+      var bw2 = side * s2, bh2 = hh2 * s2, rr = r * s2;
+      var cx2 = W / 2, y1 = (H - (bh2 + rr * 4)) / 2 + rr * 2;
+      c.rect(cx2 - bw2 / 2, y1, bw2, bh2, { fill: "#fafafa", w: 1.4 });
+      c.circle(cx2 - bw2 / 2 + rr, y1 - rr, rr, { fill: "#f2f2f2", w: 1.4 });
+      c.circle(cx2 - bw2 / 2 + rr, y1 + bh2 + rr, rr, { fill: "#f2f2f2", w: 1.4 });
+      if (label) {
+        c.text(cx2, y1 + bh2 + 12 + rr * 2, "側面の横 = 2πr = " + side.toFixed(2), { size: 10, fill: SUB });
+        c.text(cx2 + bw2 / 2 + 10, y1 + bh2 / 2, "h = " + lenText(hh2), { anchor: "start", size: 10 });
+      }
+      return c.out({ title: "円柱の展開図" });
+    }
+    if (type === "cone") {
+      var r2 = num(spec.r, 3), l = num(spec.l, num(spec.h, 8));
+      if (!(r2 > 0 && l > r2)) return null;
+      /* 側面はおうぎ形。**中心角 = 360 × r / l**（この式どおりでないと巻けない） */
+      var deg2 = 360 * r2 / l;
+      var s3 = Math.min((W - 40) / (l * 2), (H - 60) / (l + r2 * 2.4));
+      var R3 = l * s3, rr3 = r2 * s3;
+      var cx3 = W / 2, cy3 = 34 + R3 * 0.1;
+      var t0 = rad(90 + deg2 / 2), t1 = rad(90 - deg2 / 2);
+      var p0 = [cx3 + R3 * Math.cos(t0), cy3 - R3 * Math.sin(t0) + R3];
+      var p1 = [cx3 + R3 * Math.cos(t1), cy3 - R3 * Math.sin(t1) + R3];
+      var O3 = [cx3, cy3 + R3];
+      c.path("M" + f(O3[0]) + " " + f(O3[1]) + " L" + f(p0[0]) + " " + f(p0[1])
+        + " A" + f(R3) + " " + f(R3) + " 0 " + (deg2 > 180 ? 1 : 0) + " 1 " + f(p1[0]) + " " + f(p1[1]) + " Z",
+        { fill: "#fafafa", w: 1.4 });
+      c.circle(cx3, O3[1] + rr3 + 16, rr3, { fill: "#f2f2f2", w: 1.4 });
+      if (label) {
+        c.text(cx3, H - 8, "中心角 = 360° × r ÷ 母線 = " + deg2.toFixed(1) + "°", { size: 10, fill: SUB });
+      }
+      return c.out({ title: "円錐の展開図" });
+    }
+    if (type === "pyramid" || type === "prism") {
+      var n = Math.round(num(spec.n, 4)), r4 = num(spec.r, 3), h4 = num(spec.h, 6);
+      if (!(n >= 3 && n <= 8) || !(r4 > 0) || !(h4 > 0)) return null;
+      var side4 = 2 * r4 * Math.sin(Math.PI / n);   /* 底面の 1 辺 */
+      var u4 = Math.min((W - 40) / (side4 * n), (H - 60) / (h4 + side4));
+      var x4 = (W - side4 * n * u4) / 2, y4 = 40;
+      for (var i4 = 0; i4 < n; i4++) {
+        if (type === "prism") {
+          c.rect(x4 + i4 * side4 * u4, y4, side4 * u4, h4 * u4, { fill: "#fafafa", w: 1.3 });
+        } else {
+          var bx = x4 + i4 * side4 * u4;
+          c.poly([[bx, y4 + h4 * u4], [bx + side4 * u4, y4 + h4 * u4],
+                  [bx + side4 * u4 / 2, y4]], { fill: "#fafafa", w: 1.3 });
+        }
+      }
+      /* 底面（正 n 角形）を下に置く */
+      var by = y4 + h4 * u4 + 10 + r4 * u4;
+      var base = [];
+      for (var k4 = 0; k4 < n; k4++) {
+        var tt = rad(90 + 360 * k4 / n);
+        base.push([W / 2 + r4 * u4 * Math.cos(tt), by - r4 * u4 * Math.sin(tt)]);
+      }
+      c.poly(base, { fill: "#f2f2f2", w: 1.3 });
+      if (label) c.text(W / 2, H - 6, "底面の 1 辺 = " + side4.toFixed(2), { size: 10, fill: SUB });
+      return c.out({ title: (type === "prism" ? "角柱" : "角錐") + "の展開図" });
+    }
+    return null;
+  };
+
+  /* ── 投影図（正面図・平面図・側面図）───────────────────────── */
+  DRAW.projection = function (spec) {
+    var w = num(spec.w, 6), d = num(spec.d, 4), h = num(spec.h, 3);
+    if (!(w > 0 && d > 0 && h > 0)) return null;
+    var W = 340, H = 300, c = new Canvas(W, H);
+    var s = Math.min((W - 70) / (w + d), (H - 80) / (h + d));
+    var gap = 18;
+    var x0 = 40, y0 = 34;
+    /* 平面図（上から） */
+    c.rect(x0, y0, w * s, d * s, { fill: "#fafafa", w: 1.4 });
+    c.text(x0 + w * s / 2, y0 - 10, "平面図（上から）", { size: 9.5, fill: SUB });
+    /* 正面図（前から） */
+    var y1 = y0 + d * s + gap;
+    c.rect(x0, y1, w * s, h * s, { fill: "#fafafa", w: 1.4 });
+    c.text(x0 + w * s / 2, y1 + h * s + 12, "正面図", { size: 9.5, fill: SUB });
+    /* 側面図（横から） */
+    var x1 = x0 + w * s + gap;
+    c.rect(x1, y1, d * s, h * s, { fill: "#fafafa", w: 1.4 });
+    c.text(x1 + d * s / 2, y1 + h * s + 12, "側面図", { size: 9.5, fill: SUB });
+    /* 対応を示す補助線 */
+    c.line(x0, y0 + d * s, x0, y1, { w: 0.6, dash: "3 3", stroke: "#bbb" });
+    c.line(x0 + w * s, y0 + d * s, x0 + w * s, y1, { w: 0.6, dash: "3 3", stroke: "#bbb" });
+    c.line(x0 + w * s, y1, x1, y1, { w: 0.6, dash: "3 3", stroke: "#bbb" });
+    c.line(x0 + w * s, y1 + h * s, x1, y1 + h * s, { w: 0.6, dash: "3 3", stroke: "#bbb" });
+    if (spec.show) {
+      c.text(x0 + w * s / 2, y0 + d * s + 11, lenText(w), { size: 9.5 });
+      c.text(x0 - 9, y1 + h * s / 2, lenText(h), { anchor: "end", size: 9.5 });
+      c.text(x1 + d * s / 2, y1 - 8, lenText(d), { size: 9.5 });
+    }
+    return c.out({ title: "投影図" });
+  };
+
+  /* ── 積み木（等角図）─────────────────────────────────────────
+     cells = 列,行,高さ の組。各マスに何段積むかを描く。 */
+  DRAW.blocks = function (spec) {
+    var cols = Math.round(num(spec.cols, 3)), rows = Math.round(num(spec.rows, 3));
+    if (!(cols >= 1 && cols <= 8) || !(rows >= 1 && rows <= 8)) return null;
+    var stack = {};
+    pointsOf(spec.cells).forEach(function (p) { stack[p[0] + "," + p[1]] = 1; });
+    str(spec.stacks).split(/\s+/).filter(Boolean).forEach(function (t) {
+      var m = t.split(/[:：]/), xy = numsOf(m[0]);
+      if (xy.length === 2) stack[xy[0] + "," + xy[1]] = Math.max(1, Math.round(Number(m[1] || 1)));
+    });
+    if (!Object.keys(stack).length) for (var i = 1; i <= cols; i++) stack[i + ",1"] = 1;
+    var W = 320, H = 260, u = 26, ex = u * 0.86, ey = u * 0.5;
+    var c = new Canvas(W, H);
+    var ox = W / 2 - (cols - rows) * ex / 2, oy = 60;
+    /* 奥から手前へ描く（手前が上に重なる） */
+    var order = [];
+    for (var r = 1; r <= rows; r++) for (var q = 1; q <= cols; q++) order.push([q, r]);
+    order.sort(function (a, b) { return (a[0] + a[1]) - (b[0] + b[1]); });
+    order.forEach(function (p) {
+      var n = stack[p[0] + "," + p[1]] || 0;
+      for (var k = 0; k < n; k++) {
+        var bx = ox + (p[0] - p[1]) * ex;
+        var by = oy + (p[0] + p[1]) * ey - k * u;
+        var top = [[bx, by - u], [bx + ex, by - u + ey], [bx, by - u + ey * 2], [bx - ex, by - u + ey]];
+        c.poly(top, { fill: "#fbfbfb", w: 1.1 });
+        c.poly([[bx - ex, by - u + ey], [bx, by - u + ey * 2], [bx, by + ey * 2 - u + u],
+                [bx - ex, by + ey - u + u]], { fill: "#eee", w: 1.1 });
+        c.poly([[bx + ex, by - u + ey], [bx, by - u + ey * 2], [bx, by + ey * 2 - u + u],
+                [bx + ex, by + ey - u + u]], { fill: "#f6f6f6", w: 1.1 });
+      }
+    });
+    if (spec.show) {
+      var total = Object.keys(stack).reduce(function (a, k) { return a + stack[k]; }, 0);
+      c.text(W / 2, H - 8, "全部で " + total + " 個", { size: 10.5, fill: SUB });
+    }
+    return c.out({ title: "積み木" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-D) 理科
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── 回路図 ─────────────────────────────────────────────────
+     直列 / 並列。素子の記号は JIS の書き方にそろえる。 */
+  DRAW.circuit = function (spec) {
+    var parts = listOf(spec.parts);
+    if (!parts.length) parts = ["電池", "抵抗", "電球"];
+    var para = /並列|parallel/.test(str(spec.type));
+    var W = 340, H = 220, c = new Canvas(W, H);
+    var L = 44, R2 = W - 44, T = 54, B = H - 46;
+
+    function battery(x, y, horiz) {
+      /* 長い線 = ＋、短い線 = − */
+      if (horiz) {
+        c.line(x - 10, y - 11, x - 10, y + 11, { w: 1.6 });
+        c.line(x + 2, y - 6, x + 2, y + 6, { w: 3.0 });
+        c.line(x - 22, y, x - 10, y, { w: 1.3 });
+        c.line(x + 2, y, x + 22, y, { w: 1.3 });
+        c.text(x - 16, y - 15, "＋", { size: 9, fill: SUB });
+      } else {
+        c.line(x - 11, y - 10, x + 11, y - 10, { w: 1.6 });
+        c.line(x - 6, y + 2, x + 6, y + 2, { w: 3.0 });
+        c.line(x, y - 22, x, y - 10, { w: 1.3 });
+        c.line(x, y + 2, x, y + 22, { w: 1.3 });
+      }
+    }
+    function resistor(x, y) {
+      c.rect(x - 20, y - 8, 40, 16, { fill: "#fff", w: 1.4 });
+      c.line(x - 34, y, x - 20, y, { w: 1.3 });
+      c.line(x + 20, y, x + 34, y, { w: 1.3 });
+    }
+    function lamp(x, y) {
+      c.circle(x, y, 12, { fill: "#fff", w: 1.4 });
+      c.line(x - 8.5, y - 8.5, x + 8.5, y + 8.5, { w: 1.1 });
+      c.line(x - 8.5, y + 8.5, x + 8.5, y - 8.5, { w: 1.1 });
+      c.line(x - 26, y, x - 12, y, { w: 1.3 });
+      c.line(x + 12, y, x + 26, y, { w: 1.3 });
+    }
+    function meter(x, y, ch) {
+      c.circle(x, y, 13, { fill: "#fff", w: 1.4 });
+      c.text(x, y, ch, { size: 11, weight: "bold" });
+      c.line(x - 27, y, x - 13, y, { w: 1.3 });
+      c.line(x + 13, y, x + 27, y, { w: 1.3 });
+    }
+    function sw(x, y) {
+      c.circle(x - 13, y, 2.4, { fill: INK, w: 0 });
+      c.circle(x + 13, y, 2.4, { fill: INK, w: 0 });
+      c.line(x - 13, y, x + 10, y - 12, { w: 1.4 });
+      c.line(x - 28, y, x - 13, y, { w: 1.3 });
+      c.line(x + 13, y, x + 28, y, { w: 1.3 });
+    }
+    function put(name, x, y) {
+      if (/電池|battery/.test(name)) battery(x, y, true);
+      else if (/抵抗|resistor/.test(name)) resistor(x, y);
+      else if (/電球|豆電球|lamp|bulb/.test(name)) lamp(x, y);
+      else if (/電流計|ammeter/.test(name)) meter(x, y, "A");
+      else if (/電圧計|voltmeter/.test(name)) meter(x, y, "V");
+      else if (/スイッチ|switch/.test(name)) sw(x, y);
+      else { c.rect(x - 20, y - 9, 40, 18, { fill: "#fff", w: 1.3 }); c.text(x, y, name.slice(0, 4), { size: 9 }); }
+    }
+
+    /* 外枠の導線 */
+    c.poly([[L, T], [R2, T], [R2, B], [L, B]], { fill: "none", w: 1.3 });
+    var body = parts.filter(function (p) { return !/電池|battery/.test(p); });
+    var bat = parts.filter(function (p) { return /電池|battery/.test(p); })[0] || "電池";
+    put(bat, (L + R2) / 2, B);
+    if (!para || body.length < 2) {
+      var step = (R2 - L) / (body.length + 1);
+      body.forEach(function (p, i) { put(p, L + step * (i + 1), T); });
+    } else {
+      /* 並列。2 本の枝を上に立てる。 */
+      var x1 = L + (R2 - L) * 0.32, x2 = L + (R2 - L) * 0.68;
+      c.line(x1, T, x1, T - 34, { w: 1.3 });
+      c.line(x2, T, x2, T - 34, { w: 1.3 });
+      c.line(x1, T - 34, x2, T - 34, { w: 1.3 });
+      put(body[0], (x1 + x2) / 2, T);
+      put(body[1], (x1 + x2) / 2, T - 34);
+    }
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 11.5, weight: "bold" });
+    return c.out({ title: "回路図" });
+  };
+
+  /* ── てこ ───────────────────────────────────────────────────
+     支点からの距離と重さを寸法どおりに置く。つり合うかも計算して出す。 */
+  DRAW.lever = function (spec) {
+    var lw = num(spec.leftweight, 20), ld = num(spec.leftdist, 30);
+    var rw = num(spec.rightweight, 30), rd = num(spec.rightdist, 20);
+    if (!(lw > 0 && ld > 0 && rw > 0 && rd > 0)) return null;
+    var W = 360, H = 220, c = new Canvas(W, H);
+    var cx = W / 2, barY = 96;
+    var sc = Math.min(130 / Math.max(ld, rd), 6);
+    var lx = cx - ld * sc, rx = cx + rd * sc;
+    c.line(Math.min(lx, cx - 140), barY, Math.max(rx, cx + 140), barY, { w: 3.4, cap: "round" });
+    c.poly([[cx, barY + 4], [cx - 18, H - 44], [cx + 18, H - 44]], { fill: "#eee", w: 1.4 });
+    c.rect(cx - 34, H - 44, 68, 8, { fill: "#ddd", w: 1.2 });
+    [[lx, lw, ld], [rx, rw, rd]].forEach(function (g) {
+      c.line(g[0], barY, g[0], barY + 22, { w: 1.2 });
+      c.rect(g[0] - 17, barY + 22, 34, 24, { fill: "#fff", w: 1.4 });
+      c.text(g[0], barY + 34, lenText(g[1]) + "g", { size: 10 });
+      c.dim([cx, barY - 16], [g[0], barY - 16], lenText(g[2]) + "cm", { offset: -10, size: 9.5 });
+    });
+    var l = lw * ld, r = rw * rd;
+    c.text(W / 2, H - 12,
+      "左 " + lenText(lw) + "×" + lenText(ld) + " = " + lenText(l)
+      + " ／ 右 " + lenText(rw) + "×" + lenText(rd) + " = " + lenText(r)
+      + "　" + (Math.abs(l - r) < 1e-9 ? "→ つり合う" : (l > r ? "→ 左が下がる" : "→ 右が下がる")),
+      { size: 10, fill: SUB });
+    return c.out({ title: "てこ" });
+  };
+
+  /* ── 力の矢印 ───────────────────────────────────────────────
+     forces = 名前:大きさ:向き(度) を並べる。**矢印の長さは大きさに比例する。** */
+  DRAW.forces = function (spec) {
+    var fs = str(spec.forces).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      return { name: str(m[0]).trim(), mag: Number(m[1]), deg: Number(m[2]) };
+    }).filter(function (v) { return isNum(v.mag) && isNum(v.deg) && v.mag > 0; });
+    if (!fs.length) return null;
+    var W = 320, H = 300, cx = W / 2, cy = H / 2, c = new Canvas(W, H);
+    var maxM = Math.max.apply(null, fs.map(function (v) { return v.mag; }));
+    var L = 92;
+    /* 物体 */
+    var shape = str(spec.object || "box");
+    if (/ball|球|円/.test(shape)) c.circle(cx, cy, 22, { fill: "#f2f2f2", w: 1.5 });
+    else c.rect(cx - 24, cy - 20, 48, 40, { fill: "#f2f2f2", w: 1.5 });
+    fs.forEach(function (v) {
+      var t = rad(v.deg);
+      var len = L * v.mag / maxM;
+      var sx = cx + 26 * Math.cos(t), sy = cy - 26 * Math.sin(t);
+      c.arrow(sx, sy, cx + (26 + len) * Math.cos(t), cy - (26 + len) * Math.sin(t),
+              { w: 2, head: 8 });
+      var tx = cx + (30 + len) * Math.cos(t), ty = cy - (30 + len) * Math.sin(t);
+      c.text(Math.max(28, Math.min(W - 28, tx + Math.cos(t) * 14)),
+             Math.max(12, Math.min(H - 10, ty - Math.sin(t) * 12)),
+             v.name + (spec.show ? " " + lenText(v.mag) + "N" : ""), { size: 10.5 });
+    });
+    return c.out({ title: "力の矢印" });
+  };
+
+  /* ── 光（反射・屈折・凸レンズ）───────────────────────────── */
+  DRAW.ray = function (spec) {
+    var kind = str(spec.type || "reflect").toLowerCase();
+    var W = 340, H = 240, c = new Canvas(W, H);
+    if (/refl|反射/.test(kind)) {
+      var ang = num(spec.angle, 40);        /* 法線からの角 */
+      var my = H - 62, cx = W / 2;
+      c.line(30, my, W - 30, my, { w: 2.2 });
+      for (var i = 34; i < W - 30; i += 12) c.line(i, my, i - 7, my + 8, { w: 0.7, stroke: SUB });
+      c.line(cx, my, cx, 26, { w: 1, dash: "6 4", stroke: SUB });
+      c.text(cx + 8, 30, "法線", { anchor: "start", size: 9.5, fill: SUB });
+      var t = rad(ang), L = 150;
+      c.arrow(cx - L * Math.sin(t), my - L * Math.cos(t), cx - 6 * Math.sin(t), my - 6 * Math.cos(t),
+              { w: 1.7, head: 7 });
+      c.arrow(cx + 6 * Math.sin(t), my - 6 * Math.cos(t), cx + L * Math.sin(t), my - L * Math.cos(t),
+              { w: 1.7, head: 7 });
+      angleArc(c, [cx, my], [cx, my - 60], [cx - 60 * Math.sin(t), my - 60 * Math.cos(t)], 42,
+               lenText(ang) + "°");
+      angleArc(c, [cx, my], [cx + 60 * Math.sin(t), my - 60 * Math.cos(t)], [cx, my - 60], 42,
+               lenText(ang) + "°");
+      c.text(W / 2, H - 12, "入射角 = 反射角", { size: 10.5, fill: SUB });
+      return c.out({ title: "光の反射" });
+    }
+    if (/refr|屈折/.test(kind)) {
+      var a1 = num(spec.angle, 45), n = num(spec.n, 1.5);
+      var s = Math.sin(rad(a1)) / n;
+      if (Math.abs(s) > 1) return null;         /* 全反射。屈折の図にならない */
+      var a2 = deg(Math.asin(s));
+      var my2 = H / 2, cx2 = W / 2;
+      c.rect(26, my2, W - 52, H - my2 - 22, { fill: "#f2f4f7", w: 1.2 });
+      c.line(26, my2, W - 26, my2, { w: 1.6 });
+      c.line(cx2, 22, cx2, H - 22, { w: 1, dash: "6 4", stroke: SUB });
+      var t1 = rad(a1), t2 = rad(a2), L2 = 110;
+      c.arrow(cx2 - L2 * Math.sin(t1), my2 - L2 * Math.cos(t1), cx2, my2, { w: 1.7, head: 7 });
+      c.arrow(cx2, my2, cx2 + L2 * Math.sin(t2), my2 + L2 * Math.cos(t2), { w: 1.7, head: 7 });
+      angleArc(c, [cx2, my2], [cx2, my2 - 50], [cx2 - 50 * Math.sin(t1), my2 - 50 * Math.cos(t1)], 36,
+               lenText(a1) + "°");
+      angleArc(c, [cx2, my2], [cx2 + 50 * Math.sin(t2), my2 + 50 * Math.cos(t2)], [cx2, my2 + 50], 36,
+               lenText(Math.round(a2 * 10) / 10) + "°");
+      c.text(W - 30, my2 - 10, "空気", { anchor: "end", size: 9.5, fill: SUB });
+      c.text(W - 30, my2 + 16, "水（n = " + lenText(n) + "）", { anchor: "end", size: 9.5, fill: SUB });
+      return c.out({ title: "光の屈折" });
+    }
+    /* 凸レンズ。像の位置は **レンズの式 1/a + 1/b = 1/f** で出す。 */
+    var fl = num(spec.f, 4), a = num(spec.a, 10), hh = num(spec.height, 3);
+    if (!(fl > 0 && a > 0) || Math.abs(a - fl) < 1e-9) return null;
+    var b = 1 / (1 / fl - 1 / a);
+    var W2 = 380, H2 = 240;
+    var c2 = new Canvas(W2, H2);
+    var axis = H2 / 2, cx3 = W2 / 2;
+    var sc = Math.min(150 / Math.max(a, Math.abs(b)), 14);
+    c2.line(18, axis, W2 - 18, axis, { w: 1, dash: "5 4", stroke: SUB });
+    c2.ellipse(cx3, axis, 9, 58, { fill: "#eef2f6", w: 1.5 });
+    [-1, 1].forEach(function (sgn) {
+      var fx = cx3 + sgn * fl * sc;
+      c2.line(fx, axis - 5, fx, axis + 5, { w: 1.2 });
+      c2.text(fx, axis + 15, "F", { size: 9.5, fill: SUB });
+    });
+    var ox = cx3 - a * sc, oh = hh * sc;
+    c2.arrow(ox, axis, ox, axis - oh, { w: 2, head: 7 });
+    c2.text(ox - 10, axis - oh - 8, "物体", { anchor: "end", size: 9.5 });
+    var ih = -oh * b / a, ix = cx3 + b * sc;
+    c2.arrow(ix, axis, ix, axis - ih, { w: 2, head: 7, dash: b < 0 ? "5 3" : null });
+    c2.text(ix + 10, axis - ih + (ih < 0 ? 10 : -10), b > 0 ? "実像" : "虚像",
+            { anchor: "start", size: 9.5 });
+    /* 光線 2 本（軸に平行 → 焦点を通る、中心を通る → 直進） */
+    c2.line(ox, axis - oh, cx3, axis - oh, { w: 1.1, stroke: SUB });
+    c2.line(cx3, axis - oh, ix, axis - ih, { w: 1.1, stroke: SUB });
+    c2.line(ox, axis - oh, ix, axis - ih, { w: 1.1, stroke: SUB });
+    c2.text(W2 / 2, H2 - 10,
+      "1/a + 1/b = 1/f　→　b = " + b.toFixed(2), { size: 10, fill: SUB });
+    return c2.out({ title: "凸レンズ" });
+  };
+
+  /* ── 波 ─────────────────────────────────────────────────────
+     振幅・波長・波の数を寸法どおりに描く。 */
+  DRAW.wave = function (spec) {
+    var amp = num(spec.amplitude, 1), waves = num(spec.waves, 2.5);
+    if (!(amp > 0) || !(waves > 0) || waves > 12) return null;
+    var W = 360, H = 200, c = new Canvas(W, H);
+    var x0 = 52, x1 = W - 30, mid = H / 2 - 10, A = 44;
+    c.line(x0 - 8, mid, x1 + 6, mid, { w: 1, dash: "5 4", stroke: SUB });
+    var d = [];
+    for (var i = 0; i <= 400; i++) {
+      var u = i / 400;
+      d.push([x0 + (x1 - x0) * u, mid - A * Math.sin(2 * Math.PI * waves * u)]);
+    }
+    c.path("M" + d.map(function (p) { return f(p[0]) + " " + f(p[1]); }).join(" L"), { w: 1.9 });
+    var lam = (x1 - x0) / waves;
+    c.dim([x0, mid + A + 18], [x0 + lam, mid + A + 18], "波長", { offset: 0, size: 10 });
+    c.dim([x0 + lam * 0.25, mid], [x0 + lam * 0.25, mid - A], "振幅", { offset: 0, size: 10 });
+    return c.out({ title: "波" });
+  };
+
+  /* ── 振り子 ───────────────────────────────────────────────── */
+  DRAW.pendulum = function (spec) {
+    var ang = num(spec.angle, 28), L = num(spec.length, 1);
+    if (!(ang > 0 && ang < 90) || !(L > 0)) return null;
+    var W = 280, H = 250, c = new Canvas(W, H);
+    var px = W / 2, py = 34, len = 150;
+    c.rect(px - 44, py - 12, 88, 10, { fill: "#ddd", w: 1.2 });
+    c.line(px, py, px, py + len, { w: 1, dash: "5 4", stroke: SUB });
+    [-1, 1].forEach(function (sg) {
+      var t = rad(90 + sg * ang);
+      var bx = px + len * Math.cos(t), by = py + len * Math.sin(t);
+      c.line(px, py, bx, by, { w: 1.5, dash: sg < 0 ? null : "6 3" });
+      c.circle(bx, by, 11, { fill: sg < 0 ? "#eee" : "#fff", w: 1.5 });
+    });
+    angleArc(c, [px, py], [px, py + 60], [px + 60 * Math.cos(rad(90 - ang)), py + 60 * Math.sin(rad(90 - ang))],
+             46, lenText(ang) + "°");
+    c.dim([px + 10, py], [px + 10, py + len], "L = " + lenText(L) + "m", { offset: 52, size: 10 });
+    if (spec.show) {
+      var T = 2 * Math.PI * Math.sqrt(L / 9.8);
+      c.text(W / 2, H - 8, "周期 T = 2π√(L/g) = " + T.toFixed(2) + " 秒", { size: 10, fill: SUB });
+    }
+    return c.out({ title: "振り子" });
+  };
+
+  /* ── 斜面 ─────────────────────────────────────────────────── */
+  DRAW.incline = function (spec) {
+    var ang = num(spec.angle, 30);
+    if (!(ang > 0 && ang < 90)) return null;
+    var W = 340, H = 230, c = new Canvas(W, H);
+    var x0 = 34, y0 = H - 44, L = 250;
+    var top = [x0 + L * Math.cos(rad(ang)), y0 - L * Math.sin(rad(ang))];
+    if (top[1] < 30) { L = (y0 - 30) / Math.sin(rad(ang)); top = [x0 + L * Math.cos(rad(ang)), 30]; }
+    c.poly([[x0, y0], [top[0], y0], [top[0], top[1]]], { fill: "#f4f4f4", w: 1.5 });
+    angleArc(c, [x0, y0], [x0 + 60, y0], [x0 + 60 * Math.cos(rad(ang)), y0 - 60 * Math.sin(rad(ang))], 40,
+             lenText(ang) + "°");
+    rightAngle(c, [top[0], y0], [x0, y0], top, 12);
+    /* 斜面の上の物体。向きは斜面に平行。 */
+    var t = rad(ang), u = 0.55;
+    var bx = x0 + L * u * Math.cos(t), by = y0 - L * u * Math.sin(t);
+    var w = 30, h = 20;
+    var pxv = [Math.cos(t), -Math.sin(t)], nyv = [Math.sin(t), Math.cos(t)];
+    c.poly([
+      [bx - pxv[0] * w / 2, by - pxv[1] * w / 2],
+      [bx + pxv[0] * w / 2, by + pxv[1] * w / 2],
+      [bx + pxv[0] * w / 2 - nyv[0] * h, by + pxv[1] * w / 2 - nyv[1] * h],
+      [bx - pxv[0] * w / 2 - nyv[0] * h, by - pxv[1] * w / 2 - nyv[1] * h]
+    ], { fill: "#fff", w: 1.5 });
+    var cxb = bx - nyv[0] * h / 2, cyb = by - nyv[1] * h / 2;
+    c.arrow(cxb, cyb, cxb, cyb + 52, { w: 1.8, head: 7 });
+    c.text(cxb + 8, cyb + 44, "重力", { anchor: "start", size: 9.5, fill: SUB });
+    if (spec.show) {
+      c.text(W / 2, H - 10, "斜面に平行な分力 = mg sin" + lenText(ang) + "°"
+        + " = " + Math.sin(rad(ang)).toFixed(3) + " mg", { size: 10, fill: SUB });
+    }
+    return c.out({ title: "斜面" });
+  };
+
+  /* ── 実験器具（ビーカー・試験管・メスシリンダー）───────────── */
+  DRAW.beaker = function (spec) {
+    var kind = str(spec.type || "beaker").toLowerCase();
+    var lvl = num(spec.level, 60);        /* 中身の割合（%） */
+    if (!(lvl >= 0 && lvl <= 100)) return null;
+    var W = 240, H = 250, c = new Canvas(W, H);
+    var cx = W / 2;
+    if (/tube|試験管/.test(kind)) {
+      var w = 42, top = 26, bot = H - 34, r = w / 2;
+      c.path("M" + f(cx - r) + " " + f(top) + " L" + f(cx - r) + " " + f(bot - r)
+        + " A" + f(r) + " " + f(r) + " 0 0 0 " + f(cx + r) + " " + f(bot - r)
+        + " L" + f(cx + r) + " " + f(top), { w: 1.6 });
+      var ly = bot - r - (bot - r - top) * lvl / 100;
+      c.path("M" + f(cx - r) + " " + f(ly) + " L" + f(cx - r) + " " + f(bot - r)
+        + " A" + f(r) + " " + f(r) + " 0 0 0 " + f(cx + r) + " " + f(bot - r)
+        + " L" + f(cx + r) + " " + f(ly) + " Z", { fill: "#e6eef5", w: 0 });
+      c.line(cx - r, ly, cx + r, ly, { w: 1.2 });
+    } else if (/cylinder|メス/.test(kind)) {
+      var w2 = 56, top2 = 26, bot2 = H - 40;
+      c.rect(cx - w2 / 2, top2, w2, bot2 - top2, { w: 1.6 });
+      c.rect(cx - w2 / 2 - 12, bot2, w2 + 24, 10, { fill: "#eee", w: 1.4 });
+      var ly2 = bot2 - (bot2 - top2) * lvl / 100;
+      c.rect(cx - w2 / 2 + 1, ly2, w2 - 2, bot2 - ly2, { fill: "#e6eef5", w: 0 });
+      c.line(cx - w2 / 2, ly2, cx + w2 / 2, ly2, { w: 1.2 });
+      for (var i = 0; i <= 10; i++) {
+        var yy = bot2 - (bot2 - top2) * i / 10;
+        c.line(cx - w2 / 2, yy, cx - w2 / 2 + (i % 5 ? 7 : 13), yy, { w: 0.8, stroke: SUB });
+        if (!(i % 5)) c.text(cx - w2 / 2 - 6, yy, String(i * 10), { anchor: "end", size: 8, fill: SUB });
+      }
+    } else {
+      var w3 = 110, top3 = 40, bot3 = H - 36;
+      c.path("M" + f(cx - w3 / 2) + " " + f(top3) + " L" + f(cx - w3 / 2) + " " + f(bot3)
+        + " L" + f(cx + w3 / 2) + " " + f(bot3) + " L" + f(cx + w3 / 2) + " " + f(top3), { w: 1.7 });
+      c.path("M" + f(cx + w3 / 2) + " " + f(top3) + " L" + f(cx + w3 / 2 + 12) + " " + f(top3 - 8), { w: 1.5 });
+      var ly3 = bot3 - (bot3 - top3) * lvl / 100;
+      c.rect(cx - w3 / 2 + 1.5, ly3, w3 - 3, bot3 - ly3 - 1.5, { fill: "#e6eef5", w: 0 });
+      c.line(cx - w3 / 2, ly3, cx + w3 / 2, ly3, { w: 1.2 });
+      for (var k = 1; k <= 4; k++) {
+        var yk = bot3 - (bot3 - top3) * k / 5;
+        c.line(cx - w3 / 2, yk, cx - w3 / 2 + 12, yk, { w: 0.8, stroke: SUB });
+      }
+    }
+    if (str(spec.label)) c.text(cx, H - 12, spec.label, { size: 10.5 });
+    return c.out({ title: "実験器具" });
+  };
+
+  /* ── ばねばかり ─────────────────────────────────────────────
+     伸びは「ばね定数 × 力」で決まる。目盛りも計算する。 */
+  DRAW.spring = function (spec) {
+    var force = num(spec.force, 2), k = num(spec.k, 1);
+    if (!(force >= 0) || !(k > 0)) return null;
+    var W = 200, H = 280, c = new Canvas(W, H);
+    var cx = W / 2, top = 30;
+    var ext = Math.min(90, force / k * 26);
+    var coils = 8, len = 90 + ext;
+    c.rect(cx - 34, top - 10, 68, 10, { fill: "#ddd", w: 1.2 });
+    var d = ["M" + f(cx) + " " + f(top)];
+    for (var i = 0; i < coils; i++) {
+      var y1 = top + len * (i + 0.5) / coils, y2 = top + len * (i + 1) / coils;
+      d.push("L" + f(cx + (i % 2 ? -16 : 16)) + " " + f(y1));
+      d.push("L" + f(cx) + " " + f(y2));
+    }
+    c.path(d.join(" "), { w: 1.5 });
+    var hookY = top + len;
+    c.line(cx, hookY, cx, hookY + 16, { w: 1.3 });
+    c.rect(cx - 20, hookY + 16, 40, 30, { fill: "#fff", w: 1.4 });
+    c.text(cx, hookY + 31, lenText(force) + "N", { size: 10.5 });
+    c.dim([cx + 30, top], [cx + 30, hookY], "のび " + lenText(force / k) + "cm", { offset: 26, size: 9.5 });
+    return c.out({ title: "ばねばかり" });
+  };
+
+  /* ── 分子モデル ─────────────────────────────────────────────
+     atoms = 元素:x:y を並べ、bonds = A-B で結ぶ。位置は指定どおり。 */
+  DRAW.molecule = function (spec) {
+    var atoms = str(spec.atoms).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      return { el: str(m[0]).trim(), x: Number(m[1]), y: Number(m[2]) };
+    }).filter(function (a) { return a.el && isNum(a.x) && isNum(a.y); });
+    if (!atoms.length) return null;
+    var W = 300, H = 250;
+    var fit = fitter(atoms.map(function (a) { return [a.x, a.y]; }), W, H, 46);
+    var pos = {};
+    atoms.forEach(function (a, i) { pos[a.el + i] = fit.p([a.x, a.y]); pos[String(i + 1)] = fit.p([a.x, a.y]); });
+    var c = new Canvas(W, H);
+    /* 結合を先に（原子の丸で隠れる） */
+    listOf(spec.bonds).forEach(function (b) {
+      var m = b.split(/[-=≡]/).map(function (x) { return x.trim(); });
+      var order = /=/.test(b) ? 2 : /≡/.test(b) ? 3 : 1;
+      var p = pos[m[0]], q = pos[m[1]];
+      if (!p || !q) return;
+      var a = Math.atan2(q[1] - p[1], q[0] - p[0]);
+      var nx = -Math.sin(a), ny = Math.cos(a);
+      for (var i = 0; i < order; i++) {
+        var off = (i - (order - 1) / 2) * 4.5;
+        c.line(p[0] + nx * off, p[1] + ny * off, q[0] + nx * off, q[1] + ny * off, { w: 1.6 });
+      }
+    });
+    var RAD = { H: 13, C: 20, O: 18, N: 18, S: 21, Cl: 20, Na: 22 };
+    var SHADE = { H: "#ffffff", C: "#555555", O: "#cccccc", N: "#999999" };
+    atoms.forEach(function (a, i) {
+      var p = fit.p([a.x, a.y]);
+      var r = RAD[a.el] || 17;
+      c.circle(p[0], p[1], r, { fill: SHADE[a.el] || "#eeeeee", w: 1.4 });
+      c.text(p[0], p[1], a.el, { size: r > 17 ? 12 : 10,
+                                 fill: (a.el === "C") ? "#fff" : INK, weight: "bold" });
+    });
+    if (str(spec.name)) c.text(W / 2, H - 10, spec.name, { size: 11 });
+    return c.out({ title: "分子モデル" });
+  };
+
+  /* ── 天体の位置（太陽・地球・月）───────────────────────────── */
+  DRAW.orbit = function (spec) {
+    var ang = num(spec.angle, 45);
+    var W = 340, H = 300, c = new Canvas(W, H);
+    var sx = 54, sy = H / 2, R = 200;
+    c.circle(sx, sy, 22, { fill: "#f0f0f0", w: 1.6 });
+    c.text(sx, sy, "太陽", { size: 9.5 });
+    c.ellipse(sx + R * 0.52, sy, R * 0.52, R * 0.36, { w: 1, dash: "5 4", stroke: SUB });
+    var t = rad(ang);
+    var ex = sx + R * 0.52 + R * 0.52 * Math.cos(t), ey = sy - R * 0.36 * Math.sin(t);
+    c.circle(ex, ey, 15, { fill: "#e9eef4", w: 1.5 });
+    c.text(ex, ey, "地球", { size: 9 });
+    /* 月の軌道 */
+    var mr = 34, mt = rad(num(spec.moon, 120));
+    c.circle(ex, ey, mr, { w: 0.9, dash: "3 3", stroke: "#bbb" });
+    c.circle(ex + mr * Math.cos(mt), ey - mr * Math.sin(mt), 7, { fill: "#fff", w: 1.3 });
+    c.text(ex + (mr + 14) * Math.cos(mt), ey - (mr + 14) * Math.sin(mt), "月", { size: 9 });
+    /* 光の向き */
+    for (var i = -2; i <= 2; i++)
+      c.arrow(sx + 26, sy + i * 22, sx + 62, sy + i * 22, { w: 0.8, stroke: "#bbb", head: 4 });
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 11.5, weight: "bold" });
+    return c.out({ title: "天体の位置" });
+  };
+
+  /* ── 月の満ち欠け ───────────────────────────────────────────
+     phase = 0〜1（0 が新月、0.5 が満月）。**欠け方を計算で出す。** */
+  DRAW.moonphase = function (spec) {
+    var list = numsOf(spec.phases);
+    if (!list.length) list = [0, 0.25, 0.5, 0.75];
+    if (list.some(function (p) { return !(p >= 0 && p <= 1); })) return null;
+    var n = list.length, R = 30, gapx = R * 2.8;
+    var W = Math.max(220, n * gapx + 40), H = 136, c = new Canvas(W, H);
+    var names = listOf(spec.names);
+    list.forEach(function (p, i) {
+      var cx = (W - (n - 1) * gapx) / 2 + i * gapx, cy = 56;
+      /* ★ 光っている側を **式のとおりに** 作る（2026-09-11 に直した）。
+         前は円弧の向き（sweep フラグ）を当てずっぽうで決めていたので、
+         新月が満月に、上弦が下弦になっていた。
+         ここでは輪郭を 1 点ずつ計算して多角形にする。当てずっぽうが入らない。
+           k = cos(2πp)  … +1 が新月、0 が半月、−1 が満月
+           右のふち  : (cx + R sin t, cy − R cos t)
+           明暗の境目: (cx + kR sin t, cy − R cos t)
+         t を 0→π で回して閉じれば、そのあいだが光っている部分になる。 */
+      var k = Math.cos(2 * Math.PI * p);
+      var right = p < 0.5;                       /* 満ちていく月は右が光る */
+      var sgn = right ? 1 : -1;
+      var lit = [], N = 48;
+      for (var a = 0; a <= N; a++) {
+        var t = Math.PI * a / N;
+        lit.push([cx + sgn * R * Math.sin(t), cy - R * Math.cos(t)]);
+      }
+      for (var b = N; b >= 0; b--) {
+        var t2 = Math.PI * b / N;
+        lit.push([cx + sgn * k * R * Math.sin(t2), cy - R * Math.cos(t2)]);
+      }
+      c.circle(cx, cy, R, { fill: "#3a3a3a", w: 0 });
+      c.poly(lit, { fill: "#ffffff", stroke: "none", w: 0 });
+      c.circle(cx, cy, R, { w: 1.3 });
+      c.text(cx, cy + R + 16, names[i] || (Math.round((1 - k) / 2 * 100) + "%"),
+             { size: 9.5, fill: SUB });
+    });
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 11.5, weight: "bold" });
+    return c.out({ title: "月の満ち欠け" });
+  };
+
+  /* ── 地層 ───────────────────────────────────────────────────
+     layers = 名前:厚さ を並べる。厚さの比はそのまま。 */
+  DRAW.strata = function (spec) {
+    var ls = str(spec.layers).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      return { name: str(m[0]).trim(), th: Number(m[1] || 1) };
+    }).filter(function (l) { return l.name && l.th > 0; });
+    if (!ls.length) return null;
+    var total = ls.reduce(function (a, l) { return a + l.th; }, 0);
+    var W = 320, H = 270, c = new Canvas(W, H);
+    var x0 = 34, w = 180, y0 = 30, h = H - 62;
+    var patt = ["#f7f7f7", "#e4e4e4", "#d2d2d2", "#efefef", "#c6c6c6", "#dcdcdc"];
+    var y = y0;
+    ls.forEach(function (l, i) {
+      var hh = h * l.th / total;
+      c.rect(x0, y, w, hh, { fill: patt[i % patt.length], w: 1.2 });
+      /* 層ごとに模様を変える（白黒でも見分けられるように） */
+      if (i % 3 === 1) for (var xx = x0 + 6; xx < x0 + w; xx += 12)
+        c.circle(xx, y + hh / 2, 1.6, { fill: SUB, w: 0 });
+      if (i % 3 === 2) for (var yy = y + 4; yy < y + hh; yy += 7)
+        c.line(x0, yy, x0 + w, yy, { w: 0.4, stroke: "#aaa" });
+      c.text(x0 + w + 10, y + hh / 2, l.name + "（" + lenText(l.th) + "m）",
+             { anchor: "start", size: 10 });
+      y += hh;
+    });
+    c.rect(x0, y0, w, h, { w: 1.6 });
+    c.text(x0 + w / 2, y0 - 10, "上（新しい）", { size: 9.5, fill: SUB });
+    c.text(x0 + w / 2, y0 + h + 14, "下（古い）", { size: 9.5, fill: SUB });
+    return c.out({ title: "地層" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-E) 統計（足したもの）
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── 横棒グラフ（項目名が長いとき） ───────────────────────── */
+  DRAW.barh = function (spec) {
+    var xs = listOf(spec.x), ys = numsOf(spec.y);
+    var W = 420, H = 60 + xs.length * 30;
+    var labelW = Math.min(120, 20 + Math.max.apply(null, xs.map(function (t) { return t.length; })) * 11);
+    var box = { x: labelW, y: str(spec.title) ? 34 : 18, w: W - labelW - 40, h: xs.length * 30 };
+    var nb = niceBounds(0, Math.max.apply(null, ys), 5);
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    for (var v = nb.lo; v <= nb.hi + nb.step / 1e6; v += nb.step) {
+      var x = box.x + (v - nb.lo) / (nb.hi - nb.lo) * box.w;
+      c.line(x, box.y, x, box.y + box.h, { stroke: v === 0 ? SUB : LIGHT, w: v === 0 ? 1 : 0.6 });
+      c.text(x, box.y + box.h + 13, tickLabel(v, nb.step), { size: 9.5, fill: SUB });
+    }
+    xs.forEach(function (lab, i) {
+      var y = box.y + i * 30 + 6, hh = 18;
+      var w = (ys[i] - nb.lo) / (nb.hi - nb.lo) * box.w;
+      c.rect(box.x, y, w, hh, { fill: "#333", w: 1 });
+      c.text(box.x - 8, y + hh / 2, lab, { anchor: "end", size: 10.5 });
+      if (spec.show) c.text(box.x + w + 6, y + hh / 2, lenText(ys[i]), { anchor: "start", size: 9.5, fill: SUB });
+    });
+    c.line(box.x, box.y, box.x, box.y + box.h, { w: 1.2 });
+    if (str(spec.unit)) c.text(W - 8, box.y - 8, "(" + spec.unit + ")", { anchor: "end", size: 9.5, fill: SUB });
+    return c.out({ title: str(spec.title) || "横棒グラフ" });
+  };
+
+  /* ── 度数分布多角形 ───────────────────────────────────────── */
+  DRAW.freqpoly = function (spec) {
+    var bins = numsOf(spec.bins), freq = numsOf(spec.freq);
+    var W = 420, H = 270, box = { x: 46, y: str(spec.title) ? 34 : 18, w: 352, h: 0 };
+    box.h = H - box.y - 44;
+    var nb = niceBounds(0, Math.max.apply(null, freq), 5);
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    plotFrame(c, box, nb);
+    var span = bins[bins.length - 1] - bins[0];
+    if (spec.bars) {
+      freq.forEach(function (v, i) {
+        var a = box.x + (bins[i] - bins[0]) / span * box.w;
+        var b = box.x + (bins[i + 1] - bins[0]) / span * box.w;
+        var y1 = box.y + box.h - (v - nb.lo) / (nb.hi - nb.lo) * box.h;
+        c.rect(a, y1, b - a, box.y + box.h - y1, { fill: "#ededed", w: 0.8 });
+      });
+    }
+    /* 折れ線は **階級値（階級の真ん中）** を結ぶ。端は度数 0 まで伸ばす。 */
+    var pts = [];
+    var w0 = (bins[1] - bins[0]);
+    pts.push([box.x + (bins[0] - w0 / 2 - bins[0]) / span * box.w, box.y + box.h]);
+    freq.forEach(function (v, i) {
+      var mid = (bins[i] + bins[i + 1]) / 2;
+      pts.push([box.x + (mid - bins[0]) / span * box.w,
+                box.y + box.h - (v - nb.lo) / (nb.hi - nb.lo) * box.h]);
+    });
+    var wl = bins[bins.length - 1] - bins[bins.length - 2];
+    pts.push([box.x + (bins[bins.length - 1] + wl / 2 - bins[0]) / span * box.w, box.y + box.h]);
+    c.poly(pts, { open: true, w: 1.8 });
+    pts.slice(1, -1).forEach(function (p) { c.circle(p[0], p[1], 3, { fill: INK, w: 0 }); });
+    bins.forEach(function (b) {
+      c.text(box.x + (b - bins[0]) / span * box.w, box.y + box.h + 13, tickLabel(b, 1),
+             { size: 9.5, fill: SUB });
+    });
+    if (str(spec.xlabel)) c.text(box.x + box.w / 2, H - 8, spec.xlabel, { size: 10.5 });
+    return c.out({ title: str(spec.title) || "度数分布多角形" });
+  };
+
+  /* ── 累積相対度数 ─────────────────────────────────────────── */
+  DRAW.cumulative = function (spec) {
+    var bins = numsOf(spec.bins), freq = numsOf(spec.freq);
+    var total = freq.reduce(function (a, b) { return a + b; }, 0);
+    if (!(total > 0)) return null;
+    var W = 420, H = 270, box = { x: 50, y: str(spec.title) ? 34 : 18, w: 346, h: 0 };
+    box.h = H - box.y - 44;
+    var nb = { lo: 0, hi: 1, step: 0.2 };
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    plotFrame(c, box, nb);
+    var span = bins[bins.length - 1] - bins[0];
+    var acc = 0, pts = [[box.x, box.y + box.h]];
+    freq.forEach(function (v, i) {
+      acc += v / total;
+      pts.push([box.x + (bins[i + 1] - bins[0]) / span * box.w,
+                box.y + box.h - acc * box.h]);
+    });
+    c.poly(pts, { open: true, w: 1.8 });
+    pts.forEach(function (p) { c.circle(p[0], p[1], 3, { fill: INK, w: 0 }); });
+    bins.forEach(function (b) {
+      c.text(box.x + (b - bins[0]) / span * box.w, box.y + box.h + 13, tickLabel(b, 1),
+             { size: 9.5, fill: SUB });
+    });
+    if (str(spec.xlabel)) c.text(box.x + box.w / 2, H - 8, spec.xlabel, { size: 10.5 });
+    return c.out({ title: str(spec.title) || "累積相対度数" });
+  };
+
+  /* ── 幹葉図 ─────────────────────────────────────────────────
+     values からそのまま組み立てる（幹 = 十の位、葉 = 一の位）。 */
+  DRAW.stem = function (spec) {
+    var vals = numsOf(spec.values).filter(function (v) { return v >= 0; });
+    if (vals.length < 2) return null;
+    var unit = num(spec.unit, 10);
+    var by = {};
+    vals.slice().sort(function (a, b) { return a - b; }).forEach(function (v) {
+      var s = Math.floor(v / unit), l = Math.round(v - s * unit);
+      (by[s] = by[s] || []).push(l);
+    });
+    var keys = Object.keys(by).map(Number).sort(function (a, b) { return a - b; });
+    var W = 320, H = 46 + keys.length * 20 + 24, c = new Canvas(W, H);
+    var x0 = 60, y0 = 40;
+    c.text(x0 - 14, 24, "幹", { anchor: "end", size: 10.5, weight: "bold" });
+    c.text(x0 + 14, 24, "葉", { anchor: "start", size: 10.5, weight: "bold" });
+    c.line(x0, 30, x0, y0 + keys.length * 20 - 4, { w: 1.2 });
+    c.line(24, 30, W - 20, 30, { w: 1.2 });
+    keys.forEach(function (k, i) {
+      var y = y0 + i * 20 + 4;
+      c.text(x0 - 10, y, String(k), { anchor: "end", size: 11 });
+      c.text(x0 + 10, y, by[k].join(" "), { anchor: "start", size: 11 });
+    });
+    c.text(W / 2, H - 8, "（" + unit + " を幹とする）", { size: 9.5, fill: SUB });
+    return c.out({ title: "幹葉図" });
+  };
+
+  /* ── レーダーチャート ─────────────────────────────────────── */
+  DRAW.radar = function (spec) {
+    var labels = listOf(spec.labels), vals = numsOf(spec.values), v2 = numsOf(spec.values2);
+    if (labels.length < 3 || labels.length !== vals.length) return null;
+    var max = num(spec.max, Math.max.apply(null, vals.concat(v2.length ? v2 : [0])));
+    if (!(max > 0)) return null;
+    var n = labels.length, W = 320, H = 320, cx = W / 2, cy = H / 2 + 6, R = 104;
+    var c = new Canvas(W, H);
+    var pt = function (i, v) {
+      var t = rad(90 - 360 * i / n);
+      return [cx + R * v / max * Math.cos(t), cy - R * v / max * Math.sin(t)];
+    };
+    for (var g = 1; g <= 4; g++) {
+      var ring = [];
+      for (var i = 0; i < n; i++) ring.push(pt(i, max * g / 4));
+      c.poly(ring, { w: g === 4 ? 1.2 : 0.6, stroke: g === 4 ? SUB : "#ddd" });
+    }
+    for (var k = 0; k < n; k++) {
+      var p = pt(k, max);
+      c.line(cx, cy, p[0], p[1], { w: 0.6, stroke: "#ddd" });
+      var t = rad(90 - 360 * k / n);
+      c.text(cx + (R + 18) * Math.cos(t), cy - (R + 18) * Math.sin(t), labels[k], { size: 10 });
+    }
+    if (v2.length === n) c.poly(vals.map(function (v, i) { return pt(i, v); }).concat([]), { fill: "none", w: 1.6, dash: "6 3" });
+    c.poly(vals.map(function (v, i) { return pt(i, v); }), { fill: "rgba(60,60,60,0.14)", w: 1.9 });
+    vals.forEach(function (v, i) { var p = pt(i, v); c.circle(p[0], p[1], 3, { fill: INK, w: 0 }); });
+    if (v2.length === n) {
+      c.poly(v2.map(function (v, i) { return pt(i, v); }), { fill: "none", w: 1.6, dash: "6 3" });
+      v2.forEach(function (v, i) { var p = pt(i, v); c.rect(p[0] - 2.6, p[1] - 2.6, 5.2, 5.2, { fill: "#fff", w: 1.2 }); });
+    }
+    if (str(spec.title)) c.text(W / 2, 14, spec.title, { size: 12.5, weight: "bold" });
+    return c.out({ title: str(spec.title) || "レーダーチャート" });
+  };
+
+  /* ── 人口ピラミッド ───────────────────────────────────────── */
+  DRAW.poppyramid = function (spec) {
+    var ages = listOf(spec.ages), m = numsOf(spec.male), fm = numsOf(spec.female);
+    if (!ages.length || ages.length !== m.length || ages.length !== fm.length) return null;
+    var max = Math.max.apply(null, m.concat(fm));
+    if (!(max > 0)) return null;
+    var W = 400, H = 56 + ages.length * 18, c = new Canvas(W, H);
+    var cx = W / 2, half = 132, top = str(spec.title) ? 38 : 24, bh = 14;
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 12.5, weight: "bold" });
+    c.text(cx - half / 2, top - 8, "男", { size: 10, fill: SUB });
+    c.text(cx + half / 2, top - 8, "女", { size: 10, fill: SUB });
+    ages.forEach(function (a, i) {
+      var y = top + (ages.length - 1 - i) * 18;
+      c.rect(cx - 22 - m[i] / max * half, y, m[i] / max * half, bh, { fill: "#555", w: 0.8 });
+      c.rect(cx + 22, y, fm[i] / max * half, bh, { fill: "#bbb", w: 0.8 });
+      c.text(cx, y + bh / 2, a, { size: 9 });
+    });
+    c.line(cx - 22, top - 4, cx - 22, top + ages.length * 18 - 4, { w: 1 });
+    c.line(cx + 22, top - 4, cx + 22, top + ages.length * 18 - 4, { w: 1 });
+    return c.out({ title: "人口ピラミッド" });
+  };
+
+  /* ── 絵グラフ ───────────────────────────────────────────────
+     1 個 = unit 件。端数は半分の丸で表す。 */
+  DRAW.pictograph = function (spec) {
+    var labels = listOf(spec.labels), vals = numsOf(spec.values);
+    var unit = num(spec.unit, 10);
+    if (!labels.length || labels.length !== vals.length || !(unit > 0)) return null;
+    var maxN = Math.max.apply(null, vals.map(function (v) { return Math.ceil(v / unit); }));
+    if (maxN > 20) return null;
+    var W = Math.max(280, 120 + maxN * 22), H = 46 + labels.length * 28, c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 12.5, weight: "bold" });
+    labels.forEach(function (lab, i) {
+      var y = 40 + i * 28;
+      c.text(104, y, lab, { anchor: "end", size: 10.5 });
+      var full = Math.floor(vals[i] / unit), frac = vals[i] / unit - full;
+      for (var k = 0; k < full; k++) c.circle(120 + k * 22, y, 8, { fill: "#555", w: 0.8 });
+      if (frac > 0.05) {
+        var cxk = 120 + full * 22;
+        c.circle(cxk, y, 8, { fill: "#fff", w: 1 });
+        c.path("M" + f(cxk) + " " + f(y - 8) + " A8 8 0 0 0 " + f(cxk) + " " + f(y + 8) + " Z",
+               { fill: "#555", w: 0 });
+      }
+      c.text(W - 10, y, lenText(vals[i]), { anchor: "end", size: 9.5, fill: SUB });
+    });
+    c.text(W / 2, H - 8, "● = " + lenText(unit) + (str(spec.per) ? " " + spec.per : ""),
+           { size: 9.5, fill: SUB });
+    return c.out({ title: "絵グラフ" });
+  };
+
+  /* ── 二元表（クロス集計）──────────────────────────────────── */
+  DRAW.twoway = function (spec) {
+    var cols = listOf(spec.cols), rows = listOf(spec.rows), vals = numsOf(spec.values);
+    if (!cols.length || !rows.length || vals.length !== cols.length * rows.length) return null;
+    var cw = 66, rh = 26, lw = 88;
+    var W = lw + cw * (cols.length + 1) + 20, H = 50 + rh * (rows.length + 2);
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 12.5, weight: "bold" });
+    var x0 = 12, y0 = 32;
+    var colSum = cols.map(function () { return 0; }), grand = 0;
+    c.rect(x0, y0, lw, rh, { fill: "#f2f2f2", w: 1 });
+    cols.forEach(function (t, j) {
+      c.rect(x0 + lw + j * cw, y0, cw, rh, { fill: "#f2f2f2", w: 1 });
+      c.text(x0 + lw + j * cw + cw / 2, y0 + rh / 2, t, { size: 10 });
+    });
+    c.rect(x0 + lw + cols.length * cw, y0, cw, rh, { fill: "#e8e8e8", w: 1 });
+    c.text(x0 + lw + cols.length * cw + cw / 2, y0 + rh / 2, "計", { size: 10, weight: "bold" });
+    rows.forEach(function (r, i) {
+      var y = y0 + (i + 1) * rh, sum = 0;
+      c.rect(x0, y, lw, rh, { fill: "#f2f2f2", w: 1 });
+      c.text(x0 + lw / 2, y + rh / 2, r, { size: 10 });
+      cols.forEach(function (_, j) {
+        var v = vals[i * cols.length + j];
+        sum += v; colSum[j] += v; grand += v;
+        c.rect(x0 + lw + j * cw, y, cw, rh, { w: 1 });
+        c.text(x0 + lw + j * cw + cw / 2, y + rh / 2, lenText(v), { size: 10.5 });
+      });
+      c.rect(x0 + lw + cols.length * cw, y, cw, rh, { fill: "#f7f7f7", w: 1 });
+      c.text(x0 + lw + cols.length * cw + cw / 2, y + rh / 2, lenText(sum), { size: 10.5, weight: "bold" });
+    });
+    var yl = y0 + (rows.length + 1) * rh;
+    c.rect(x0, yl, lw, rh, { fill: "#e8e8e8", w: 1 });
+    c.text(x0 + lw / 2, yl + rh / 2, "計", { size: 10, weight: "bold" });
+    colSum.forEach(function (v, j) {
+      c.rect(x0 + lw + j * cw, yl, cw, rh, { fill: "#f7f7f7", w: 1 });
+      c.text(x0 + lw + j * cw + cw / 2, yl + rh / 2, lenText(v), { size: 10.5, weight: "bold" });
+    });
+    c.rect(x0 + lw + cols.length * cw, yl, cw, rh, { fill: "#e2e2e2", w: 1 });
+    c.text(x0 + lw + cols.length * cw + cw / 2, yl + rh / 2, lenText(grand), { size: 10.5, weight: "bold" });
+    return c.out({ title: "二元表" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-F) 数の図
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── テープ図（割合）──────────────────────────────────────── */
+  DRAW.tape = function (spec) {
+    var labels = listOf(spec.labels), vals = numsOf(spec.values);
+    if (!labels.length || labels.length !== vals.length) return null;
+    var total = num(spec.total, vals.reduce(function (a, b) { return a + b; }, 0));
+    if (!(total > 0)) return null;
+    var W = 400, H = str(spec.title) ? 150 : 128, c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 12.5, weight: "bold" });
+    var x0 = 26, w = W - 52, y = H - 78;
+    var acc = 0;
+    var shade = ["#3d3d3d", "#8a8a8a", "#c4c4c4", "#e8e8e8", "#616161", "#a5a5a5"];
+    vals.forEach(function (v, i) {
+      var xw = v / total * w, xx = x0 + acc / total * w;
+      acc += v;
+      c.rect(xx, y, xw, 40, { fill: shade[i % shade.length], w: 1.1 });
+      if (xw > 30) c.text(xx + xw / 2, y + 20, lenText(v), { size: 10.5, fill: i < 2 ? "#fff" : INK });
+      if (xw > 26) c.text(xx + xw / 2, y + 54, labels[i], { size: 9.5 });
+    });
+    c.dim([x0, y - 10], [x0 + w, y - 10], "全体 " + lenText(total), { offset: 0, size: 10 });
+    return c.out({ title: "テープ図" });
+  };
+
+  /* ── 面積図（かけ算・分配法則・分数）────────────────────────
+     縦 a × 横 b の長方形を、指定の位置で切って見せる。 */
+  DRAW.areamodel = function (spec) {
+    var rowsV = numsOf(spec.rows), colsV = numsOf(spec.cols);
+    if (!rowsV.length || !colsV.length) return null;
+    if (rowsV.some(function (v) { return !(v > 0); }) || colsV.some(function (v) { return !(v > 0); })) return null;
+    var rt = rowsV.reduce(function (a, b) { return a + b; }, 0);
+    var ct = colsV.reduce(function (a, b) { return a + b; }, 0);
+    var W = 340, H = 290, c = new Canvas(W, H);
+    var x0 = 54, y0 = 46, w = W - x0 - 26, h = H - y0 - 40;
+    var ax = 0;
+    colsV.forEach(function (cv, j) {
+      var ay = 0;
+      rowsV.forEach(function (rv, i) {
+        var x = x0 + ax / ct * w, y = y0 + ay / rt * h;
+        var ww = cv / ct * w, hh = rv / rt * h;
+        c.rect(x, y, ww, hh, { fill: (i + j) % 2 ? "#f6f6f6" : "#ececec", w: 1.2 });
+        if (spec.show) c.text(x + ww / 2, y + hh / 2, lenText(rv * cv), { size: 10.5 });
+        ay += rv;
+      });
+      c.text(x0 + (ax + cv / 2) / ct * w, y0 - 12, lenText(cv), { size: 10.5 });
+      ax += cv;
+    });
+    var ay2 = 0;
+    rowsV.forEach(function (rv) {
+      c.text(x0 - 12, y0 + (ay2 + rv / 2) / rt * h, lenText(rv), { anchor: "end", size: 10.5 });
+      ay2 += rv;
+    });
+    c.rect(x0, y0, w, h, { w: 1.7 });
+    if (spec.show) c.text(W / 2, H - 10, lenText(rt) + " × " + lenText(ct) + " = " + lenText(rt * ct),
+                          { size: 11, fill: SUB });
+    return c.out({ title: "面積図" });
+  };
+
+  /* ── 分数の図 ───────────────────────────────────────────────
+     円か帯を n 等分して m 個ぬる。**等分の角度は 360/n そのもの。** */
+  DRAW.fraction = function (spec) {
+    var n = Math.round(num(spec.denominator, num(spec.n, 4)));
+    var m = Math.round(num(spec.numerator, num(spec.m, 1)));
+    if (!(n >= 1 && n <= 24) || !(m >= 0 && m <= n)) return null;
+    var bar = /bar|帯|tape/.test(str(spec.type));
+    var W = 240, H = bar ? 130 : 210, c = new Canvas(W, H);
+    if (bar) {
+      var x0 = 24, w = W - 48, y = 44, hh = 40;
+      for (var i = 0; i < n; i++) {
+        c.rect(x0 + w * i / n, y, w / n, hh, { fill: i < m ? "#8a8a8a" : "#fff", w: 1.2 });
+      }
+      c.rect(x0, y, w, hh, { w: 1.6 });
+    } else {
+      var cx = W / 2, cy = 92, R = 62;
+      for (var k = 0; k < n; k++) {
+        var a0 = 360 * k / n, a1 = 360 * (k + 1) / n;
+        var t0 = rad(90 - a0), t1 = rad(90 - a1);
+        var p0 = [cx + R * Math.cos(t0), cy - R * Math.sin(t0)];
+        var p1 = [cx + R * Math.cos(t1), cy - R * Math.sin(t1)];
+        c.path("M" + f(cx) + " " + f(cy) + " L" + f(p0[0]) + " " + f(p0[1])
+          + " A" + f(R) + " " + f(R) + " 0 " + ((a1 - a0) > 180 ? 1 : 0) + " 1 "
+          + f(p1[0]) + " " + f(p1[1]) + " Z",
+          { fill: k < m ? "#8a8a8a" : "#fff", w: 1.2 });
+      }
+      c.circle(cx, cy, R, { w: 1.6 });
+    }
+    /* 分数の表記（横線つき） */
+    var fy = H - 26;
+    c.text(W / 2, fy - 9, String(m), { size: 13 });
+    c.line(W / 2 - 12, fy, W / 2 + 12, fy, { w: 1.3 });
+    c.text(W / 2, fy + 11, String(n), { size: 13 });
+    return c.out({ title: "分数" });
+  };
+
+  /* ── 数列（点の並び）──────────────────────────────────────── */
+  DRAW.sequence = function (spec) {
+    var vals = numsOf(spec.values);
+    if (vals.length < 2) return null;
+    var W = 400, H = 250, box = { x: 46, y: str(spec.title) ? 34 : 18, w: 336, h: 0 };
+    box.h = H - box.y - 40;
+    var nb = niceBounds(Math.min(0, Math.min.apply(null, vals)), Math.max.apply(null, vals), 5);
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 12.5, weight: "bold" });
+    plotFrame(c, box, nb);
+    var step = box.w / (vals.length + 1);
+    vals.forEach(function (v, i) {
+      var x = box.x + step * (i + 1);
+      var y = box.y + box.h - (v - nb.lo) / (nb.hi - nb.lo) * box.h;
+      c.line(x, box.y + box.h, x, y, { w: 0.7, dash: "3 3", stroke: "#bbb" });
+      c.circle(x, y, 3.6, { fill: INK, w: 0 });
+      c.text(x, box.y + box.h + 13, String(i + 1), { size: 9.5, fill: SUB });
+      if (spec.show) c.text(x, y - 11, lenText(v), { size: 9.5 });
+    });
+    c.text(box.x + box.w / 2, H - 6, str(spec.xlabel) || "n", { size: 10.5, style: "italic" });
+    return c.out({ title: "数列" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-G) 社会・情報
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── 年表 ───────────────────────────────────────────────────
+     events = 年:出来事 を並べる。**位置は年の差に比例する。** */
+  DRAW.timeline = function (spec) {
+    var evs = str(spec.events).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      return { y: Number(m[0]), t: str(m.slice(1).join(":")).trim() };
+    }).filter(function (e) { return isNum(e.y) && e.t; });
+    if (evs.length < 2) return null;
+    evs.sort(function (a, b) { return a.y - b.y; });
+    var y0 = num(spec.from, evs[0].y), y1 = num(spec.to, evs[evs.length - 1].y);
+    if (!(y1 > y0)) return null;
+    var vert = !/horiz|横/.test(str(spec.dir));
+    var c;
+    if (vert) {
+      var H = Math.max(220, 56 + evs.length * 40), W = 360;
+      c = new Canvas(W, H);
+      var ax = 108, top = 36, bot = H - 26;
+      c.arrow(ax, top - 12, ax, bot + 8, { w: 1.4 });
+      evs.forEach(function (e) {
+        var y = top + (e.y - y0) / (y1 - y0) * (bot - top);
+        c.line(ax - 6, y, ax + 6, y, { w: 1.4 });
+        c.text(ax - 12, y, String(e.y), { anchor: "end", size: 10.5 });
+        c.circle(ax, y, 3.2, { fill: INK, w: 0 });
+        c.text(ax + 14, y, e.t, { anchor: "start", size: 10.5 });
+      });
+    } else {
+      var W2 = 420, H2 = 160;
+      c = new Canvas(W2, H2);
+      var ay = 92, L = 30, R2 = W2 - 30;
+      c.arrow(L - 10, ay, R2 + 10, ay, { w: 1.4 });
+      evs.forEach(function (e, i) {
+        var x = L + (e.y - y0) / (y1 - y0) * (R2 - L);
+        var up = i % 2 === 0;
+        c.line(x, ay - 6, x, ay + 6, { w: 1.4 });
+        c.circle(x, ay, 3.2, { fill: INK, w: 0 });
+        c.text(x, ay + (up ? 18 : -14), String(e.y), { size: 9.5, fill: SUB });
+        c.line(x, ay + (up ? -8 : 8), x, ay + (up ? -26 : 26), { w: 0.6, stroke: "#bbb" });
+        c.text(x, ay + (up ? -34 : 36), e.t, { size: 10 });
+      });
+    }
+    if (str(spec.title)) c.text(c.w / 2, 16, spec.title, { size: 12.5, weight: "bold" });
+    return c.out({ title: "年表" });
+  };
+
+  /* ── 等高線 ─────────────────────────────────────────────────
+     同心の閉曲線。高さの間隔（interval）は一定。 */
+  DRAW.contour = function (spec) {
+    var n = Math.round(num(spec.levels, 5));
+    var base = num(spec.base, 100), iv = num(spec.interval, 10);
+    if (!(n >= 2 && n <= 10) || !(iv > 0)) return null;
+    var W = 320, H = 280, c = new Canvas(W, H);
+    var cx = W / 2 - 10, cy = H / 2 + 6;
+    /* 山の形は決まった式（少しゆがんだ同心円）。乱数は使わない。 */
+    for (var k = n; k >= 1; k--) {
+      var R = 22 + (n - k) * 22;
+      var d = [];
+      for (var i = 0; i <= 72; i++) {
+        var t = rad(i * 5);
+        var rr = R * (1 + 0.16 * Math.cos(2 * t) + 0.08 * Math.sin(3 * t));
+        d.push([cx + rr * Math.cos(t), cy - rr * Math.sin(t) * 0.86]);
+      }
+      c.poly(d, { fill: "none", w: k === 1 ? 1.6 : 1.1, stroke: k === 1 ? INK : SUB });
+      var lab = base + (k - 1) * iv;
+      c.text(cx, cy - (22 + (n - k) * 22) * 0.86 + 1, String(lab),
+             { size: 8.5, fill: SUB });
+    }
+    c.circle(cx, cy, 2.6, { fill: INK, w: 0 });
+    c.text(cx + 10, cy + 12, (base + (n - 1) * iv) + "m", { anchor: "start", size: 9.5 });
+    c.text(W / 2, H - 8, "等高線の間隔 " + lenText(iv) + "m", { size: 9.5, fill: SUB });
+    return c.out({ title: "等高線" });
+  };
+
+  /* ── 方位 ───────────────────────────────────────────────────── */
+  DRAW.compassrose = function (spec) {
+    var W = 200, H = 200, cx = W / 2, cy = H / 2, R = 68, c = new Canvas(W, H);
+    c.circle(cx, cy, R, { w: 1.3, stroke: SUB });
+    var dirs = [["北", 90], ["東", 0], ["南", -90], ["西", 180]];
+    dirs.forEach(function (d) {
+      var t = rad(d[1]);
+      c.line(cx, cy, cx + R * Math.cos(t), cy - R * Math.sin(t), { w: 1.2 });
+      c.text(cx + (R + 14) * Math.cos(t), cy - (R + 14) * Math.sin(t), d[0], { size: 12, weight: "bold" });
+    });
+    /* 北を指す矢 */
+    c.poly([[cx, cy - R + 4], [cx - 9, cy + 12], [cx, cy + 2], [cx + 9, cy + 12]],
+           { fill: "#333", w: 1 });
+    c.circle(cx, cy, 2.4, { fill: "#fff", w: 1 });
+    return c.out({ title: "方位" });
+  };
+
+  /* ── 判断つき流れ図（フローチャート）───────────────────────
+     steps = 文（処理）／ 文?はい>次,いいえ>次（判断）。 */
+  DRAW.flowchart = function (spec) {
+    var steps = str(spec.steps).split(/[;；]/).map(function (t) { return t.trim(); }).filter(Boolean);
+    if (steps.length < 2 || steps.length > 8) return null;
+    var W = 340, bw = 176, bh = 40, dh = 56, gap = 26;
+    var H = 24 + steps.length * (bh + gap);
+    var c = new Canvas(W, H);
+    var cx = W / 2, y = 14;
+    steps.forEach(function (s, i) {
+      var isD = /[?？]$/.test(s) || /^\?/.test(s);
+      var txt = s.replace(/^\?|[?？]$/g, "");
+      if (isD) {
+        c.poly([[cx, y], [cx + bw / 2, y + dh / 2], [cx, y + dh], [cx - bw / 2, y + dh / 2]],
+               { fill: "#fafafa", w: 1.3 });
+        c.text(cx, y + dh / 2, txt, { size: 10 });
+        c.text(cx + bw / 2 + 6, y + dh / 2 - 8, "いいえ", { anchor: "start", size: 9, fill: SUB });
+        c.text(cx + 6, y + dh + 12, "はい", { anchor: "start", size: 9, fill: SUB });
+        if (i < steps.length - 1) c.arrow(cx, y + dh, cx, y + dh + gap - 4, { w: 1.3 });
+        y += dh + gap;
+      } else {
+        var first = i === 0, last = i === steps.length - 1;
+        if (first || last) {
+          c.rect(cx - bw / 2, y, bw, bh, { fill: "#f2f2f2", w: 1.3, rx: bh / 2 });
+        } else {
+          c.rect(cx - bw / 2, y, bw, bh, { fill: "#fafafa", w: 1.3, rx: 3 });
+        }
+        c.text(cx, y + bh / 2, txt, { size: 10.5 });
+        if (!last) c.arrow(cx, y + bh, cx, y + bh + gap - 4, { w: 1.3 });
+        y += bh + gap;
+      }
+    });
+    return c.out({ title: str(spec.title) || "流れ図" });
+  };
+
+  /* ── 2 進数の桁 ─────────────────────────────────────────────── */
+  DRAW.binary = function (spec) {
+    var v = Math.round(num(spec.value, 0));
+    var bits = Math.round(num(spec.bits, 8));
+    if (!(bits >= 1 && bits <= 16) || !(v >= 0 && v < Math.pow(2, bits))) return null;
+    var cw = 34, W = 40 + bits * cw, H = 130, c = new Canvas(W, H);
+    var x0 = (W - bits * cw) / 2, y0 = 44;
+    for (var i = 0; i < bits; i++) {
+      var p = bits - 1 - i;
+      var bit = (v >> p) & 1;
+      c.rect(x0 + i * cw, y0, cw, 34, { fill: bit ? "#e4e4e4" : "#fff", w: 1.3 });
+      c.text(x0 + i * cw + cw / 2, y0 + 17, String(bit), { size: 14, weight: "bold" });
+      c.text(x0 + i * cw + cw / 2, y0 - 10, "2" , { size: 9, fill: SUB });
+      c.text(x0 + i * cw + cw / 2 + 7, y0 - 15, String(p), { size: 7, fill: SUB });
+      c.text(x0 + i * cw + cw / 2, y0 + 47, String(Math.pow(2, p)), { size: 9, fill: SUB });
+    }
+    c.text(W / 2, H - 12, "2 進数 " + v.toString(2).padStart(bits, "0") + " ＝ 10 進数 " + v,
+           { size: 11 });
+    return c.out({ title: "2 進数" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-H) 英語・生活（リスニングの絵に使う）
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── 時間割・時刻表 ───────────────────────────────────────── */
+  DRAW.timetable = function (spec) {
+    var cols = listOf(spec.cols), rows = listOf(spec.rows);
+    if (!cols.length || !rows.length) return null;
+    var cells = {};
+    str(spec.cells).split(/[;；]/).forEach(function (t) {
+      var m = t.split(/[:：]/);
+      var rc = numsOf(m[0]);
+      if (rc.length === 2) cells[rc[0] + "," + rc[1]] = str(m.slice(1).join(":")).trim();
+    });
+    var cw = Math.min(74, Math.floor(340 / cols.length)), rh = 30, lw = 54;
+    var W = lw + cw * cols.length + 20, H = 40 + rh * (rows.length + 1);
+    var c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 12, weight: "bold" });
+    var x0 = 10, y0 = str(spec.title) ? 26 : 12;
+    c.rect(x0, y0, lw, rh, { fill: "#f0f0f0", w: 1 });
+    cols.forEach(function (t, j) {
+      c.rect(x0 + lw + j * cw, y0, cw, rh, { fill: "#f0f0f0", w: 1 });
+      c.text(x0 + lw + j * cw + cw / 2, y0 + rh / 2, t, { size: 10 });
+    });
+    rows.forEach(function (r, i) {
+      var y = y0 + (i + 1) * rh;
+      c.rect(x0, y, lw, rh, { fill: "#f7f7f7", w: 1 });
+      c.text(x0 + lw / 2, y + rh / 2, r, { size: 9.5 });
+      cols.forEach(function (_, j) {
+        c.rect(x0 + lw + j * cw, y, cw, rh, { w: 1 });
+        var v = cells[(i + 1) + "," + (j + 1)] || "";
+        if (v) c.text(x0 + lw + j * cw + cw / 2, y + rh / 2, v, { size: 9.5 });
+      });
+    });
+    return c.out({ title: "時間割" });
+  };
+
+  /* ── 週間天気 ───────────────────────────────────────────────
+     天気の記号は決まった形で描く（晴＝丸、曇＝雲、雨＝雲と線、雪＝雲と結晶）。 */
+  DRAW.weather = function (spec) {
+    var days = listOf(spec.days), ws = listOf(spec.weather), hi = numsOf(spec.high), lo = numsOf(spec.low);
+    if (!days.length || days.length !== ws.length) return null;
+    var cw = 64, W = Math.max(240, days.length * cw + 24), H = 150, c = new Canvas(W, H);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 12, weight: "bold" });
+    var x0 = (W - days.length * cw) / 2, y0 = str(spec.title) ? 34 : 22;
+    function cloud(cx, cy, s) {
+      c.circle(cx - 8 * s, cy + 2 * s, 8 * s, { fill: "#fff", w: 1.3 });
+      c.circle(cx + 1 * s, cy - 4 * s, 11 * s, { fill: "#fff", w: 1.3 });
+      c.circle(cx + 11 * s, cy + 2 * s, 8 * s, { fill: "#fff", w: 1.3 });
+      c.rect(cx - 12 * s, cy + 2 * s, 26 * s, 8 * s, { fill: "#fff", w: 0 });
+      c.line(cx - 14 * s, cy + 9 * s, cx + 16 * s, cy + 9 * s, { w: 1.3 });
+    }
+    days.forEach(function (d, i) {
+      var cx = x0 + i * cw + cw / 2, cy = y0 + 34;
+      var w = ws[i];
+      if (/晴|sun|fine|clear/.test(w)) {
+        c.circle(cx, cy, 15, { fill: "#fff", w: 1.6 });
+        for (var k = 0; k < 8; k++) {
+          var t = rad(k * 45);
+          c.line(cx + 19 * Math.cos(t), cy + 19 * Math.sin(t),
+                 cx + 25 * Math.cos(t), cy + 25 * Math.sin(t), { w: 1.3 });
+        }
+      } else if (/曇|cloud/.test(w)) {
+        cloud(cx, cy, 1);
+      } else if (/雨|rain/.test(w)) {
+        cloud(cx, cy - 4, 0.9);
+        for (var r2 = -1; r2 <= 1; r2++)
+          c.line(cx + r2 * 8, cy + 10, cx + r2 * 8 - 3, cy + 20, { w: 1.4 });
+      } else if (/雪|snow/.test(w)) {
+        cloud(cx, cy - 4, 0.9);
+        for (var s2 = -1; s2 <= 1; s2++) {
+          var sx = cx + s2 * 9, sy = cy + 16;
+          c.line(sx - 4, sy, sx + 4, sy, { w: 1.1 });
+          c.line(sx, sy - 4, sx, sy + 4, { w: 1.1 });
+          c.line(sx - 3, sy - 3, sx + 3, sy + 3, { w: 1.1 });
+          c.line(sx - 3, sy + 3, sx + 3, sy - 3, { w: 1.1 });
+        }
+      } else {
+        c.text(cx, cy, w.slice(0, 2), { size: 11 });
+      }
+      c.text(cx, y0 + 4, d, { size: 10.5, weight: "bold" });
+      if (hi[i] != null && lo[i] != null)
+        c.text(cx, H - 16, lenText(hi[i]) + "° / " + lenText(lo[i]) + "°", { size: 9.5, fill: SUB });
+    });
+    return c.out({ title: "天気" });
+  };
+
+  /* ── 道案内の標識 ───────────────────────────────────────────── */
+  DRAW.signpost = function (spec) {
+    var signs = str(spec.signs).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      return { dir: str(m[0]).trim(), text: str(m[1] || "").trim() };
+    }).filter(function (s) { return s.dir; });
+    if (!signs.length) return null;
+    var W = 300, H = 60 + signs.length * 44, c = new Canvas(W, H);
+    var px = W / 2 - 40;
+    c.rect(px - 5, 24, 10, H - 40, { fill: "#eee", w: 1.2 });
+    signs.forEach(function (s, i) {
+      var y = 36 + i * 44;
+      var right = /right|右|→/.test(s.dir);
+      var w = 150;
+      var x = right ? px : px - w;
+      c.poly(right
+        ? [[x, y], [x + w - 16, y], [x + w, y + 14], [x + w - 16, y + 28], [x, y + 28]]
+        : [[x + w, y], [x + 16, y], [x, y + 14], [x + 16, y + 28], [x + w, y + 28]],
+        { fill: "#fafafa", w: 1.3 });
+      c.text(x + w / 2 + (right ? -6 : 6), y + 14, s.text, { size: 10.5 });
+    });
+    return c.out({ title: "道案内" });
+  };
+
+  /* ── レシート・値札 ─────────────────────────────────────────
+     合計は **足し算して出す**（書かれた合計は使わない）。 */
+  DRAW.receipt = function (spec) {
+    var items = str(spec.items).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      return { name: str(m[0]).trim(), qty: Number(m[1] || 1), price: Number(m[2] || m[1]) };
+    }).filter(function (it) { return it.name && isNum(it.price); });
+    if (!items.length) return null;
+    var cur = str(spec.currency) || "¥";
+    var W = 260, H = 76 + items.length * 22 + 46, c = new Canvas(W, H);
+    var x0 = 26, w = W - 52;
+    c.rect(x0, 18, w, H - 40, { fill: "#fff", w: 1.3 });
+    c.text(W / 2, 36, str(spec.shop) || "RECEIPT", { size: 11.5, weight: "bold" });
+    c.line(x0 + 8, 46, x0 + w - 8, 46, { w: 0.8, dash: "3 3", stroke: SUB });
+    var total = 0, y = 62;
+    items.forEach(function (it) {
+      var sub = it.qty * it.price;
+      total += sub;
+      c.text(x0 + 10, y, it.name + (it.qty > 1 ? " ×" + it.qty : ""), { anchor: "start", size: 10 });
+      c.text(x0 + w - 10, y, cur + lenText(sub), { anchor: "end", size: 10 });
+      y += 22;
+    });
+    c.line(x0 + 8, y - 8, x0 + w - 8, y - 8, { w: 0.8, stroke: SUB });
+    c.text(x0 + 10, y + 8, "Total", { anchor: "start", size: 11, weight: "bold" });
+    c.text(x0 + w - 10, y + 8, cur + lenText(total), { anchor: "end", size: 11, weight: "bold" });
+    return c.out({ title: "レシート" });
+  };
+
+  /* ── 人の動作（リスニングの絵）───────────────────────────────
+     棒人間。姿勢は決めた角度で描くので、同じ指定なら必ず同じ形になる。 */
+  var POSE = {
+    stand:  { arms: [[200, 0.9], [-20, 0.9]], legs: [[260, 1], [280, 1]], head: 0 },
+    walk:   { arms: [[230, 0.9], [-50, 0.9]], legs: [[250, 1], [300, 1]], head: 0 },
+    run:    { arms: [[250, 0.85], [-70, 0.85]], legs: [[230, 1], [320, 1]], head: -6 },
+    sit:    { arms: [[210, 0.8], [-30, 0.8]], legs: [[0, 0.8], [0, 0.8]], head: 0, sit: true },
+    read:   { arms: [[-40, 0.7], [220, 0.7]], legs: [[262, 1], [278, 1]], head: 12, item: "book" },
+    eat:    { arms: [[-70, 0.6], [250, 0.9]], legs: [[262, 1], [278, 1]], head: 0, item: "plate" },
+    sleep:  { arms: [[180, 0.9], [0, 0.9]], legs: [[0, 1], [8, 1]], head: 0, lie: true },
+    raise:  { arms: [[-95, 1.05], [-10, 0.85]], legs: [[262, 1], [278, 1]], head: 0 },
+    write:  { arms: [[-35, 0.7], [215, 0.75]], legs: [[262, 1], [278, 1]], head: 14, item: "desk" },
+    carry:  { arms: [[-30, 0.75], [210, 0.75]], legs: [[258, 1], [282, 1]], head: 0, item: "box" }
+  };
+  DRAW.stickman = function (spec) {
+    var poses = listOf(spec.poses || spec.pose);
+    if (!poses.length) poses = ["stand"];
+    if (poses.length > 4) return null;
+    var names = listOf(spec.names);
+    var unknown = poses.filter(function (p) { return !POSE[p]; });
+    if (unknown.length) return null;
+    var cw = 110, W = Math.max(160, poses.length * cw + 20), H = 190, c = new Canvas(W, H);
+    poses.forEach(function (key, i) {
+      var P = POSE[key];
+      var cx = (W - poses.length * cw) / 2 + i * cw + cw / 2;
+      var groundY = 148;
+      var hipY = P.sit ? groundY - 34 : groundY - 56;
+      var shY = hipY - 34;
+      var headY = shY - 20;
+      if (P.lie) {
+        /* 寝ている姿勢は横向きに描く */
+        c.line(cx - 30, groundY - 12, cx + 26, groundY - 12, { w: 2.2, cap: "round" });
+        c.circle(cx - 38, groundY - 16, 11, { fill: "#fff", w: 1.8 });
+        c.line(cx + 26, groundY - 12, cx + 36, groundY - 2, { w: 2, cap: "round" });
+        c.rect(cx - 46, groundY - 2, 88, 8, { fill: "#eee", w: 1.2 });
+      } else {
+        c.circle(cx, headY + P.head, 12, { fill: "#fff", w: 1.9 });
+        c.line(cx, headY + 12 + P.head, cx, hipY, { w: 2.2, cap: "round" });
+        P.arms.forEach(function (a) {
+          var t = rad(a[0]);
+          c.line(cx, shY, cx + 30 * a[1] * Math.cos(t), shY + 30 * a[1] * Math.sin(t),
+                 { w: 2, cap: "round" });
+        });
+        if (P.sit) {
+          c.line(cx, hipY, cx + 26, hipY, { w: 2.1, cap: "round" });
+          c.line(cx + 26, hipY, cx + 26, groundY, { w: 2.1, cap: "round" });
+          c.rect(cx - 16, hipY, 18, groundY - hipY, { fill: "#f0f0f0", w: 1.2 });
+        } else {
+          P.legs.forEach(function (l) {
+            var t = rad(l[0]);
+            c.line(cx, hipY, cx + 38 * l[1] * Math.cos(t), hipY + 38 * l[1] * Math.sin(t),
+                   { w: 2.1, cap: "round" });
+          });
+        }
+        if (P.item === "book") c.rect(cx + 14, shY + 2, 24, 17, { fill: "#fff", w: 1.4 });
+        if (P.item === "plate") c.ellipse(cx + 22, shY + 12, 12, 4, { fill: "#fff", w: 1.3 });
+        if (P.item === "box") c.rect(cx + 14, shY + 4, 22, 20, { fill: "#f0f0f0", w: 1.3 });
+        if (P.item === "desk") { c.rect(cx + 8, shY + 16, 46, 5, { fill: "#e6e6e6", w: 1.2 });
+                                 c.line(cx + 50, shY + 21, cx + 50, groundY, { w: 1.2 }); }
+      }
+      c.line(cx - 42, groundY, cx + 42, groundY, { w: 1.1, stroke: SUB });
+      c.text(cx, H - 14, names[i] || key, { size: 10 });
+    });
+    return c.out({ title: "動作の絵" });
+  };
+
+  /* ── 吹き出しの会話 ─────────────────────────────────────────── */
+  DRAW.speech = function (spec) {
+    var lines = str(spec.lines).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      return { who: str(m[0]).trim(), text: str(m.slice(1).join(":")).trim() };
+    }).filter(function (l) { return l.text; });
+    if (!lines.length || lines.length > 6) return null;
+    var W = 360, H = 30 + lines.length * 58, c = new Canvas(W, H);
+    lines.forEach(function (l, i) {
+      var left = i % 2 === 0;
+      var y = 20 + i * 58;
+      var bw = 236, bh = 42;
+      var bx = left ? 74 : W - 74 - bw;
+      c.rect(bx, y, bw, bh, { fill: "#fafafa", w: 1.3, rx: 8 });
+      c.poly(left ? [[bx, y + 14], [bx - 12, y + 22], [bx, y + 30]]
+                  : [[bx + bw, y + 14], [bx + bw + 12, y + 22], [bx + bw, y + 30]],
+             { fill: "#fafafa", w: 1.3 });
+      /* 長い文は 2 行にする（枠からはみ出させない） */
+      var t = l.text, max = 26;
+      if (t.length > max) {
+        c.text(bx + bw / 2, y + 15, t.slice(0, max), { size: 10.5 });
+        c.text(bx + bw / 2, y + 29, t.slice(max, max * 2), { size: 10.5 });
+      } else c.text(bx + bw / 2, y + bh / 2, t, { size: 10.5 });
+      var hx = left ? 40 : W - 40;
+      c.circle(hx, y + 18, 13, { fill: "#fff", w: 1.6 });
+      c.line(hx, y + 31, hx, y + 46, { w: 1.8, cap: "round" });
+      c.text(hx, y + 56, l.who || (left ? "A" : "B"), { size: 9.5, fill: SUB });
+    });
+    return c.out({ title: "会話" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-I) 絵の素材（ピクトグラム）
+
+     リスニングの「合う絵を選べ」に、絵が要る。けれど写真は持てない
+     （権利の要らない写真を同梱できないし、AI に描かせると形にならない）。
+
+     ★ そこで **線画を計算で描く**。共通テストのリスニングの挿絵も線画なので、
+       これで足りる。しかも寸法から描くので、時計は指定した時刻を指し、
+       個数を指定すればその個数だけ並ぶ。
+     ★ 1 つの絵は ICON[名前](c, cx, cy, s, arg) で描く。
+       s = 1 のとき、およそ 40 × 40 の枠に収まる。
+
+     使い方:
+       [[図: icons | items=apple,bus,book | labels=A,B,C ]]
+       [[図: choices4 | items=clock:8:15,clock:8:45,clock:9:15,clock:9:45 ]]
+       [[図: scene | place=教室 | items=desk,chair,clock:10:30 ]]
+     ══════════════════════════════════════════════════════════════════ */
+  var ICON = {};
+
+  /* ── 食べ物・飲み物 ─────────────────────────────────────── */
+  ICON.apple = function (c, x, y, s) {
+    c.path("M" + f(x) + " " + f(y - 8 * s)
+      + " C" + f(x - 16 * s) + " " + f(y - 20 * s) + " " + f(x - 18 * s) + " " + f(y + 14 * s)
+      + " " + f(x) + " " + f(y + 16 * s)
+      + " C" + f(x + 18 * s) + " " + f(y + 14 * s) + " " + f(x + 16 * s) + " " + f(y - 20 * s)
+      + " " + f(x) + " " + f(y - 8 * s) + " Z", { fill: "#f4f4f4", w: 1.4 });
+    c.line(x, y - 8 * s, x, y - 18 * s, { w: 1.4 });
+    c.path("M" + f(x) + " " + f(y - 14 * s) + " Q" + f(x + 11 * s) + " " + f(y - 22 * s)
+      + " " + f(x + 12 * s) + " " + f(y - 13 * s) + " Q" + f(x + 4 * s) + " " + f(y - 12 * s)
+      + " " + f(x) + " " + f(y - 14 * s) + " Z", { fill: "#e4e4e4", w: 1.1 });
+  };
+  ICON.banana = function (c, x, y, s) {
+    c.path("M" + f(x - 17 * s) + " " + f(y - 8 * s)
+      + " Q" + f(x - 6 * s) + " " + f(y + 16 * s) + " " + f(x + 17 * s) + " " + f(y + 6 * s)
+      + " Q" + f(x + 4 * s) + " " + f(y + 8 * s) + " " + f(x - 12 * s) + " " + f(y - 10 * s) + " Z",
+      { fill: "#f4f4f4", w: 1.4 });
+  };
+  ICON.bread = function (c, x, y, s) {
+    /* 食パン。上がふくらみ、側面に切れ目を入れる（ただの山にしない）。 */
+    c.path("M" + f(x - 16 * s) + " " + f(y + 15 * s) + " L" + f(x - 16 * s) + " " + f(y - 2 * s)
+      + " Q" + f(x - 16 * s) + " " + f(y - 15 * s) + " " + f(x - 5 * s) + " " + f(y - 15 * s)
+      + " Q" + f(x + 16 * s) + " " + f(y - 15 * s) + " " + f(x + 16 * s) + " " + f(y - 1 * s)
+      + " L" + f(x + 16 * s) + " " + f(y + 15 * s) + " Z", { fill: "#fafafa", w: 1.5 });
+    c.line(x - 16 * s, y + 2 * s, x + 16 * s, y + 2 * s, { w: 1 });
+    [-7, 0, 7].forEach(function (dx) {
+      c.line(x + dx * s, y + 5 * s, x + dx * s, y + 12 * s, { w: 0.8, stroke: SUB });
+    });
+  };
+  ICON.rice = function (c, x, y, s) {
+    /* ごはん茶わん。わんの形（台つき）に、盛ったごはんを乗せる。 */
+    c.path("M" + f(x - 14 * s) + " " + f(y - 1 * s) + " Q" + f(x) + " " + f(y - 15 * s)
+      + " " + f(x + 14 * s) + " " + f(y - 1 * s) + " Z", { fill: "#fff", w: 1.4 });
+    c.path("M" + f(x - 19 * s) + " " + f(y - 1 * s) + " Q" + f(x - 16 * s) + " " + f(y + 14 * s)
+      + " " + f(x) + " " + f(y + 15 * s) + " Q" + f(x + 16 * s) + " " + f(y + 14 * s)
+      + " " + f(x + 19 * s) + " " + f(y - 1 * s) + " Z", { fill: "#f2f2f2", w: 1.5 });
+    c.rect(x - 7 * s, y + 15 * s, 14 * s, 3.4 * s, { fill: "#eee", w: 1.2 });
+    [-6, 0, 6].forEach(function (dx) {
+      c.circle(x + dx * s, y - 6 * s, 1.6 * s, { fill: SUB, w: 0 });
+    });
+  };
+  ICON.egg = function (c, x, y, s) {
+    /* 目玉焼き。白身は少しゆがんだ形、黄身は真ん中より少し上。 */
+    var d = [], N = 40;
+    for (var i = 0; i <= N; i++) {
+      var t = 2 * Math.PI * i / N;
+      var r = 17 * s * (1 + 0.10 * Math.cos(3 * t) + 0.06 * Math.sin(2 * t));
+      d.push([x + r * Math.cos(t), y + 3 * s + r * 0.66 * Math.sin(t)]);
+    }
+    c.poly(d, { fill: "#fff", w: 1.5 });
+    c.circle(x + 1 * s, y + 1 * s, 6 * s, { fill: "#e0e0e0", w: 1.3 });
+  };
+  ICON.fish = function (c, x, y, s) {
+    c.path("M" + f(x - 16 * s) + " " + f(y)
+      + " Q" + f(x) + " " + f(y - 13 * s) + " " + f(x + 12 * s) + " " + f(y)
+      + " Q" + f(x) + " " + f(y + 13 * s) + " " + f(x - 16 * s) + " " + f(y) + " Z",
+      { fill: "#f2f2f2", w: 1.4 });
+    c.poly([[x + 12 * s, y], [x + 20 * s, y - 8 * s], [x + 20 * s, y + 8 * s]], { fill: "#e8e8e8", w: 1.3 });
+    c.circle(x - 9 * s, y - 2 * s, 1.7 * s, { fill: INK, w: 0 });
+  };
+  ICON.milk = function (c, x, y, s) {
+    c.poly([[x - 10 * s, y + 16 * s], [x - 10 * s, y - 8 * s], [x, y - 17 * s],
+            [x + 10 * s, y - 8 * s], [x + 10 * s, y + 16 * s]], { fill: "#fff", w: 1.4 });
+    c.line(x - 10 * s, y - 8 * s, x + 10 * s, y - 8 * s, { w: 1.1 });
+  };
+  ICON.cake = function (c, x, y, s) {
+    /* ショートケーキ。台・クリーム・ろうそく・いちご。 */
+    c.rect(x - 15 * s, y, 30 * s, 15 * s, { fill: "#fafafa", w: 1.5 });
+    c.line(x - 15 * s, y + 7 * s, x + 15 * s, y + 7 * s, { w: 0.9, stroke: SUB });
+    c.path("M" + f(x - 15 * s) + " " + f(y)
+      + " Q" + f(x - 10 * s) + " " + f(y - 9 * s) + " " + f(x - 5 * s) + " " + f(y)
+      + " Q" + f(x) + " " + f(y - 9 * s) + " " + f(x + 5 * s) + " " + f(y)
+      + " Q" + f(x + 10 * s) + " " + f(y - 9 * s) + " " + f(x + 15 * s) + " " + f(y) + " Z",
+      { fill: "#ececec", w: 1.3 });
+    c.line(x, y - 6 * s, x, y - 16 * s, { w: 1.4 });
+    c.ellipse(x, y - 18 * s, 2.4 * s, 3.6 * s, { fill: "#ddd", w: 1 });
+    c.circle(x - 9 * s, y - 4 * s, 3 * s, { fill: "#c8c8c8", w: 1 });
+    c.rect(x - 17 * s, y + 15 * s, 34 * s, 3 * s, { fill: "#eee", w: 1.2 });
+  };
+  ICON.coffee = function (c, x, y, s) {
+    c.path("M" + f(x - 12 * s) + " " + f(y - 8 * s) + " L" + f(x - 9 * s) + " " + f(y + 12 * s)
+      + " L" + f(x + 9 * s) + " " + f(y + 12 * s) + " L" + f(x + 12 * s) + " " + f(y - 8 * s) + " Z",
+      { fill: "#fff", w: 1.4 });
+    c.path("M" + f(x + 12 * s) + " " + f(y - 3 * s) + " Q" + f(x + 22 * s) + " " + f(y - 1 * s)
+      + " " + f(x + 11 * s) + " " + f(y + 6 * s), { w: 1.3 });
+    c.ellipse(x, y - 8 * s, 12 * s, 3.4 * s, { fill: "#e8e8e8", w: 1.3 });
+    c.rect(x - 16 * s, y + 12 * s, 32 * s, 3.4 * s, { fill: "#eee", w: 1.2 });
+  };
+  ICON.pizza = function (c, x, y, s) {
+    c.poly([[x, y - 16 * s], [x - 15 * s, y + 14 * s], [x + 15 * s, y + 14 * s]],
+           { fill: "#f4f4f4", w: 1.4 });
+    [[0, 4], [-6, 9], [6, 9]].forEach(function (p) {
+      c.circle(x + p[0] * s, y + p[1] * s, 2.4 * s, { fill: "#ccc", w: 0.9 });
+    });
+  };
+  ICON.icecream = function (c, x, y, s) {
+    c.circle(x, y - 6 * s, 10 * s, { fill: "#f4f4f4", w: 1.4 });
+    c.poly([[x - 9 * s, y + 1 * s], [x + 9 * s, y + 1 * s], [x, y + 18 * s]],
+           { fill: "#ececec", w: 1.4 });
+  };
+
+  /* ── 乗り物 ─────────────────────────────────────────────── */
+  ICON.car = function (c, x, y, s) {
+    c.path("M" + f(x - 20 * s) + " " + f(y + 6 * s) + " L" + f(x - 17 * s) + " " + f(y - 3 * s)
+      + " L" + f(x - 9 * s) + " " + f(y - 11 * s) + " L" + f(x + 9 * s) + " " + f(y - 11 * s)
+      + " L" + f(x + 17 * s) + " " + f(y - 3 * s) + " L" + f(x + 20 * s) + " " + f(y + 6 * s) + " Z",
+      { fill: "#f2f2f2", w: 1.4 });
+    c.line(x - 13 * s, y - 3 * s, x + 13 * s, y - 3 * s, { w: 1.1 });
+    c.circle(x - 11 * s, y + 7 * s, 4.4 * s, { fill: "#fff", w: 1.4 });
+    c.circle(x + 11 * s, y + 7 * s, 4.4 * s, { fill: "#fff", w: 1.4 });
+  };
+  ICON.bus = function (c, x, y, s) {
+    c.rect(x - 18 * s, y - 14 * s, 36 * s, 24 * s, { fill: "#f2f2f2", w: 1.4, rx: 3 * s });
+    c.rect(x - 14 * s, y - 10 * s, 12 * s, 9 * s, { fill: "#fff", w: 1.1 });
+    c.rect(x + 2 * s, y - 10 * s, 12 * s, 9 * s, { fill: "#fff", w: 1.1 });
+    c.circle(x - 10 * s, y + 11 * s, 4.2 * s, { fill: "#fff", w: 1.4 });
+    c.circle(x + 10 * s, y + 11 * s, 4.2 * s, { fill: "#fff", w: 1.4 });
+  };
+  ICON.train = function (c, x, y, s) {
+    c.path("M" + f(x - 16 * s) + " " + f(y + 10 * s) + " L" + f(x - 16 * s) + " " + f(y - 8 * s)
+      + " Q" + f(x - 16 * s) + " " + f(y - 16 * s) + " " + f(x) + " " + f(y - 16 * s)
+      + " Q" + f(x + 16 * s) + " " + f(y - 16 * s) + " " + f(x + 16 * s) + " " + f(y - 8 * s)
+      + " L" + f(x + 16 * s) + " " + f(y + 10 * s) + " Z", { fill: "#f2f2f2", w: 1.4 });
+    c.rect(x - 11 * s, y - 11 * s, 22 * s, 10 * s, { fill: "#fff", w: 1.1 });
+    c.line(x - 16 * s, y + 4 * s, x + 16 * s, y + 4 * s, { w: 1 });
+    c.line(x - 18 * s, y + 14 * s, x + 18 * s, y + 14 * s, { w: 1.4 });
+  };
+  ICON.bicycle = function (c, x, y, s) {
+    c.circle(x - 12 * s, y + 6 * s, 8.5 * s, { w: 1.4 });
+    c.circle(x + 12 * s, y + 6 * s, 8.5 * s, { w: 1.4 });
+    c.poly([[x - 12 * s, y + 6 * s], [x - 2 * s, y - 6 * s], [x + 8 * s, y - 6 * s],
+            [x + 12 * s, y + 6 * s]], { open: true, w: 1.3 });
+    c.line(x - 2 * s, y - 6 * s, x + 12 * s, y + 6 * s, { w: 1.3 });
+    c.line(x + 8 * s, y - 6 * s, x + 11 * s, y - 12 * s, { w: 1.3 });
+    c.line(x + 6 * s, y - 12 * s, x + 14 * s, y - 12 * s, { w: 1.3 });
+  };
+  ICON.airplane = function (c, x, y, s) {
+    c.poly([[x + 20 * s, y], [x + 2 * s, y - 5 * s], [x - 6 * s, y - 18 * s],
+            [x - 11 * s, y - 18 * s], [x - 7 * s, y - 4 * s], [x - 16 * s, y - 3 * s],
+            [x - 20 * s, y - 9 * s], [x - 23 * s, y - 9 * s], [x - 21 * s, y],
+            [x - 23 * s, y + 9 * s], [x - 20 * s, y + 9 * s], [x - 16 * s, y + 3 * s],
+            [x - 7 * s, y + 4 * s], [x - 11 * s, y + 18 * s], [x - 6 * s, y + 18 * s],
+            [x + 2 * s, y + 5 * s]], { fill: "#f2f2f2", w: 1.3 });
+  };
+  ICON.ship = function (c, x, y, s) {
+    c.path("M" + f(x - 19 * s) + " " + f(y + 4 * s) + " L" + f(x + 19 * s) + " " + f(y + 4 * s)
+      + " L" + f(x + 13 * s) + " " + f(y + 14 * s) + " L" + f(x - 13 * s) + " " + f(y + 14 * s) + " Z",
+      { fill: "#f2f2f2", w: 1.4 });
+    c.rect(x - 8 * s, y - 7 * s, 16 * s, 11 * s, { fill: "#fff", w: 1.3 });
+    c.line(x, y - 7 * s, x, y - 17 * s, { w: 1.3 });
+    c.poly([[x, y - 17 * s], [x + 11 * s, y - 12 * s], [x, y - 9 * s]], { fill: "#eee", w: 1.2 });
+  };
+
+  /* ── 建物・場所 ─────────────────────────────────────────── */
+  ICON.house = function (c, x, y, s) {
+    c.poly([[x, y - 17 * s], [x + 18 * s, y - 3 * s], [x - 18 * s, y - 3 * s]], { fill: "#ececec", w: 1.4 });
+    c.rect(x - 14 * s, y - 3 * s, 28 * s, 18 * s, { fill: "#fff", w: 1.4 });
+    c.rect(x - 4 * s, y + 4 * s, 8 * s, 11 * s, { fill: "#eee", w: 1.2 });
+  };
+  ICON.school = function (c, x, y, s) {
+    c.rect(x - 19 * s, y - 6 * s, 38 * s, 20 * s, { fill: "#fff", w: 1.4 });
+    c.poly([[x, y - 17 * s], [x + 19 * s, y - 6 * s], [x - 19 * s, y - 6 * s]], { fill: "#ececec", w: 1.4 });
+    [-11, 0, 11].forEach(function (dx) { c.rect(x + dx * s - 4 * s, y - 1 * s, 8 * s, 7 * s, { fill: "#eee", w: 1.1 }); });
+    c.rect(x - 4 * s, y + 8 * s, 8 * s, 6 * s, { fill: "#ddd", w: 1.1 });
+    c.line(x, y - 17 * s, x, y - 23 * s, { w: 1.2 });
+    c.poly([[x, y - 23 * s], [x + 9 * s, y - 20 * s], [x, y - 17 * s]], { fill: "#ddd", w: 1 });
+  };
+  ICON.station = function (c, x, y, s) {
+    c.rect(x - 19 * s, y - 8 * s, 38 * s, 22 * s, { fill: "#fff", w: 1.4 });
+    c.rect(x - 22 * s, y - 12 * s, 44 * s, 5 * s, { fill: "#ececec", w: 1.3 });
+    c.circle(x, y + 1 * s, 6.5 * s, { fill: "#fff", w: 1.3 });
+    c.line(x, y + 1 * s, x, y - 3 * s, { w: 1.1 });
+    c.line(x, y + 1 * s, x + 3 * s, y + 3 * s, { w: 1.1 });
+    c.line(x - 14 * s, y + 14 * s, x + 14 * s, y + 14 * s, { w: 1.3 });
+  };
+  ICON.hospital = function (c, x, y, s) {
+    c.rect(x - 17 * s, y - 15 * s, 34 * s, 30 * s, { fill: "#fff", w: 1.4 });
+    c.rect(x - 3 * s, y - 11 * s, 6 * s, 16 * s, { fill: "#ddd", w: 0 });
+    c.rect(x - 8 * s, y - 6 * s, 16 * s, 6 * s, { fill: "#ddd", w: 0 });
+    c.rect(x - 5 * s, y + 7 * s, 10 * s, 8 * s, { fill: "#eee", w: 1.1 });
+  };
+  ICON.library = function (c, x, y, s) {
+    c.poly([[x - 20 * s, y - 4 * s], [x, y - 15 * s], [x + 20 * s, y - 4 * s]], { fill: "#ececec", w: 1.4 });
+    c.rect(x - 18 * s, y - 4 * s, 36 * s, 4 * s, { fill: "#fff", w: 1.3 });
+    [-12, -4, 4, 12].forEach(function (dx) {
+      c.rect(x + dx * s - 2.4 * s, y, 4.8 * s, 13 * s, { fill: "#fff", w: 1.2 });
+    });
+    c.rect(x - 18 * s, y + 13 * s, 36 * s, 4 * s, { fill: "#ececec", w: 1.3 });
+  };
+  ICON.park = function (c, x, y, s) {
+    ICON.tree(c, x - 9 * s, y - 2 * s, s * 0.8);
+    c.rect(x + 3 * s, y + 6 * s, 18 * s, 3 * s, { fill: "#eee", w: 1.2 });
+    c.line(x + 5 * s, y + 9 * s, x + 5 * s, y + 15 * s, { w: 1.2 });
+    c.line(x + 19 * s, y + 9 * s, x + 19 * s, y + 15 * s, { w: 1.2 });
+    c.rect(x + 3 * s, y + 1 * s, 18 * s, 3 * s, { fill: "#eee", w: 1.2 });
+  };
+  ICON.shop = function (c, x, y, s) {
+    c.rect(x - 18 * s, y - 6 * s, 36 * s, 21 * s, { fill: "#fff", w: 1.4 });
+    for (var i = 0; i < 5; i++)
+      c.poly([[x - 18 * s + i * 7.2 * s, y - 6 * s], [x - 18 * s + (i + 1) * 7.2 * s, y - 6 * s],
+              [x - 18 * s + (i + 0.5) * 7.2 * s, y - 12 * s]],
+             { fill: i % 2 ? "#e4e4e4" : "#fff", w: 1.1 });
+    c.rect(x - 7 * s, y + 4 * s, 14 * s, 11 * s, { fill: "#eee", w: 1.2 });
+  };
+  ICON.bank = function (c, x, y, s) {
+    c.poly([[x - 20 * s, y - 5 * s], [x, y - 16 * s], [x + 20 * s, y - 5 * s]], { fill: "#ececec", w: 1.4 });
+    c.rect(x - 18 * s, y - 5 * s, 36 * s, 3 * s, { fill: "#fff", w: 1.2 });
+    [-12, -4, 4, 12].forEach(function (dx) {
+      c.rect(x + dx * s - 2.6 * s, y - 2 * s, 5.2 * s, 14 * s, { fill: "#fff", w: 1.2 });
+    });
+    c.rect(x - 19 * s, y + 12 * s, 38 * s, 4 * s, { fill: "#ececec", w: 1.3 });
+  };
+  ICON.restaurant = function (c, x, y, s) {
+    c.line(x - 10 * s, y - 15 * s, x - 10 * s, y + 15 * s, { w: 1.5 });
+    c.line(x - 15 * s, y - 15 * s, x - 15 * s, y - 4 * s, { w: 1.3 });
+    c.line(x - 5 * s, y - 15 * s, x - 5 * s, y - 4 * s, { w: 1.3 });
+    c.line(x - 16 * s, y - 4 * s, x - 4 * s, y - 4 * s, { w: 1.3 });
+    c.path("M" + f(x + 12 * s) + " " + f(y - 15 * s) + " Q" + f(x + 5 * s) + " " + f(y - 8 * s)
+      + " " + f(x + 12 * s) + " " + f(y + 1 * s) + " L" + f(x + 12 * s) + " " + f(y + 15 * s),
+      { w: 1.5 });
+  };
+  ICON.museum = function (c, x, y, s) { ICON.bank(c, x, y, s); };
+  ICON.temple = function (c, x, y, s) {
+    c.path("M" + f(x - 21 * s) + " " + f(y - 4 * s) + " Q" + f(x) + " " + f(y - 18 * s)
+      + " " + f(x + 21 * s) + " " + f(y - 4 * s) + " Z", { fill: "#ececec", w: 1.4 });
+    c.rect(x - 15 * s, y - 4 * s, 30 * s, 18 * s, { fill: "#fff", w: 1.4 });
+    c.rect(x - 5 * s, y + 3 * s, 10 * s, 11 * s, { fill: "#eee", w: 1.2 });
+  };
+
+  /* ── 家具・道具 ─────────────────────────────────────────── */
+  ICON.desk = function (c, x, y, s) {
+    c.rect(x - 19 * s, y - 6 * s, 38 * s, 4.5 * s, { fill: "#ececec", w: 1.4 });
+    c.line(x - 15 * s, y - 1.5 * s, x - 15 * s, y + 15 * s, { w: 1.4 });
+    c.line(x + 15 * s, y - 1.5 * s, x + 15 * s, y + 15 * s, { w: 1.4 });
+  };
+  ICON.chair = function (c, x, y, s) {
+    c.rect(x - 11 * s, y - 2 * s, 22 * s, 4 * s, { fill: "#ececec", w: 1.4 });
+    c.line(x + 9 * s, y - 2 * s, x + 9 * s, y - 17 * s, { w: 1.4 });
+    c.line(x - 9 * s, y + 2 * s, x - 9 * s, y + 15 * s, { w: 1.4 });
+    c.line(x + 9 * s, y + 2 * s, x + 9 * s, y + 15 * s, { w: 1.4 });
+  };
+  ICON.bed = function (c, x, y, s) {
+    c.rect(x - 20 * s, y - 1 * s, 40 * s, 10 * s, { fill: "#f2f2f2", w: 1.4 });
+    c.rect(x - 18 * s, y - 7 * s, 13 * s, 7 * s, { fill: "#fff", w: 1.3 });
+    c.line(x - 20 * s, y - 12 * s, x - 20 * s, y + 14 * s, { w: 1.4 });
+    c.line(x + 20 * s, y + 9 * s, x + 20 * s, y + 14 * s, { w: 1.4 });
+  };
+  ICON.door = function (c, x, y, s) {
+    c.rect(x - 11 * s, y - 17 * s, 22 * s, 34 * s, { fill: "#fff", w: 1.5 });
+    c.circle(x + 6 * s, y, 1.9 * s, { fill: INK, w: 0 });
+  };
+  ICON.window = function (c, x, y, s) {
+    c.rect(x - 16 * s, y - 13 * s, 32 * s, 26 * s, { fill: "#fff", w: 1.5 });
+    c.line(x, y - 13 * s, x, y + 13 * s, { w: 1.2 });
+    c.line(x - 16 * s, y, x + 16 * s, y, { w: 1.2 });
+  };
+  ICON.clock = function (c, x, y, s, arg) {
+    var t = parseTime(arg || "3:00") || { h: 3, m: 0 };
+    var R = 17 * s;
+    c.circle(x, y, R, { fill: "#fff", w: 1.6 });
+    for (var k = 0; k < 12; k++) {
+      var a = rad(k * 30 - 90);
+      c.line(x + (R - 3.4 * s) * Math.cos(a), y + (R - 3.4 * s) * Math.sin(a),
+             x + (R - 1) * Math.cos(a), y + (R - 1) * Math.sin(a), { w: k % 3 ? 0.8 : 1.4 });
+    }
+    var ah = rad((t.h + t.m / 60) * 30 - 90), am = rad(t.m * 6 - 90);
+    c.line(x, y, x + R * 0.5 * Math.cos(ah), y + R * 0.5 * Math.sin(ah), { w: 2.4 * s, cap: "round" });
+    c.line(x, y, x + R * 0.78 * Math.cos(am), y + R * 0.78 * Math.sin(am), { w: 1.6 * s, cap: "round" });
+    c.circle(x, y, 1.8 * s, { fill: INK, w: 0 });
+  };
+  ICON.lamp = function (c, x, y, s) {
+    c.poly([[x - 13 * s, y + 2 * s], [x - 7 * s, y - 12 * s], [x + 7 * s, y - 12 * s],
+            [x + 13 * s, y + 2 * s]], { fill: "#ececec", w: 1.4 });
+    c.line(x, y + 2 * s, x, y + 14 * s, { w: 1.4 });
+    c.rect(x - 9 * s, y + 14 * s, 18 * s, 3 * s, { fill: "#eee", w: 1.2 });
+  };
+  ICON.tv = function (c, x, y, s) {
+    c.rect(x - 19 * s, y - 13 * s, 38 * s, 24 * s, { fill: "#fff", w: 1.5, rx: 2 * s });
+    c.line(x - 7 * s, y + 11 * s, x + 7 * s, y + 11 * s, { w: 1.4 });
+    c.line(x, y + 11 * s, x, y + 16 * s, { w: 1.4 });
+  };
+  ICON.computer = function (c, x, y, s) {
+    c.rect(x - 17 * s, y - 14 * s, 34 * s, 21 * s, { fill: "#fff", w: 1.5, rx: 1.5 * s });
+    c.poly([[x - 22 * s, y + 12 * s], [x + 22 * s, y + 12 * s], [x + 17 * s, y + 7 * s],
+            [x - 17 * s, y + 7 * s]], { fill: "#ececec", w: 1.4 });
+  };
+  ICON.phone = function (c, x, y, s) {
+    c.rect(x - 9 * s, y - 17 * s, 18 * s, 34 * s, { fill: "#fff", w: 1.5, rx: 2.4 * s });
+    c.line(x - 3 * s, y - 14 * s, x + 3 * s, y - 14 * s, { w: 1.1 });
+    c.circle(x, y + 13 * s, 2 * s, { w: 1.1 });
+  };
+  ICON.book = function (c, x, y, s) {
+    c.path("M" + f(x) + " " + f(y - 12 * s) + " Q" + f(x - 9 * s) + " " + f(y - 16 * s)
+      + " " + f(x - 18 * s) + " " + f(y - 12 * s) + " L" + f(x - 18 * s) + " " + f(y + 12 * s)
+      + " Q" + f(x - 9 * s) + " " + f(y + 8 * s) + " " + f(x) + " " + f(y + 12 * s) + " Z",
+      { fill: "#fff", w: 1.4 });
+    c.path("M" + f(x) + " " + f(y - 12 * s) + " Q" + f(x + 9 * s) + " " + f(y - 16 * s)
+      + " " + f(x + 18 * s) + " " + f(y - 12 * s) + " L" + f(x + 18 * s) + " " + f(y + 12 * s)
+      + " Q" + f(x + 9 * s) + " " + f(y + 8 * s) + " " + f(x) + " " + f(y + 12 * s) + " Z",
+      { fill: "#fff", w: 1.4 });
+  };
+  ICON.notebook = function (c, x, y, s) {
+    c.rect(x - 13 * s, y - 17 * s, 26 * s, 34 * s, { fill: "#fff", w: 1.5 });
+    for (var i = 1; i <= 5; i++) c.line(x - 8 * s, y - 17 * s + i * 5.6 * s, x + 9 * s, y - 17 * s + i * 5.6 * s,
+                                        { w: 0.7, stroke: SUB });
+    c.line(x - 13 * s, y - 17 * s, x - 13 * s, y + 17 * s, { w: 2.4 });
+  };
+  ICON.pencil = function (c, x, y, s) {
+    c.poly([[x - 14 * s, y + 15 * s], [x - 11 * s, y + 6 * s], [x + 12 * s, y - 15 * s],
+            [x + 16 * s, y - 11 * s], [x - 7 * s, y + 10 * s]], { fill: "#f2f2f2", w: 1.4 });
+    c.line(x - 11 * s, y + 6 * s, x - 7 * s, y + 10 * s, { w: 1.2 });
+  };
+  ICON.bag = function (c, x, y, s) {
+    c.rect(x - 16 * s, y - 6 * s, 32 * s, 22 * s, { fill: "#f2f2f2", w: 1.5, rx: 2 * s });
+    c.path("M" + f(x - 8 * s) + " " + f(y - 6 * s) + " Q" + f(x - 8 * s) + " " + f(y - 17 * s)
+      + " " + f(x) + " " + f(y - 17 * s) + " Q" + f(x + 8 * s) + " " + f(y - 17 * s)
+      + " " + f(x + 8 * s) + " " + f(y - 6 * s), { w: 1.4 });
+  };
+  ICON.umbrella = function (c, x, y, s) {
+    c.path("M" + f(x - 19 * s) + " " + f(y - 2 * s) + " Q" + f(x) + " " + f(y - 20 * s)
+      + " " + f(x + 19 * s) + " " + f(y - 2 * s) + " Z", { fill: "#ececec", w: 1.4 });
+    c.line(x, y - 2 * s, x, y + 14 * s, { w: 1.4 });
+    c.path("M" + f(x) + " " + f(y + 14 * s) + " Q" + f(x - 7 * s) + " " + f(y + 16 * s)
+      + " " + f(x - 6 * s) + " " + f(y + 9 * s), { w: 1.4 });
+  };
+  ICON.key = function (c, x, y, s) {
+    c.circle(x - 10 * s, y, 7.5 * s, { fill: "#fff", w: 1.5 });
+    c.circle(x - 10 * s, y, 2.6 * s, { fill: "#fff", w: 1.2 });
+    c.line(x - 3 * s, y, x + 17 * s, y, { w: 1.7 });
+    c.line(x + 11 * s, y, x + 11 * s, y + 6 * s, { w: 1.5 });
+    c.line(x + 16 * s, y, x + 16 * s, y + 6 * s, { w: 1.5 });
+  };
+  ICON.camera = function (c, x, y, s) {
+    c.rect(x - 18 * s, y - 9 * s, 36 * s, 22 * s, { fill: "#f2f2f2", w: 1.5, rx: 2 * s });
+    c.rect(x - 7 * s, y - 14 * s, 12 * s, 5 * s, { fill: "#ececec", w: 1.3 });
+    c.circle(x, y + 2 * s, 7.5 * s, { fill: "#fff", w: 1.4 });
+    c.circle(x, y + 2 * s, 3.4 * s, { w: 1.1 });
+  };
+  ICON.ball = function (c, x, y, s) {
+    c.circle(x, y, 16 * s, { fill: "#fff", w: 1.6 });
+    var p = [];
+    for (var k = 0; k < 5; k++) {
+      var a = rad(k * 72 - 90);
+      p.push([x + 7 * s * Math.cos(a), y + 7 * s * Math.sin(a)]);
+    }
+    c.poly(p, { fill: "#ddd", w: 1.1 });
+    for (var j = 0; j < 5; j++) {
+      var a2 = rad(j * 72 - 90);
+      c.line(x + 7 * s * Math.cos(a2), y + 7 * s * Math.sin(a2),
+             x + 16 * s * Math.cos(a2), y + 16 * s * Math.sin(a2), { w: 1 });
+    }
+  };
+
+  /* ── 自然・天気・動物 ───────────────────────────────────── */
+  ICON.sun = function (c, x, y, s) {
+    c.circle(x, y, 11 * s, { fill: "#fff", w: 1.6 });
+    for (var k = 0; k < 8; k++) {
+      var a = rad(k * 45);
+      c.line(x + 14 * s * Math.cos(a), y + 14 * s * Math.sin(a),
+             x + 19 * s * Math.cos(a), y + 19 * s * Math.sin(a), { w: 1.3 });
+    }
+  };
+  ICON.cloud = function (c, x, y, s) {
+    c.circle(x - 8 * s, y + 2 * s, 8 * s, { fill: "#fff", w: 1.4 });
+    c.circle(x + 1 * s, y - 4 * s, 11 * s, { fill: "#fff", w: 1.4 });
+    c.circle(x + 11 * s, y + 2 * s, 8 * s, { fill: "#fff", w: 1.4 });
+    c.rect(x - 12 * s, y + 2 * s, 26 * s, 8 * s, { fill: "#fff", w: 0 });
+    c.line(x - 14 * s, y + 9.6 * s, x + 16 * s, y + 9.6 * s, { w: 1.4 });
+  };
+  ICON.rain = function (c, x, y, s) {
+    ICON.cloud(c, x, y - 5 * s, s * 0.9);
+    for (var i = -1; i <= 1; i++) c.line(x + i * 8 * s, y + 8 * s, x + i * 8 * s - 3 * s, y + 17 * s, { w: 1.4 });
+  };
+  ICON.snow = function (c, x, y, s) {
+    ICON.cloud(c, x, y - 5 * s, s * 0.9);
+    for (var i = -1; i <= 1; i++) {
+      var sx = x + i * 9 * s, sy = y + 13 * s;
+      c.line(sx - 4 * s, sy, sx + 4 * s, sy, { w: 1.1 });
+      c.line(sx, sy - 4 * s, sx, sy + 4 * s, { w: 1.1 });
+      c.line(sx - 3 * s, sy - 3 * s, sx + 3 * s, sy + 3 * s, { w: 1.1 });
+      c.line(sx - 3 * s, sy + 3 * s, sx + 3 * s, sy - 3 * s, { w: 1.1 });
+    }
+  };
+  ICON.tree = function (c, x, y, s) {
+    c.circle(x, y - 6 * s, 13 * s, { fill: "#ececec", w: 1.4 });
+    c.rect(x - 3 * s, y + 5 * s, 6 * s, 12 * s, { fill: "#ddd", w: 1.3 });
+  };
+  ICON.flower = function (c, x, y, s) {
+    for (var k = 0; k < 6; k++) {
+      var a = rad(k * 60);
+      c.circle(x + 8 * s * Math.cos(a), y - 6 * s + 8 * s * Math.sin(a), 5.4 * s, { fill: "#fff", w: 1.2 });
+    }
+    c.circle(x, y - 6 * s, 4.4 * s, { fill: "#ddd", w: 1.2 });
+    c.line(x, y, x, y + 16 * s, { w: 1.4 });
+    c.path("M" + f(x) + " " + f(y + 8 * s) + " Q" + f(x + 10 * s) + " " + f(y + 5 * s)
+      + " " + f(x + 9 * s) + " " + f(y + 12 * s) + " Z", { fill: "#eee", w: 1.1 });
+  };
+  ICON.mountain = function (c, x, y, s) {
+    c.poly([[x - 20 * s, y + 13 * s], [x - 5 * s, y - 14 * s], [x + 4 * s, y + 1 * s],
+            [x + 10 * s, y - 7 * s], [x + 20 * s, y + 13 * s]], { fill: "#ececec", w: 1.4 });
+    c.poly([[x - 5 * s, y - 14 * s], [x - 10 * s, y - 5 * s], [x, y - 5 * s]], { fill: "#fff", w: 1 });
+  };
+  ICON.star = function (c, x, y, s) {
+    var p = [];
+    for (var k = 0; k < 10; k++) {
+      var a = rad(k * 36 - 90), r = k % 2 ? 7.5 * s : 18 * s;
+      p.push([x + r * Math.cos(a), y + r * Math.sin(a)]);
+    }
+    c.poly(p, { fill: "#fff", w: 1.4 });
+  };
+  ICON.dog = function (c, x, y, s) {
+    /* 犬。胴・脚 4 本・たれ耳・しっぽ。魚に見えないよう脚をはっきり出す。 */
+    c.path("M" + f(x - 16 * s) + " " + f(y + 2 * s)
+      + " Q" + f(x - 16 * s) + " " + f(y - 6 * s) + " " + f(x - 6 * s) + " " + f(y - 6 * s)
+      + " L" + f(x + 6 * s) + " " + f(y - 6 * s)
+      + " Q" + f(x + 14 * s) + " " + f(y - 6 * s) + " " + f(x + 14 * s) + " " + f(y + 2 * s)
+      + " L" + f(x + 14 * s) + " " + f(y + 8 * s) + " L" + f(x - 16 * s) + " " + f(y + 8 * s) + " Z",
+      { fill: "#f6f6f6", w: 1.4 });
+    c.circle(x + 15 * s, y - 9 * s, 8 * s, { fill: "#f6f6f6", w: 1.4 });
+    c.path("M" + f(x + 10 * s) + " " + f(y - 14 * s) + " Q" + f(x + 6 * s) + " " + f(y - 6 * s)
+      + " " + f(x + 11 * s) + " " + f(y - 4 * s) + " Z", { fill: "#e4e4e4", w: 1.2 });
+    c.circle(x + 18 * s, y - 10 * s, 1.7 * s, { fill: INK, w: 0 });
+    c.circle(x + 22 * s, y - 6 * s, 2 * s, { fill: INK, w: 0 });
+    [-12, -5, 4, 10].forEach(function (dx) {
+      c.line(x + dx * s, y + 8 * s, x + dx * s, y + 17 * s, { w: 2, cap: "round" });
+    });
+    c.path("M" + f(x - 16 * s) + " " + f(y) + " Q" + f(x - 24 * s) + " " + f(y - 4 * s)
+      + " " + f(x - 20 * s) + " " + f(y - 12 * s), { w: 1.8, cap: "round" });
+  };
+  ICON.cat = function (c, x, y, s) {
+    /* ねこ。とがった耳 2 つと、立てたしっぽで犬と見分けられるようにする。 */
+    c.path("M" + f(x - 14 * s) + " " + f(y + 2 * s)
+      + " Q" + f(x - 14 * s) + " " + f(y - 5 * s) + " " + f(x - 5 * s) + " " + f(y - 5 * s)
+      + " L" + f(x + 5 * s) + " " + f(y - 5 * s)
+      + " Q" + f(x + 13 * s) + " " + f(y - 5 * s) + " " + f(x + 13 * s) + " " + f(y + 2 * s)
+      + " L" + f(x + 13 * s) + " " + f(y + 8 * s) + " L" + f(x - 14 * s) + " " + f(y + 8 * s) + " Z",
+      { fill: "#f6f6f6", w: 1.4 });
+    c.circle(x + 14 * s, y - 8 * s, 7.5 * s, { fill: "#f6f6f6", w: 1.4 });
+    c.poly([[x + 8 * s, y - 13 * s], [x + 7 * s, y - 21 * s], [x + 14 * s, y - 15 * s]],
+           { fill: "#ececec", w: 1.2 });
+    c.poly([[x + 20 * s, y - 13 * s], [x + 21 * s, y - 21 * s], [x + 14 * s, y - 15 * s]],
+           { fill: "#ececec", w: 1.2 });
+    c.circle(x + 11 * s, y - 9 * s, 1.5 * s, { fill: INK, w: 0 });
+    c.circle(x + 18 * s, y - 9 * s, 1.5 * s, { fill: INK, w: 0 });
+    c.line(x + 11 * s, y - 4 * s, x + 18 * s, y - 4 * s, { w: 0.9 });
+    [-10, -3, 3, 9].forEach(function (dx) {
+      c.line(x + dx * s, y + 8 * s, x + dx * s, y + 16 * s, { w: 1.9, cap: "round" });
+    });
+    c.path("M" + f(x - 14 * s) + " " + f(y + 1 * s) + " Q" + f(x - 26 * s) + " " + f(y - 2 * s)
+      + " " + f(x - 22 * s) + " " + f(y - 16 * s), { w: 1.8, cap: "round" });
+  };
+  ICON.bird = function (c, x, y, s) {
+    c.ellipse(x, y + 2 * s, 14 * s, 9 * s, { fill: "#f2f2f2", w: 1.4 });
+    c.circle(x + 12 * s, y - 6 * s, 6.5 * s, { fill: "#f2f2f2", w: 1.4 });
+    c.poly([[x + 18 * s, y - 6 * s], [x + 25 * s, y - 4 * s], [x + 18 * s, y - 2 * s]], { fill: "#e4e4e4", w: 1.1 });
+    c.circle(x + 14 * s, y - 8 * s, 1.5 * s, { fill: INK, w: 0 });
+    c.path("M" + f(x - 3 * s) + " " + f(y - 2 * s) + " Q" + f(x + 2 * s) + " " + f(y - 12 * s)
+      + " " + f(x + 8 * s) + " " + f(y - 1 * s), { fill: "#e4e4e4", w: 1.2 });
+    c.poly([[x - 14 * s, y + 2 * s], [x - 24 * s, y - 3 * s], [x - 24 * s, y + 7 * s]], { fill: "#e8e8e8", w: 1.2 });
+  };
+
+  /* ── 記号 ───────────────────────────────────────────────── */
+  ICON.check = function (c, x, y, s) {
+    c.poly([[x - 13 * s, y], [x - 4 * s, y + 10 * s], [x + 14 * s, y - 11 * s]],
+           { open: true, w: 3.2 * s, cap: "round" });
+  };
+  ICON.cross = function (c, x, y, s) {
+    c.line(x - 12 * s, y - 12 * s, x + 12 * s, y + 12 * s, { w: 3 * s, cap: "round" });
+    c.line(x - 12 * s, y + 12 * s, x + 12 * s, y - 12 * s, { w: 3 * s, cap: "round" });
+  };
+  ICON.question = function (c, x, y, s) {
+    c.circle(x, y, 17 * s, { fill: "#fff", w: 1.5 });
+    c.text(x, y, "?", { size: 22 * s, weight: "bold" });
+  };
+  ICON.arrowup = function (c, x, y, s) { c.arrow(x, y + 14 * s, x, y - 14 * s, { w: 2.4 * s, head: 8 * s }); };
+  ICON.arrowdown = function (c, x, y, s) { c.arrow(x, y - 14 * s, x, y + 14 * s, { w: 2.4 * s, head: 8 * s }); };
+  ICON.arrowleft = function (c, x, y, s) { c.arrow(x + 16 * s, y, x - 16 * s, y, { w: 2.4 * s, head: 8 * s }); };
+  ICON.arrowright = function (c, x, y, s) { c.arrow(x - 16 * s, y, x + 16 * s, y, { w: 2.4 * s, head: 8 * s }); };
+
+  /* 人（棒人間）も絵の素材として使えるようにする */
+  ICON.person = function (c, x, y, s) {
+    c.circle(x, y - 12 * s, 6.5 * s, { fill: "#fff", w: 1.7 });
+    c.line(x, y - 5 * s, x, y + 5 * s, { w: 2 * s, cap: "round" });
+    c.line(x - 9 * s, y - 1 * s, x + 9 * s, y - 1 * s, { w: 1.8 * s, cap: "round" });
+    c.line(x, y + 5 * s, x - 7 * s, y + 16 * s, { w: 1.8 * s, cap: "round" });
+    c.line(x, y + 5 * s, x + 7 * s, y + 16 * s, { w: 1.8 * s, cap: "round" });
+  };
+
+  var ICON_NAMES = Object.keys(ICON).sort();
+
+  /* 絵と、その絵に渡す値（時計の時刻など）を読む。 */
+  function iconItem(t) {
+    var m = str(t).split(/[:：]/);
+    var name = m[0].trim().toLowerCase();
+    return { name: name, arg: m.slice(1).join(":"), ok: !!ICON[name] };
+  }
+
+  /* ── 絵を並べる ───────────────────────────────────────────── */
+  DRAW.icons = function (spec) {
+    var items = listOf(spec.items).map(iconItem);
+    if (!items.length || items.some(function (i) { return !i.ok; })) return null;
+    var labels = listOf(spec.labels);
+    var cw = 84, W = Math.max(180, items.length * cw + 20), H = labels.length ? 116 : 96;
+    var c = new Canvas(W, H);
+    items.forEach(function (it, i) {
+      var cx = (W - items.length * cw) / 2 + i * cw + cw / 2;
+      ICON[it.name](c, cx, 48, 1, it.arg);
+      if (labels[i]) c.text(cx, H - 16, labels[i], { size: 11 });
+    });
+    return c.out({ title: "絵" });
+  };
+
+  /* ── 4 つの絵から選ぶ（リスニングのイラスト選択）──────────── */
+  DRAW.choices4 = function (spec) {
+    var items = listOf(spec.items).map(iconItem);
+    if (items.length < 2 || items.length > 4) return null;
+    if (items.some(function (i) { return !i.ok; })) return null;
+    var labels = listOf(spec.labels);
+    var n = items.length;
+    var cols = n <= 2 ? n : 2, rows = Math.ceil(n / cols);
+    var cw = 150, ch = 130;
+    var W = cols * cw + 20, H = rows * ch + 16, c = new Canvas(W, H);
+    items.forEach(function (it, i) {
+      var cxi = 10 + (i % cols) * cw, cyi = 8 + Math.floor(i / cols) * ch;
+      c.rect(cxi + 4, cyi + 4, cw - 8, ch - 12, { fill: "#fff", w: 1.2, rx: 5 });
+      c.text(cxi + 18, cyi + 20, labels[i] || circled(i + 1), { size: 13, weight: "bold" });
+      ICON[it.name](c, cxi + cw / 2, cyi + ch / 2 + 2, 1.25, it.arg);
+    });
+    return c.out({ title: "絵を選ぶ" });
+  };
+
+  /* ── 場面（部屋・店・駅）──────────────────────────────────
+     床と壁を描き、ものを並べる。位置は指定どおり（左から順）。 */
+  DRAW.scene = function (spec) {
+    var items = listOf(spec.items).map(iconItem);
+    if (!items.length || items.some(function (i) { return !i.ok; })) return null;
+    if (items.length > 6) return null;
+    var W = 380, H = 230, c = new Canvas(W, H);
+    var floor = H - 52;
+    c.rect(14, 20, W - 28, H - 34, { fill: "#fcfcfc", w: 1.4 });
+    c.line(14, floor, W - 14, floor, { w: 1.4 });
+    var step = (W - 56) / items.length;
+    items.forEach(function (it, i) {
+      var cx = 28 + step * (i + 0.5);
+      ICON[it.name](c, cx, floor - 24, 0.92, it.arg);
+    });
+    if (str(spec.place)) c.text(W / 2, 13, spec.place, { size: 11.5, weight: "bold" });
+    return c.out({ title: str(spec.place) || "場面" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-J) 国語・英語
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── 原稿用紙 ─────────────────────────────────────────────
+     縦書きの升目。字数は cols × rows で決まる（作文の設問に使う）。 */
+  DRAW.genkou = function (spec) {
+    var cols = Math.round(num(spec.cols, 20)), rows = Math.round(num(spec.rows, 10));
+    if (!(cols >= 4 && cols <= 30) || !(rows >= 2 && rows <= 20)) return null;
+    var u = Math.min(22, Math.floor(420 / rows), Math.floor(520 / cols));
+    var W = rows * u + 46, H = cols * u + 40, c = new Canvas(W, H);
+    var x0 = 24, y0 = 24;
+    /* 縦書きなので、右の列から左へ進む */
+    for (var r = 0; r < rows; r++) {
+      for (var q = 0; q < cols; q++) {
+        var x = W - x0 - (r + 1) * u, y = y0 + q * u;
+        c.rect(x, y, u, u, { stroke: "#bbb", w: 0.7 });
+        /* 升の中の十字（薄く） */
+        c.line(x + u / 2, y + u * 0.3, x + u / 2, y + u * 0.7, { stroke: "#eee", w: 0.5 });
+        c.line(x + u * 0.3, y + u / 2, x + u * 0.7, y + u / 2, { stroke: "#eee", w: 0.5 });
+      }
+    }
+    c.rect(W - x0 - rows * u, y0, rows * u, cols * u, { w: 1.5 });
+    c.text(W / 2, H - 12, cols + " 字 × " + rows + " 行（" + (cols * rows) + " 字）",
+           { size: 10, fill: SUB });
+    return c.out({ title: "原稿用紙" });
+  };
+
+  /* ── 文の成分（係り受け）───────────────────────────────────
+     words = 語 を並べ、links = 1>3 で「1 が 3 に係る」を示す。 */
+  DRAW.bunsetsu = function (spec) {
+    var words = listOf(spec.words);
+    if (words.length < 2 || words.length > 10) return null;
+    var W = Math.max(280, 30 + words.length * 78), H = 170, c = new Canvas(W, H);
+    var y = 116, pos = [];
+    var step = (W - 40) / words.length;
+    words.forEach(function (w, i) {
+      var cx = 20 + step * (i + 0.5);
+      pos.push(cx);
+      var bw = Math.min(step - 10, 12 + w.length * 13);
+      c.rect(cx - bw / 2, y - 15, bw, 30, { fill: "#fafafa", w: 1.3, rx: 3 });
+      c.text(cx, y, w, { size: 11.5 });
+      c.text(cx, y + 28, String(i + 1), { size: 9.5, fill: SUB });
+    });
+    /* 係り受けの弧。上に凸の弧で結ぶ（重ならないよう高さを変える） */
+    var links = listOf(spec.links).map(function (t) {
+      var m = t.split(/[>＞→-]/).map(function (x) { return Number(x.trim()); });
+      return { a: m[0], b: m[1] };
+    }).filter(function (l) { return l.a >= 1 && l.b >= 1 && l.a <= words.length && l.b <= words.length && l.a !== l.b; });
+    links.forEach(function (l, k) {
+      var p = pos[l.a - 1], q = pos[l.b - 1];
+      var h = 26 + Math.abs(l.b - l.a) * 14;
+      c.path("M" + f(p) + " " + f(y - 17) + " Q" + f((p + q) / 2) + " " + f(y - 17 - h)
+        + " " + f(q) + " " + f(y - 17), { w: 1.2, stroke: SUB });
+      c.head(q, y - 17, Math.PI / 2, { stroke: SUB, head: 5 });
+    });
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 11.5, weight: "bold" });
+    return c.out({ title: "文の係り受け" });
+  };
+
+  /* ── 文の要素（SVOC）─────────────────────────────────────── */
+  DRAW.svoc = function (spec) {
+    var parts = str(spec.parts).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      return { text: str(m[0]).trim(), role: str(m[1] || "").trim() };
+    }).filter(function (p) { return p.text; });
+    if (parts.length < 2 || parts.length > 8) return null;
+    var W = 20, widths = parts.map(function (p) {
+      var w = Math.max(46, 14 + p.text.length * 9.5);
+      W += w + 10;
+      return w;
+    });
+    W = Math.max(280, W);
+    var H = 130, c = new Canvas(W, H);
+    var x = (W - (widths.reduce(function (a, b) { return a + b; }, 0) + (parts.length - 1) * 10)) / 2;
+    parts.forEach(function (p, i) {
+      var w = widths[i], y = 46;
+      c.rect(x, y, w, 34, { fill: "#fafafa", w: 1.3, rx: 3 });
+      c.text(x + w / 2, y + 17, p.text, { size: 12 });
+      if (p.role) {
+        c.text(x + w / 2, y - 12, p.role, { size: 12, weight: "bold" });
+        c.line(x + 3, y + 38, x + w - 3, y + 38, { w: 1.6 });
+      }
+      x += w + 10;
+    });
+    if (str(spec.title)) c.text(W / 2, 18, spec.title, { size: 11, fill: SUB });
+    return c.out({ title: "文の要素" });
+  };
+
+  /* ── 時制の時間軸 ─────────────────────────────────────────
+     points = ラベル:位置(-10〜10) を並べる。0 が「今」。 */
+  DRAW.tenseline = function (spec) {
+    var pts = str(spec.points).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      return { t: str(m[0]).trim(), at: Number(m[1]) };
+    }).filter(function (p) { return p.t && isNum(p.at) && p.at >= -10 && p.at <= 10; });
+    if (!pts.length || pts.length > 6) return null;
+    var W = 400, H = 150, c = new Canvas(W, H);
+    var x0 = 34, x1 = W - 34, ay = 86;
+    var X = function (v) { return x0 + (v + 10) / 20 * (x1 - x0); };
+    c.arrow(x0 - 12, ay, x1 + 12, ay, { w: 1.4 });
+    c.line(X(0), ay - 16, X(0), ay + 16, { w: 1.8 });
+    c.text(X(0), ay + 28, "今", { size: 10.5, weight: "bold" });
+    c.text(x0 - 8, ay - 12, "過去", { anchor: "start", size: 10, fill: SUB });
+    c.text(x1 + 8, ay - 12, "未来", { anchor: "end", size: 10, fill: SUB });
+    pts.forEach(function (p, i) {
+      var x = X(p.at);
+      c.circle(x, ay, 4, { fill: INK, w: 0 });
+      c.line(x, ay - 5, x, ay - 18 - (i % 2) * 16, { w: 0.7, stroke: SUB });
+      c.text(x, ay - 24 - (i % 2) * 16, p.t, { size: 10.5 });
+    });
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 11.5, weight: "bold" });
+    return c.out({ title: "時間軸" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-K) 社会
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── 雨温図（気温の折れ線 ＋ 降水量の棒）──────────────────── */
+  DRAW.climate = function (spec) {
+    var temp = numsOf(spec.temp), rain = numsOf(spec.rain);
+    if (temp.length !== 12 || rain.length !== 12) return null;
+    var W = 420, H = 300, c = new Canvas(W, H);
+    var box = { x: 46, y: str(spec.title) ? 36 : 22, w: 326, h: 0 };
+    box.h = H - box.y - 46;
+    var tb = niceBounds(Math.min(-10, Math.min.apply(null, temp)), Math.max(30, Math.max.apply(null, temp)), 5);
+    var rb = niceBounds(0, Math.max.apply(null, rain), 5);
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 13, weight: "bold" });
+    /* 左の目盛り＝気温、右の目盛り＝降水量 */
+    for (var v = tb.lo; v <= tb.hi + tb.step / 1e6; v += tb.step) {
+      var y = box.y + box.h - (v - tb.lo) / (tb.hi - tb.lo) * box.h;
+      c.line(box.x, y, box.x + box.w, y, { stroke: LIGHT, w: 0.6 });
+      c.text(box.x - 6, y, tickLabel(v, tb.step), { anchor: "end", size: 9.5, fill: SUB });
+    }
+    for (var r = rb.lo; r <= rb.hi + rb.step / 1e6; r += rb.step) {
+      var yr = box.y + box.h - (r - rb.lo) / (rb.hi - rb.lo) * box.h;
+      c.text(box.x + box.w + 6, yr, tickLabel(r, rb.step), { anchor: "start", size: 9.5, fill: SUB });
+    }
+    var slot = box.w / 12;
+    rain.forEach(function (v, i) {
+      var hh = (v - rb.lo) / (rb.hi - rb.lo) * box.h;
+      c.rect(box.x + slot * i + slot * 0.2, box.y + box.h - hh, slot * 0.6, hh, { fill: "#d6d6d6", w: 0.8 });
+    });
+    var pts = temp.map(function (v, i) {
+      return [box.x + slot * (i + 0.5), box.y + box.h - (v - tb.lo) / (tb.hi - tb.lo) * box.h];
+    });
+    c.poly(pts, { open: true, w: 1.9 });
+    pts.forEach(function (p) { c.circle(p[0], p[1], 2.8, { fill: INK, w: 0 }); });
+    for (var m = 0; m < 12; m++)
+      if (m % 2 === 0) c.text(box.x + slot * (m + 0.5), box.y + box.h + 13, String(m + 1), { size: 9, fill: SUB });
+    c.line(box.x, box.y, box.x, box.y + box.h, { w: 1.2 });
+    c.line(box.x + box.w, box.y, box.x + box.w, box.y + box.h, { w: 1.2 });
+    c.line(box.x, box.y + box.h, box.x + box.w, box.y + box.h, { w: 1.2 });
+    c.text(box.x - 6, box.y - 8, "気温(℃)", { anchor: "end", size: 9, fill: SUB });
+    c.text(box.x + box.w + 6, box.y - 8, "降水量(mm)", { anchor: "start", size: 9, fill: SUB });
+    var avg = temp.reduce(function (a, b) { return a + b; }, 0) / 12;
+    var sum = rain.reduce(function (a, b) { return a + b; }, 0);
+    c.text(W / 2, H - 10, "年平均気温 " + avg.toFixed(1) + "℃ ／ 年降水量 " + Math.round(sum) + "mm",
+           { size: 10, fill: SUB });
+    return c.out({ title: str(spec.title) || "雨温図" });
+  };
+
+  /* ── 議席（半円グラフ）───────────────────────────────────── */
+  DRAW.seats = function (spec) {
+    var labels = listOf(spec.labels), vals = numsOf(spec.values);
+    if (!labels.length || labels.length !== vals.length) return null;
+    var total = vals.reduce(function (a, b) { return a + b; }, 0);
+    if (!(total > 0) || total > 800) return null;
+    var W = 400, H = 240, cx = W / 2 - 40, cy = 190, R = 130, c = new Canvas(W, H);
+    var acc = 0;
+    var shade = ["#3a3a3a", "#777777", "#aaaaaa", "#d4d4d4", "#565656", "#909090", "#c4c4c4"];
+    vals.forEach(function (v, i) {
+      var a0 = 180 * acc / total, a1 = 180 * (acc + v) / total;
+      acc += v;
+      var t0 = rad(180 - a0), t1 = rad(180 - a1);
+      var x0 = cx + R * Math.cos(t0), y0 = cy - R * Math.sin(t0);
+      var x1 = cx + R * Math.cos(t1), y1 = cy - R * Math.sin(t1);
+      c.path("M" + f(cx) + " " + f(cy) + " L" + f(x0) + " " + f(y0)
+        + " A" + f(R) + " " + f(R) + " 0 0 1 " + f(x1) + " " + f(y1) + " Z",
+        { fill: shade[i % shade.length], w: 1 });
+    });
+    c.circle(cx, cy, R * 0.38, { fill: "#fff", w: 1.2 });
+    c.text(cx, cy - 16, String(total), { size: 15, weight: "bold" });
+    c.text(cx, cy - 2, "議席", { size: 9.5, fill: SUB });
+    labels.forEach(function (l, i) {
+      var y = 34 + i * 18;
+      c.rect(W - 118, y - 6, 11, 11, { fill: shade[i % shade.length], w: 0.8 });
+      c.text(W - 102, y, l + " " + vals[i], { anchor: "start", size: 10 });
+    });
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 12, weight: "bold" });
+    return c.out({ title: "議席" });
+  };
+
+  /* ── 三角グラフ ───────────────────────────────────────────
+     3 つの割合（合計 100）を 1 点で表す。位置は重心座標で計算する。 */
+  DRAW.trianglegraph = function (spec) {
+    var pts = str(spec.points).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      var v = numsOf(m.length > 1 ? m[1] : m[0]);
+      return { name: m.length > 1 ? str(m[0]).trim() : "", v: v };
+    }).filter(function (p) { return p.v.length === 3; });
+    if (!pts.length) return null;
+    if (pts.some(function (p) { return Math.abs(p.v[0] + p.v[1] + p.v[2] - 100) > 1.5; })) return null;
+    var labels = listOf(spec.labels);
+    var W = 340, H = 320, c = new Canvas(W, H);
+    var side = 250, x0 = (W - side) / 2, y0 = H - 44;
+    var A = [x0 + side / 2, y0 - side * Math.sqrt(3) / 2];    /* 上 = 1 つめ */
+    var B = [x0, y0];                                          /* 左下 = 2 つめ */
+    var C2 = [x0 + side, y0];                                  /* 右下 = 3 つめ */
+    c.poly([A, B, C2], { fill: "#fcfcfc", w: 1.5 });
+    for (var g = 1; g <= 4; g++) {
+      var u = g / 5;
+      c.line(A[0] + (B[0] - A[0]) * u, A[1] + (B[1] - A[1]) * u,
+             A[0] + (C2[0] - A[0]) * u, A[1] + (C2[1] - A[1]) * u, { stroke: "#eee", w: 0.6 });
+      c.line(B[0] + (A[0] - B[0]) * u, B[1] + (A[1] - B[1]) * u,
+             B[0] + (C2[0] - B[0]) * u, B[1] + (C2[1] - B[1]) * u, { stroke: "#eee", w: 0.6 });
+      c.line(C2[0] + (A[0] - C2[0]) * u, C2[1] + (A[1] - C2[1]) * u,
+             C2[0] + (B[0] - C2[0]) * u, C2[1] + (B[1] - C2[1]) * u, { stroke: "#eee", w: 0.6 });
+    }
+    pts.forEach(function (p) {
+      var a = p.v[0] / 100, b = p.v[1] / 100, cc = p.v[2] / 100;
+      var x = A[0] * a + B[0] * b + C2[0] * cc;
+      var y = A[1] * a + B[1] * b + C2[1] * cc;
+      c.circle(x, y, 4, { fill: INK, w: 0 });
+      if (p.name) c.text(x + 9, y - 9, p.name, { anchor: "start", size: 10 });
+    });
+    c.text(A[0], A[1] - 12, labels[0] || "第1次", { size: 10.5 });
+    c.text(B[0] - 6, B[1] + 14, labels[1] || "第2次", { size: 10.5 });
+    c.text(C2[0] + 6, C2[1] + 14, labels[2] || "第3次", { size: 10.5 });
+    return c.out({ title: "三角グラフ" });
+  };
+
+  /* ── 組織図・系統図 ───────────────────────────────────────
+     nodes = 段:名前 を並べる。同じ段のものは横に並ぶ。 */
+  DRAW.orgchart = function (spec) {
+    var ns = str(spec.nodes).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      return { lv: Math.round(Number(m[0])), name: str(m.slice(1).join(":")).trim() };
+    }).filter(function (n) { return n.lv >= 1 && n.lv <= 5 && n.name; });
+    if (ns.length < 2 || ns.length > 16) return null;
+    var byLv = {};
+    ns.forEach(function (n) { (byLv[n.lv] = byLv[n.lv] || []).push(n); });
+    var lvs = Object.keys(byLv).map(Number).sort(function (a, b) { return a - b; });
+    var W = 400, H = 40 + lvs.length * 72, c = new Canvas(W, H);
+    var pos = {};
+    lvs.forEach(function (lv, li) {
+      var row = byLv[lv], y = 26 + li * 72;
+      var bw = Math.min(120, (W - 30) / row.length - 12);
+      row.forEach(function (n, i) {
+        var cx = (W - row.length * (bw + 12) + 12) / 2 + i * (bw + 12) + bw / 2;
+        c.rect(cx - bw / 2, y, bw, 36, { fill: "#fafafa", w: 1.3, rx: 3 });
+        c.text(cx, y + 18, n.name, { size: 10.5 });
+        pos[lv + ":" + i] = { x: cx, y: y, b: y + 36 };
+      });
+    });
+    /* 上の段の真ん中から、下の段へ線を引く */
+    for (var k = 0; k < lvs.length - 1; k++) {
+      var up = byLv[lvs[k]], dn = byLv[lvs[k + 1]];
+      var ux = up.map(function (_, i) { return pos[lvs[k] + ":" + i].x; });
+      var mid = ux.reduce(function (a, b) { return a + b; }, 0) / ux.length;
+      var uy = pos[lvs[k] + ":0"].b, dy = pos[lvs[k + 1] + ":0"].y;
+      c.line(mid, uy, mid, (uy + dy) / 2, { w: 1.1 });
+      var xs2 = dn.map(function (_, i) { return pos[lvs[k + 1] + ":" + i].x; });
+      c.line(Math.min.apply(null, xs2), (uy + dy) / 2, Math.max.apply(null, xs2), (uy + dy) / 2, { w: 1.1 });
+      xs2.forEach(function (x) { c.line(x, (uy + dy) / 2, x, dy, { w: 1.1 }); });
+    }
+    return c.out({ title: "組織図" });
+  };
+
+  /* ── 都道府県の配置図（模式的な白地図）──────────────────────
+     正確な海岸線は持てないので、**位置関係だけ**を升で表す。
+     どこが隣か、どの地方かを問う設問に使える。 */
+  var JP_GRID = {
+    "北海道": [7, 1], "青森": [7, 3], "岩手": [8, 4], "宮城": [8, 5], "秋田": [7, 4],
+    "山形": [7, 5], "福島": [8, 6], "茨城": [9, 7], "栃木": [8, 7], "群馬": [7, 7],
+    "埼玉": [8, 8], "千葉": [9, 8], "東京": [8, 9], "神奈川": [8, 10], "新潟": [7, 6],
+    "富山": [6, 6], "石川": [5, 6], "福井": [5, 7], "山梨": [7, 9], "長野": [6, 8],
+    "岐阜": [6, 7], "静岡": [7, 10], "愛知": [6, 9], "三重": [5, 9], "滋賀": [5, 8],
+    "京都": [4, 7], "大阪": [4, 9], "兵庫": [4, 8], "奈良": [5, 10], "和歌山": [4, 10],
+    "鳥取": [3, 7], "島根": [2, 7], "岡山": [3, 8], "広島": [2, 8], "山口": [1, 8],
+    "徳島": [3, 10], "香川": [3, 9], "愛媛": [2, 9], "高知": [2, 10], "福岡": [1, 9],
+    "佐賀": [0, 9], "長崎": [0, 10], "熊本": [1, 10], "大分": [1, 11], "宮崎": [2, 11],
+    "鹿児島": [1, 12], "沖縄": [0, 13]
+  };
+  DRAW.jpmap = function (spec) {
+    var marks = {};
+    listOf(spec.marks).forEach(function (t) { marks[t.replace(/[都府県]$/, "")] = 1; });
+    var labels = {};
+    str(spec.labels).split(/[;；]/).forEach(function (t) {
+      var m = t.split(/[:：]/);
+      if (m.length === 2) labels[str(m[0]).trim().replace(/[都府県]$/, "")] = str(m[1]).trim();
+    });
+    var names = Object.keys(JP_GRID);
+    var bad = Object.keys(marks).filter(function (n) { return names.indexOf(n) < 0; });
+    if (bad.length) return null;
+    var u = 30, W = 10 * u + 40, H = 15 * u + 40, c = new Canvas(W, H);
+    var x0 = 20, y0 = 20;
+    names.forEach(function (n) {
+      var g = JP_GRID[n];
+      var x = x0 + g[0] * u, y = y0 + g[1] * u;
+      c.rect(x, y, u - 2, u - 2, { fill: marks[n] ? "#9a9a9a" : "#f6f6f6", w: 1 });
+      var t = labels[n] || (spec.names ? n.slice(0, 2) : "");
+      if (t) c.text(x + (u - 2) / 2, y + (u - 2) / 2, t,
+                    { size: 8.5, fill: marks[n] ? "#fff" : INK });
+    });
+    c.text(W - 14, H - 12, "（位置の模式図）", { anchor: "end", size: 9, fill: SUB });
+    return c.out({ title: "日本の位置図" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-L) 理科（模式図）
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── 生態ピラミッド ───────────────────────────────────────── */
+  DRAW.foodpyramid = function (spec) {
+    var ls = listOf(spec.levels);
+    if (ls.length < 2 || ls.length > 5) return null;
+    var W = 340, H = 60 + ls.length * 46, c = new Canvas(W, H);
+    var baseW = 260, topW = 70, y0 = 30, hh = 42;
+    ls.forEach(function (l, i) {
+      var k = ls.length - 1 - i;                     /* 下が広い */
+      var w1 = topW + (baseW - topW) * (k + 1) / ls.length;
+      var w2 = topW + (baseW - topW) * k / ls.length;
+      var y = y0 + i * hh;
+      c.poly([[W / 2 - w1 / 2, y + hh], [W / 2 + w1 / 2, y + hh],
+              [W / 2 + w2 / 2, y], [W / 2 - w2 / 2, y]],
+             { fill: i % 2 ? "#f0f0f0" : "#f8f8f8", w: 1.3 });
+      c.text(W / 2, y + hh / 2, l, { size: 10.5 });
+    });
+    c.arrow(W / 2 + baseW / 2 + 16, y0 + ls.length * hh, W / 2 + baseW / 2 + 16, y0 + 6,
+            { w: 1.2, stroke: SUB });
+    c.text(W - 12, (y0 + y0 + ls.length * hh) / 2, "数が減る", { anchor: "end", size: 9, fill: SUB, rotate: -90 });
+    return c.out({ title: "生態ピラミッド" });
+  };
+
+  /* ── 太陽の日周運動 ───────────────────────────────────────
+     南中高度は「90 − 緯度 + 赤緯」で計算する。 */
+  DRAW.sunpath = function (spec) {
+    var lat = num(spec.lat, 35);
+    var dec = num(spec.dec, 0);
+    if (!(lat >= -66 && lat <= 66)) return null;
+    var alt = 90 - Math.abs(lat) + dec;
+    if (!(alt > 0 && alt <= 90)) return null;
+    var W = 340, H = 240, c = new Canvas(W, H);
+    var cx = W / 2, cy = H - 52, R = 120;
+    /* 地平線と天球（半円） */
+    c.path("M" + f(cx - R) + " " + f(cy) + " A" + f(R) + " " + f(R) + " 0 0 1 " + f(cx + R) + " " + f(cy),
+           { w: 1.3, stroke: SUB, dash: "5 4" });
+    c.line(cx - R - 16, cy, cx + R + 16, cy, { w: 1.5 });
+    c.ellipse(cx, cy, R, R * 0.22, { w: 0.8, dash: "3 3", stroke: "#ccc" });
+    /* 太陽の道。南中の高さだけ持ち上げた弧にする。 */
+    var h = R * Math.sin(rad(alt));
+    var d = [];
+    for (var i = 0; i <= 60; i++) {
+      var u = i / 60;
+      d.push([cx - R + 2 * R * u, cy - h * Math.sin(Math.PI * u)]);
+    }
+    c.path("M" + d.map(function (p) { return f(p[0]) + " " + f(p[1]); }).join(" L"), { w: 1.9 });
+    c.circle(cx, cy - h, 8, { fill: "#fff", w: 1.6 });
+    for (var k = 0; k < 8; k++) {
+      var a = rad(k * 45);
+      c.line(cx + 11 * Math.cos(a), cy - h + 11 * Math.sin(a),
+             cx + 15 * Math.cos(a), cy - h + 15 * Math.sin(a), { w: 1 });
+    }
+    angleArc(c, [cx, cy], [cx + 60, cy], [cx + 60 * Math.cos(rad(alt)), cy - 60 * Math.sin(rad(alt))],
+             48, lenText(Math.round(alt * 10) / 10) + "°");
+    c.text(cx - R - 12, cy + 14, "東", { size: 10.5 });
+    c.text(cx + R + 12, cy + 14, "西", { size: 10.5 });
+    c.text(cx, cy + 16, "南", { size: 10.5 });
+    c.text(W / 2, H - 10, "南中高度 = 90° − 緯度 + 赤緯 = " + (Math.round(alt * 10) / 10) + "°",
+           { size: 10, fill: SUB });
+    return c.out({ title: "太陽の日周運動" });
+  };
+
+  /* ── 磁界（棒磁石のまわり）──────────────────────────────── */
+  DRAW.magnet = function (spec) {
+    var W = 340, H = 240, c = new Canvas(W, H);
+    var cx = W / 2, cy = H / 2, mw = 110, mh = 30;
+    /* 磁力線。楕円の族で表す（内側ほど細い）。向きは N → S。 */
+    for (var k = 1; k <= 4; k++) {
+      var rx = mw / 2 + k * 20, ry = mh / 2 + k * 22;
+      c.ellipse(cx, cy, rx, ry, { w: 1, stroke: SUB });
+      c.head(cx, cy - ry, 0, { stroke: SUB, head: 5 });
+      c.head(cx, cy + ry, Math.PI, { stroke: SUB, head: 5 });
+    }
+    c.rect(cx - mw / 2, cy - mh / 2, mw / 2, mh, { fill: "#ddd", w: 1.4 });
+    c.rect(cx, cy - mh / 2, mw / 2, mh, { fill: "#fff", w: 1.4 });
+    c.text(cx - mw / 4, cy, "N", { size: 14, weight: "bold" });
+    c.text(cx + mw / 4, cy, "S", { size: 14, weight: "bold" });
+    return c.out({ title: "磁界" });
+  };
+
+  /* ── 人体の模式図（消化・循環）──────────────────────────── */
+  DRAW.body = function (spec) {
+    var kind = str(spec.type || "digest").toLowerCase();
+    var W = 260, H = 320, c = new Canvas(W, H);
+    var cx = W / 2 - 20;
+    /* からだの輪郭（模式） */
+    c.circle(cx, 44, 22, { fill: "#fff", w: 1.4 });
+    c.path("M" + f(cx - 34) + " " + f(292) + " L" + f(cx - 34) + " " + f(96)
+      + " Q" + f(cx - 34) + " " + f(70) + " " + f(cx) + " " + f(70)
+      + " Q" + f(cx + 34) + " " + f(70) + " " + f(cx + 34) + " " + f(96)
+      + " L" + f(cx + 34) + " " + f(292) + " Z", { fill: "#fcfcfc", w: 1.4 });
+    var parts;
+    if (/circ|循環/.test(kind)) {
+      c.path("M" + f(cx - 4) + " " + f(112) + " Q" + f(cx - 20) + " " + f(104)
+        + " " + f(cx - 18) + " " + f(124) + " Q" + f(cx - 16) + " " + f(144)
+        + " " + f(cx - 2) + " " + f(150) + " Q" + f(cx + 12) + " " + f(142)
+        + " " + f(cx + 14) + " " + f(122) + " Q" + f(cx + 14) + " " + f(104)
+        + " " + f(cx - 4) + " " + f(112) + " Z", { fill: "#eee", w: 1.4 });
+      parts = [["心臓", 130], ["肺", 104], ["肝臓", 178], ["じん臓", 214]];
+      c.ellipse(cx - 20, 100, 13, 20, { fill: "#f4f4f4", w: 1.2 });
+      c.ellipse(cx + 20, 100, 13, 20, { fill: "#f4f4f4", w: 1.2 });
+      c.ellipse(cx - 16, 214, 9, 13, { fill: "#f4f4f4", w: 1.2 });
+      c.ellipse(cx + 16, 214, 9, 13, { fill: "#f4f4f4", w: 1.2 });
+      c.rect(cx - 28, 166, 34, 26, { fill: "#f4f4f4", w: 1.2, rx: 6 });
+    } else {
+      /* 消化管を 1 本の線で（食道 → 胃 → 小腸 → 大腸） */
+      c.line(cx, 96, cx, 132, { w: 2.4 });
+      c.path("M" + f(cx) + " " + f(132) + " Q" + f(cx - 26) + " " + f(140)
+        + " " + f(cx - 20) + " " + f(162) + " Q" + f(cx - 12) + " " + f(178)
+        + " " + f(cx + 4) + " " + f(170) + " Q" + f(cx + 16) + " " + f(158)
+        + " " + f(cx + 8) + " " + f(136) + " Z", { fill: "#eee", w: 1.4 });
+      c.rect(cx - 26, 196, 52, 46, { fill: "none", w: 1.2, dash: "4 3", stroke: SUB });
+      var d = ["M" + f(cx + 4) + " " + f(176)];
+      for (var i = 0; i < 4; i++) {
+        d.push("Q" + f(cx + (i % 2 ? 26 : -26)) + " " + f(190 + i * 13)
+          + " " + f(cx) + " " + f(196 + i * 13));
+      }
+      c.path(d.join(" "), { w: 1.8 });
+      c.path("M" + f(cx - 30) + " " + f(250) + " L" + f(cx - 30) + " " + f(196)
+        + " L" + f(cx + 30) + " " + f(196) + " L" + f(cx + 30) + " " + f(250)
+        + " L" + f(cx + 6) + " " + f(250), { w: 2 });
+      parts = [["食道", 112], ["胃", 154], ["小腸", 216], ["大腸", 250]];
+    }
+    (parts || []).forEach(function (p) {
+      c.line(cx + 36, p[1], W - 56, p[1], { w: 0.7, stroke: SUB });
+      c.text(W - 52, p[1], p[0], { anchor: "start", size: 10 });
+    });
+    return c.out({ title: "からだのつくり" });
+  };
+
+  /* ── 植物のつくり ─────────────────────────────────────────── */
+  DRAW.plant = function (spec) {
+    var W = 280, H = 300, c = new Canvas(W, H);
+    var cx = 108, ground = 210;
+    c.line(20, ground, W - 20, ground, { w: 1.3 });
+    for (var i = 24; i < W - 20; i += 10) c.line(i, ground, i - 6, ground + 7, { w: 0.6, stroke: SUB });
+    c.line(cx, ground, cx, 92, { w: 2.4 });
+    /* 根 */
+    [-1, 1].forEach(function (sg) {
+      c.path("M" + f(cx) + " " + f(ground) + " Q" + f(cx + sg * 22) + " " + f(ground + 22)
+        + " " + f(cx + sg * 34) + " " + f(ground + 56), { w: 1.6 });
+      c.path("M" + f(cx) + " " + f(ground) + " Q" + f(cx + sg * 8) + " " + f(ground + 30)
+        + " " + f(cx + sg * 12) + " " + f(ground + 64), { w: 1.3 });
+    });
+    /* 葉 */
+    [[-1, 150], [1, 176], [-1, 124]].forEach(function (g) {
+      var sg = g[0], y = g[1];
+      c.path("M" + f(cx) + " " + f(y) + " Q" + f(cx + sg * 30) + " " + f(y - 24)
+        + " " + f(cx + sg * 54) + " " + f(y - 6) + " Q" + f(cx + sg * 28) + " " + f(y + 12)
+        + " " + f(cx) + " " + f(y) + " Z", { fill: "#f2f2f2", w: 1.3 });
+      c.line(cx, y, cx + sg * 52, y - 6, { w: 0.8, stroke: SUB });
+    });
+    /* 花 */
+    for (var k = 0; k < 6; k++) {
+      var a = rad(k * 60 - 90);
+      c.ellipse(cx + 20 * Math.cos(a), 76 + 20 * Math.sin(a), 13, 9, { fill: "#fff", w: 1.3 });
+    }
+    c.circle(cx, 76, 10, { fill: "#e8e8e8", w: 1.3 });
+    [["花", 60], ["茎", 150], ["葉", 176], ["根", ground + 44]].forEach(function (p) {
+      var y = p[1];
+      c.line(cx + 60, y, W - 64, y, { w: 0.7, stroke: SUB });
+      c.text(W - 60, y, p[0], { anchor: "start", size: 11 });
+    });
+    return c.out({ title: "植物のつくり" });
+  };
+
+  /* ── 細胞 ─────────────────────────────────────────────────── */
+  DRAW.cell = function (spec) {
+    var plant = /plant|植物/.test(str(spec.type));
+    var W = 300, H = 250, c = new Canvas(W, H);
+    var cx = 130, cy = 124;
+    if (plant) {
+      c.rect(cx - 88, cy - 76, 176, 152, { fill: "#fcfcfc", w: 2.2 });
+      c.rect(cx - 82, cy - 70, 164, 140, { fill: "#fff", w: 1.2 });
+      c.ellipse(cx + 18, cy + 2, 52, 44, { fill: "#f8f8f8", w: 1.2 });
+      [[-46, -34], [-52, 18], [30, -48], [46, 40]].forEach(function (p) {
+        c.ellipse(cx + p[0], cy + p[1], 13, 8, { fill: "#e8e8e8", w: 1.1 });
+      });
+    } else {
+      c.ellipse(cx, cy, 92, 70, { fill: "#fcfcfc", w: 1.8 });
+    }
+    c.circle(cx - 34, cy - 12, 22, { fill: "#ededed", w: 1.4 });
+    c.circle(cx - 34, cy - 12, 7, { fill: "#c8c8c8", w: 1 });
+    var parts = plant
+      ? [["細胞壁", cy - 84], ["細胞膜", cy - 62], ["核", cy - 12], ["液胞", cy + 20], ["葉緑体", cy + 52]]
+      : [["細胞膜", cy - 62], ["核", cy - 12], ["細胞質", cy + 40]];
+    parts.forEach(function (p) {
+      c.line(cx + 96, p[1], W - 78, p[1], { w: 0.7, stroke: SUB });
+      c.text(W - 74, p[1], p[0], { anchor: "start", size: 10 });
+    });
+    return c.out({ title: plant ? "植物の細胞" : "動物の細胞" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     7-M) 情報
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* ── 論理回路 ─────────────────────────────────────────────── */
+  DRAW.logicgate = function (spec) {
+    var kind = str(spec.type || "and").toUpperCase();
+    if (["AND", "OR", "NOT", "NAND", "NOR", "XOR"].indexOf(kind) < 0) return null;
+    var W = 300, H = 200, c = new Canvas(W, H);
+    var gx = 130, gy = 96, gw = 70, gh = 64;
+    var inv = /^N/.test(kind) && kind !== "NOT" ? true : kind === "NOT";
+    var base = kind.replace(/^N/, "").replace(/^OT$/, "NOT");
+    if (kind === "NOT") {
+      c.poly([[gx, gy - gh / 2], [gx, gy + gh / 2], [gx + gw, gy]], { fill: "#fafafa", w: 1.5 });
+      c.circle(gx + gw + 6, gy, 6, { fill: "#fff", w: 1.4 });
+      c.line(gx - 48, gy, gx, gy, { w: 1.3 });
+      c.text(gx - 54, gy, "A", { anchor: "end", size: 12 });
+      c.line(gx + gw + 12, gy, gx + gw + 52, gy, { w: 1.3 });
+    } else {
+      if (/AND/.test(kind)) {
+        c.path("M" + f(gx) + " " + f(gy - gh / 2) + " L" + f(gx + gw * 0.45) + " " + f(gy - gh / 2)
+          + " A" + f(gh / 2) + " " + f(gh / 2) + " 0 0 1 " + f(gx + gw * 0.45) + " " + f(gy + gh / 2)
+          + " L" + f(gx) + " " + f(gy + gh / 2) + " Z", { fill: "#fafafa", w: 1.5 });
+      } else {
+        c.path("M" + f(gx) + " " + f(gy - gh / 2)
+          + " Q" + f(gx + gw * 0.55) + " " + f(gy - gh / 2) + " " + f(gx + gw) + " " + f(gy)
+          + " Q" + f(gx + gw * 0.55) + " " + f(gy + gh / 2) + " " + f(gx) + " " + f(gy + gh / 2)
+          + " Q" + f(gx + gw * 0.22) + " " + f(gy) + " " + f(gx) + " " + f(gy - gh / 2) + " Z",
+          { fill: "#fafafa", w: 1.5 });
+        if (kind === "XOR")
+          c.path("M" + f(gx - 9) + " " + f(gy - gh / 2) + " Q" + f(gx + gw * 0.13) + " " + f(gy)
+            + " " + f(gx - 9) + " " + f(gy + gh / 2), { w: 1.4 });
+      }
+      if (inv) c.circle(gx + gw + 6, gy, 6, { fill: "#fff", w: 1.4 });
+      [-16, 16].forEach(function (dy, i) {
+        c.line(gx - 48, gy + dy, gx, gy + dy, { w: 1.3 });
+        c.text(gx - 54, gy + dy, i ? "B" : "A", { anchor: "end", size: 12 });
+      });
+      c.line(gx + gw + (inv ? 12 : 0), gy, gx + gw + 52, gy, { w: 1.3 });
+    }
+    c.text(gx + gw + 58, gy, "Y", { anchor: "start", size: 12 });
+    c.text(W / 2, 24, kind, { size: 14, weight: "bold" });
+    /* 真理値表も出す（計算して作る） */
+    if (spec.show) {
+      var rowsT = kind === "NOT" ? [[0], [1]] : [[0, 0], [0, 1], [1, 0], [1, 1]];
+      var fn = { AND: function (a, b) { return a && b ? 1 : 0; },
+                 OR: function (a, b) { return a || b ? 1 : 0; },
+                 XOR: function (a, b) { return a ^ b; },
+                 NOT: function (a) { return a ? 0 : 1; } };
+      var basefn = fn[kind.replace(/^N(?!OT)/, "")] || fn.AND;
+      var neg = /^N/.test(kind) && kind !== "NOT";
+      var tx = 20, ty = H - 22;
+      var parts2 = rowsT.map(function (r) {
+        var v = kind === "NOT" ? fn.NOT(r[0]) : basefn(r[0], r[1]);
+        if (neg) v = v ? 0 : 1;
+        return r.join("") + "→" + v;
+      });
+      c.text(W / 2, ty, parts2.join("　"), { size: 10, fill: SUB });
+    }
+    return c.out({ title: "論理回路" });
+  };
+
+  /* ── ネットワーク構成図 ───────────────────────────────────── */
+  DRAW.network = function (spec) {
+    var ns = listOf(spec.nodes);
+    if (ns.length < 2 || ns.length > 8) return null;
+    var W = 380, H = 260, c = new Canvas(W, H);
+    var cx = W / 2, cy = H / 2 + 6, R = 88;
+    var pos = {};
+    var star = /star|スター/.test(str(spec.type));
+    if (star) {
+      pos[ns[0]] = [cx, cy];
+      ns.slice(1).forEach(function (n, i) {
+        var t = rad(-90 + 360 * i / (ns.length - 1));
+        pos[n] = [cx + R * Math.cos(t), cy + R * Math.sin(t)];
+      });
+      ns.slice(1).forEach(function (n) {
+        c.line(cx, cy, pos[n][0], pos[n][1], { w: 1.2 });
+      });
+    } else {
+      ns.forEach(function (n, i) {
+        var t = rad(-90 + 360 * i / ns.length);
+        pos[n] = [cx + R * Math.cos(t), cy + R * Math.sin(t)];
+      });
+      listOf(spec.links).forEach(function (l) {
+        var ab = l.split(/[-–ー]/).map(function (x) { return x.trim(); });
+        if (pos[ab[0]] && pos[ab[1]])
+          c.line(pos[ab[0]][0], pos[ab[0]][1], pos[ab[1]][0], pos[ab[1]][1], { w: 1.2 });
+      });
+    }
+    ns.forEach(function (n) {
+      var p = pos[n];
+      c.rect(p[0] - 30, p[1] - 15, 60, 30, { fill: "#fff", w: 1.4, rx: 4 });
+      c.text(p[0], p[1], n, { size: 10 });
+    });
+    if (str(spec.title)) c.text(W / 2, 16, spec.title, { size: 11.5, weight: "bold" });
+    return c.out({ title: "ネットワーク図" });
+  };
+
+  /* ── スタック・キュー ─────────────────────────────────────── */
+  DRAW.stackqueue = function (spec) {
+    var items = listOf(spec.items);
+    if (!items.length || items.length > 8) return null;
+    var queue = /queue|キュー/.test(str(spec.type));
+    var W = queue ? Math.max(260, 60 + items.length * 52) : 220;
+    var H = queue ? 160 : 60 + items.length * 38;
+    var c = new Canvas(W, H);
+    if (queue) {
+      var x0 = 30, y = 60, bw = 46, bh = 40;
+      items.forEach(function (t, i) {
+        c.rect(x0 + i * (bw + 6), y, bw, bh, { fill: "#fafafa", w: 1.3 });
+        c.text(x0 + i * (bw + 6) + bw / 2, y + bh / 2, t, { size: 11 });
+      });
+      c.arrow(x0 + items.length * (bw + 6) + 6, y + bh / 2, x0 + items.length * (bw + 6) + 34, y + bh / 2,
+              { w: 1.4 });
+      c.text(x0 + items.length * (bw + 6) + 20, y - 8, "入れる", { size: 9, fill: SUB });
+      c.arrow(x0 - 6, y + bh / 2, x0 - 34, y + bh / 2, { w: 1.4 });
+      c.text(x0 - 20, y - 8, "出す", { size: 9, fill: SUB });
+      c.text(W / 2, H - 16, "キュー（先に入れたものが先に出る）", { size: 10, fill: SUB });
+    } else {
+      var bx = 60, bw2 = 100, bh2 = 34;
+      items.forEach(function (t, i) {
+        var y2 = 40 + (items.length - 1 - i) * (bh2 + 4);
+        c.rect(bx, y2, bw2, bh2, { fill: "#fafafa", w: 1.3 });
+        c.text(bx + bw2 / 2, y2 + bh2 / 2, t, { size: 11 });
+      });
+      c.arrow(bx + bw2 + 34, 30, bx + bw2 + 8, 30, { w: 1.4 });
+      c.text(bx + bw2 + 40, 44, "出し入れ", { anchor: "end", size: 9, fill: SUB });
+      c.line(bx - 6, 40 - 6, bx - 6, 40 + items.length * (bh2 + 4), { w: 1.6 });
+      c.line(bx + bw2 + 6, 40 - 6, bx + bw2 + 6, 40 + items.length * (bh2 + 4), { w: 1.6 });
+      c.line(bx - 6, 40 + items.length * (bh2 + 4), bx + bw2 + 6, 40 + items.length * (bh2 + 4), { w: 1.6 });
+      c.text(W / 2, H - 14, "スタック（後に入れたものが先に出る）", { size: 10, fill: SUB });
+    }
+    return c.out({ title: queue ? "キュー" : "スタック" });
+  };
+
+  /* ── 座標空間（3 次元の軸）─────────────────────────────────── */
+  DRAW.axes3d = function (spec) {
+    var pts = str(spec.points).split(/[;；]/).map(function (t) {
+      var m = t.split(/[:：]/);
+      var v = numsOf(m.length > 1 ? m[1] : m[0]);
+      return { name: m.length > 1 ? str(m[0]).trim() : "", v: v };
+    }).filter(function (p) { return p.v.length === 3; });
+    var W = 320, H = 300, c = new Canvas(W, H);
+    var O = [110, 210], ux = [1, 0], uy = [-0.55, -0.42], uz = [0, -1];
+    var all = pts.map(function (p) { return p.v; }).concat([[0, 0, 0]]);
+    var maxV = Math.max(3, Math.max.apply(null, all.map(function (v) {
+      return Math.max(Math.abs(v[0]), Math.abs(v[1]), Math.abs(v[2]));
+    })));
+    var s = 150 / maxV / 1.6;
+    var P = function (v) {
+      return [O[0] + (ux[0] * v[0] + uy[0] * v[1] + uz[0] * v[2]) * s,
+              O[1] + (ux[1] * v[0] + uy[1] * v[1] + uz[1] * v[2]) * s];
+    };
+    c.arrow(O[0], O[1], P([maxV * 1.25, 0, 0])[0], P([maxV * 1.25, 0, 0])[1], { w: 1.3 });
+    c.arrow(O[0], O[1], P([0, maxV * 1.25, 0])[0], P([0, maxV * 1.25, 0])[1], { w: 1.3 });
+    c.arrow(O[0], O[1], P([0, 0, maxV * 1.25])[0], P([0, 0, maxV * 1.25])[1], { w: 1.3 });
+    c.text(P([maxV * 1.4, 0, 0])[0], P([maxV * 1.4, 0, 0])[1], "x", { size: 12, style: "italic" });
+    c.text(P([0, maxV * 1.4, 0])[0], P([0, maxV * 1.4, 0])[1], "y", { size: 12, style: "italic" });
+    c.text(P([0, 0, maxV * 1.4])[0], P([0, 0, maxV * 1.4])[1], "z", { size: 12, style: "italic" });
+    c.text(O[0] - 12, O[1] + 12, "O", { size: 11 });
+    pts.forEach(function (p, i) {
+      var q = P(p.v);
+      /* 補助線（xy 平面へ下ろす） */
+      var foot = P([p.v[0], p.v[1], 0]);
+      c.line(q[0], q[1], foot[0], foot[1], { w: 0.7, dash: "3 3", stroke: "#bbb" });
+      c.line(O[0], O[1], foot[0], foot[1], { w: 0.7, dash: "3 3", stroke: "#bbb" });
+      c.circle(q[0], q[1], 4, { fill: INK, w: 0 });
+      c.text(q[0] + 10, q[1] - 10,
+             (p.name || String.fromCharCode(65 + i)) + "(" + p.v.join(", ") + ")",
+             { anchor: "start", size: 9.5 });
+    });
+    return c.out({ title: "座標空間" });
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     8) 外から呼ぶところ
+     ══════════════════════════════════════════════════════════════════ */
+  /* 描ける図だけ SVG を返す。描けないときは null（**それらしい図を出さない**）。 */
+  function svg(spec, opts) {
+    if (!spec || !spec.kind) return null;
+    if (check(spec).length) return null;
+    var fn = DRAW[spec.kind];
+    if (!fn) return null;
+    try { return fn(spec, opts || {}) || null; } catch (e) { return null; }
+  }
+
+  /* 本文（文字列）を、図を SVG へ置き換えた HTML にする。
+     文字のところは escText（呼び出し側の記法解釈）に任せられる。 */
+  function render(text, opts) {
+    opts = opts || {};
+    var escText = typeof opts.text === "function" ? opts.text : esc;
+    return split(text).map(function (seg) {
+      if (seg.t === "text") return escText(seg.v);
+      return figureHtml(seg.spec, opts);
+    }).join("");
+  }
+
+  /* 1 つの図を、キャプションつきの枠へ入れる。 */
+  function figureHtml(spec, opts) {
+    opts = opts || {};
+    var s = svg(spec, opts);
+    if (!s) {
+      /* **間違った図を出さない。** 何が駄目だったかを残す（紙には出ない印）。 */
+      var why = spec ? check(spec).join(" / ") : "図を読み取れません";
+      return '<span class="vqfig-ng" data-why="' + esc(why) + '"></span>';
+    }
+    var cap = str(spec.caption || spec.label || "");
+    var w = num(spec.width, 0);
+    return '<figure class="vqfig" data-kind="' + esc(spec.kind) + '"'
+      + (w > 0 ? ' style="max-width:' + Math.min(100, w) + '%"' : "")
+      + ">" + s + (cap ? '<figcaption class="vqfig-cap">' + esc(cap) + "</figcaption>" : "")
+      + "</figure>";
+  }
+
+  /* 本文から図を全部取り出す（紙面の組版が「図の数」を知るために使う）。 */
+  function figuresIn(text) {
+    return split(text).filter(function (s) { return s.t === "fig"; })
+      .map(function (s) { return s.spec; });
+  }
+  /* 本文から図の記法を取り除く（解答用紙・読み上げ・検索で使う）。 */
+  function strip(text) {
+    return split(text).map(function (s) { return s.t === "text" ? s.v : ""; }).join("");
+  }
+  /* 本文の図がぜんぶ描けるか。描けないものがあれば理由を返す。 */
+  function checkText(text) {
+    var out = [];
+    figuresIn(text).forEach(function (sp, i) {
+      var e = sp ? check(sp) : ["図を読み取れません"];
+      if (e.length) out.push("図" + (i + 1) + "（" + (sp && sp.kind ? sp.kind : "?") + "）: " + e.join(" / "));
+    });
+    return out;
+  }
+
+  /* 紙面・画面で使う CSS。renderer が 1 か所へ差し込む。 */
+  var CSS = [
+    ".vqfig{margin:4mm auto;padding:0;text-align:center;break-inside:avoid;page-break-inside:avoid;max-width:86%}",
+    ".vqfig svg{display:block;width:100%;height:auto}",
+    ".vqfig-cap{margin-top:1mm;font-size:0.86em;color:#333;text-align:center}",
+    ".vqfig-ng{display:none}"
+  ].join("\n");
+
+  VQ2.figures = {
+    KINDS: KINDS, CSS: CSS,
+    /* 絵の素材の名前。設問を作らせるときに「使えるもの」として渡す。 */
+    ICON_NAMES: ICON_NAMES,
+    has: has, split: split, parse: parse, check: check, checkText: checkText,
+    svg: svg, render: render, figureHtml: figureHtml, figuresIn: figuresIn, strip: strip,
+    catalogText: catalogText,
+    /* 試験の紙面を組む側が使う小物 */
+    compile: compile, solveTriangle: solveTriangle, niceStep: niceStep, niceBounds: niceBounds,
+    canonicalKind: canonicalKind
+  };
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+
+/* ───────── domain/passage.js ───────── */
+/* ══════════════════════════════════════════════════════════════════════
+   長文（本文）
+
+   これまで Quick Mock は「1 問 1 問が独立した設問」しか作れなかった。
+   だから英語の長文も、国語の評論・小説も作れない。共通テストの配点で
+   いちばん大きいところが、まるごと作れないままだった。
+
+   ここでやること:
+     ① 長文の種類を決める（英語 6 種・国語 5 種）。
+        大学入学共通テストの実際の大問立てに合わせてある。
+        英語リーディングは第1〜8問が「案内・調査結果・記録・お知らせ・
+        申込と返信・物語・学術文章＋発表資料・複数資料＋アウトライン」、
+        国語は「評論・小説・実用的な文章／資料・古文・漢文」。
+     ② 本文を AI に書かせるための依頼文を組み立てる。
+        **設問と同時に作らせない。** 本文が先。設問はそのあとで、
+        できあがった本文を見ながら作る（でないと本文に無いことを問う）。
+     ③ 返ってきた文字列を、決まった形の入れ物へ読み取る。
+        JSON を書かせない（長い日本語の中の引用符で必ず壊れる）。
+        ###TAG### で区切った素のテキストにする。
+     ④ 傍線部・空欄に記号を振る。**本文に無い記号を設問が指さない**ように、
+        振った記号の一覧を設問づくりへ渡す。
+     ⑤ 出来上がりを確かめる。短すぎる本文・記号の付いていない傍線部・
+        答えの無い空欄は **通さない**。
+
+   本文の中で使う記法（pdf/renderer.js と ui/question-renderer.js が読む）:
+     [[A|語句]]   傍線部A（語句に線を引き、頭に小さく A を出す）
+     {{ア}}       空欄ア（四角で囲む）
+     [[図: …]]    図（domain/figures.js が正確な図を描く）
+   ══════════════════════════════════════════════════════════════════════ */
+(function (root) {
+  "use strict";
+  var VQ2 = root.VQ2 || (root.VQ2 = {});
+
+  function str(v) { return v === undefined || v === null ? "" : String(v); }
+  function clean(v) { return str(v).replace(/\r\n?/g, "\n").trim(); }
+
+  /* 傍線部の記号。共通テストは A・B・C…、国語は 1・2・3… のこともある。 */
+  var UNDER_MARKS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+  /* 空欄の記号。ア・イ・ウ…（共通テストの空欄はこの並び）。 */
+  var BLANK_MARKS = ["ア", "イ", "ウ", "エ", "オ", "カ", "キ", "ク", "ケ", "コ"];
+
+  /* ══════════════════════════════════════════════════════════════════
+     1) 長文の種類
+
+     targetChars … 本文の長さの目安。共通テストの実物に合わせる。
+       英語リーディングは全体で約 6000 語／8 大問なので、1 大問 400〜900 語。
+       国語の評論・小説は 1 大問 3000〜4500 字。
+     asks … その大問でよく出る設問の形。**設問づくりの依頼文へそのまま渡す。**
+     ══════════════════════════════════════════════════════════════════ */
+  var KINDS = [
+    /* ── 英語 ───────────────────────────────────────────────── */
+    {
+      id: "en_info", label: "英語・実用文（案内／ウェブ／パンフレット）",
+      subject: "english", lang: "en", lineNumbers: false,
+      targetChars: [220, 380], unit: "語", paragraphs: [2, 4],
+      wants: ["図表", "箇条書き", "見出し"],
+      figures: ["bar", "line", "pie", "calendar", "plan", "route", "clock"],
+      asks: [
+        "書かれている事実そのものを問う（内容一致）",
+        "書かれていることと書かれていないことを見分ける（fact と opinion）",
+        "図表の数値と本文を突き合わせて選ぶ",
+        "目的・対象・条件を読み取る"
+      ],
+      brief: "学校行事の案内、施設のウェブページ、商品のパンフレットなど、"
+        + "実際に読む場面のある英文。表やグラフを 1 つ添える。"
+    },
+    {
+      id: "en_narrative", label: "英語・物語／体験記",
+      subject: "english", lang: "en", lineNumbers: true,
+      targetChars: [420, 650], unit: "語", paragraphs: [4, 6],
+      wants: ["場面の移り変わり", "登場人物の気持ち"],
+      figures: [],
+      asks: [
+        "出来事の順番を並べる",
+        "登場人物の気持ちの移り変わりを選ぶ",
+        "傍線部の指す内容を選ぶ",
+        "話全体から言えることを選ぶ"
+      ],
+      brief: "高校生が主人公の、起承転結のある短い物語。難しい語は使わず、"
+        + "気持ちの変化が読み取れるように書く。"
+    },
+    {
+      id: "en_academic", label: "英語・説明的文章＋発表資料",
+      subject: "english", lang: "en", lineNumbers: true,
+      targetChars: [500, 750], unit: "語", paragraphs: [4, 6],
+      wants: ["定義", "研究の結果", "発表のスライド"],
+      figures: ["bar", "line", "scatter", "flow", "venn"],
+      asks: [
+        "本文の要点を発表資料の空欄へ入れる（{{ア}} を使う）",
+        "段落どうしのつながり（接続語）を選ぶ",
+        "筆者の主張と、それを支える根拠を見分ける",
+        "傍線部の語句の意味を文脈から選ぶ"
+      ],
+      brief: "ひとつの研究や考え方を紹介する文章。数値の入ったグラフを 1 つ添え、"
+        + "本文と資料を突き合わせないと答えられないようにする。"
+    },
+    {
+      id: "en_multi", label: "英語・複数資料＋アウトライン",
+      subject: "english", lang: "en", lineNumbers: true,
+      targetChars: [480, 700], unit: "語", paragraphs: [3, 5],
+      wants: ["資料A と 資料B", "意見の対立", "アウトラインの空欄"],
+      figures: ["bar", "line", "stackbar"],
+      asks: [
+        "2 つの資料で意見が分かれるところを選ぶ",
+        "アウトラインの空欄に入る語句を選ぶ（{{ア}}）",
+        "それぞれの資料の立場を選ぶ",
+        "2 つの資料に共通して言えることを選ぶ"
+      ],
+      brief: "同じ話題について立場の違う 2 つの文章（資料A／資料B）と、"
+        + "それをまとめるアウトライン。空欄を 2 つ以上つくる。"
+    },
+    {
+      id: "en_email", label: "英語・メール／やりとり",
+      subject: "english", lang: "en", lineNumbers: false,
+      targetChars: [250, 400], unit: "語", paragraphs: [2, 4],
+      wants: ["差出人と宛先", "日付", "依頼と返事"],
+      figures: ["calendar", "clock", "plan"],
+      asks: [
+        "誰が何を頼んでいるかを選ぶ",
+        "次にすることを選ぶ",
+        "日付・時刻・場所を読み取る",
+        "返事として最も適切な文を選ぶ"
+      ],
+      brief: "2 通以上のメール（または掲示とその返信）。日時や場所が食い違わないように書く。"
+    },
+    {
+      id: "en_writing", label: "英語・英作文（自由記述つき）",
+      subject: "english", lang: "en", lineNumbers: false,
+      targetChars: [180, 320], unit: "語", paragraphs: [2, 3],
+      wants: ["条件", "書き出し", "語数の指定"],
+      figures: ["bar", "pie"],
+      asks: [
+        "与えられた条件に合う英文を書く（語数を指定する）",
+        "資料から読み取れることを英語 1 文でまとめる",
+        "語句を並べ替えて英文を完成させる",
+        "下線部の誤りを直す"
+      ],
+      brief: "話題と条件を示す短い英文。そのあとに英作文の設問をぶら下げる。"
+    },
+    {
+      id: "en_listening", label: "英語・リスニング（絵を選ぶ）",
+      subject: "english", lang: "en", lineNumbers: false,
+      targetChars: [60, 140], unit: "語", paragraphs: [1, 2],
+      wants: ["読み上げ文", "4 つの絵"],
+      figures: ["clock", "plan", "calendar", "bar", "route", "thermo"],
+      asks: [
+        "読み上げの内容に合う絵を選ぶ（4 つの図を選択肢にする）",
+        "聞き取った数・時刻・場所を選ぶ"
+      ],
+      brief: "短い発話または 2 人の会話。**選択肢は 4 つとも図にする**"
+        + "（時計・見取り図・グラフなど、数や位置が違うだけの図を 4 つ）。"
+    },
+
+    /* ── 国語 ───────────────────────────────────────────────── */
+    {
+      id: "ja_critique", label: "国語・評論",
+      subject: "japanese", lang: "ja", lineNumbers: true,
+      targetChars: [1800, 3000], unit: "字", paragraphs: [5, 8],
+      wants: ["定義", "対比", "具体例", "主張"],
+      figures: [],
+      asks: [
+        "傍線部はどういうことか（内容説明）",
+        "傍線部はなぜか（理由説明）",
+        "空欄に入る接続語を選ぶ（{{ア}}）",
+        "本文全体の主旨を選ぶ",
+        "生徒 4 人の話し合いのうち、本文に合うものを選ぶ"
+      ],
+      brief: "ひとつの概念を定義し、対比と具体例で説明していく評論。"
+        + "文末は「である」調。段落どうしのつながりがはっきり分かるように書く。"
+    },
+    {
+      id: "ja_novel", label: "国語・小説",
+      subject: "japanese", lang: "ja", lineNumbers: true,
+      targetChars: [2000, 3200], unit: "字", paragraphs: [6, 10],
+      wants: ["会話", "情景", "心情の変化"],
+      figures: [],
+      asks: [
+        "傍線部のときの登場人物の心情を選ぶ",
+        "慣用句・語句の意味を選ぶ",
+        "表現の特徴とその効果を選ぶ",
+        "本文全体から言える人物像を選ぶ"
+      ],
+      brief: "登場人物 2〜3 人の、ある一場面。会話と情景描写で心情が動くように書く。"
+    },
+    {
+      id: "ja_practical", label: "国語・実用的な文章／資料",
+      subject: "japanese", lang: "ja", lineNumbers: false,
+      targetChars: [1200, 2000], unit: "字", paragraphs: [3, 6],
+      wants: ["報告書", "資料Ⅰ・Ⅱ", "生徒のレポート"],
+      figures: ["bar", "line", "pie", "stackbar", "flow", "table"],
+      asks: [
+        "資料から読み取れることとして正しいものを選ぶ",
+        "レポートの空欄に入れる一文を選ぶ（{{ア}}）",
+        "主張に根拠を加えるとき、どの資料を使うかを選ぶ",
+        "表現を直すとき、最も適切な直し方を選ぶ",
+        "当てはまるものを 6 つの中から 2 つ選ぶ"
+      ],
+      brief: "ある話題についての短い文章と、それに関する資料を 2 つ以上。"
+        + "生徒が書いたレポートの下書きを添え、そこに空欄を作る。"
+    },
+    {
+      id: "ja_essay", label: "国語・随筆",
+      subject: "japanese", lang: "ja", lineNumbers: true,
+      targetChars: [1600, 2600], unit: "字", paragraphs: [5, 8],
+      wants: ["体験", "そこからの考え"],
+      figures: [],
+      asks: [
+        "傍線部の表す気持ちを選ぶ",
+        "体験と考えのつながりを選ぶ",
+        "表現の工夫とその効果を選ぶ"
+      ],
+      brief: "筆者自身の体験から始めて、そこで考えたことへ移っていく随筆。"
+    },
+    {
+      id: "ja_classic", label: "国語・古文",
+      subject: "japanese", lang: "ja", lineNumbers: true,
+      targetChars: [600, 1100], unit: "字", paragraphs: [2, 4],
+      wants: ["語注", "現代語訳の手がかり"],
+      figures: [],
+      asks: [
+        "傍線部の現代語訳として適切なものを選ぶ",
+        "傍線部の主語が誰かを選ぶ",
+        "助動詞の意味・用法を選ぶ",
+        "本文の内容に合うものを選ぶ"
+      ],
+      brief: "説話や物語の一場面。難しい語には必ず語注を付ける。"
+        + "**歴史的仮名遣いで書き、実在しない古典作品の名を出典にしない**。"
+    },
+
+    /* ── そのほかの科目 ─────────────────────────────────────── */
+    {
+      id: "source_set", label: "資料読解（社会・理科・情報）",
+      subject: "other", lang: "ja", lineNumbers: false,
+      targetChars: [600, 1200], unit: "字", paragraphs: [2, 4],
+      wants: ["資料Ⅰ・Ⅱ", "会話", "図表"],
+      figures: ["bar", "line", "pie", "scatter", "flow", "arrow", "route", "venn"],
+      asks: [
+        "資料から読み取れることを選ぶ",
+        "2 つの資料を合わせて言えることを選ぶ",
+        "会話の空欄に入る言葉を選ぶ（{{ア}}）",
+        "資料をもとに理由を説明する（記述）"
+      ],
+      brief: "先生と生徒の会話に、図表の資料を 2 つ以上そえた大問。"
+    }
+  ];
+  var BY_ID = {};
+  KINDS.forEach(function (k) { BY_ID[k.id] = k; });
+
+  function kind(id) { return BY_ID[str(id)] || null; }
+  function kindsFor(subject) {
+    var s = str(subject);
+    var key = /英語|english/i.test(s) ? "english"
+            : /国語|japanese|現代文|古文|漢文/i.test(s) ? "japanese"
+            : "";
+    if (!key) return KINDS.slice();
+    return KINDS.filter(function (k) { return k.subject === key || k.subject === "other"; });
+  }
+  /* 科目名から既定の長文を選ぶ。分からなければ資料読解。 */
+  function defaultKindFor(subject) {
+    var list = kindsFor(subject);
+    return (list[0] && list[0].id) || "source_set";
+  }
+
+  /* 本文の長さ。**指示されたものが最優先**。
+     ctx.chars … [下限, 上限]（利用者が「800語で」と書いたときに入る）
+     ctx.scale … 0.7 / 1.4 など（「短めに」「長めに」）
+     どちらも無ければ、その種類の目安をそのまま使う。
+     ここで一度に決めて、依頼文と合否判定の**両方が同じ数**を見るようにする。
+     （以前は依頼文だけ変えて判定は目安のままだったので、
+       指示どおりに書かせたのに「短すぎます」と落ちていた。） */
+  function lengthRange(K, ctx) {
+    ctx = ctx || {};
+    var d = K.targetChars;
+    var c = ctx.chars;
+    if (c && c.length === 2) {
+      var lo = Math.round(Number(c[0])), hi = Math.round(Number(c[1]));
+      if (isFinite(lo) && isFinite(hi) && lo > 0 && hi >= lo) return [lo, hi];
+    }
+    var s = Number(ctx.scale);
+    if (isFinite(s) && s > 0.2 && s < 4) return [Math.round(d[0] * s), Math.round(d[1] * s)];
+    return [d[0], d[1]];
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     2) 本文を書かせる依頼文
+
+     ★ 設問は頼まない。本文と、そこに付ける傍線部・空欄・語注・出典だけ。
+     ★ 返し方は ###TAG### で固定する。JSON にすると、長い日本語の中の
+       引用符と改行で必ず壊れる（実測で何度も全部を失っている）。
+     ══════════════════════════════════════════════════════════════════ */
+  function promptFor(kindId, ctx) {
+    ctx = ctx || {};
+    var K = kind(kindId) || kind("source_set");
+    var R = lengthRange(K, ctx);
+    var lo = R[0], hi = R[1];
+    var unders = Math.max(0, Math.min(8, ctx.underlines == null ? 3 : ctx.underlines));
+    var blanks = Math.max(0, Math.min(8, ctx.blanks == null ? 2 : ctx.blanks));
+    var figOk = (K.figures || []).length > 0 && ctx.figures !== false;
+
+    var L = [];
+    L.push("試験の「本文」だけを書いてください。**設問・選択肢・解答は書かないでください。**");
+    L.push("");
+    L.push("【どんな本文か】");
+    L.push("・種類: " + K.label);
+    L.push("・" + K.brief);
+    if (ctx.topic) L.push("・話題: " + ctx.topic);
+    if (ctx.grade) L.push("・読む人: " + ctx.grade);
+    L.push("・長さ: " + lo + "〜" + hi + " " + K.unit + "（この範囲を外れないでください）");
+    L.push("・段落: " + K.paragraphs[0] + "〜" + K.paragraphs[1] + " 段落。段落と段落のあいだは空行で区切ってください。");
+    if (K.lang === "en") L.push("・英語で書いてください（日本語訳は書かないでください）。");
+
+    L.push("");
+    L.push("【本文の中で使う印】");
+    if (unders) {
+      L.push("・傍線部を " + unders + " か所つけてください。書き方は [[A|線を引く語句]] です。");
+      L.push("  A から順に " + UNDER_MARKS.slice(0, unders).join("・") + " を使ってください。");
+      L.push("  **傍線部は、あとで「どういうことか」「なぜか」と問える所**に引いてください。");
+    }
+    if (blanks) {
+      L.push("・空欄を " + blanks + " か所つくってください。書き方は {{ア}} です。");
+      L.push("  " + BLANK_MARKS.slice(0, blanks).join("・") + " の順に使ってください。");
+      L.push("  空欄は、前後を読めば 1 つに決まる所にしてください（接続語・言い換え・要点）。");
+    }
+    if (figOk) {
+      L.push("・図表を 1 つ入れてください。**SVG や絵を描かないでください。**");
+      L.push("  次の書き方で「寸法だけ」を書けば、こちらで正確な図を描きます。");
+      L.push("  使える図: " + (K.figures || []).join(" / "));
+      var F = VQ2.figures;
+      if (F && F.KINDS) {
+        (F.KINDS || []).forEach(function (fk) {
+          if ((K.figures || []).indexOf(fk.id) < 0) return;
+          L.push("    " + fk.example);
+        });
+      }
+      L.push("  **図に書いた数値は、本文の記述と必ず一致させてください。**");
+    }
+
+    /* 利用者がわざわざ書いた注文は、種類ごとの決まりより上に置く。
+       ここに出さないと、指示欄に書いても本文へ届かない。 */
+    var orders = (ctx.orders || []).filter(function (x) { return str(x).trim(); });
+    if (str(ctx.instruction).trim() || orders.length) {
+      L.push("");
+      L.push("【作る人からの注文（いちばん優先してください）】");
+      if (str(ctx.instruction).trim()) L.push(clean(ctx.instruction));
+      orders.forEach(function (o) { L.push(str(o)); });
+    }
+
+    L.push("");
+    L.push("【守ること】");
+    L.push("・実在しない本・論文・人物を出典にしないでください。");
+    L.push("・作り話の本文でかまいません。その場合、出典は「オリジナル」と書いてください。");
+    L.push("・差別的な内容、特定の人や団体を悪く言う内容は書かないでください。");
+    if (ctx.sourceOnly) L.push("・添付された資料に書かれている内容だけを使ってください。");
+
+    L.push("");
+    L.push("【返し方（この形のとおりに。よけいな説明は書かないでください）】");
+    L.push("###TITLE###");
+    L.push("本文の題（無ければ空でよい）");
+    L.push("###LEAD###");
+    L.push("本文を読む前に示す 1〜2 文のリード文");
+    L.push("###TEXT###");
+    L.push("（本文。段落は空行で区切る）");
+    L.push("###NOTES###");
+    L.push("語 = 意味       ← 難しい語の注。1 行に 1 つ。無ければ空でよい");
+    L.push("###SOURCE###");
+    L.push("出典（オリジナルなら「オリジナル」）");
+    if (blanks) {
+      L.push("###BLANKS###");
+      L.push("ア = その空欄に入る言葉");
+      L.push("（空欄ごとに 1 行。ここは受験者には見せません）");
+    }
+    if (unders) {
+      L.push("###UNDERLINES###");
+      L.push("A = その傍線部について問えること（ひとことで）");
+    }
+    L.push("###END###");
+    return L.join("\n");
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     3) 返事を読み取る
+
+     決まった区切りで割るだけ。**読めなかったところは作らない。**
+     ══════════════════════════════════════════════════════════════════ */
+  var TAG_RE = /^\s*#{2,4}\s*([A-Z]+)\s*#{2,4}\s*$/;
+  function parse(raw, kindId) {
+    var K = kind(kindId) || kind("source_set");
+    var lines = clean(raw).split("\n");
+    var buckets = {}, cur = null;
+    lines.forEach(function (ln) {
+      var m = TAG_RE.exec(ln);
+      if (m) { cur = m[1].toUpperCase(); if (cur !== "END" && !buckets[cur]) buckets[cur] = []; return; }
+      if (cur && cur !== "END") buckets[cur].push(ln);
+    });
+    var take = function (k) { return clean((buckets[k] || []).join("\n")); };
+
+    /* 区切りが 1 つも無ければ、まるごと本文として扱う（黙って捨てない）。 */
+    var text = take("TEXT");
+    if (!text && !Object.keys(buckets).length) text = clean(raw);
+
+    var p = {
+      kind: K.id,
+      lang: K.lang,
+      title: take("TITLE"),
+      lead: take("LEAD"),
+      text: text,
+      notes: pairsOf(take("NOTES")).map(function (x) { return { word: x.k, meaning: x.v }; }),
+      source: take("SOURCE"),
+      blanks: pairsOf(take("BLANKS")).map(function (x) { return { mark: x.k, answer: x.v }; }),
+      underlines: pairsOf(take("UNDERLINES")).map(function (x) { return { mark: x.k, about: x.v }; }),
+      lineNumbers: !!K.lineNumbers,
+      lineEvery: 5,
+      charsPerLine: K.lang === "en" ? 78 : 42
+    };
+    /* 題が「本文の題（無ければ空でよい）」のような指示文のままなら捨てる。 */
+    if (/^（?(無ければ|なければ|本文の題|タイトル)/.test(p.title)) p.title = "";
+    if (/^（?(出典|オリジナルなら)/.test(p.source)) p.source = "";
+    return p;
+  }
+  /* "語 = 意味" の並びを読む。= が無い行は捨てない（語だけの注もある）。 */
+  function pairsOf(block) {
+    return clean(block).split("\n").map(function (ln) { return ln.trim(); })
+      .filter(function (ln) { return ln && !/^（/.test(ln); })
+      .map(function (ln) {
+        var i = ln.search(/[=＝:：]/);
+        if (i < 0) return { k: ln.replace(/^[・\-*]\s*/, ""), v: "" };
+        return { k: ln.slice(0, i).trim().replace(/^[・\-*]\s*/, ""), v: ln.slice(i + 1).trim() };
+      })
+      .filter(function (x) { return x.k; });
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     4) 印を数える・そろえる
+
+     AI は「傍線部を 3 つ」と頼んでも 2 つしか引かないことがある。
+     **本文に実際にある印だけ**を数え、設問づくりへ渡す。
+     無い印を設問が指すと、解けない試験になる。
+     ══════════════════════════════════════════════════════════════════ */
+  var U_RE = /\[\[\s*([A-Za-zＡ-Ｚ0-9０-９]{1,3})\s*\|([^\]]*)\]\]/g;
+  var B_RE = /\{\{\s*([^{}\s]{1,6})\s*\}\}/g;
+
+  function underlinesIn(text) {
+    var out = [], seen = {}, m;
+    U_RE.lastIndex = 0;
+    while ((m = U_RE.exec(str(text)))) {
+      var k = m[1].trim();
+      if (seen[k]) continue;
+      seen[k] = 1;
+      out.push({ mark: k, text: m[2].trim() });
+    }
+    return out;
+  }
+  function blanksIn(text) {
+    var out = [], seen = {}, m;
+    B_RE.lastIndex = 0;
+    while ((m = B_RE.exec(str(text)))) {
+      var k = m[1].trim();
+      if (seen[k]) continue;
+      seen[k] = 1;
+      out.push({ mark: k });
+    }
+    return out;
+  }
+
+  /* 本文を整える。
+     ・傍線部と空欄の一覧を本文から数え直す（申告ではなく実物を見る）
+     ・語注に番号（注1・注2）を振り、本文へその番号を入れる
+     ・長さを測る */
+  function prepare(p) {
+    if (!p) return null;
+    var K = kind(p.kind) || kind("source_set");
+    var q = {};
+    Object.keys(p).forEach(function (k) { q[k] = p[k]; });
+    q.text = clean(q.text);
+
+    /* 本文にある印を数え直す。申告（BLANKS/UNDERLINES）は「答え」を足すだけに使う。 */
+    var us = underlinesIn(q.text), bs = blanksIn(q.text);
+    var byU = {}; (p.underlines || []).forEach(function (x) { byU[str(x.mark).trim()] = x; });
+    var byB = {}; (p.blanks || []).forEach(function (x) { byB[str(x.mark).trim()] = x; });
+    q.underlines = us.map(function (u) {
+      return { mark: u.mark, text: u.text, about: str((byU[u.mark] || {}).about) };
+    });
+    q.blanks = bs.map(function (b) {
+      return { mark: b.mark, answer: str((byB[b.mark] || {}).answer) };
+    });
+
+    /* 語注に番号を振る。本文の中のその語のうしろへ（注1）を入れる。
+       同じ語が何度も出るときは **最初の 1 回だけ**（全部に付くと読めない）。 */
+    q.notes = (q.notes || []).filter(function (n) { return str(n.word).trim(); })
+      .slice(0, 12)
+      .map(function (n, i) { return { mark: "注" + (i + 1), word: str(n.word).trim(), meaning: str(n.meaning).trim() }; });
+    q.notes.forEach(function (n) {
+      var hit = findWord(q.text, n.word);
+      if (!hit) return;
+      var cut = hit.at + hit.len;
+      q.text = q.text.slice(0, cut) + "（" + n.mark + "）" + q.text.slice(cut);
+    });
+
+    q.length = measure(q.text, K.lang);
+    q.unit = K.unit;
+    q.lang = K.lang;
+    q.lineNumbers = K.lineNumbers;
+    q.charsPerLine = K.lang === "en" ? 78 : 42;
+    q.lineEvery = 5;
+    if (!q.source) q.source = "オリジナル";
+    return q;
+  }
+
+  /* 語注の番号を入れる場所を探す。
+     ★ **語の途中に入れない。** indexOf のままだと "sort" が "sorts" に当たり、
+       本文が「sort（注1）s」になる（実測）。英数字の語は前後が語でないことを見る。
+     ★ 図の記法・傍線部の記号の中にも入れない。記法が壊れて図が消える。 */
+  function findWord(text, word) {
+    var w = str(word);
+    if (!w) return null;
+    var s2 = str(text);
+    var latin = /^[A-Za-z0-9][A-Za-z0-9'\- ]*$/.test(w);
+    var from = 0, loose = null;
+    for (;;) {
+      var at = s2.indexOf(w, from);
+      if (at < 0) break;
+      from = at + 1;
+      if (insideNotation(s2, at)) continue;
+      if (!latin) return { at: at, len: w.length };
+      var before = at > 0 ? s2.charAt(at - 1) : " ";
+      var after = s2.charAt(at + w.length) || " ";
+      if (/[A-Za-z0-9]/.test(before)) continue;          /* 語の途中から始まっている */
+      if (!/[A-Za-z0-9]/.test(after)) return { at: at, len: w.length };
+      /* 語の頭は合っているが語尾が違う（sort と sorts／sorting）。
+         **語の終わりまで伸ばして**印を付ける。語の途中には入れない。 */
+      if (!loose) {
+        var end = at + w.length;
+        while (/[A-Za-z0-9'\-]/.test(s2.charAt(end))) end++;
+        loose = { at: at, len: end - at };
+      }
+    }
+    return loose;
+  }
+  /* その位置が [[…]] か {{…}} の中かどうか。 */
+  function insideNotation(s2, at) {
+    var open = Math.max(s2.lastIndexOf("[[", at), s2.lastIndexOf("{{", at));
+    if (open < 0) return false;
+    var close = Math.min(
+      (function (i) { return i < 0 ? Infinity : i; })(s2.indexOf("]]", open)),
+      (function (i) { return i < 0 ? Infinity : i; })(s2.indexOf("}}", open)));
+    return close > at;
+  }
+
+  /* 本文の長さ。英語は語、日本語は字。印と図の記法は数えない。 */
+  function measure(text, lang) {
+    var s = str(text);
+    try { if (VQ2.figures && VQ2.figures.strip) s = VQ2.figures.strip(s); } catch (e) {}
+    s = s.replace(U_RE, "$2").replace(B_RE, "　");
+    if (lang === "en") return (s.match(/[A-Za-z0-9'’\-]+/g) || []).length;
+    return s.replace(/\s+/g, "").length;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     5) 使える本文かどうか
+
+     ここを通ったものだけを紙へ載せる。**駄目なものを黙って載せない。**
+     ══════════════════════════════════════════════════════════════════ */
+  function check(p, opts) {
+    opts = opts || {};
+    var out = [];
+    if (!p || !clean(p.text)) return ["本文がありません"];
+    var K = kind(p.kind) || kind("source_set");
+    var len = p.length != null ? p.length : measure(p.text, K.lang);
+    var R = lengthRange(K, opts);                     /* 指示された長さがあればそれで見る */
+    var lo = Math.floor(R[0] * 0.6);                  /* 少し短いのは通す。半分以下は通さない */
+    var hi = Math.ceil(R[1] * 1.6);
+    if (len < lo) out.push("本文が短すぎます（" + len + K.unit + "。" + lo + K.unit + "以上にしてください）");
+    if (len > hi) out.push("本文が長すぎます（" + len + K.unit + "。" + hi + K.unit + "以下にしてください）");
+
+    /* 頼んだ数の印があるか */
+    var wantU = opts.underlines == null ? 0 : opts.underlines;
+    var wantB = opts.blanks == null ? 0 : opts.blanks;
+    var us = (p.underlines || []).length, bs = (p.blanks || []).length;
+    if (wantU && us < Math.min(2, wantU)) out.push("傍線部が足りません（" + us + " か所）");
+    if (wantB && bs < Math.min(1, wantB)) out.push("空欄がありません");
+
+    /* 空欄には答えが要る。無ければ設問が作れない。 */
+    (p.blanks || []).forEach(function (b) {
+      if (!str(b.answer).trim()) out.push("空欄 " + b.mark + " の答えが書かれていません");
+    });
+    /* 空欄の記号がだぶっていないか（{{ア}} が 2 か所にあると答えが決まらない） */
+    var seen = {};
+    (str(p.text).match(B_RE) || []).forEach(function (m) {
+      var k = m.replace(/[{}\s]/g, "");
+      if (seen[k]) out.push("空欄 " + k + " が 2 か所にあります");
+      seen[k] = 1;
+    });
+    /* 図が描けるか（描けない図は本文ごと作り直させる） */
+    try {
+      if (VQ2.figures && VQ2.figures.checkText)
+        VQ2.figures.checkText(p.text).forEach(function (e) { out.push(e); });
+    } catch (e) {}
+    /* 指示文がそのまま残っていないか（実測: 「###TEXT###」ごと本文に入っていた） */
+    if (/#{2,}\s*[A-Z]+\s*#{2,}/.test(p.text)) out.push("本文に区切りの印がそのまま残っています");
+    return out;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     6) 設問づくりへ渡すもの
+
+     本文をそのまま渡すだけでは足りない。
+     「どの印が本文のどこにあるか」と「印の外を指してはいけない」を
+     はっきり書かないと、本文に無い傍線部を問う設問が出てくる。
+     ══════════════════════════════════════════════════════════════════ */
+  function questionHint(p, ctx) {
+    ctx = ctx || {};
+    if (!p || !clean(p.text)) return "";
+    var K = kind(p.kind) || kind("source_set");
+    var L = [];
+    L.push("【この大問の本文】");
+    if (p.title) L.push("題: " + p.title);
+    if (p.lead) L.push("リード文: " + p.lead);
+    L.push("--- 本文ここから ---");
+    L.push(p.text);
+    L.push("--- 本文ここまで ---");
+    if ((p.notes || []).length) {
+      L.push("語注: " + p.notes.map(function (n) {
+        return n.mark + " " + n.word + (n.meaning ? "＝" + n.meaning : "");
+      }).join(" / "));
+    }
+    L.push("");
+    L.push("【設問の作り方】");
+    L.push("・**すべての設問を、上の本文だけから**作ってください。本文に書いていないことを問わないでください。");
+    if ((p.underlines || []).length) {
+      L.push("・本文には傍線部が " + p.underlines.length + " か所あります: "
+        + p.underlines.map(function (u) { return "傍線部" + u.mark + "「" + str(u.text).slice(0, 24) + "」"; }).join(" / "));
+      L.push("　傍線部について問うときは「傍線部A とあるが、…」と、**この記号だけ**を使ってください。"
+        + "本文に無い記号（傍線部Z など）を書かないでください。");
+    }
+    if ((p.blanks || []).length) {
+      L.push("・本文には空欄が " + p.blanks.length + " か所あります: "
+        + p.blanks.map(function (b) { return "空欄" + b.mark; }).join(" / "));
+      L.push("　空欄について問うときは「空欄 {{" + p.blanks[0].mark + "}} に入るものとして…」と書いてください。");
+      L.push("　正解は本文の空欄に入る言葉そのものにしてください（こちらで照らし合わせます）。");
+    }
+    if (K.lang === "en") {
+      L.push("・設問文と選択肢は " + (ctx.questionLang === "en" ? "英語" : "日本語") + "で書いてください。"
+        + "ただし本文から引用するところは英語のままにしてください。");
+    }
+    L.push("・この大問でよく問われるのは次のような形です。**同じ形ばかりにしないでください。**");
+    (K.asks || []).forEach(function (a) { L.push("　- " + a); });
+    if (p.lineNumbers) L.push("・本文には 5 行ごとに行番号が付きます。「第◯行目」と指しても構いません。");
+    return L.join("\n");
+  }
+
+  /* 画面に出す 1 行の説明 */
+  function summaryLine(p) {
+    if (!p) return "";
+    var K = kind(p.kind);
+    var bits = [K ? K.label : p.kind];
+    if (p.length) bits.push(p.length + (p.unit || "字"));
+    if ((p.underlines || []).length) bits.push("傍線部 " + p.underlines.length);
+    if ((p.blanks || []).length) bits.push("空欄 " + p.blanks.length);
+    return bits.join(" / ");
+  }
+
+  /* 紙面へ渡す形（pdf/layout.js が読む passage ブロック） */
+  function toBlock(p, id) {
+    if (!p || !clean(p.text)) return null;
+    return {
+      type: "passage", id: str(id || "psg"),
+      lang: p.lang, title: p.title, lead: p.lead, text: p.text,
+      notes: p.notes || [], source: p.source,
+      lineNumbers: !!p.lineNumbers, lineEvery: p.lineEvery || 5,
+      charsPerLine: p.charsPerLine || (p.lang === "en" ? 78 : 42)
+    };
+  }
+
+  VQ2.passage = {
+    KINDS: KINDS, UNDER_MARKS: UNDER_MARKS, BLANK_MARKS: BLANK_MARKS,
+    kind: kind, kindsFor: kindsFor, defaultKindFor: defaultKindFor,
+    promptFor: promptFor, parse: parse, prepare: prepare, check: check,
+    lengthRange: lengthRange,
+    measure: measure, underlinesIn: underlinesIn, blanksIn: blanksIn,
+    questionHint: questionHint, summaryLine: summaryLine, toBlock: toBlock
+  };
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+
 /* ───────── domain/askspec.js ───────── */
 /* ══════════════════════════════════════════════════════════════════════
    指示文の読み取り（AskSpec）
@@ -30448,6 +37041,7 @@
   "use strict";
   var VQ2 = root.VQ2 || (root.VQ2 = {});
   var S = VQ2.schema, TPL = VQ2.templates;
+  function str(v) { return v === undefined || v === null ? "" : String(v); }
 
   /* 使ってよい Content Block の種類。AI はこの語彙の外を指定できない。 */
   var BLOCK_TYPES = [
@@ -30751,6 +37345,20 @@
         showPoints: lprofile ? lprofile.sectionStyle.showPoints !== false : true
       });
 
+      /* ── 長文の本文（2026-09-11）────────────────────────────────
+         大問ぜんぶで 1 つの本文を読む形（英語長文・国語の評論／小説）。
+         大問の指示文の直後、設問の前に置く。設問ごとに刷ると本文が
+         何度も出てしまうので、**ここでしか出さない**。 */
+      if (sec.passage && String(sec.passage.text || "").trim()) {
+        passageBlocks(sec.passage, "psg-" + sec.id, sec.id).forEach(function (b) { blocks.push(b); });
+      }
+      /* 大問の資料（資料Ⅰ・Ⅱ…）。本文のあと、設問の前。 */
+      (sec.sourceBlocks || []).forEach(function (sb, i) {
+        if (!sb || !String(sb.text || "").trim()) return;
+        blocks.push({ type: "source", id: sec.id + "-secsrc" + i, sectionId: sec.id,
+                      text: sb.text, caption: sb.caption || sb.title || "" });
+      });
+
       /* ══ 同じ 本文を 何度も 刷らない（2026-08-30・訴え）════════════
          訴え「会話文、流れの本文の語群問題、それの記述問題」。
          1 つの 本文に **選択 → 語群うめ → 記述** を 並べるのが 試験の 形。
@@ -30860,6 +37468,112 @@
 
   var FIGURE_BLOCK_TYPES = ["figure", "table", "chart", "diagram", "svg", "numberline"];
   function isFigureType(t) { return FIGURE_BLOCK_TYPES.indexOf(t) >= 0; }
+
+  /* ══════════════════════════════════════════════════════════════════
+     長文の本文を、ページで割れる形に切る（2026-09-11）
+
+     ★ **本文をひとかたまりのブロックにしてはいけない。**
+       ページ割りは .sheet の直下の要素を 1 つずつ積んでいくので、
+       1 ページより高い要素が来ると、その前後がまるごと空きページになる。
+       実測: 300 語の本文で「表紙だけのページ」「大問1 の見出しだけのページ」
+       「本文だけのページ」の 3 ページができていた。
+     ★ だから段落ごと（長い段落はさらに MAX_ROWS 行ごと）に分ける。
+       行番号は **ここで通し番号を振る**ので、分けても番号は続く。
+     ══════════════════════════════════════════════════════════════════ */
+  var MAX_PASSAGE_ROWS = 12;
+
+  function passageBlocks(p, id, secId) {
+    var out = [];
+    var lang = str(p.lang);
+    var en = lang.toLowerCase().indexOf("en") === 0;
+    var numbered = !!p.lineNumbers;
+    var per = Number(p.charsPerLine) || (en ? 78 : 42);
+    var every = Math.max(1, Number(p.lineEvery) || 5);
+
+    if (p.lead || p.title) {
+      out.push({ type: "passage", part: "head", id: id + "-h", sectionId: secId,
+                 lang: lang, title: str(p.title), lead: str(p.lead) });
+    }
+
+    var paras = str(p.text).split(/\n{2,}/)
+      .map(function (x) { return x.replace(/\s+$/, ""); })
+      .filter(function (x) { return x.trim(); });
+    if (!paras.length) paras = [str(p.text)];
+
+    var F = null;
+    try { F = VQ2.figures || null; } catch (e) {}
+    var n = 0;
+    paras.forEach(function (para, pi) {
+      /* 図の記法をまたいで折ると記法が壊れる。図のある段落は折らない。 */
+      var rows;
+      if (F && F.has(para)) rows = [{ n: ++n, text: para }];
+      else rows = passageLines(para, per, en).map(function (t) { return { n: ++n, text: t }; });
+      for (var k = 0; k < rows.length; k += MAX_PASSAGE_ROWS) {
+        out.push({
+          type: "passage", part: "body", id: id + "-p" + pi + "-" + k, sectionId: secId,
+          lang: lang, numbered: numbered, lineEvery: every,
+          rows: rows.slice(k, k + MAX_PASSAGE_ROWS),
+          /* 段落の頭かどうか（字下げをするのはここだけ） */
+          paraStart: k === 0,
+          paraEnd: k + MAX_PASSAGE_ROWS >= rows.length
+        });
+      }
+    });
+
+    var notes = Array.isArray(p.notes) ? p.notes : [];
+    if (notes.length || p.source) {
+      out.push({ type: "passage", part: "foot", id: id + "-f", sectionId: secId,
+                 lang: lang, notes: notes, source: str(p.source) });
+    }
+    return out;
+  }
+
+  /* 本文を「行」へ割る。行番号を振るためだけに使う。
+     英語は語の切れ目で、日本語は字数で折る（英単語を途中で切らない）。
+
+     ★ **記法の途中では絶対に折らない。**
+       [[A|傍線部]] ・ {{ア}} ・ [[図: …]] を途中で切ると、
+       記法が壊れて傍線も空欄も図も出なくなる（実測: 42 字で折ったとき
+       「[[A|むしろ、言葉のほう」で切れて、傍線部が 1 つも出なかった）。
+       だから記法はひとかたまりとして扱い、その中では折らない。 */
+  var NOTATION_RE = /\[\[[^\]]*\]\]|\{\{[^}]*\}\}/g;
+
+  /* 本文を「折ってよい単位」へ割る。記法は 1 個で 1 単位。 */
+  function passageTokens(text, en) {
+    var s = str(text), out = [], last = 0, m;
+    NOTATION_RE.lastIndex = 0;
+    function plain(part) {
+      if (!part) return;
+      if (en) {
+        part.split(/\s+/).forEach(function (w) { if (w) out.push({ t: w, w: w.length, sp: true }); });
+      } else {
+        part.replace(/\s+/g, "").split("").forEach(function (c) { out.push({ t: c, w: 1, sp: false }); });
+      }
+    }
+    while ((m = NOTATION_RE.exec(s))) {
+      plain(s.slice(last, m.index));
+      /* 見える長さは、記法の中の本文ぶんだけ数える（記号は紙に出ない）。 */
+      var inner = m[0].replace(/^\[\[|\]\]$|^\{\{|\}\}$/g, "").replace(/^[^|]{1,4}\|/, "");
+      out.push({ t: m[0], w: Math.max(1, inner.length), sp: en });
+      last = m.index + m[0].length;
+    }
+    plain(s.slice(last));
+    return out;
+  }
+
+  function passageLines(text, per, en) {
+    var toks = passageTokens(text, en);
+    if (!toks.length) return [];
+    var out = [], cur = "", w = 0;
+    toks.forEach(function (tk) {
+      var add = (cur && tk.sp ? 1 : 0) + tk.w;
+      if (cur && w + add > per) { out.push(cur); cur = ""; w = 0; add = tk.w; }
+      cur += (cur && tk.sp ? " " : "") + tk.t;
+      w += add;
+    });
+    if (cur) out.push(cur);
+    return out;
+  }
 
   /* ══════════════════════════════════════════════════════════════════
      解答欄の形と数
@@ -31472,6 +38186,9 @@
   var S = VQ2.schema, TPL = VQ2.templates, L = VQ2.layout;
   var doc = root.document;
 
+  /* 長文の組みで使う。live 側には無かったので足す（2026-09-11）。 */
+  function str(v) { return v === undefined || v === null ? "" : String(v); }
+
   function esc(s) {
     return String(s === undefined || s === null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -31577,6 +38294,60 @@
        そのまま 枠に なる ので、置きかえるだけ。
      ★ 語が 本文に 2 回 以上 出て くる ときは **最初の 1 回だけ**に 印を 付ける
        （本物も そう。全部に 付くと 本文が 記号だらけに なる）。 */
+  /* ══ 長文の本文（2026-09-11）════════════════════════════════════
+     domain/passage.js が作った本文を、**ページを割れる形**で組む。
+       part = "head"  リード文と題
+       part = "body"  行（rows）。numbered なら行番号を出す
+       part = "foot"  語注と出典
+     1 つの塊にすると、本文が長いときに真っ白なページが並ぶ
+     （実測: 3 ページぶんが ほぼ空のまま出た）。 */
+  function renderPassage(b, vertical) {
+    var en = str(b.lang).toLowerCase().indexOf("en") === 0;
+    var cls = "psg" + (en ? " is-en" : "") + " psg-" + (b.part || "body");
+
+    if (b.part === "head") {
+      return '<div class="' + cls + '" data-block="' + esc(b.id) + '">'
+        + (b.lead ? '<div class="psg-lead">' + rich(b.lead, vertical) + "</div>" : "")
+        + (b.title ? '<div class="psg-h">' + esc(b.title) + "</div>" : "")
+        + "</div>";
+    }
+    if (b.part === "foot") {
+      var notes = Array.isArray(b.notes) ? b.notes : [];
+      return '<div class="' + cls + '" data-block="' + esc(b.id) + '">'
+        + (notes.length
+            ? '<div class="psg-notes">'
+              + notes.map(function (nt) {
+                  var word = str(nt && nt.word || nt), mean = str(nt && nt.meaning || "");
+                  return "<div>" + (nt && nt.mark ? esc(nt.mark) + " " : "")
+                    + esc(word) + (mean ? "　" + esc(mean) : "") + "</div>";
+                }).join("")
+              + "</div>"
+            : "")
+        + (b.source ? '<div class="psg-src">（' + esc(b.source) + "）</div>" : "")
+        + "</div>";
+    }
+
+    var rows = Array.isArray(b.rows) ? b.rows : [];
+    if (!rows.length) return "";
+    var every = Math.max(1, Number(b.lineEvery) || 5);
+    if (b.numbered) {
+      return '<div class="' + cls + '" data-block="' + esc(b.id) + '">'
+        + '<div class="psg-rows">'
+        + rows.map(function (r, i) {
+            var indent = b.paraStart && i === 0 ? " is-first" : "";
+            return '<div class="psg-row"><div class="psg-no">'
+              + (r.n && r.n % every === 0 ? r.n : "") + "</div>"
+              + '<div class="psg-tx' + indent + '">' + rich(r.text, vertical) + "</div></div>";
+          }).join("")
+        + "</div></div>";
+    }
+    /* 行番号を出さないときは、行へ割らずに続けて流す（自然な組み） */
+    var joined = rows.map(function (r) { return r.text; }).join(en ? " " : "");
+    return '<div class="' + cls + '" data-block="' + esc(b.id) + '">'
+      + '<div class="psg-p' + (b.paraStart ? " is-first" : "") + '">'
+      + rich(joined, vertical) + "</div></div>";
+  }
+
   function 国語の本文を組む(b, vertical) {
     var 本 = String(b.text || "");
     /* ① 空欄 … 本文の その 場所を 【X】へ（rich が 四角に する）。 */
@@ -31693,7 +38464,26 @@
     return 出;
   }
 
+  /* ══ 図（2026-09-11）══════════════════════════════════════════
+     ★ 図の記法 [[図: …]] は **esc() を通す前に**取り分ける。
+       通したあとでは値の中の <, &, " が化けて読み取れない。
+     ★ しかも下の [[…]] は「傍線部」の記法なので、先に取り分けないと
+       図の指定がまるごと傍線になる（実測: 「図: bar | x=…」に下線が引かれた）。
+     ★ SVG は **このアプリが組み立てたものだけ**を入れる。
+       AI が書いた文字列は figures.js の中で esc() を通っている。 */
+  function figs() {
+    try { return (root.VQ2 && root.VQ2.figures) || null; } catch (e) { return null; }
+  }
   function rich(text, vertical, 下線) {
+    var F = figs();
+    if (F && F.has(text)) {
+      return F.split(text).map(function (seg) {
+        return seg.t === "text" ? richText(seg.v, vertical, 下線) : F.figureHtml(seg.spec);
+      }).join("");
+    }
+    return richText(text, vertical, 下線);
+  }
+  function richText(text, vertical, 下線) {
     /* ★ 先に 参照記号だけを 取り分けておく。esc() を通すと
        記号は そのままだが、SVG を先に入れると タグが壊れる。
        だから **エスケープしてから** 差し込む（下の 数式を差し込む）。 */
@@ -31701,8 +38491,29 @@
     h = h.replace(/\{([^{}|]+)\|([^{}|]+)\}/g, function (m, base, ruby) {
       return "<ruby>" + base + "<rt>" + ruby + "</rt></ruby>";
     });
+    /* 傍線部。2 つの書き方を読む（2026-09-11）。
+         [[語句]]        … 線を引くだけ
+         [[A|語句]]      … 線を引き、頭に小さく A を出す（共通テストの傍線部A）
+       記号だけを頼りに設問が本文を指すので、**記号を落とさない**こと。
+       ★ 「A|」のほうを先に読む。あとにすると [[A|語句]] が
+         まるごと「語句」扱いになって記号が消える。 */
+    h = h.replace(/\[\[([^\][|]{1,4})\|([^\]]*)\]\]/g, function (m, mark, label) {
+      return '<span class="ul" data-mark="' + mark + '"><sup class="ul-m">' + mark + "</sup>"
+        + label + "</span>";
+    });
     h = h.replace(/\[\[([^\]]+)\]\]/g, function (m, label) {
       return '<span class="ul">' + label + "</span>";
+    });
+    /* ══ 共通テストの体裁（2026-09-11）════════════════════════════
+       <<12>>  → マークの解答番号（□ の中に数字）
+       {{ア}}  → 本文・設問の空欄（□ の中に記号）
+       どちらも、ふつうの日本語・英語の文には出てこない書き方を選んでいる
+       （[ ] や 【 】 は本文に出るので使えない。そちらは下の 穴埋め枠が読む）。 */
+    h = h.replace(/&lt;&lt;\s*([0-9０-９]{1,3})\s*&gt;&gt;/g, function (m, n) {
+      return '<span class="mk">' + n + "</span>";
+    });
+    h = h.replace(/\{\{\s*([^{}\s]{1,6})\s*\}\}/g, function (m, t) {
+      return '<span class="fillbox">' + t + "</span>";
     });
     if (vertical) {
       h = h.replace(/\^\^([0-9A-Za-z]{1,4})\^\^/g, function (m, t) {
@@ -32097,8 +38908,19 @@
     var typo = (ap && ap.typography) || (lprof && lprof.typography) || null;
     var basePt = (typo && typo.basePt) || 10.5;
     var base = basePt * (plan.fontScale || 1);
-    var MINCHO = "'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif";
-    var GOTHIC = "'Hiragino Sans', 'Yu Gothic', 'Noto Sans JP', sans-serif";
+    /* ══ 書体（2026-09-11 に直した）══════════════════════════════
+       ★ **並びの最後を欧文の serif / sans-serif で終わらせない。**
+         日本語を持たない欧文フォントに落ちると、ブラウザは 1 文字ずつ
+         別のフォントを継ぎ足す。横組みなら見た目が変わるだけで済むが、
+         **縦組みでは字が重なって潰れる**（実測: 「虹」が虫と工の重ね打ちになった）。
+         明朝が 1 つも入っていない端末（多くの Windows / Linux / Android）で
+         必ず起きるので、明朝の後ろに **日本語のゴシック**を置いて受け止める。 */
+    var MINCHO = "'Hiragino Mincho ProN', 'Hiragino Mincho Pro', 'Yu Mincho', YuMincho,"
+      + " 'Noto Serif JP', 'Noto Serif CJK JP', 'Source Han Serif JP', 'Source Han Serif',"
+      + " 'IPAmjMincho', IPAMincho, 'MS PMincho', 'MS Mincho', 'Songti SC',"
+      + " 'Hiragino Sans', 'Yu Gothic', 'Noto Sans JP', 'Noto Sans CJK JP', IPAGothic, serif";
+    var GOTHIC = "'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', YuGothic,"
+      + " 'Noto Sans JP', 'Noto Sans CJK JP', 'Meiryo', IPAGothic, 'Source Han Sans JP', sans-serif";
     var bodyFont = (typo && typo.bodyFamily === "gothic") ? GOTHIC : MINCHO;
     var headFont = (typo && typo.headingFamily === "mincho") ? MINCHO : GOTHIC;
 
@@ -32279,6 +39101,77 @@
 
       /* 記法 */
       "ruby rt { font-size: .5em; }",
+
+      /* ── 図と長文の記法（2026-09-11 に足した）─────────────── */
+      /* 記法 */
+      /* 傍線部の記号（傍線部A）。線の頭に小さく出す。 */
+      ".ul-m { font-size: .62em; font-weight: 700; vertical-align: super;",
+      "        margin-right: .2mm; text-decoration: none; display: inline-block; }",
+      /* マークの解答番号（<<12>>）。共通テストの □12 にあたる。
+         枠は本文より少し小さくして、字面から浮かせる。 */
+      ".mk { display: inline-block; min-width: 6mm; padding: 0 .8mm; margin: 0 .4mm;",
+      "      border: 0.4mm solid #000; text-align: center; font-weight: 700;",
+      "      font-size: .92em; line-height: 1.35; }",
+      /* 本文・設問の空欄（{{ア}}）。番号ではなく記号を入れる。 */
+      ".fillbox { display: inline-block; min-width: 5.5mm; padding: 0 .8mm; margin: 0 .3mm;",
+      "           border: 0.25mm solid #000; text-align: center; font-size: .92em; line-height: 1.35; }",
+
+      /* ── 計算で組み立てた図（domain/figures.js）─────────────────
+         AI に SVG を書かせていない。寸法だけを受け取り、座標はコードが出す。
+         だから縦横比を後から変えてはいけない（height を指定しない）。 */
+      ".vqfig { margin: 3mm auto; padding: 0; text-align: center; max-width: 86%;",
+      "         break-inside: avoid; page-break-inside: avoid; }",
+      ".vqfig svg { display: block; width: 100%; height: auto; }",
+      ".vqfig-cap { margin-top: 1mm; font-size: .84em; }",
+      ".vqfig-ng { display: none; }",
+      /* 縦書きの中の図は横組みに戻す。縦書きでは「幅」が段の進む向きなので、
+         図の幅がそのままページの取り分になる。
+         **半ページぶん（約 88mm）** に決める。ページ割りの側も
+         「図のある設問は 1 ページに 2 つまで」で合わせてあるので、
+         図つきの設問は 1 ページに 1 枚か、半ページに 1 枚ずつ収まる。 */
+      /* ★ 縦組みでは 幅が 内容なりに 縮む（実測: 図が 10mm ほどに 潰れた）。
+         max-width では 決まらないので **width を 決め打つ**。
+         88mm は 半ページぶん。ページ割りの 側も「図の ある かたまりは
+         1 ページに 2 つまで」で 合わせてあるので、図つきは 1 ページに
+         1 枚か、半ページに 1 枚ずつ 収まる。 */
+      vertical ? ".vqfig { writing-mode: horizontal-tb; -webkit-writing-mode: horizontal-tb;"
+        + " width: 88mm; max-width: 88mm; height: auto; margin: 0 auto 3mm;"
+        + " display: block; flex: none; }" : "",
+      vertical ? ".vqfig svg { width: 100%; height: auto; }" : "",
+      vertical ? ".fig, .qfg-f { writing-mode: horizontal-tb; -webkit-writing-mode: horizontal-tb;"
+        + " max-width: 88mm; }" : "",
+      vertical ? ".vqfig-cap { writing-mode: horizontal-tb; }" : "",
+
+      /* ── 長文の本文（共通テスト・入試の体裁）───────────────────
+         ・行番号を 5 行ごとに振る（設問が「第◯行」と指せるようにする）
+         ・語注は本文の下へ、小さく 2 段で
+         ・出典は右下
+         枠で囲むのは資料（.src）だけにして、長文は囲まない。囲むと
+         2 ページにまたがったときに枠が切れて読みにくい。 */
+      /* 本文は段落ごとのブロックで届く（ページで割れるようにするため）。
+         ブロックどうしの空きは下だけに付ける（上にも付けると段落が二重に空く）。 */
+      ".psg { margin: 0 0 1.8mm; text-align: justify; }",
+      ".psg.psg-head { margin-bottom: 2.5mm; }",
+      ".psg.psg-foot { margin: 2.5mm 0 4mm; }",
+      ".psg-h { font-weight: 700; font-size: 1.02em; margin-bottom: 1.5mm; }",
+      ".psg-lead { font-size: .9em; margin-bottom: 1.5mm; }",
+      ".psg.is-en { text-align: left; font-family: 'Times New Roman', 'Noto Serif JP', serif; }",
+      ".psg-p { text-indent: 0; }",
+      ".psg-p.is-first { text-indent: 1em; }",
+      ".psg.is-en .psg-p.is-first { text-indent: 1.4em; }",
+      /* 行番号つきの本文。番号は左の細い欄に出す。
+         設問が「第◯行目」と指せるよう、番号は本文の行と必ず同じ高さに来る。 */
+      ".psg-rows { display: table; width: 100%; border-collapse: collapse; }",
+      ".psg-row { display: table-row; }",
+      ".psg-no { display: table-cell; width: 8mm; text-align: right; padding-right: 3mm;",
+      "          font-size: .76em; color: #444; vertical-align: top; white-space: nowrap; }",
+      ".psg-tx { display: table-cell; vertical-align: top; }",
+      ".psg-tx.is-first { text-indent: 1em; }",
+      ".psg.is-en .psg-tx.is-first { text-indent: 1.4em; }",
+      ".psg-notes { padding: 1.8mm 0 0; border-top: 0.4pt solid #000;",
+      "             font-size: .82em; column-count: 2; column-gap: 6mm; }",
+      ".psg-notes div { break-inside: avoid; margin: .4mm 0; }",
+      ".psg-src { margin-top: 1.5mm; font-size: .8em; text-align: right; }",
       ".ul { text-decoration: underline; text-underline-offset: 2px; }",
       vertical ? ".ul { text-decoration: none; border-right: 0.5pt solid #000; padding-right: .5mm; }" : "",
       ".tcy { text-combine-upright: all; -webkit-text-combine: horizontal; }",
@@ -33361,12 +40254,19 @@
       + "var ws=kids.map(function(k){pr.appendChild(k);"
       + "var t=pr.getBoundingClientRect().width;var d=t-prev;prev=t;return d;});"
       + "pr.parentNode.removeChild(pr);"
-      + "var gs=[[]],acc=0;"
+      + "var gs=[[]],acc=0,figN=0;"
       + "for(var i=0;i<kids.length;i++){var w2=ws[i];"
       + "var isH=kids[i].classList.contains('sec');"
+      /* ★ 縦書きで 図の ある かたまりは **1 ページに 2 つまで**（2026-09-11）。
+         縦書きは 幅が 取り分なので、図を 詰めると 本文の 行が 数行しか
+         残らない ページに なる。図は 横組みの 88mm（半ページ）に
+         そろえて あるので、2 つで ちょうど 1 ページぶん。 */
+      + "var isFig=!!kids[i].querySelector('.vqfig');"
       + "var pw=isH&&i+1<kids.length?w2+ws[i+1]:w2;"
-      + "if(acc>0&&kids[i].getAttribute('data-break')==='1'){gs.push([]);acc=0;}"
-      + "else if(acc>0&&acc+pw>limitW){gs.push([]);acc=0;}"
+      + "if(acc>0&&kids[i].getAttribute('data-break')==='1'){gs.push([]);acc=0;figN=0;}"
+      + "else if(acc>0&&isFig&&figN>=2){gs.push([]);acc=0;figN=0;}"
+      + "else if(acc>0&&acc+pw>limitW){gs.push([]);acc=0;figN=0;}"
+      + "if(isFig)figN++;"
       + "gs[gs.length-1].push(kids[i]);acc+=w2;"
       + "if(w2>limitW)kids[i].setAttribute('data-overflowing','1');}"
       + "var tpl=page.cloneNode(false),stpl=sheet.cloneNode(false);"
@@ -33477,6 +40377,11 @@
           + (b.caption ? '<div class="src-cap">' + esc(b.caption) + "</div>" : "") + "</div>";
 
       case "passage":
+        /* ★ part が付いたものは **ページを割れる本文**（2026-09-11）。
+           1 つの塊にすると、本文が長いときに真っ白なページが並ぶ
+           （実測: 3 ページぶんが ほぼ空のまま出た）。
+           part の無い本文は これまでどおり 1 つの塊で組む。 */
+        if (b.part) return renderPassage(b, vertical);
         return 国語の本文を組む(b, vertical);
 
       case "dialogue": {
@@ -39288,7 +46193,7 @@
   var doc = root.document;
 
   /* ビルド時に tokens.css + 共通 CSS が差し込まれる */
-  var SHELL_CSS = "/* VocabuQuiz Learning Workspace V2 — self-contained styles */\n\n:host { color-scheme: light; }\n\n:host([data-theme=\"dark\"]) { color-scheme: dark; }\n\n:host {\n  /* ── Brand scale (Lavender) ───────────────────────────── */\n  --vq-lav-25:  #FCFBFE;\n  --vq-lav-50:  #F7F6FB;\n  --vq-lav-100: #F4F2FB;   /* primary subtle */\n  --vq-lav-150: #EEECF9;   /* selected */\n  --vq-lav-200: #EAE8F7;   /* primary soft */\n  --vq-lav-300: #D5D0EC;\n  --vq-lav-400: #A79FD1;\n  --vq-lav-500: #8A81C2;\n  --vq-lav-600: #756DB3;   /* brand core */\n  --vq-lav-650: #6961A8;   /* hover */\n  --vq-lav-700: #5F579E;   /* active */\n  --vq-lav-800: #4D4683;\n  --vq-lav-900: #3B3567;\n  --vq-lav-950: #262244;\n\n  /* ── Neutral scale (lavender-tinted gray) ─────────────── */\n  --vq-gray-0:   #FFFFFF;\n  --vq-gray-25:  #FCFBFE;\n  --vq-gray-50:  #F9F8FC;\n  --vq-gray-100: #F4F3F9;\n  --vq-gray-150: #EFEDF5;\n  --vq-gray-200: #E7E4EF;\n  --vq-gray-300: #D7D2E4;\n  --vq-gray-400: #BBB7C5;\n  --vq-gray-500: #9994A8;\n  --vq-gray-600: #7A7589;\n  --vq-gray-650: #686477;\n  --vq-gray-700: #5A5568;\n  --vq-gray-800: #454151;\n  --vq-gray-850: #353143;\n  --vq-gray-900: #2B2836;\n  --vq-gray-950: #211F29;\n\n  /* ═══ Semantic aliases — 実装は必ずこちらを参照する ═══ */\n\n  /* Background layers */\n  --vq-bg:            var(--vq-gray-25);\n  --vq-bg-subtle:     var(--vq-lav-50);\n  --vq-bg-elevated:   var(--vq-gray-0);\n  --vq-bg-canvas:     var(--vq-lav-50);\n\n  /* Surfaces */\n  --vq-surface:          var(--vq-gray-0);\n  --vq-surface-hover:    #F7F5FC;\n  --vq-surface-active:   #F1EEF8;\n  --vq-surface-selected: var(--vq-lav-150);\n  --vq-surface-disabled: var(--vq-gray-100);\n  --vq-surface-sunken:   var(--vq-lav-50);\n  --vq-surface-overlay:  rgba(38, 34, 68, 0.40);\n\n  /* Borders */\n  --vq-border:        var(--vq-gray-200);\n  --vq-border-subtle: var(--vq-gray-150);\n  --vq-border-strong: var(--vq-gray-300);\n  --vq-border-focus:  var(--vq-lav-600);\n\n  /* Text */\n  --vq-text:           var(--vq-gray-800);\n  --vq-text-secondary: var(--vq-gray-650);\n  --vq-text-tertiary:  var(--vq-gray-500);\n  --vq-text-disabled:  var(--vq-gray-400);\n  --vq-text-inverse:   #ffffff;\n  --vq-text-link:      var(--vq-lav-700);\n\n  /* Accent (brand action) */\n  --vq-accent:         var(--vq-lav-600);\n  --vq-accent-hover:   var(--vq-lav-650);\n  --vq-accent-active:  var(--vq-lav-700);\n  --vq-accent-subtle:  var(--vq-lav-200);\n  --vq-accent-subtle-hover: #E0DCF2;\n  --vq-accent-text:    var(--vq-lav-700);\n  --vq-accent-contrast:#ffffff;\n  /* 色付きベタ塗り（accent/正解/不正解 等）の上に載せる文字・アイコン色 */\n  --vq-solid-ink:      #ffffff;\n\n  /* Status */\n  --vq-success:        #70AD86;\n  --vq-success-strong: #3F7D58;\n  --vq-success-bg:     #E9F5ED;\n  --vq-success-text:   #3E7A56;\n  --vq-warning:        #E5A85F;\n  --vq-warning-bg:     #FFF3E5;\n  --vq-warning-text:   #925F1D;\n  --vq-danger:         #D67777;\n  --vq-danger-strong:  #B14F4F;\n  --vq-danger-strong-hover: #9E4444;\n  --vq-danger-hover:   #C96666;\n  --vq-danger-bg:      #FCEAEA;\n  --vq-danger-text:    #A94A4A;\n  --vq-info:           #708FC5;\n  --vq-info-bg:        #EAF0F9;\n  --vq-info-text:      #4A69A4;\n\n  /* Focus / selection */\n  --vq-focus-ring:     0 0 0 3px color-mix(in srgb, var(--vq-lav-600) 26%, transparent);\n  --vq-selection-bg:   #E4E0F4;\n\n  /* Domain colors */\n  --vq-quiz-correct:      #4E8F6B;\n  --vq-quiz-correct-bg:   #E9F5ED;\n  --vq-quiz-incorrect:    #C25B5B;\n  --vq-quiz-incorrect-bg: #FCEAEA;\n  --vq-quiz-unanswered:   #B6B1C2;\n  --vq-favorite:          #E6A753;\n  --vq-favorite-bg:       #FBF1E1;\n  --vq-ai:                #8175BD;\n  --vq-ai-text:           #695CA8;\n  --vq-ai-bg:             #EDEAF9;\n  --vq-qredit:            #9C6A1B;\n  --vq-qredit-fill:       #D69A4D;\n  --vq-qredit-bg:         #FAF0DF;\n  --vq-admin:             #6E6787;\n  --vq-admin-bg:          var(--vq-gray-150);\n  --vq-social:            #C95E85;\n\n  /* Charts (categorical, CVD-validated via dataviz six-checks / surface #fff) */\n  --vq-chart-1: #7a4fe8;\n  --vq-chart-2: #0b7fbd;\n  --vq-chart-3: #d43f75;\n  --vq-chart-4: #b26a00;\n  --vq-chart-5: #08967f;\n  --vq-chart-6: #3f63ea;\n  --vq-chart-grid: var(--vq-gray-150);\n\n  /* Illustration palette（フラットSVGイラスト用・両テーマで差し替わる） */\n  --vq-il-blob:  #EDEAF9;\n  --vq-il-a:     #A79FD1;\n  --vq-il-b:     #756DB3;\n  --vq-il-c:     #F2C08A;\n  --vq-il-d:     #F1B7C8;\n  --vq-il-e:     #A9C6EA;\n  --vq-il-paper: #FFFFFF;\n  --vq-il-ink:   #454151;\n  --vq-il-line:  #D7D2E4;\n\n  /* ── Typography ───────────────────────────────────────── */\n  --vq-font-sans: -apple-system, BlinkMacSystemFont, \"Hiragino Sans\",\n    \"Hiragino Kaku Gothic ProN\", \"Noto Sans JP\", \"Segoe UI\", Roboto,\n    \"Yu Gothic UI\", \"Meiryo\", sans-serif;\n  /* 見出し用: 少し丸みのある親しみやすいスタック（可愛くしすぎない） */\n  --vq-font-display: ui-rounded, \"Hiragino Maru Gothic ProN\",\n    \"Arial Rounded MT Bold\", -apple-system, \"Hiragino Sans\",\n    \"Noto Sans JP\", \"Yu Gothic UI\", \"Meiryo\", sans-serif;\n  --vq-font-mono: \"SF Mono\", \"SFMono-Regular\", ui-monospace, \"JetBrains Mono\",\n    \"Cascadia Code\", Menlo, Consolas, monospace;\n\n  --vq-type-display:    800 clamp(29px, 4.4vw, 38px) / 1.32 var(--vq-font-display);\n  --vq-type-heading-xl: 750 25px / 1.4  var(--vq-font-display);\n  --vq-type-heading-lg: 700 20px / 1.45 var(--vq-font-display);\n  --vq-type-heading-md: 700 17px / 1.55 var(--vq-font-sans);\n  --vq-type-heading-sm: 650 14.5px / 1.5 var(--vq-font-sans);\n  --vq-type-body-lg:    400 16px / 1.85 var(--vq-font-sans);\n  --vq-type-body-md:    400 14.5px / 1.8 var(--vq-font-sans);\n  --vq-type-body-sm:    400 13px / 1.7  var(--vq-font-sans);\n  --vq-type-label:      600 13px / 1.4  var(--vq-font-sans);\n  --vq-type-caption:    500 11.5px / 1.5 var(--vq-font-sans);\n  --vq-type-code:       500 13px / 1.65 var(--vq-font-mono);\n\n  --vq-tracking-tight: -0.002em;\n  --vq-tracking-body:  0.01em;\n  --vq-tracking-wide:  0.06em;\n\n  /* ── Spacing scale ────────────────────────────────────── */\n  --vq-sp-0: 0px;   --vq-sp-1: 2px;  --vq-sp-2: 4px;  --vq-sp-3: 6px;\n  --vq-sp-4: 8px;   --vq-sp-5: 12px; --vq-sp-6: 16px; --vq-sp-7: 20px;\n  --vq-sp-8: 24px;  --vq-sp-9: 32px; --vq-sp-10: 40px; --vq-sp-11: 48px;\n  --vq-sp-12: 64px; --vq-sp-13: 80px;\n\n  /* ── Radius（全体的に柔らかく・ただしピル化しすぎない） ── */\n  --vq-r-none: 0px;\n  --vq-r-xs: 6px;\n  --vq-r-sm: 10px;\n  --vq-r-md: 14px;     /* buttons, inputs */\n  --vq-r-lg: 18px;     /* cards */\n  --vq-r-xl: 22px;     /* modals, large panels */\n  --vq-r-2xl: 28px;    /* bottom sheet 上端・特大パネル */\n  --vq-r-full: 999px;\n\n  /* ── Shadows（ラベンダーを帯びた極控えめな影） ─────────── */\n  --vq-shadow-none: none;\n  --vq-shadow-subtle: 0 1px 2px rgba(84, 72, 140, 0.05);\n  --vq-shadow-raised: 0 2px 4px rgba(84, 72, 140, 0.04), 0 6px 16px rgba(84, 72, 140, 0.07);\n  --vq-shadow-floating: 0 4px 12px rgba(84, 72, 140, 0.08), 0 16px 40px rgba(84, 72, 140, 0.12);\n  --vq-shadow-modal: 0 10px 24px rgba(60, 50, 110, 0.10), 0 32px 80px rgba(60, 50, 110, 0.18);\n  --vq-shadow-accent: 0 6px 16px color-mix(in srgb, var(--vq-accent) 24%, transparent);\n\n  /* ── Motion（軽く・柔らかく） ─────────────────────────── */\n  --vq-dur-instant: 0ms;\n  --vq-dur-fast: 120ms;\n  --vq-dur-normal: 200ms;\n  --vq-dur-slow: 300ms;\n  --vq-dur-deliberate: 420ms;\n  --vq-ease-standard: cubic-bezier(0.25, 0.65, 0.2, 1);\n  --vq-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);\n  --vq-ease-exit: cubic-bezier(0.45, 0, 0.7, 0.4);\n  --vq-ease-spring: cubic-bezier(0.32, 1.25, 0.4, 1);\n\n  /* ── Layout ───────────────────────────────────────────── */\n  --vq-sidebar-w: 264px;\n  --vq-topbar-h: 56px;\n  --vq-bottomnav-h: 62px;\n  --vq-content-max: 1120px;\n  --vq-tap-min: 44px;\n\n  /* density: comfortable(default) — モバイルでタップしやすい高さ */\n  --vq-control-h-sm: 32px;\n  --vq-control-h-md: 42px;\n  --vq-control-h-lg: 50px;\n  --vq-field-px: 14px;\n  --vq-card-p: 20px;\n\n  color-scheme: light;\n}\n:host {\n  --vq-cobalt-50:  var(--vq-lav-100);\n  --vq-cobalt-100: var(--vq-lav-150);\n  --vq-cobalt-200: var(--vq-lav-200);\n  --vq-cobalt-300: var(--vq-lav-300);\n  --vq-cobalt-400: var(--vq-lav-400);\n  --vq-cobalt-500: var(--vq-lav-500);\n  --vq-cobalt-600: var(--vq-lav-600);\n  --vq-cobalt-700: var(--vq-lav-700);\n  --vq-cobalt-800: var(--vq-lav-800);\n  --vq-cobalt-900: var(--vq-lav-900);\n  --vq-cobalt-950: var(--vq-lav-950);\n}\n\n:host([data-density=\"compact\"]) {\n  --vq-control-h-sm: 28px;\n  --vq-control-h-md: 36px;\n  --vq-control-h-lg: 46px;\n  --vq-field-px: 11px;\n  --vq-card-p: 14px;\n  --vq-sp-6: 12px;\n  --vq-sp-8: 18px;\n  --vq-sp-9: 24px;\n}\n\n:host([data-theme=\"dark\"]) {\n  color-scheme: dark;\n\n  --vq-bg:            #17161D;\n  --vq-bg-subtle:     #1C1B24;\n  --vq-bg-elevated:   #211F29;\n  --vq-bg-canvas:     #131218;\n\n  --vq-surface:          #211F29;\n  --vq-surface-hover:    #272430;\n  --vq-surface-active:   #2D2A39;\n  --vq-surface-selected: #302B44;\n  --vq-surface-disabled: #1E1D25;\n  --vq-surface-sunken:   #1B1A22;\n  --vq-surface-overlay:  rgba(9, 8, 14, 0.62);\n\n  --vq-border:        #393543;\n  --vq-border-subtle: #2C2937;\n  --vq-border-strong: #4A4559;\n  --vq-border-focus:  #A59BE0;\n\n  --vq-text:           #F5F2FA;\n  --vq-text-secondary: #CBC5D5;\n  --vq-text-tertiary:  #928B9E;\n  --vq-text-disabled:  #655F73;\n  --vq-text-inverse:   #211F29;\n  --vq-text-link:      #B5ABEA;\n\n  --vq-accent:         #A59BE0;\n  --vq-accent-hover:   #B5ACE9;\n  --vq-accent-active:  #C2BBEF;\n  --vq-accent-subtle:  #2E2A45;\n  --vq-accent-subtle-hover: #39335A;\n  --vq-accent-text:    #BCB2F0;\n  --vq-accent-contrast:#232040;\n  --vq-solid-ink:      #17161D;\n\n  --vq-success:        #7FC69A;\n  --vq-success-strong: #7FC69A;\n  --vq-success-bg:     #20342A;\n  --vq-success-text:   #A8DDBE;\n  --vq-warning:        #E4B778;\n  --vq-warning-bg:     #372B17;\n  --vq-warning-text:   #ECCA97;\n  --vq-danger:         #E08D8D;\n  --vq-danger-strong:  #DE8484;\n  --vq-danger-strong-hover: #E9A0A0;\n  --vq-danger-hover:   #E9A0A0;\n  --vq-danger-bg:      #3B2225;\n  --vq-danger-text:    #F0A9A9;\n  --vq-info:           #8FA9DC;\n  --vq-info-bg:        #202A3D;\n  --vq-info-text:      #AFC4EA;\n\n  --vq-focus-ring:     0 0 0 3px color-mix(in srgb, #A59BE0 34%, transparent);\n  --vq-selection-bg:   #3A3260;\n\n  --vq-quiz-correct:      #7FC69A;\n  --vq-quiz-correct-bg:   #20342A;\n  --vq-quiz-incorrect:    #E08D8D;\n  --vq-quiz-incorrect-bg: #3B2225;\n  --vq-quiz-unanswered:   #6A6478;\n  --vq-favorite:          #E9B368;\n  --vq-favorite-bg:       #382C12;\n  --vq-ai:                #AA9DE6;\n  --vq-ai-text:           #C4BAF2;\n  --vq-ai-bg:             #2B2545;\n  --vq-qredit:            #DFAE63;\n  --vq-qredit-fill:       #DFAE63;\n  --vq-qredit-bg:         #362B15;\n  --vq-admin:             #A29BB5;\n  --vq-admin-bg:          #2B2837;\n  --vq-social:            #E289AE;\n\n  /* Charts (CVD-validated / surface #211F29) */\n  --vq-chart-1: #8b6ef5;\n  --vq-chart-2: #2f96c9;\n  --vq-chart-3: #e0628d;\n  --vq-chart-4: #c28316;\n  --vq-chart-5: #22a99e;\n  --vq-chart-6: #6389f4;\n  --vq-chart-grid: #2E2B38;\n\n  --vq-il-blob:  #2B2740;\n  --vq-il-a:     #6F66A6;\n  --vq-il-b:     #A59BE0;\n  --vq-il-c:     #C99555;\n  --vq-il-d:     #C97F97;\n  --vq-il-e:     #7292C1;\n  --vq-il-paper: #2A2735;\n  --vq-il-ink:   #E8E4F1;\n  --vq-il-line:  #4A4559;\n\n  --vq-shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.32);\n  --vq-shadow-raised: 0 2px 4px rgba(0, 0, 0, 0.32), 0 6px 16px rgba(0, 0, 0, 0.36);\n  --vq-shadow-floating: 0 4px 12px rgba(0, 0, 0, 0.42), 0 16px 40px rgba(0, 0, 0, 0.46);\n  --vq-shadow-modal: 0 10px 24px rgba(0, 0, 0, 0.46), 0 32px 80px rgba(0, 0, 0, 0.6);\n  --vq-shadow-accent: 0 6px 16px color-mix(in srgb, #A59BE0 26%, transparent);\n}\n\n/* ══════════════════════════════════════════════════════════════════════\n   V2 共通スタイル（Shadow DOM 内でのみ有効）\n   ・色・角丸・影・時間はすべてトークン経由。ここでハードコードしない。\n   ・白基調、静かで高品質。過度なグラデーション・派手な影は使わない。\n   ・タップ領域 44px 以上、横スクロールなし、Safe Area 対応。\n   ══════════════════════════════════════════════════════════════════════ */\n\n*, *::before, *::after { box-sizing: border-box; }\n\n/* 表紙の代わりに使う色の明るさ。色相（--lib-hue）はプリセットごとに差し込む。 */\n:host { --lib-l1: 90%; --lib-l2: 96%; --lib-l3: 76%; }\n:host([data-theme=\"dark\"]) { --lib-l1: 26%; --lib-l2: 19%; --lib-l3: 36%; }\n\n/* ══ 下端の余白は **下のバーが自分で**空ける ══════════════════\n   ここで画面ぜんぶを押し上げていたため、下のバー（.vq2-wsbar / .vq2-tlc /\n   .vq2-pd-foot はどれも自分でセーフエリアを空けている）が 2 重に浮き、\n   **その下に地色の帯が残っていた**。ホーム画面に追加してアプリとして\n   開いたときの「下の白い隙間」がこれ（実測 2026-08-13）。\n   バーが無い画面のために、スクロールする中身（.vq2-pane-b）へ移す。 */\n.vq2-root {\n  position: absolute; inset: 0;\n  display: flex; flex-direction: column;\n  background: var(--vq-bg);\n  color: var(--vq-text);\n  font-family: var(--vq-font-sans);\n  font: var(--vq-type-body-md);\n  letter-spacing: var(--vq-tracking-body);\n  -webkit-font-smoothing: antialiased;\n  overflow: hidden;\n}\n.vq2-root, .vq2-root * { font-family: var(--vq-font-sans); }\n/* ── 文書の中身だけは、この一括指定から外す ──────────────────\n   上の `.vq2-root *` は **すべての要素**に当たるため、\n   利用者が選んだ書体を <span style=\"font-family:…\"> で当てても、\n   その内側（大きさや色で包んだ span）が一括指定に上書きされ、\n   標準の書体へ戻ってしまう（「大きさを変えると書体が外れる」の原因）。\n   継承へ戻すことで、外側で当てた書体が内側まで届く。 */\n.vq2-root :is(.wpd-doc, .wpd-b__c, .wps-cell, .wpp-el, .wpf-in) * { font-family: inherit; }\n\n/* ── シート（中央に浮かぶカード）─────────────────────────────\n   全画面を占領せず、背景が見えたまま確認だけしたいときに使う。\n   モバイルでは下から出るシートにする（片手で閉じられる位置）。 */\n.vq2-sheet-bd { position: fixed; inset: 0; background: rgba(24, 21, 34, .44); }\n.vq2-root.is-sheet {\n  position: fixed; inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%);\n  width: min(680px, calc(100vw - 32px));\n  max-height: min(86vh, 860px); height: auto;\n  border-radius: var(--vq-r-xl); box-shadow: var(--vq-shadow-modal);\n  border: 1px solid var(--vq-border-subtle);\n}\n/* is-mobile は .vq2-root 自身に付くクラス。子孫セレクタで書くと当たらない。 */\n.vq2-root.is-sheet.is-mobile {\n  left: 0; right: 0; top: auto; bottom: 0; transform: none;\n  width: 100%; max-height: 92vh;\n  border-radius: var(--vq-r-xl) var(--vq-r-xl) 0 0; border-bottom: 0;\n  padding-bottom: var(--vq-sab,0px);\n}\n.vq2-root.is-sheet .vq2-top { padding-top: 0; }\n\n/* ── プリセットの詳細 ─────────────────────────────────────────\n   PC は中央のカード（880〜1000px）。スマホは下から出る全画面で、\n   操作は指の届く下に固定する。 */\n.vq2-ms { font-family: \"Material Symbols Rounded\"; font-weight: 500; font-style: normal;\n  line-height: 1; display: inline-block; letter-spacing: normal; text-transform: none;\n  white-space: nowrap; direction: ltr; -webkit-font-feature-settings: \"liga\";\n  -webkit-font-smoothing: antialiased; font-variation-settings: \"FILL\" 1; }\n.vq2-root.is-sheet.vq2-pd { width: min(1000px, calc(100vw - 48px)); max-height: min(88vh, 900px); }\n.vq2-root.is-sheet.vq2-pd.is-mobile { width: 100%; max-height: 94vh; }\n.vq2-pd-head { position: relative; flex: 0 0 auto; overflow: hidden; height: 152px;\n  background: linear-gradient(135deg, hsl(var(--lib-hue, 250) 46% var(--lib-l1, 90%)),\n                                      hsl(var(--lib-hue, 250) 36% var(--lib-l2, 96%))); }\n.vq2-pd-head::after { content: \"\"; position: absolute; inset: 0; opacity: .5; pointer-events: none; }\n.vq2-pd-head[data-pat=\"lines\"]::after { background: repeating-linear-gradient(115deg, transparent 0 13px,\n  hsl(var(--lib-hue, 250) 44% var(--lib-l3, 76%)) 13px 15px); }\n.vq2-pd-head[data-pat=\"grid\"]::after { opacity: .3; background:\n  repeating-linear-gradient(0deg, transparent 0 17px, hsl(var(--lib-hue,250) 40% var(--lib-l3,76%)) 17px 18px),\n  repeating-linear-gradient(90deg, transparent 0 17px, hsl(var(--lib-hue,250) 40% var(--lib-l3,76%)) 17px 18px); }\n.vq2-pd-head[data-pat=\"dots\"]::after { background-image: radial-gradient(\n  hsl(var(--lib-hue,250) 44% var(--lib-l3,76%)) 1.6px, transparent 1.7px); background-size: 14px 14px; }\n.vq2-pd-head[data-pat=\"paper\"]::after { opacity: .34; background: repeating-linear-gradient(0deg,\n  transparent 0 11px, hsl(var(--lib-hue,250) 40% var(--lib-l3,76%)) 11px 12px); }\n.vq2-pd-head[data-pat=\"plain\"]::after { opacity: .4; background: radial-gradient(120% 90% at 82% 6%,\n  hsl(var(--lib-hue,250) 48% var(--lib-l3,76%)) 0%, transparent 62%); }\n.vq2-pd-banner { display: block; width: 100%; height: 100%; object-fit: cover; position: relative; z-index: 1; }\n.vq2-pd-headbar { position: absolute; top: 10px; right: 10px; z-index: 3; }\n.vq2-pd-headbar .vq2-btn { background: rgba(255, 255, 255, .9); color: #3B3548; }\n.vq2-pd-kinds { position: absolute; left: 14px; top: 12px; z-index: 3; display: flex; gap: 6px; flex-wrap: wrap; }\n.vq2-pd-kind { height: 24px; padding: 0 11px; border-radius: 999px; font-size: 11px; font-weight: 750;\n  display: inline-flex; align-items: center; background: rgba(255, 255, 255, .94); color: #45405A;\n  box-shadow: 0 1px 3px rgba(30, 20, 60, .16); }\n.vq2-pd-kind.is-official { background: var(--vq-accent); color: var(--vq-accent-contrast, #fff); }\n/* ★ 表紙に かぶってよいのは **アイコンだけ**（2026-08-27・訴え）。\n   もとは この行ごと margin-top: -30px で 引き上げていたので、\n   中の 名前も 一緒に 上がり、表紙に 食い込んでいた\n   （実測 2026-08-27: スマホ幅で 29〜30px、PC でも 19px）。\n   行は 表紙の 下から 始め、アイコンだけ 自分の margin で 持ち上げる。\n   名前が 何行になっても 上端は 必ず 表紙より 下になる。 */\n.vq2-pd-id { display: flex; align-items: flex-end; gap: 14px; padding: 12px 20px 14px; margin-top: 0;\n  position: relative; z-index: 2; min-width: 0; }\n.vq2-pd-icon { flex: 0 0 auto; width: 66px; height: 66px; border-radius: var(--vq-r-lg);\n  align-self: flex-start; margin-top: -42px; margin-bottom: -8px;\n  overflow: hidden; display: inline-flex; align-items: center; justify-content: center;\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text);\n  border: 3px solid var(--vq-bg-elevated); box-shadow: var(--vq-shadow-sm, 0 2px 8px rgba(60,40,120,.14)); }\n.vq2-pd-icon.is-emoji { font-size: 30px; line-height: 1; }\n.vq2-pd-icon.is-ms .vq2-ms { font-size: 32px; }\n.vq2-pd-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }\n.vq2-pd-name { min-width: 0; padding-bottom: 3px; }\n.vq2-pd-t { font: var(--vq-type-heading-sm); overflow-wrap: anywhere; }\n.vq2-pd-by { margin-top: 4px; font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n.vq2-pd-av { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }\n.vq2-pd-handle { color: var(--vq-text-tertiary); }\n.vq2-pd-scroll { display: flex; flex-direction: column; gap: 14px; padding: 4px 16px 16px; }\n.vq2-pd-desc { font: var(--vq-type-body-sm); line-height: 1.9; overflow-wrap: anywhere; }\n.vq2-pd-facts { display: flex; flex-direction: column; }\n.vq2-pd-fact { display: flex; align-items: baseline; gap: 12px; padding: 7px 0; }\n.vq2-pd-fact + .vq2-pd-fact { border-top: 1px solid var(--vq-border-subtle); }\n.vq2-pd-fk { flex: 0 0 112px; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-pd-fv { flex: 1 1 auto; min-width: 0; font: var(--vq-type-body-sm); overflow-wrap: anywhere;\n  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n/* 問題の内訳 */\n.vq2-pd-mix { display: flex; flex-direction: column; gap: 8px; }\n.vq2-pd-mixrow { display: flex; align-items: center; gap: 10px; }\n.vq2-pd-mixl { flex: 0 0 132px; font: var(--vq-type-body-sm); overflow: hidden;\n  text-overflow: ellipsis; white-space: nowrap; }\n.vq2-pd-mixbar { flex: 1 1 auto; height: 7px; border-radius: 999px; background: var(--vq-surface-sunken);\n  overflow: hidden; }\n.vq2-pd-mixbar i { display: block; height: 100%; border-radius: 999px; background: var(--vq-accent); }\n.vq2-pd-mixn { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  font-variant-numeric: tabular-nums; }\n/* 解きかた */\n.vq2-pd-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }\n.vq2-pd-opt { display: flex; flex-direction: column; gap: 5px; min-width: 0; }\n.vq2-pd-optl { font: var(--vq-type-caption); color: var(--vq-text-secondary); font-weight: 650; }\n.vq2-pd-optw { position: relative; display: block; }\n.vq2-pd-optw select { width: 100%; height: 40px; padding: 0 12px; border-radius: var(--vq-r-md);\n  border: 1px solid var(--vq-border); background: var(--vq-surface); color: var(--vq-text);\n  font: var(--vq-type-body-sm); font-family: inherit; }\n.vq2-pd-checks { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }\n/* ほかにできること */\n.vq2-pd-more { display: flex; flex-direction: column; }\n.vq2-pd-morebtn { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px;\n  padding: 10px 4px; border: 0; background: none; font: inherit; color: var(--vq-text);\n  text-align: left; cursor: pointer; border-radius: var(--vq-r-md); }\n.vq2-pd-morebtn + .vq2-pd-morebtn { border-top: 1px solid var(--vq-border-subtle); }\n.vq2-pd-morebtn:hover { background: var(--vq-surface-hover); }\n.vq2-pd-morebtn .vq2-ms { font-size: 19px; color: var(--vq-text-tertiary); }\n/* 下の操作（常に見える位置） */\n.vq2-pd-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 12px 16px;\n  border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  padding-bottom: calc(12px + var(--vq-sab,0px)); }\n.vq2-pd-fav { width: 44px; height: 44px; border-radius: var(--vq-r-md); border: 1px solid var(--vq-border);\n  background: var(--vq-surface); color: var(--vq-text-tertiary); cursor: pointer;\n  display: inline-grid; place-items: center; flex: 0 0 auto; }\n.vq2-pd-fav .vq2-ms { font-size: 21px; font-variation-settings: \"FILL\" 0; }\n.vq2-pd-fav.on { color: #DFA31C; } .vq2-pd-fav.on .vq2-ms { font-variation-settings: \"FILL\" 1; }\n.vq2-pd-note { padding: 0 16px 12px; }\n.is-mobile .vq2-pd-head { height: 124px; }\n.is-mobile .vq2-pd-fk { flex-basis: 92px; }\n.is-mobile .vq2-pd-opts { grid-template-columns: 1fr; }\n.is-mobile .vq2-pd-mixl { flex-basis: 104px; }\n.is-mobile .vq2-pd-icon { width: 56px; height: 56px; margin-top: -36px; margin-bottom: -6px; }\n\n/* ── 見た目の設定（アイコン・バナー）─────────────────────── */\n.vq2-ap { display: flex; flex-direction: column; gap: 14px; }\n.vq2-ap-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }\n.vq2-ap-prev { flex: 0 0 auto; width: 56px; height: 56px; border-radius: var(--vq-r-lg);\n  overflow: hidden; display: inline-flex; align-items: center; justify-content: center;\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-size: 28px; line-height: 1;\n  border: 1px solid var(--vq-border-subtle); }\n.vq2-ap-prev img { width: 100%; height: 100%; object-fit: cover; display: block; }\n.vq2-ap-bprev { width: 100%; height: 120px; border-radius: var(--vq-r-lg); overflow: hidden;\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle);\n  display: flex; align-items: center; justify-content: center;\n  font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-ap-bprev img { width: 100%; height: 100%; object-fit: cover; display: block; }\n.vq2-ap-emoji { display: flex; flex-wrap: wrap; gap: 6px; }\n.vq2-ap-e { width: var(--vq-tap-min); height: var(--vq-tap-min); display: inline-flex;\n  align-items: center; justify-content: center; font-size: 22px; line-height: 1; cursor: pointer;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-md);\n  background: var(--vq-bg-elevated); }\n.vq2-ap-e.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n\n/* ── AI パネルの会話（Quick Chat と同じ形：上に会話、下に入力）──── */\n.vq2-chat { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }\n.vq2-chat-b { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;\n  padding: 14px; display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; }\n.vq2-chat-intro { display: flex; gap: 10px; padding: 12px; border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); font: var(--vq-type-body-sm); }\n.vq2-chat-intro svg { flex: 0 0 auto; color: var(--vq-accent); }\n.vq2-quicks { display: flex; flex-direction: column; gap: 6px; }\n\n/* ── はじめの画面（印と一言）──────────────────────────────────── */\n.vq2-hero { display: flex; flex-direction: column; align-items: center; text-align: center;\n  gap: 14px; padding: 28px 16px 20px; }\n.vq2-hero-mark { position: relative; width: 108px; height: 108px; }\n.vq2-hero-mark::after { content: \"\"; position: absolute; inset: -14px; border-radius: 50%;\n  background: radial-gradient(closest-side, rgba(122,102,224,.28), transparent 72%);\n  animation: vq2-glow 4.5s ease-in-out infinite; }\n.vq2-mark { position: relative; width: 100%; height: 100%; display: block;\n  filter: drop-shadow(0 8px 18px rgba(76, 60, 160, .28)); animation: vq2-float 6s ease-in-out infinite; }\n.vq2-mark-r { transform-origin: 60px 62px; animation: vq2-spin-slow 22s linear infinite; }\n.vq2-mark-v { stroke-dasharray: 96; stroke-dashoffset: 96;\n  animation: vq2-draw 1.1s var(--vq-ease-standard) .25s forwards; }\n.vq2-mark-b { opacity: 0; animation: vq2-pop .5s var(--vq-ease-standard) 1.2s forwards; }\n@keyframes vq2-spin-slow { to { transform: rotate(360deg); } }\n@keyframes vq2-draw { to { stroke-dashoffset: 0; } }\n@keyframes vq2-pop { from { opacity: 0; transform: translateY(3px); } to { opacity: .92; transform: none; } }\n@keyframes vq2-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }\n@keyframes vq2-glow { 0%, 100% { opacity: .5; transform: scale(.95); } 50% { opacity: 1; transform: scale(1.04); } }\n.vq2-hero-l { font: var(--vq-type-heading-md); color: var(--vq-text);\n  line-height: 1.6; max-width: 22em; transition: opacity 240ms var(--vq-ease-standard),\n  transform 240ms var(--vq-ease-standard); }\n.vq2-hero-l.is-out { opacity: 0; transform: translateY(-4px); }\n.vq2-hero-s { font: var(--vq-type-caption); color: var(--vq-text-tertiary); max-width: 26em; }\n.is-reduced .vq2-mark, .is-reduced .vq2-mark-r, .is-reduced .vq2-hero-mark::after { animation: none; }\n.is-reduced .vq2-mark-v { stroke-dashoffset: 0; animation: none; }\n.is-reduced .vq2-mark-b { opacity: .92; animation: none; }\n.is-reduced .vq2-hero-l { transition: none; }\n\n/* ── 動いているあいだの帯（いま何をしているか／経過／残り）────── */\n.vq2-runbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;\n  padding: 8px 12px; border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface-sunken); font: var(--vq-type-caption); }\n.vq2-runbar-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;\n  white-space: nowrap; color: var(--vq-text); font-weight: 600; }\n.vq2-eta { flex: 0 0 auto; display: flex; align-items: center; gap: 8px;\n  color: var(--vq-text-tertiary); font-variant-numeric: tabular-nums; }\n.vq2-eta-t { color: var(--vq-text-secondary); font-weight: 600; }\n.vq2-eta-n { padding: 1px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 600; }\n\n.vq2-msg { display: flex; gap: 10px; align-items: flex-start; }\n.vq2-msg.is-me { justify-content: flex-end; }\n.vq2-msg-i { flex: 0 0 auto; width: 26px; height: 26px; margin-top: 2px; border-radius: var(--vq-r-full);\n  display: inline-flex; align-items: center; justify-content: center;\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-msg-i svg { width: 15px; height: 15px; }\n.vq2-msg-b { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }\n.vq2-bubble { max-width: 88%; padding: 9px 13px; border-radius: 16px 16px 4px 16px;\n  background: var(--vq-accent); color: var(--vq-accent-contrast);\n  font: var(--vq-type-body-sm); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }\n\n/* 進行ログ。1 行ずつ足す。 */\n.vq2-logbox { display: flex; flex-direction: column; gap: 2px; }\n.vq2-logrow { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0;\n  font: var(--vq-type-body-sm); color: var(--vq-text-secondary); overflow-wrap: anywhere; }\n/* ログ行も色を使わない。濃さと太さで区別する（アイコンの形が別なので読める）。 */\n.vq2-logrow.k-done { color: var(--vq-text); }\n.vq2-logrow.k-warn { color: var(--vq-text); }\n.vq2-logrow.k-error { color: var(--vq-text); font-weight: 600; }\n.vq2-logrow.k-note { color: var(--vq-text-tertiary); }\n.vq2-logrow .vq2-logi { color: var(--vq-text-tertiary); }\n.vq2-logrow.k-error .vq2-logi, .vq2-logrow.k-warn .vq2-logi { color: var(--vq-text-secondary); }\n.vq2-logi { flex: 0 0 auto; width: 16px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }\n.vq2-logi svg { width: 14px; height: 14px; }\n.vq2-logdot { width: 6px; height: 6px; border-radius: var(--vq-r-full); background: var(--vq-text-tertiary); }\n/* ログ行もふわりと出す（タイムラインと同じ出方にそろえる） */\n.vq2-logrow.is-new { animation: vq2-logIn 380ms var(--vq-ease-enter) both; }\n@keyframes vq2-logIn {\n  from { opacity: 0; transform: translateY(8px); filter: blur(1.5px); }\n  65%  { opacity: 1; filter: blur(0); }\n  to { opacity: 1; transform: none; filter: blur(0); }\n}\n.is-reduced .vq2-logrow.is-new { animation: none; }\n\n.vq2-stream { padding: 10px 12px; border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); line-height: 1.7; white-space: pre-wrap; max-height: 180px; overflow-y: auto; }\n.vq2-note { padding: 8px 10px; border-radius: var(--vq-r-md); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); }\n.vq2-note.is-err { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-note.is-warn { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n\n/* 添付した資料 */\n.vq2-attach { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }\n.vq2-attach-i { display: flex; align-items: center; gap: 8px; padding: 6px 8px;\n  border-radius: var(--vq-r-md); background: var(--vq-surface-sunken); font: var(--vq-type-caption); }\n.vq2-attach-i > svg { flex: 0 0 auto; width: 15px; height: 15px; color: var(--vq-text-tertiary); }\n.vq2-attach-n { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;\n  white-space: nowrap; color: var(--vq-text); font-weight: 600; }\n.vq2-attach-s { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;\n  white-space: nowrap; color: var(--vq-text-tertiary); }\n\n/* 入力欄（下に固定） */\n.vq2-composer { flex: 0 0 auto; padding: 10px 12px calc(10px + var(--vq-sab,0px));\n  border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); }\n.vq2-composer-box { border: 1px solid var(--vq-border); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); padding: 6px; }\n.vq2-composer-box:focus-within { border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-composer-box textarea.vq2-input { border: 0; box-shadow: none; min-height: 60px; padding: 6px 8px; }\n.vq2-composer-box textarea.vq2-input:focus { box-shadow: none; }\n.vq2-composer-a { display: flex; align-items: center; gap: 6px; padding: 4px 4px 0; flex-wrap: wrap; }\n\n/* ── AI 修正の対象 ─────────────────────────────────────────────\n   狭い画面では折り返す。押せる大きさ（44px）は既存のボタンが持っている。 */\n.vq2-scope { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 0 8px; }\n.vq2-scope .vq2-label { margin: 0 4px 0 0; flex: 0 0 auto; }\n\n/* ── 生成中の追加指示 ──────────────────────────────────────────\n   ・入力欄が画面外へ出ないよう、幅は必ず親に合わせる。\n   ・送った指示は消さずに残す。長い一覧はここだけを縦にスクロールさせ、\n     進捗表示と重ならないようにする。 */\n.vq2-fu { border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-surface); padding: 10px; margin-bottom: 10px; min-width: 0; }\n.vq2-fu-list { display: flex; flex-direction: column; gap: 6px; max-height: 30vh;\n  overflow-y: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; }\n.vq2-fu-list:empty { display: none; margin: 0; }\n.vq2-fu-i { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }\n.vq2-fu-t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font: var(--vq-type-body-sm); }\n.vq2-fu-e { flex: 0 0 auto; color: var(--vq-danger-text); font: var(--vq-type-caption); }\n.vq2-fu-box { border: 1px solid var(--vq-border); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); padding: 6px; min-width: 0; }\n.vq2-fu-box:focus-within { border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-fu-box textarea.vq2-input { border: 0; box-shadow: none; min-height: 44px; padding: 6px 8px;\n  width: 100%; max-width: 100%; box-sizing: border-box; }\n.vq2-fu-box textarea.vq2-input:focus { box-shadow: none; }\n.vq2-fu-a { display: flex; align-items: center; gap: 6px; padding: 4px 4px 0; flex-wrap: wrap; }\n.vq2-fu-a .vq2-hint { flex: 1 1 140px; min-width: 0; }\n\n/* ── アイコン ─────────────────────────────────────────────────── */\n.vq2-i { width: 20px; height: 20px; flex: 0 0 auto; }\n.vq2-btn.sz-sm .vq2-i { width: 16px; height: 16px; }\n\n/* ── ボタン ───────────────────────────────────────────────────── */\n.vq2-btn {\n  display: inline-flex; align-items: center; justify-content: center; gap: 8px;\n  min-height: var(--vq-control-h-md); min-width: var(--vq-tap-min);\n  padding: 0 16px;\n  border: 1px solid var(--vq-border);\n  border-radius: var(--vq-r-lg);\n  background: var(--vq-surface);\n  color: var(--vq-text);\n  font: var(--vq-type-label);\n  cursor: pointer;\n  transition: background var(--vq-dur-fast) var(--vq-ease-standard),\n              border-color var(--vq-dur-fast) var(--vq-ease-standard),\n              color var(--vq-dur-fast) var(--vq-ease-standard);\n  white-space: nowrap;\n}\n.vq2-btn:hover:not(:disabled) { background: var(--vq-surface-hover); }\n.vq2-btn:active:not(:disabled) { background: var(--vq-surface-active); }\n.vq2-btn:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }\n.vq2-btn:disabled { opacity: .45; cursor: not-allowed; }\n.vq2-btn.is-primary { background: var(--vq-accent); border-color: var(--vq-accent); color: var(--vq-accent-contrast); }\n.vq2-btn.is-primary:hover:not(:disabled) { background: var(--vq-accent-hover); border-color: var(--vq-accent-hover); }\n.vq2-btn.is-primary:active:not(:disabled) { background: var(--vq-accent-active); }\n.vq2-btn.is-danger { background: var(--vq-danger-strong); border-color: var(--vq-danger-strong); color: #fff; }\n.vq2-btn.is-danger:hover:not(:disabled) { background: var(--vq-danger-strong-hover); }\n.vq2-btn.is-ghost { background: transparent; border-color: transparent; }\n.vq2-btn.is-ghost:hover:not(:disabled) { background: var(--vq-surface-hover); }\n.vq2-btn.is-quiet { background: transparent; border-color: transparent; color: var(--vq-text-secondary); }\n.vq2-btn.is-quiet:hover:not(:disabled) { background: var(--vq-surface-hover); color: var(--vq-text); }\n.vq2-btn.is-icon { padding: 0; width: var(--vq-control-h-md); }\n.vq2-btn.sz-sm { min-height: var(--vq-control-h-sm); padding: 0 10px; font: var(--vq-type-body-sm); }\n.vq2-btn.sz-sm.is-icon { width: var(--vq-control-h-sm); padding: 0; }\n.vq2-btn.sz-lg { min-height: var(--vq-control-h-lg); padding: 0 22px; }\n.vq2-btn.is-full { width: 100%; }\n.vq2-btn.is-active { background: var(--vq-accent-subtle); border-color: var(--vq-accent); color: var(--vq-accent-text); }\n\n/* モバイルでは押しやすさを優先する */\n.is-mobile .vq2-btn { min-height: var(--vq-tap-min); }\n.is-mobile .vq2-btn.is-icon { width: var(--vq-tap-min); }\n\n/* ── 入力 ─────────────────────────────────────────────────────── */\n.vq2-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }\n.vq2-field.is-inline { flex-direction: row; align-items: center; gap: 10px; }\n.vq2-label { font: var(--vq-type-label); color: var(--vq-text-secondary); }\n.vq2-req { color: var(--vq-danger); }\n.vq2-hint { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-input {\n  width: 100%; min-height: var(--vq-control-h-md);\n  padding: 8px var(--vq-field-px);\n  border: 1px solid var(--vq-border);\n  border-radius: var(--vq-r-md);\n  background: var(--vq-bg-elevated);\n  color: var(--vq-text);\n  font: var(--vq-type-body-md);\n  font-family: var(--vq-font-sans);\n  transition: border-color var(--vq-dur-fast) var(--vq-ease-standard),\n              box-shadow var(--vq-dur-fast) var(--vq-ease-standard);\n}\ntextarea.vq2-input { resize: vertical; line-height: 1.7; min-height: 76px; }\n.vq2-input:hover:not(:disabled) { border-color: var(--vq-border-strong); }\n.vq2-input:focus { outline: none; border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-input:disabled { background: var(--vq-surface-disabled); color: var(--vq-text-disabled); cursor: not-allowed; }\nselect.vq2-input {\n  appearance: none; -webkit-appearance: none;\n  padding-right: 34px;\n  background-image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237A7589' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>\");\n  background-repeat: no-repeat; background-position: right 10px center;\n}\n.vq2-err { display: flex; align-items: center; gap: 6px; font: var(--vq-type-caption); color: var(--vq-danger-text); }\n.vq2-err .vq2-i { width: 14px; height: 14px; }\n\n/* チェック・ラジオ */\n.vq2-check { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 6px 0; min-height: var(--vq-tap-min); }\n.vq2-check input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--vq-accent); flex: 0 0 auto; cursor: pointer; }\n.vq2-check:focus-within { outline: var(--vq-focus-ring); outline-offset: 2px; border-radius: var(--vq-r-sm); }\n\n/* ── バッジ・チップ ───────────────────────────────────────────── */\n.vq2-badge {\n  display: inline-flex; align-items: center; padding: 2px 8px;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken);\n  color: var(--vq-text-secondary); font: var(--vq-type-caption); white-space: nowrap;\n}\n.vq2-badge.is-accent { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-badge.is-ai { background: var(--vq-ai-bg); color: var(--vq-ai-text); }\n.vq2-badge.is-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-badge.is-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-badge.is-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n\n.vq2-chip {\n  display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px;\n  border-radius: var(--vq-r-full); font: var(--vq-type-caption); white-space: nowrap;\n}\n.vq2-chip .vq2-i { width: 13px; height: 13px; }\n.vq2-chip.is-error { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-chip.is-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-chip.is-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-chip.is-info { background: var(--vq-info-bg); color: var(--vq-info-text); }\n.vq2-chip.is-pending { background: var(--vq-surface-sunken); color: var(--vq-text-secondary); }\n\n/* ── 画面の骨格 ───────────────────────────────────────────────── */\n.vq2-top {\n  display: flex; align-items: center; gap: 12px;\n  height: var(--vq-topbar-h);\n  min-height: var(--vq-topbar-h);\n  padding: 0 16px;\n  border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated);\n  flex: 0 0 auto;\n  padding-top: var(--vq-sat,0px);\n}\n.vq2-top-title { font: var(--vq-type-heading-sm); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-top-sub { font: var(--vq-type-caption); color: var(--vq-text-tertiary); white-space: nowrap; }\n.vq2-top-sp { flex: 1 1 auto; min-width: 8px; }\n.vq2-top-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }\n/* 上部バーは絶対に横あふれさせない。タイトル側を縮め、副次的な操作は隠す。 */\n.vq2-top { overflow: hidden; }\n.vq2-top > div:first-of-type { min-width: 0; }\n.vq2-only-mobile { display: none; }\n.is-mobile .vq2-only-mobile { display: inline-flex; }\n.is-mobile .vq2-hide-mobile { display: none; }\n/* ══ 上端の安全領域を消さない ══════════════════════════════════\n   `padding: 0 8px` は **4 辺まとめての指定**なので、上に入れてある\n   var(--vq-sat,0px) を 0 に戻してしまう。狭い画面（＝スマホ）だけ\n   このルールが効くため、ホーム画面から開いたときに見出しや戻るボタンが\n   時計・電池と重なっていた（実測 2026-08-13）。左右だけを指定する。 */\n.is-mobile .vq2-top { gap: 6px; padding: 0 8px; }\n.is-mobile .vq2-top-actions { gap: 2px; }\n.is-mobile .vq2-top-title { font: var(--vq-type-label); }\n/* 狭い画面では上部バーのボタンをアイコンだけにする（aria-label と title は残る） */\n@media (max-width: 520px) {\n  .is-mobile .vq2-top-actions .vq2-btn > span { display: none; }\n  .is-mobile .vq2-top-actions .vq2-btn { padding: 0; width: var(--vq-tap-min); }\n}\n\n.vq2-body { flex: 1 1 auto; display: flex; min-height: 0; overflow: hidden; }\n.vq2-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }\n.vq2-pane-l { width: 300px; flex: 0 0 auto; border-right: 1px solid var(--vq-border-subtle); background: var(--vq-bg-subtle); }\n.vq2-pane-c { flex: 1 1 auto; background: var(--vq-bg); }\n.vq2-qcanvas { background: var(--vq-bg-canvas); }\n/* 上から置く。真ん中に寄せると、問題の長さが変わるたびにカードが\n   上下に飛んで、次の問題を探し直すことになる。位置は動かさない。 */\n.vq2-qcanvas .vq2-pane-b { display: flex; align-items: flex-start; padding-bottom: var(--vq-sab,0px); }\n.vq2-qcanvas .vq2-q { margin: 0 auto; }\n.vq2-pane-r { width: 360px; flex: 0 0 auto; border-left: 1px solid var(--vq-border-subtle); background: var(--vq-bg-subtle); }\n.vq2-pane-h {\n  display: flex; align-items: center; gap: 8px;\n  padding: 10px 14px; min-height: 46px;\n  border-bottom: 1px solid var(--vq-border-subtle);\n  font: var(--vq-type-label); color: var(--vq-text-secondary);\n  flex: 0 0 auto;\n  /* 狭い画面では操作が並びきらない（紙面のページ送り＋拡大縮小＋全画面で 7 個ある）。\n     隠さずに折り返す。横へ溢れさせない。 */\n  flex-wrap: wrap; row-gap: 6px; overflow: hidden;\n}\n.vq2-pane-h > * { min-width: 0; }\n.vq2-pane-b { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }\n.vq2-pane-f { flex: 0 0 auto; padding: 10px 14px; border-top: 1px solid var(--vq-border-subtle); }\n\n/* 仕切り（リサイズ） */\n.vq2-resizer { width: 6px; flex: 0 0 auto; cursor: col-resize; background: transparent; position: relative; }\n.vq2-resizer::after {\n  content: \"\"; position: absolute; inset: 0 2px; border-radius: 2px;\n  transition: background var(--vq-dur-fast) var(--vq-ease-standard);\n}\n.vq2-resizer:hover::after, .vq2-resizer.is-dragging::after, .vq2-resizer:focus-visible::after { background: var(--vq-accent-subtle-hover); }\n.vq2-resizer:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n\n/* ── モバイル：1カラム＋タブ ─────────────────────────────────── */\n.is-mobile .vq2-body { flex-direction: column; }\n.is-mobile .vq2-pane-l,\n.is-mobile .vq2-pane-r,\n.is-mobile .vq2-pane-c { width: auto; flex: 1 1 auto; border: 0; }\n.is-mobile .vq2-resizer { display: none; }\n.is-mobile .vq2-pane[hidden] { display: none; }\n\n/* \u2550\u2550 \u624b\u66f8\u304d\u30e1\u30e2\uff082026-08-30\u30fb\u4f9d\u983c\uff09 \u7d19\uff08iframe\uff09\u306e \u4e0a\u306b \u900f\u660e\u306a \u677f\u3092 1 \u679a\u3002 \u9053\u5177\u3092 \u51fa\u3057\u3066\u3044\u308b \u3068\u304d\u3060\u3051 \u89e6\u308c\u308b\u3002 \u51fa\u3057\u3066\u3044\u306a\u3044 \u3068\u304d\u306f \u89e6\u308c\u306a\u3044\u306e\u3067\u3001\u7d19\u306e \u30b9\u30af\u30ed\u30fc\u30eb\u3082 \u8a2d\u554f\u306e \u9078\u629e\u3082 \u52b9\u304f\u3002 */\n.vq2-ink { position: absolute; inset: 0; pointer-events: none; touch-action: none; z-index: 3; }\n.vq2-ink.is-on { pointer-events: auto; cursor: crosshair; }\n.vq2-inkbar { flex: 0 0 auto; display: flex; align-items: center; gap: 6px;\n  padding: 6px 10px; border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated); overflow-x: auto; }\n.vq2-inkt { min-height: 32px; padding: 0 10px; border-radius: var(--vq-r-sm);\n  border: 1px solid var(--vq-border); background: var(--vq-surface);\n  color: var(--vq-text-secondary); font: var(--vq-type-label); cursor: pointer;\n  white-space: nowrap; flex: 0 0 auto; }\n.vq2-inkt.is-on { background: var(--vq-accent-subtle); border-color: var(--vq-accent);\n  color: var(--vq-accent-text); }\n.vq2-inksep { width: 1px; height: 20px; background: var(--vq-border); flex: 0 0 auto; }\n.vq2-inkc { width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto;\n  border: 2px solid var(--vq-border); cursor: pointer; padding: 0; }\n.vq2-inkc.is-on { border-color: var(--vq-accent); box-shadow: 0 0 0 2px var(--vq-accent-subtle); }\n/* 試験の 結果画面（2026-08-30・依頼／もらった 画像の 通り）。\n   上バー・左の 紙・右の 採点・下の 道具バー の 4 段。\n   ここだけ 濃い 地に する（紙を 白く 浮かせて 読ませる ため）。 */\n.vq2-xr { position: absolute; inset: 0; display: flex; flex-direction: column;\n  background: #14151c; color: #e9e8f2; overflow: hidden;\n  --xr-line: #2b2d3a; --xr-card: #1c1e28; --xr-card2: #22242f;\n  --xr-ac: #8b7ff0; --xr-ac2: #b9b1ff; --xr-mut: #9d9ab2; }\n.vq2-xr-top { flex: 0 0 auto; display: flex; align-items: center; gap: 12px;\n  padding: 10px 16px; border-bottom: 1px solid var(--xr-line); background: #101119; }\n.vq2-xr-ttl { flex: 0 1 auto; min-width: 0; font-weight: 700; font-size: 15px;\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-xr-sub { color: var(--xr-mut); font-weight: 400; }\n.vq2-xr-seg { flex: 0 0 auto; margin: 0 auto; display: flex; gap: 2px; padding: 3px;\n  border-radius: 999px; background: #1c1e28; border: 1px solid var(--xr-line); }\n.vq2-xr-segb { min-height: 32px; padding: 0 18px; border: 0; border-radius: 999px;\n  background: transparent; color: var(--xr-mut); font-size: 13px; cursor: pointer; }\n.vq2-xr-segb.is-on { background: #f4f3fb; color: #221f33; font-weight: 700; }\n.vq2-xr-topr { flex: 0 0 auto; display: flex; gap: 8px; }\n.vq2-xr-gb { min-height: 34px; padding: 0 14px; border-radius: 10px; cursor: pointer;\n  border: 1px solid var(--xr-line); background: #1c1e28; color: #e9e8f2; font-size: 13px; }\n.vq2-xr-gb:disabled { opacity: .4; cursor: default; }\n.vq2-xr-gb.is-pri { background: var(--xr-ac); border-color: var(--xr-ac); color: #fff; font-weight: 700; }\n.vq2-xr-body { flex: 1 1 auto; min-height: 0; display: flex; }\n.vq2-xr-left { flex: 1 1 auto; min-width: 0; display: flex; padding: 10px; background: #14151c; }\n.vq2-xr-paper { flex: 1 1 auto; min-width: 0; min-height: 0; position: relative;\n  border-radius: 10px; overflow: hidden; background: #eceaf3; }\n.vq2-xr-paper iframe { width: 100%; height: 100%; border: 0; }\n.vq2-xr-side { flex: 0 0 auto; width: 46%; max-width: 640px; min-width: 320px;\n  border-left: 1px solid var(--xr-line); background: #16171f; overflow-y: auto; }\n.vq2-xr-sb { padding: 16px 18px 24px; }\n/* \u2605 \u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u306e\u4e00\u89a7\uff082026-09-03\uff09 */\n.vq2-xr-dl { position: relative; display: inline-block; }\n/* \u2605 \u7b54\u3048\u5408\u308f\u305b\u306e\u52d5\u304d\uff082026-09-03\uff09 */\n@keyframes vq2-pop { 0% { transform: translateY(10px) scale(.965); opacity: 0; }\n  55% { transform: translateY(-3px) scale(1.012); opacity: 1; }\n  100% { transform: translateY(0) scale(1); opacity: 1; } }\n@keyframes vq2-shake { 0%,100% { transform: translateX(0); }\n  12% { transform: translateX(-9px); } 26% { transform: translateX(8px); }\n  40% { transform: translateX(-6px); } 54% { transform: translateX(5px); }\n  68% { transform: translateX(-3px); } 84% { transform: translateX(2px); } }\n@keyframes vq2-okglow { 0% { box-shadow: 0 0 0 0 rgba(45,168,116,.34); }\n  100% { box-shadow: 0 0 0 14px rgba(45,168,116,0); } }\n.vq2-jd { will-change: transform; }\n.vq2-jd.is-ok { animation: vq2-pop .34s cubic-bezier(.22,1.1,.36,1) both, vq2-okglow .62s ease-out .12s both; }\n.vq2-jd.is-ng { animation: vq2-shake .42s cubic-bezier(.36,.07,.19,.97) both; }\n.vq2-sp-fb.is-ok { animation: vq2-pop .34s cubic-bezier(.22,1.1,.36,1) both, vq2-okglow .62s ease-out .12s both; }\n.vq2-sp-fb.is-ng { animation: vq2-shake .42s cubic-bezier(.36,.07,.19,.97) both; }\n/* \u2605 \u9078\u629e\u80a2\u305d\u306e\u3082\u306e\u306e\u52d5\u304d\uff082026-09-03\u30fb\u8a34\u3048\uff09\u3002\n   \u30fb\u81ea\u5206\u304c\u9078\u3093\u3067\u5408\u3063\u3066\u3044\u305f \u2026 \u3075\u308f\u3063\u3068\u6d6e\u304f\uff08\u7dd1\u306e\u8f2a\uff09\n   \u30fb\u81ea\u5206\u304c\u9078\u3093\u3067\u5916\u308c\u305f \u2026 \u6a2a\u306b\u3086\u308c\u308b\uff08\u8d64\u306e\u8f2a\uff09\n   \u30fb\u9078\u3070\u306a\u304b\u3063\u305f\u6b63\u89e3 \u2026 \u52d5\u304b\u3055\u305a\u3001\u305d\u3063\u3068\u5149\u308b\u3060\u3051 */\n@keyframes vq2-ok-ring { 0% { box-shadow: 0 0 0 0 rgba(45,168,116,.42); }\n  100% { box-shadow: 0 0 0 12px rgba(45,168,116,0); } }\n@keyframes vq2-ng-ring { 0% { box-shadow: 0 0 0 0 rgba(196,71,63,.42); }\n  100% { box-shadow: 0 0 0 12px rgba(196,71,63,0); } }\n@keyframes vq2-reveal { 0% { opacity: .35; transform: translateY(4px); }\n  100% { opacity: 1; transform: translateY(0); } }\n.vq2-choice.is-correct.is-mine,\n.vq2-sort-i.is-correct, .vq2-match-i.is-correct, .vq2-cls-i.is-correct,\n.vq2-lslot.is-correct, .vq2-ec-row.is-correct {\n  animation: vq2-pop .32s cubic-bezier(.22,1.1,.36,1) both,\n             vq2-ok-ring .6s ease-out .1s both; }\n.vq2-choice.is-wrong,\n.vq2-sort-i.is-wrong, .vq2-match-i.is-wrong, .vq2-cls-i.is-wrong,\n.vq2-lslot.is-wrong, .vq2-ec-row.is-wrong {\n  animation: vq2-shake .4s cubic-bezier(.36,.07,.19,.97) both,\n             vq2-ng-ring .6s ease-out .08s both; }\n.vq2-choice.is-correct:not(.is-mine) { animation: vq2-reveal .34s ease-out both; }\n/* \u4e26\u3093\u3067\u3044\u308b\u3082\u306e\u306f \u5c11\u3057\u305a\u3064 \u9045\u3089\u305b\u308b\uff08\u4e00\u6589\u306b \u8df3\u306d\u308b\u3068 \u76ee\u304c \u6563\u308b\uff09 */\n.vq2-sort-i:nth-of-type(2), .vq2-match-i:nth-of-type(2), .vq2-cls-i:nth-of-type(2),\n.vq2-lslot:nth-of-type(2), .vq2-ec-row:nth-of-type(2) { animation-delay: .04s, .14s; }\n.vq2-sort-i:nth-of-type(3), .vq2-match-i:nth-of-type(3), .vq2-cls-i:nth-of-type(3),\n.vq2-lslot:nth-of-type(3), .vq2-ec-row:nth-of-type(3) { animation-delay: .08s, .18s; }\n.vq2-sort-i:nth-of-type(4), .vq2-match-i:nth-of-type(4), .vq2-cls-i:nth-of-type(4),\n.vq2-lslot:nth-of-type(4), .vq2-ec-row:nth-of-type(4) { animation-delay: .12s, .22s; }\n.vq2-sort-i:nth-of-type(n+5), .vq2-match-i:nth-of-type(n+5), .vq2-cls-i:nth-of-type(n+5),\n.vq2-lslot:nth-of-type(n+5), .vq2-ec-row:nth-of-type(n+5) { animation-delay: .16s, .26s; }\n/* \u2605 \u8a2d\u5b9a\u3067\u300c\u6b63\u89e3\u30fb\u4e0d\u6b63\u89e3\u306e\u52d5\u304d\u300d\u3092\u5207\u3063\u305f\u3068\u304d\uff082026-09-03\u30fb\u8a34\u3048\uff09\u3002\n   \u8272\u3068\u5370\u306f\u305d\u306e\u307e\u307e\u3002**\u52d5\u304d\u3060\u3051**\u3092\u6b62\u3081\u308b\u3002 */\n.is-noansanim .vq2-jd.is-ok, .is-noansanim .vq2-jd.is-ng,\n.is-noansanim .vq2-sp-fb.is-ok, .is-noansanim .vq2-sp-fb.is-ng,\n.is-noansanim .vq2-choice.is-correct, .is-noansanim .vq2-choice.is-wrong,\n.is-noansanim .vq2-choice.is-correct.is-mine,\n.is-noansanim .vq2-sort-i.is-correct, .is-noansanim .vq2-sort-i.is-wrong,\n.is-noansanim .vq2-match-i.is-correct, .is-noansanim .vq2-match-i.is-wrong,\n.is-noansanim .vq2-cls-i.is-correct, .is-noansanim .vq2-cls-i.is-wrong,\n.is-noansanim .vq2-lslot.is-correct, .is-noansanim .vq2-lslot.is-wrong,\n.is-noansanim .vq2-ec-row.is-correct, .is-noansanim .vq2-ec-row.is-wrong {\n  animation: none !important; }\n@media (prefers-reduced-motion: reduce) { .vq2-jd.is-ok, .vq2-jd.is-ng,\n  .vq2-sp-fb.is-ok, .vq2-sp-fb.is-ng,\n  .vq2-choice.is-correct, .vq2-choice.is-wrong, .vq2-choice.is-correct.is-mine,\n  .vq2-sort-i.is-correct, .vq2-sort-i.is-wrong,\n  .vq2-match-i.is-correct, .vq2-match-i.is-wrong,\n  .vq2-cls-i.is-correct, .vq2-cls-i.is-wrong,\n  .vq2-lslot.is-correct, .vq2-lslot.is-wrong,\n  .vq2-ec-row.is-correct, .vq2-ec-row.is-wrong { animation: none; } }\n.vq2-xr-dlm { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;\n  min-width: 200px; padding: 6px; border-radius: 12px; border: 1px solid var(--xr-line);\n  background: #1d1f2a; box-shadow: 0 18px 42px rgba(0,0,0,.55); display: flex; flex-direction: column; }\n.vq2-xr-dli { display: block; width: 100%; text-align: left; cursor: pointer;\n  padding: 9px 12px; border: 0; border-radius: 8px; background: transparent;\n  color: inherit; font: inherit; font-size: 13px; }\n.vq2-xr-dli:hover { background: rgba(255,255,255,.09); }\n/* \u2605 \u7d20\u70b9\u3068\u89b3\u70b9\u306e\u8272\u5206\u3051\uff082026-09-03\uff09\u3002\u6697\u3044\u5730\u306a\u306e\u3067\u660e\u308b\u3081\u306e\u8d64\u30fb\u9752\u3002 */\n.vq2-xr-sum { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 20px;\n  padding: 12px 14px; border: 1px solid var(--xr-line); border-radius: 12px; margin-bottom: 4px; }\n.vq2-xr-sumi { display: flex; flex-direction: column; gap: 2px; }\n.vq2-xr-suml { font-size: 11px; font-weight: 700; color: var(--xr-mut); letter-spacing: .04em; }\n.vq2-xr-sumv { font-size: 15px; font-weight: 800; line-height: 1.1; }\n.vq2-xr-sumv small { font-size: 11px; font-weight: 600; opacity: .75; }\n.vq2-xr-sumi.is-raw .vq2-xr-sumv { font-size: 30px; }\n.is-raw .vq2-xr-sumv, .is-k .vq2-xr-sumv, .is-raw .vq2-xr-suml, .is-k .vq2-xr-suml { color: #FF7A70; }\n.is-t .vq2-xr-sumv, .is-t .vq2-xr-suml { color: #7FB2FF; }\n.vq2-xr-h { font-size: 15px; font-weight: 700; margin-bottom: 10px; }\n.vq2-xr-h2 { font-size: 13px; font-weight: 700; margin: 20px 0 8px; }\n.vq2-xr-h3 { font-size: 12px; font-weight: 700; color: var(--xr-mut); margin: 14px 0 8px; }\n.vq2-xr-score { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }\n.vq2-xr-n { font-size: 44px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }\n.vq2-xr-n.is-none { font-size: 22px; font-weight: 700; color: var(--xr-mut); }\n.vq2-xr-sl { font-size: 20px; font-weight: 700; color: var(--xr-mut); }\n.vq2-xr-full { margin-left: 6px; padding: 5px 12px; border-radius: 8px;\n  background: var(--xr-ac); color: #fff; font-size: 13px; font-weight: 700; }\n.vq2-xr-conf { margin-top: 6px; text-align: right; font-size: 12px; color: var(--xr-mut); }\n.vq2-xr-warn { margin-top: 8px; padding: 8px 10px; border-radius: 8px;\n  background: #3a2f16; color: #f0d59b; font-size: 12px; }\n.vq2-xr-list { display: flex; flex-direction: column; gap: 2px; }\n.vq2-xr-li { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; font-size: 13px; }\n.vq2-xr-lm { flex: 0 0 auto; color: var(--xr-ac2); }\n.vq2-xr-lt { flex: 1 1 auto; min-width: 0; }\n.vq2-xr-lp { flex: 0 0 auto; color: var(--xr-ac2); font-variant-numeric: tabular-nums; }\n.vq2-xr-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px;\n  border-top: 1px solid var(--xr-line); padding-top: 14px; }\n.vq2-xr-col { min-width: 0; }\n.vq2-xr-tabs { display: flex; gap: 14px; border-bottom: 1px solid var(--xr-line); margin-bottom: 10px; }\n.vq2-xr-tb { border: 0; background: none; color: var(--xr-mut); font-size: 12.5px;\n  padding: 6px 0 8px; cursor: pointer; border-bottom: 2px solid transparent; }\n.vq2-xr-tb.is-on { color: #fff; font-weight: 700; border-bottom-color: var(--xr-ac); }\n.vq2-xr-card { background: var(--xr-card); border: 1px solid var(--xr-line);\n  border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }\n.vq2-xr-card.is-good { border-color: #2f5c44; }\n.vq2-xr-card.is-miss { border-color: #5c3a3a; }\n.vq2-xr-ct { font-size: 12.5px; font-weight: 700; color: var(--xr-ac2); margin-bottom: 5px; }\n.vq2-xr-cb { font-size: 12.5px; line-height: 1.8; color: #d9d7e6; }\n.vq2-xr-cp { margin-top: 6px; font-size: 11.5px; color: var(--xr-mut); }\n.vq2-xr-box { border-radius: 10px; padding: 10px 12px; background: var(--xr-card2);\n  border: 1px solid var(--xr-line); }\n.vq2-xr-box.is-ai { border-color: #4b3f8f; background: #1e1b33; }\n.vq2-xr-box.is-ok { border-color: #2f5c44; background: #16241d; }\n.vq2-xr-bt { font-size: 12.5px; font-weight: 700; margin-bottom: 6px; }\n.vq2-xr-box ul { margin: 4px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.9; color: #d9d7e6; }\n.vq2-xr-quote { font-size: 12.5px; line-height: 1.9; color: #e2e0ee;\n  border: 1px solid #2f5c44; border-radius: 8px; padding: 8px 10px; background: #131c18; }\n.vq2-xr-arrow { text-align: center; color: var(--xr-mut); margin: 6px 0; }\n.vq2-xr-chk { margin: 0; padding-left: 0; list-style: none; font-size: 12px; line-height: 2; color: #cfcddf; }\n.vq2-xr-chk li::before { content: \"\\2713\\3000\"; color: #6fc79a; }\n.vq2-xr-empty { font-size: 12.5px; color: var(--xr-mut); padding: 8px 0; }\n.vq2-xr-bot { flex: 0 0 auto; display: flex; align-items: center; gap: 12px;\n  padding: 8px 16px calc(8px + var(--vq-sab,0px));\n  border-top: 1px solid var(--xr-line); background: #101119; overflow-x: auto; }\n.vq2-xr-tools { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }\n.vq2-xr-tool { min-height: 34px; padding: 0 10px; border-radius: 9px; cursor: pointer;\n  border: 1px solid var(--xr-line); background: #1c1e28; color: #cfcddf; font-size: 12.5px;\n  white-space: nowrap; }\n.vq2-xr-tool.is-on { background: var(--xr-ac); border-color: var(--xr-ac); color: #fff; }\n.vq2-xr-nav { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 8px; }\n.vq2-xr-num { font-size: 13px; color: #cfcddf; font-variant-numeric: tabular-nums; white-space: nowrap; }\n.vq2-xr-botr { flex: 0 0 auto; }\n.vq2-xr .vq2-inkc { border-color: #3a3c4a; }\n.vq2-xr.is-m .vq2-xr-body { flex-direction: column; }\n.vq2-xr.is-m .vq2-xr-side { width: auto; max-width: none; min-width: 0; border-left: 0;\n  border-top: 1px solid var(--xr-line); flex: 1 1 auto; }\n.vq2-xr.is-m .vq2-xr-two { grid-template-columns: 1fr; }\n.vq2-xr.is-m .vq2-xr-seg { margin: 0; }\n.vq2-xr.is-m .vq2-xr-ttl { display: none; }\n/* ── 結果画面・スマホ（2026-08-31・訴え「スマホに 最適化した？」）──────\n   実測（390px）: 上バーの 中身 441px・下バーの 中身 821px で 横に あふれ、\n   採点パネルへ 行く 道も 無かった。1 行に 詰めるのを やめ、\n   ・上 … 試験名と 終了 だけ\n   ・その下 … 問題／解答／解説（フル幅）\n   ・その下 … 問題用紙 ⇄ 採点結果（フル幅・どちらか 一方を 出す）\n   ・下 … 2 段（道具 ／ 行き来と 解説）\n   に 分ける。押す ところは どれも 44px 以上。 */\n.vq2-xr.is-m .vq2-xr-top { padding: 8px 10px; gap: 8px; }\n.vq2-xr.is-m .vq2-xr-ttl { display: block; flex: 1 1 auto; font-size: 13.5px; }\n.vq2-xr.is-m .vq2-xr-topr { flex: 0 0 auto; }\n.vq2-xr.is-m .vq2-xr-gb { min-height: var(--vq-tap-min, 44px); padding: 0 12px; }\n.vq2-xr-segrow { flex: 0 0 auto; display: flex; padding: 6px 10px;\n  border-bottom: 1px solid var(--xr-line); background: #101119; }\n.vq2-xr.is-m .vq2-xr-seg { margin: 0; width: 100%; }\n.vq2-xr.is-m .vq2-xr-segb { flex: 1 1 0; min-height: var(--vq-tap-min, 44px); padding: 0 6px; font-size: 13px; }\n.vq2-xr-panes { flex: 0 0 auto; display: flex; gap: 0;\n  border-bottom: 1px solid var(--xr-line); background: #14151c; }\n.vq2-xr-pb { flex: 1 1 0; min-height: var(--vq-tap-min, 44px); border: 0;\n  background: transparent; color: var(--xr-mut); font-size: 13px; cursor: pointer;\n  border-bottom: 2px solid transparent; }\n.vq2-xr-pb.is-on { color: #fff; font-weight: 700; border-bottom-color: var(--xr-ac); }\n.vq2-xr.is-m .vq2-xr-left { padding: 8px; }\n.vq2-xr.is-m .vq2-xr-sb { padding: 14px 12px 20px; }\n.vq2-xr-bot.is-m { display: block; padding: 0; overflow: visible; }\n.vq2-xr-botrow { display: flex; align-items: center; gap: 8px;\n  padding: 6px 10px; border-top: 1px solid var(--xr-line); }\n.vq2-xr-botrow:last-child { padding-bottom: calc(6px + var(--vq-sab,0px)); }\n/* ★ はみ出させない（実測 400px／390px）。入りきらなければ 折り返す。 */\n.vq2-xr.is-m .vq2-xr-tools { flex: 1 1 auto; justify-content: space-between; gap: 4px;\n  flex-wrap: wrap; min-width: 0; }\n.vq2-xr.is-m .vq2-xr-tb { padding: 11px 0 13px; }\n.vq2-xr.is-m .vq2-xr-tool { min-height: var(--vq-tap-min, 44px); padding: 0 10px; }\n/* 色は 小さく 見せて、押す ところは 44px 取る（見た目 30px／的 44px）。 */\n.vq2-xr.is-m .vq2-inkc { width: 44px; height: 44px; padding: 7px;\n  background-clip: content-box; border: 0; box-shadow: none; }\n.vq2-xr.is-m .vq2-inkc.is-on { outline: 2px solid var(--xr-ac); outline-offset: -13px;\n  border-radius: 50%; }\n.vq2-xr.is-m .vq2-xr-nav { flex: 1 1 auto; gap: 6px; justify-content: flex-start; }\n.vq2-xr.is-m .vq2-xr-nav .vq2-xr-gb { min-height: var(--vq-tap-min, 44px); padding: 0 10px; }\n.vq2-xr.is-m .vq2-xr-num { font-size: 12.5px; }\n.vq2-xr.is-m .vq2-xr-botr { display: flex; gap: 6px; }\n.vq2-xr.is-m .vq2-xr-botr .vq2-xr-gb { min-height: var(--vq-tap-min, 44px); padding: 0 12px; }\n.vq2-xr.is-m .vq2-xr-n { font-size: 38px; }\n.vq2-xr.is-m .vq2-xr-two { gap: 14px; }\n\n\n\n.vq2-tabs {\n  display: none; flex: 0 0 auto;\n  border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated);\n}\n.is-mobile .vq2-tabs { display: flex; }\n.vq2-tab {\n  flex: 1 1 0; min-height: var(--vq-tap-min);\n  display: inline-flex; align-items: center; justify-content: center; gap: 6px;\n  border: 0; background: transparent; color: var(--vq-text-tertiary);\n  font: var(--vq-type-label); cursor: pointer;\n  border-bottom: 2px solid transparent;\n}\n.vq2-tab[aria-selected=\"true\"] { color: var(--vq-accent-text); border-bottom-color: var(--vq-accent); }\n.vq2-tab:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-tab-n { font: var(--vq-type-caption); background: var(--vq-surface-sunken); border-radius: var(--vq-r-full); padding: 0 6px; }\n\n/* ボトムシート（モバイルの補助パネル） */\n.vq2-sheet {\n  position: absolute; left: 0; right: 0; bottom: 0; z-index: 40;\n  max-height: 78%; display: flex; flex-direction: column;\n  background: var(--vq-bg-elevated);\n  border-top-left-radius: var(--vq-r-2xl); border-top-right-radius: var(--vq-r-2xl);\n  box-shadow: var(--vq-shadow-modal);\n  transform: translateY(100%);\n  transition: transform var(--vq-dur-normal) var(--vq-ease-enter);\n  padding-bottom: var(--vq-sab,0px);\n}\n.vq2-sheet.is-open { transform: translateY(0); }\n.is-reduced .vq2-sheet { transition: none; }\n.vq2-sheet-grab { width: 40px; height: 4px; border-radius: 2px; background: var(--vq-border-strong); margin: 8px auto; flex: 0 0 auto; }\n\n/* ── リスト ───────────────────────────────────────────────────── */\n.vq2-list { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 2px; }\n.vq2-item {\n  display: flex; align-items: flex-start; gap: 10px;\n  padding: 10px 12px; min-height: var(--vq-tap-min);\n  border-radius: var(--vq-r-md); border: 1px solid transparent;\n  background: transparent; color: var(--vq-text); cursor: pointer;\n  text-align: left; width: 100%; font: var(--vq-type-body-sm);\n}\n.vq2-item:hover { background: var(--vq-surface-hover); }\n.vq2-item[aria-selected=\"true\"] { background: var(--vq-surface-selected); border-color: var(--vq-accent); }\n.vq2-item:focus-visible { outline: var(--vq-focus-ring); outline-offset: -1px; }\n.vq2-item.is-dragging { opacity: .4; }\n.vq2-item.is-drop-before { box-shadow: inset 0 2px 0 var(--vq-accent); }\n.vq2-item.is-drop-after { box-shadow: inset 0 -2px 0 var(--vq-accent); }\n.vq2-item-n { flex: 0 0 auto; width: 26px; font: var(--vq-type-caption); color: var(--vq-text-tertiary); padding-top: 2px; }\n.vq2-item-m { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }\n.vq2-item-t { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.5; }\n.vq2-item-s { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n.vq2-item-h { flex: 0 0 auto; color: var(--vq-text-tertiary); cursor: grab; padding-top: 2px; }\n.vq2-item-h:active { cursor: grabbing; }\n\n/* ── カード・セクション ──────────────────────────────────────── */\n.vq2-card {\n  background: var(--vq-bg-elevated);\n  border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-xl);\n  padding: var(--vq-card-p);\n}\n.vq2-sec { padding: 18px 20px; border-bottom: 1px solid var(--vq-border-subtle); }\n.vq2-sec:last-child { border-bottom: 0; }\n.vq2-sec-t { font: var(--vq-type-heading-sm); margin: 0 0 12px; }\n.vq2-grid { display: grid; gap: 12px; }\n.vq2-grid.c2 { grid-template-columns: 1fr 1fr; }\n.vq2-grid.c3 { grid-template-columns: repeat(3, 1fr); }\n.is-mobile .vq2-grid.c2, .is-mobile .vq2-grid.c3 { grid-template-columns: 1fr; }\n.vq2-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-muted { color: var(--vq-text-tertiary); font: var(--vq-type-body-sm); }\n.vq2-mono { font-family: var(--vq-font-mono); font-variant-numeric: tabular-nums; }\n\n/* ── 空状態・読み込み ───────────────────────────────────────── */\n.vq2-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 48px 24px; text-align: center; }\n.vq2-empty-i { color: var(--vq-text-tertiary); }\n.vq2-empty-i .vq2-i { width: 40px; height: 40px; }\n.vq2-empty-t { font: var(--vq-type-heading-sm); }\n.vq2-empty-b { font: var(--vq-type-body-sm); color: var(--vq-text-secondary); max-width: 42ch; }\n.vq2-empty-a { margin-top: 6px; }\n\n.vq2-skel { display: flex; flex-direction: column; gap: 10px; padding: 16px; }\n.vq2-skel-l { height: 12px; border-radius: var(--vq-r-sm); background: linear-gradient(90deg, var(--vq-surface-sunken) 25%, var(--vq-surface-hover) 37%, var(--vq-surface-sunken) 63%); background-size: 400% 100%; animation: vq2-shimmer 1.4s ease infinite; }\n@keyframes vq2-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }\n.is-reduced .vq2-skel-l { animation: none; }\n\n/* 待っているときの輪。\n   0.7 秒の等速回転は速くて機械的に見えるので、少し遅くし、\n   1 周の中で速さを変える（動き出しと止まり際をなだらかにする）。\n   等速だと「急かされている」感じになる。 */\n.vq2-spin { width: 16px; height: 16px; flex: 0 0 auto; border-radius: 50%;\n  border: 2px solid var(--vq-border); border-top-color: var(--vq-accent);\n  animation: vq2-rot 1.15s cubic-bezier(.45,.15,.35,.9) infinite; }\n.vq2-spin.sm { width: 13px; height: 13px; border-width: 2px; }\n@keyframes vq2-rot { to { transform: rotate(360deg); } }\n.is-reduced .vq2-spin { animation-duration: 2.4s; animation-timing-function: linear; }\n\n.vq2-prog { height: 8px; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); overflow: hidden; }\n/* 何問目か。バーだけだと序盤はほとんど動かず、進んでいるのが分からない。 */\n.vq2-prog-row { display: flex; align-items: center; gap: 10px; }\n.vq2-prog-row .vq2-prog { flex: 1 1 auto; }\n.vq2-prog-n { flex: 0 0 auto; font: var(--vq-type-caption); font-weight: 700; color: var(--vq-text-secondary); font-variant-numeric: tabular-nums; }\n.vq2-prog-f { height: 100%; background: var(--vq-accent); border-radius: var(--vq-r-full); transition: width var(--vq-dur-normal) var(--vq-ease-standard); }\n.is-reduced .vq2-prog-f { transition: none; }\n\n/* ── Toast ────────────────────────────────────────────────────── */\n.vq2-toast-layer { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 100; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; padding-bottom: var(--vq-sab,0px); }\n.vq2-toast {\n  display: flex; align-items: center; gap: 10px;\n  padding: 11px 16px; max-width: min(92vw, 460px);\n  border-radius: var(--vq-r-lg); background: var(--vq-solid-ink); color: #fff;\n  font: var(--vq-type-body-sm); box-shadow: var(--vq-shadow-floating);\n  animation: vq2-toast-in var(--vq-dur-normal) var(--vq-ease-enter);\n}\n.vq2-toast.is-error { background: var(--vq-danger-strong); }\n.vq2-toast.is-warning { background: var(--vq-warning); color: var(--vq-gray-950); }\n.vq2-toast.is-success { background: var(--vq-success-strong); }\n.vq2-toast.is-out { opacity: 0; transition: opacity var(--vq-dur-fast) var(--vq-ease-exit); }\n@keyframes vq2-toast-in { from { opacity: 0; transform: translateY(10px); } }\n.is-reduced .vq2-toast { animation: none; }\n\n/* ── Dialog ───────────────────────────────────────────────────── */\n.vq2-dialog-layer { position: absolute; inset: 0; z-index: 120; background: var(--vq-surface-overlay); display: flex; align-items: center; justify-content: center; padding: 20px; }\n.vq2-dialog {\n  width: min(100%, 460px); max-height: 86%;\n  display: flex; flex-direction: column;\n  background: var(--vq-bg-elevated); border-radius: var(--vq-r-2xl);\n  box-shadow: var(--vq-shadow-modal); overflow: hidden;\n  animation: vq2-dlg-in var(--vq-dur-normal) var(--vq-ease-enter);\n}\n.vq2-dialog.is-wide { width: min(100%, 760px); }\n@keyframes vq2-dlg-in { from { opacity: 0; transform: scale(.97); } }\n.is-reduced .vq2-dialog { animation: none; }\n.vq2-dialog-h { display: flex; align-items: center; gap: 12px; padding: 16px 16px 12px 20px; }\n.vq2-dialog-h h2 { margin: 0; flex: 1 1 auto; font: var(--vq-type-heading-sm); }\n.vq2-dialog-b { flex: 1 1 auto; overflow-y: auto; padding: 0 20px 8px; font: var(--vq-type-body-sm); line-height: 1.75; }\n.vq2-dialog-b p { margin: 0 0 10px; }\n.vq2-dialog-f { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px 18px; }\n.is-mobile .vq2-dialog-f { flex-direction: column-reverse; }\n.is-mobile .vq2-dialog-f .vq2-btn { width: 100%; }\n\n/* ── Menu ─────────────────────────────────────────────────────── */\n.vq2-menu-layer { position: fixed; inset: 0; z-index: 130; }\n.vq2-menu {\n  position: fixed; min-width: 220px; max-width: 300px; padding: 5px;\n  background: var(--vq-bg-elevated); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); box-shadow: var(--vq-shadow-floating);\n}\n.vq2-menu-i {\n  display: flex; align-items: center; gap: 10px; width: 100%;\n  min-height: 38px; padding: 6px 10px; border: 0; border-radius: var(--vq-r-md);\n  background: transparent; color: var(--vq-text); font: var(--vq-type-body-sm);\n  cursor: pointer; text-align: left;\n}\n.vq2-menu-i:hover:not(:disabled) { background: var(--vq-surface-hover); }\n.vq2-menu-i:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-menu-i:disabled { opacity: .4; cursor: not-allowed; }\n.vq2-menu-i.is-danger { color: var(--vq-danger-text); }\n.vq2-menu-i span:nth-of-type(1) { flex: 1 1 auto; }\n.vq2-menu-sp { width: 20px; flex: 0 0 auto; }\n.vq2-menu-k { font: var(--vq-type-caption); color: var(--vq-text-tertiary); flex: 0 0 auto; }\n.vq2-menu-div { height: 1px; margin: 4px 6px; background: var(--vq-border-subtle); }\n\n/* ── Tooltip ──────────────────────────────────────────────────── */\n.vq2-tip { position: relative; }\n.vq2-tip::after {\n  content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);\n  padding: 5px 9px; border-radius: var(--vq-r-sm); background: var(--vq-solid-ink); color: #fff;\n  font: var(--vq-type-caption); white-space: nowrap; opacity: 0; pointer-events: none;\n  transition: opacity var(--vq-dur-fast) var(--vq-ease-standard); z-index: 60;\n}\n.vq2-tip:hover::after, .vq2-tip:focus-visible::after { opacity: 1; }\n\n/* ── Activity ─────────────────────────────────────────────────── */\n.vq2-act { border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); overflow: hidden; }\n.vq2-act-head {\n  display: flex; align-items: center; gap: 9px; width: 100%;\n  min-height: var(--vq-tap-min); padding: 8px 12px; border: 0; background: transparent;\n  color: var(--vq-text); font: var(--vq-type-body-sm); cursor: pointer; text-align: left;\n}\n.vq2-act-head:hover { background: var(--vq-surface-hover); }\n.vq2-act-head:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-act-now { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-act-list { list-style: none; margin: 0; padding: 4px 12px 10px; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--vq-border-subtle); }\n.vq2-act-list li { display: flex; align-items: flex-start; gap: 8px; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-act-list li .vq2-i { width: 14px; height: 14px; margin-top: 2px; }\n.vq2-act-list li.is-ok .vq2-i { color: var(--vq-success); }\n.vq2-act-list li.is-err .vq2-i { color: var(--vq-danger); }\n.vq2-act-list li.is-warn .vq2-i { color: var(--vq-warning); }\n.vq2-act-list li.is-run { color: var(--vq-text); }\n.vq2-act-d { color: var(--vq-text-tertiary); }\n.vq2-act-foot { padding: 0 12px 10px; }\n\n/* ── 差分表示 ─────────────────────────────────────────────────── */\n.vq2-diff { display: flex; flex-direction: column; gap: 10px; }\n.vq2-diff-g { border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); overflow: hidden; background: var(--vq-bg-elevated); }\n.vq2-diff-h { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--vq-surface-sunken); font: var(--vq-type-label); }\n.vq2-diff-h .vq2-badge { flex: 0 0 auto; }\n.vq2-diff-h-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-diff-f { padding: 8px 12px; border-top: 1px solid var(--vq-border-subtle); display: flex; align-items: flex-start; gap: 10px; }\n.vq2-diff-f-m { flex: 1 1 auto; min-width: 0; }\n.vq2-diff-f-l { font: var(--vq-type-label); color: var(--vq-text-secondary); margin-bottom: 4px; }\n.vq2-diff-f-s { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-diff-ab { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }\n.is-mobile .vq2-diff-ab { grid-template-columns: 1fr; }\n.vq2-diff-a, .vq2-diff-b { padding: 7px 9px; border-radius: var(--vq-r-md); font: var(--vq-type-caption); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }\n.vq2-diff-a { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-diff-b { background: var(--vq-success-bg); color: var(--vq-success-text); }\n\n/* ── 問題の編集 ───────────────────────────────────────────────── */\n/* 出題の版面。--vq-content-max（1120px）は読むには広すぎる\n   （1 行が長くなりすぎて目が行の先頭へ戻れない）。問題文には別の幅を使う。 */\n.vq2-q { display: flex; flex-direction: column; gap: 18px; padding: 28px 20px 40px; max-width: 760px; margin: 0 auto; width: 100%; }\n/* 問題そのものは面（カード）に載せる。載せないと、下に残る余白が\n   「レイアウトが壊れている」ように見える。 */\n.vq2-qbox { background: var(--vq-bg-elevated); border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-xl); padding: 24px; display: flex; flex-direction: column; gap: 20px; }\n.vq2-qtext { font: var(--vq-type-heading-sm); line-height: 1.85; white-space: pre-wrap; word-break: break-word; }\n@media (max-width: 640px) { .vq2-q { padding: 16px 14px 32px; gap: 14px; } .vq2-qbox { padding: 16px 14px; gap: 16px; border-radius: var(--vq-r-lg); } }\n.vq2-q-choices { display: flex; flex-direction: column; gap: 8px; }\n.vq2-choice { display: flex; align-items: flex-start; gap: 12px; padding: 14px 15px; min-height: var(--vq-tap-min); border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); transition: background var(--vq-dur-fast) var(--vq-ease-standard), border-color var(--vq-dur-fast) var(--vq-ease-standard); }\nbutton.vq2-choice:hover:not(:disabled) { background: var(--vq-surface-hover); border-color: var(--vq-border-strong); }\nbutton.vq2-choice:active:not(:disabled) { background: var(--vq-surface-active); }\n/* 「選んだ」は accent。正解・不正解の色（緑・赤）は **採点したあとだけ** 使う。\n   選んだ時点で緑にすると、合っていないのに合っているように見える。 */\n.vq2-choice.is-picked { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n/* 採点したあとだけ使う色。合っていた選択肢と、自分が選んだ誤りを両方出す。 */\n.vq2-choice.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-choice.is-wrong .vq2-choice-l { background: var(--vq-danger); color: #fff; }\n.vq2-choice-tag { align-self: flex-start; margin-top: 6px; padding: 2px 9px; border-radius: var(--vq-r-full); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-choice-tag.is-correct { background: var(--vq-success); color: #fff; }\n.vq2-choice-tag.is-wrong { background: var(--vq-danger); color: #fff; }\n.vq2-choice.is-picked .vq2-choice-l { background: var(--vq-accent); color: var(--vq-accent-contrast); }\n/* 答え合わせのあとは押せなくするが、**読めなくはしない**。\n   ブラウザの既定だと disabled のボタンは文字が薄くなり、正解の文章が読みにくい。 */\n.vq2-choice:disabled { cursor: default; opacity: 1; color: var(--vq-text); }\n.vq2-choice.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-choice-l { flex: 0 0 auto; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-choice.is-correct .vq2-choice-l { background: var(--vq-success); color: #fff; }\n.vq2-choice-m { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }\n.vq2-choice-a { flex: 0 0 auto; display: flex; gap: 2px; }\n\n/* ── 採点基準（記述・論述・英作文）───────────────────────────── */\n.vq2-rub { display: flex; flex-direction: column; gap: 8px; }\n.vq2-rub-i { display: flex; align-items: flex-start; gap: 10px; padding: 10px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-rub-n { flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex; align-items: center;\n  justify-content: center; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); font-variant-numeric: tabular-nums; }\n.vq2-rub-m { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }\n.vq2-rub-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-rub-p { width: 84px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }\n.vq2-rub-c { width: auto; min-width: 150px; flex: 0 1 auto; }\n.vq2-root.is-mobile .vq2-rub-c { min-width: 0; flex: 1 1 100%; }\n\n/* ── 出典 ─────────────────────────────────────────────────────── */\n.vq2-src { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--vq-r-md); background: var(--vq-surface-sunken); font: var(--vq-type-caption); }\n.vq2-src .vq2-i { width: 14px; height: 14px; color: var(--vq-text-tertiary); }\n.vq2-src-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n\n/* ── 表 ───────────────────────────────────────────────────────── */\n.vq2-tblwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }\n.vq2-tbl { width: 100%; border-collapse: collapse; font: var(--vq-type-body-sm); }\n.vq2-tbl th, .vq2-tbl td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--vq-border-subtle); }\n.vq2-tbl th { font: var(--vq-type-label); color: var(--vq-text-secondary); background: var(--vq-surface-sunken); position: sticky; top: 0; }\n.vq2-tbl td.num, .vq2-tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }\n.vq2-tbl tr:last-child td { border-bottom: 0; }\n\n/* ── 見出しの数値（結果画面） ───────────────────────────────── */\n.vq2-score { display: flex; align-items: baseline; gap: 8px; }\n.vq2-score-v { font: var(--vq-type-display); font-variant-numeric: tabular-nums; }\n.vq2-score-m { font: var(--vq-type-heading-sm); color: var(--vq-text-tertiary); }\n.vq2-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 10px; }\n.vq2-stat { padding: 12px 14px; border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-stat-l { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-stat-v { font: var(--vq-type-heading-sm); font-variant-numeric: tabular-nums; margin-top: 2px; }\n\n/* ── アコーディオン ─────────────────────────────────────────── */\n.vq2-acc { border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); overflow: hidden; background: var(--vq-bg-elevated); }\n.vq2-acc + .vq2-acc { margin-top: 8px; }\n.vq2-acc-h { display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--vq-tap-min); padding: 10px 12px; border: 0; background: transparent; color: var(--vq-text); font: var(--vq-type-body-sm); cursor: pointer; text-align: left; }\n.vq2-acc-h:hover { background: var(--vq-surface-hover); }\n.vq2-acc-h:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-acc-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }\n.vq2-acc-b { padding: 4px 14px 16px; border-top: 1px solid var(--vq-border-subtle); font: var(--vq-type-body-sm); line-height: 1.75; }\n/* 畳んでいる間も「いま何がそこに入っているか」を一行で見せる */\n.vq2-acc-t > strong { display: block; font-weight: 650; }\n.vq2-acc-sum { display: block; margin-top: 2px; font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-acc-c { flex: 0 0 auto; display: inline-flex; color: var(--vq-text-tertiary); transition: transform var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-acc-c.is-open { transform: rotate(180deg); }\n\n/* ── 選ぶカード（試験の型など）───────────────────────────── */\n.vq2-pickgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }\n.vq2-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;\n  min-height: 88px; padding: 12px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); color: var(--vq-text); font: inherit; cursor: pointer; text-align: left;\n  transition: border-color var(--vq-dur-fast) var(--vq-ease-standard), background var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-pick:hover { background: var(--vq-surface-hover); }\n.vq2-pick:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }\n.vq2-pick.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-pick-i { display: inline-flex; margin-bottom: 4px; color: var(--vq-text-tertiary); }\n.vq2-pick.is-on .vq2-pick-i { color: var(--vq-accent); }\n.vq2-pick-t { font: var(--vq-type-body-sm); font-weight: 650; }\n.vq2-pick-s { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.is-mobile .vq2-pickgrid { grid-template-columns: 1fr 1fr; }\n@media (max-width: 380px) { .is-mobile .vq2-pickgrid { grid-template-columns: 1fr; }\n  .is-mobile .vq2-pick { min-height: var(--vq-tap-min); flex-direction: row; align-items: center; gap: 10px; }\n  .is-mobile .vq2-pick-i { margin-bottom: 0; }\n  .is-mobile .vq2-pick-s { margin-left: auto; } }\n\n/* ── 選べる札（問題形式など）───────────────────────────── */\n.vq2-togset { display: flex; flex-wrap: wrap; gap: 8px; }\n.vq2-tog { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-full); background: var(--vq-bg-elevated);\n  font: var(--vq-type-body-sm); cursor: pointer; }\n.vq2-tog input { position: absolute; opacity: 0; width: 1px; height: 1px; }\n.vq2-tog.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 650; }\n.vq2-tog:focus-within { outline: var(--vq-focus-ring); outline-offset: 2px; }\n.is-mobile .vq2-tog { min-height: var(--vq-tap-min); }\n\n/* ── 選んだ資料 ───────────────────────────────────────── */\n.vq2-filelist { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }\n.vq2-filelist li { display: flex; align-items: center; gap: 8px; padding: 8px 10px;\n  border-radius: var(--vq-r-md); background: var(--vq-surface-sunken); font: var(--vq-type-body-sm); }\n.vq2-filelist li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-filelist svg { flex: 0 0 auto; color: var(--vq-text-tertiary); }\n\n/* ── 設定画面の最後（作るボタン）───────────────────────── */\n.vq2-setup-go { padding: 4px 0 8px; }\n\n/* ── 紙面デザインの設定 ────────────────────────────────────────\n   狭い画面では縦に積む。選択欄は必ず親の幅に収める（はみ出させない）。 */\n.vq2-layout-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }\n.vq2-layout-grid > * { min-width: 0; }\n.vq2-layout-grid select.vq2-input { width: 100%; max-width: 100%; }\n.vq2-layout-seed { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }\n.vq2-layout-seed > .vq2-field { flex: 1 1 220px; min-width: 0; }\n.vq2-layout-seed-a { display: flex; gap: 8px; flex-wrap: wrap; }\n/* 操作ボタンは 44px を下回らせない（既存の .vq2-btn の最小高を上書きしない） */\n.vq2-layout-seed-a .vq2-btn { min-height: 44px; }\n/* プレビューは横にスクロールできるようにする（紙面は画面より広い） */\n.vq2-lpv { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-lpv-f { display: block; border: 0; width: 820px; max-width: none; height: 62vh; background: #fff; }\n.is-mobile .vq2-layout-grid { grid-template-columns: minmax(0, 1fr); }\n.is-mobile .vq2-layout-seed { flex-direction: column; align-items: stretch; }\n.is-mobile .vq2-layout-seed-a { width: 100%; }\n.is-mobile .vq2-layout-seed-a .vq2-btn { flex: 1 1 auto; }\n.is-mobile .vq2-lpv-f { height: 52vh; }\n.is-mobile .vq2-setup { gap: 12px; }\n\n/* ── 印刷（組み込み PDF エンジンで使う） ───────────────────── */\n@media print {\n  .vq2-top, .vq2-tabs, .vq2-pane-l, .vq2-pane-r, .vq2-resizer, .vq2-act, .vq2-toast-layer { display: none !important; }\n}\n\n/* ══════════════════════════════════════════════════════════════════════\n   AI ワークスペース（指示 → 進行 → 確認 → 完成）\n\n   ・左＝指示と条件／中央＝中身／右＝AI アクティビティ\n   ・色・角丸・影・時間はすべてトークン。生の値は書かない。\n   ・狭い画面（.is-mobile）では 3 つ並べず、下タブで切り替える。\n     アクティビティは下から引き出すシートにする。\n   ・アニメーションは .is-reduced で必ず打ち消す。\n   ══════════════════════════════════════════════════════════════════════ */\n\n/* hidden を効かせる。\n   ここで作る箱はどれも display を自分で決めるため、\n   これが無いと hidden 属性（UA の [hidden]{display:none}）に勝ってしまい、\n   閉じたはずのものが開いたままになる。 */\n.vq2-ws-l[hidden], .vq2-ws-m[hidden], .vq2-ws-r[hidden],\n.vq2-wsc-b[hidden], .vq2-bash-b[hidden], .vq2-tl-d[hidden],\n.vq2-tlc[hidden], .vq2-aiact-b[hidden] { display: none; }\n\n/* ── 骨格 ───────────────────────────────────────────────────────── */\n.vq2-ws { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0;\n  background: var(--vq-bg-canvas); }\n.vq2-ws-l, .vq2-ws-r { display: flex; flex-direction: column; min-height: 0; flex: 0 0 auto; }\n.vq2-ws-l { width: 340px; border-right: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface); }\n.vq2-ws-r { width: 380px; border-left: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface); }\n.vq2-ws-m { display: flex; flex-direction: column; flex: 1 1 auto;\n  min-width: 0; min-height: 0; background: var(--vq-bg-canvas); }\n.vq2-ws-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;\n  padding: 16px; display: flex; flex-direction: column; gap: 14px; }\n.vq2-ws-m > .vq2-ws-scroll { padding: 18px 22px 28px; gap: 16px; }\n.vq2-ws-tabs { flex: 0 0 auto; padding: 12px 22px 0; }\n.vq2-ws-foot { flex: 0 0 auto; border-top: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface); padding: 12px 16px;\n  padding-bottom: calc(12px + var(--vq-sab,0px)); }\n\n/* ── セクションカード ───────────────────────────────────────────── */\n.vq2-wsc { background: var(--vq-surface); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); box-shadow: var(--vq-shadow-subtle); overflow: hidden; }\n.vq2-ws-m .vq2-wsc { border-color: var(--vq-border); }\n.vq2-wsc-h { display: flex; align-items: flex-start; gap: 10px;\n  padding: 14px 16px 0; }\n.vq2-wsc-ht { display: flex; align-items: flex-start; gap: 10px; flex: 1 1 auto; min-width: 0; }\n.vq2-wsc-i { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;\n  width: 30px; height: 30px; border-radius: var(--vq-r-sm);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-wsc-i .vq2-i { width: 17px; height: 17px; }\n.vq2-wsc-t { margin: 0; font: var(--vq-type-heading-sm); color: var(--vq-text); }\n.vq2-wsc-s { margin: 2px 0 0; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-wsc-a { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; }\n.vq2-wsc-b { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 12px; }\n.vq2-wsc.is-flush > .vq2-wsc-b { padding: 0; gap: 0; }\n.vq2-wsc-f { border-top: 1px solid var(--vq-border-subtle); padding: 12px 16px;\n  background: var(--vq-surface-sunken); }\n.vq2-wsc.tone-accent { border-color: var(--vq-accent-subtle); }\n.vq2-wsc.tone-warning { border-color: var(--vq-warning); background: var(--vq-warning-bg); }\n.vq2-wsc.tone-danger { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n\n/* 折りたためるカード */\n.vq2-wsc-fh { display: flex; align-items: center; gap: 10px; width: 100%;\n  padding: 13px 16px; background: none; border: 0; cursor: pointer; text-align: left;\n  min-height: var(--vq-tap-min); color: inherit; font: inherit; }\n.vq2-wsc-fh:hover { background: var(--vq-surface-hover); }\n.vq2-wsc-fh:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-wsc-fl { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }\n.vq2-wsc-fc { flex: 0 0 auto; color: var(--vq-text-tertiary); display: inline-flex; }\n.vq2-wsc.is-fold > .vq2-wsc-b { padding-top: 0; }\n\n/* ── 区切りタブ ─────────────────────────────────────────────────── */\n.vq2-seg { display: flex; gap: 2px; padding: 3px; overflow-x: auto;\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-md); scrollbar-width: none; }\n.vq2-seg::-webkit-scrollbar { display: none; }\n.vq2-seg-t { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;\n  padding: 7px 13px; min-height: 36px; border: 0; border-radius: var(--vq-r-sm);\n  background: transparent; color: var(--vq-text-secondary); cursor: pointer;\n  font: var(--vq-type-label); transition: background var(--vq-dur-fast) var(--vq-ease-standard),\n    color var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-seg-t .vq2-i { width: 15px; height: 15px; }\n.vq2-seg-t:hover:not([aria-selected=\"true\"]) { background: var(--vq-surface-hover); color: var(--vq-text); }\n.vq2-seg-t[aria-selected=\"true\"] { background: var(--vq-surface); color: var(--vq-text);\n  box-shadow: var(--vq-shadow-subtle); }\n.vq2-seg-t:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-seg-t[disabled] { opacity: .45; cursor: not-allowed; }\n.vq2-seg-n { display: inline-flex; align-items: center; justify-content: center;\n  min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--vq-r-full);\n  background: var(--vq-gray-200); color: var(--vq-text-secondary); font: var(--vq-type-caption); }\n.vq2-seg-n.tone-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-seg-n.tone-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-seg-n.tone-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-seg-n.tone-accent { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n\n/* ── 状態バッジ ─────────────────────────────────────────────────── */\n.vq2-sbadge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px;\n  border-radius: var(--vq-r-full); font: var(--vq-type-caption);\n  background: var(--vq-gray-150); color: var(--vq-text-secondary); }\n.vq2-sbadge .vq2-i { width: 13px; height: 13px; }\n.vq2-sbadge.tone-accent { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-sbadge.tone-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-sbadge.tone-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-sbadge.tone-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-sbadge.tone-info { background: var(--vq-info-bg); color: var(--vq-info-text); }\n.vq2-sbadge.tone-ai { background: var(--vq-ai-bg); color: var(--vq-ai-text); }\n\n/* ── その場のお知らせ ───────────────────────────────────────────── */\n.vq2-note2 { display: flex; align-items: flex-start; gap: 10px; padding: 11px 13px;\n  border-radius: var(--vq-r-md); border: 1px solid var(--vq-info); background: var(--vq-info-bg); }\n.vq2-note2-i { flex: 0 0 auto; color: var(--vq-info-text); display: inline-flex; margin-top: 1px; }\n.vq2-note2-i .vq2-i { width: 17px; height: 17px; }\n.vq2-note2-b { flex: 1 1 auto; min-width: 0; }\n.vq2-note2-t { font: var(--vq-type-label); color: var(--vq-info-text); }\n.vq2-note2-s { font: var(--vq-type-body-sm); color: var(--vq-text-secondary);\n  overflow-wrap: anywhere; }\n.vq2-note2-a { flex: 0 0 auto; display: flex; gap: 6px; }\n.vq2-note2.tone-warning { border-color: var(--vq-warning); background: var(--vq-warning-bg); }\n.vq2-note2.tone-warning .vq2-note2-i, .vq2-note2.tone-warning .vq2-note2-t { color: var(--vq-warning-text); }\n.vq2-note2.tone-danger { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-note2.tone-danger .vq2-note2-i, .vq2-note2.tone-danger .vq2-note2-t { color: var(--vq-danger-text); }\n.vq2-note2.tone-success { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-note2.tone-success .vq2-note2-i, .vq2-note2.tone-success .vq2-note2-t { color: var(--vq-success-text); }\n\n/* ── 空の状態 ───────────────────────────────────────────────────── */\n.vq2-empty2 { display: flex; flex-direction: column; align-items: center; justify-content: center;\n  gap: 8px; padding: 48px 24px; text-align: center; }\n.vq2-empty2-i { display: inline-flex; align-items: center; justify-content: center;\n  width: 52px; height: 52px; border-radius: var(--vq-r-full);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); margin-bottom: 4px; }\n.vq2-empty2-i .vq2-i { width: 24px; height: 24px; }\n.vq2-empty2-t { margin: 0; font: var(--vq-type-heading-md); color: var(--vq-text); }\n.vq2-empty2-s { margin: 0; font: var(--vq-type-body-sm); color: var(--vq-text-tertiary); max-width: 34em; }\n.vq2-empty2-a { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }\n\n/* ── 下に貼りつく操作列 ─────────────────────────────────────────── */\n.vq2-stick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-stick-n { flex: 1 1 auto; min-width: 0; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-stick-a { flex: 0 0 auto; display: flex; gap: 8px; flex-wrap: wrap; }\n\n/* ── 依頼を書く欄 ───────────────────────────────────────────────── */\n.vq2-req2 { display: flex; flex-direction: column; gap: 8px; }\n.vq2-req2-in { width: 100%; box-sizing: border-box; resize: vertical;\n  padding: 11px 13px; border: 1px solid var(--vq-border-strong); border-radius: var(--vq-r-md);\n  background: var(--vq-surface); color: var(--vq-text); font: var(--vq-type-body-md);\n  min-height: 92px; }\n.vq2-req2-in::placeholder { color: var(--vq-text-tertiary); }\n.vq2-req2-in:focus-visible { outline: var(--vq-focus-ring); outline-offset: 1px;\n  border-color: var(--vq-border-focus); }\n.vq2-req2-h { margin: 0; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-req2-chips { display: flex; flex-wrap: wrap; gap: 6px; }\n\n/* 2 列の入力枠 */\n.vq2-fgrid { display: grid; gap: 10px 12px; }\n.vq2-fgrid.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n.vq2-fgrid.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }\n.vq2-fgrid > * { min-width: 0; }\n\n/* ══════════════════════════════════════════════════════════════════════\n   AI アクティビティ（タイムライン）\n   ══════════════════════════════════════════════════════════════════════ */\n/* 入力欄を重ねて置くので、位置の基準になる。 */\n.vq2-aiact { display: flex; flex-direction: column; height: 100%; min-height: 0;\n  position: relative; }\n.vq2-aiact-h { flex: 0 0 auto; display: flex; align-items: center; gap: 8px;\n  padding: 13px 14px; border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface); }\n.vq2-aiact-t { font: var(--vq-type-heading-sm); color: var(--vq-text); flex: 0 0 auto;\n  display: inline-flex; align-items: center; gap: 7px; }\n/* β の印。開発中であることを、開いた人が必ず見える場所に置く。\n   目立たせすぎない（作業の邪魔をしない）が、見落とさない濃さにする。 */\n.vq2-beta {\n  font: 600 10.5px/1 var(--vq-font-sans); letter-spacing: .04em;\n  color: var(--vq-accent-text, #5F579E);\n  background: var(--vq-accent-subtle, #EDEBF8);\n  /* --vq-accent-border は定義が無いので、実在する色から作る。 */\n  border: 1px solid color-mix(in srgb, var(--vq-accent) 26%, transparent);\n  padding: 3px 7px 3px 6px; border-radius: 999px;\n  flex: 0 0 auto; text-transform: none; vertical-align: middle;\n}\n.vq2-aiact-st { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px;\n  font: var(--vq-type-caption); color: var(--vq-text-tertiary); overflow: hidden;\n  text-overflow: ellipsis; white-space: nowrap; }\n.vq2-aiact-st.is-busy { color: var(--vq-accent-text); }\n.vq2-aiact-x { flex: 0 0 auto; }\n.vq2-aiact-b { flex: 1 1 auto; min-height: 0; }\n\n/* 下端の余白は、重ねた入力欄の高さぶん。JS が測って配る（--vq2-tlc-h）。\n   無いと最後の行が入力欄の下に隠れて読めない。 */\n.vq2-tl { height: 100%; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;\n  padding: 14px 14px 18px; padding-bottom: calc(18px + var(--vq2-tlc-h, 96px)); }\n.vq2-tl-list { list-style: none; margin: 0; padding: 0; }\n/* ══ AI の作業ログ ══\n   Claude Code の出し方へ寄せた。1 件 1 行を基本にして、\n   結果は「⎿」でぶら下げる。カードの枠と影はやめ、密度を上げた。\n   10 件も並ぶと、枠つきカードでは 1 画面に 3 件しか入らなかった。\n\n   **狭い画面で崩れないこと**を先に決めてある。\n   ・横スクロールを作らない（長い語は途中で折る）\n   ・押せる場所は 44px 以上（「詳細を見る」）\n   ・時刻や秒数は等幅の数字（行ごとに幅が揺れない） */\n/* できた数と行き先。流れることばと違って **ここは動かない**ので、\n   離れて戻っても今の状態がすぐ分かる。 */\n.vq2-aiact-sum { padding: 10px 12px 12px; border-bottom: 1px solid var(--vq-border-subtle); }\n.vq2-aiact-sum-row { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }\n.vq2-aiact-count { font: var(--vq-type-heading-sm); color: var(--vq-text); font-variant-numeric: tabular-nums; }\n.vq2-aiact-where { font: var(--vq-type-body-xs); color: var(--vq-text-muted); text-align: right; }\n.vq2-aiact-bar { height: 6px; border-radius: 999px; background: var(--vq-gray-200); overflow: hidden; margin-top: 8px; }\n.vq2-aiact-bar > span { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--vq-lav-600); transition: width 320ms ease; }\n@media (prefers-reduced-motion: reduce) { .vq2-aiact-bar > span { transition: none; } }\n/* 会話として読ませつつ、話の続き具合は左の線と点で示す。 */\n.vq2-tl-i { display: flex; gap: 10px; position: relative; padding: 0 0 20px; }\n/* 書式（太字・短いコード・写せる塊） */\n.vq2-md-c { font-family: var(--vq-font-mono, ui-monospace, monospace); font-size: .92em;\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle);\n  border-radius: 5px; padding: 1px 5px; }\n.vq2-md-pre { position: relative; margin: 8px 0 2px; }\n.vq2-md-pre pre { margin: 0; padding: 10px 12px; overflow-x: auto;\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-sm); }\n.vq2-md-pre code { font-family: var(--vq-font-mono, ui-monospace, monospace);\n  font-size: 12px; line-height: 1.7; color: var(--vq-text); white-space: pre; }\n.vq2-md-copy { position: absolute; top: 6px; right: 6px; border: 1px solid var(--vq-border);\n  background: var(--vq-surface); color: var(--vq-text-secondary);\n  border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 600; cursor: pointer; }\n.vq2-md-copy:hover { background: var(--vq-surface-hover); color: var(--vq-text); }\n/* 出てくるときだけ、下からふわっと。**出たあとは動かさない**\n   （読んでいる行が動くと目で追えなくなる）。 */\n@keyframes vq2TlIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }\n.vq2-tl-i.is-fadein { animation: vq2TlIn 260ms cubic-bezier(.22,.61,.36,1) both; }\n@media (prefers-reduced-motion: reduce) { .vq2-tl-i.is-fadein { animation: none; } }\n.vq2-tl-rail { flex: 0 0 auto; width: 14px; display: flex; flex-direction: column;\n  align-items: center; position: relative; }\n/* 点と点をつなぐ縦線。最後の 1 件だけ線を出さない。 */\n.vq2-tl-i::before { content: \"\"; position: absolute; left: 6.5px; top: 18px; bottom: 0;\n  width: 1px; background: var(--vq-border-subtle); }\n.vq2-tl-i:last-child::before { display: none; }\n/* 点は無彩色。丸い色つきの印はやめ、アイコンだけを置く。\n\n   種類ごとに色を塗っていたが、10 件も並ぶと画面が色の点で埋まり、\n   どれが今動いているのかが逆に読み取りにくかった。\n   種類はアイコンの形で分かるので、色は使わない。 */\n.vq2-tl-node { position: relative; z-index: 1; display: inline-flex; align-items: center;\n  justify-content: center; width: 14px; height: 18px;\n  background: var(--vq-surface); color: var(--vq-text-tertiary); }\n.vq2-tl-node .vq2-i { width: 12px; height: 12px; }\n.vq2-tl-node .vq2-spin.sm { width: 10px; height: 10px; }\n/* 終わった行の印。小さな丸だけ。状態で色を変える。 */\n.vq2-tl-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vq-gray-300); }\n.vq2-tl-i.is-done  .vq2-tl-dot { background: var(--vq-success); }\n.vq2-tl-i.is-warn  .vq2-tl-dot { background: var(--vq-warning); }\n.vq2-tl-i.is-error .vq2-tl-dot { background: var(--vq-danger); }\n/* 会話として読ませる。1 行 1 件の記録ではなく、続けて読める文章にする。\n   行間を広げたぶん、段落の間も広げないと件の切れ目が分からなくなる。 */\n.vq2-tl-card { flex: 1 1 auto; min-width: 0; max-width: 100%; overflow: hidden;\n  display: flex; flex-direction: column; gap: 8px; }\n.vq2-tl-h { display: flex; align-items: baseline; gap: 5px; }\n/* 種類のアイコンは見出しの前へ小さく。点を大きくすると行が太る。 */\n.vq2-tl-ic { flex: 0 0 auto; display: inline-flex; align-items: center; color: var(--vq-text-tertiary); }\n.vq2-tl-ic .vq2-i { width: 13px; height: 13px; }\n/* 本文。読み物として読ませるので、ゆったり組む。\n   **一括指定の font は使わない**（var 入りだと後ろの指定を打ち消す）。 */\n/* **横並び（flex）にしてはいけない。** 太字や短いコードが別々の塊として\n   横に並び、折り返せずに切れる（実測でそうなった）。ふつうの段落として組む。 */\n.vq2-tl-t { margin: 0; min-width: 0; color: var(--vq-text);\n  display: block;\n  font-size: 14px; font-weight: 600; line-height: 1.9;\n  letter-spacing: .01em;\n  /* **どこかの規則が nowrap を入れている。** 明示して折り返しへ戻す\n     （これが無いと 1 行のまま横へ伸び、右が切れる）。 */\n  white-space: normal;\n  overflow-wrap: break-word; word-break: normal; line-break: strict; }\n.vq2-tl-t .vq2-tl-ic, .vq2-tl-t .vq2-spin {\n  display: inline-block; vertical-align: -3px; margin-right: 6px; }\n.vq2-tl-badge { flex: 0 0 auto; padding: 1px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-gray-150); color: var(--vq-text-secondary); font: var(--vq-type-caption); }\n/* 進み具合のチップも色を使わない。並んだときに色の点が増えないようにする。 */\n.vq2-tl-badge.tone-accent { background: var(--vq-surface-sunken); color: var(--vq-text-secondary);\n  border: 1px solid var(--vq-border-subtle); font-variant-numeric: tabular-nums; }\n.vq2-tl-time { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-text-disabled);\n  font-variant-numeric: tabular-nums;\n  font-variant-numeric: tabular-nums; }\n/* 結果の行。見出しへぶら下げる。長い語は途中で折って横へはみ出させない。 */\n.vq2-tl-s { margin: 0; color: var(--vq-text-secondary);\n  font-size: 13px; line-height: 1.9; letter-spacing: .01em;\n  white-space: normal;\n  overflow-wrap: break-word; word-break: normal; }\n.vq2-tl-lead { flex: 0 0 auto; color: var(--vq-text-disabled); font-variant-numeric: tabular-nums; }\n.vq2-tl-s > span:last-child { min-width: 0; }\n.vq2-tl-tags { display: flex; flex-wrap: wrap; gap: 4px; }\n.vq2-tl-tag { padding: 1px 7px; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken);\n  border: 1px solid var(--vq-border-subtle); color: var(--vq-text-tertiary); font: var(--vq-type-caption); }\n\n/* 種類ごとの色は付けない。濃さだけを変えて、目立たせたいものを少し濃くする。\n   終わったものは薄く、いま動いているものは濃く。 */\n.vq2-tl-i.is-running .vq2-tl-node { color: var(--vq-text); }\n.vq2-tl-i.is-done    .vq2-tl-node { color: var(--vq-text-tertiary); }\n\n/* 失敗と注意だけは、色に頼らず**濃さと文字**で分かるようにする。\n   アイコンの形（error / warning）が別なので、色を使わなくても区別できる。 */\n.vq2-tl-i.is-error .vq2-tl-node,\n.vq2-tl-i.is-warn  .vq2-tl-node { color: var(--vq-text); }\n.vq2-tl-i.is-error .vq2-tl-t { color: var(--vq-text); font-weight: 600; }\n.vq2-tl-i.is-warn  .vq2-tl-t { color: var(--vq-text); }\n.vq2-tl-i.k-user-followup .vq2-tl-card { background: var(--vq-accent-subtle);\n  border-radius: var(--vq-r-md); padding: 8px 11px; }\n\n/* 追加された行はふわりと出す。\n\n   これまでは 200ms で 5px 上がるだけで、出たことに気づかないうちに終わっていた。\n   下から少し大きめに上がってきて、輪郭がゆっくり定まる感じにする。\n   見出しと本文を少しずらして出すと、読む順にそろう。 */\n.vq2-tl-i.is-new { animation: vq2-tl-in 420ms var(--vq-ease-enter) both; }\n@keyframes vq2-tl-in {\n  from { opacity: 0; transform: translateY(10px) scale(.985); filter: blur(2px); }\n  60%  { opacity: 1; filter: blur(0); }\n  to   { opacity: 1; transform: none; filter: blur(0); }\n}\n/* 点は少し遅れて、ふくらむように出す */\n.vq2-tl-i.is-new .vq2-tl-node { animation: vq2-tl-node-in 380ms var(--vq-ease-spring) 60ms both; }\n@keyframes vq2-tl-node-in {\n  from { opacity: 0; transform: scale(.6); }\n  to   { opacity: 1; transform: none; }\n}\n/* 本文はさらに少し遅れて出す（見出し → 本文 の順に読める） */\n.vq2-tl-i.is-new .vq2-tl-s { animation: vq2-tl-body-in 360ms var(--vq-ease-enter) 110ms both; }\n@keyframes vq2-tl-body-in {\n  from { opacity: 0; transform: translateY(4px); }\n  to   { opacity: 1; transform: none; }\n}\n/* つなぎの縦線は、上から下へ伸びる */\n.vq2-tl-i.is-new::before { animation: vq2-tl-rail-in 420ms var(--vq-ease-enter) 120ms both;\n  transform-origin: top; }\n@keyframes vq2-tl-rail-in { from { transform: scaleY(0); opacity: 0; } to { transform: none; opacity: 1; } }\n.is-reduced .vq2-tl-i.is-new,\n.is-reduced .vq2-tl-i.is-new .vq2-tl-node,\n.is-reduced .vq2-tl-i.is-new .vq2-tl-s,\n.is-reduced .vq2-tl-i.is-new::before { animation: none; }\n\n/* 詳細（開発向けの情報はここに隠す） */\n.vq2-tl-more { align-self: flex-start; display: inline-flex; align-items: center; gap: 3px;\n  padding: 3px 7px 3px 8px; margin-left: -8px; border: 0; background: none; cursor: pointer;\n  border-radius: var(--vq-r-xs); color: var(--vq-text-tertiary); font: var(--vq-type-caption); }\n.vq2-tl-more:hover { background: var(--vq-surface-hover); color: var(--vq-text-secondary); }\n.vq2-tl-more:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-tl-more .vq2-i { width: 13px; height: 13px; }\n.vq2-tl-d { padding: 9px 11px; border-radius: var(--vq-r-sm);\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle); }\n.vq2-tl-long { margin: 0 0 6px; font: var(--vq-type-body-sm); color: var(--vq-text-secondary); }\n.vq2-tl-dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; margin: 0; }\n.vq2-tl-dl dt { font: var(--vq-type-code); color: var(--vq-text-tertiary); }\n.vq2-tl-dl dd { margin: 0; font: var(--vq-type-code); color: var(--vq-text-secondary);\n  overflow-wrap: anywhere; }\n.vq2-tl-a { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }\n\n/* 空のとき */\n.vq2-tl-empty { display: flex; flex-direction: column; align-items: center; justify-content: center;\n  gap: 6px; padding: 40px 18px; text-align: center; height: 100%; }\n.vq2-tl-empty-i { display: inline-flex; width: 42px; height: 42px; align-items: center;\n  justify-content: center; border-radius: var(--vq-r-full);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-tl-empty-t { margin: 0; font: var(--vq-type-body-sm); color: var(--vq-text-secondary); }\n.vq2-tl-empty-s { margin: 0; font: var(--vq-type-caption); color: var(--vq-text-tertiary); max-width: 26em; }\n\n/* ── Bash カード（裏で走った処理。IN / OUT を畳んで持つ）───────── */\n.vq2-bash { border-radius: var(--vq-r-sm); overflow: hidden; background: var(--vq-gray-900);\n  border: 1px solid var(--vq-gray-850); }\n.vq2-bash-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px;\n  background: none; border: 0; cursor: pointer; text-align: left; min-height: 34px; }\n.vq2-bash-h:hover { background: rgba(255, 255, 255, .05); }\n.vq2-bash-h:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-bash-tag { flex: 0 0 auto; padding: 1px 6px; border-radius: var(--vq-r-xs);\n  background: var(--vq-gray-700); color: var(--vq-gray-25); font: var(--vq-type-code);\n  letter-spacing: .02em; }\n.vq2-bash-n { flex: 0 0 auto; color: var(--vq-gray-100); font: var(--vq-type-code); }\n.vq2-bash-s { flex: 1 1 auto; min-width: 0; color: var(--vq-gray-400); font: var(--vq-type-code);\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-bash-c { flex: 0 0 auto; color: var(--vq-gray-500); display: inline-flex; }\n.vq2-bash-c .vq2-i { width: 14px; height: 14px; }\n.vq2-bash-b { padding: 2px 9px 9px; display: flex; flex-direction: column; gap: 8px; }\n.vq2-bash-sec { display: flex; flex-direction: column; gap: 1px; }\n.vq2-bash-l { color: var(--vq-gray-500); font: var(--vq-type-code); letter-spacing: .06em; }\n.vq2-bash-r { display: flex; gap: 8px; padding-left: 10px; }\n.vq2-bash-k2 { flex: 0 0 auto; color: var(--vq-lav-400); font: var(--vq-type-code); }\n.vq2-bash-v { flex: 1 1 auto; min-width: 0; color: var(--vq-gray-100); font: var(--vq-type-code);\n  overflow-wrap: anywhere; }\n\n/* ── 追加指示欄 ─────────────────────────────────────────────────── */\n/* 入力欄は **浮かせる**。土台の白い帯と区切り線をやめ、下の内容が透ける。\n   ただし文字の上に直接重なると読めなくなるので、下だけ薄く敷いて\n   境目をぼかす（面を持つのは入力欄の丸い枠だけ）。 */\n/* ══ 入力欄を浮かせる ══════════════════════════════════════════\n   ログの上に重ねて置く。**上は透明、下へ行くほど不透明**にして、\n   流れてくることばが入力欄の手前で自然に消えるようにする。\n   （帯や区切り線で切ると、板が乗っているように見える）\n\n   重ねたぶん、ログの下端に同じ高さの余白を入れる。無いと最後の行が\n   入力欄の下に隠れて読めない。高さは中身で変わるので JS が測って配る。 */\n.vq2-tlc { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;\n  border-top: 0;\n  /* 敷きは **入力欄より少し沈んだ色**で終わらせる。ここを面と同じ色にすると、\n   入力欄が背景に溶けて、浮いているように見えない（実際そう見えた）。 */\n  background: linear-gradient(to bottom, transparent 0%, var(--vq-bg-subtle) 46%, var(--vq-bg-subtle) 100%);\n  padding: 30px 12px 10px;\n  padding-bottom: calc(10px + var(--vq-sab,0px));\n  display: flex; flex-direction: column; gap: 8px;\n  pointer-events: none; }\n/* 敷いたぶんで押せなくならないよう、中身だけ押せるようにする */\n.vq2-tlc > * { pointer-events: auto; }\n.vq2-tlc-fu:empty { display: none; }\n.vq2-fus { display: flex; flex-direction: column; gap: 4px; max-height: 116px; overflow-y: auto; }\n.vq2-fu-row { display: flex; align-items: baseline; gap: 7px; }\n.vq2-fu-badge { flex: 0 0 auto; padding: 1px 7px; border-radius: var(--vq-r-full);\n  font: var(--vq-type-caption); background: var(--vq-gray-150); color: var(--vq-text-secondary); }\n.vq2-fu-badge.tone-accent { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-fu-badge.tone-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-fu-badge.tone-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-fu-txt { flex: 1 1 auto; min-width: 0; font: var(--vq-type-caption);\n  color: var(--vq-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-tlc-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;\n  padding-bottom: 1px; }\n.vq2-tlc-chips::-webkit-scrollbar { display: none; }\n.vq2-tlc-chips .vq2-chip { flex: 0 0 auto; white-space: nowrap; }\n/* 入力欄の上の一言。小さく、静かに、でも必ず見える所に置く。 */\n/* **font の一括指定は使わない。** var() を含む一括指定は解決が後回しになり、\n   同じブロックの後ろに書いた font-size / font-weight を打ち消す\n   （実測: 11px 600 と書いても 14.5px 400 のままだった）。 */\n/* ログの中身の一番下に置く一言。ログと一緒に流れる。\n   会話文は太い黒。こちらは **薄めの黒（灰色）** にして、読み分けられるようにする。 */\n.vq2-tl-note { margin: 14px 0 2px; text-align: center;\n  font-size: 11px; font-weight: 600; line-height: 1.45;\n  color: var(--vq-text-secondary); }\n/* 入力欄は **丸い一本**。＋ と 送信 を左右の端に置く。 */\n.vq2-tlc-box { display: flex; align-items: center; gap: 8px;\n  border: 1px solid var(--vq-border); border-radius: 999px;\n  /* 浮いているものとして扱うので、面と影は持つ。\n   板に見えないのは、周りの帯を外して敷きをぼかしているから。 */\n  background: var(--vq-surface); padding: 6px 6px 6px 10px;\n  box-shadow: 0 1px 2px rgba(38,34,68,.06), 0 6px 20px rgba(38,34,68,.10); }\n.vq2-tlc-box:focus-within { border-color: var(--vq-border-focus); box-shadow: var(--vq-focus-ring); }\n.vq2-tlc-in { flex: 1 1 auto; min-width: 0; border: 0; background: none; resize: none;\n  color: var(--vq-text); font: var(--vq-type-body-sm); padding: 8px 0; max-height: 132px; }\n.vq2-tlc-in:focus { outline: none; }\n.vq2-tlc-in::placeholder { color: var(--vq-text-tertiary); }\n.vq2-tlc-send { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;\n  width: 36px; height: 36px; border: 0; border-radius: 999px; cursor: pointer;\n  background: var(--vq-accent); color: var(--vq-accent-contrast); }\n.vq2-tlc-send:hover { background: var(--vq-accent-hover); }\n.vq2-tlc-send:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }\n.vq2-tlc-send .vq2-i { width: 17px; height: 17px; }\n\n/* ══════════════════════════════════════════════════════════════════════\n   狭い画面（.is-mobile は .vq2-root 自身に付く）\n   ══════════════════════════════════════════════════════════════════════ */\n.vq2-root.is-mobile .vq2-ws { position: relative; }\n.vq2-root.is-mobile .vq2-ws-l,\n.vq2-root.is-mobile .vq2-ws-r { width: auto; flex: 1 1 auto; border: 0; }\n.vq2-root.is-mobile .vq2-ws-scroll { padding: 12px; gap: 12px; }\n.vq2-root.is-mobile .vq2-ws-m > .vq2-ws-scroll { padding: 12px 12px 24px; }\n.vq2-root.is-mobile .vq2-ws-tabs { padding: 10px 12px 0; }\n.vq2-root.is-mobile .vq2-req2-in { min-height: 104px; font: var(--vq-type-body-md); }\n.vq2-root.is-mobile .vq2-fgrid.c2,\n.vq2-root.is-mobile .vq2-fgrid.c3 { grid-template-columns: minmax(0, 1fr); }\n.vq2-root.is-mobile .vq2-seg-t { min-height: var(--vq-tap-min); padding: 9px 14px; }\n.vq2-root.is-mobile .vq2-wsc-fh { min-height: var(--vq-tap-min); }\n.vq2-root.is-mobile .vq2-tlc-send { width: var(--vq-tap-min); height: var(--vq-tap-min); }\n.vq2-root.is-mobile button.vq2-chip { min-height: var(--vq-tap-min); padding: 6px 14px; }\n.vq2-root.is-mobile .vq2-ws-foot .vq2-btn { min-height: var(--vq-tap-min); }\n.vq2-root.is-mobile .vq2-stick-a { width: 100%; }\n.vq2-root.is-mobile .vq2-stick-a .vq2-btn { flex: 1 1 auto; }\n\n/* AI は下から引き出すシートにする */\n.vq2-ws-sheet { position: absolute; left: 0; right: 0; bottom: 0; top: 0;\n  display: flex; flex-direction: column; background: var(--vq-surface);\n  border-top-left-radius: var(--vq-r-2xl); border-top-right-radius: var(--vq-r-2xl);\n  box-shadow: var(--vq-shadow-modal); transform: translateY(100%);\n  transition: transform var(--vq-dur-slow) var(--vq-ease-enter); z-index: 3;\n  visibility: hidden; }\n.vq2-ws-sheet.is-open { transform: none; visibility: visible; }\n.is-reduced .vq2-ws-sheet { transition: none; }\n\n/* ── 下タブ ─────────────────────────────────────────────────────── */\n.vq2-wsbar { flex: 0 0 auto; display: flex; border-top: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface); padding-bottom: var(--vq-sab,0px); z-index: 4; }\n.vq2-wsbar-t { flex: 1 1 0; display: flex; flex-direction: column; align-items: center;\n  justify-content: center; gap: 2px; min-height: var(--vq-tap-min); padding: 7px 4px;\n  border: 0; background: none; cursor: pointer; position: relative;\n  color: var(--vq-text-tertiary); font: var(--vq-type-caption); }\n.vq2-wsbar-t[aria-selected=\"true\"] { color: var(--vq-accent-text); }\n.vq2-wsbar-t:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-wsbar-t .vq2-i { width: 19px; height: 19px; }\n.vq2-wsbar-d { position: absolute; top: 6px; right: 50%; margin-right: -14px;\n  width: 6px; height: 6px; border-radius: var(--vq-r-full); background: var(--vq-accent); }\n\n/* 印刷では作業用の枠を出さない */\n@media print {\n  .vq2-ws-l, .vq2-ws-r, .vq2-ws-sheet, .vq2-wsbar, .vq2-ws-tabs { display: none !important; }\n}\n\n/* ── ワークスペースの中身（プリセット / Quick Mock 共通）─────────── */\n.vq2-wshead { padding: 2px 2px 0; }\n.vq2-wshead-t { margin: 0; font: var(--vq-type-heading-lg); color: var(--vq-text); }\n.vq2-wshead-s { margin: 3px 0 0; font: var(--vq-type-body-sm); color: var(--vq-text-tertiary); }\n\n.vq2-actwrap { display: flex; flex-direction: column; height: 100%; min-height: 0; }\n.vq2-aiact-eta { flex: 0 0 auto; display: inline-flex; gap: 6px; font: var(--vq-type-caption);\n  color: var(--vq-text-tertiary); white-space: nowrap; }\n.vq2-aiact-eta:empty { display: none; }\n\n/* 実行カードのボタン列 */\n.vq2-runrow { display: flex; gap: 8px; flex-wrap: wrap; }\n.vq2-runrow > .vq2-btn { flex: 1 1 auto; }\n\n/* 問題カード（1 問 = 1 枚。開いた 1 枚だけ中で編集する） */\n.vq2-qbar { display: flex; align-items: center; gap: 8px;\n  font: var(--vq-type-label); color: var(--vq-text-secondary); }\n.vq2-qcards { list-style: none; margin: 0; padding: 0;\n  display: flex; flex-direction: column; gap: 10px; }\n.vq2-qcard { background: var(--vq-surface); border: 1px solid var(--vq-border);\n  border-radius: var(--vq-r-lg); overflow: hidden; cursor: pointer;\n  transition: border-color var(--vq-dur-fast) var(--vq-ease-standard),\n    box-shadow var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-qcard:hover { border-color: var(--vq-border-strong); box-shadow: var(--vq-shadow-subtle); }\n.vq2-qcard.is-open { border-color: var(--vq-accent); box-shadow: var(--vq-shadow-raised); cursor: default; }\n.vq2-qcard.is-err { border-color: var(--vq-danger); }\n.vq2-qcard:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }\n.vq2-qcard.is-dragging { opacity: .5; }\n.vq2-qcard.is-drop-before { box-shadow: 0 -3px 0 0 var(--vq-accent); }\n.vq2-qcard.is-drop-after { box-shadow: 0 3px 0 0 var(--vq-accent); }\n.vq2-qcard-h { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; }\n.vq2-qcard-m { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 5px; }\n.vq2-qcard-dup { flex: 0 0 auto; width: 30px; height: 30px; margin-top: -2px; padding: 0; border: 0; border-radius: 9px; background: none; color: var(--vq-text-tertiary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }\n.vq2-qcard-dup:hover { background: var(--vq-surface-hover); color: var(--vq-text); }\n.vq2-qcard-dup svg { width: 16px; height: 16px; }\n.vq2-qcard-c { flex: 0 0 auto; color: var(--vq-text-tertiary); display: inline-flex; margin-top: 2px; }\n.vq2-qcard-b { border-top: 1px solid var(--vq-border-subtle); cursor: default; }\n/* 中に入れる編集フォームは、もともと縦に伸びる枠の中身だった。\n   カードの中では自分の高さで置く（枠いっぱいに広げない）。 */\n.vq2-qcard-b .vq2-pane-h { position: static; border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface-sunken); }\n.vq2-qcard-b .vq2-pane-b { flex: none; overflow: visible; }\n\n/* 押せるチップ（例示の言い回し）。\n   button の既定の枠が出ないよう、ここで作り直す。 */\nbutton.vq2-chip { border: 1px solid var(--vq-border); background: var(--vq-surface);\n  color: var(--vq-text-secondary); cursor: pointer; min-height: 28px; padding: 4px 11px;\n  font: var(--vq-type-caption);\n  transition: background var(--vq-dur-fast) var(--vq-ease-standard),\n    border-color var(--vq-dur-fast) var(--vq-ease-standard); }\nbutton.vq2-chip:hover { background: var(--vq-accent-subtle); border-color: var(--vq-accent-subtle);\n  color: var(--vq-accent-text); }\nbutton.vq2-chip:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }\n\n/* hidden を効かせる（ボタンは display を自分で決めているため）*/\n.vq2-btn[hidden] { display: none; }\n\n/* まだ何も無いときの迎え方（印 ＋ 一言 ＋ はじめの一手）*/\n.vq2-startpad { display: flex; flex-direction: column; align-items: center; justify-content: center;\n  gap: 18px; padding: 56px 24px; min-height: 60%; }\n.vq2-start-a { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }\n.vq2-root.is-mobile .vq2-startpad { padding: 32px 16px; }\n.vq2-root.is-mobile .vq2-start-a { width: 100%; flex-direction: column; }\n.vq2-root.is-mobile .vq2-start-a .vq2-btn { width: 100%; min-height: var(--vq-tap-min); }\n\n/* 直し方の候補（何をするのかを必ず添える）*/\n.vq2-fixlist { display: flex; flex-direction: column; gap: 8px; }\n.vq2-fixrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-fixrow > .vq2-hint { flex: 1 1 220px; min-width: 0; margin: 0; }\n.vq2-root.is-mobile .vq2-fixrow > .vq2-btn { width: 100%; min-height: var(--vq-tap-min); }\n\n/* 縦に積む枠は縮ませない。\n   これが無いと、入っているものが多いときに 1 枚ずつ潰れて中身が切れる。 */\n.vq2-ws-scroll > * { flex: 0 0 auto; }\n\n/* 左ペインは幅が狭い。選択の並びは 2 列にする（4 列だと文字が折り返して読めない）*/\n.vq2-ws-l .vq2-pickgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n.vq2-ws-l .vq2-pick-t { font: var(--vq-type-label); }\n.vq2-ws-l .vq2-grid.c2, .vq2-ws-l .vq2-grid.c3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n.vq2-ws-l .vq2-layout-grid { grid-template-columns: minmax(0, 1fr); }\n\n/* 現在地（条件 → 構成案 → 問題 → 紙面）*/\n.vq2-steps { display: flex; align-items: center; gap: 6px; padding: 2px 2px 0; flex-wrap: wrap; }\n.vq2-steps-i { display: inline-flex; align-items: center; gap: 5px;\n  font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-steps-i.is-now { color: var(--vq-accent-text); }\n.vq2-steps-i.is-done { color: var(--vq-success-text); }\n.vq2-steps-d { width: 7px; height: 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-gray-300); }\n.vq2-steps-i.is-now .vq2-steps-d { background: var(--vq-accent); }\n.vq2-steps-i.is-done .vq2-steps-d { background: var(--vq-success); }\n.vq2-steps-s { width: 12px; height: 1px; background: var(--vq-border); }\n\n/* 中身がまだ無い Bash カード（開けない）*/\n.vq2-bash.is-empty .vq2-bash-h { cursor: default; opacity: .8; }\n.vq2-bash.is-empty .vq2-bash-h:hover { background: none; }\n\n/* 経過と残り時間（見出しの中に置くので、詰めずに離す）*/\n.vq2-eta { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n\n/* 横に伸びる中身（チップの列・長い語）を親の幅に閉じ込める。\n   flex の子は既定で内容の幅まで広がるため、これが無いと\n   パネルごと横に押し出されてしまう。 */\n.vq2-aiact, .vq2-aiact > *, .vq2-tlc > *, .vq2-tl-card > * { min-width: 0; }\n.vq2-tlc-chips { max-width: 100%; }\n.vq2-ws-sheet { overflow: hidden; }\n\n/* 見出しの中身は、幅が足りなければ縮めて省略する。\n   「経過…残り…」を縮めないと、右端の停止ボタンが画面の外へ押し出される。 */\n.vq2-aiact-h { min-width: 0; }\n.vq2-aiact-eta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }\n.vq2-aiact-eta .vq2-eta-s { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-aiact-x { flex: 0 0 auto; }\n/* 狭い画面では「残り およそ…」まで出す幅が無い。経過と件数だけ残す。 */\n.vq2-root.is-mobile .vq2-aiact-eta .vq2-eta-s { display: none; }\n\n/* ── 添付チップ（入力欄の上）───────────────────────────────────── */\n.vq2-tlc-att:empty, .vq2-tlc-opt:empty { display: none; }\n/* 資料は **横に並ぶ小さな札**にする。\n   1 件ずつ縦に積む箱だったので、3 件付けただけで入力欄より大きくなっていた。\n   名前・状態・消すボタンだけを 1 行に置き、詳しい話は必要なときだけ下へ出す。 */\n.vq2-atts { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px;\n  max-height: 96px; overflow-y: auto; }\n.vq2-att { display: flex; flex-direction: column; gap: 4px; padding: 3px 8px;\n  border: 1px solid var(--vq-border); border-radius: 999px;\n  background: var(--vq-surface); max-width: 100%; }\n/* 進み具合やページごとの結果が付くときだけ、丸をやめて箱に戻す */\n.vq2-att:has(.vq2-att-p), .vq2-att:has(.vq2-att-pages), .vq2-att.is-bad {\n  border-radius: var(--vq-r-sm); padding: 6px 8px; flex-basis: 100%; }\n.vq2-att-r { display: flex; align-items: center; gap: 8px; }\n.vq2-att.is-bad { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-att-i { flex: 0 0 auto; color: var(--vq-text-tertiary); display: inline-flex; }\n.vq2-att-i .vq2-i { width: 16px; height: 16px; }\n/* 名前と大きさは **横に並べる**。縦に積むと 1 件で 2 行ぶんの高さになる。 */\n.vq2-att-m { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: row;\n  align-items: baseline; gap: 6px; }\n.vq2-att-n { color: var(--vq-text); font-size: 12px; font-weight: 500;\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 168px; }\n.vq2-att-s { color: var(--vq-text-tertiary); font-size: 11px; flex: 0 0 auto; }\n.vq2-att-st { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px;\n  padding: 2px 8px; border-radius: var(--vq-r-full); font: var(--vq-type-caption);\n  background: var(--vq-gray-150); color: var(--vq-text-secondary); white-space: nowrap; }\n.vq2-att-st .vq2-i { width: 12px; height: 12px; }\n.vq2-att-st.tone-accent { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-att-st.tone-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-att-st.tone-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-att-st.tone-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-att-b { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;\n  width: 26px; height: 26px; border: 0; border-radius: var(--vq-r-xs); cursor: pointer;\n  background: none; color: var(--vq-text-tertiary); }\n.vq2-att-b:hover { background: var(--vq-surface-hover); color: var(--vq-text); }\n.vq2-att-b:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-att-b .vq2-i { width: 14px; height: 14px; }\n.vq2-att-note { font: var(--vq-type-caption); color: var(--vq-text-secondary); padding-left: 24px; }\n\n/* 送信の進み具合。「12 個中 7 個目」を主にする（％だけだと再開の位置が分からない）。 */\n.vq2-att-up { display: flex; align-items: center; gap: 8px; padding-left: 24px; }\n.vq2-att-bar { flex: 1 1 auto; height: 4px; border-radius: var(--vq-r-full);\n  background: var(--vq-gray-200); overflow: hidden; }\n.vq2-att-bar > span { display: block; height: 100%; border-radius: var(--vq-r-full);\n  background: var(--vq-accent); transition: width 160ms linear; }\n.vq2-att-upn { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  white-space: nowrap; }\n\n/* ページごとの読み取り結果。数え上げ＋点の並び。 */\n.vq2-att-pg { display: flex; flex-direction: column; gap: 5px; padding-left: 24px; }\n.vq2-att-pcs { display: flex; flex-wrap: wrap; gap: 5px; }\n.vq2-att-pc { display: inline-flex; align-items: center; padding: 1px 7px;\n  border-radius: var(--vq-r-full); font: var(--vq-type-caption);\n  background: var(--vq-gray-150); color: var(--vq-text-secondary); }\n.vq2-att-pc.tone-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-att-pc.tone-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-att-pc.tone-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-att-pds { display: flex; flex-wrap: wrap; gap: 3px; }\n.vq2-att-pd { width: 8px; height: 8px; border-radius: 2px; background: var(--vq-gray-300); }\n.vq2-att-pd.tone-success { background: var(--vq-success); }\n.vq2-att-pd.tone-warning { background: var(--vq-warning); }\n.vq2-att-pd.tone-danger { background: var(--vq-danger); }\n.vq2-att-psum { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n\n/* 部分成功のときの 4 つの手 */\n.vq2-att-acts { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 24px; }\n.vq2-att-act { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;\n  border: 1px solid var(--vq-border); border-radius: var(--vq-r-sm); cursor: pointer;\n  background: var(--vq-surface); color: var(--vq-text); font: var(--vq-type-caption); }\n.vq2-att-act:hover { background: var(--vq-surface-hover); }\n.vq2-att-act:focus-visible { outline: var(--vq-focus-ring); outline-offset: 1px; }\n.vq2-att-act.is-primary { background: var(--vq-accent); border-color: var(--vq-accent);\n  color: var(--vq-accent-contrast); }\n.vq2-att-act.is-primary:hover { background: var(--vq-accent-hover); }\n.vq2-att-act .vq2-i { width: 13px; height: 13px; }\n\n/* 100MB まではローカル経路だけ、という但し書き */\n.vq2-att-route { font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  padding: 2px 4px; }\n\n/* 指で押せる大きさを確保する（44px） */\n.vq2-root.is-mobile .vq2-att-b { width: var(--vq-tap-min); height: var(--vq-tap-min); }\n.vq2-root.is-mobile .vq2-att-act { min-height: var(--vq-tap-min); }\n\n/* 入力欄のすぐ上に置く小さな設定 */\n.vq2-tlc-opt { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-tlc-opt .vq2-check { padding: 0; font: var(--vq-type-caption); }\n.vq2-tlc-opt-n { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n\n/* 添付ボタン（入力欄の左） */\n.vq2-tlc-att-b { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;\n  width: 32px; height: 32px; margin-left: 0; border: 0; border-radius: 999px;\n  background: none; color: var(--vq-text-tertiary); cursor: pointer; }\n.vq2-tlc-att-b:hover { background: var(--vq-surface-hover); color: var(--vq-accent-text); }\n.vq2-tlc-att-b:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-tlc-att-b .vq2-i { width: 18px; height: 18px; }\n.vq2-root.is-mobile .vq2-tlc-att-b { width: var(--vq-tap-min); height: var(--vq-tap-min); }\n.vq2-root.is-mobile .vq2-att-b { width: 38px; height: 38px; }\n\n.vq2-qbar-h { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-root.is-mobile .vq2-qbar-h { display: none; }\n.vq2-start-h { margin: 0; font: var(--vq-type-body-sm); color: var(--vq-text-tertiary); text-align: center; }\n\n/* 狭い画面では中央タブのアイコンを省いて、4 つを画面幅に収める。\n   横スクロールに逃がすと、隠れたタブに気づけない。 */\n.vq2-root.is-mobile .vq2-seg-t .vq2-i { display: none; }\n.vq2-root.is-mobile .vq2-seg-t { padding: 9px 10px; gap: 4px; }\n.vq2-root.is-mobile .vq2-seg { justify-content: space-between; }\n\n/* ══════════════════════════════════════════════════════════════════════\n   V3 Question Renderer\n   ・形式が変わってもボタンの位置が動かないよう、寸法は共通のものを使う。\n   ・色だけで正誤を伝えない。必ず言葉のラベルを添える（HTML 側）。\n   ══════════════════════════════════════════════════════════════════════ */\n\n/* ── 共通 ── */\n.vq2-qtools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }\n.vq2-qinst { font: var(--vq-type-body); color: var(--vq-text-secondary); margin-bottom: 8px; }\n.vq2-qctx { padding: 12px 14px; margin-bottom: 12px; border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle); line-height: 1.9; }\n.vq2-qmedia { margin: 10px 0; }\n.vq2-qmedia img { max-width: 100%; height: auto; border-radius: var(--vq-r-lg); border: 1px solid var(--vq-border-subtle); display: block; }\n.vq2-qmedia figcaption { font: var(--vq-type-caption); color: var(--vq-text-tertiary); margin-top: 6px; }\n.vq2-qmedia-v { max-width: 100%; border-radius: var(--vq-r-lg); }\n.vq2-qfallback { border-color: var(--vq-warning, var(--vq-border-strong)); }\n.vq2-select { appearance: none; padding-right: 30px;\n  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);\n  background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }\n.vq2-input.is-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }\n\n/* ── 本文（RichContent） ── */\n.vq2-rc p { margin: 0 0 8px; line-height: 1.9; }\n.vq2-rc p:last-child { margin-bottom: 0; }\n.vq2-rc ul, .vq2-rc ol { margin: 0 0 8px; padding-left: 1.4em; line-height: 1.9; }\n.vq2-rc blockquote { margin: 0 0 8px; padding: 6px 12px; border-left: 3px solid var(--vq-border-strong);\n  color: var(--vq-text-secondary); }\n.vq2-rc-code { margin: 0 0 8px; padding: 10px 12px; border-radius: var(--vq-r-md); overflow-x: auto;\n  background: var(--vq-surface-sunken); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }\n.vq2-rc-formula { margin: 0 0 8px; padding: 8px 12px; border-radius: var(--vq-r-md);\n  background: var(--vq-surface-sunken); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }\n.vq2-rc-br { height: 8px; }\n.vq2-rc-img { max-width: 100%; height: auto; border-radius: var(--vq-r-md); }\n.vq2-rc-audio { width: 100%; max-width: 420px; margin: 6px 0; }\n.vq2-rc-ref { display: inline-block; padding: 1px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); font: var(--vq-type-caption); }\n.vq2-rc-note { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-rc-tw { overflow-x: auto; margin: 0 0 8px; }\n\n/* ── 表 ── */\n.vq2-tw { overflow-x: auto; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); }\n.vq2-table { width: 100%; border-collapse: collapse; font: var(--vq-type-body); }\n.vq2-table caption { caption-side: top; text-align: left; padding: 10px 12px;\n  font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-table th, .vq2-table td { padding: 9px 12px; border-bottom: 1px solid var(--vq-border-subtle);\n  border-right: 1px solid var(--vq-border-subtle); text-align: left; vertical-align: middle; }\n.vq2-table th { background: var(--vq-surface-sunken); font-weight: 600; }\n.vq2-table tr:last-child td, .vq2-table tr:last-child th { border-bottom: 0; }\n.vq2-table th:last-child, .vq2-table td:last-child { border-right: 0; }\n.vq2-table td.is-edit { padding: 6px; background: var(--vq-bg-elevated); min-width: 120px; }\n.vq2-table td.is-edit.is-correct { background: var(--vq-success-bg); }\n.vq2-table td.is-edit.is-wrong { background: var(--vq-danger-bg); }\n.vq2-cell-ans { font: var(--vq-type-caption); color: var(--vq-text-tertiary); margin-top: 4px; }\n\n/* ── 音声 ── */\n.vq2-audio { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; margin: 0 0 12px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-audio-meta { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-audio-bar { flex: 1 1 120px; height: 4px; border-radius: var(--vq-r-full); background: var(--vq-border-subtle); overflow: hidden; }\n.vq2-audio-fill { display: block; height: 100%; background: var(--vq-accent); transition: width .15s linear; }\n/* 長さが分からない読み上げ（端末の声）。**進み具合のふりをしない**ので、\n   バーは端から端へ流れるだけにする。 */\n.vq2-audio.is-unknown .vq2-audio-bar { position: relative; }\n.vq2-audio.is-unknown .vq2-audio-fill { width: 35% !important; animation: vq2-audio-slide 1.1s ease-in-out infinite; }\n@keyframes vq2-audio-slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(320%); } }\n\n/* ── 図表 ── */\n.vq2-chart { margin: 0 0 12px; padding: 12px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-chart-t { font-weight: 600; margin-bottom: 8px; }\n.vq2-chart-w { overflow-x: auto; }\n.vq2-chart-w svg { width: 100%; min-width: 380px; height: auto; display: block; }\n.vq2-chart-lg { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font: var(--vq-type-caption); }\n.vq2-chart-lgi { display: inline-flex; align-items: center; gap: 6px; }\n.vq2-chart-pw { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }\n.vq2-chart-pw svg { width: 200px; height: 200px; flex: 0 0 auto; }\n.vq2-chart-lg.is-col { flex-direction: column; gap: 6px; margin-top: 0; align-items: flex-start; }\n.vq2-ch-pie { stroke: var(--vq-bg-elevated); stroke-width: 2; }\n.vq2-ch-pct { margin-left: 6px; color: var(--vq-text-tertiary); font-weight: 500; }\n.vq2-ch-sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }\n.vq2-ch-grid { stroke: var(--vq-border-subtle); stroke-width: 1; }\n.vq2-ch-axis { stroke: var(--vq-border-strong); stroke-width: 1.5; }\n.vq2-ch-lbl { fill: var(--vq-text-tertiary); font-size: 11px; }\n.vq2-ch-line { stroke-width: 2; }\n.vq2-ch-s0 { fill: var(--vq-accent); stroke: var(--vq-accent); background: var(--vq-accent); }\n.vq2-ch-s1 { fill: #7a8ca8; stroke: #7a8ca8; background: #7a8ca8; }\n.vq2-ch-s2 { fill: #b58a4a; stroke: #b58a4a; background: #b58a4a; }\n.vq2-ch-s3 { fill: #6f9b78; stroke: #6f9b78; background: #6f9b78; }\n/* ══ 折れ線は塗らない ══════════════════════════════════════\n   系列の色（s0〜s3）は棒と円のために fill を持つ。同じ強さなので\n   **後ろに書いたほうが勝つ**。前に置いていたため、折れ線の下が\n   塗りつぶされて面グラフのように見えていた（実測 2026-08-13）。\n   polyline は線だけ。ここは s0〜s3 より後ろに置く。 */\npolyline.vq2-ch-line { fill: none; }\n\n/* ── 選択肢（画像つき） ── */\n.vq2-q-choices.is-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }\n.vq2-q-choices.is-grid .vq2-choice { flex-direction: column; align-items: stretch; }\n.vq2-choice-img { width: 100%; height: auto; border-radius: var(--vq-r-md); display: block; }\n.vq2-choice-cap { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-choice-a2 { margin-top: 4px; }\n.vq2-root.is-mobile .vq2-q-choices.is-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n\n/* ── 自信度 ── */\n.vq2-conf { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--vq-border-subtle); }\n.vq2-conf-r { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }\n.vq2-conf-b { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; min-height: var(--vq-tap-min);\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-full); background: var(--vq-bg-elevated);\n  cursor: pointer; font: var(--vq-type-caption); }\n.vq2-conf-b:hover:not(:disabled) { border-color: var(--vq-border-strong); }\n.vq2-conf-b.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-conf-n { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font-weight: 700; }\n.vq2-conf-b.is-on .vq2-conf-n { background: var(--vq-accent); color: var(--vq-accent-contrast); }\n\n/* ── ヒント ── */\n.vq2-hintrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }\n.vq2-hint-chars { display: inline-flex; gap: 3px; }\n.vq2-hint-c { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 26px;\n  border-radius: var(--vq-r-sm); background: var(--vq-surface-sunken); color: var(--vq-text-tertiary);\n  font-family: ui-monospace, monospace; }\n.vq2-hint-c.is-on { background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 700; }\n.vq2-hint.is-over { color: var(--vq-danger-text); font-weight: 600; }\n.vq2-hint.is-short { color: var(--vq-warning-text, var(--vq-text-secondary)); }\n.vq2-rubric-peek { margin-top: 12px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  padding: 10px 12px; background: var(--vq-surface-sunken); }\n.vq2-rubric-peek summary { cursor: pointer; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-rubric-list { margin: 8px 0 0; padding-left: 1.2em; }\n.vq2-rubric-list li { display: flex; gap: 10px; justify-content: space-between; padding: 3px 0; line-height: 1.7; }\n\n/* ── 運ぶ操作の共通 ── */\n.vq2-dragwrap { display: flex; flex-direction: column; gap: 12px; }\n.vq2-drag-ghost { position: fixed; z-index: 9999; pointer-events: none; opacity: .9;\n  box-shadow: var(--vq-shadow-md, 0 8px 24px rgba(0,0,0,.18)); transform: rotate(-1deg); }\n[data-drag-id] { touch-action: none; }\n[data-drag-id].is-held { border-color: var(--vq-accent) !important; background: var(--vq-accent-subtle) !important;\n  box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n[data-drop-zone].is-target { border-style: dashed; }\n[data-drop-zone].is-over { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-bank { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; min-height: 62px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-bank-i { padding: 8px 14px; min-height: var(--vq-tap-min); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-full); background: var(--vq-bg-elevated); cursor: pointer; font: var(--vq-type-body); }\n.vq2-bank-i:hover:not(:disabled) { border-color: var(--vq-border-strong); }\n.vq2-bank-i.is-used { opacity: .38; cursor: default; text-decoration: line-through; }\n\n/* ── 穴埋め ── */\n/* 文の中の空欄。下の答え欄と **同じ番号**が付く。\n   下線の入れ物にすることで「ここに書く」と分かる。 */\n.vq2-blankmark { display: inline-flex; align-items: center; justify-content: center;\n  min-width: 4.5em; padding: 0 6px; margin: 0 2px; vertical-align: baseline;\n  border-bottom: 2px solid var(--vq-accent); border-radius: 2px;\n  background: var(--vq-accent-subtle); }\n.vq2-mathbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }\n.vq2-mathpal { border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-md);\n  background: var(--vq-surface-sunken); padding: 10px 12px; margin-bottom: 10px; }\n.vq2-mathpal[hidden] { display: none; }\n.vq2-mathpal-g { font-size: 11px; color: var(--vq-text-tertiary); margin: 8px 0 4px; }\n.vq2-mathpal-g:first-child { margin-top: 0; }\n.vq2-mathpal-r { display: flex; flex-wrap: wrap; gap: 6px; }\n.vq2-mathpal-b { min-width: 40px; height: 34px; padding: 0 8px; cursor: pointer;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-sm);\n  background: var(--vq-bg-elevated); color: var(--vq-text-primary); font-size: 14px; line-height: 1; }\n.vq2-mathpal-b:hover { background: var(--vq-surface-hover); border-color: var(--vq-accent); }\n.vq2-math { display: inline-block; }\n.vq2-math.is-block { display: block; margin: 10px 0; text-align: center; overflow-x: auto; }\n.vq2-math .katex { font-size: 1.05em; }\n.vq2-math .katex-display { margin: 0; }\n.vq2-blankmark i { font-style: normal; font: var(--vq-type-caption); font-weight: 700;\n  color: var(--vq-accent-text); }\n.vq2-blanks { display: flex; flex-direction: column; gap: 10px; }\n.vq2-blank-row { display: flex; align-items: center; gap: 10px; }\n.vq2-blank-n { flex: 0 0 auto; min-width: 30px; height: 30px; display: inline-flex; align-items: center;\n  justify-content: center; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); font-weight: 700; }\n.vq2-blank-row .vq2-input { flex: 1 1 auto; min-width: 0; }\n.vq2-blank-slot { flex: 1 1 auto; min-width: 0; min-height: var(--vq-tap-min); padding: 8px 12px; text-align: left;\n  border: 1px dashed var(--vq-border-strong); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); cursor: pointer; }\n.vq2-blank-slot.is-filled { border-style: solid; border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n\n/* ── 並べ替え ── */\n.vq2-sort { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }\n.vq2-sort-i { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-height: var(--vq-tap-min);\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); cursor: grab; }\n.vq2-sort-i:focus-visible { outline: none; border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-sort-i.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-sort-i.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-sort-h { flex: 0 0 auto; color: var(--vq-text-tertiary); display: inline-flex; }\n.vq2-sort-h .vq2-i { width: 18px; height: 18px; }\n.vq2-sort-n { flex: 0 0 auto; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font: var(--vq-type-caption); font-weight: 700;\n  font-variant-numeric: tabular-nums; }\n.vq2-sort-m { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; line-height: 1.7; }\n.vq2-sort-img { width: 56px; height: 44px; object-fit: cover; border-radius: var(--vq-r-sm); }\n.vq2-sort-a { flex: 0 0 auto; display: flex; gap: 2px; }\n\n/* ── 組み合わせ ── */\n.vq2-match-b { position: relative; display: grid; grid-template-columns: 1fr 44px 1fr; gap: 0; align-items: start; }\n.vq2-match-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }\n/* 線を描く SVG は position:absolute なので **列を 1 つも使わない**。\n   そのため右の列が 2 列目（44px）へ入り、日本語が 1 文字ずつ縦に折れていた\n   （実測 2026-08-12）。置き場所を数えさせず、番号で決め打ちする。 */\n.vq2-match-col[data-side=\"left\"] { grid-column: 1; }\n.vq2-match-col[data-side=\"right\"] { grid-column: 3; }\n.vq2-match-i { display: flex; align-items: center; gap: 8px; padding: 10px 12px; min-height: var(--vq-tap-min);\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated);\n  cursor: pointer; text-align: left; }\n.vq2-match-i:hover:not(:disabled) { border-color: var(--vq-border-strong); }\n.vq2-match-i.is-linked { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-match-i.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-match-i.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-match-i.is-dummy { opacity: .6; }\n.vq2-match-n { flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-match-t { flex: 1 1 auto; min-width: 0; line-height: 1.6; }\n.vq2-match-link { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-accent-text); font-weight: 700; }\n.vq2-match-img { width: 44px; height: 34px; object-fit: cover; border-radius: var(--vq-r-sm); }\n.vq2-match-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }\n.vq2-match-lines path { fill: none; stroke: var(--vq-accent); stroke-width: 2; opacity: .75; }\n/* スマホでは左右に並べない。**幅が半分になると、日本語の説明文が\n   4 行 5 行と折れて読めなくなる**（実測 390px で 22 字が 4 行）。\n   上下に積めば 1 行あたりの字数が倍になり、3 行までに収まる。 */\n.vq2-root.is-mobile .vq2-match-b { grid-template-columns: 1fr; gap: 12px; }\n.vq2-root.is-mobile .vq2-match-col[data-side=\"left\"],\n.vq2-root.is-mobile .vq2-match-col[data-side=\"right\"] { grid-column: 1; }\n.vq2-root.is-mobile .vq2-match-lines { display: none; }\n\n/* ── 分類 ── */\n.vq2-cls-pool { padding: 12px; border: 1px dashed var(--vq-border-strong); border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); }\n.vq2-cls-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; min-height: 40px; align-items: flex-start; }\n.vq2-cls-i { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; min-height: var(--vq-tap-min);\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-full); background: var(--vq-bg-elevated); cursor: pointer; }\n.vq2-cls-i.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-cls-i.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-cls-img { width: 30px; height: 24px; object-fit: cover; border-radius: 3px; }\n.vq2-cls-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }\n.vq2-cls-g { padding: 12px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); min-height: 100px; }\n.vq2-cls-g:focus-visible { outline: none; border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-cls-g.is-ex { background: var(--vq-surface-sunken); }\n.vq2-cls-gh { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 600; }\n.vq2-cls-c { font: var(--vq-type-caption); color: var(--vq-text-tertiary); font-variant-numeric: tabular-nums; }\n\n/* ── 画像内の位置・ラベル配置 ── */\n.vq2-imgq { display: flex; flex-direction: column; gap: 8px; }\n.vq2-imgq-vp { position: relative; overflow: auto; max-height: 62vh; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); touch-action: pan-x pan-y; }\n.vq2-imgq-vp:focus-visible { outline: none; border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-imgq-in { position: relative; transform-origin: 0 0; display: inline-block; min-width: 100%; }\n.vq2-imgq-in img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }\n.vq2-pt { position: absolute; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 50%;\n  background: var(--vq-accent); color: var(--vq-accent-contrast); display: inline-flex; align-items: center; justify-content: center;\n  font: var(--vq-type-caption); font-weight: 700; box-shadow: 0 0 0 3px rgba(255,255,255,.8); pointer-events: none; }\n.vq2-hs { position: absolute; border: 2px dashed var(--vq-success); background: rgba(60,150,90,.16); pointer-events: none; }\n.vq2-hs.is-circ { transform: translate(-50%, -50%); border-radius: 50%; height: 0; }\n.vq2-zoom-n { font: var(--vq-type-caption); color: var(--vq-text-secondary); font-variant-numeric: tabular-nums; min-width: 34px; text-align: center; }\n.vq2-lslot { position: absolute; transform: translate(-50%, -50%); min-width: 34px; min-height: 30px; padding: 4px 9px;\n  border: 2px solid var(--vq-border-strong); border-radius: var(--vq-r-md); background: var(--vq-bg-elevated);\n  font: var(--vq-type-caption); font-weight: 600; cursor: pointer; }\n.vq2-lslot.is-filled { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-lslot.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-lslot.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-lslot-ans { display: block; font-weight: 400; color: var(--vq-success-text); }\n\n/* ── 誤文訂正 ── */\n.vq2-ec { display: flex; flex-direction: column; gap: 10px; }\n.vq2-ec-body { padding: 12px 14px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); line-height: 2; }\n.vq2-ec-m { background: var(--vq-warning-bg, var(--vq-accent-subtle)); color: inherit; padding: 1px 3px; border-radius: 3px; }\n.vq2-ec-n { font-size: .7em; margin-left: 2px; }\n.vq2-ec-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-ec-row.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-ec-row.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-ec-n2 { flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-ec-w { flex: 0 0 auto; text-decoration: line-through; color: var(--vq-text-secondary); }\n.vq2-ec-ar { flex: 0 0 auto; color: var(--vq-text-tertiary); }\n.vq2-ec-row .vq2-input { flex: 1 1 160px; min-width: 0; }\n.vq2-ec-ans { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-success-text); }\n\n/* ── カード ── */\n.vq2-card3 { display: flex; flex-direction: column; gap: 12px; align-items: stretch; }\n.vq2-card3-f { position: relative; min-height: 180px; padding: 26px 22px; display: flex; flex-direction: column;\n  align-items: center; justify-content: center; gap: 12px; cursor: pointer; text-align: center;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-xl, var(--vq-r-lg)); background: var(--vq-bg-elevated);\n  transition: transform var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-card3-f:hover { border-color: var(--vq-border-strong); }\n.vq2-card3-f.is-flipped { background: var(--vq-accent-subtle); border-color: var(--vq-accent); }\n.vq2-card3-t { font-size: 1.5rem; font-weight: 600; line-height: 1.6; word-break: break-word; }\n.vq2-card3-h { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-card3-a { display: flex; gap: 10px; }\n.vq2-card3-a .vq2-btn { flex: 1 1 0; }\n\n/* ── 複合大問 ── */\n.vq2-comp { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }\n.vq2-comp.is-mobile { display: block; }\n.vq2-comp-l { position: sticky; top: 0; max-height: 74vh; overflow: auto; padding-right: 4px; }\n.vq2-comp-r { min-width: 0; }\n.vq2-comp-src { padding: 14px 16px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); line-height: 1.95; }\n.vq2-comp-inst { font-weight: 600; margin-bottom: 8px; }\n.vq2-comp-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }\n.vq2-comp-t { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; min-height: 36px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-full); background: var(--vq-bg-elevated);\n  cursor: pointer; font: var(--vq-type-caption); }\n.vq2-comp-t.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 700; }\n.vq2-comp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vq-success); display: inline-block; }\n.vq2-comp-q { padding: 14px 16px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); }\n.vq2-comp-tabs { display: flex; gap: 6px; margin-bottom: 12px; }\n.vq2-comp-tb { flex: 1 1 0; padding: 10px; min-height: var(--vq-tap-min); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); cursor: pointer; font: var(--vq-type-body); }\n.vq2-comp-tb.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 600; }\n.vq2-root.is-mobile .vq2-comp { grid-template-columns: 1fr; }\n.vq2-root.is-mobile .vq2-comp-l { position: static; max-height: none; }\n\n/* 動きを減らす設定では、余計な動きを止める。 */\n@media (prefers-reduced-motion: reduce) {\n  .vq2-drag-ghost { display: none; }\n  .vq2-card3-f, .vq2-audio-fill { transition: none; }\n  .vq2-audio.is-unknown .vq2-audio-fill { animation: none; width: 100% !important; }\n}\n\n/* ── プリセットを公開する（モーダル）─────────────────────────\n   決めることは 4 つしか無いので、1 枚にまとめる。\n   上に「公開したらこう見える」を出して、触るたびにそこが変わる。 */\n.vq2-root.is-sheet.vq2-pp { width: min(720px, calc(100vw - 48px)); max-height: min(90vh, 880px); }\n.vq2-root.is-sheet.vq2-pp.is-mobile { width: 100%; max-height: 94vh; }\n.vq2-pp-head { position: relative; flex: 0 0 auto; padding: 18px 18px 16px;\n  background: var(--vq-surface-sunken); border-bottom: 1px solid var(--vq-border-subtle); }\n.vq2-pp-headbar { position: absolute; top: 10px; right: 10px; }\n.vq2-pp-kicker { font: var(--vq-type-caption); color: var(--vq-text-tertiary); font-weight: 650;\n  margin-bottom: 10px; }\n.vq2-pp-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px;\n  background: var(--vq-bg-elevated); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); min-width: 0; }\n.vq2-pp-card.is-flat { margin: 14px auto 0; max-width: 380px; }\n.vq2-pp-ico { flex: 0 0 auto; width: 46px; height: 46px; border-radius: var(--vq-r-md);\n  display: inline-grid; place-items: center; color: #fff; }\n.vq2-pp-ico .vq2-ms { font-size: 24px; }\n.vq2-pp-ico.is-sm { width: 30px; height: 30px; border-radius: var(--vq-r-sm, 8px); }\n.vq2-pp-ico.is-sm .vq2-ms { font-size: 17px; }\n.vq2-pp-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }\n.vq2-pp-copy strong { font: var(--vq-type-body-md); font-weight: 700; overflow: hidden;\n  text-overflow: ellipsis; white-space: nowrap; }\n.vq2-pp-link { font: var(--vq-type-caption); color: var(--vq-text-tertiary); overflow-wrap: anywhere; }\n.vq2-pp-scroll { display: flex; flex-direction: column; gap: 14px; padding: 14px 16px 16px; }\n.vq2-pp-err { display: flex; align-items: flex-start; gap: 8px; padding: 10px 13px;\n  border-radius: var(--vq-r-md); background: var(--vq-danger-bg); color: var(--vq-danger-text);\n  font: var(--vq-type-body-sm); }\n.vq2-pp-err .vq2-ms { font-size: 17px; flex: 0 0 auto; }\n/* 公開ID */\n.vq2-pp-slug { margin-top: 10px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;\n  border: 1px solid var(--vq-border); border-radius: var(--vq-r-md); background: var(--vq-surface);\n  padding: 0 8px 0 10px; min-height: 44px; }\n.vq2-pp-pre { font: var(--vq-type-caption); color: var(--vq-text-tertiary); white-space: nowrap; }\n.vq2-pp-slug input { flex: 1 1 120px; min-width: 0; border: 0; outline: 0; background: none;\n  font: var(--vq-type-body-sm); font-family: inherit; color: var(--vq-text); height: 40px; }\n.vq2-pp-mini { flex: 0 0 auto; height: 30px; padding: 0 10px; border-radius: var(--vq-r-sm, 8px);\n  border: 1px solid var(--vq-border); background: var(--vq-bg-elevated); color: var(--vq-text-secondary);\n  font: var(--vq-type-caption); font-family: inherit; font-weight: 650; cursor: pointer; }\n.vq2-pp-mini:hover { background: var(--vq-surface-hover); }\n.vq2-pp-msg { margin-top: 7px; font: var(--vq-type-caption); font-weight: 650; }\n.vq2-pp-msg.is-ok { color: var(--vq-success-text); }\n.vq2-pp-msg.is-ng { color: var(--vq-danger-text); }\n.vq2-pp-msg.is-wait { color: var(--vq-text-tertiary); }\n.vq2-pp-title { margin-top: 10px; width: 100%; }\n/* 見た目 */\n.vq2-pp-look { margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }\n.vq2-pp-pick { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 4px 10px 4px 4px;\n  border: 1px solid var(--vq-border); border-radius: var(--vq-r-md); background: var(--vq-surface);\n  font: var(--vq-type-body-sm); font-family: inherit; color: var(--vq-text); cursor: pointer; }\n.vq2-pp-pick:hover { background: var(--vq-surface-hover); }\n.vq2-pp-pick .vq2-ms { color: var(--vq-text-tertiary); }\n.vq2-pp-colors { display: flex; gap: 6px; flex-wrap: wrap; }\n.vq2-pp-col { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent;\n  background: none; padding: 2px; cursor: pointer; display: inline-grid; place-items: center; }\n.vq2-pp-col span { width: 100%; height: 100%; border-radius: 50%; display: block; }\n.vq2-pp-col.is-on { border-color: var(--vq-accent); }\n.vq2-pp-col:focus-visible { outline: 2px solid var(--vq-accent); outline-offset: 2px; }\n.vq2-pp-icons { margin-top: 12px; max-height: 260px; overflow-y: auto; padding-right: 4px;\n  display: flex; flex-direction: column; gap: 12px; }\n.vq2-pp-icg h4 { font: var(--vq-type-caption); color: var(--vq-text-tertiary); font-weight: 650;\n  margin-bottom: 6px; }\n.vq2-pp-igrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }\n.vq2-pp-ic { height: 46px; border-radius: var(--vq-r-md); border: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated); color: var(--vq-text-secondary); cursor: pointer;\n  display: inline-grid; place-items: center; }\n.vq2-pp-ic .vq2-ms { font-size: 21px; }\n.vq2-pp-ic:hover { background: var(--vq-surface-hover); }\n.vq2-pp-ic.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n/* 公開する前に */\n.vq2-pp-notice { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }\n.vq2-pp-notice li { display: flex; align-items: flex-start; gap: 9px; font: var(--vq-type-body-sm);\n  line-height: 1.8; color: var(--vq-text-secondary); }\n.vq2-pp-notice .vq2-ms { font-size: 18px; color: var(--vq-text-tertiary); flex: 0 0 auto; margin-top: 2px; }\n.vq2-pp-agree { margin-top: 14px; }\n/* 下の操作 */\n.vq2-pp-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 12px 16px;\n  border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  padding-bottom: calc(12px + var(--vq-sab,0px)); flex-wrap: wrap; }\n/* 公開中・完了 */\n.vq2-pp-mid { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center;\n  justify-content: center; text-align: center; gap: 8px; padding: 40px 24px; }\n.vq2-pp-mid h3 { font: var(--vq-type-heading-sm); }\n.vq2-pp-mid p { font: var(--vq-type-body-sm); color: var(--vq-text-secondary); max-width: 34em; line-height: 1.9; }\n.vq2-pp-spin { width: 42px; height: 42px; border-radius: 50%; border: 3px solid var(--vq-border);\n  border-top-color: var(--vq-accent); animation: vq2ppspin .9s linear infinite; margin-bottom: 6px; }\n@keyframes vq2ppspin { to { transform: rotate(360deg); } }\n.vq2-pp-mark { width: 54px; height: 54px; border-radius: 50%; background: var(--vq-success-bg);\n  color: var(--vq-success-text); display: grid; place-items: center; margin-bottom: 6px; }\n.vq2-pp-mark.is-quiet { background: var(--vq-surface-sunken); color: var(--vq-text-tertiary); }\n.vq2-pp-mark .vq2-ms { font-size: 28px; }\n.vq2-pp-done-acts { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }\n.is-mobile .vq2-pp-pre { display: none; }\n@media (prefers-reduced-motion: reduce) { .vq2-pp-spin { animation-duration: 2.4s; } }\n\n/* ── V3 形式を選ぶ画面 ─────────────────────────────────────────\n   形式は 130 種類ある。**一度に全部を平らに並べない。**\n   上に「探す」を固定し、左に分類、右に結果を出す。\n   カードの札は「他と違うところ」だけにする（全部に同じ札が並ぶと読めない）。 */\n.vq2-root.is-sheet.vq2-qtp { width: min(1080px, calc(100vw - 48px)); height: min(84vh, 820px); max-height: none; }\n.vq2-root.is-sheet.vq2-qtp.is-mobile { width: 100%; height: 92vh; max-height: 92vh; }\n.vq2-qtp .vq2-pane-h { flex: 0 0 auto; }\n.vq2-qt-top { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;\n  padding: 12px 16px; border-bottom: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); }\n.vq2-qt-search { position: relative; display: flex; align-items: center; gap: 8px; flex: 1 1 280px;\n  height: 40px; padding: 0 10px; border: 1px solid var(--vq-border); border-radius: var(--vq-r-md);\n  background: var(--vq-surface); color: var(--vq-text-tertiary); }\n.vq2-qt-search .vq2-i { width: 17px; height: 17px; flex: 0 0 auto; }\n.vq2-qt-search input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: none;\n  font: var(--vq-type-body-sm); font-family: inherit; color: var(--vq-text); }\n/* 消すボタンは自前のものだけ出す（ブラウザのものと二重に並ばないように） */\n.vq2-qt-search input::-webkit-search-cancel-button,\n.vq2-qt-search input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }\n.vq2-qt-clear { border: 0; background: none; cursor: pointer; color: var(--vq-text-tertiary);\n  width: 26px; height: 26px; display: inline-grid; place-items: center; border-radius: var(--vq-r-full); }\n.vq2-qt-clear .vq2-i { width: 15px; height: 15px; }\n.vq2-qt-views { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }\n.vq2-qt-split { flex: 1 1 auto; display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 0; }\n.vq2-qt-side { border-right: 1px solid var(--vq-border-subtle); display: flex; flex-direction: column;\n  min-height: 0; background: var(--vq-surface-sunken); }\n.vq2-qt-rails { flex: 1 1 auto; overflow-y: auto; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }\n.vq2-qt-rail { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 38px; padding: 0 10px;\n  border: 0; background: none; border-radius: var(--vq-r-md); cursor: pointer; text-align: left;\n  font: var(--vq-type-body-sm); font-family: inherit; color: var(--vq-text-secondary); }\n.vq2-qt-rail:hover { background: var(--vq-surface-hover); }\n.vq2-qt-rail.is-on { background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 650; }\n.vq2-qt-rail .vq2-i { width: 16px; height: 16px; flex: 0 0 auto; }\n.vq2-qt-rail span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-qt-cnt { flex: 0 0 auto; font: var(--vq-type-caption); font-weight: 700; color: var(--vq-text-tertiary);\n  font-variant-numeric: tabular-nums; }\n.vq2-qt-rail.is-on .vq2-qt-cnt { color: var(--vq-accent-text); }\n.vq2-qt-sidef { flex: 0 0 auto; border-top: 1px solid var(--vq-border-subtle); padding: 12px 12px;\n  display: flex; flex-direction: column; gap: 8px; }\n.vq2-qt-sidef .vq2-select { width: 100%; }\n.vq2-qt-main { min-width: 0; min-height: 0; overflow-y: auto; padding: 12px 16px 20px; }\n.vq2-qt-count { font: var(--vq-type-caption); color: var(--vq-text-tertiary); margin-bottom: 10px; }\n.vq2-qt-sec { margin: 0 0 18px; }\n.vq2-qt-sech { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; flex-wrap: wrap;\n  position: sticky; top: -12px; z-index: 1; background: var(--vq-bg); padding: 6px 0; }\n.vq2-qt-sech .vq2-i { width: 17px; height: 17px; color: var(--vq-text-tertiary); }\n.vq2-qt-cnt2 { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-qt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 8px; }\n.vq2-qt-card { padding: 11px 12px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; display: flex; align-items: flex-start; gap: 10px; }\n.vq2-qt-card:hover { border-color: var(--vq-border-strong); background: var(--vq-surface-hover); }\n.vq2-qt-card:focus-visible { outline: none; border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-qt-card.is-cur { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-qt-card.is-soon { opacity: .6; cursor: not-allowed; }\n.vq2-qt-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }\n.vq2-qt-h { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n.vq2-qt-ic { flex: 0 0 auto; width: 32px; height: 32px; border-radius: var(--vq-r-md);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text);\n  display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }\n.vq2-qt-ic .vq2-i { width: 17px; height: 17px; }\n.vq2-qt-n { font-weight: 650; font-size: 13.5px; }\n.vq2-qt-st { font: var(--vq-type-caption); font-weight: 700; padding: 1px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-tertiary); }\n.vq2-qt-st.is-beta { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-qt-st.is-cur { background: var(--vq-accent); color: var(--vq-accent-contrast, #fff); }\n.vq2-qt-fav { border: 0; background: transparent; cursor: pointer; color: var(--vq-text-disabled); padding: 4px;\n  min-width: 30px; min-height: 30px; display: inline-flex; align-items: center; justify-content: center;\n  flex: 0 0 auto; border-radius: var(--vq-r-full); }\n.vq2-qt-fav:hover { background: var(--vq-surface-sunken); }\n.vq2-qt-fav.is-on { color: var(--vq-warning, #E0A31C); }\n.vq2-qt-fav .vq2-i { width: 16px; height: 16px; }\n.vq2-qt-d { font: var(--vq-type-caption); color: var(--vq-text-secondary); line-height: 1.65;\n  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }\n.vq2-qt-ex { font: var(--vq-type-caption); color: var(--vq-text-tertiary); line-height: 1.55;\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-qt-m { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 3px; }\n.vq2-qt-tag { font-size: 10.5px; font-weight: 650; padding: 1px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-tertiary); }\n/* スマホ：分類は上に横並び、結果は 1 列 */\n.is-mobile .vq2-qt-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }\n.is-mobile .vq2-qt-side { border-right: 0; border-bottom: 1px solid var(--vq-border-subtle); }\n.is-mobile .vq2-qt-rails { flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 8px 10px; }\n.is-mobile .vq2-qt-rail { width: auto; flex: 0 0 auto; border: 1px solid var(--vq-border); border-radius: var(--vq-r-full); }\n.is-mobile .vq2-qt-sidef { flex-direction: row; align-items: center; flex-wrap: wrap; padding: 8px 10px; }\n.is-mobile .vq2-qt-sidef .vq2-select { width: auto; flex: 1 1 140px; }\n.is-mobile .vq2-qt-grid { grid-template-columns: minmax(0, 1fr); }\n.is-mobile .vq2-qt-sech { position: static; }\n\n/* ── V3 形式ごとの編集フォーム ── */\n.vq2-qe-form { display: flex; flex-direction: column; gap: 10px; }\n.vq2-qe-item { padding: 10px 12px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }\n.vq2-qe-item.is-row { flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }\n.vq2-qe-item.is-row .vq2-input { flex: 1 1 140px; min-width: 0; }\n.vq2-qe-ih { display: flex; align-items: center; gap: 8px; }\n.vq2-qe-n { flex: 0 0 auto; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-qe-t { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-qe-ar { color: var(--vq-text-tertiary); flex: 0 0 auto; }\n.vq2-qe-more { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-qe-more summary { cursor: pointer; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-qe-more .vq2-grid { margin-top: 10px; }\n.vq2-qe-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-qe-thumb { width: 84px; height: 64px; object-fit: cover; border-radius: var(--vq-r-md); border: 1px solid var(--vq-border-subtle); }\n.vq2-qe-canvas { margin: 8px 0 12px; }\n.vq2-qe-stage { position: relative; display: inline-block; max-width: 100%; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); overflow: hidden; cursor: crosshair; }\n.vq2-qe-stage img { display: block; max-width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }\n.vq2-qe-spot { position: absolute; transform: translate(-50%, -50%); border: 2px dashed var(--vq-accent);\n  border-radius: 50%; height: 0; background: var(--vq-accent-subtle); opacity: .8; }\n.vq2-qe-spot b { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 12px; }\n.vq2-qe-slot { position: absolute; transform: translate(-50%, -50%); min-width: 26px; height: 26px; padding: 0 6px;\n  display: inline-flex; align-items: center; justify-content: center; border-radius: var(--vq-r-md);\n  border: 2px solid var(--vq-accent); background: var(--vq-bg-elevated); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-qe-preview { padding: 14px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); }\n\n/* ══════════════════════════════════════════════════════════════════\n   出題形式を決めるシート（V3 §14 / §26 / §27）\n   ・「何を作るつもりか」を、頼む前に見えるようにする。\n   ・使えない形式は灰色にして、必ず理由を添える。\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-mix-styles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }\n.vq2-mix-st { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; text-align: left;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; font-family: inherit; }\n.vq2-mix-st:hover { background: var(--vq-surface-hover); }\n.vq2-mix-st.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-mix-st b { font: var(--vq-type-body-sm); font-weight: 650; color: var(--vq-text-primary); }\n.vq2-mix-st span { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-mix-offs { display: flex; flex-wrap: wrap; gap: 10px 18px; }\n\n.vq2-mix-plan { display: flex; flex-direction: column; gap: 6px; }\n.vq2-mix-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) 88px; align-items: center; gap: 10px; }\n.vq2-mix-n { font: var(--vq-type-body-sm); font-weight: 700; text-align: right;\n  font-variant-numeric: tabular-nums; color: var(--vq-text-primary); }\n.vq2-mix-row b { display: block; font: var(--vq-type-body-sm); color: var(--vq-text-primary); }\n.vq2-mix-why { display: block; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-mix-bar { height: 6px; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); overflow: hidden; }\n.vq2-mix-bar i { display: block; height: 100%; background: var(--vq-accent); }\n.vq2-mix-notes { margin: 8px 0 0; padding-left: 18px; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-mix-notes.is-warn { color: var(--vq-warning-text, var(--vq-text-secondary)); }\n.vq2-mix-ng { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }\n.vq2-mix-ng > div { padding: 9px 11px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-mix-ng b { display: block; font: var(--vq-type-body-sm); color: var(--vq-text-primary); }\n.vq2-mix-ng span { display: block; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-mix-alt { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }\n\n.vq2-mix-cat { border-top: 1px solid var(--vq-border-subtle); }\n.vq2-mix-cat:first-of-type { border-top: 0; }\n.vq2-mix-cath { display: flex; align-items: center; justify-content: space-between; gap: 10px;\n  width: 100%; padding: 11px 2px; border: 0; background: none; cursor: pointer;\n  font-family: inherit; text-align: left; }\n.vq2-mix-cath b { font: var(--vq-type-body-sm); font-weight: 650; color: var(--vq-text-primary); }\n.vq2-mix-cn { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-mix-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));\n  gap: 6px; padding: 0 0 12px; }\n.vq2-mix-t { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 4px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-mix-t.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-mix-t.is-off { opacity: .55; }\n.vq2-mix-t.is-ng { opacity: .55; background: var(--vq-surface-sunken); }\n.vq2-mix-tb { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px;\n  padding: 6px 8px; border: 0; background: none; text-align: left; cursor: pointer; font-family: inherit; }\n.vq2-mix-t.is-ng .vq2-mix-tb { cursor: default; }\n.vq2-mix-tb b { font: var(--vq-type-body-sm); color: var(--vq-text-primary); }\n.vq2-mix-tb span { font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.is-mobile .vq2-mix-styles { grid-template-columns: minmax(0, 1fr); }\n.is-mobile .vq2-mix-list { grid-template-columns: minmax(0, 1fr); }\n.is-mobile .vq2-mix-row { grid-template-columns: 26px minmax(0, 1fr) 56px; }\n\n/* ══════════════════════════════════════════════════════════════════\n   声を選ぶ画面\n   ・1 画面に 1 つの声。玉・名前・説明・矢印・点、その下に設定の行。\n   ・玉の色は声ごとに決まる（--vp-h）。同じ声はいつも同じ色。\n   ══════════════════════════════════════════════════════════════════ */\n/* シートの枠は使わない。カードそのものが枠になる（見本と同じ見た目にする）。\n   .is-sheet が付ける背景・境界・影・幅の制限を、この画面だけ打ち消す。 */\n.vq2-root.is-sheet.vq2-vp-host {\n  background: transparent; border: 0; box-shadow: none;\n  width: min(560px, calc(100vw - 32px)); max-height: 92vh; overflow: visible;\n}\n.vq2-root.is-sheet.is-mobile.vq2-vp-host {\n  left: 50%; right: auto; top: 50%; bottom: auto; transform: translate(-50%, -50%);\n  width: calc(100vw - 24px); border-radius: 0; padding-bottom: 0;\n}\n.vq2-vp-card { position: relative; width: min(560px, 100%); margin: auto;\n  background: var(--vq-bg-elevated); border-radius: 28px;\n  box-shadow: 0 24px 64px rgba(0, 0, 0, .28);\n  padding: 26px 26px 10px; display: flex; flex-direction: column; }\n.vq2-vp-card > .vq2-btn { position: absolute; top: 14px; right: 14px; }\n\n.vq2-vp-stage { display: flex; flex-direction: column; align-items: center;\n  padding: 22px 0 10px; }\n\n/* 玉。押すと試し聞き。 */\n.vq2-vp-orb { position: relative; width: 288px; height: 288px; max-width: 62vw; max-height: 62vw;\n  border: 0; padding: 0; border-radius: 50%; cursor: pointer; background: none;\n  transition: transform .18s ease; }\n.vq2-vp-orb:hover { transform: scale(1.02); }\n.vq2-vp-orb:active { transform: scale(.98); }\n.vq2-vp-orb-in { position: absolute; inset: 0; border-radius: 50%;\n  background:\n    radial-gradient(120% 100% at 50% 0%,\n      hsl(var(--vp-h, 28) 92% 55%) 0%,\n      hsl(var(--vp-h, 28) 90% 62%) 34%,\n      hsl(var(--vp-h, 28) 80% 88%) 62%,\n      hsl(var(--vp-h, 28) 70% 98%) 100%);\n  box-shadow: inset 0 -18px 40px rgba(255, 255, 255, .55); }\n.vq2-vp-orb.is-loading .vq2-vp-orb-in,\n.vq2-vp-orb.is-off .vq2-vp-orb-in {\n  background: radial-gradient(120% 100% at 50% 0%, var(--vq-surface-sunken) 0%, var(--vq-bg-elevated) 100%);\n  box-shadow: inset 0 0 0 1px var(--vq-border-subtle); }\n.vq2-vp-orb.is-loading { animation: vq2-vp-breathe 1.8s ease-in-out infinite; }\n@keyframes vq2-vp-breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }\n.vq2-vp-orb.is-playing .vq2-vp-orb-in { animation: vq2-vp-pulse 1.1s ease-in-out infinite; }\n@keyframes vq2-vp-pulse {\n  0%, 100% { box-shadow: inset 0 -18px 40px rgba(255,255,255,.55), 0 0 0 0 hsl(var(--vp-h,28) 90% 60% / .35); }\n  50%      { box-shadow: inset 0 -18px 40px rgba(255,255,255,.55), 0 0 0 22px hsl(var(--vp-h,28) 90% 60% / 0); }\n}\n.vq2-vp-wave { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);\n  display: flex; align-items: flex-end; gap: 5px; height: 26px; }\n.vq2-vp-wave i { display: block; width: 5px; border-radius: 3px; background: rgba(255, 255, 255, .92);\n  animation: vq2-vp-bar .9s ease-in-out infinite; }\n.vq2-vp-wave i:nth-child(2) { animation-delay: .15s; }\n.vq2-vp-wave i:nth-child(3) { animation-delay: .3s; }\n@keyframes vq2-vp-bar { 0%, 100% { height: 8px; } 50% { height: 24px; } }\n\n.vq2-vp-row1 { display: flex; align-items: center; justify-content: center;\n  gap: 6px; width: 100%; margin-top: 26px; }\n.vq2-vp-titles { min-width: 0; text-align: center; flex: 0 1 auto; padding: 0 6px; }\n.vq2-vp-name { font-size: 30px; font-weight: 700; letter-spacing: .01em;\n  color: var(--vq-text-primary); line-height: 1.25;\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-vp-desc { margin-top: 6px; font-size: 16px; color: var(--vq-text-tertiary); }\n.vq2-vp-arrow { flex: 0 0 auto; width: 44px; height: 44px; border: 0; background: none;\n  border-radius: 50%; cursor: pointer; color: var(--vq-text-tertiary);\n  display: inline-flex; align-items: center; justify-content: center; }\n.vq2-vp-arrow:hover:not(:disabled) { background: var(--vq-surface-hover); color: var(--vq-text-secondary); }\n.vq2-vp-arrow:disabled { opacity: .3; cursor: default; }\n\n.vq2-vp-dots { display: flex; align-items: center; justify-content: center; gap: 10px;\n  min-height: 22px; margin-top: 16px; flex-wrap: wrap; }\n.vq2-vp-dot { width: 9px; height: 9px; border-radius: 50%; border: 0; padding: 0;\n  background: var(--vq-border); cursor: pointer; transition: background .15s ease, transform .15s ease; }\n.vq2-vp-dot:hover { transform: scale(1.25); }\n.vq2-vp-dot.is-on { background: var(--vq-text-primary); }\n.vq2-vp-count { font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  margin-left: 6px; font-variant-numeric: tabular-nums; }\n.vq2-vp-sub { margin-top: 12px; font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  display: flex; align-items: center; gap: 8px; }\n.vq2-vp-eng { padding: 2px 8px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-tertiary); }\n.vq2-vp-retry { margin-top: 18px; }\n\n/* 原稿の タグを 選ぶ シート（2026-08-26） */\n.vq2-tagsheet { padding: 4px 2px 10px; }\n.vq2-tagsheet__g { margin-bottom: 18px; }\n.vq2-tagsheet__t { font: var(--vq-type-label); color: var(--vq-text-secondary); margin-bottom: 8px; }\n.vq2-tagsheet__row { display: flex; flex-wrap: wrap; gap: 8px; }\n.vq2-tagsheet__row .vq2-chip { cursor: pointer; }\n\n/* 下の行（速さ・言語） */\n.vq2-vp-rows { margin-top: 18px; }\n.vq2-vp-rw { border-top: 1px solid var(--vq-border-subtle); }\n.vq2-vp-rwh { display: flex; align-items: center; gap: 14px; width: 100%;\n  padding: 18px 4px; border: 0; background: none; cursor: pointer;\n  font-family: inherit; text-align: left; color: var(--vq-text-primary); }\n.vq2-vp-rwh:hover { background: var(--vq-surface-hover); }\n.vq2-vp-ic { flex: 0 0 auto; color: var(--vq-text-secondary); display: inline-flex; }\n.vq2-vp-lb { flex: 1 1 auto; font-size: 18px; }\n.vq2-vp-val { flex: 0 0 auto; font-size: 17px; color: var(--vq-text-secondary); }\n.vq2-vp-ch { flex: 0 0 auto; color: var(--vq-text-tertiary); display: inline-flex;\n  transition: transform .18s ease; }\n.vq2-vp-rw.is-open .vq2-vp-ch { transform: rotate(180deg); }\n.vq2-vp-opts { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 4px 16px; }\n.vq2-vp-opt { padding: 8px 14px; border-radius: var(--vq-r-full);\n  border: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  color: var(--vq-text-secondary); cursor: pointer; font-family: inherit; font-size: 15px; }\n.vq2-vp-opt:hover { background: var(--vq-surface-hover); }\n.vq2-vp-opt.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle);\n  color: var(--vq-accent-text); font-weight: 650; }\n\n.is-mobile .vq2-vp-card { width: 100%; border-radius: 22px; padding: 20px 16px 6px; }\n.is-mobile .vq2-vp-name { font-size: 25px; }\n.is-mobile .vq2-vp-desc { font-size: 15px; }\n.is-mobile .vq2-vp-lb { font-size: 16px; }\n.is-mobile .vq2-vp-rwh { padding: 15px 2px; }\n\n/* プリセットの設定に出す「いまの声」 */\n.vq2-vc-dot { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%;\n  background: radial-gradient(120% 100% at 50% 0%,\n    hsl(var(--vp-h, 28) 92% 55%) 0%, hsl(var(--vp-h, 28) 80% 88%) 70%,\n    hsl(var(--vp-h, 28) 70% 98%) 100%); }\n.vq2-vc-name { font: var(--vq-type-body-sm); font-weight: 650; color: var(--vq-text-primary);\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-vc-sub { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n\n/* ══════════════════════════════════════════════════════════════════\n   VocabuSpeak\n   ・PC は中央 1 列（読みやすい幅で止める）\n   ・スマートフォンは 1 列＋下の帯にタブ。横スクロールを出さない\n   ・色だけで伝えない。数字と文字を必ず添える\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-sp { display: flex; flex-direction: column; height: 100%; min-height: 0;\n  background: var(--vq-bg); }\n.vq2-sp-top { display: flex; align-items: center; gap: 12px; padding: 14px 20px;\n  border-bottom: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); flex: 0 0 auto; }\n.vq2-sp-top-l { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-top-r { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; }\n.vq2-sp-top-r .vq2-btn { max-width: 100%; overflow: hidden; }\n.vq2-sp-title { font: var(--vq-type-title); font-weight: 700; letter-spacing: .01em;\n  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.vq2-sp-title.is-sm { font: var(--vq-type-body); font-weight: 600; }\n.vq2-sp-sub { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 2px; }\n\n.vq2-sp-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 22px 20px 28px;\n  max-width: 760px; width: 100%; margin: 0 auto; -webkit-overflow-scrolling: touch; }\n\n/* ── タブ（PC は上寄せの帯、モバイルは下に固定）── */\n.vq2-sp-tabs { display: flex; gap: 2px; padding: 6px 10px; flex: 0 0 auto;\n  border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  padding-bottom: calc(6px + var(--vq-sab,0px)); }\n.vq2-sp-tab { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center;\n  gap: 3px; padding: 8px 4px; border: 0; background: none; cursor: pointer;\n  color: var(--vq-text-secondary); border-radius: var(--vq-r-lg); min-height: 48px;\n  transition: color .15s ease, background .15s ease; }\n.vq2-sp-tab svg { width: 20px; height: 20px; }\n.vq2-sp-tab-l { font-size: 11px; line-height: 1.2; white-space: nowrap; overflow: hidden;\n  text-overflow: ellipsis; max-width: 100%; }\n.vq2-sp-tab:hover { background: var(--vq-surface-sunken); color: var(--vq-text); }\n.vq2-sp-tab.is-on { color: var(--vq-accent); font-weight: 600; }\n.vq2-sp-tab.is-on svg { transform: translateY(-1px); }\n\n/* ══════════════════════════════════════════════════════════════════\n   ホーム\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-sp-today { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; }\n.vq2-sp-ring-wrap { flex: 0 0 auto; }\n.vq2-sp-ring { width: 80px; height: 80px; display: block; }\n.vq2-sp-ring.is-lg { width: 108px; height: 108px; }\n.vq2-sp-ring-bg { fill: none; stroke: var(--vq-border-subtle); stroke-width: 8; }\n.vq2-sp-ring-fg { fill: none; stroke: var(--vq-accent); stroke-width: 8; stroke-linecap: round;\n  transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset .6s ease; }\n.vq2-sp-ring-n { fill: var(--vq-text); font-size: 24px; font-weight: 700; text-anchor: middle;\n  font-variant-numeric: tabular-nums; }\n.vq2-sp-ring-u { fill: var(--vq-text-secondary); font-size: 11px; text-anchor: middle; }\n.vq2-sp-today-m { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-today-t { font: var(--vq-type-title); font-weight: 700; }\n.vq2-sp-today-s { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin: 4px 0 10px; }\n.vq2-sp-pills { display: flex; flex-wrap: wrap; gap: 6px; }\n.vq2-sp-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); white-space: nowrap; }\n.vq2-sp-pill svg { width: 14px; height: 14px; }\n.vq2-sp-pill.is-on { background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 600; }\n\n.vq2-sp-start { padding: 22px; border-radius: var(--vq-r-xl); margin-bottom: 14px;\n  background: linear-gradient(150deg, var(--vq-accent-subtle), var(--vq-bg-elevated) 78%);\n  border: 1px solid var(--vq-border-subtle); }\n.vq2-sp-start-k { font: var(--vq-type-caption); color: var(--vq-accent-text); font-weight: 600;\n  letter-spacing: .04em; }\n.vq2-sp-start-t { font-size: 22px; font-weight: 700; line-height: 1.4; margin: 4px 0 6px;\n  word-break: break-word; }\n.vq2-sp-start-s { font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n.vq2-sp-start .vq2-sp-chips { margin: 12px 0 16px; }\n.vq2-sp-start .vq2-btn { width: 100%; }\n.vq2-sp-dot { width: 3px; height: 3px; border-radius: 50%; background: currentColor;\n  opacity: .45; display: inline-block; }\n\n.vq2-sp-resume { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;\n  padding: 14px; margin-bottom: 22px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); cursor: pointer;\n  font: var(--vq-type-body); min-height: 56px; }\n.vq2-sp-resume:hover { border-color: var(--vq-accent); }\n.vq2-sp-resume > span:nth-child(2) { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-resume b { display: block; font-weight: 600; }\n.vq2-sp-resume-s { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 2px; }\n.vq2-sp-resume-i { display: inline-flex; width: 34px; height: 34px; border-radius: var(--vq-r-full);\n  background: var(--vq-accent-subtle); color: var(--vq-accent); align-items: center;\n  justify-content: center; flex: 0 0 auto; }\n.vq2-sp-resume-i svg, .vq2-sp-resume > svg { width: 18px; height: 18px; }\n.vq2-sp-resume > svg { color: var(--vq-text-secondary); flex: 0 0 auto; }\n\n.vq2-sp-sec { margin: 0 0 26px; }\n.vq2-sp-h2 { font: var(--vq-type-body); font-weight: 700; margin: 0 0 10px; }\n.vq2-sp-lead { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin: 0 0 12px; line-height: 1.8; }\n\n/* ── 練習のタイル ── */\n.vq2-sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 10px; }\n.vq2-sp-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; text-align: left;\n  padding: 14px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; min-height: 116px; font: var(--vq-type-body);\n  transition: border-color .15s ease, transform .12s ease; }\n.vq2-sp-tile:hover:not([disabled]) { border-color: var(--vq-accent); transform: translateY(-1px); }\n.vq2-sp-tile[disabled] { opacity: .5; cursor: not-allowed; }\n.vq2-sp-tile-i { display: inline-flex; width: 36px; height: 36px; border-radius: var(--vq-r-lg);\n  align-items: center; justify-content: center; background: var(--vq-surface-sunken);\n  color: var(--vq-accent); flex: 0 0 auto; }\n.vq2-sp-tile-i svg { width: 19px; height: 19px; }\n.vq2-sp-tile-t { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n.vq2-sp-tile-s { font: var(--vq-type-caption); color: var(--vq-text-secondary); line-height: 1.6; }\n/* 練習ごとの色みを少し変える。**意味は文字が持つ**（色だけに頼らない） */\n.tone-listening { background: color-mix(in srgb, var(--vq-accent) 14%, transparent); }\n.tone-dictation { background: color-mix(in srgb, #0ea5e9 15%, transparent); color: #0284c7; }\n.tone-fill { background: color-mix(in srgb, #8b5cf6 15%, transparent); color: #7c3aed; }\n.tone-reorder { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }\n.tone-translate { background: color-mix(in srgb, #10b981 16%, transparent); color: #059669; }\n.tone-card { background: color-mix(in srgb, #ec4899 14%, transparent); color: #db2777; }\n.tone-speaking, .tone-shadowing { background: color-mix(in srgb, #6366f1 15%, transparent); color: #4f46e5; }\n.vq2-sp-beta { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: var(--vq-r-full);\n  background: var(--vq-warning-subtle, #fef3c7); color: var(--vq-warning-text, #92400e); }\n\n/* ── 7 日間の棒 ── */\n.vq2-sp-week { padding: 14px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-sp-week-b { display: flex; align-items: flex-end; gap: 6px; height: 76px; }\n.vq2-sp-week-c { flex: 1 1 0; display: flex; flex-direction: column; align-items: center;\n  justify-content: flex-end; height: 100%; gap: 5px; }\n.vq2-sp-week-v { width: 100%; max-width: 26px; border-radius: 4px; background: var(--vq-accent);\n  transition: height .4s ease; }\n.vq2-sp-week-v[data-zero] { background: var(--vq-border-subtle); }\n.vq2-sp-week-l { font-size: 11px; color: var(--vq-text-secondary); }\n.vq2-sp-week-s { margin-top: 10px; font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  text-align: right; }\n\n.vq2-sp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; }\n.vq2-sp-stat { padding: 13px 10px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); text-align: center; }\n.vq2-sp-stat-v { display: block; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }\n.vq2-sp-stat-l { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 3px; }\n\n/* ── 行（一覧・履歴・おすすめ）── */\n.vq2-sp-list { display: flex; flex-direction: column; gap: 8px; }\n.vq2-sp-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;\n  padding: 13px 14px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; font: var(--vq-type-body); min-height: 56px; }\n.vq2-sp-row.is-static { cursor: default; }\n.vq2-sp-row:hover:not(.is-static) { border-color: var(--vq-accent); }\n.vq2-sp-row-i { display: inline-flex; width: 32px; height: 32px; border-radius: var(--vq-r-md);\n  background: var(--vq-surface-sunken); color: var(--vq-text-secondary);\n  align-items: center; justify-content: center; flex: 0 0 auto; }\n.vq2-sp-row-i svg { width: 17px; height: 17px; }\n.vq2-sp-row-m { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-row-m b { display: block; font-weight: 600; }\n.vq2-sp-row-s { display: flex; align-items: center; gap: 7px; flex-wrap: wrap;\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 3px; }\n.vq2-sp-row-p { display: flex; align-items: center; gap: 6px; color: var(--vq-text-secondary);\n  font: var(--vq-type-caption); flex: 0 0 auto; font-variant-numeric: tabular-nums; }\n.vq2-sp-row-p svg { width: 16px; height: 16px; }\n\n.vq2-sp-chips { display: flex; flex-wrap: wrap; gap: 5px; }\n.vq2-sp-chips.is-center { justify-content: center; }\n.vq2-sp-chip { font-size: 11px; padding: 3px 9px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-secondary); }\n.vq2-sp-chip.is-en { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }\n\n/* ── レベルの帯 ── */\n.vq2-sp-levelbar { padding: 16px; border-radius: var(--vq-r-lg); margin-bottom: 20px;\n  border: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); }\n.vq2-sp-levelbar-t { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }\n.vq2-sp-levelbar-t b { font-size: 17px; }\n.vq2-sp-levelbar-t span { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-levelbar-b { display: flex; align-items: center; justify-content: space-between;\n  gap: 10px; margin-top: 8px; flex-wrap: wrap; }\n.vq2-sp-levelbar-s { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-meter { display: block; height: 6px; border-radius: var(--vq-r-full);\n  background: var(--vq-border-subtle); overflow: hidden; margin-top: 10px; }\n.vq2-sp-meter > span { display: block; height: 100%; background: var(--vq-accent);\n  border-radius: var(--vq-r-full); transition: width .4s ease; }\n.vq2-sp-meter.is-sm { height: 4px; margin-top: 8px; }\n\n/* ── レッスンの行 ── */\n.vq2-sp-lesson { display: flex; align-items: flex-start; gap: 12px; width: 100%; text-align: left;\n  padding: 14px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; font: var(--vq-type-body);\n  transition: border-color .15s ease; }\n.vq2-sp-lesson:hover { border-color: var(--vq-accent); }\n.vq2-sp-lesson-i { display: inline-flex; width: 38px; height: 38px; border-radius: var(--vq-r-lg);\n  align-items: center; justify-content: center; flex: 0 0 auto;\n  background: var(--vq-surface-sunken); color: var(--vq-accent); }\n.vq2-sp-lesson-i svg { width: 19px; height: 19px; }\n.tone-daily { background: color-mix(in srgb, var(--vq-accent) 14%, transparent); }\n.tone-outing { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }\n.tone-travel { background: color-mix(in srgb, #0ea5e9 16%, transparent); color: #0284c7; }\n.tone-school_work { background: color-mix(in srgb, #8b5cf6 15%, transparent); color: #7c3aed; }\n.tone-medical { background: color-mix(in srgb, #ef4444 14%, transparent); color: #dc2626; }\n.tone-grammar { background: color-mix(in srgb, #10b981 16%, transparent); color: #059669; }\n.vq2-sp-lesson-m { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-lesson-m b { display: block; font-weight: 600; margin-bottom: 3px; }\n.vq2-sp-lesson-s { display: flex; align-items: center; gap: 7px; flex-wrap: wrap;\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-lesson-m .vq2-sp-chips { margin-top: 8px; }\n.vq2-sp-lesson-p { display: flex; align-items: center; gap: 6px; flex: 0 0 auto;\n  font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  font-variant-numeric: tabular-nums; padding-top: 2px; }\n.vq2-sp-lesson-p svg { width: 16px; height: 16px; }\n\n.vq2-sp-banner { display: flex; gap: 12px; padding: 16px; border-radius: var(--vq-r-lg);\n  border: 1px solid var(--vq-border-subtle); background: var(--vq-surface-sunken); margin-bottom: 16px; }\n.vq2-sp-banner svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--vq-accent); }\n.vq2-sp-banner p { margin: 8px 0 0; font: var(--vq-type-caption); color: var(--vq-text-secondary); line-height: 1.8; }\n.vq2-sp-note { padding: 12px 14px; border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); line-height: 1.8; }\n\n.vq2-sp-rv { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-sp-rv-c { font-size: 11px; padding: 3px 8px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-secondary); flex: 0 0 auto; }\n.vq2-sp-rv > div { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-rv b { font-weight: 600; word-break: break-word; }\n.vq2-sp-rv-fix { color: var(--vq-accent); font: var(--vq-type-caption); margin-top: 3px; }\n.vq2-sp-rv-x { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 4px; line-height: 1.8; }\n.vq2-sp-rv-n { font: var(--vq-type-caption); color: var(--vq-text-secondary); flex: 0 0 auto; }\n\n/* ══════════════════════════════════════════════════════════════════\n   学習中\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-sp-runtop { display: flex; align-items: center; gap: 12px; padding: 12px 16px; flex: 0 0 auto;\n  border-bottom: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); }\n.vq2-sp-runtitle { font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34%; flex: 0 0 auto; }\n.vq2-sp-runacts { display: flex; gap: 4px; flex: 0 0 auto; }\n.vq2-sp-talktitle { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-talktitle b { display: block; font-weight: 600; white-space: nowrap;\n  overflow: hidden; text-overflow: ellipsis; }\n.vq2-sp-talktitle span { display: block; font: var(--vq-type-caption);\n  color: var(--vq-text-secondary); margin-top: 1px; }\n\n/* 進み具合の点。**何問中の何問目か**が見える。 */\n.vq2-sp-steps { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; }\n.vq2-sp-step { flex: 1 1 0; height: 5px; border-radius: var(--vq-r-full);\n  background: var(--vq-border-subtle); transition: background .25s ease; min-width: 5px; }\n.vq2-sp-step.is-done { background: var(--vq-accent); }\n.vq2-sp-step.is-done.is-ng { background: var(--vq-danger, #dc2626); opacity: .55; }\n.vq2-sp-step.is-now { background: var(--vq-accent); opacity: .45;\n  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vq-accent) 18%, transparent); }\n.vq2-sp-steps .vq2-sp-meter { margin-top: 0; width: 100%; }\n\n.vq2-sp-qhead { display: flex; align-items: center; justify-content: space-between;\n  gap: 10px; margin-bottom: 14px; }\n.vq2-sp-qa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;\n  padding: 4px 10px; border-radius: var(--vq-r-full);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-sp-qa svg { width: 14px; height: 14px; }\n.vq2-sp-qn { font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  font-variant-numeric: tabular-nums; flex: 0 0 auto; }\n.vq2-sp-qnote { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px;\n  border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-bottom: 12px; line-height: 1.7; }\n.vq2-sp-qnote svg { width: 15px; height: 15px; flex: 0 0 auto; margin-top: 2px; }\n\n/* 問題文（promptHtml が中を作る） */\n.vq2-sp-stem { margin-bottom: 16px; }\n.vq2-sp-stem .vq2-qinst { font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  margin-bottom: 10px; line-height: 1.7; }\n.vq2-sp-stem .vq2-qctx { padding: 13px 15px; margin-bottom: 12px; border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); font: var(--vq-type-body); line-height: 1.9; }\n.vq2-sp-stem .vq2-qtext { font-size: 19px; font-weight: 600; line-height: 1.95;\n  white-space: pre-wrap; word-break: break-word; }\n.vq2-sp-q { margin-bottom: 16px; }\n\n.vq2-sp-foot { flex: 0 0 auto; padding: 12px 20px; border-top: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated); padding-bottom: calc(12px + var(--vq-sab,0px)); }\n.vq2-sp-foot .vq2-btn { width: 100%; }\n.vq2-sp-foot .vq2-btn + .vq2-btn { margin-top: 8px; }\n.vq2-sp-loading { padding: 20px 0; }\n\n.vq2-sp-fb { padding: 15px; border-radius: var(--vq-r-lg); border: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated); margin-top: 8px; border-left-width: 3px; }\n.vq2-sp-fb.is-ok { border-left-color: var(--vq-success, #16a34a); }\n.vq2-sp-fb.is-part { border-left-color: var(--vq-warning, #d97706); }\n.vq2-sp-fb.is-ng { border-left-color: var(--vq-danger, #dc2626); }\n.vq2-sp-fb-h { display: flex; align-items: center; gap: 8px; font-weight: 700; }\n.vq2-sp-fb.is-ok .vq2-sp-fb-h { color: var(--vq-success, #16a34a); }\n.vq2-sp-fb.is-part .vq2-sp-fb-h { color: var(--vq-warning, #d97706); }\n.vq2-sp-fb.is-ng .vq2-sp-fb-h { color: var(--vq-danger, #dc2626); }\n.vq2-sp-fb-h svg { width: 18px; height: 18px; }\n.vq2-sp-fb-p { margin-left: auto; font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  font-variant-numeric: tabular-nums; }\n.vq2-sp-fb-a { margin-top: 10px; }\n.vq2-sp-fb-a span { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-fb-a b { font-size: 17px; word-break: break-word; }\n.vq2-sp-fb-x { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--vq-border-subtle);\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); line-height: 1.9; white-space: pre-wrap; }\n\n.vq2-sp-done { text-align: center; padding: 16px 0; }\n.vq2-sp-done-ring { display: flex; justify-content: center; margin-bottom: 12px; }\n.vq2-sp-done-n { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }\n.vq2-sp-done-s { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin: 4px 0 12px; }\n.vq2-sp-done .vq2-sp-sec { text-align: left; margin-top: 24px; }\n.vq2-sp-done .vq2-sp-note { text-align: left; margin-top: 14px; }\n\n/* ══════════════════════════════════════════════════════════════════\n   話す練習\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-sp-say { padding: 22px; border-radius: var(--vq-r-xl); background: var(--vq-surface-sunken);\n  border: 1px solid var(--vq-border-subtle); margin-bottom: 16px; }\n.vq2-sp-say-t { font-size: 23px; font-weight: 600; line-height: 1.65; word-break: break-word; }\n.vq2-sp-say-j { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 10px; }\n.vq2-sp-say-a { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }\n\n.vq2-sp-rec { display: flex; align-items: center; gap: 10px; padding: 13px 15px; margin-bottom: 14px;\n  border-radius: var(--vq-r-lg); border: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); }\n.vq2-sp-rec.is-on { border-color: var(--vq-danger, #dc2626);\n  background: color-mix(in srgb, var(--vq-danger, #dc2626) 6%, var(--vq-bg-elevated)); }\n.vq2-sp-rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--vq-danger, #dc2626);\n  animation: vq2-sp-blink 1s ease-in-out infinite; flex: 0 0 auto; }\n@keyframes vq2-sp-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }\n.vq2-sp-rec-t { font-variant-numeric: tabular-nums; font-weight: 700; }\n.vq2-sp-rec-h { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n\n.vq2-sp-score { display: flex; gap: 18px; align-items: center; padding: 16px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); margin-bottom: 12px; }\n.vq2-sp-score-n { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; flex: 0 0 auto; }\n.vq2-sp-score-b { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 7px; }\n.vq2-sp-bar { display: flex; align-items: center; gap: 8px; }\n.vq2-sp-bar-l { flex: 0 0 84px; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-bar-t { flex: 1 1 auto; height: 6px; border-radius: var(--vq-r-full);\n  background: var(--vq-border-subtle); overflow: hidden; }\n.vq2-sp-bar-t span { display: block; height: 100%; background: var(--vq-accent);\n  border-radius: var(--vq-r-full); }\n.vq2-sp-bar-n { flex: 0 0 30px; text-align: right; font: var(--vq-type-caption);\n  font-variant-numeric: tabular-nums; }\n\n.vq2-sp-heard { padding: 13px 15px; border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken);\n  margin-bottom: 10px; }\n.vq2-sp-heard span { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-heard b { font-weight: 600; word-break: break-word; }\n.vq2-sp-words { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }\n.vq2-sp-w { padding: 4px 9px; border-radius: var(--vq-r-md); font-size: 14px; }\n.vq2-sp-w.is-ok { background: var(--vq-surface-sunken); color: var(--vq-text-secondary); }\n.vq2-sp-w.is-ng { background: var(--vq-danger-subtle, #fee2e2); color: var(--vq-danger-text, #991b1b);\n  font-weight: 600; text-decoration: underline; text-decoration-style: wavy; }\n.vq2-sp-advice { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;\n  font: var(--vq-type-caption); line-height: 1.9; }\n\n/* ══════════════════════════════════════════════════════════════════\n   会話\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-sp-talk { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;\n  max-height: 50vh; overflow: auto; -webkit-overflow-scrolling: touch; padding-right: 2px; }\n.vq2-tk { display: flex; }\n.vq2-tk-ai { justify-content: flex-start; }\n.vq2-tk-me { justify-content: flex-end; }\n.vq2-tk-b { max-width: 84%; padding: 12px 15px; border-radius: 16px;\n  line-height: 1.75; word-break: break-word; }\n.vq2-tk-ai .vq2-tk-b { background: var(--vq-surface-sunken);\n  border: 1px solid var(--vq-border-subtle); border-bottom-left-radius: 5px; }\n.vq2-tk-me .vq2-tk-b { background: var(--vq-accent); color: #fff; border-bottom-right-radius: 5px; }\n.vq2-tk-j { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 6px; }\n.vq2-tk-ai > div { display: flex; flex-direction: column; }\n\n.vq2-sp-miss { margin-bottom: 14px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-sp-miss > summary { padding: 12px 14px; cursor: pointer; font-weight: 600; min-height: 44px;\n  display: flex; align-items: center; }\n.vq2-sp-miss ul { list-style: none; margin: 0; padding: 0 14px 12px; display: flex;\n  flex-direction: column; gap: 9px; }\n.vq2-sp-miss li { display: flex; align-items: center; gap: 8px; font: var(--vq-type-caption);\n  color: var(--vq-text-secondary); }\n.vq2-sp-miss li.is-done { color: var(--vq-accent-text); }\n.vq2-sp-miss li.is-done svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--vq-accent); }\n.vq2-miss-box { width: 14px; height: 14px; border: 1.5px solid var(--vq-border); border-radius: 3px;\n  flex: 0 0 auto; }\n\n/* ══════════════════════════════════════════════════════════════════\n   レベルを選ぶ／設定\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-lv-list { display: flex; flex-direction: column; gap: 10px; }\n.vq2-lv { display: flex; align-items: flex-start; gap: 14px; width: 100%; text-align: left;\n  padding: 15px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; font: var(--vq-type-body);\n  transition: border-color .15s ease, background .15s ease; }\n.vq2-lv:hover { border-color: var(--vq-accent); }\n.vq2-lv.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-lv.is-empty { opacity: .72; }\n.vq2-lv > svg { width: 18px; height: 18px; color: var(--vq-accent); flex: 0 0 auto; margin-top: 4px; }\n.vq2-lv-badge { display: inline-flex; align-items: center; justify-content: center;\n  min-width: 52px; padding: 5px 9px; border-radius: var(--vq-r-md); flex: 0 0 auto;\n  background: var(--vq-surface-sunken); color: var(--vq-text-secondary);\n  font-size: 12px; font-weight: 700; letter-spacing: .03em; }\n.vq2-lv.is-on .vq2-lv-badge { background: var(--vq-accent); color: var(--vq-accent-contrast); }\n.vq2-lv-m { flex: 1 1 auto; min-width: 0; }\n.vq2-lv-t { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; flex-wrap: wrap; }\n.vq2-lv-now { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-accent); color: var(--vq-accent-contrast); }\n.vq2-lv-s { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  margin: 4px 0 8px; line-height: 1.7; }\n.vq2-lv-facts { display: flex; flex-wrap: wrap; gap: 5px; }\n.vq2-lv-facts span { font-size: 11px; padding: 2px 8px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-secondary); }\n.vq2-lv.is-on .vq2-lv-facts span { background: var(--vq-bg-elevated); }\n.vq2-lv-prog { display: block; margin-top: 10px; }\n.vq2-lv-num { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 6px; }\n.vq2-lv-num.is-none { margin-top: 10px; font-style: normal; }\n\n.vq2-set-sec { margin: 0 0 26px; }\n.vq2-set-sec h3 { font-size: 13px; font-weight: 700; letter-spacing: .04em;\n  color: var(--vq-text-secondary); margin: 0 0 10px; }\n.vq2-set-row { display: flex; align-items: center; justify-content: space-between; gap: 14px;\n  padding: 13px 0; border-bottom: 1px solid var(--vq-border-subtle); flex-wrap: wrap; }\n.vq2-set-row:last-child { border-bottom: 0; }\n.vq2-set-l { flex: 1 1 190px; min-width: 0; font-weight: 600; }\n.vq2-set-n { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  font-weight: 400; margin-top: 3px; line-height: 1.6; }\n.vq2-seg { display: inline-flex; padding: 3px; border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); gap: 2px; flex: 0 1 auto; max-width: 100%;\n  overflow-x: auto; -webkit-overflow-scrolling: touch; }\n.vq2-seg-b { border: 0; background: none; cursor: pointer; padding: 7px 12px; min-height: 36px;\n  border-radius: var(--vq-r-md); font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  white-space: nowrap; transition: background .15s ease, color .15s ease; }\n.vq2-seg-b:hover { color: var(--vq-text); }\n.vq2-seg-b.is-on { background: var(--vq-bg-elevated); color: var(--vq-text); font-weight: 700;\n  box-shadow: var(--vq-shadow-sm, 0 1px 2px rgba(0,0,0,.08)); }\n.vq2-vc-dot.is-sm { width: 22px; height: 22px; }\n.vq2-set-voice { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; flex-wrap: wrap; }\n.vq2-set-voice-n { font: var(--vq-type-caption); max-width: 150px; overflow: hidden;\n  text-overflow: ellipsis; white-space: nowrap; }\n\n.vq2-sp-set { margin: 0 0 18px; }\n.vq2-sp-set label { display: block; font-weight: 600; margin-bottom: 6px; }\n.vq2-sp-set select { width: 100%; min-height: 44px; padding: 8px 12px; font: var(--vq-type-body);\n  border: 1px solid var(--vq-border); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated);\n  color: var(--vq-text); }\n.vq2-sp-hint { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin: 6px 0 0; line-height: 1.8; }\n\n/* ── スマートフォン ── */\n.vq2-root.is-mobile .vq2-sp-body { padding: 18px 14px 24px; }\n.vq2-root.is-mobile .vq2-sp-top { padding: 12px 14px; gap: 8px; }\n.vq2-root.is-mobile .vq2-sp-runtop { padding: 10px 12px; gap: 10px; }\n.vq2-root.is-mobile .vq2-sp-title { font-size: 18px; }\n.vq2-root.is-mobile .vq2-sp-sub { display: none; }\n.vq2-root.is-mobile .vq2-sp-runtitle { display: none; }\n.vq2-root.is-mobile .vq2-sp-grid { grid-template-columns: 1fr 1fr; }\n.vq2-root.is-mobile .vq2-sp-stats { grid-template-columns: repeat(3, 1fr); }\n.vq2-root.is-mobile .vq2-sp-start { padding: 18px 16px; }\n.vq2-root.is-mobile .vq2-sp-start-t { font-size: 20px; }\n.vq2-root.is-mobile .vq2-sp-today { gap: 14px; }\n.vq2-root.is-mobile .vq2-sp-ring { width: 68px; height: 68px; }\n.vq2-root.is-mobile .vq2-sp-say-t { font-size: 20px; }\n.vq2-root.is-mobile .vq2-sp-stem .vq2-qtext { font-size: 18px; }\n.vq2-root.is-mobile .vq2-sp-talk { max-height: 42vh; }\n@media (max-width: 380px) {\n  .vq2-root.is-mobile .vq2-sp-grid { grid-template-columns: 1fr; }\n  .vq2-sp-tab-l { font-size: 10px; }\n  .vq2-root.is-mobile .vq2-sp-stats { grid-template-columns: repeat(2, 1fr); }\n}\n\n/* ══════════════════════════════════════════════════════════════════════\n   学習プレイヤーの共通の枠（player-shell.js）\n\n   ・上（vq2-phead）と下（vq2-pfoot）は流れから外して固定する。\n   ・中身（vq2-pmain）だけが伸び縮みし、そこだけがスクロールする。\n     こうしておくと、下の固定操作が回答欄へかぶらない。\n   ・iPhone の下端（ホームバー）は var(--vq-sab,0px) で足す。\n   ・文字の大きさ・本文の幅・詰まり具合は CSS 変数で受け取る。\n     値を決めるのは設定（player-prefs.js）で、ここは受け取るだけ。\n   ══════════════════════════════════════════════════════════════════════ */\n.vq2-root { --vq-pfont: 1rem; --vq-pwidth: 760px; --vq-ppad: 20px; --vq-pgap: 10px; }\n\n.vq2-phead { flex: 0 0 auto; }\n.vq2-phead-t { min-width: 0; flex: 0 1 auto; }\n.vq2-phead-p { padding: 0 16px 10px; background: var(--vq-bg-elevated); border-bottom: 1px solid var(--vq-border-subtle); }\n\n/* 保存の状態。出しっぱなしにせず、状態で色を変える。 */\n.vq2-psave { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: var(--vq-r-full);\n  font: var(--vq-type-caption); color: var(--vq-text-muted); background: var(--vq-surface-sunken); white-space: nowrap; }\n.vq2-psave svg { width: 14px; height: 14px; }\n.vq2-psave.is-saving { color: var(--vq-text-muted); }\n.vq2-psave.is-saved { color: var(--vq-success-text); background: var(--vq-success-bg); }\n.vq2-psave.is-error { color: var(--vq-danger-text); background: var(--vq-danger-bg); }\n\n/* 中身とわき */\n.vq2-pbody { flex: 1 1 auto; min-height: 0; display: flex; background: var(--vq-bg-canvas); }\n.vq2-pmain { flex: 1 1 auto; min-width: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }\n.vq2-pmain-in { max-width: var(--vq-pwidth); margin: 0 auto; padding: var(--vq-ppad) var(--vq-ppad) 40px; font-size: var(--vq-pfont); }\n.vq2-pbody.has-side .vq2-pmain-in { margin: 0 auto; }\n\n.vq2-pside { flex: 0 0 272px; border-left: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  display: flex; flex-direction: column; min-height: 0; }\n.vq2-pside-h { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 12px 10px 12px 16px;\n  border-bottom: 1px solid var(--vq-border-subtle); font: var(--vq-type-label); color: var(--vq-text-muted); }\n.vq2-pside-b { flex: 1 1 auto; overflow-y: auto; padding: 14px 16px 24px; }\n\n/* 問題の一覧 */\n.vq2-qlist-sum { display: flex; gap: 12px; font: var(--vq-type-caption); color: var(--vq-text-muted); margin-bottom: 10px; }\n.vq2-qlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 8px; }\n.vq2-qlist-i { position: relative; min-width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-md); background: var(--vq-bg-elevated);\n  font: var(--vq-type-body); font-variant-numeric: tabular-nums; color: var(--vq-text-muted); cursor: pointer; }\n.vq2-qlist-i:hover { background: var(--vq-surface-hover); }\n.vq2-qlist-i.is-done { background: var(--vq-accent-subtle); border-color: var(--vq-accent); color: var(--vq-text); }\n.vq2-qlist-i.is-now { outline: 2px solid var(--vq-accent); outline-offset: 1px; color: var(--vq-text); font-weight: 700; }\n.vq2-qlist-f { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--vq-warning); }\n.vq2-qlist-a { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }\n\n/* 下の固定操作。**中身の上に浮かせない**（流れの外に置き、中身と場所を分ける）。 */\n.vq2-pfoot { flex: 0 0 auto; border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  padding: 10px 16px; padding-bottom: calc(10px + var(--vq-sab,0px)); }\n.vq2-pfoot-n { font: var(--vq-type-caption); color: var(--vq-text-muted); margin-bottom: 6px; }\n.vq2-pfoot-r { display: flex; align-items: center; gap: 8px; }\n.vq2-pfoot-l, .vq2-pfoot-x { display: flex; align-items: center; gap: 8px; }\n.vq2-pfoot-c { display: flex; align-items: center; justify-content: center; }\n/* 押せる場所は 44px 以上。狭い画面では指で押せることを最優先にする。 */\n.vq2-pfoot button { min-height: 44px; }\n.vq2-root.is-mobile .vq2-pfoot { padding: 8px 12px; padding-bottom: calc(8px + var(--vq-sab,0px)); }\n.vq2-root.is-mobile .vq2-pmain-in { padding: 14px 14px 28px; }\n.vq2-root.is-mobile .vq2-phead-p { padding: 0 12px 8px; }\n\n/* 集中モード：進み具合と時間だけ残し、まわりを静かにする。 */\n.vq2-root.is-pfocus .vq2-pside { display: none; }\n.vq2-root.is-pfocus .vq2-pmain-in { padding-top: 32px; }\n/* 動きを止める設定。端末側の「動きを減らす」とは別に、ここでも切れるようにする。 */\n.vq2-root.is-pnomotion *, .vq2-root.is-pnomotion *::before, .vq2-root.is-pnomotion *::after {\n  animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important;\n}\n\n/* 選択肢の詰まり具合（設定から） */\n.vq2-qanswer .vq2-choice + .vq2-choice { margin-top: var(--vq-pgap); }\n\n/* 話す練習の大きなマイク。\n   片手で持って話すので、指の届く下の真ん中に置き、丸く大きくする。 */\n.vq2-sp-foot-r { display: flex; align-items: center; gap: 12px; width: 100%; }\n.vq2-sp-foot-r.is-center { justify-content: center; }\n.vq2-sp-mic { flex: 0 0 auto; display: inline-flex; flex-direction: column; align-items: center; justify-content: center;\n  gap: 2px; width: 88px; height: 88px; border-radius: 50%; border: none; cursor: pointer;\n  background: var(--vq-accent); color: var(--vq-accent-contrast);\n  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16); transition: transform var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-sp-mic svg { width: 30px; height: 30px; }\n.vq2-sp-mic-l { font: var(--vq-type-caption); font-weight: 700; }\n.vq2-sp-mic:hover { transform: translateY(-1px); }\n.vq2-sp-mic:active { transform: translateY(1px); }\n.vq2-sp-mic:focus-visible { outline: 3px solid var(--vq-accent); outline-offset: 3px; }\n.vq2-root.is-mobile .vq2-sp-mic { width: 76px; height: 76px; }\n/* 録音中の帯。やめる（採点しない）を必ず添える。 */\n.vq2-sp-rec .vq2-btn { margin-left: auto; }\n\n/* ══════════════════════════════════════════════════════════════════════\n   Quick Mock：段階と、狭い画面の下の操作\n   ══════════════════════════════════════════════════════════════════════ */\n/* 段階は押して移れる（button になった）。押せる場所として見えるようにする。 */\nbutton.vq2-steps-i { background: none; border: none; padding: 3px 6px; border-radius: var(--vq-r-md);\n  cursor: pointer; text-align: left; }\nbutton.vq2-steps-i:hover { background: var(--vq-surface-hover); }\nbutton.vq2-steps-i:focus-visible { outline: var(--vq-focus-ring); outline-offset: 1px; }\nbutton.vq2-steps-i.is-now { background: var(--vq-accent-subtle); }\n.vq2-steps-n { color: var(--vq-text-tertiary); font-variant-numeric: tabular-nums; }\nbutton.vq2-steps-i.is-now .vq2-steps-n { color: var(--vq-accent-text); }\n\n/* 狭い画面の下の帯。「戻る／いまの段階／次へ」。\n   下端（ホームバー）ぶんの余白を足して、指が届く場所に置く。 */\n.vq2-qmfoot { flex: 0 0 auto; border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  padding: 8px 10px; padding-bottom: calc(8px + var(--vq-sab,0px)); }\n.vq2-qmfoot-r { display: flex; align-items: center; gap: 6px; }\n.vq2-qmfoot-c { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }\n.vq2-qmfoot-n { font: var(--vq-type-caption); color: var(--vq-text-tertiary); font-variant-numeric: tabular-nums; }\n.vq2-qmfoot-t { font: var(--vq-type-label); color: var(--vq-text); white-space: nowrap; }\n.vq2-qmfoot button { min-height: 44px; }\n@media (max-width: 360px) { .vq2-qmfoot-n { display: none; } }\n.vq2-steps-l { white-space: nowrap; }\n\n/* VocabuSpeak：結果の「種類ごと」「できていた／直す」「次におすすめ」 */\n.vq2-sp-perlist { display: flex; flex-direction: column; gap: 8px; }\n.vq2-sp-per { display: flex; align-items: center; gap: 10px; }\n.vq2-sp-per-l { flex: 0 0 auto; min-width: 7em; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-per .vq2-sp-meter { flex: 1 1 auto; }\n.vq2-sp-per-n { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-text-muted);\n  font-variant-numeric: tabular-nums; }\n.vq2-sp-gw { display: flex; flex-direction: column; gap: 8px; }\n.vq2-sp-gw-i { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--vq-r-lg); }\n.vq2-sp-gw-i b { font: var(--vq-type-label); }\n.vq2-sp-gw-i span { font: var(--vq-type-caption); }\n.vq2-sp-gw-i.is-good { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-sp-gw-i.is-weak { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-sp-nextacts { display: flex; flex-direction: column; gap: 8px; }\n.vq2-sp-nextacts .vq2-btn { justify-content: flex-start; }\n\n/* 上の帯が詰まったときの逃がし方。\n   題名は縮んで「…」で切る。保存の印は狭い画面で印だけにする。\n   ここを決めておかないと、保存の印が副題の上に乗る（実測 390px）。 */\n.vq2-phead .vq2-top { gap: 8px; }\n.vq2-phead-t { min-width: 0; flex: 1 1 auto; overflow: hidden; }\n.vq2-phead-t .vq2-top-title, .vq2-phead-t .vq2-top-sub {\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-psave { flex: 0 0 auto; }\n.vq2-psave.is-mini { padding: 5px; gap: 0; }\n.vq2-psave.is-mini .vq2-psave-l {\n  position: absolute; width: 1px; height: 1px; overflow: hidden;\n  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }\n\n/* --vq-on-accent は **どこにも定義されていなかった**（トークンの名前は\n   --vq-accent-contrast）。未定義の変数は継承色へ落ちるので、\n   アクセント色の上に暗い文字が乗り、読みにくくなっていた\n   （実測: 話す練習の丸いマイクの「話す」と印が沈んでいた）。\n   名前を間違えても気づけるように、保険として既定値を置いておく。 */\n.vq2-root { --vq-on-accent: var(--vq-accent-contrast); }\n\n/* ログの「詳細を見る」。狭い画面でも指で押せる高さにする。 */\n.vq2-tl-more { min-height: 44px; }\n@media (min-width: 900px) { .vq2-tl-more { min-height: 28px; } }\n/* ここでは **1 行で切らない**。\n   1 件 1 行の一覧だったころの指定で、末尾を「…」にして横へ伸ばしていた。\n   いまは会話として読ませるので、切ると文の途中で消える（実測でそうなった）。 */\n\n/* ══════════════════════════════════════════════════════════════════════\n   並べ替えの行（文字が縦にならないように）\n\n   文の入れ物は flex の子なので、既定の min-width: auto では\n   最小内容幅（日本語は 1 文字）まで縮む。狭い画面で\n   つまみ・番号・上下ボタンに押されると 44px まで潰れ、\n   28 字が 14 行に折れて **縦書きのように見えていた**（実測 320px）。\n   ここで「縮んでよいが、行としては横に伸びる」と決めておく。\n   ══════════════════════════════════════════════════════════════════════ */\n.vq2-sort-t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }\n\n/* 狭い画面では、上下ボタンを次の行へ落として文に幅を渡す。\n   1 行に全部を並べると、どうやっても文の幅が足りない。 */\n@media (max-width: 420px) {\n  .vq2-sort-i { flex-wrap: wrap; row-gap: 6px; }\n  .vq2-sort-m { flex: 1 1 100%; order: 2; }\n  .vq2-sort-a { order: 3; margin-left: auto; }\n  .vq2-sort-h { order: 0; }\n  .vq2-sort-n { order: 1; }\n}\n\n\n/* ── シートの 出入りを ふわっと ───────────────────────────────\n   ★ これまで シートは **その場に 出て その場で 消えて** いた。\n     画面の 真ん中に 何かが 突然 現れるのは 目に つらいので、\n     出るとき: うすい → はっきり ＋ すこし 大きく なりながら\n     消えるとき: その 逆。時間は 本体の 尺（--vq-dur-*）に そろえる。\n   ★ 動きを 減らす 設定（is-reduced / prefers-reduced-motion）では 一切 動かさない。 */\n.vq2-sheet-bd{\n  opacity: 0;\n  transition: opacity var(--vq-dur-normal, 200ms) var(--vq-ease-standard, ease);\n}\n.vq2-sheet-bd.is-in{ opacity: 1; }\n\n/* 全画面で 開く ほう（sheet ではない）も、出るときに ふわっと。\n   （2026-08-29・訴え「モーダルを 開く時にも 動きを」）\n   transition ではなく keyframes。transition は 始まりの 姿が\n   別の コマに 無いと 走らないので、開く 側で よく 取りこぼす。 */\n@keyframes vq2RootIn{ from{ opacity:0; transform:scale(.994); } to{ opacity:1; transform:none; } }\n.vq2-root:not(.is-sheet){ animation: vq2RootIn .26s cubic-bezier(.22,1,.36,1) both; }\n.vq2-root:not(.is-sheet).is-reduced{ animation: none; }\n@media (prefers-reduced-motion: reduce){ .vq2-root:not(.is-sheet){ animation: none; } }\n.vq2-root.is-sheet{\n  opacity: 0;\n  transform: translate(-50%, -50%) scale(.965);\n  transition: opacity var(--vq-dur-normal, 200ms) var(--vq-ease-enter, cubic-bezier(.16,1,.3,1)),\n              transform var(--vq-dur-normal, 200ms) var(--vq-ease-enter, cubic-bezier(.16,1,.3,1));\n  will-change: opacity, transform;\n}\n.vq2-root.is-sheet.is-in{ opacity: 1; transform: translate(-50%, -50%) scale(1); }\n.vq2-root.is-sheet.is-out{\n  opacity: 0; transform: translate(-50%, -50%) scale(.975);\n  transition-duration: var(--vq-dur-fast, 120ms);\n  transition-timing-function: var(--vq-ease-exit, cubic-bezier(.45,0,.7,.4));\n}\n/* スマホは 下から。位置の 決め方が 違うので 別に 書く。 */\n.vq2-root.is-sheet.is-mobile{ transform: translateY(14px); }\n.vq2-root.is-sheet.is-mobile.is-in{ transform: translateY(0); }\n.vq2-root.is-sheet.is-mobile.is-out{ transform: translateY(10px); }\n.vq2-root.is-sheet.is-reduced,\n.vq2-root.is-sheet.is-reduced.is-in,\n.vq2-root.is-sheet.is-reduced.is-out{ transition: none; opacity: 1; }\n.vq2-root.is-sheet.is-reduced{ transform: translate(-50%, -50%); }\n.vq2-root.is-sheet.is-reduced.is-mobile{ transform: none; }\n@media (prefers-reduced-motion: reduce){\n  .vq2-sheet-bd, .vq2-root.is-sheet{ transition: none !important; opacity: 1 !important; }\n  .vq2-root.is-sheet{ transform: translate(-50%, -50%) !important; }\n  .vq2-root.is-sheet.is-mobile{ transform: none !important; }\n}\n\n\n/* ── 公開の モーダル: 2 段・表紙・新しい 見本 ────────────────────\n   ★ 見本は **一覧の 札と 同じ 組み立て**（表紙 → 重なる アイコン →\n     名前 → 作った人 → 科目・問題数 → 公開ID）。\n     前は 丸い アイコンと 名前だけで、実物と 別物だった。 */\n.vq2-pp-steps{\n  display:flex; align-items:center; gap:8px; margin:2px 0 10px;\n  font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n}\n.vq2-pp-steps span{ font-weight:650; }\n.vq2-pp-steps span.is-on{ color: var(--vq-accent-text); }\n.vq2-pp-steps span.is-done{ color: var(--vq-success-text); }\n.vq2-pp-steps i{ flex:0 0 22px; height:1px; background: var(--vq-border); }\n\n.vq2-pp-pv{\n  --lib-l1: 90%; --lib-l2: 96%;\n  border-radius: calc(18px * var(--vq-r-scale,1)); overflow:hidden;\n  background: var(--vq-surface); border: 1px solid var(--vq-border-subtle);\n  box-shadow: var(--vq-shadow-raised);\n}\n:host([data-theme=\"dark\"]) .vq2-pp-pv{ --lib-l1: 26%; --lib-l2: 19%; }\n.vq2-pp-pv-cover{ height: 92px; background-size: cover; background-position: center; }\n.vq2-pp-pv-b{ padding: 0 15px 14px; display:grid; gap:5px; }\n.vq2-pp-pv-ico{\n  width:50px; height:50px; margin-top:-26px; margin-bottom:2px;\n  border-radius: calc(15px * var(--vq-r-scale,1));\n  border: 2.5px solid var(--vq-surface); box-shadow: 0 3px 10px rgba(84,72,140,.18);\n  display:grid; place-items:center; overflow:hidden; color:#fff;\n}\n.vq2-pp-pv-ico .vq2-ms{ font-size:25px; }\n.vq2-pp-pv-ico img{ width:100%; height:100%; object-fit:cover; display:block; }\n.vq2-pp-pv-t{ font-size:14.5px; font-weight:750; color: var(--vq-text); word-break: break-word; }\n.vq2-pp-pv-by{ display:flex; align-items:center; gap:6px; font-size:11.5px; color: var(--vq-text-secondary); font-weight:600; }\n.vq2-pp-pv-by .vq2-ms{ font-size:14px; color: var(--vq-text-tertiary); }\n.vq2-pp-pv-meta{ display:flex; gap:10px; flex-wrap:wrap; font-size:11.5px; color: var(--vq-text-secondary); }\n\n/* 表紙の 欄 */\n.vq2-pp-cover{\n  height:120px; border-radius: calc(14px * var(--vq-r-scale,1));\n  background: var(--vq-surface-sunken) center/cover no-repeat;\n  border: 1px dashed var(--vq-border-strong);\n  display:flex; align-items:center; justify-content:center; gap:8px;\n  color: var(--vq-text-tertiary); font-size:12px; margin-top:8px;\n}\n.vq2-pp-cover.has-img{ border-style: solid; }\n.vq2-pp-cover .vq2-ms{ font-size:22px; }\n.vq2-pp-coveracts{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }\n\n/* 決まり（2 段目） */\n.vq2-pp-terms{\n  max-height: 42vh; overflow-y:auto; overscroll-behavior: contain;\n  margin-top:8px; padding: 13px 14px; display:grid; gap:13px;\n  background: var(--vq-surface-sunken);\n  border: 1px solid var(--vq-border-subtle);\n  border-radius: calc(14px * var(--vq-r-scale,1));\n}\n.vq2-pp-terms:focus-visible{ outline:none; box-shadow: var(--vq-focus-ring); }\n.vq2-pp-term h4{ margin:0 0 4px; font-size:13.5px; font-weight:700; color: var(--vq-text); }\n.vq2-pp-term p{ margin:0; font-size:12.5px; line-height:1.75; color: var(--vq-text-secondary); }\n.vq2-pp-termend{ text-align:center; font-size:11.5px; color: var(--vq-text-tertiary); }\n.vq2-pp-readhint{\n  display:flex; align-items:center; gap:8px; margin-top:10px;\n  font-size:11.5px; color: var(--vq-text-secondary);\n}\n.vq2-pp-readhint .vq2-ms{ font-size:18px; }\n.vq2-pp-readhint.is-done{ color: var(--vq-success-text); }\n.vq2-pp-agree input[disabled]{ cursor: not-allowed; }\n\n\n/* ── 「見た目」を 選べなくする（画像を アイコンに した とき）────────\n   ★ 選べるように 見せておいて 効かない のが いちばん 分かりにくい。\n     押せなく した うえで うすい 覆いを かけ、外し方を その場に 書く。 */\n.vq2-pp-lookwrap{ position: relative; }\n.vq2-pp-lookwrap.is-locked .vq2-pp-lookin{\n  opacity: .32; filter: saturate(.35);\n  pointer-events: none; user-select: none;\n}\n.vq2-pp-lock{\n  position: absolute; inset: -4px;\n  display: grid; place-items: center;\n  padding: 10px;\n  border-radius: calc(12px * var(--vq-r-scale,1));\n  background: color-mix(in srgb, var(--vq-surface) 62%, transparent);\n  cursor: not-allowed;\n}\n.vq2-pp-lock-in{\n  display: inline-flex; align-items: center; gap: 8px;\n  max-width: 100%; text-align: left;\n  padding: 8px 12px;\n  border-radius: calc(999px * var(--vq-r-scale,1));\n  background: var(--vq-surface);\n  border: 1px solid var(--vq-border);\n  box-shadow: var(--vq-shadow-subtle);\n  font-size: 11.5px; line-height: 1.6; font-weight: 600;\n  color: var(--vq-text-secondary);\n}\n.vq2-pp-lock-in .vq2-ms{ font-size: 17px; color: var(--vq-text-tertiary); flex: 0 0 auto; }\n";
+  var SHELL_CSS = "/* VocabuQuiz Learning Workspace V2 — self-contained styles */\n\n:host { color-scheme: light; }\n\n:host([data-theme=\"dark\"]) { color-scheme: dark; }\n\n:host {\n  /* ── Brand scale (Lavender) ───────────────────────────── */\n  --vq-lav-25:  #FCFBFE;\n  --vq-lav-50:  #F7F6FB;\n  --vq-lav-100: #F4F2FB;   /* primary subtle */\n  --vq-lav-150: #EEECF9;   /* selected */\n  --vq-lav-200: #EAE8F7;   /* primary soft */\n  --vq-lav-300: #D5D0EC;\n  --vq-lav-400: #A79FD1;\n  --vq-lav-500: #8A81C2;\n  --vq-lav-600: #756DB3;   /* brand core */\n  --vq-lav-650: #6961A8;   /* hover */\n  --vq-lav-700: #5F579E;   /* active */\n  --vq-lav-800: #4D4683;\n  --vq-lav-900: #3B3567;\n  --vq-lav-950: #262244;\n\n  /* ── Neutral scale (lavender-tinted gray) ─────────────── */\n  --vq-gray-0:   #FFFFFF;\n  --vq-gray-25:  #FCFBFE;\n  --vq-gray-50:  #F9F8FC;\n  --vq-gray-100: #F4F3F9;\n  --vq-gray-150: #EFEDF5;\n  --vq-gray-200: #E7E4EF;\n  --vq-gray-300: #D7D2E4;\n  --vq-gray-400: #BBB7C5;\n  --vq-gray-500: #9994A8;\n  --vq-gray-600: #7A7589;\n  --vq-gray-650: #686477;\n  --vq-gray-700: #5A5568;\n  --vq-gray-800: #454151;\n  --vq-gray-850: #353143;\n  --vq-gray-900: #2B2836;\n  --vq-gray-950: #211F29;\n\n  /* ═══ Semantic aliases — 実装は必ずこちらを参照する ═══ */\n\n  /* Background layers */\n  --vq-bg:            var(--vq-gray-25);\n  --vq-bg-subtle:     var(--vq-lav-50);\n  --vq-bg-elevated:   var(--vq-gray-0);\n  --vq-bg-canvas:     var(--vq-lav-50);\n\n  /* Surfaces */\n  --vq-surface:          var(--vq-gray-0);\n  --vq-surface-hover:    #F7F5FC;\n  --vq-surface-active:   #F1EEF8;\n  --vq-surface-selected: var(--vq-lav-150);\n  --vq-surface-disabled: var(--vq-gray-100);\n  --vq-surface-sunken:   var(--vq-lav-50);\n  --vq-surface-overlay:  rgba(38, 34, 68, 0.40);\n\n  /* Borders */\n  --vq-border:        var(--vq-gray-200);\n  --vq-border-subtle: var(--vq-gray-150);\n  --vq-border-strong: var(--vq-gray-300);\n  --vq-border-focus:  var(--vq-lav-600);\n\n  /* Text */\n  --vq-text:           var(--vq-gray-800);\n  --vq-text-secondary: var(--vq-gray-650);\n  --vq-text-tertiary:  var(--vq-gray-500);\n  --vq-text-disabled:  var(--vq-gray-400);\n  --vq-text-inverse:   #ffffff;\n  --vq-text-link:      var(--vq-lav-700);\n\n  /* Accent (brand action) */\n  --vq-accent:         var(--vq-lav-600);\n  --vq-accent-hover:   var(--vq-lav-650);\n  --vq-accent-active:  var(--vq-lav-700);\n  --vq-accent-subtle:  var(--vq-lav-200);\n  --vq-accent-subtle-hover: #E0DCF2;\n  --vq-accent-text:    var(--vq-lav-700);\n  --vq-accent-contrast:#ffffff;\n  /* 色付きベタ塗り（accent/正解/不正解 等）の上に載せる文字・アイコン色 */\n  --vq-solid-ink:      #ffffff;\n\n  /* Status */\n  --vq-success:        #70AD86;\n  --vq-success-strong: #3F7D58;\n  --vq-success-bg:     #E9F5ED;\n  --vq-success-text:   #3E7A56;\n  --vq-warning:        #E5A85F;\n  --vq-warning-bg:     #FFF3E5;\n  --vq-warning-text:   #925F1D;\n  --vq-danger:         #D67777;\n  --vq-danger-strong:  #B14F4F;\n  --vq-danger-strong-hover: #9E4444;\n  --vq-danger-hover:   #C96666;\n  --vq-danger-bg:      #FCEAEA;\n  --vq-danger-text:    #A94A4A;\n  --vq-info:           #708FC5;\n  --vq-info-bg:        #EAF0F9;\n  --vq-info-text:      #4A69A4;\n\n  /* Focus / selection */\n  --vq-focus-ring:     0 0 0 3px color-mix(in srgb, var(--vq-lav-600) 26%, transparent);\n  --vq-selection-bg:   #E4E0F4;\n\n  /* Domain colors */\n  --vq-quiz-correct:      #4E8F6B;\n  --vq-quiz-correct-bg:   #E9F5ED;\n  --vq-quiz-incorrect:    #C25B5B;\n  --vq-quiz-incorrect-bg: #FCEAEA;\n  --vq-quiz-unanswered:   #B6B1C2;\n  --vq-favorite:          #E6A753;\n  --vq-favorite-bg:       #FBF1E1;\n  --vq-ai:                #8175BD;\n  --vq-ai-text:           #695CA8;\n  --vq-ai-bg:             #EDEAF9;\n  --vq-qredit:            #9C6A1B;\n  --vq-qredit-fill:       #D69A4D;\n  --vq-qredit-bg:         #FAF0DF;\n  --vq-admin:             #6E6787;\n  --vq-admin-bg:          var(--vq-gray-150);\n  --vq-social:            #C95E85;\n\n  /* Charts (categorical, CVD-validated via dataviz six-checks / surface #fff) */\n  --vq-chart-1: #7a4fe8;\n  --vq-chart-2: #0b7fbd;\n  --vq-chart-3: #d43f75;\n  --vq-chart-4: #b26a00;\n  --vq-chart-5: #08967f;\n  --vq-chart-6: #3f63ea;\n  --vq-chart-grid: var(--vq-gray-150);\n\n  /* Illustration palette（フラットSVGイラスト用・両テーマで差し替わる） */\n  --vq-il-blob:  #EDEAF9;\n  --vq-il-a:     #A79FD1;\n  --vq-il-b:     #756DB3;\n  --vq-il-c:     #F2C08A;\n  --vq-il-d:     #F1B7C8;\n  --vq-il-e:     #A9C6EA;\n  --vq-il-paper: #FFFFFF;\n  --vq-il-ink:   #454151;\n  --vq-il-line:  #D7D2E4;\n\n  /* ── Typography ───────────────────────────────────────── */\n  --vq-font-sans: -apple-system, BlinkMacSystemFont, \"Hiragino Sans\",\n    \"Hiragino Kaku Gothic ProN\", \"Noto Sans JP\", \"Segoe UI\", Roboto,\n    \"Yu Gothic UI\", \"Meiryo\", sans-serif;\n  /* 見出し用: 少し丸みのある親しみやすいスタック（可愛くしすぎない） */\n  --vq-font-display: ui-rounded, \"Hiragino Maru Gothic ProN\",\n    \"Arial Rounded MT Bold\", -apple-system, \"Hiragino Sans\",\n    \"Noto Sans JP\", \"Yu Gothic UI\", \"Meiryo\", sans-serif;\n  --vq-font-mono: \"SF Mono\", \"SFMono-Regular\", ui-monospace, \"JetBrains Mono\",\n    \"Cascadia Code\", Menlo, Consolas, monospace;\n\n  --vq-type-display:    800 clamp(29px, 4.4vw, 38px) / 1.32 var(--vq-font-display);\n  --vq-type-heading-xl: 750 25px / 1.4  var(--vq-font-display);\n  --vq-type-heading-lg: 700 20px / 1.45 var(--vq-font-display);\n  --vq-type-heading-md: 700 17px / 1.55 var(--vq-font-sans);\n  --vq-type-heading-sm: 650 14.5px / 1.5 var(--vq-font-sans);\n  --vq-type-body-lg:    400 16px / 1.85 var(--vq-font-sans);\n  --vq-type-body-md:    400 14.5px / 1.8 var(--vq-font-sans);\n  --vq-type-body-sm:    400 13px / 1.7  var(--vq-font-sans);\n  --vq-type-label:      600 13px / 1.4  var(--vq-font-sans);\n  --vq-type-caption:    500 11.5px / 1.5 var(--vq-font-sans);\n  --vq-type-code:       500 13px / 1.65 var(--vq-font-mono);\n\n  --vq-tracking-tight: -0.002em;\n  --vq-tracking-body:  0.01em;\n  --vq-tracking-wide:  0.06em;\n\n  /* ── Spacing scale ────────────────────────────────────── */\n  --vq-sp-0: 0px;   --vq-sp-1: 2px;  --vq-sp-2: 4px;  --vq-sp-3: 6px;\n  --vq-sp-4: 8px;   --vq-sp-5: 12px; --vq-sp-6: 16px; --vq-sp-7: 20px;\n  --vq-sp-8: 24px;  --vq-sp-9: 32px; --vq-sp-10: 40px; --vq-sp-11: 48px;\n  --vq-sp-12: 64px; --vq-sp-13: 80px;\n\n  /* ── Radius（全体的に柔らかく・ただしピル化しすぎない） ── */\n  --vq-r-none: 0px;\n  --vq-r-xs: 6px;\n  --vq-r-sm: 10px;\n  --vq-r-md: 14px;     /* buttons, inputs */\n  --vq-r-lg: 18px;     /* cards */\n  --vq-r-xl: 22px;     /* modals, large panels */\n  --vq-r-2xl: 28px;    /* bottom sheet 上端・特大パネル */\n  --vq-r-full: 999px;\n\n  /* ── Shadows（ラベンダーを帯びた極控えめな影） ─────────── */\n  --vq-shadow-none: none;\n  --vq-shadow-subtle: 0 1px 2px rgba(84, 72, 140, 0.05);\n  --vq-shadow-raised: 0 2px 4px rgba(84, 72, 140, 0.04), 0 6px 16px rgba(84, 72, 140, 0.07);\n  --vq-shadow-floating: 0 4px 12px rgba(84, 72, 140, 0.08), 0 16px 40px rgba(84, 72, 140, 0.12);\n  --vq-shadow-modal: 0 10px 24px rgba(60, 50, 110, 0.10), 0 32px 80px rgba(60, 50, 110, 0.18);\n  --vq-shadow-accent: 0 6px 16px color-mix(in srgb, var(--vq-accent) 24%, transparent);\n\n  /* ── Motion（軽く・柔らかく） ─────────────────────────── */\n  --vq-dur-instant: 0ms;\n  --vq-dur-fast: 120ms;\n  --vq-dur-normal: 200ms;\n  --vq-dur-slow: 300ms;\n  --vq-dur-deliberate: 420ms;\n  --vq-ease-standard: cubic-bezier(0.25, 0.65, 0.2, 1);\n  --vq-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);\n  --vq-ease-exit: cubic-bezier(0.45, 0, 0.7, 0.4);\n  --vq-ease-spring: cubic-bezier(0.32, 1.25, 0.4, 1);\n\n  /* ── Layout ───────────────────────────────────────────── */\n  --vq-sidebar-w: 264px;\n  --vq-topbar-h: 56px;\n  --vq-bottomnav-h: 62px;\n  --vq-content-max: 1120px;\n  --vq-tap-min: 44px;\n\n  /* density: comfortable(default) — モバイルでタップしやすい高さ */\n  --vq-control-h-sm: 32px;\n  --vq-control-h-md: 42px;\n  --vq-control-h-lg: 50px;\n  --vq-field-px: 14px;\n  --vq-card-p: 20px;\n\n  color-scheme: light;\n}\n:host {\n  --vq-cobalt-50:  var(--vq-lav-100);\n  --vq-cobalt-100: var(--vq-lav-150);\n  --vq-cobalt-200: var(--vq-lav-200);\n  --vq-cobalt-300: var(--vq-lav-300);\n  --vq-cobalt-400: var(--vq-lav-400);\n  --vq-cobalt-500: var(--vq-lav-500);\n  --vq-cobalt-600: var(--vq-lav-600);\n  --vq-cobalt-700: var(--vq-lav-700);\n  --vq-cobalt-800: var(--vq-lav-800);\n  --vq-cobalt-900: var(--vq-lav-900);\n  --vq-cobalt-950: var(--vq-lav-950);\n}\n\n:host([data-density=\"compact\"]) {\n  --vq-control-h-sm: 28px;\n  --vq-control-h-md: 36px;\n  --vq-control-h-lg: 46px;\n  --vq-field-px: 11px;\n  --vq-card-p: 14px;\n  --vq-sp-6: 12px;\n  --vq-sp-8: 18px;\n  --vq-sp-9: 24px;\n}\n\n:host([data-theme=\"dark\"]) {\n  color-scheme: dark;\n\n  --vq-bg:            #17161D;\n  --vq-bg-subtle:     #1C1B24;\n  --vq-bg-elevated:   #211F29;\n  --vq-bg-canvas:     #131218;\n\n  --vq-surface:          #211F29;\n  --vq-surface-hover:    #272430;\n  --vq-surface-active:   #2D2A39;\n  --vq-surface-selected: #302B44;\n  --vq-surface-disabled: #1E1D25;\n  --vq-surface-sunken:   #1B1A22;\n  --vq-surface-overlay:  rgba(9, 8, 14, 0.62);\n\n  --vq-border:        #393543;\n  --vq-border-subtle: #2C2937;\n  --vq-border-strong: #4A4559;\n  --vq-border-focus:  #A59BE0;\n\n  --vq-text:           #F5F2FA;\n  --vq-text-secondary: #CBC5D5;\n  --vq-text-tertiary:  #928B9E;\n  --vq-text-disabled:  #655F73;\n  --vq-text-inverse:   #211F29;\n  --vq-text-link:      #B5ABEA;\n\n  --vq-accent:         #A59BE0;\n  --vq-accent-hover:   #B5ACE9;\n  --vq-accent-active:  #C2BBEF;\n  --vq-accent-subtle:  #2E2A45;\n  --vq-accent-subtle-hover: #39335A;\n  --vq-accent-text:    #BCB2F0;\n  --vq-accent-contrast:#232040;\n  --vq-solid-ink:      #17161D;\n\n  --vq-success:        #7FC69A;\n  --vq-success-strong: #7FC69A;\n  --vq-success-bg:     #20342A;\n  --vq-success-text:   #A8DDBE;\n  --vq-warning:        #E4B778;\n  --vq-warning-bg:     #372B17;\n  --vq-warning-text:   #ECCA97;\n  --vq-danger:         #E08D8D;\n  --vq-danger-strong:  #DE8484;\n  --vq-danger-strong-hover: #E9A0A0;\n  --vq-danger-hover:   #E9A0A0;\n  --vq-danger-bg:      #3B2225;\n  --vq-danger-text:    #F0A9A9;\n  --vq-info:           #8FA9DC;\n  --vq-info-bg:        #202A3D;\n  --vq-info-text:      #AFC4EA;\n\n  --vq-focus-ring:     0 0 0 3px color-mix(in srgb, #A59BE0 34%, transparent);\n  --vq-selection-bg:   #3A3260;\n\n  --vq-quiz-correct:      #7FC69A;\n  --vq-quiz-correct-bg:   #20342A;\n  --vq-quiz-incorrect:    #E08D8D;\n  --vq-quiz-incorrect-bg: #3B2225;\n  --vq-quiz-unanswered:   #6A6478;\n  --vq-favorite:          #E9B368;\n  --vq-favorite-bg:       #382C12;\n  --vq-ai:                #AA9DE6;\n  --vq-ai-text:           #C4BAF2;\n  --vq-ai-bg:             #2B2545;\n  --vq-qredit:            #DFAE63;\n  --vq-qredit-fill:       #DFAE63;\n  --vq-qredit-bg:         #362B15;\n  --vq-admin:             #A29BB5;\n  --vq-admin-bg:          #2B2837;\n  --vq-social:            #E289AE;\n\n  /* Charts (CVD-validated / surface #211F29) */\n  --vq-chart-1: #8b6ef5;\n  --vq-chart-2: #2f96c9;\n  --vq-chart-3: #e0628d;\n  --vq-chart-4: #c28316;\n  --vq-chart-5: #22a99e;\n  --vq-chart-6: #6389f4;\n  --vq-chart-grid: #2E2B38;\n\n  --vq-il-blob:  #2B2740;\n  --vq-il-a:     #6F66A6;\n  --vq-il-b:     #A59BE0;\n  --vq-il-c:     #C99555;\n  --vq-il-d:     #C97F97;\n  --vq-il-e:     #7292C1;\n  --vq-il-paper: #2A2735;\n  --vq-il-ink:   #E8E4F1;\n  --vq-il-line:  #4A4559;\n\n  --vq-shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.32);\n  --vq-shadow-raised: 0 2px 4px rgba(0, 0, 0, 0.32), 0 6px 16px rgba(0, 0, 0, 0.36);\n  --vq-shadow-floating: 0 4px 12px rgba(0, 0, 0, 0.42), 0 16px 40px rgba(0, 0, 0, 0.46);\n  --vq-shadow-modal: 0 10px 24px rgba(0, 0, 0, 0.46), 0 32px 80px rgba(0, 0, 0, 0.6);\n  --vq-shadow-accent: 0 6px 16px color-mix(in srgb, #A59BE0 26%, transparent);\n}\n\n/* ══════════════════════════════════════════════════════════════════════\n   V2 共通スタイル（Shadow DOM 内でのみ有効）\n   ・色・角丸・影・時間はすべてトークン経由。ここでハードコードしない。\n   ・白基調、静かで高品質。過度なグラデーション・派手な影は使わない。\n   ・タップ領域 44px 以上、横スクロールなし、Safe Area 対応。\n   ══════════════════════════════════════════════════════════════════════ */\n\n*, *::before, *::after { box-sizing: border-box; }\n\n/* 表紙の代わりに使う色の明るさ。色相（--lib-hue）はプリセットごとに差し込む。 */\n:host { --lib-l1: 90%; --lib-l2: 96%; --lib-l3: 76%; }\n:host([data-theme=\"dark\"]) { --lib-l1: 26%; --lib-l2: 19%; --lib-l3: 36%; }\n\n/* ══ 下端の余白は **下のバーが自分で**空ける ══════════════════\n   ここで画面ぜんぶを押し上げていたため、下のバー（.vq2-wsbar / .vq2-tlc /\n   .vq2-pd-foot はどれも自分でセーフエリアを空けている）が 2 重に浮き、\n   **その下に地色の帯が残っていた**。ホーム画面に追加してアプリとして\n   開いたときの「下の白い隙間」がこれ（実測 2026-08-13）。\n   バーが無い画面のために、スクロールする中身（.vq2-pane-b）へ移す。 */\n.vq2-root {\n  position: absolute; inset: 0;\n  display: flex; flex-direction: column;\n  background: var(--vq-bg);\n  color: var(--vq-text);\n  font-family: var(--vq-font-sans);\n  font: var(--vq-type-body-md);\n  letter-spacing: var(--vq-tracking-body);\n  -webkit-font-smoothing: antialiased;\n  overflow: hidden;\n}\n.vq2-root, .vq2-root * { font-family: var(--vq-font-sans); }\n/* ── 文書の中身だけは、この一括指定から外す ──────────────────\n   上の `.vq2-root *` は **すべての要素**に当たるため、\n   利用者が選んだ書体を <span style=\"font-family:…\"> で当てても、\n   その内側（大きさや色で包んだ span）が一括指定に上書きされ、\n   標準の書体へ戻ってしまう（「大きさを変えると書体が外れる」の原因）。\n   継承へ戻すことで、外側で当てた書体が内側まで届く。 */\n.vq2-root :is(.wpd-doc, .wpd-b__c, .wps-cell, .wpp-el, .wpf-in) * { font-family: inherit; }\n\n/* ── シート（中央に浮かぶカード）─────────────────────────────\n   全画面を占領せず、背景が見えたまま確認だけしたいときに使う。\n   モバイルでは下から出るシートにする（片手で閉じられる位置）。 */\n.vq2-sheet-bd { position: fixed; inset: 0; background: rgba(24, 21, 34, .44); }\n.vq2-root.is-sheet {\n  position: fixed; inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%);\n  width: min(680px, calc(100vw - 32px));\n  max-height: min(86vh, 860px); height: auto;\n  border-radius: var(--vq-r-xl); box-shadow: var(--vq-shadow-modal);\n  border: 1px solid var(--vq-border-subtle);\n}\n/* is-mobile は .vq2-root 自身に付くクラス。子孫セレクタで書くと当たらない。 */\n.vq2-root.is-sheet.is-mobile {\n  left: 0; right: 0; top: auto; bottom: 0; transform: none;\n  width: 100%; max-height: 92vh;\n  border-radius: var(--vq-r-xl) var(--vq-r-xl) 0 0; border-bottom: 0;\n  padding-bottom: var(--vq-sab,0px);\n}\n.vq2-root.is-sheet .vq2-top { padding-top: 0; }\n\n/* ── プリセットの詳細 ─────────────────────────────────────────\n   PC は中央のカード（880〜1000px）。スマホは下から出る全画面で、\n   操作は指の届く下に固定する。 */\n.vq2-ms { font-family: \"Material Symbols Rounded\"; font-weight: 500; font-style: normal;\n  line-height: 1; display: inline-block; letter-spacing: normal; text-transform: none;\n  white-space: nowrap; direction: ltr; -webkit-font-feature-settings: \"liga\";\n  -webkit-font-smoothing: antialiased; font-variation-settings: \"FILL\" 1; }\n.vq2-root.is-sheet.vq2-pd { width: min(1000px, calc(100vw - 48px)); max-height: min(88vh, 900px); }\n.vq2-root.is-sheet.vq2-pd.is-mobile { width: 100%; max-height: 94vh; }\n.vq2-pd-head { position: relative; flex: 0 0 auto; overflow: hidden; height: 152px;\n  background: linear-gradient(135deg, hsl(var(--lib-hue, 250) 46% var(--lib-l1, 90%)),\n                                      hsl(var(--lib-hue, 250) 36% var(--lib-l2, 96%))); }\n.vq2-pd-head::after { content: \"\"; position: absolute; inset: 0; opacity: .5; pointer-events: none; }\n.vq2-pd-head[data-pat=\"lines\"]::after { background: repeating-linear-gradient(115deg, transparent 0 13px,\n  hsl(var(--lib-hue, 250) 44% var(--lib-l3, 76%)) 13px 15px); }\n.vq2-pd-head[data-pat=\"grid\"]::after { opacity: .3; background:\n  repeating-linear-gradient(0deg, transparent 0 17px, hsl(var(--lib-hue,250) 40% var(--lib-l3,76%)) 17px 18px),\n  repeating-linear-gradient(90deg, transparent 0 17px, hsl(var(--lib-hue,250) 40% var(--lib-l3,76%)) 17px 18px); }\n.vq2-pd-head[data-pat=\"dots\"]::after { background-image: radial-gradient(\n  hsl(var(--lib-hue,250) 44% var(--lib-l3,76%)) 1.6px, transparent 1.7px); background-size: 14px 14px; }\n.vq2-pd-head[data-pat=\"paper\"]::after { opacity: .34; background: repeating-linear-gradient(0deg,\n  transparent 0 11px, hsl(var(--lib-hue,250) 40% var(--lib-l3,76%)) 11px 12px); }\n.vq2-pd-head[data-pat=\"plain\"]::after { opacity: .4; background: radial-gradient(120% 90% at 82% 6%,\n  hsl(var(--lib-hue,250) 48% var(--lib-l3,76%)) 0%, transparent 62%); }\n.vq2-pd-banner { display: block; width: 100%; height: 100%; object-fit: cover; position: relative; z-index: 1; }\n.vq2-pd-headbar { position: absolute; top: 10px; right: 10px; z-index: 3; }\n.vq2-pd-headbar .vq2-btn { background: rgba(255, 255, 255, .9); color: #3B3548; }\n.vq2-pd-kinds { position: absolute; left: 14px; top: 12px; z-index: 3; display: flex; gap: 6px; flex-wrap: wrap; }\n.vq2-pd-kind { height: 24px; padding: 0 11px; border-radius: 999px; font-size: 11px; font-weight: 750;\n  display: inline-flex; align-items: center; background: rgba(255, 255, 255, .94); color: #45405A;\n  box-shadow: 0 1px 3px rgba(30, 20, 60, .16); }\n.vq2-pd-kind.is-official { background: var(--vq-accent); color: var(--vq-accent-contrast, #fff); }\n/* ★ 表紙に かぶってよいのは **アイコンだけ**（2026-08-27・訴え）。\n   もとは この行ごと margin-top: -30px で 引き上げていたので、\n   中の 名前も 一緒に 上がり、表紙に 食い込んでいた\n   （実測 2026-08-27: スマホ幅で 29〜30px、PC でも 19px）。\n   行は 表紙の 下から 始め、アイコンだけ 自分の margin で 持ち上げる。\n   名前が 何行になっても 上端は 必ず 表紙より 下になる。 */\n.vq2-pd-id { display: flex; align-items: flex-end; gap: 14px; padding: 12px 20px 14px; margin-top: 0;\n  position: relative; z-index: 2; min-width: 0; }\n.vq2-pd-icon { flex: 0 0 auto; width: 66px; height: 66px; border-radius: var(--vq-r-lg);\n  align-self: flex-start; margin-top: -42px; margin-bottom: -8px;\n  overflow: hidden; display: inline-flex; align-items: center; justify-content: center;\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text);\n  border: 3px solid var(--vq-bg-elevated); box-shadow: var(--vq-shadow-sm, 0 2px 8px rgba(60,40,120,.14)); }\n.vq2-pd-icon.is-emoji { font-size: 30px; line-height: 1; }\n.vq2-pd-icon.is-ms .vq2-ms { font-size: 32px; }\n.vq2-pd-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }\n.vq2-pd-name { min-width: 0; padding-bottom: 3px; }\n.vq2-pd-t { font: var(--vq-type-heading-sm); overflow-wrap: anywhere; }\n.vq2-pd-by { margin-top: 4px; font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n.vq2-pd-av { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }\n.vq2-pd-handle { color: var(--vq-text-tertiary); }\n.vq2-pd-scroll { display: flex; flex-direction: column; gap: 14px; padding: 4px 16px 16px; }\n.vq2-pd-desc { font: var(--vq-type-body-sm); line-height: 1.9; overflow-wrap: anywhere; }\n.vq2-pd-facts { display: flex; flex-direction: column; }\n.vq2-pd-fact { display: flex; align-items: baseline; gap: 12px; padding: 7px 0; }\n.vq2-pd-fact + .vq2-pd-fact { border-top: 1px solid var(--vq-border-subtle); }\n.vq2-pd-fk { flex: 0 0 112px; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-pd-fv { flex: 1 1 auto; min-width: 0; font: var(--vq-type-body-sm); overflow-wrap: anywhere;\n  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n/* 問題の内訳 */\n.vq2-pd-mix { display: flex; flex-direction: column; gap: 8px; }\n.vq2-pd-mixrow { display: flex; align-items: center; gap: 10px; }\n.vq2-pd-mixl { flex: 0 0 132px; font: var(--vq-type-body-sm); overflow: hidden;\n  text-overflow: ellipsis; white-space: nowrap; }\n.vq2-pd-mixbar { flex: 1 1 auto; height: 7px; border-radius: 999px; background: var(--vq-surface-sunken);\n  overflow: hidden; }\n.vq2-pd-mixbar i { display: block; height: 100%; border-radius: 999px; background: var(--vq-accent); }\n.vq2-pd-mixn { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  font-variant-numeric: tabular-nums; }\n/* 解きかた */\n.vq2-pd-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }\n.vq2-pd-opt { display: flex; flex-direction: column; gap: 5px; min-width: 0; }\n.vq2-pd-optl { font: var(--vq-type-caption); color: var(--vq-text-secondary); font-weight: 650; }\n.vq2-pd-optw { position: relative; display: block; }\n.vq2-pd-optw select { width: 100%; height: 40px; padding: 0 12px; border-radius: var(--vq-r-md);\n  border: 1px solid var(--vq-border); background: var(--vq-surface); color: var(--vq-text);\n  font: var(--vq-type-body-sm); font-family: inherit; }\n.vq2-pd-checks { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }\n/* ほかにできること */\n.vq2-pd-more { display: flex; flex-direction: column; }\n.vq2-pd-morebtn { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px;\n  padding: 10px 4px; border: 0; background: none; font: inherit; color: var(--vq-text);\n  text-align: left; cursor: pointer; border-radius: var(--vq-r-md); }\n.vq2-pd-morebtn + .vq2-pd-morebtn { border-top: 1px solid var(--vq-border-subtle); }\n.vq2-pd-morebtn:hover { background: var(--vq-surface-hover); }\n.vq2-pd-morebtn .vq2-ms { font-size: 19px; color: var(--vq-text-tertiary); }\n/* 下の操作（常に見える位置） */\n.vq2-pd-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 12px 16px;\n  border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  padding-bottom: calc(12px + var(--vq-sab,0px)); }\n.vq2-pd-fav { width: 44px; height: 44px; border-radius: var(--vq-r-md); border: 1px solid var(--vq-border);\n  background: var(--vq-surface); color: var(--vq-text-tertiary); cursor: pointer;\n  display: inline-grid; place-items: center; flex: 0 0 auto; }\n.vq2-pd-fav .vq2-ms { font-size: 21px; font-variation-settings: \"FILL\" 0; }\n.vq2-pd-fav.on { color: #DFA31C; } .vq2-pd-fav.on .vq2-ms { font-variation-settings: \"FILL\" 1; }\n.vq2-pd-note { padding: 0 16px 12px; }\n.is-mobile .vq2-pd-head { height: 124px; }\n.is-mobile .vq2-pd-fk { flex-basis: 92px; }\n.is-mobile .vq2-pd-opts { grid-template-columns: 1fr; }\n.is-mobile .vq2-pd-mixl { flex-basis: 104px; }\n.is-mobile .vq2-pd-icon { width: 56px; height: 56px; margin-top: -36px; margin-bottom: -6px; }\n\n/* ── 見た目の設定（アイコン・バナー）─────────────────────── */\n.vq2-ap { display: flex; flex-direction: column; gap: 14px; }\n.vq2-ap-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }\n.vq2-ap-prev { flex: 0 0 auto; width: 56px; height: 56px; border-radius: var(--vq-r-lg);\n  overflow: hidden; display: inline-flex; align-items: center; justify-content: center;\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-size: 28px; line-height: 1;\n  border: 1px solid var(--vq-border-subtle); }\n.vq2-ap-prev img { width: 100%; height: 100%; object-fit: cover; display: block; }\n.vq2-ap-bprev { width: 100%; height: 120px; border-radius: var(--vq-r-lg); overflow: hidden;\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle);\n  display: flex; align-items: center; justify-content: center;\n  font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-ap-bprev img { width: 100%; height: 100%; object-fit: cover; display: block; }\n.vq2-ap-emoji { display: flex; flex-wrap: wrap; gap: 6px; }\n.vq2-ap-e { width: var(--vq-tap-min); height: var(--vq-tap-min); display: inline-flex;\n  align-items: center; justify-content: center; font-size: 22px; line-height: 1; cursor: pointer;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-md);\n  background: var(--vq-bg-elevated); }\n.vq2-ap-e.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n\n/* ── AI パネルの会話（Quick Chat と同じ形：上に会話、下に入力）──── */\n.vq2-chat { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }\n.vq2-chat-b { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;\n  padding: 14px; display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; }\n.vq2-chat-intro { display: flex; gap: 10px; padding: 12px; border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); font: var(--vq-type-body-sm); }\n.vq2-chat-intro svg { flex: 0 0 auto; color: var(--vq-accent); }\n.vq2-quicks { display: flex; flex-direction: column; gap: 6px; }\n\n/* ── はじめの画面（印と一言）──────────────────────────────────── */\n.vq2-hero { display: flex; flex-direction: column; align-items: center; text-align: center;\n  gap: 14px; padding: 28px 16px 20px; }\n.vq2-hero-mark { position: relative; width: 108px; height: 108px; }\n.vq2-hero-mark::after { content: \"\"; position: absolute; inset: -14px; border-radius: 50%;\n  background: radial-gradient(closest-side, rgba(122,102,224,.28), transparent 72%);\n  animation: vq2-glow 4.5s ease-in-out infinite; }\n.vq2-mark { position: relative; width: 100%; height: 100%; display: block;\n  filter: drop-shadow(0 8px 18px rgba(76, 60, 160, .28)); animation: vq2-float 6s ease-in-out infinite; }\n.vq2-mark-r { transform-origin: 60px 62px; animation: vq2-spin-slow 22s linear infinite; }\n.vq2-mark-v { stroke-dasharray: 96; stroke-dashoffset: 96;\n  animation: vq2-draw 1.1s var(--vq-ease-standard) .25s forwards; }\n.vq2-mark-b { opacity: 0; animation: vq2-pop .5s var(--vq-ease-standard) 1.2s forwards; }\n@keyframes vq2-spin-slow { to { transform: rotate(360deg); } }\n@keyframes vq2-draw { to { stroke-dashoffset: 0; } }\n@keyframes vq2-pop { from { opacity: 0; transform: translateY(3px); } to { opacity: .92; transform: none; } }\n@keyframes vq2-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }\n@keyframes vq2-glow { 0%, 100% { opacity: .5; transform: scale(.95); } 50% { opacity: 1; transform: scale(1.04); } }\n.vq2-hero-l { font: var(--vq-type-heading-md); color: var(--vq-text);\n  line-height: 1.6; max-width: 22em; transition: opacity 240ms var(--vq-ease-standard),\n  transform 240ms var(--vq-ease-standard); }\n.vq2-hero-l.is-out { opacity: 0; transform: translateY(-4px); }\n.vq2-hero-s { font: var(--vq-type-caption); color: var(--vq-text-tertiary); max-width: 26em; }\n.is-reduced .vq2-mark, .is-reduced .vq2-mark-r, .is-reduced .vq2-hero-mark::after { animation: none; }\n.is-reduced .vq2-mark-v { stroke-dashoffset: 0; animation: none; }\n.is-reduced .vq2-mark-b { opacity: .92; animation: none; }\n.is-reduced .vq2-hero-l { transition: none; }\n\n/* ── 動いているあいだの帯（いま何をしているか／経過／残り）────── */\n.vq2-runbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;\n  padding: 8px 12px; border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface-sunken); font: var(--vq-type-caption); }\n.vq2-runbar-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;\n  white-space: nowrap; color: var(--vq-text); font-weight: 600; }\n.vq2-eta { flex: 0 0 auto; display: flex; align-items: center; gap: 8px;\n  color: var(--vq-text-tertiary); font-variant-numeric: tabular-nums; }\n.vq2-eta-t { color: var(--vq-text-secondary); font-weight: 600; }\n.vq2-eta-n { padding: 1px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 600; }\n\n.vq2-msg { display: flex; gap: 10px; align-items: flex-start; }\n.vq2-msg.is-me { justify-content: flex-end; }\n.vq2-msg-i { flex: 0 0 auto; width: 26px; height: 26px; margin-top: 2px; border-radius: var(--vq-r-full);\n  display: inline-flex; align-items: center; justify-content: center;\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-msg-i svg { width: 15px; height: 15px; }\n.vq2-msg-b { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }\n.vq2-bubble { max-width: 88%; padding: 9px 13px; border-radius: 16px 16px 4px 16px;\n  background: var(--vq-accent); color: var(--vq-accent-contrast);\n  font: var(--vq-type-body-sm); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }\n\n/* 進行ログ。1 行ずつ足す。 */\n.vq2-logbox { display: flex; flex-direction: column; gap: 2px; }\n.vq2-logrow { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0;\n  font: var(--vq-type-body-sm); color: var(--vq-text-secondary); overflow-wrap: anywhere; }\n/* ログ行も色を使わない。濃さと太さで区別する（アイコンの形が別なので読める）。 */\n.vq2-logrow.k-done { color: var(--vq-text); }\n.vq2-logrow.k-warn { color: var(--vq-text); }\n.vq2-logrow.k-error { color: var(--vq-text); font-weight: 600; }\n.vq2-logrow.k-note { color: var(--vq-text-tertiary); }\n.vq2-logrow .vq2-logi { color: var(--vq-text-tertiary); }\n.vq2-logrow.k-error .vq2-logi, .vq2-logrow.k-warn .vq2-logi { color: var(--vq-text-secondary); }\n.vq2-logi { flex: 0 0 auto; width: 16px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }\n.vq2-logi svg { width: 14px; height: 14px; }\n.vq2-logdot { width: 6px; height: 6px; border-radius: var(--vq-r-full); background: var(--vq-text-tertiary); }\n/* ログ行もふわりと出す（タイムラインと同じ出方にそろえる） */\n.vq2-logrow.is-new { animation: vq2-logIn 380ms var(--vq-ease-enter) both; }\n@keyframes vq2-logIn {\n  from { opacity: 0; transform: translateY(8px); filter: blur(1.5px); }\n  65%  { opacity: 1; filter: blur(0); }\n  to { opacity: 1; transform: none; filter: blur(0); }\n}\n.is-reduced .vq2-logrow.is-new { animation: none; }\n\n.vq2-stream { padding: 10px 12px; border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); line-height: 1.7; white-space: pre-wrap; max-height: 180px; overflow-y: auto; }\n.vq2-note { padding: 8px 10px; border-radius: var(--vq-r-md); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); }\n.vq2-note.is-err { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-note.is-warn { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n\n/* 添付した資料 */\n.vq2-attach { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }\n.vq2-attach-i { display: flex; align-items: center; gap: 8px; padding: 6px 8px;\n  border-radius: var(--vq-r-md); background: var(--vq-surface-sunken); font: var(--vq-type-caption); }\n.vq2-attach-i > svg { flex: 0 0 auto; width: 15px; height: 15px; color: var(--vq-text-tertiary); }\n.vq2-attach-n { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;\n  white-space: nowrap; color: var(--vq-text); font-weight: 600; }\n.vq2-attach-s { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;\n  white-space: nowrap; color: var(--vq-text-tertiary); }\n\n/* 入力欄（下に固定） */\n.vq2-composer { flex: 0 0 auto; padding: 10px 12px calc(10px + var(--vq-sab,0px));\n  border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); }\n.vq2-composer-box { border: 1px solid var(--vq-border); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); padding: 6px; }\n.vq2-composer-box:focus-within { border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-composer-box textarea.vq2-input { border: 0; box-shadow: none; min-height: 60px; padding: 6px 8px; }\n.vq2-composer-box textarea.vq2-input:focus { box-shadow: none; }\n.vq2-composer-a { display: flex; align-items: center; gap: 6px; padding: 4px 4px 0; flex-wrap: wrap; }\n\n/* ── AI 修正の対象 ─────────────────────────────────────────────\n   狭い画面では折り返す。押せる大きさ（44px）は既存のボタンが持っている。 */\n.vq2-scope { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 0 8px; }\n.vq2-scope .vq2-label { margin: 0 4px 0 0; flex: 0 0 auto; }\n\n/* ── 生成中の追加指示 ──────────────────────────────────────────\n   ・入力欄が画面外へ出ないよう、幅は必ず親に合わせる。\n   ・送った指示は消さずに残す。長い一覧はここだけを縦にスクロールさせ、\n     進捗表示と重ならないようにする。 */\n.vq2-fu { border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-surface); padding: 10px; margin-bottom: 10px; min-width: 0; }\n.vq2-fu-list { display: flex; flex-direction: column; gap: 6px; max-height: 30vh;\n  overflow-y: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; }\n.vq2-fu-list:empty { display: none; margin: 0; }\n.vq2-fu-i { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }\n.vq2-fu-t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font: var(--vq-type-body-sm); }\n.vq2-fu-e { flex: 0 0 auto; color: var(--vq-danger-text); font: var(--vq-type-caption); }\n.vq2-fu-box { border: 1px solid var(--vq-border); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); padding: 6px; min-width: 0; }\n.vq2-fu-box:focus-within { border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-fu-box textarea.vq2-input { border: 0; box-shadow: none; min-height: 44px; padding: 6px 8px;\n  width: 100%; max-width: 100%; box-sizing: border-box; }\n.vq2-fu-box textarea.vq2-input:focus { box-shadow: none; }\n.vq2-fu-a { display: flex; align-items: center; gap: 6px; padding: 4px 4px 0; flex-wrap: wrap; }\n.vq2-fu-a .vq2-hint { flex: 1 1 140px; min-width: 0; }\n\n/* ── アイコン ─────────────────────────────────────────────────── */\n.vq2-i { width: 20px; height: 20px; flex: 0 0 auto; }\n.vq2-btn.sz-sm .vq2-i { width: 16px; height: 16px; }\n\n/* ── ボタン ───────────────────────────────────────────────────── */\n.vq2-btn {\n  display: inline-flex; align-items: center; justify-content: center; gap: 8px;\n  min-height: var(--vq-control-h-md); min-width: var(--vq-tap-min);\n  padding: 0 16px;\n  border: 1px solid var(--vq-border);\n  border-radius: var(--vq-r-lg);\n  background: var(--vq-surface);\n  color: var(--vq-text);\n  font: var(--vq-type-label);\n  cursor: pointer;\n  transition: background var(--vq-dur-fast) var(--vq-ease-standard),\n              border-color var(--vq-dur-fast) var(--vq-ease-standard),\n              color var(--vq-dur-fast) var(--vq-ease-standard);\n  white-space: nowrap;\n}\n.vq2-btn:hover:not(:disabled) { background: var(--vq-surface-hover); }\n.vq2-btn:active:not(:disabled) { background: var(--vq-surface-active); }\n.vq2-btn:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }\n.vq2-btn:disabled { opacity: .45; cursor: not-allowed; }\n.vq2-btn.is-primary { background: var(--vq-accent); border-color: var(--vq-accent); color: var(--vq-accent-contrast); }\n.vq2-btn.is-primary:hover:not(:disabled) { background: var(--vq-accent-hover); border-color: var(--vq-accent-hover); }\n.vq2-btn.is-primary:active:not(:disabled) { background: var(--vq-accent-active); }\n.vq2-btn.is-danger { background: var(--vq-danger-strong); border-color: var(--vq-danger-strong); color: #fff; }\n.vq2-btn.is-danger:hover:not(:disabled) { background: var(--vq-danger-strong-hover); }\n.vq2-btn.is-ghost { background: transparent; border-color: transparent; }\n.vq2-btn.is-ghost:hover:not(:disabled) { background: var(--vq-surface-hover); }\n.vq2-btn.is-quiet { background: transparent; border-color: transparent; color: var(--vq-text-secondary); }\n.vq2-btn.is-quiet:hover:not(:disabled) { background: var(--vq-surface-hover); color: var(--vq-text); }\n.vq2-btn.is-icon { padding: 0; width: var(--vq-control-h-md); }\n.vq2-btn.sz-sm { min-height: var(--vq-control-h-sm); padding: 0 10px; font: var(--vq-type-body-sm); }\n.vq2-btn.sz-sm.is-icon { width: var(--vq-control-h-sm); padding: 0; }\n.vq2-btn.sz-lg { min-height: var(--vq-control-h-lg); padding: 0 22px; }\n.vq2-btn.is-full { width: 100%; }\n.vq2-btn.is-active { background: var(--vq-accent-subtle); border-color: var(--vq-accent); color: var(--vq-accent-text); }\n\n/* モバイルでは押しやすさを優先する */\n.is-mobile .vq2-btn { min-height: var(--vq-tap-min); }\n.is-mobile .vq2-btn.is-icon { width: var(--vq-tap-min); }\n\n/* ── 入力 ─────────────────────────────────────────────────────── */\n.vq2-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }\n.vq2-field.is-inline { flex-direction: row; align-items: center; gap: 10px; }\n.vq2-label { font: var(--vq-type-label); color: var(--vq-text-secondary); }\n.vq2-req { color: var(--vq-danger); }\n.vq2-hint { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-input {\n  width: 100%; min-height: var(--vq-control-h-md);\n  padding: 8px var(--vq-field-px);\n  border: 1px solid var(--vq-border);\n  border-radius: var(--vq-r-md);\n  background: var(--vq-bg-elevated);\n  color: var(--vq-text);\n  font: var(--vq-type-body-md);\n  font-family: var(--vq-font-sans);\n  transition: border-color var(--vq-dur-fast) var(--vq-ease-standard),\n              box-shadow var(--vq-dur-fast) var(--vq-ease-standard);\n}\ntextarea.vq2-input { resize: vertical; line-height: 1.7; min-height: 76px; }\n.vq2-input:hover:not(:disabled) { border-color: var(--vq-border-strong); }\n.vq2-input:focus { outline: none; border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-input:disabled { background: var(--vq-surface-disabled); color: var(--vq-text-disabled); cursor: not-allowed; }\nselect.vq2-input {\n  appearance: none; -webkit-appearance: none;\n  padding-right: 34px;\n  background-image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237A7589' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>\");\n  background-repeat: no-repeat; background-position: right 10px center;\n}\n.vq2-err { display: flex; align-items: center; gap: 6px; font: var(--vq-type-caption); color: var(--vq-danger-text); }\n.vq2-err .vq2-i { width: 14px; height: 14px; }\n\n/* チェック・ラジオ */\n.vq2-check { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; padding: 6px 0; min-height: var(--vq-tap-min); }\n.vq2-check input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--vq-accent); flex: 0 0 auto; cursor: pointer; }\n.vq2-check:focus-within { outline: var(--vq-focus-ring); outline-offset: 2px; border-radius: var(--vq-r-sm); }\n\n/* ── バッジ・チップ ───────────────────────────────────────────── */\n.vq2-badge {\n  display: inline-flex; align-items: center; padding: 2px 8px;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken);\n  color: var(--vq-text-secondary); font: var(--vq-type-caption); white-space: nowrap;\n}\n.vq2-badge.is-accent { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-badge.is-ai { background: var(--vq-ai-bg); color: var(--vq-ai-text); }\n.vq2-badge.is-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-badge.is-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-badge.is-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n\n.vq2-chip {\n  display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px;\n  border-radius: var(--vq-r-full); font: var(--vq-type-caption); white-space: nowrap;\n}\n.vq2-chip .vq2-i { width: 13px; height: 13px; }\n.vq2-chip.is-error { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-chip.is-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-chip.is-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-chip.is-info { background: var(--vq-info-bg); color: var(--vq-info-text); }\n.vq2-chip.is-pending { background: var(--vq-surface-sunken); color: var(--vq-text-secondary); }\n\n/* ── 画面の骨格 ───────────────────────────────────────────────── */\n.vq2-top {\n  display: flex; align-items: center; gap: 12px;\n  height: var(--vq-topbar-h);\n  min-height: var(--vq-topbar-h);\n  padding: 0 16px;\n  border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated);\n  flex: 0 0 auto;\n  padding-top: var(--vq-sat,0px);\n}\n.vq2-top-title { font: var(--vq-type-heading-sm); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-top-sub { font: var(--vq-type-caption); color: var(--vq-text-tertiary); white-space: nowrap; }\n.vq2-top-sp { flex: 1 1 auto; min-width: 8px; }\n.vq2-top-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }\n/* 上部バーは絶対に横あふれさせない。タイトル側を縮め、副次的な操作は隠す。 */\n.vq2-top { overflow: hidden; }\n.vq2-top > div:first-of-type { min-width: 0; }\n.vq2-only-mobile { display: none; }\n.is-mobile .vq2-only-mobile { display: inline-flex; }\n.is-mobile .vq2-hide-mobile { display: none; }\n/* ══ 上端の安全領域を消さない ══════════════════════════════════\n   `padding: 0 8px` は **4 辺まとめての指定**なので、上に入れてある\n   var(--vq-sat,0px) を 0 に戻してしまう。狭い画面（＝スマホ）だけ\n   このルールが効くため、ホーム画面から開いたときに見出しや戻るボタンが\n   時計・電池と重なっていた（実測 2026-08-13）。左右だけを指定する。 */\n.is-mobile .vq2-top { gap: 6px; padding: 0 8px; }\n.is-mobile .vq2-top-actions { gap: 2px; }\n.is-mobile .vq2-top-title { font: var(--vq-type-label); }\n/* 狭い画面では上部バーのボタンをアイコンだけにする（aria-label と title は残る） */\n@media (max-width: 520px) {\n  .is-mobile .vq2-top-actions .vq2-btn > span { display: none; }\n  .is-mobile .vq2-top-actions .vq2-btn { padding: 0; width: var(--vq-tap-min); }\n}\n\n.vq2-body { flex: 1 1 auto; display: flex; min-height: 0; overflow: hidden; }\n.vq2-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }\n.vq2-pane-l { width: 300px; flex: 0 0 auto; border-right: 1px solid var(--vq-border-subtle); background: var(--vq-bg-subtle); }\n.vq2-pane-c { flex: 1 1 auto; background: var(--vq-bg); }\n.vq2-qcanvas { background: var(--vq-bg-canvas); }\n/* 上から置く。真ん中に寄せると、問題の長さが変わるたびにカードが\n   上下に飛んで、次の問題を探し直すことになる。位置は動かさない。 */\n.vq2-qcanvas .vq2-pane-b { display: flex; align-items: flex-start; padding-bottom: var(--vq-sab,0px); }\n.vq2-qcanvas .vq2-q { margin: 0 auto; }\n.vq2-pane-r { width: 360px; flex: 0 0 auto; border-left: 1px solid var(--vq-border-subtle); background: var(--vq-bg-subtle); }\n.vq2-pane-h {\n  display: flex; align-items: center; gap: 8px;\n  padding: 10px 14px; min-height: 46px;\n  border-bottom: 1px solid var(--vq-border-subtle);\n  font: var(--vq-type-label); color: var(--vq-text-secondary);\n  flex: 0 0 auto;\n  /* 狭い画面では操作が並びきらない（紙面のページ送り＋拡大縮小＋全画面で 7 個ある）。\n     隠さずに折り返す。横へ溢れさせない。 */\n  flex-wrap: wrap; row-gap: 6px; overflow: hidden;\n}\n.vq2-pane-h > * { min-width: 0; }\n.vq2-pane-b { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }\n.vq2-pane-f { flex: 0 0 auto; padding: 10px 14px; border-top: 1px solid var(--vq-border-subtle); }\n\n/* 仕切り（リサイズ） */\n.vq2-resizer { width: 6px; flex: 0 0 auto; cursor: col-resize; background: transparent; position: relative; }\n.vq2-resizer::after {\n  content: \"\"; position: absolute; inset: 0 2px; border-radius: 2px;\n  transition: background var(--vq-dur-fast) var(--vq-ease-standard);\n}\n.vq2-resizer:hover::after, .vq2-resizer.is-dragging::after, .vq2-resizer:focus-visible::after { background: var(--vq-accent-subtle-hover); }\n.vq2-resizer:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n\n/* ── モバイル：1カラム＋タブ ─────────────────────────────────── */\n.is-mobile .vq2-body { flex-direction: column; }\n.is-mobile .vq2-pane-l,\n.is-mobile .vq2-pane-r,\n.is-mobile .vq2-pane-c { width: auto; flex: 1 1 auto; border: 0; }\n.is-mobile .vq2-resizer { display: none; }\n.is-mobile .vq2-pane[hidden] { display: none; }\n\n/* ══ 手書きメモ（2026-08-30・依頼） 紙（iframe）の 上に 透明な 板を 1 枚。 道具を 出している ときだけ 触れる。 出していない ときは 触れないので、紙の スクロールも 設問の 選択も 効く。 */\n.vq2-ink { position: absolute; inset: 0; pointer-events: none; touch-action: none; z-index: 3; }\n.vq2-ink.is-on { pointer-events: auto; cursor: crosshair; }\n.vq2-inkbar { flex: 0 0 auto; display: flex; align-items: center; gap: 6px;\n  padding: 6px 10px; border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated); overflow-x: auto; }\n.vq2-inkt { min-height: 32px; padding: 0 10px; border-radius: var(--vq-r-sm);\n  border: 1px solid var(--vq-border); background: var(--vq-surface);\n  color: var(--vq-text-secondary); font: var(--vq-type-label); cursor: pointer;\n  white-space: nowrap; flex: 0 0 auto; }\n.vq2-inkt.is-on { background: var(--vq-accent-subtle); border-color: var(--vq-accent);\n  color: var(--vq-accent-text); }\n.vq2-inksep { width: 1px; height: 20px; background: var(--vq-border); flex: 0 0 auto; }\n.vq2-inkc { width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto;\n  border: 2px solid var(--vq-border); cursor: pointer; padding: 0; }\n.vq2-inkc.is-on { border-color: var(--vq-accent); box-shadow: 0 0 0 2px var(--vq-accent-subtle); }\n/* 試験の 結果画面（2026-08-30・依頼／もらった 画像の 通り）。\n   上バー・左の 紙・右の 採点・下の 道具バー の 4 段。\n   ここだけ 濃い 地に する（紙を 白く 浮かせて 読ませる ため）。 */\n.vq2-xr { position: absolute; inset: 0; display: flex; flex-direction: column;\n  background: #14151c; color: #e9e8f2; overflow: hidden;\n  --xr-line: #2b2d3a; --xr-card: #1c1e28; --xr-card2: #22242f;\n  --xr-ac: #8b7ff0; --xr-ac2: #b9b1ff; --xr-mut: #9d9ab2; }\n.vq2-xr-top { flex: 0 0 auto; display: flex; align-items: center; gap: 12px;\n  padding: 10px 16px; border-bottom: 1px solid var(--xr-line); background: #101119; }\n.vq2-xr-ttl { flex: 0 1 auto; min-width: 0; font-weight: 700; font-size: 15px;\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-xr-sub { color: var(--xr-mut); font-weight: 400; }\n.vq2-xr-seg { flex: 0 0 auto; margin: 0 auto; display: flex; gap: 2px; padding: 3px;\n  border-radius: 999px; background: #1c1e28; border: 1px solid var(--xr-line); }\n.vq2-xr-segb { min-height: 32px; padding: 0 18px; border: 0; border-radius: 999px;\n  background: transparent; color: var(--xr-mut); font-size: 13px; cursor: pointer; }\n.vq2-xr-segb.is-on { background: #f4f3fb; color: #221f33; font-weight: 700; }\n.vq2-xr-topr { flex: 0 0 auto; display: flex; gap: 8px; }\n.vq2-xr-gb { min-height: 34px; padding: 0 14px; border-radius: 10px; cursor: pointer;\n  border: 1px solid var(--xr-line); background: #1c1e28; color: #e9e8f2; font-size: 13px; }\n.vq2-xr-gb:disabled { opacity: .4; cursor: default; }\n.vq2-xr-gb.is-pri { background: var(--xr-ac); border-color: var(--xr-ac); color: #fff; font-weight: 700; }\n.vq2-xr-body { flex: 1 1 auto; min-height: 0; display: flex; }\n.vq2-xr-left { flex: 1 1 auto; min-width: 0; display: flex; padding: 10px; background: #14151c; }\n.vq2-xr-paper { flex: 1 1 auto; min-width: 0; min-height: 0; position: relative;\n  border-radius: 10px; overflow: hidden; background: #eceaf3; }\n.vq2-xr-paper iframe { width: 100%; height: 100%; border: 0; }\n.vq2-xr-side { flex: 0 0 auto; width: 46%; max-width: 640px; min-width: 320px;\n  border-left: 1px solid var(--xr-line); background: #16171f; overflow-y: auto; }\n.vq2-xr-sb { padding: 16px 18px 24px; }\n/* ★ ダウンロードの一覧（2026-09-03） */\n.vq2-xr-dl { position: relative; display: inline-block; }\n/* ★ 答え合わせの動き（2026-09-03） */\n@keyframes vq2-pop { 0% { transform: translateY(10px) scale(.965); opacity: 0; }\n  55% { transform: translateY(-3px) scale(1.012); opacity: 1; }\n  100% { transform: translateY(0) scale(1); opacity: 1; } }\n@keyframes vq2-shake { 0%,100% { transform: translateX(0); }\n  12% { transform: translateX(-9px); } 26% { transform: translateX(8px); }\n  40% { transform: translateX(-6px); } 54% { transform: translateX(5px); }\n  68% { transform: translateX(-3px); } 84% { transform: translateX(2px); } }\n@keyframes vq2-okglow { 0% { box-shadow: 0 0 0 0 rgba(45,168,116,.34); }\n  100% { box-shadow: 0 0 0 14px rgba(45,168,116,0); } }\n.vq2-jd { will-change: transform; }\n.vq2-jd.is-ok { animation: vq2-pop .34s cubic-bezier(.22,1.1,.36,1) both, vq2-okglow .62s ease-out .12s both; }\n.vq2-jd.is-ng { animation: vq2-shake .42s cubic-bezier(.36,.07,.19,.97) both; }\n.vq2-sp-fb.is-ok { animation: vq2-pop .34s cubic-bezier(.22,1.1,.36,1) both, vq2-okglow .62s ease-out .12s both; }\n.vq2-sp-fb.is-ng { animation: vq2-shake .42s cubic-bezier(.36,.07,.19,.97) both; }\n/* ★ 選択肢そのものの動き（2026-09-03・訴え）。\n   ・自分が選んで合っていた … ふわっと浮く（緑の輪）\n   ・自分が選んで外れた … 横にゆれる（赤の輪）\n   ・選ばなかった正解 … 動かさず、そっと光るだけ */\n@keyframes vq2-ok-ring { 0% { box-shadow: 0 0 0 0 rgba(45,168,116,.42); }\n  100% { box-shadow: 0 0 0 12px rgba(45,168,116,0); } }\n@keyframes vq2-ng-ring { 0% { box-shadow: 0 0 0 0 rgba(196,71,63,.42); }\n  100% { box-shadow: 0 0 0 12px rgba(196,71,63,0); } }\n@keyframes vq2-reveal { 0% { opacity: .35; transform: translateY(4px); }\n  100% { opacity: 1; transform: translateY(0); } }\n.vq2-choice.is-correct.is-mine,\n.vq2-sort-i.is-correct, .vq2-match-i.is-correct, .vq2-cls-i.is-correct,\n.vq2-lslot.is-correct, .vq2-ec-row.is-correct {\n  animation: vq2-pop .32s cubic-bezier(.22,1.1,.36,1) both,\n             vq2-ok-ring .6s ease-out .1s both; }\n.vq2-choice.is-wrong,\n.vq2-sort-i.is-wrong, .vq2-match-i.is-wrong, .vq2-cls-i.is-wrong,\n.vq2-lslot.is-wrong, .vq2-ec-row.is-wrong {\n  animation: vq2-shake .4s cubic-bezier(.36,.07,.19,.97) both,\n             vq2-ng-ring .6s ease-out .08s both; }\n.vq2-choice.is-correct:not(.is-mine) { animation: vq2-reveal .34s ease-out both; }\n/* 並んでいるものは 少しずつ 遅らせる（一斉に 跳ねると 目が 散る） */\n.vq2-sort-i:nth-of-type(2), .vq2-match-i:nth-of-type(2), .vq2-cls-i:nth-of-type(2),\n.vq2-lslot:nth-of-type(2), .vq2-ec-row:nth-of-type(2) { animation-delay: .04s, .14s; }\n.vq2-sort-i:nth-of-type(3), .vq2-match-i:nth-of-type(3), .vq2-cls-i:nth-of-type(3),\n.vq2-lslot:nth-of-type(3), .vq2-ec-row:nth-of-type(3) { animation-delay: .08s, .18s; }\n.vq2-sort-i:nth-of-type(4), .vq2-match-i:nth-of-type(4), .vq2-cls-i:nth-of-type(4),\n.vq2-lslot:nth-of-type(4), .vq2-ec-row:nth-of-type(4) { animation-delay: .12s, .22s; }\n.vq2-sort-i:nth-of-type(n+5), .vq2-match-i:nth-of-type(n+5), .vq2-cls-i:nth-of-type(n+5),\n.vq2-lslot:nth-of-type(n+5), .vq2-ec-row:nth-of-type(n+5) { animation-delay: .16s, .26s; }\n/* ★ 設定で「正解・不正解の動き」を切ったとき（2026-09-03・訴え）。\n   色と印はそのまま。**動きだけ**を止める。 */\n.is-noansanim .vq2-jd.is-ok, .is-noansanim .vq2-jd.is-ng,\n.is-noansanim .vq2-sp-fb.is-ok, .is-noansanim .vq2-sp-fb.is-ng,\n.is-noansanim .vq2-choice.is-correct, .is-noansanim .vq2-choice.is-wrong,\n.is-noansanim .vq2-choice.is-correct.is-mine,\n.is-noansanim .vq2-sort-i.is-correct, .is-noansanim .vq2-sort-i.is-wrong,\n.is-noansanim .vq2-match-i.is-correct, .is-noansanim .vq2-match-i.is-wrong,\n.is-noansanim .vq2-cls-i.is-correct, .is-noansanim .vq2-cls-i.is-wrong,\n.is-noansanim .vq2-lslot.is-correct, .is-noansanim .vq2-lslot.is-wrong,\n.is-noansanim .vq2-ec-row.is-correct, .is-noansanim .vq2-ec-row.is-wrong {\n  animation: none !important; }\n@media (prefers-reduced-motion: reduce) { .vq2-jd.is-ok, .vq2-jd.is-ng,\n  .vq2-sp-fb.is-ok, .vq2-sp-fb.is-ng,\n  .vq2-choice.is-correct, .vq2-choice.is-wrong, .vq2-choice.is-correct.is-mine,\n  .vq2-sort-i.is-correct, .vq2-sort-i.is-wrong,\n  .vq2-match-i.is-correct, .vq2-match-i.is-wrong,\n  .vq2-cls-i.is-correct, .vq2-cls-i.is-wrong,\n  .vq2-lslot.is-correct, .vq2-lslot.is-wrong,\n  .vq2-ec-row.is-correct, .vq2-ec-row.is-wrong { animation: none; } }\n.vq2-xr-dlm { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;\n  min-width: 200px; padding: 6px; border-radius: 12px; border: 1px solid var(--xr-line);\n  background: #1d1f2a; box-shadow: 0 18px 42px rgba(0,0,0,.55); display: flex; flex-direction: column; }\n.vq2-xr-dli { display: block; width: 100%; text-align: left; cursor: pointer;\n  padding: 9px 12px; border: 0; border-radius: 8px; background: transparent;\n  color: inherit; font: inherit; font-size: 13px; }\n.vq2-xr-dli:hover { background: rgba(255,255,255,.09); }\n/* ★ 素点と観点の色分け（2026-09-03）。暗い地なので明るめの赤・青。 */\n.vq2-xr-sum { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 20px;\n  padding: 12px 14px; border: 1px solid var(--xr-line); border-radius: 12px; margin-bottom: 4px; }\n.vq2-xr-sumi { display: flex; flex-direction: column; gap: 2px; }\n.vq2-xr-suml { font-size: 11px; font-weight: 700; color: var(--xr-mut); letter-spacing: .04em; }\n.vq2-xr-sumv { font-size: 15px; font-weight: 800; line-height: 1.1; }\n.vq2-xr-sumv small { font-size: 11px; font-weight: 600; opacity: .75; }\n.vq2-xr-sumi.is-raw .vq2-xr-sumv { font-size: 30px; }\n.is-raw .vq2-xr-sumv, .is-k .vq2-xr-sumv, .is-raw .vq2-xr-suml, .is-k .vq2-xr-suml { color: #FF7A70; }\n.is-t .vq2-xr-sumv, .is-t .vq2-xr-suml { color: #7FB2FF; }\n.vq2-xr-h { font-size: 15px; font-weight: 700; margin-bottom: 10px; }\n.vq2-xr-h2 { font-size: 13px; font-weight: 700; margin: 20px 0 8px; }\n.vq2-xr-h3 { font-size: 12px; font-weight: 700; color: var(--xr-mut); margin: 14px 0 8px; }\n.vq2-xr-score { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }\n.vq2-xr-n { font-size: 44px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }\n.vq2-xr-n.is-none { font-size: 22px; font-weight: 700; color: var(--xr-mut); }\n.vq2-xr-sl { font-size: 20px; font-weight: 700; color: var(--xr-mut); }\n.vq2-xr-full { margin-left: 6px; padding: 5px 12px; border-radius: 8px;\n  background: var(--xr-ac); color: #fff; font-size: 13px; font-weight: 700; }\n.vq2-xr-conf { margin-top: 6px; text-align: right; font-size: 12px; color: var(--xr-mut); }\n.vq2-xr-warn { margin-top: 8px; padding: 8px 10px; border-radius: 8px;\n  background: #3a2f16; color: #f0d59b; font-size: 12px; }\n.vq2-xr-list { display: flex; flex-direction: column; gap: 2px; }\n.vq2-xr-li { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; font-size: 13px; }\n.vq2-xr-lm { flex: 0 0 auto; color: var(--xr-ac2); }\n.vq2-xr-lt { flex: 1 1 auto; min-width: 0; }\n.vq2-xr-lp { flex: 0 0 auto; color: var(--xr-ac2); font-variant-numeric: tabular-nums; }\n.vq2-xr-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px;\n  border-top: 1px solid var(--xr-line); padding-top: 14px; }\n.vq2-xr-col { min-width: 0; }\n.vq2-xr-tabs { display: flex; gap: 14px; border-bottom: 1px solid var(--xr-line); margin-bottom: 10px; }\n.vq2-xr-tb { border: 0; background: none; color: var(--xr-mut); font-size: 12.5px;\n  padding: 6px 0 8px; cursor: pointer; border-bottom: 2px solid transparent; }\n.vq2-xr-tb.is-on { color: #fff; font-weight: 700; border-bottom-color: var(--xr-ac); }\n.vq2-xr-card { background: var(--xr-card); border: 1px solid var(--xr-line);\n  border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }\n.vq2-xr-card.is-good { border-color: #2f5c44; }\n.vq2-xr-card.is-miss { border-color: #5c3a3a; }\n.vq2-xr-ct { font-size: 12.5px; font-weight: 700; color: var(--xr-ac2); margin-bottom: 5px; }\n.vq2-xr-cb { font-size: 12.5px; line-height: 1.8; color: #d9d7e6; }\n.vq2-xr-cp { margin-top: 6px; font-size: 11.5px; color: var(--xr-mut); }\n.vq2-xr-box { border-radius: 10px; padding: 10px 12px; background: var(--xr-card2);\n  border: 1px solid var(--xr-line); }\n.vq2-xr-box.is-ai { border-color: #4b3f8f; background: #1e1b33; }\n.vq2-xr-box.is-ok { border-color: #2f5c44; background: #16241d; }\n.vq2-xr-bt { font-size: 12.5px; font-weight: 700; margin-bottom: 6px; }\n.vq2-xr-box ul { margin: 4px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.9; color: #d9d7e6; }\n.vq2-xr-quote { font-size: 12.5px; line-height: 1.9; color: #e2e0ee;\n  border: 1px solid #2f5c44; border-radius: 8px; padding: 8px 10px; background: #131c18; }\n.vq2-xr-arrow { text-align: center; color: var(--xr-mut); margin: 6px 0; }\n.vq2-xr-chk { margin: 0; padding-left: 0; list-style: none; font-size: 12px; line-height: 2; color: #cfcddf; }\n.vq2-xr-chk li::before { content: \"\\2713\\3000\"; color: #6fc79a; }\n.vq2-xr-empty { font-size: 12.5px; color: var(--xr-mut); padding: 8px 0; }\n.vq2-xr-bot { flex: 0 0 auto; display: flex; align-items: center; gap: 12px;\n  padding: 8px 16px calc(8px + var(--vq-sab,0px));\n  border-top: 1px solid var(--xr-line); background: #101119; overflow-x: auto; }\n.vq2-xr-tools { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }\n.vq2-xr-tool { min-height: 34px; padding: 0 10px; border-radius: 9px; cursor: pointer;\n  border: 1px solid var(--xr-line); background: #1c1e28; color: #cfcddf; font-size: 12.5px;\n  white-space: nowrap; }\n.vq2-xr-tool.is-on { background: var(--xr-ac); border-color: var(--xr-ac); color: #fff; }\n.vq2-xr-nav { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 8px; }\n.vq2-xr-num { font-size: 13px; color: #cfcddf; font-variant-numeric: tabular-nums; white-space: nowrap; }\n.vq2-xr-botr { flex: 0 0 auto; }\n.vq2-xr .vq2-inkc { border-color: #3a3c4a; }\n.vq2-xr.is-m .vq2-xr-body { flex-direction: column; }\n.vq2-xr.is-m .vq2-xr-side { width: auto; max-width: none; min-width: 0; border-left: 0;\n  border-top: 1px solid var(--xr-line); flex: 1 1 auto; }\n.vq2-xr.is-m .vq2-xr-two { grid-template-columns: 1fr; }\n.vq2-xr.is-m .vq2-xr-seg { margin: 0; }\n.vq2-xr.is-m .vq2-xr-ttl { display: none; }\n/* ── 結果画面・スマホ（2026-08-31・訴え「スマホに 最適化した？」）──────\n   実測（390px）: 上バーの 中身 441px・下バーの 中身 821px で 横に あふれ、\n   採点パネルへ 行く 道も 無かった。1 行に 詰めるのを やめ、\n   ・上 … 試験名と 終了 だけ\n   ・その下 … 問題／解答／解説（フル幅）\n   ・その下 … 問題用紙 ⇄ 採点結果（フル幅・どちらか 一方を 出す）\n   ・下 … 2 段（道具 ／ 行き来と 解説）\n   に 分ける。押す ところは どれも 44px 以上。 */\n.vq2-xr.is-m .vq2-xr-top { padding: 8px 10px; gap: 8px; }\n.vq2-xr.is-m .vq2-xr-ttl { display: block; flex: 1 1 auto; font-size: 13.5px; }\n.vq2-xr.is-m .vq2-xr-topr { flex: 0 0 auto; }\n.vq2-xr.is-m .vq2-xr-gb { min-height: var(--vq-tap-min, 44px); padding: 0 12px; }\n.vq2-xr-segrow { flex: 0 0 auto; display: flex; padding: 6px 10px;\n  border-bottom: 1px solid var(--xr-line); background: #101119; }\n.vq2-xr.is-m .vq2-xr-seg { margin: 0; width: 100%; }\n.vq2-xr.is-m .vq2-xr-segb { flex: 1 1 0; min-height: var(--vq-tap-min, 44px); padding: 0 6px; font-size: 13px; }\n.vq2-xr-panes { flex: 0 0 auto; display: flex; gap: 0;\n  border-bottom: 1px solid var(--xr-line); background: #14151c; }\n.vq2-xr-pb { flex: 1 1 0; min-height: var(--vq-tap-min, 44px); border: 0;\n  background: transparent; color: var(--xr-mut); font-size: 13px; cursor: pointer;\n  border-bottom: 2px solid transparent; }\n.vq2-xr-pb.is-on { color: #fff; font-weight: 700; border-bottom-color: var(--xr-ac); }\n.vq2-xr.is-m .vq2-xr-left { padding: 8px; }\n.vq2-xr.is-m .vq2-xr-sb { padding: 14px 12px 20px; }\n.vq2-xr-bot.is-m { display: block; padding: 0; overflow: visible; }\n.vq2-xr-botrow { display: flex; align-items: center; gap: 8px;\n  padding: 6px 10px; border-top: 1px solid var(--xr-line); }\n.vq2-xr-botrow:last-child { padding-bottom: calc(6px + var(--vq-sab,0px)); }\n/* ★ はみ出させない（実測 400px／390px）。入りきらなければ 折り返す。 */\n.vq2-xr.is-m .vq2-xr-tools { flex: 1 1 auto; justify-content: space-between; gap: 4px;\n  flex-wrap: wrap; min-width: 0; }\n.vq2-xr.is-m .vq2-xr-tb { padding: 11px 0 13px; }\n.vq2-xr.is-m .vq2-xr-tool { min-height: var(--vq-tap-min, 44px); padding: 0 10px; }\n/* 色は 小さく 見せて、押す ところは 44px 取る（見た目 30px／的 44px）。 */\n.vq2-xr.is-m .vq2-inkc { width: 44px; height: 44px; padding: 7px;\n  background-clip: content-box; border: 0; box-shadow: none; }\n.vq2-xr.is-m .vq2-inkc.is-on { outline: 2px solid var(--xr-ac); outline-offset: -13px;\n  border-radius: 50%; }\n.vq2-xr.is-m .vq2-xr-nav { flex: 1 1 auto; gap: 6px; justify-content: flex-start; }\n.vq2-xr.is-m .vq2-xr-nav .vq2-xr-gb { min-height: var(--vq-tap-min, 44px); padding: 0 10px; }\n.vq2-xr.is-m .vq2-xr-num { font-size: 12.5px; }\n.vq2-xr.is-m .vq2-xr-botr { display: flex; gap: 6px; }\n.vq2-xr.is-m .vq2-xr-botr .vq2-xr-gb { min-height: var(--vq-tap-min, 44px); padding: 0 12px; }\n.vq2-xr.is-m .vq2-xr-n { font-size: 38px; }\n.vq2-xr.is-m .vq2-xr-two { gap: 14px; }\n\n\n\n.vq2-tabs {\n  display: none; flex: 0 0 auto;\n  border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated);\n}\n.is-mobile .vq2-tabs { display: flex; }\n.vq2-tab {\n  flex: 1 1 0; min-height: var(--vq-tap-min);\n  display: inline-flex; align-items: center; justify-content: center; gap: 6px;\n  border: 0; background: transparent; color: var(--vq-text-tertiary);\n  font: var(--vq-type-label); cursor: pointer;\n  border-bottom: 2px solid transparent;\n}\n.vq2-tab[aria-selected=\"true\"] { color: var(--vq-accent-text); border-bottom-color: var(--vq-accent); }\n.vq2-tab:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-tab-n { font: var(--vq-type-caption); background: var(--vq-surface-sunken); border-radius: var(--vq-r-full); padding: 0 6px; }\n\n/* ボトムシート（モバイルの補助パネル） */\n.vq2-sheet {\n  position: absolute; left: 0; right: 0; bottom: 0; z-index: 40;\n  max-height: 78%; display: flex; flex-direction: column;\n  background: var(--vq-bg-elevated);\n  border-top-left-radius: var(--vq-r-2xl); border-top-right-radius: var(--vq-r-2xl);\n  box-shadow: var(--vq-shadow-modal);\n  transform: translateY(100%);\n  transition: transform var(--vq-dur-normal) var(--vq-ease-enter);\n  padding-bottom: var(--vq-sab,0px);\n}\n.vq2-sheet.is-open { transform: translateY(0); }\n.is-reduced .vq2-sheet { transition: none; }\n.vq2-sheet-grab { width: 40px; height: 4px; border-radius: 2px; background: var(--vq-border-strong); margin: 8px auto; flex: 0 0 auto; }\n\n/* ── リスト ───────────────────────────────────────────────────── */\n.vq2-list { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 2px; }\n.vq2-item {\n  display: flex; align-items: flex-start; gap: 10px;\n  padding: 10px 12px; min-height: var(--vq-tap-min);\n  border-radius: var(--vq-r-md); border: 1px solid transparent;\n  background: transparent; color: var(--vq-text); cursor: pointer;\n  text-align: left; width: 100%; font: var(--vq-type-body-sm);\n}\n.vq2-item:hover { background: var(--vq-surface-hover); }\n.vq2-item[aria-selected=\"true\"] { background: var(--vq-surface-selected); border-color: var(--vq-accent); }\n.vq2-item:focus-visible { outline: var(--vq-focus-ring); outline-offset: -1px; }\n.vq2-item.is-dragging { opacity: .4; }\n.vq2-item.is-drop-before { box-shadow: inset 0 2px 0 var(--vq-accent); }\n.vq2-item.is-drop-after { box-shadow: inset 0 -2px 0 var(--vq-accent); }\n.vq2-item-n { flex: 0 0 auto; width: 26px; font: var(--vq-type-caption); color: var(--vq-text-tertiary); padding-top: 2px; }\n.vq2-item-m { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }\n.vq2-item-t { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.5; }\n.vq2-item-s { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n.vq2-item-h { flex: 0 0 auto; color: var(--vq-text-tertiary); cursor: grab; padding-top: 2px; }\n.vq2-item-h:active { cursor: grabbing; }\n\n/* ── カード・セクション ──────────────────────────────────────── */\n.vq2-card {\n  background: var(--vq-bg-elevated);\n  border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-xl);\n  padding: var(--vq-card-p);\n}\n.vq2-sec { padding: 18px 20px; border-bottom: 1px solid var(--vq-border-subtle); }\n.vq2-sec:last-child { border-bottom: 0; }\n.vq2-sec-t { font: var(--vq-type-heading-sm); margin: 0 0 12px; }\n.vq2-grid { display: grid; gap: 12px; }\n.vq2-grid.c2 { grid-template-columns: 1fr 1fr; }\n.vq2-grid.c3 { grid-template-columns: repeat(3, 1fr); }\n.is-mobile .vq2-grid.c2, .is-mobile .vq2-grid.c3 { grid-template-columns: 1fr; }\n.vq2-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-muted { color: var(--vq-text-tertiary); font: var(--vq-type-body-sm); }\n.vq2-mono { font-family: var(--vq-font-mono); font-variant-numeric: tabular-nums; }\n\n/* ── 空状態・読み込み ───────────────────────────────────────── */\n.vq2-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 48px 24px; text-align: center; }\n.vq2-empty-i { color: var(--vq-text-tertiary); }\n.vq2-empty-i .vq2-i { width: 40px; height: 40px; }\n.vq2-empty-t { font: var(--vq-type-heading-sm); }\n.vq2-empty-b { font: var(--vq-type-body-sm); color: var(--vq-text-secondary); max-width: 42ch; }\n.vq2-empty-a { margin-top: 6px; }\n\n.vq2-skel { display: flex; flex-direction: column; gap: 10px; padding: 16px; }\n.vq2-skel-l { height: 12px; border-radius: var(--vq-r-sm); background: linear-gradient(90deg, var(--vq-surface-sunken) 25%, var(--vq-surface-hover) 37%, var(--vq-surface-sunken) 63%); background-size: 400% 100%; animation: vq2-shimmer 1.4s ease infinite; }\n@keyframes vq2-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }\n.is-reduced .vq2-skel-l { animation: none; }\n\n/* 待っているときの輪。\n   0.7 秒の等速回転は速くて機械的に見えるので、少し遅くし、\n   1 周の中で速さを変える（動き出しと止まり際をなだらかにする）。\n   等速だと「急かされている」感じになる。 */\n.vq2-spin { width: 16px; height: 16px; flex: 0 0 auto; border-radius: 50%;\n  border: 2px solid var(--vq-border); border-top-color: var(--vq-accent);\n  animation: vq2-rot 1.15s cubic-bezier(.45,.15,.35,.9) infinite; }\n.vq2-spin.sm { width: 13px; height: 13px; border-width: 2px; }\n@keyframes vq2-rot { to { transform: rotate(360deg); } }\n.is-reduced .vq2-spin { animation-duration: 2.4s; animation-timing-function: linear; }\n\n.vq2-prog { height: 8px; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); overflow: hidden; }\n/* 何問目か。バーだけだと序盤はほとんど動かず、進んでいるのが分からない。 */\n.vq2-prog-row { display: flex; align-items: center; gap: 10px; }\n.vq2-prog-row .vq2-prog { flex: 1 1 auto; }\n.vq2-prog-n { flex: 0 0 auto; font: var(--vq-type-caption); font-weight: 700; color: var(--vq-text-secondary); font-variant-numeric: tabular-nums; }\n.vq2-prog-f { height: 100%; background: var(--vq-accent); border-radius: var(--vq-r-full); transition: width var(--vq-dur-normal) var(--vq-ease-standard); }\n.is-reduced .vq2-prog-f { transition: none; }\n\n/* ── Toast ────────────────────────────────────────────────────── */\n.vq2-toast-layer { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 100; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; padding-bottom: var(--vq-sab,0px); }\n.vq2-toast {\n  display: flex; align-items: center; gap: 10px;\n  padding: 11px 16px; max-width: min(92vw, 460px);\n  border-radius: var(--vq-r-lg); background: var(--vq-solid-ink); color: #fff;\n  font: var(--vq-type-body-sm); box-shadow: var(--vq-shadow-floating);\n  animation: vq2-toast-in var(--vq-dur-normal) var(--vq-ease-enter);\n}\n.vq2-toast.is-error { background: var(--vq-danger-strong); }\n.vq2-toast.is-warning { background: var(--vq-warning); color: var(--vq-gray-950); }\n.vq2-toast.is-success { background: var(--vq-success-strong); }\n.vq2-toast.is-out { opacity: 0; transition: opacity var(--vq-dur-fast) var(--vq-ease-exit); }\n@keyframes vq2-toast-in { from { opacity: 0; transform: translateY(10px); } }\n.is-reduced .vq2-toast { animation: none; }\n\n/* ── Dialog ───────────────────────────────────────────────────── */\n.vq2-dialog-layer { position: absolute; inset: 0; z-index: 120; background: var(--vq-surface-overlay); display: flex; align-items: center; justify-content: center; padding: 20px; }\n.vq2-dialog {\n  width: min(100%, 460px); max-height: 86%;\n  display: flex; flex-direction: column;\n  background: var(--vq-bg-elevated); border-radius: var(--vq-r-2xl);\n  box-shadow: var(--vq-shadow-modal); overflow: hidden;\n  animation: vq2-dlg-in var(--vq-dur-normal) var(--vq-ease-enter);\n}\n.vq2-dialog.is-wide { width: min(100%, 760px); }\n@keyframes vq2-dlg-in { from { opacity: 0; transform: scale(.97); } }\n.is-reduced .vq2-dialog { animation: none; }\n.vq2-dialog-h { display: flex; align-items: center; gap: 12px; padding: 16px 16px 12px 20px; }\n.vq2-dialog-h h2 { margin: 0; flex: 1 1 auto; font: var(--vq-type-heading-sm); }\n.vq2-dialog-b { flex: 1 1 auto; overflow-y: auto; padding: 0 20px 8px; font: var(--vq-type-body-sm); line-height: 1.75; }\n.vq2-dialog-b p { margin: 0 0 10px; }\n.vq2-dialog-f { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px 18px; }\n.is-mobile .vq2-dialog-f { flex-direction: column-reverse; }\n.is-mobile .vq2-dialog-f .vq2-btn { width: 100%; }\n\n/* ── Menu ─────────────────────────────────────────────────────── */\n.vq2-menu-layer { position: fixed; inset: 0; z-index: 130; }\n.vq2-menu {\n  position: fixed; min-width: 220px; max-width: 300px; padding: 5px;\n  background: var(--vq-bg-elevated); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); box-shadow: var(--vq-shadow-floating);\n}\n.vq2-menu-i {\n  display: flex; align-items: center; gap: 10px; width: 100%;\n  min-height: 38px; padding: 6px 10px; border: 0; border-radius: var(--vq-r-md);\n  background: transparent; color: var(--vq-text); font: var(--vq-type-body-sm);\n  cursor: pointer; text-align: left;\n}\n.vq2-menu-i:hover:not(:disabled) { background: var(--vq-surface-hover); }\n.vq2-menu-i:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-menu-i:disabled { opacity: .4; cursor: not-allowed; }\n.vq2-menu-i.is-danger { color: var(--vq-danger-text); }\n.vq2-menu-i span:nth-of-type(1) { flex: 1 1 auto; }\n.vq2-menu-sp { width: 20px; flex: 0 0 auto; }\n.vq2-menu-k { font: var(--vq-type-caption); color: var(--vq-text-tertiary); flex: 0 0 auto; }\n.vq2-menu-div { height: 1px; margin: 4px 6px; background: var(--vq-border-subtle); }\n\n/* ── Tooltip ──────────────────────────────────────────────────── */\n.vq2-tip { position: relative; }\n.vq2-tip::after {\n  content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);\n  padding: 5px 9px; border-radius: var(--vq-r-sm); background: var(--vq-solid-ink); color: #fff;\n  font: var(--vq-type-caption); white-space: nowrap; opacity: 0; pointer-events: none;\n  transition: opacity var(--vq-dur-fast) var(--vq-ease-standard); z-index: 60;\n}\n.vq2-tip:hover::after, .vq2-tip:focus-visible::after { opacity: 1; }\n\n/* ── Activity ─────────────────────────────────────────────────── */\n.vq2-act { border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); overflow: hidden; }\n.vq2-act-head {\n  display: flex; align-items: center; gap: 9px; width: 100%;\n  min-height: var(--vq-tap-min); padding: 8px 12px; border: 0; background: transparent;\n  color: var(--vq-text); font: var(--vq-type-body-sm); cursor: pointer; text-align: left;\n}\n.vq2-act-head:hover { background: var(--vq-surface-hover); }\n.vq2-act-head:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-act-now { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-act-list { list-style: none; margin: 0; padding: 4px 12px 10px; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--vq-border-subtle); }\n.vq2-act-list li { display: flex; align-items: flex-start; gap: 8px; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-act-list li .vq2-i { width: 14px; height: 14px; margin-top: 2px; }\n.vq2-act-list li.is-ok .vq2-i { color: var(--vq-success); }\n.vq2-act-list li.is-err .vq2-i { color: var(--vq-danger); }\n.vq2-act-list li.is-warn .vq2-i { color: var(--vq-warning); }\n.vq2-act-list li.is-run { color: var(--vq-text); }\n.vq2-act-d { color: var(--vq-text-tertiary); }\n.vq2-act-foot { padding: 0 12px 10px; }\n\n/* ── 差分表示 ─────────────────────────────────────────────────── */\n.vq2-diff { display: flex; flex-direction: column; gap: 10px; }\n.vq2-diff-g { border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); overflow: hidden; background: var(--vq-bg-elevated); }\n.vq2-diff-h { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--vq-surface-sunken); font: var(--vq-type-label); }\n.vq2-diff-h .vq2-badge { flex: 0 0 auto; }\n.vq2-diff-h-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-diff-f { padding: 8px 12px; border-top: 1px solid var(--vq-border-subtle); display: flex; align-items: flex-start; gap: 10px; }\n.vq2-diff-f-m { flex: 1 1 auto; min-width: 0; }\n.vq2-diff-f-l { font: var(--vq-type-label); color: var(--vq-text-secondary); margin-bottom: 4px; }\n.vq2-diff-f-s { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-diff-ab { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }\n.is-mobile .vq2-diff-ab { grid-template-columns: 1fr; }\n.vq2-diff-a, .vq2-diff-b { padding: 7px 9px; border-radius: var(--vq-r-md); font: var(--vq-type-caption); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }\n.vq2-diff-a { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-diff-b { background: var(--vq-success-bg); color: var(--vq-success-text); }\n\n/* ── 問題の編集 ───────────────────────────────────────────────── */\n/* 出題の版面。--vq-content-max（1120px）は読むには広すぎる\n   （1 行が長くなりすぎて目が行の先頭へ戻れない）。問題文には別の幅を使う。 */\n.vq2-q { display: flex; flex-direction: column; gap: 18px; padding: 28px 20px 40px; max-width: 760px; margin: 0 auto; width: 100%; }\n/* 問題そのものは面（カード）に載せる。載せないと、下に残る余白が\n   「レイアウトが壊れている」ように見える。 */\n.vq2-qbox { background: var(--vq-bg-elevated); border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-xl); padding: 24px; display: flex; flex-direction: column; gap: 20px; }\n.vq2-qtext { font: var(--vq-type-heading-sm); line-height: 1.85; white-space: pre-wrap; word-break: break-word; }\n@media (max-width: 640px) { .vq2-q { padding: 16px 14px 32px; gap: 14px; } .vq2-qbox { padding: 16px 14px; gap: 16px; border-radius: var(--vq-r-lg); } }\n.vq2-q-choices { display: flex; flex-direction: column; gap: 8px; }\n.vq2-choice { display: flex; align-items: flex-start; gap: 12px; padding: 14px 15px; min-height: var(--vq-tap-min); border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); transition: background var(--vq-dur-fast) var(--vq-ease-standard), border-color var(--vq-dur-fast) var(--vq-ease-standard); }\nbutton.vq2-choice:hover:not(:disabled) { background: var(--vq-surface-hover); border-color: var(--vq-border-strong); }\nbutton.vq2-choice:active:not(:disabled) { background: var(--vq-surface-active); }\n/* 「選んだ」は accent。正解・不正解の色（緑・赤）は **採点したあとだけ** 使う。\n   選んだ時点で緑にすると、合っていないのに合っているように見える。 */\n.vq2-choice.is-picked { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n/* 採点したあとだけ使う色。合っていた選択肢と、自分が選んだ誤りを両方出す。 */\n.vq2-choice.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-choice.is-wrong .vq2-choice-l { background: var(--vq-danger); color: #fff; }\n.vq2-choice-tag { align-self: flex-start; margin-top: 6px; padding: 2px 9px; border-radius: var(--vq-r-full); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-choice-tag.is-correct { background: var(--vq-success); color: #fff; }\n.vq2-choice-tag.is-wrong { background: var(--vq-danger); color: #fff; }\n.vq2-choice.is-picked .vq2-choice-l { background: var(--vq-accent); color: var(--vq-accent-contrast); }\n/* 答え合わせのあとは押せなくするが、**読めなくはしない**。\n   ブラウザの既定だと disabled のボタンは文字が薄くなり、正解の文章が読みにくい。 */\n.vq2-choice:disabled { cursor: default; opacity: 1; color: var(--vq-text); }\n.vq2-choice.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-choice-l { flex: 0 0 auto; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-choice.is-correct .vq2-choice-l { background: var(--vq-success); color: #fff; }\n.vq2-choice-m { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }\n.vq2-choice-a { flex: 0 0 auto; display: flex; gap: 2px; }\n\n/* ── 採点基準（記述・論述・英作文）───────────────────────────── */\n.vq2-rub { display: flex; flex-direction: column; gap: 8px; }\n.vq2-rub-i { display: flex; align-items: flex-start; gap: 10px; padding: 10px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-rub-n { flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex; align-items: center;\n  justify-content: center; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); font-variant-numeric: tabular-nums; }\n.vq2-rub-m { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }\n.vq2-rub-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-rub-p { width: 84px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }\n.vq2-rub-c { width: auto; min-width: 150px; flex: 0 1 auto; }\n.vq2-root.is-mobile .vq2-rub-c { min-width: 0; flex: 1 1 100%; }\n\n/* ── 出典 ─────────────────────────────────────────────────────── */\n.vq2-src { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--vq-r-md); background: var(--vq-surface-sunken); font: var(--vq-type-caption); }\n.vq2-src .vq2-i { width: 14px; height: 14px; color: var(--vq-text-tertiary); }\n.vq2-src-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n\n/* ── 表 ───────────────────────────────────────────────────────── */\n.vq2-tblwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }\n.vq2-tbl { width: 100%; border-collapse: collapse; font: var(--vq-type-body-sm); }\n.vq2-tbl th, .vq2-tbl td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--vq-border-subtle); }\n.vq2-tbl th { font: var(--vq-type-label); color: var(--vq-text-secondary); background: var(--vq-surface-sunken); position: sticky; top: 0; }\n.vq2-tbl td.num, .vq2-tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }\n.vq2-tbl tr:last-child td { border-bottom: 0; }\n\n/* ── 見出しの数値（結果画面） ───────────────────────────────── */\n.vq2-score { display: flex; align-items: baseline; gap: 8px; }\n.vq2-score-v { font: var(--vq-type-display); font-variant-numeric: tabular-nums; }\n.vq2-score-m { font: var(--vq-type-heading-sm); color: var(--vq-text-tertiary); }\n.vq2-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 10px; }\n.vq2-stat { padding: 12px 14px; border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-stat-l { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-stat-v { font: var(--vq-type-heading-sm); font-variant-numeric: tabular-nums; margin-top: 2px; }\n\n/* ── アコーディオン ─────────────────────────────────────────── */\n.vq2-acc { border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); overflow: hidden; background: var(--vq-bg-elevated); }\n.vq2-acc + .vq2-acc { margin-top: 8px; }\n.vq2-acc-h { display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--vq-tap-min); padding: 10px 12px; border: 0; background: transparent; color: var(--vq-text); font: var(--vq-type-body-sm); cursor: pointer; text-align: left; }\n.vq2-acc-h:hover { background: var(--vq-surface-hover); }\n.vq2-acc-h:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-acc-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }\n.vq2-acc-b { padding: 4px 14px 16px; border-top: 1px solid var(--vq-border-subtle); font: var(--vq-type-body-sm); line-height: 1.75; }\n/* 畳んでいる間も「いま何がそこに入っているか」を一行で見せる */\n.vq2-acc-t > strong { display: block; font-weight: 650; }\n.vq2-acc-sum { display: block; margin-top: 2px; font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-acc-c { flex: 0 0 auto; display: inline-flex; color: var(--vq-text-tertiary); transition: transform var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-acc-c.is-open { transform: rotate(180deg); }\n\n/* ── 選ぶカード（試験の型など）───────────────────────────── */\n.vq2-pickgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }\n.vq2-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;\n  min-height: 88px; padding: 12px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); color: var(--vq-text); font: inherit; cursor: pointer; text-align: left;\n  transition: border-color var(--vq-dur-fast) var(--vq-ease-standard), background var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-pick:hover { background: var(--vq-surface-hover); }\n.vq2-pick:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }\n.vq2-pick.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-pick-i { display: inline-flex; margin-bottom: 4px; color: var(--vq-text-tertiary); }\n.vq2-pick.is-on .vq2-pick-i { color: var(--vq-accent); }\n.vq2-pick-t { font: var(--vq-type-body-sm); font-weight: 650; }\n.vq2-pick-s { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.is-mobile .vq2-pickgrid { grid-template-columns: 1fr 1fr; }\n@media (max-width: 380px) { .is-mobile .vq2-pickgrid { grid-template-columns: 1fr; }\n  .is-mobile .vq2-pick { min-height: var(--vq-tap-min); flex-direction: row; align-items: center; gap: 10px; }\n  .is-mobile .vq2-pick-i { margin-bottom: 0; }\n  .is-mobile .vq2-pick-s { margin-left: auto; } }\n\n/* ── 選べる札（問題形式など）───────────────────────────── */\n.vq2-togset { display: flex; flex-wrap: wrap; gap: 8px; }\n.vq2-tog { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-full); background: var(--vq-bg-elevated);\n  font: var(--vq-type-body-sm); cursor: pointer; }\n.vq2-tog input { position: absolute; opacity: 0; width: 1px; height: 1px; }\n.vq2-tog.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 650; }\n.vq2-tog:focus-within { outline: var(--vq-focus-ring); outline-offset: 2px; }\n.is-mobile .vq2-tog { min-height: var(--vq-tap-min); }\n\n/* ── 選んだ資料 ───────────────────────────────────────── */\n.vq2-filelist { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }\n.vq2-filelist li { display: flex; align-items: center; gap: 8px; padding: 8px 10px;\n  border-radius: var(--vq-r-md); background: var(--vq-surface-sunken); font: var(--vq-type-body-sm); }\n.vq2-filelist li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-filelist svg { flex: 0 0 auto; color: var(--vq-text-tertiary); }\n\n/* ── 設定画面の最後（作るボタン）───────────────────────── */\n.vq2-setup-go { padding: 4px 0 8px; }\n\n/* ── 紙面デザインの設定 ────────────────────────────────────────\n   狭い画面では縦に積む。選択欄は必ず親の幅に収める（はみ出させない）。 */\n.vq2-layout-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }\n.vq2-layout-grid > * { min-width: 0; }\n.vq2-layout-grid select.vq2-input { width: 100%; max-width: 100%; }\n.vq2-layout-seed { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }\n.vq2-layout-seed > .vq2-field { flex: 1 1 220px; min-width: 0; }\n.vq2-layout-seed-a { display: flex; gap: 8px; flex-wrap: wrap; }\n/* 操作ボタンは 44px を下回らせない（既存の .vq2-btn の最小高を上書きしない） */\n.vq2-layout-seed-a .vq2-btn { min-height: 44px; }\n/* プレビューは横にスクロールできるようにする（紙面は画面より広い） */\n.vq2-lpv { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-lpv-f { display: block; border: 0; width: 820px; max-width: none; height: 62vh; background: #fff; }\n.is-mobile .vq2-layout-grid { grid-template-columns: minmax(0, 1fr); }\n.is-mobile .vq2-layout-seed { flex-direction: column; align-items: stretch; }\n.is-mobile .vq2-layout-seed-a { width: 100%; }\n.is-mobile .vq2-layout-seed-a .vq2-btn { flex: 1 1 auto; }\n.is-mobile .vq2-lpv-f { height: 52vh; }\n.is-mobile .vq2-setup { gap: 12px; }\n\n/* ── 印刷（組み込み PDF エンジンで使う） ───────────────────── */\n@media print {\n  .vq2-top, .vq2-tabs, .vq2-pane-l, .vq2-pane-r, .vq2-resizer, .vq2-act, .vq2-toast-layer { display: none !important; }\n}\n\n/* ══════════════════════════════════════════════════════════════════════\n   AI ワークスペース（指示 → 進行 → 確認 → 完成）\n\n   ・左＝指示と条件／中央＝中身／右＝AI アクティビティ\n   ・色・角丸・影・時間はすべてトークン。生の値は書かない。\n   ・狭い画面（.is-mobile）では 3 つ並べず、下タブで切り替える。\n     アクティビティは下から引き出すシートにする。\n   ・アニメーションは .is-reduced で必ず打ち消す。\n   ══════════════════════════════════════════════════════════════════════ */\n\n/* hidden を効かせる。\n   ここで作る箱はどれも display を自分で決めるため、\n   これが無いと hidden 属性（UA の [hidden]{display:none}）に勝ってしまい、\n   閉じたはずのものが開いたままになる。 */\n.vq2-ws-l[hidden], .vq2-ws-m[hidden], .vq2-ws-r[hidden],\n.vq2-wsc-b[hidden], .vq2-bash-b[hidden], .vq2-tl-d[hidden],\n.vq2-tlc[hidden], .vq2-aiact-b[hidden] { display: none; }\n\n/* ── 骨格 ───────────────────────────────────────────────────────── */\n.vq2-ws { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0;\n  background: var(--vq-bg-canvas); }\n.vq2-ws-l, .vq2-ws-r { display: flex; flex-direction: column; min-height: 0; flex: 0 0 auto; }\n.vq2-ws-l { width: 340px; border-right: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface); }\n.vq2-ws-r { width: 380px; border-left: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface); }\n.vq2-ws-m { display: flex; flex-direction: column; flex: 1 1 auto;\n  min-width: 0; min-height: 0; background: var(--vq-bg-canvas); }\n.vq2-ws-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;\n  padding: 16px; display: flex; flex-direction: column; gap: 14px; }\n.vq2-ws-m > .vq2-ws-scroll { padding: 18px 22px 28px; gap: 16px; }\n.vq2-ws-tabs { flex: 0 0 auto; padding: 12px 22px 0; }\n.vq2-ws-foot { flex: 0 0 auto; border-top: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface); padding: 12px 16px;\n  padding-bottom: calc(12px + var(--vq-sab,0px)); }\n\n/* ── セクションカード ───────────────────────────────────────────── */\n.vq2-wsc { background: var(--vq-surface); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); box-shadow: var(--vq-shadow-subtle); overflow: hidden; }\n.vq2-ws-m .vq2-wsc { border-color: var(--vq-border); }\n.vq2-wsc-h { display: flex; align-items: flex-start; gap: 10px;\n  padding: 14px 16px 0; }\n.vq2-wsc-ht { display: flex; align-items: flex-start; gap: 10px; flex: 1 1 auto; min-width: 0; }\n.vq2-wsc-i { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;\n  width: 30px; height: 30px; border-radius: var(--vq-r-sm);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-wsc-i .vq2-i { width: 17px; height: 17px; }\n.vq2-wsc-t { margin: 0; font: var(--vq-type-heading-sm); color: var(--vq-text); }\n.vq2-wsc-s { margin: 2px 0 0; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-wsc-a { flex: 0 0 auto; display: flex; gap: 6px; align-items: center; }\n.vq2-wsc-b { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 12px; }\n.vq2-wsc.is-flush > .vq2-wsc-b { padding: 0; gap: 0; }\n.vq2-wsc-f { border-top: 1px solid var(--vq-border-subtle); padding: 12px 16px;\n  background: var(--vq-surface-sunken); }\n.vq2-wsc.tone-accent { border-color: var(--vq-accent-subtle); }\n.vq2-wsc.tone-warning { border-color: var(--vq-warning); background: var(--vq-warning-bg); }\n.vq2-wsc.tone-danger { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n\n/* 折りたためるカード */\n.vq2-wsc-fh { display: flex; align-items: center; gap: 10px; width: 100%;\n  padding: 13px 16px; background: none; border: 0; cursor: pointer; text-align: left;\n  min-height: var(--vq-tap-min); color: inherit; font: inherit; }\n.vq2-wsc-fh:hover { background: var(--vq-surface-hover); }\n.vq2-wsc-fh:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-wsc-fl { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }\n.vq2-wsc-fc { flex: 0 0 auto; color: var(--vq-text-tertiary); display: inline-flex; }\n.vq2-wsc.is-fold > .vq2-wsc-b { padding-top: 0; }\n\n/* ── 区切りタブ ─────────────────────────────────────────────────── */\n.vq2-seg { display: flex; gap: 2px; padding: 3px; overflow-x: auto;\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-md); scrollbar-width: none; }\n.vq2-seg::-webkit-scrollbar { display: none; }\n.vq2-seg-t { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;\n  padding: 7px 13px; min-height: 36px; border: 0; border-radius: var(--vq-r-sm);\n  background: transparent; color: var(--vq-text-secondary); cursor: pointer;\n  font: var(--vq-type-label); transition: background var(--vq-dur-fast) var(--vq-ease-standard),\n    color var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-seg-t .vq2-i { width: 15px; height: 15px; }\n.vq2-seg-t:hover:not([aria-selected=\"true\"]) { background: var(--vq-surface-hover); color: var(--vq-text); }\n.vq2-seg-t[aria-selected=\"true\"] { background: var(--vq-surface); color: var(--vq-text);\n  box-shadow: var(--vq-shadow-subtle); }\n.vq2-seg-t:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-seg-t[disabled] { opacity: .45; cursor: not-allowed; }\n.vq2-seg-n { display: inline-flex; align-items: center; justify-content: center;\n  min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--vq-r-full);\n  background: var(--vq-gray-200); color: var(--vq-text-secondary); font: var(--vq-type-caption); }\n.vq2-seg-n.tone-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-seg-n.tone-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-seg-n.tone-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-seg-n.tone-accent { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n\n/* ── 状態バッジ ─────────────────────────────────────────────────── */\n.vq2-sbadge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px;\n  border-radius: var(--vq-r-full); font: var(--vq-type-caption);\n  background: var(--vq-gray-150); color: var(--vq-text-secondary); }\n.vq2-sbadge .vq2-i { width: 13px; height: 13px; }\n.vq2-sbadge.tone-accent { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-sbadge.tone-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-sbadge.tone-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-sbadge.tone-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-sbadge.tone-info { background: var(--vq-info-bg); color: var(--vq-info-text); }\n.vq2-sbadge.tone-ai { background: var(--vq-ai-bg); color: var(--vq-ai-text); }\n\n/* ── その場のお知らせ ───────────────────────────────────────────── */\n.vq2-note2 { display: flex; align-items: flex-start; gap: 10px; padding: 11px 13px;\n  border-radius: var(--vq-r-md); border: 1px solid var(--vq-info); background: var(--vq-info-bg); }\n.vq2-note2-i { flex: 0 0 auto; color: var(--vq-info-text); display: inline-flex; margin-top: 1px; }\n.vq2-note2-i .vq2-i { width: 17px; height: 17px; }\n.vq2-note2-b { flex: 1 1 auto; min-width: 0; }\n.vq2-note2-t { font: var(--vq-type-label); color: var(--vq-info-text); }\n.vq2-note2-s { font: var(--vq-type-body-sm); color: var(--vq-text-secondary);\n  overflow-wrap: anywhere; }\n.vq2-note2-a { flex: 0 0 auto; display: flex; gap: 6px; }\n.vq2-note2.tone-warning { border-color: var(--vq-warning); background: var(--vq-warning-bg); }\n.vq2-note2.tone-warning .vq2-note2-i, .vq2-note2.tone-warning .vq2-note2-t { color: var(--vq-warning-text); }\n.vq2-note2.tone-danger { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-note2.tone-danger .vq2-note2-i, .vq2-note2.tone-danger .vq2-note2-t { color: var(--vq-danger-text); }\n.vq2-note2.tone-success { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-note2.tone-success .vq2-note2-i, .vq2-note2.tone-success .vq2-note2-t { color: var(--vq-success-text); }\n\n/* ── 空の状態 ───────────────────────────────────────────────────── */\n.vq2-empty2 { display: flex; flex-direction: column; align-items: center; justify-content: center;\n  gap: 8px; padding: 48px 24px; text-align: center; }\n.vq2-empty2-i { display: inline-flex; align-items: center; justify-content: center;\n  width: 52px; height: 52px; border-radius: var(--vq-r-full);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); margin-bottom: 4px; }\n.vq2-empty2-i .vq2-i { width: 24px; height: 24px; }\n.vq2-empty2-t { margin: 0; font: var(--vq-type-heading-md); color: var(--vq-text); }\n.vq2-empty2-s { margin: 0; font: var(--vq-type-body-sm); color: var(--vq-text-tertiary); max-width: 34em; }\n.vq2-empty2-a { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }\n\n/* ── 下に貼りつく操作列 ─────────────────────────────────────────── */\n.vq2-stick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-stick-n { flex: 1 1 auto; min-width: 0; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-stick-a { flex: 0 0 auto; display: flex; gap: 8px; flex-wrap: wrap; }\n\n/* ── 依頼を書く欄 ───────────────────────────────────────────────── */\n.vq2-req2 { display: flex; flex-direction: column; gap: 8px; }\n.vq2-req2-in { width: 100%; box-sizing: border-box; resize: vertical;\n  padding: 11px 13px; border: 1px solid var(--vq-border-strong); border-radius: var(--vq-r-md);\n  background: var(--vq-surface); color: var(--vq-text); font: var(--vq-type-body-md);\n  min-height: 92px; }\n.vq2-req2-in::placeholder { color: var(--vq-text-tertiary); }\n.vq2-req2-in:focus-visible { outline: var(--vq-focus-ring); outline-offset: 1px;\n  border-color: var(--vq-border-focus); }\n.vq2-req2-h { margin: 0; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-req2-chips { display: flex; flex-wrap: wrap; gap: 6px; }\n\n/* 2 列の入力枠 */\n.vq2-fgrid { display: grid; gap: 10px 12px; }\n.vq2-fgrid.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n.vq2-fgrid.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }\n.vq2-fgrid > * { min-width: 0; }\n\n/* ══════════════════════════════════════════════════════════════════════\n   AI アクティビティ（タイムライン）\n   ══════════════════════════════════════════════════════════════════════ */\n/* 入力欄を重ねて置くので、位置の基準になる。 */\n.vq2-aiact { display: flex; flex-direction: column; height: 100%; min-height: 0;\n  position: relative; }\n.vq2-aiact-h { flex: 0 0 auto; display: flex; align-items: center; gap: 8px;\n  padding: 13px 14px; border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface); }\n.vq2-aiact-t { font: var(--vq-type-heading-sm); color: var(--vq-text); flex: 0 0 auto;\n  display: inline-flex; align-items: center; gap: 7px; }\n/* β の印。開発中であることを、開いた人が必ず見える場所に置く。\n   目立たせすぎない（作業の邪魔をしない）が、見落とさない濃さにする。 */\n.vq2-beta {\n  font: 600 10.5px/1 var(--vq-font-sans); letter-spacing: .04em;\n  color: var(--vq-accent-text, #5F579E);\n  background: var(--vq-accent-subtle, #EDEBF8);\n  /* --vq-accent-border は定義が無いので、実在する色から作る。 */\n  border: 1px solid color-mix(in srgb, var(--vq-accent) 26%, transparent);\n  padding: 3px 7px 3px 6px; border-radius: 999px;\n  flex: 0 0 auto; text-transform: none; vertical-align: middle;\n}\n.vq2-aiact-st { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px;\n  font: var(--vq-type-caption); color: var(--vq-text-tertiary); overflow: hidden;\n  text-overflow: ellipsis; white-space: nowrap; }\n.vq2-aiact-st.is-busy { color: var(--vq-accent-text); }\n.vq2-aiact-x { flex: 0 0 auto; }\n.vq2-aiact-b { flex: 1 1 auto; min-height: 0; }\n\n/* 下端の余白は、重ねた入力欄の高さぶん。JS が測って配る（--vq2-tlc-h）。\n   無いと最後の行が入力欄の下に隠れて読めない。 */\n.vq2-tl { height: 100%; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;\n  padding: 14px 14px 18px; padding-bottom: calc(18px + var(--vq2-tlc-h, 96px)); }\n.vq2-tl-list { list-style: none; margin: 0; padding: 0; }\n/* ══ AI の作業ログ ══\n   Claude Code の出し方へ寄せた。1 件 1 行を基本にして、\n   結果は「⎿」でぶら下げる。カードの枠と影はやめ、密度を上げた。\n   10 件も並ぶと、枠つきカードでは 1 画面に 3 件しか入らなかった。\n\n   **狭い画面で崩れないこと**を先に決めてある。\n   ・横スクロールを作らない（長い語は途中で折る）\n   ・押せる場所は 44px 以上（「詳細を見る」）\n   ・時刻や秒数は等幅の数字（行ごとに幅が揺れない） */\n/* できた数と行き先。流れることばと違って **ここは動かない**ので、\n   離れて戻っても今の状態がすぐ分かる。 */\n.vq2-aiact-sum { padding: 10px 12px 12px; border-bottom: 1px solid var(--vq-border-subtle); }\n.vq2-aiact-sum-row { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }\n.vq2-aiact-count { font: var(--vq-type-heading-sm); color: var(--vq-text); font-variant-numeric: tabular-nums; }\n.vq2-aiact-where { font: var(--vq-type-body-xs); color: var(--vq-text-muted); text-align: right; }\n.vq2-aiact-bar { height: 6px; border-radius: 999px; background: var(--vq-gray-200); overflow: hidden; margin-top: 8px; }\n.vq2-aiact-bar > span { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--vq-lav-600); transition: width 320ms ease; }\n@media (prefers-reduced-motion: reduce) { .vq2-aiact-bar > span { transition: none; } }\n/* 会話として読ませつつ、話の続き具合は左の線と点で示す。 */\n.vq2-tl-i { display: flex; gap: 10px; position: relative; padding: 0 0 20px; }\n/* 書式（太字・短いコード・写せる塊） */\n.vq2-md-c { font-family: var(--vq-font-mono, ui-monospace, monospace); font-size: .92em;\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle);\n  border-radius: 5px; padding: 1px 5px; }\n.vq2-md-pre { position: relative; margin: 8px 0 2px; }\n.vq2-md-pre pre { margin: 0; padding: 10px 12px; overflow-x: auto;\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-sm); }\n.vq2-md-pre code { font-family: var(--vq-font-mono, ui-monospace, monospace);\n  font-size: 12px; line-height: 1.7; color: var(--vq-text); white-space: pre; }\n.vq2-md-copy { position: absolute; top: 6px; right: 6px; border: 1px solid var(--vq-border);\n  background: var(--vq-surface); color: var(--vq-text-secondary);\n  border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 600; cursor: pointer; }\n.vq2-md-copy:hover { background: var(--vq-surface-hover); color: var(--vq-text); }\n/* 出てくるときだけ、下からふわっと。**出たあとは動かさない**\n   （読んでいる行が動くと目で追えなくなる）。 */\n@keyframes vq2TlIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }\n.vq2-tl-i.is-fadein { animation: vq2TlIn 260ms cubic-bezier(.22,.61,.36,1) both; }\n@media (prefers-reduced-motion: reduce) { .vq2-tl-i.is-fadein { animation: none; } }\n.vq2-tl-rail { flex: 0 0 auto; width: 14px; display: flex; flex-direction: column;\n  align-items: center; position: relative; }\n/* 点と点をつなぐ縦線。最後の 1 件だけ線を出さない。 */\n.vq2-tl-i::before { content: \"\"; position: absolute; left: 6.5px; top: 18px; bottom: 0;\n  width: 1px; background: var(--vq-border-subtle); }\n.vq2-tl-i:last-child::before { display: none; }\n/* 点は無彩色。丸い色つきの印はやめ、アイコンだけを置く。\n\n   種類ごとに色を塗っていたが、10 件も並ぶと画面が色の点で埋まり、\n   どれが今動いているのかが逆に読み取りにくかった。\n   種類はアイコンの形で分かるので、色は使わない。 */\n.vq2-tl-node { position: relative; z-index: 1; display: inline-flex; align-items: center;\n  justify-content: center; width: 14px; height: 18px;\n  background: var(--vq-surface); color: var(--vq-text-tertiary); }\n.vq2-tl-node .vq2-i { width: 12px; height: 12px; }\n.vq2-tl-node .vq2-spin.sm { width: 10px; height: 10px; }\n/* 終わった行の印。小さな丸だけ。状態で色を変える。 */\n.vq2-tl-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vq-gray-300); }\n.vq2-tl-i.is-done  .vq2-tl-dot { background: var(--vq-success); }\n.vq2-tl-i.is-warn  .vq2-tl-dot { background: var(--vq-warning); }\n.vq2-tl-i.is-error .vq2-tl-dot { background: var(--vq-danger); }\n/* 会話として読ませる。1 行 1 件の記録ではなく、続けて読める文章にする。\n   行間を広げたぶん、段落の間も広げないと件の切れ目が分からなくなる。 */\n.vq2-tl-card { flex: 1 1 auto; min-width: 0; max-width: 100%; overflow: hidden;\n  display: flex; flex-direction: column; gap: 8px; }\n.vq2-tl-h { display: flex; align-items: baseline; gap: 5px; }\n/* 種類のアイコンは見出しの前へ小さく。点を大きくすると行が太る。 */\n.vq2-tl-ic { flex: 0 0 auto; display: inline-flex; align-items: center; color: var(--vq-text-tertiary); }\n.vq2-tl-ic .vq2-i { width: 13px; height: 13px; }\n/* 本文。読み物として読ませるので、ゆったり組む。\n   **一括指定の font は使わない**（var 入りだと後ろの指定を打ち消す）。 */\n/* **横並び（flex）にしてはいけない。** 太字や短いコードが別々の塊として\n   横に並び、折り返せずに切れる（実測でそうなった）。ふつうの段落として組む。 */\n.vq2-tl-t { margin: 0; min-width: 0; color: var(--vq-text);\n  display: block;\n  font-size: 14px; font-weight: 600; line-height: 1.9;\n  letter-spacing: .01em;\n  /* **どこかの規則が nowrap を入れている。** 明示して折り返しへ戻す\n     （これが無いと 1 行のまま横へ伸び、右が切れる）。 */\n  white-space: normal;\n  overflow-wrap: break-word; word-break: normal; line-break: strict; }\n.vq2-tl-t .vq2-tl-ic, .vq2-tl-t .vq2-spin {\n  display: inline-block; vertical-align: -3px; margin-right: 6px; }\n.vq2-tl-badge { flex: 0 0 auto; padding: 1px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-gray-150); color: var(--vq-text-secondary); font: var(--vq-type-caption); }\n/* 進み具合のチップも色を使わない。並んだときに色の点が増えないようにする。 */\n.vq2-tl-badge.tone-accent { background: var(--vq-surface-sunken); color: var(--vq-text-secondary);\n  border: 1px solid var(--vq-border-subtle); font-variant-numeric: tabular-nums; }\n.vq2-tl-time { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-text-disabled);\n  font-variant-numeric: tabular-nums;\n  font-variant-numeric: tabular-nums; }\n/* 結果の行。見出しへぶら下げる。長い語は途中で折って横へはみ出させない。 */\n.vq2-tl-s { margin: 0; color: var(--vq-text-secondary);\n  font-size: 13px; line-height: 1.9; letter-spacing: .01em;\n  white-space: normal;\n  overflow-wrap: break-word; word-break: normal; }\n.vq2-tl-lead { flex: 0 0 auto; color: var(--vq-text-disabled); font-variant-numeric: tabular-nums; }\n.vq2-tl-s > span:last-child { min-width: 0; }\n.vq2-tl-tags { display: flex; flex-wrap: wrap; gap: 4px; }\n.vq2-tl-tag { padding: 1px 7px; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken);\n  border: 1px solid var(--vq-border-subtle); color: var(--vq-text-tertiary); font: var(--vq-type-caption); }\n\n/* 種類ごとの色は付けない。濃さだけを変えて、目立たせたいものを少し濃くする。\n   終わったものは薄く、いま動いているものは濃く。 */\n.vq2-tl-i.is-running .vq2-tl-node { color: var(--vq-text); }\n.vq2-tl-i.is-done    .vq2-tl-node { color: var(--vq-text-tertiary); }\n\n/* 失敗と注意だけは、色に頼らず**濃さと文字**で分かるようにする。\n   アイコンの形（error / warning）が別なので、色を使わなくても区別できる。 */\n.vq2-tl-i.is-error .vq2-tl-node,\n.vq2-tl-i.is-warn  .vq2-tl-node { color: var(--vq-text); }\n.vq2-tl-i.is-error .vq2-tl-t { color: var(--vq-text); font-weight: 600; }\n.vq2-tl-i.is-warn  .vq2-tl-t { color: var(--vq-text); }\n.vq2-tl-i.k-user-followup .vq2-tl-card { background: var(--vq-accent-subtle);\n  border-radius: var(--vq-r-md); padding: 8px 11px; }\n\n/* 追加された行はふわりと出す。\n\n   これまでは 200ms で 5px 上がるだけで、出たことに気づかないうちに終わっていた。\n   下から少し大きめに上がってきて、輪郭がゆっくり定まる感じにする。\n   見出しと本文を少しずらして出すと、読む順にそろう。 */\n.vq2-tl-i.is-new { animation: vq2-tl-in 420ms var(--vq-ease-enter) both; }\n@keyframes vq2-tl-in {\n  from { opacity: 0; transform: translateY(10px) scale(.985); filter: blur(2px); }\n  60%  { opacity: 1; filter: blur(0); }\n  to   { opacity: 1; transform: none; filter: blur(0); }\n}\n/* 点は少し遅れて、ふくらむように出す */\n.vq2-tl-i.is-new .vq2-tl-node { animation: vq2-tl-node-in 380ms var(--vq-ease-spring) 60ms both; }\n@keyframes vq2-tl-node-in {\n  from { opacity: 0; transform: scale(.6); }\n  to   { opacity: 1; transform: none; }\n}\n/* 本文はさらに少し遅れて出す（見出し → 本文 の順に読める） */\n.vq2-tl-i.is-new .vq2-tl-s { animation: vq2-tl-body-in 360ms var(--vq-ease-enter) 110ms both; }\n@keyframes vq2-tl-body-in {\n  from { opacity: 0; transform: translateY(4px); }\n  to   { opacity: 1; transform: none; }\n}\n/* つなぎの縦線は、上から下へ伸びる */\n.vq2-tl-i.is-new::before { animation: vq2-tl-rail-in 420ms var(--vq-ease-enter) 120ms both;\n  transform-origin: top; }\n@keyframes vq2-tl-rail-in { from { transform: scaleY(0); opacity: 0; } to { transform: none; opacity: 1; } }\n.is-reduced .vq2-tl-i.is-new,\n.is-reduced .vq2-tl-i.is-new .vq2-tl-node,\n.is-reduced .vq2-tl-i.is-new .vq2-tl-s,\n.is-reduced .vq2-tl-i.is-new::before { animation: none; }\n\n/* 詳細（開発向けの情報はここに隠す） */\n.vq2-tl-more { align-self: flex-start; display: inline-flex; align-items: center; gap: 3px;\n  padding: 3px 7px 3px 8px; margin-left: -8px; border: 0; background: none; cursor: pointer;\n  border-radius: var(--vq-r-xs); color: var(--vq-text-tertiary); font: var(--vq-type-caption); }\n.vq2-tl-more:hover { background: var(--vq-surface-hover); color: var(--vq-text-secondary); }\n.vq2-tl-more:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-tl-more .vq2-i { width: 13px; height: 13px; }\n.vq2-tl-d { padding: 9px 11px; border-radius: var(--vq-r-sm);\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle); }\n.vq2-tl-long { margin: 0 0 6px; font: var(--vq-type-body-sm); color: var(--vq-text-secondary); }\n.vq2-tl-dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; margin: 0; }\n.vq2-tl-dl dt { font: var(--vq-type-code); color: var(--vq-text-tertiary); }\n.vq2-tl-dl dd { margin: 0; font: var(--vq-type-code); color: var(--vq-text-secondary);\n  overflow-wrap: anywhere; }\n.vq2-tl-a { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }\n\n/* 空のとき */\n.vq2-tl-empty { display: flex; flex-direction: column; align-items: center; justify-content: center;\n  gap: 6px; padding: 40px 18px; text-align: center; height: 100%; }\n.vq2-tl-empty-i { display: inline-flex; width: 42px; height: 42px; align-items: center;\n  justify-content: center; border-radius: var(--vq-r-full);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-tl-empty-t { margin: 0; font: var(--vq-type-body-sm); color: var(--vq-text-secondary); }\n.vq2-tl-empty-s { margin: 0; font: var(--vq-type-caption); color: var(--vq-text-tertiary); max-width: 26em; }\n\n/* ── Bash カード（裏で走った処理。IN / OUT を畳んで持つ）───────── */\n.vq2-bash { border-radius: var(--vq-r-sm); overflow: hidden; background: var(--vq-gray-900);\n  border: 1px solid var(--vq-gray-850); }\n.vq2-bash-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px;\n  background: none; border: 0; cursor: pointer; text-align: left; min-height: 34px; }\n.vq2-bash-h:hover { background: rgba(255, 255, 255, .05); }\n.vq2-bash-h:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-bash-tag { flex: 0 0 auto; padding: 1px 6px; border-radius: var(--vq-r-xs);\n  background: var(--vq-gray-700); color: var(--vq-gray-25); font: var(--vq-type-code);\n  letter-spacing: .02em; }\n.vq2-bash-n { flex: 0 0 auto; color: var(--vq-gray-100); font: var(--vq-type-code); }\n.vq2-bash-s { flex: 1 1 auto; min-width: 0; color: var(--vq-gray-400); font: var(--vq-type-code);\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-bash-c { flex: 0 0 auto; color: var(--vq-gray-500); display: inline-flex; }\n.vq2-bash-c .vq2-i { width: 14px; height: 14px; }\n.vq2-bash-b { padding: 2px 9px 9px; display: flex; flex-direction: column; gap: 8px; }\n.vq2-bash-sec { display: flex; flex-direction: column; gap: 1px; }\n.vq2-bash-l { color: var(--vq-gray-500); font: var(--vq-type-code); letter-spacing: .06em; }\n.vq2-bash-r { display: flex; gap: 8px; padding-left: 10px; }\n.vq2-bash-k2 { flex: 0 0 auto; color: var(--vq-lav-400); font: var(--vq-type-code); }\n.vq2-bash-v { flex: 1 1 auto; min-width: 0; color: var(--vq-gray-100); font: var(--vq-type-code);\n  overflow-wrap: anywhere; }\n\n/* ── 追加指示欄 ─────────────────────────────────────────────────── */\n/* 入力欄は **浮かせる**。土台の白い帯と区切り線をやめ、下の内容が透ける。\n   ただし文字の上に直接重なると読めなくなるので、下だけ薄く敷いて\n   境目をぼかす（面を持つのは入力欄の丸い枠だけ）。 */\n/* ══ 入力欄を浮かせる ══════════════════════════════════════════\n   ログの上に重ねて置く。**上は透明、下へ行くほど不透明**にして、\n   流れてくることばが入力欄の手前で自然に消えるようにする。\n   （帯や区切り線で切ると、板が乗っているように見える）\n\n   重ねたぶん、ログの下端に同じ高さの余白を入れる。無いと最後の行が\n   入力欄の下に隠れて読めない。高さは中身で変わるので JS が測って配る。 */\n.vq2-tlc { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;\n  border-top: 0;\n  /* 敷きは **入力欄より少し沈んだ色**で終わらせる。ここを面と同じ色にすると、\n   入力欄が背景に溶けて、浮いているように見えない（実際そう見えた）。 */\n  background: linear-gradient(to bottom, transparent 0%, var(--vq-bg-subtle) 46%, var(--vq-bg-subtle) 100%);\n  padding: 30px 12px 10px;\n  padding-bottom: calc(10px + var(--vq-sab,0px));\n  display: flex; flex-direction: column; gap: 8px;\n  pointer-events: none; }\n/* 敷いたぶんで押せなくならないよう、中身だけ押せるようにする */\n.vq2-tlc > * { pointer-events: auto; }\n.vq2-tlc-fu:empty { display: none; }\n.vq2-fus { display: flex; flex-direction: column; gap: 4px; max-height: 116px; overflow-y: auto; }\n.vq2-fu-row { display: flex; align-items: baseline; gap: 7px; }\n.vq2-fu-badge { flex: 0 0 auto; padding: 1px 7px; border-radius: var(--vq-r-full);\n  font: var(--vq-type-caption); background: var(--vq-gray-150); color: var(--vq-text-secondary); }\n.vq2-fu-badge.tone-accent { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-fu-badge.tone-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-fu-badge.tone-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-fu-txt { flex: 1 1 auto; min-width: 0; font: var(--vq-type-caption);\n  color: var(--vq-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-tlc-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;\n  padding-bottom: 1px; }\n.vq2-tlc-chips::-webkit-scrollbar { display: none; }\n.vq2-tlc-chips .vq2-chip { flex: 0 0 auto; white-space: nowrap; }\n/* 入力欄の上の一言。小さく、静かに、でも必ず見える所に置く。 */\n/* **font の一括指定は使わない。** var() を含む一括指定は解決が後回しになり、\n   同じブロックの後ろに書いた font-size / font-weight を打ち消す\n   （実測: 11px 600 と書いても 14.5px 400 のままだった）。 */\n/* ログの中身の一番下に置く一言。ログと一緒に流れる。\n   会話文は太い黒。こちらは **薄めの黒（灰色）** にして、読み分けられるようにする。 */\n.vq2-tl-note { margin: 14px 0 2px; text-align: center;\n  font-size: 11px; font-weight: 600; line-height: 1.45;\n  color: var(--vq-text-secondary); }\n/* 入力欄は **丸い一本**。＋ と 送信 を左右の端に置く。 */\n.vq2-tlc-box { display: flex; align-items: center; gap: 8px;\n  border: 1px solid var(--vq-border); border-radius: 999px;\n  /* 浮いているものとして扱うので、面と影は持つ。\n   板に見えないのは、周りの帯を外して敷きをぼかしているから。 */\n  background: var(--vq-surface); padding: 6px 6px 6px 10px;\n  box-shadow: 0 1px 2px rgba(38,34,68,.06), 0 6px 20px rgba(38,34,68,.10); }\n.vq2-tlc-box:focus-within { border-color: var(--vq-border-focus); box-shadow: var(--vq-focus-ring); }\n.vq2-tlc-in { flex: 1 1 auto; min-width: 0; border: 0; background: none; resize: none;\n  color: var(--vq-text); font: var(--vq-type-body-sm); padding: 8px 0; max-height: 132px; }\n.vq2-tlc-in:focus { outline: none; }\n.vq2-tlc-in::placeholder { color: var(--vq-text-tertiary); }\n.vq2-tlc-send { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;\n  width: 36px; height: 36px; border: 0; border-radius: 999px; cursor: pointer;\n  background: var(--vq-accent); color: var(--vq-accent-contrast); }\n.vq2-tlc-send:hover { background: var(--vq-accent-hover); }\n.vq2-tlc-send:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }\n.vq2-tlc-send .vq2-i { width: 17px; height: 17px; }\n\n/* ══════════════════════════════════════════════════════════════════════\n   狭い画面（.is-mobile は .vq2-root 自身に付く）\n   ══════════════════════════════════════════════════════════════════════ */\n.vq2-root.is-mobile .vq2-ws { position: relative; }\n.vq2-root.is-mobile .vq2-ws-l,\n.vq2-root.is-mobile .vq2-ws-r { width: auto; flex: 1 1 auto; border: 0; }\n.vq2-root.is-mobile .vq2-ws-scroll { padding: 12px; gap: 12px; }\n.vq2-root.is-mobile .vq2-ws-m > .vq2-ws-scroll { padding: 12px 12px 24px; }\n.vq2-root.is-mobile .vq2-ws-tabs { padding: 10px 12px 0; }\n.vq2-root.is-mobile .vq2-req2-in { min-height: 104px; font: var(--vq-type-body-md); }\n.vq2-root.is-mobile .vq2-fgrid.c2,\n.vq2-root.is-mobile .vq2-fgrid.c3 { grid-template-columns: minmax(0, 1fr); }\n.vq2-root.is-mobile .vq2-seg-t { min-height: var(--vq-tap-min); padding: 9px 14px; }\n.vq2-root.is-mobile .vq2-wsc-fh { min-height: var(--vq-tap-min); }\n.vq2-root.is-mobile .vq2-tlc-send { width: var(--vq-tap-min); height: var(--vq-tap-min); }\n.vq2-root.is-mobile button.vq2-chip { min-height: var(--vq-tap-min); padding: 6px 14px; }\n.vq2-root.is-mobile .vq2-ws-foot .vq2-btn { min-height: var(--vq-tap-min); }\n.vq2-root.is-mobile .vq2-stick-a { width: 100%; }\n.vq2-root.is-mobile .vq2-stick-a .vq2-btn { flex: 1 1 auto; }\n\n/* AI は下から引き出すシートにする */\n.vq2-ws-sheet { position: absolute; left: 0; right: 0; bottom: 0; top: 0;\n  display: flex; flex-direction: column; background: var(--vq-surface);\n  border-top-left-radius: var(--vq-r-2xl); border-top-right-radius: var(--vq-r-2xl);\n  box-shadow: var(--vq-shadow-modal); transform: translateY(100%);\n  transition: transform var(--vq-dur-slow) var(--vq-ease-enter); z-index: 3;\n  visibility: hidden; }\n.vq2-ws-sheet.is-open { transform: none; visibility: visible; }\n.is-reduced .vq2-ws-sheet { transition: none; }\n\n/* ── 下タブ ─────────────────────────────────────────────────────── */\n.vq2-wsbar { flex: 0 0 auto; display: flex; border-top: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface); padding-bottom: var(--vq-sab,0px); z-index: 4; }\n.vq2-wsbar-t { flex: 1 1 0; display: flex; flex-direction: column; align-items: center;\n  justify-content: center; gap: 2px; min-height: var(--vq-tap-min); padding: 7px 4px;\n  border: 0; background: none; cursor: pointer; position: relative;\n  color: var(--vq-text-tertiary); font: var(--vq-type-caption); }\n.vq2-wsbar-t[aria-selected=\"true\"] { color: var(--vq-accent-text); }\n.vq2-wsbar-t:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-wsbar-t .vq2-i { width: 19px; height: 19px; }\n.vq2-wsbar-d { position: absolute; top: 6px; right: 50%; margin-right: -14px;\n  width: 6px; height: 6px; border-radius: var(--vq-r-full); background: var(--vq-accent); }\n\n/* 印刷では作業用の枠を出さない */\n@media print {\n  .vq2-ws-l, .vq2-ws-r, .vq2-ws-sheet, .vq2-wsbar, .vq2-ws-tabs { display: none !important; }\n}\n\n/* ── ワークスペースの中身（プリセット / Quick Mock 共通）─────────── */\n.vq2-wshead { padding: 2px 2px 0; }\n.vq2-wshead-t { margin: 0; font: var(--vq-type-heading-lg); color: var(--vq-text); }\n.vq2-wshead-s { margin: 3px 0 0; font: var(--vq-type-body-sm); color: var(--vq-text-tertiary); }\n\n.vq2-actwrap { display: flex; flex-direction: column; height: 100%; min-height: 0; }\n.vq2-aiact-eta { flex: 0 0 auto; display: inline-flex; gap: 6px; font: var(--vq-type-caption);\n  color: var(--vq-text-tertiary); white-space: nowrap; }\n.vq2-aiact-eta:empty { display: none; }\n\n/* 実行カードのボタン列 */\n.vq2-runrow { display: flex; gap: 8px; flex-wrap: wrap; }\n.vq2-runrow > .vq2-btn { flex: 1 1 auto; }\n\n/* 問題カード（1 問 = 1 枚。開いた 1 枚だけ中で編集する） */\n.vq2-qbar { display: flex; align-items: center; gap: 8px;\n  font: var(--vq-type-label); color: var(--vq-text-secondary); }\n.vq2-qcards { list-style: none; margin: 0; padding: 0;\n  display: flex; flex-direction: column; gap: 10px; }\n.vq2-qcard { background: var(--vq-surface); border: 1px solid var(--vq-border);\n  border-radius: var(--vq-r-lg); overflow: hidden; cursor: pointer;\n  transition: border-color var(--vq-dur-fast) var(--vq-ease-standard),\n    box-shadow var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-qcard:hover { border-color: var(--vq-border-strong); box-shadow: var(--vq-shadow-subtle); }\n.vq2-qcard.is-open { border-color: var(--vq-accent); box-shadow: var(--vq-shadow-raised); cursor: default; }\n.vq2-qcard.is-err { border-color: var(--vq-danger); }\n.vq2-qcard:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }\n.vq2-qcard.is-dragging { opacity: .5; }\n.vq2-qcard.is-drop-before { box-shadow: 0 -3px 0 0 var(--vq-accent); }\n.vq2-qcard.is-drop-after { box-shadow: 0 3px 0 0 var(--vq-accent); }\n.vq2-qcard-h { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; }\n.vq2-qcard-m { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 5px; }\n.vq2-qcard-dup { flex: 0 0 auto; width: 30px; height: 30px; margin-top: -2px; padding: 0; border: 0; border-radius: 9px; background: none; color: var(--vq-text-tertiary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }\n.vq2-qcard-dup:hover { background: var(--vq-surface-hover); color: var(--vq-text); }\n.vq2-qcard-dup svg { width: 16px; height: 16px; }\n.vq2-qcard-c { flex: 0 0 auto; color: var(--vq-text-tertiary); display: inline-flex; margin-top: 2px; }\n.vq2-qcard-b { border-top: 1px solid var(--vq-border-subtle); cursor: default; }\n/* 中に入れる編集フォームは、もともと縦に伸びる枠の中身だった。\n   カードの中では自分の高さで置く（枠いっぱいに広げない）。 */\n.vq2-qcard-b .vq2-pane-h { position: static; border-bottom: 1px solid var(--vq-border-subtle);\n  background: var(--vq-surface-sunken); }\n.vq2-qcard-b .vq2-pane-b { flex: none; overflow: visible; }\n\n/* 押せるチップ（例示の言い回し）。\n   button の既定の枠が出ないよう、ここで作り直す。 */\nbutton.vq2-chip { border: 1px solid var(--vq-border); background: var(--vq-surface);\n  color: var(--vq-text-secondary); cursor: pointer; min-height: 28px; padding: 4px 11px;\n  font: var(--vq-type-caption);\n  transition: background var(--vq-dur-fast) var(--vq-ease-standard),\n    border-color var(--vq-dur-fast) var(--vq-ease-standard); }\nbutton.vq2-chip:hover { background: var(--vq-accent-subtle); border-color: var(--vq-accent-subtle);\n  color: var(--vq-accent-text); }\nbutton.vq2-chip:focus-visible { outline: var(--vq-focus-ring); outline-offset: 2px; }\n\n/* hidden を効かせる（ボタンは display を自分で決めているため）*/\n.vq2-btn[hidden] { display: none; }\n\n/* まだ何も無いときの迎え方（印 ＋ 一言 ＋ はじめの一手）*/\n.vq2-startpad { display: flex; flex-direction: column; align-items: center; justify-content: center;\n  gap: 18px; padding: 56px 24px; min-height: 60%; }\n.vq2-start-a { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }\n.vq2-root.is-mobile .vq2-startpad { padding: 32px 16px; }\n.vq2-root.is-mobile .vq2-start-a { width: 100%; flex-direction: column; }\n.vq2-root.is-mobile .vq2-start-a .vq2-btn { width: 100%; min-height: var(--vq-tap-min); }\n\n/* 直し方の候補（何をするのかを必ず添える）*/\n.vq2-fixlist { display: flex; flex-direction: column; gap: 8px; }\n.vq2-fixrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-fixrow > .vq2-hint { flex: 1 1 220px; min-width: 0; margin: 0; }\n.vq2-root.is-mobile .vq2-fixrow > .vq2-btn { width: 100%; min-height: var(--vq-tap-min); }\n\n/* 縦に積む枠は縮ませない。\n   これが無いと、入っているものが多いときに 1 枚ずつ潰れて中身が切れる。 */\n.vq2-ws-scroll > * { flex: 0 0 auto; }\n\n/* 左ペインは幅が狭い。選択の並びは 2 列にする（4 列だと文字が折り返して読めない）*/\n.vq2-ws-l .vq2-pickgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n.vq2-ws-l .vq2-pick-t { font: var(--vq-type-label); }\n.vq2-ws-l .vq2-grid.c2, .vq2-ws-l .vq2-grid.c3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n.vq2-ws-l .vq2-layout-grid { grid-template-columns: minmax(0, 1fr); }\n\n/* 現在地（条件 → 構成案 → 問題 → 紙面）*/\n.vq2-steps { display: flex; align-items: center; gap: 6px; padding: 2px 2px 0; flex-wrap: wrap; }\n.vq2-steps-i { display: inline-flex; align-items: center; gap: 5px;\n  font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-steps-i.is-now { color: var(--vq-accent-text); }\n.vq2-steps-i.is-done { color: var(--vq-success-text); }\n.vq2-steps-d { width: 7px; height: 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-gray-300); }\n.vq2-steps-i.is-now .vq2-steps-d { background: var(--vq-accent); }\n.vq2-steps-i.is-done .vq2-steps-d { background: var(--vq-success); }\n.vq2-steps-s { width: 12px; height: 1px; background: var(--vq-border); }\n\n/* 中身がまだ無い Bash カード（開けない）*/\n.vq2-bash.is-empty .vq2-bash-h { cursor: default; opacity: .8; }\n.vq2-bash.is-empty .vq2-bash-h:hover { background: none; }\n\n/* 経過と残り時間（見出しの中に置くので、詰めずに離す）*/\n.vq2-eta { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n\n/* 横に伸びる中身（チップの列・長い語）を親の幅に閉じ込める。\n   flex の子は既定で内容の幅まで広がるため、これが無いと\n   パネルごと横に押し出されてしまう。 */\n.vq2-aiact, .vq2-aiact > *, .vq2-tlc > *, .vq2-tl-card > * { min-width: 0; }\n.vq2-tlc-chips { max-width: 100%; }\n.vq2-ws-sheet { overflow: hidden; }\n\n/* 見出しの中身は、幅が足りなければ縮めて省略する。\n   「経過…残り…」を縮めないと、右端の停止ボタンが画面の外へ押し出される。 */\n.vq2-aiact-h { min-width: 0; }\n.vq2-aiact-eta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }\n.vq2-aiact-eta .vq2-eta-s { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-aiact-x { flex: 0 0 auto; }\n/* 狭い画面では「残り およそ…」まで出す幅が無い。経過と件数だけ残す。 */\n.vq2-root.is-mobile .vq2-aiact-eta .vq2-eta-s { display: none; }\n\n/* ── 添付チップ（入力欄の上）───────────────────────────────────── */\n.vq2-tlc-att:empty, .vq2-tlc-opt:empty { display: none; }\n/* 資料は **横に並ぶ小さな札**にする。\n   1 件ずつ縦に積む箱だったので、3 件付けただけで入力欄より大きくなっていた。\n   名前・状態・消すボタンだけを 1 行に置き、詳しい話は必要なときだけ下へ出す。 */\n.vq2-atts { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px;\n  max-height: 96px; overflow-y: auto; }\n.vq2-att { display: flex; flex-direction: column; gap: 4px; padding: 3px 8px;\n  border: 1px solid var(--vq-border); border-radius: 999px;\n  background: var(--vq-surface); max-width: 100%; }\n/* 進み具合やページごとの結果が付くときだけ、丸をやめて箱に戻す */\n.vq2-att:has(.vq2-att-p), .vq2-att:has(.vq2-att-pages), .vq2-att.is-bad {\n  border-radius: var(--vq-r-sm); padding: 6px 8px; flex-basis: 100%; }\n.vq2-att-r { display: flex; align-items: center; gap: 8px; }\n.vq2-att.is-bad { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-att-i { flex: 0 0 auto; color: var(--vq-text-tertiary); display: inline-flex; }\n.vq2-att-i .vq2-i { width: 16px; height: 16px; }\n/* 名前と大きさは **横に並べる**。縦に積むと 1 件で 2 行ぶんの高さになる。 */\n.vq2-att-m { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: row;\n  align-items: baseline; gap: 6px; }\n.vq2-att-n { color: var(--vq-text); font-size: 12px; font-weight: 500;\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 168px; }\n.vq2-att-s { color: var(--vq-text-tertiary); font-size: 11px; flex: 0 0 auto; }\n.vq2-att-st { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px;\n  padding: 2px 8px; border-radius: var(--vq-r-full); font: var(--vq-type-caption);\n  background: var(--vq-gray-150); color: var(--vq-text-secondary); white-space: nowrap; }\n.vq2-att-st .vq2-i { width: 12px; height: 12px; }\n.vq2-att-st.tone-accent { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-att-st.tone-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-att-st.tone-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-att-st.tone-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-att-b { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;\n  width: 26px; height: 26px; border: 0; border-radius: var(--vq-r-xs); cursor: pointer;\n  background: none; color: var(--vq-text-tertiary); }\n.vq2-att-b:hover { background: var(--vq-surface-hover); color: var(--vq-text); }\n.vq2-att-b:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-att-b .vq2-i { width: 14px; height: 14px; }\n.vq2-att-note { font: var(--vq-type-caption); color: var(--vq-text-secondary); padding-left: 24px; }\n\n/* 送信の進み具合。「12 個中 7 個目」を主にする（％だけだと再開の位置が分からない）。 */\n.vq2-att-up { display: flex; align-items: center; gap: 8px; padding-left: 24px; }\n.vq2-att-bar { flex: 1 1 auto; height: 4px; border-radius: var(--vq-r-full);\n  background: var(--vq-gray-200); overflow: hidden; }\n.vq2-att-bar > span { display: block; height: 100%; border-radius: var(--vq-r-full);\n  background: var(--vq-accent); transition: width 160ms linear; }\n.vq2-att-upn { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  white-space: nowrap; }\n\n/* ページごとの読み取り結果。数え上げ＋点の並び。 */\n.vq2-att-pg { display: flex; flex-direction: column; gap: 5px; padding-left: 24px; }\n.vq2-att-pcs { display: flex; flex-wrap: wrap; gap: 5px; }\n.vq2-att-pc { display: inline-flex; align-items: center; padding: 1px 7px;\n  border-radius: var(--vq-r-full); font: var(--vq-type-caption);\n  background: var(--vq-gray-150); color: var(--vq-text-secondary); }\n.vq2-att-pc.tone-success { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-att-pc.tone-warning { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-att-pc.tone-danger { background: var(--vq-danger-bg); color: var(--vq-danger-text); }\n.vq2-att-pds { display: flex; flex-wrap: wrap; gap: 3px; }\n.vq2-att-pd { width: 8px; height: 8px; border-radius: 2px; background: var(--vq-gray-300); }\n.vq2-att-pd.tone-success { background: var(--vq-success); }\n.vq2-att-pd.tone-warning { background: var(--vq-warning); }\n.vq2-att-pd.tone-danger { background: var(--vq-danger); }\n.vq2-att-psum { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n\n/* 部分成功のときの 4 つの手 */\n.vq2-att-acts { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 24px; }\n.vq2-att-act { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;\n  border: 1px solid var(--vq-border); border-radius: var(--vq-r-sm); cursor: pointer;\n  background: var(--vq-surface); color: var(--vq-text); font: var(--vq-type-caption); }\n.vq2-att-act:hover { background: var(--vq-surface-hover); }\n.vq2-att-act:focus-visible { outline: var(--vq-focus-ring); outline-offset: 1px; }\n.vq2-att-act.is-primary { background: var(--vq-accent); border-color: var(--vq-accent);\n  color: var(--vq-accent-contrast); }\n.vq2-att-act.is-primary:hover { background: var(--vq-accent-hover); }\n.vq2-att-act .vq2-i { width: 13px; height: 13px; }\n\n/* 100MB まではローカル経路だけ、という但し書き */\n.vq2-att-route { font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  padding: 2px 4px; }\n\n/* 指で押せる大きさを確保する（44px） */\n.vq2-root.is-mobile .vq2-att-b { width: var(--vq-tap-min); height: var(--vq-tap-min); }\n.vq2-root.is-mobile .vq2-att-act { min-height: var(--vq-tap-min); }\n\n/* 入力欄のすぐ上に置く小さな設定 */\n.vq2-tlc-opt { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-tlc-opt .vq2-check { padding: 0; font: var(--vq-type-caption); }\n.vq2-tlc-opt-n { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n\n/* 添付ボタン（入力欄の左） */\n.vq2-tlc-att-b { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;\n  width: 32px; height: 32px; margin-left: 0; border: 0; border-radius: 999px;\n  background: none; color: var(--vq-text-tertiary); cursor: pointer; }\n.vq2-tlc-att-b:hover { background: var(--vq-surface-hover); color: var(--vq-accent-text); }\n.vq2-tlc-att-b:focus-visible { outline: var(--vq-focus-ring); outline-offset: -2px; }\n.vq2-tlc-att-b .vq2-i { width: 18px; height: 18px; }\n.vq2-root.is-mobile .vq2-tlc-att-b { width: var(--vq-tap-min); height: var(--vq-tap-min); }\n.vq2-root.is-mobile .vq2-att-b { width: 38px; height: 38px; }\n\n.vq2-qbar-h { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-root.is-mobile .vq2-qbar-h { display: none; }\n.vq2-start-h { margin: 0; font: var(--vq-type-body-sm); color: var(--vq-text-tertiary); text-align: center; }\n\n/* 狭い画面では中央タブのアイコンを省いて、4 つを画面幅に収める。\n   横スクロールに逃がすと、隠れたタブに気づけない。 */\n.vq2-root.is-mobile .vq2-seg-t .vq2-i { display: none; }\n.vq2-root.is-mobile .vq2-seg-t { padding: 9px 10px; gap: 4px; }\n.vq2-root.is-mobile .vq2-seg { justify-content: space-between; }\n\n/* ══════════════════════════════════════════════════════════════════════\n   V3 Question Renderer\n   ・形式が変わってもボタンの位置が動かないよう、寸法は共通のものを使う。\n   ・色だけで正誤を伝えない。必ず言葉のラベルを添える（HTML 側）。\n   ══════════════════════════════════════════════════════════════════════ */\n\n/* ── 共通 ── */\n.vq2-qtools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }\n.vq2-qinst { font: var(--vq-type-body); color: var(--vq-text-secondary); margin-bottom: 8px; }\n.vq2-qctx { padding: 12px 14px; margin-bottom: 12px; border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle); line-height: 1.9; }\n.vq2-qmedia { margin: 10px 0; }\n.vq2-qmedia img { max-width: 100%; height: auto; border-radius: var(--vq-r-lg); border: 1px solid var(--vq-border-subtle); display: block; }\n.vq2-qmedia figcaption { font: var(--vq-type-caption); color: var(--vq-text-tertiary); margin-top: 6px; }\n.vq2-qmedia-v { max-width: 100%; border-radius: var(--vq-r-lg); }\n.vq2-qfallback { border-color: var(--vq-warning, var(--vq-border-strong)); }\n.vq2-select { appearance: none; padding-right: 30px;\n  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);\n  background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }\n.vq2-input.is-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }\n\n/* ── 本文（RichContent） ── */\n.vq2-rc p { margin: 0 0 8px; line-height: 1.9; }\n.vq2-rc p:last-child { margin-bottom: 0; }\n.vq2-rc ul, .vq2-rc ol { margin: 0 0 8px; padding-left: 1.4em; line-height: 1.9; }\n.vq2-rc blockquote { margin: 0 0 8px; padding: 6px 12px; border-left: 3px solid var(--vq-border-strong);\n  color: var(--vq-text-secondary); }\n.vq2-rc-code { margin: 0 0 8px; padding: 10px 12px; border-radius: var(--vq-r-md); overflow-x: auto;\n  background: var(--vq-surface-sunken); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }\n.vq2-rc-formula { margin: 0 0 8px; padding: 8px 12px; border-radius: var(--vq-r-md);\n  background: var(--vq-surface-sunken); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }\n.vq2-rc-br { height: 8px; }\n.vq2-rc-img { max-width: 100%; height: auto; border-radius: var(--vq-r-md); }\n.vq2-rc-audio { width: 100%; max-width: 420px; margin: 6px 0; }\n.vq2-rc-ref { display: inline-block; padding: 1px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); font: var(--vq-type-caption); }\n.vq2-rc-note { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-rc-tw { overflow-x: auto; margin: 0 0 8px; }\n\n/* ── 表 ── */\n.vq2-tw { overflow-x: auto; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); }\n.vq2-table { width: 100%; border-collapse: collapse; font: var(--vq-type-body); }\n.vq2-table caption { caption-side: top; text-align: left; padding: 10px 12px;\n  font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-table th, .vq2-table td { padding: 9px 12px; border-bottom: 1px solid var(--vq-border-subtle);\n  border-right: 1px solid var(--vq-border-subtle); text-align: left; vertical-align: middle; }\n.vq2-table th { background: var(--vq-surface-sunken); font-weight: 600; }\n.vq2-table tr:last-child td, .vq2-table tr:last-child th { border-bottom: 0; }\n.vq2-table th:last-child, .vq2-table td:last-child { border-right: 0; }\n.vq2-table td.is-edit { padding: 6px; background: var(--vq-bg-elevated); min-width: 120px; }\n.vq2-table td.is-edit.is-correct { background: var(--vq-success-bg); }\n.vq2-table td.is-edit.is-wrong { background: var(--vq-danger-bg); }\n.vq2-cell-ans { font: var(--vq-type-caption); color: var(--vq-text-tertiary); margin-top: 4px; }\n\n/* ── 音声 ── */\n.vq2-audio { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; margin: 0 0 12px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-audio-meta { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-audio-bar { flex: 1 1 120px; height: 4px; border-radius: var(--vq-r-full); background: var(--vq-border-subtle); overflow: hidden; }\n.vq2-audio-fill { display: block; height: 100%; background: var(--vq-accent); transition: width .15s linear; }\n/* 長さが分からない読み上げ（端末の声）。**進み具合のふりをしない**ので、\n   バーは端から端へ流れるだけにする。 */\n.vq2-audio.is-unknown .vq2-audio-bar { position: relative; }\n.vq2-audio.is-unknown .vq2-audio-fill { width: 35% !important; animation: vq2-audio-slide 1.1s ease-in-out infinite; }\n@keyframes vq2-audio-slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(320%); } }\n\n/* ── 図表 ── */\n.vq2-chart { margin: 0 0 12px; padding: 12px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-chart-t { font-weight: 600; margin-bottom: 8px; }\n.vq2-chart-w { overflow-x: auto; }\n.vq2-chart-w svg { width: 100%; min-width: 380px; height: auto; display: block; }\n.vq2-chart-lg { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font: var(--vq-type-caption); }\n.vq2-chart-lgi { display: inline-flex; align-items: center; gap: 6px; }\n.vq2-chart-pw { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }\n.vq2-chart-pw svg { width: 200px; height: 200px; flex: 0 0 auto; }\n.vq2-chart-lg.is-col { flex-direction: column; gap: 6px; margin-top: 0; align-items: flex-start; }\n.vq2-ch-pie { stroke: var(--vq-bg-elevated); stroke-width: 2; }\n.vq2-ch-pct { margin-left: 6px; color: var(--vq-text-tertiary); font-weight: 500; }\n.vq2-ch-sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }\n.vq2-ch-grid { stroke: var(--vq-border-subtle); stroke-width: 1; }\n.vq2-ch-axis { stroke: var(--vq-border-strong); stroke-width: 1.5; }\n.vq2-ch-lbl { fill: var(--vq-text-tertiary); font-size: 11px; }\n.vq2-ch-line { stroke-width: 2; }\n.vq2-ch-s0 { fill: var(--vq-accent); stroke: var(--vq-accent); background: var(--vq-accent); }\n.vq2-ch-s1 { fill: #7a8ca8; stroke: #7a8ca8; background: #7a8ca8; }\n.vq2-ch-s2 { fill: #b58a4a; stroke: #b58a4a; background: #b58a4a; }\n.vq2-ch-s3 { fill: #6f9b78; stroke: #6f9b78; background: #6f9b78; }\n/* ══ 折れ線は塗らない ══════════════════════════════════════\n   系列の色（s0〜s3）は棒と円のために fill を持つ。同じ強さなので\n   **後ろに書いたほうが勝つ**。前に置いていたため、折れ線の下が\n   塗りつぶされて面グラフのように見えていた（実測 2026-08-13）。\n   polyline は線だけ。ここは s0〜s3 より後ろに置く。 */\npolyline.vq2-ch-line { fill: none; }\n\n/* ── 選択肢（画像つき） ── */\n.vq2-q-choices.is-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }\n.vq2-q-choices.is-grid .vq2-choice { flex-direction: column; align-items: stretch; }\n.vq2-choice-img { width: 100%; height: auto; border-radius: var(--vq-r-md); display: block; }\n.vq2-choice-cap { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-choice-a2 { margin-top: 4px; }\n.vq2-root.is-mobile .vq2-q-choices.is-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }\n\n/* ── 自信度 ── */\n.vq2-conf { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--vq-border-subtle); }\n.vq2-conf-r { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }\n.vq2-conf-b { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; min-height: var(--vq-tap-min);\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-full); background: var(--vq-bg-elevated);\n  cursor: pointer; font: var(--vq-type-caption); }\n.vq2-conf-b:hover:not(:disabled) { border-color: var(--vq-border-strong); }\n.vq2-conf-b.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-conf-n { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font-weight: 700; }\n.vq2-conf-b.is-on .vq2-conf-n { background: var(--vq-accent); color: var(--vq-accent-contrast); }\n\n/* ── ヒント ── */\n.vq2-hintrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }\n.vq2-hint-chars { display: inline-flex; gap: 3px; }\n.vq2-hint-c { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 26px;\n  border-radius: var(--vq-r-sm); background: var(--vq-surface-sunken); color: var(--vq-text-tertiary);\n  font-family: ui-monospace, monospace; }\n.vq2-hint-c.is-on { background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 700; }\n.vq2-hint.is-over { color: var(--vq-danger-text); font-weight: 600; }\n.vq2-hint.is-short { color: var(--vq-warning-text, var(--vq-text-secondary)); }\n.vq2-rubric-peek { margin-top: 12px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  padding: 10px 12px; background: var(--vq-surface-sunken); }\n.vq2-rubric-peek summary { cursor: pointer; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-rubric-list { margin: 8px 0 0; padding-left: 1.2em; }\n.vq2-rubric-list li { display: flex; gap: 10px; justify-content: space-between; padding: 3px 0; line-height: 1.7; }\n\n/* ── 運ぶ操作の共通 ── */\n.vq2-dragwrap { display: flex; flex-direction: column; gap: 12px; }\n.vq2-drag-ghost { position: fixed; z-index: 9999; pointer-events: none; opacity: .9;\n  box-shadow: var(--vq-shadow-md, 0 8px 24px rgba(0,0,0,.18)); transform: rotate(-1deg); }\n[data-drag-id] { touch-action: none; }\n[data-drag-id].is-held { border-color: var(--vq-accent) !important; background: var(--vq-accent-subtle) !important;\n  box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n[data-drop-zone].is-target { border-style: dashed; }\n[data-drop-zone].is-over { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-bank { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; min-height: 62px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-bank-i { padding: 8px 14px; min-height: var(--vq-tap-min); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-full); background: var(--vq-bg-elevated); cursor: pointer; font: var(--vq-type-body); }\n.vq2-bank-i:hover:not(:disabled) { border-color: var(--vq-border-strong); }\n.vq2-bank-i.is-used { opacity: .38; cursor: default; text-decoration: line-through; }\n\n/* ── 穴埋め ── */\n/* 文の中の空欄。下の答え欄と **同じ番号**が付く。\n   下線の入れ物にすることで「ここに書く」と分かる。 */\n.vq2-blankmark { display: inline-flex; align-items: center; justify-content: center;\n  min-width: 4.5em; padding: 0 6px; margin: 0 2px; vertical-align: baseline;\n  border-bottom: 2px solid var(--vq-accent); border-radius: 2px;\n  background: var(--vq-accent-subtle); }\n.vq2-mathbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }\n.vq2-mathpal { border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-md);\n  background: var(--vq-surface-sunken); padding: 10px 12px; margin-bottom: 10px; }\n.vq2-mathpal[hidden] { display: none; }\n.vq2-mathpal-g { font-size: 11px; color: var(--vq-text-tertiary); margin: 8px 0 4px; }\n.vq2-mathpal-g:first-child { margin-top: 0; }\n.vq2-mathpal-r { display: flex; flex-wrap: wrap; gap: 6px; }\n.vq2-mathpal-b { min-width: 40px; height: 34px; padding: 0 8px; cursor: pointer;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-sm);\n  background: var(--vq-bg-elevated); color: var(--vq-text-primary); font-size: 14px; line-height: 1; }\n.vq2-mathpal-b:hover { background: var(--vq-surface-hover); border-color: var(--vq-accent); }\n.vq2-math { display: inline-block; }\n.vq2-math.is-block { display: block; margin: 10px 0; text-align: center; overflow-x: auto; }\n.vq2-math .katex { font-size: 1.05em; }\n.vq2-math .katex-display { margin: 0; }\n.vq2-blankmark i { font-style: normal; font: var(--vq-type-caption); font-weight: 700;\n  color: var(--vq-accent-text); }\n.vq2-blanks { display: flex; flex-direction: column; gap: 10px; }\n.vq2-blank-row { display: flex; align-items: center; gap: 10px; }\n.vq2-blank-n { flex: 0 0 auto; min-width: 30px; height: 30px; display: inline-flex; align-items: center;\n  justify-content: center; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); font-weight: 700; }\n.vq2-blank-row .vq2-input { flex: 1 1 auto; min-width: 0; }\n.vq2-blank-slot { flex: 1 1 auto; min-width: 0; min-height: var(--vq-tap-min); padding: 8px 12px; text-align: left;\n  border: 1px dashed var(--vq-border-strong); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); cursor: pointer; }\n.vq2-blank-slot.is-filled { border-style: solid; border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n\n/* ── 並べ替え ── */\n.vq2-sort { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }\n.vq2-sort-i { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-height: var(--vq-tap-min);\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); cursor: grab; }\n.vq2-sort-i:focus-visible { outline: none; border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-sort-i.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-sort-i.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-sort-h { flex: 0 0 auto; color: var(--vq-text-tertiary); display: inline-flex; }\n.vq2-sort-h .vq2-i { width: 18px; height: 18px; }\n.vq2-sort-n { flex: 0 0 auto; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font: var(--vq-type-caption); font-weight: 700;\n  font-variant-numeric: tabular-nums; }\n.vq2-sort-m { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; line-height: 1.7; }\n.vq2-sort-img { width: 56px; height: 44px; object-fit: cover; border-radius: var(--vq-r-sm); }\n.vq2-sort-a { flex: 0 0 auto; display: flex; gap: 2px; }\n\n/* ── 組み合わせ ── */\n.vq2-match-b { position: relative; display: grid; grid-template-columns: 1fr 44px 1fr; gap: 0; align-items: start; }\n.vq2-match-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }\n/* 線を描く SVG は position:absolute なので **列を 1 つも使わない**。\n   そのため右の列が 2 列目（44px）へ入り、日本語が 1 文字ずつ縦に折れていた\n   （実測 2026-08-12）。置き場所を数えさせず、番号で決め打ちする。 */\n.vq2-match-col[data-side=\"left\"] { grid-column: 1; }\n.vq2-match-col[data-side=\"right\"] { grid-column: 3; }\n.vq2-match-i { display: flex; align-items: center; gap: 8px; padding: 10px 12px; min-height: var(--vq-tap-min);\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated);\n  cursor: pointer; text-align: left; }\n.vq2-match-i:hover:not(:disabled) { border-color: var(--vq-border-strong); }\n.vq2-match-i.is-linked { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-match-i.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-match-i.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-match-i.is-dummy { opacity: .6; }\n.vq2-match-n { flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-match-t { flex: 1 1 auto; min-width: 0; line-height: 1.6; }\n.vq2-match-link { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-accent-text); font-weight: 700; }\n.vq2-match-img { width: 44px; height: 34px; object-fit: cover; border-radius: var(--vq-r-sm); }\n.vq2-match-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }\n.vq2-match-lines path { fill: none; stroke: var(--vq-accent); stroke-width: 2; opacity: .75; }\n/* スマホでは左右に並べない。**幅が半分になると、日本語の説明文が\n   4 行 5 行と折れて読めなくなる**（実測 390px で 22 字が 4 行）。\n   上下に積めば 1 行あたりの字数が倍になり、3 行までに収まる。 */\n.vq2-root.is-mobile .vq2-match-b { grid-template-columns: 1fr; gap: 12px; }\n.vq2-root.is-mobile .vq2-match-col[data-side=\"left\"],\n.vq2-root.is-mobile .vq2-match-col[data-side=\"right\"] { grid-column: 1; }\n.vq2-root.is-mobile .vq2-match-lines { display: none; }\n\n/* ── 分類 ── */\n.vq2-cls-pool { padding: 12px; border: 1px dashed var(--vq-border-strong); border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); }\n.vq2-cls-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; min-height: 40px; align-items: flex-start; }\n.vq2-cls-i { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; min-height: var(--vq-tap-min);\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-full); background: var(--vq-bg-elevated); cursor: pointer; }\n.vq2-cls-i.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-cls-i.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-cls-img { width: 30px; height: 24px; object-fit: cover; border-radius: 3px; }\n.vq2-cls-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }\n.vq2-cls-g { padding: 12px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); min-height: 100px; }\n.vq2-cls-g:focus-visible { outline: none; border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-cls-g.is-ex { background: var(--vq-surface-sunken); }\n.vq2-cls-gh { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 600; }\n.vq2-cls-c { font: var(--vq-type-caption); color: var(--vq-text-tertiary); font-variant-numeric: tabular-nums; }\n\n/* ── 画像内の位置・ラベル配置 ── */\n.vq2-imgq { display: flex; flex-direction: column; gap: 8px; }\n.vq2-imgq-vp { position: relative; overflow: auto; max-height: 62vh; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); touch-action: pan-x pan-y; }\n.vq2-imgq-vp:focus-visible { outline: none; border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-imgq-in { position: relative; transform-origin: 0 0; display: inline-block; min-width: 100%; }\n.vq2-imgq-in img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }\n.vq2-pt { position: absolute; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 50%;\n  background: var(--vq-accent); color: var(--vq-accent-contrast); display: inline-flex; align-items: center; justify-content: center;\n  font: var(--vq-type-caption); font-weight: 700; box-shadow: 0 0 0 3px rgba(255,255,255,.8); pointer-events: none; }\n.vq2-hs { position: absolute; border: 2px dashed var(--vq-success); background: rgba(60,150,90,.16); pointer-events: none; }\n.vq2-hs.is-circ { transform: translate(-50%, -50%); border-radius: 50%; height: 0; }\n.vq2-zoom-n { font: var(--vq-type-caption); color: var(--vq-text-secondary); font-variant-numeric: tabular-nums; min-width: 34px; text-align: center; }\n.vq2-lslot { position: absolute; transform: translate(-50%, -50%); min-width: 34px; min-height: 30px; padding: 4px 9px;\n  border: 2px solid var(--vq-border-strong); border-radius: var(--vq-r-md); background: var(--vq-bg-elevated);\n  font: var(--vq-type-caption); font-weight: 600; cursor: pointer; }\n.vq2-lslot.is-filled { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-lslot.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-lslot.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-lslot-ans { display: block; font-weight: 400; color: var(--vq-success-text); }\n\n/* ── 誤文訂正 ── */\n.vq2-ec { display: flex; flex-direction: column; gap: 10px; }\n.vq2-ec-body { padding: 12px 14px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); line-height: 2; }\n.vq2-ec-m { background: var(--vq-warning-bg, var(--vq-accent-subtle)); color: inherit; padding: 1px 3px; border-radius: 3px; }\n.vq2-ec-n { font-size: .7em; margin-left: 2px; }\n.vq2-ec-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-ec-row.is-correct { border-color: var(--vq-success); background: var(--vq-success-bg); }\n.vq2-ec-row.is-wrong { border-color: var(--vq-danger); background: var(--vq-danger-bg); }\n.vq2-ec-n2 { flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-ec-w { flex: 0 0 auto; text-decoration: line-through; color: var(--vq-text-secondary); }\n.vq2-ec-ar { flex: 0 0 auto; color: var(--vq-text-tertiary); }\n.vq2-ec-row .vq2-input { flex: 1 1 160px; min-width: 0; }\n.vq2-ec-ans { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-success-text); }\n\n/* ── カード ── */\n.vq2-card3 { display: flex; flex-direction: column; gap: 12px; align-items: stretch; }\n.vq2-card3-f { position: relative; min-height: 180px; padding: 26px 22px; display: flex; flex-direction: column;\n  align-items: center; justify-content: center; gap: 12px; cursor: pointer; text-align: center;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-xl, var(--vq-r-lg)); background: var(--vq-bg-elevated);\n  transition: transform var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-card3-f:hover { border-color: var(--vq-border-strong); }\n.vq2-card3-f.is-flipped { background: var(--vq-accent-subtle); border-color: var(--vq-accent); }\n.vq2-card3-t { font-size: 1.5rem; font-weight: 600; line-height: 1.6; word-break: break-word; }\n.vq2-card3-h { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-card3-a { display: flex; gap: 10px; }\n.vq2-card3-a .vq2-btn { flex: 1 1 0; }\n\n/* ── 複合大問 ── */\n.vq2-comp { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }\n.vq2-comp.is-mobile { display: block; }\n.vq2-comp-l { position: sticky; top: 0; max-height: 74vh; overflow: auto; padding-right: 4px; }\n.vq2-comp-r { min-width: 0; }\n.vq2-comp-src { padding: 14px 16px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); line-height: 1.95; }\n.vq2-comp-inst { font-weight: 600; margin-bottom: 8px; }\n.vq2-comp-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }\n.vq2-comp-t { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; min-height: 36px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-full); background: var(--vq-bg-elevated);\n  cursor: pointer; font: var(--vq-type-caption); }\n.vq2-comp-t.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 700; }\n.vq2-comp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vq-success); display: inline-block; }\n.vq2-comp-q { padding: 14px 16px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); }\n.vq2-comp-tabs { display: flex; gap: 6px; margin-bottom: 12px; }\n.vq2-comp-tb { flex: 1 1 0; padding: 10px; min-height: var(--vq-tap-min); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); cursor: pointer; font: var(--vq-type-body); }\n.vq2-comp-tb.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 600; }\n.vq2-root.is-mobile .vq2-comp { grid-template-columns: 1fr; }\n.vq2-root.is-mobile .vq2-comp-l { position: static; max-height: none; }\n\n/* 動きを減らす設定では、余計な動きを止める。 */\n@media (prefers-reduced-motion: reduce) {\n  .vq2-drag-ghost { display: none; }\n  .vq2-card3-f, .vq2-audio-fill { transition: none; }\n  .vq2-audio.is-unknown .vq2-audio-fill { animation: none; width: 100% !important; }\n}\n\n/* ── プリセットを公開する（モーダル）─────────────────────────\n   決めることは 4 つしか無いので、1 枚にまとめる。\n   上に「公開したらこう見える」を出して、触るたびにそこが変わる。 */\n.vq2-root.is-sheet.vq2-pp { width: min(720px, calc(100vw - 48px)); max-height: min(90vh, 880px); }\n.vq2-root.is-sheet.vq2-pp.is-mobile { width: 100%; max-height: 94vh; }\n.vq2-pp-head { position: relative; flex: 0 0 auto; padding: 18px 18px 16px;\n  background: var(--vq-surface-sunken); border-bottom: 1px solid var(--vq-border-subtle); }\n.vq2-pp-headbar { position: absolute; top: 10px; right: 10px; }\n.vq2-pp-kicker { font: var(--vq-type-caption); color: var(--vq-text-tertiary); font-weight: 650;\n  margin-bottom: 10px; }\n.vq2-pp-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px;\n  background: var(--vq-bg-elevated); border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); min-width: 0; }\n.vq2-pp-card.is-flat { margin: 14px auto 0; max-width: 380px; }\n.vq2-pp-ico { flex: 0 0 auto; width: 46px; height: 46px; border-radius: var(--vq-r-md);\n  display: inline-grid; place-items: center; color: #fff; }\n.vq2-pp-ico .vq2-ms { font-size: 24px; }\n.vq2-pp-ico.is-sm { width: 30px; height: 30px; border-radius: var(--vq-r-sm, 8px); }\n.vq2-pp-ico.is-sm .vq2-ms { font-size: 17px; }\n.vq2-pp-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }\n.vq2-pp-copy strong { font: var(--vq-type-body-md); font-weight: 700; overflow: hidden;\n  text-overflow: ellipsis; white-space: nowrap; }\n.vq2-pp-link { font: var(--vq-type-caption); color: var(--vq-text-tertiary); overflow-wrap: anywhere; }\n.vq2-pp-scroll { display: flex; flex-direction: column; gap: 14px; padding: 14px 16px 16px; }\n.vq2-pp-err { display: flex; align-items: flex-start; gap: 8px; padding: 10px 13px;\n  border-radius: var(--vq-r-md); background: var(--vq-danger-bg); color: var(--vq-danger-text);\n  font: var(--vq-type-body-sm); }\n.vq2-pp-err .vq2-ms { font-size: 17px; flex: 0 0 auto; }\n/* 公開ID */\n.vq2-pp-slug { margin-top: 10px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;\n  border: 1px solid var(--vq-border); border-radius: var(--vq-r-md); background: var(--vq-surface);\n  padding: 0 8px 0 10px; min-height: 44px; }\n.vq2-pp-pre { font: var(--vq-type-caption); color: var(--vq-text-tertiary); white-space: nowrap; }\n.vq2-pp-slug input { flex: 1 1 120px; min-width: 0; border: 0; outline: 0; background: none;\n  font: var(--vq-type-body-sm); font-family: inherit; color: var(--vq-text); height: 40px; }\n.vq2-pp-mini { flex: 0 0 auto; height: 30px; padding: 0 10px; border-radius: var(--vq-r-sm, 8px);\n  border: 1px solid var(--vq-border); background: var(--vq-bg-elevated); color: var(--vq-text-secondary);\n  font: var(--vq-type-caption); font-family: inherit; font-weight: 650; cursor: pointer; }\n.vq2-pp-mini:hover { background: var(--vq-surface-hover); }\n.vq2-pp-msg { margin-top: 7px; font: var(--vq-type-caption); font-weight: 650; }\n.vq2-pp-msg.is-ok { color: var(--vq-success-text); }\n.vq2-pp-msg.is-ng { color: var(--vq-danger-text); }\n.vq2-pp-msg.is-wait { color: var(--vq-text-tertiary); }\n.vq2-pp-title { margin-top: 10px; width: 100%; }\n/* 見た目 */\n.vq2-pp-look { margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }\n.vq2-pp-pick { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 4px 10px 4px 4px;\n  border: 1px solid var(--vq-border); border-radius: var(--vq-r-md); background: var(--vq-surface);\n  font: var(--vq-type-body-sm); font-family: inherit; color: var(--vq-text); cursor: pointer; }\n.vq2-pp-pick:hover { background: var(--vq-surface-hover); }\n.vq2-pp-pick .vq2-ms { color: var(--vq-text-tertiary); }\n.vq2-pp-colors { display: flex; gap: 6px; flex-wrap: wrap; }\n.vq2-pp-col { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent;\n  background: none; padding: 2px; cursor: pointer; display: inline-grid; place-items: center; }\n.vq2-pp-col span { width: 100%; height: 100%; border-radius: 50%; display: block; }\n.vq2-pp-col.is-on { border-color: var(--vq-accent); }\n.vq2-pp-col:focus-visible { outline: 2px solid var(--vq-accent); outline-offset: 2px; }\n.vq2-pp-icons { margin-top: 12px; max-height: 260px; overflow-y: auto; padding-right: 4px;\n  display: flex; flex-direction: column; gap: 12px; }\n.vq2-pp-icg h4 { font: var(--vq-type-caption); color: var(--vq-text-tertiary); font-weight: 650;\n  margin-bottom: 6px; }\n.vq2-pp-igrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }\n.vq2-pp-ic { height: 46px; border-radius: var(--vq-r-md); border: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated); color: var(--vq-text-secondary); cursor: pointer;\n  display: inline-grid; place-items: center; }\n.vq2-pp-ic .vq2-ms { font-size: 21px; }\n.vq2-pp-ic:hover { background: var(--vq-surface-hover); }\n.vq2-pp-ic.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n/* 公開する前に */\n.vq2-pp-notice { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }\n.vq2-pp-notice li { display: flex; align-items: flex-start; gap: 9px; font: var(--vq-type-body-sm);\n  line-height: 1.8; color: var(--vq-text-secondary); }\n.vq2-pp-notice .vq2-ms { font-size: 18px; color: var(--vq-text-tertiary); flex: 0 0 auto; margin-top: 2px; }\n.vq2-pp-agree { margin-top: 14px; }\n/* 下の操作 */\n.vq2-pp-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 12px 16px;\n  border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  padding-bottom: calc(12px + var(--vq-sab,0px)); flex-wrap: wrap; }\n/* 公開中・完了 */\n.vq2-pp-mid { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center;\n  justify-content: center; text-align: center; gap: 8px; padding: 40px 24px; }\n.vq2-pp-mid h3 { font: var(--vq-type-heading-sm); }\n.vq2-pp-mid p { font: var(--vq-type-body-sm); color: var(--vq-text-secondary); max-width: 34em; line-height: 1.9; }\n.vq2-pp-spin { width: 42px; height: 42px; border-radius: 50%; border: 3px solid var(--vq-border);\n  border-top-color: var(--vq-accent); animation: vq2ppspin .9s linear infinite; margin-bottom: 6px; }\n@keyframes vq2ppspin { to { transform: rotate(360deg); } }\n.vq2-pp-mark { width: 54px; height: 54px; border-radius: 50%; background: var(--vq-success-bg);\n  color: var(--vq-success-text); display: grid; place-items: center; margin-bottom: 6px; }\n.vq2-pp-mark.is-quiet { background: var(--vq-surface-sunken); color: var(--vq-text-tertiary); }\n.vq2-pp-mark .vq2-ms { font-size: 28px; }\n.vq2-pp-done-acts { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }\n.is-mobile .vq2-pp-pre { display: none; }\n@media (prefers-reduced-motion: reduce) { .vq2-pp-spin { animation-duration: 2.4s; } }\n\n/* ── V3 形式を選ぶ画面 ─────────────────────────────────────────\n   形式は 130 種類ある。**一度に全部を平らに並べない。**\n   上に「探す」を固定し、左に分類、右に結果を出す。\n   カードの札は「他と違うところ」だけにする（全部に同じ札が並ぶと読めない）。 */\n.vq2-root.is-sheet.vq2-qtp { width: min(1080px, calc(100vw - 48px)); height: min(84vh, 820px); max-height: none; }\n.vq2-root.is-sheet.vq2-qtp.is-mobile { width: 100%; height: 92vh; max-height: 92vh; }\n.vq2-qtp .vq2-pane-h { flex: 0 0 auto; }\n.vq2-qt-top { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;\n  padding: 12px 16px; border-bottom: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); }\n.vq2-qt-search { position: relative; display: flex; align-items: center; gap: 8px; flex: 1 1 280px;\n  height: 40px; padding: 0 10px; border: 1px solid var(--vq-border); border-radius: var(--vq-r-md);\n  background: var(--vq-surface); color: var(--vq-text-tertiary); }\n.vq2-qt-search .vq2-i { width: 17px; height: 17px; flex: 0 0 auto; }\n.vq2-qt-search input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: none;\n  font: var(--vq-type-body-sm); font-family: inherit; color: var(--vq-text); }\n/* 消すボタンは自前のものだけ出す（ブラウザのものと二重に並ばないように） */\n.vq2-qt-search input::-webkit-search-cancel-button,\n.vq2-qt-search input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }\n.vq2-qt-clear { border: 0; background: none; cursor: pointer; color: var(--vq-text-tertiary);\n  width: 26px; height: 26px; display: inline-grid; place-items: center; border-radius: var(--vq-r-full); }\n.vq2-qt-clear .vq2-i { width: 15px; height: 15px; }\n.vq2-qt-views { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }\n.vq2-qt-split { flex: 1 1 auto; display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 0; }\n.vq2-qt-side { border-right: 1px solid var(--vq-border-subtle); display: flex; flex-direction: column;\n  min-height: 0; background: var(--vq-surface-sunken); }\n.vq2-qt-rails { flex: 1 1 auto; overflow-y: auto; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }\n.vq2-qt-rail { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 38px; padding: 0 10px;\n  border: 0; background: none; border-radius: var(--vq-r-md); cursor: pointer; text-align: left;\n  font: var(--vq-type-body-sm); font-family: inherit; color: var(--vq-text-secondary); }\n.vq2-qt-rail:hover { background: var(--vq-surface-hover); }\n.vq2-qt-rail.is-on { background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 650; }\n.vq2-qt-rail .vq2-i { width: 16px; height: 16px; flex: 0 0 auto; }\n.vq2-qt-rail span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-qt-cnt { flex: 0 0 auto; font: var(--vq-type-caption); font-weight: 700; color: var(--vq-text-tertiary);\n  font-variant-numeric: tabular-nums; }\n.vq2-qt-rail.is-on .vq2-qt-cnt { color: var(--vq-accent-text); }\n.vq2-qt-sidef { flex: 0 0 auto; border-top: 1px solid var(--vq-border-subtle); padding: 12px 12px;\n  display: flex; flex-direction: column; gap: 8px; }\n.vq2-qt-sidef .vq2-select { width: 100%; }\n.vq2-qt-main { min-width: 0; min-height: 0; overflow-y: auto; padding: 12px 16px 20px; }\n.vq2-qt-count { font: var(--vq-type-caption); color: var(--vq-text-tertiary); margin-bottom: 10px; }\n.vq2-qt-sec { margin: 0 0 18px; }\n.vq2-qt-sech { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; flex-wrap: wrap;\n  position: sticky; top: -12px; z-index: 1; background: var(--vq-bg); padding: 6px 0; }\n.vq2-qt-sech .vq2-i { width: 17px; height: 17px; color: var(--vq-text-tertiary); }\n.vq2-qt-cnt2 { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-qt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 8px; }\n.vq2-qt-card { padding: 11px 12px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; display: flex; align-items: flex-start; gap: 10px; }\n.vq2-qt-card:hover { border-color: var(--vq-border-strong); background: var(--vq-surface-hover); }\n.vq2-qt-card:focus-visible { outline: none; border-color: var(--vq-border-focus); box-shadow: 0 0 0 3px var(--vq-accent-subtle); }\n.vq2-qt-card.is-cur { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-qt-card.is-soon { opacity: .6; cursor: not-allowed; }\n.vq2-qt-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }\n.vq2-qt-h { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n.vq2-qt-ic { flex: 0 0 auto; width: 32px; height: 32px; border-radius: var(--vq-r-md);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text);\n  display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }\n.vq2-qt-ic .vq2-i { width: 17px; height: 17px; }\n.vq2-qt-n { font-weight: 650; font-size: 13.5px; }\n.vq2-qt-st { font: var(--vq-type-caption); font-weight: 700; padding: 1px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-tertiary); }\n.vq2-qt-st.is-beta { background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-qt-st.is-cur { background: var(--vq-accent); color: var(--vq-accent-contrast, #fff); }\n.vq2-qt-fav { border: 0; background: transparent; cursor: pointer; color: var(--vq-text-disabled); padding: 4px;\n  min-width: 30px; min-height: 30px; display: inline-flex; align-items: center; justify-content: center;\n  flex: 0 0 auto; border-radius: var(--vq-r-full); }\n.vq2-qt-fav:hover { background: var(--vq-surface-sunken); }\n.vq2-qt-fav.is-on { color: var(--vq-warning, #E0A31C); }\n.vq2-qt-fav .vq2-i { width: 16px; height: 16px; }\n.vq2-qt-d { font: var(--vq-type-caption); color: var(--vq-text-secondary); line-height: 1.65;\n  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }\n.vq2-qt-ex { font: var(--vq-type-caption); color: var(--vq-text-tertiary); line-height: 1.55;\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-qt-m { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 3px; }\n.vq2-qt-tag { font-size: 10.5px; font-weight: 650; padding: 1px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-tertiary); }\n/* スマホ：分類は上に横並び、結果は 1 列 */\n.is-mobile .vq2-qt-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }\n.is-mobile .vq2-qt-side { border-right: 0; border-bottom: 1px solid var(--vq-border-subtle); }\n.is-mobile .vq2-qt-rails { flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 8px 10px; }\n.is-mobile .vq2-qt-rail { width: auto; flex: 0 0 auto; border: 1px solid var(--vq-border); border-radius: var(--vq-r-full); }\n.is-mobile .vq2-qt-sidef { flex-direction: row; align-items: center; flex-wrap: wrap; padding: 8px 10px; }\n.is-mobile .vq2-qt-sidef .vq2-select { width: auto; flex: 1 1 140px; }\n.is-mobile .vq2-qt-grid { grid-template-columns: minmax(0, 1fr); }\n.is-mobile .vq2-qt-sech { position: static; }\n\n/* ── V3 形式ごとの編集フォーム ── */\n.vq2-qe-form { display: flex; flex-direction: column; gap: 10px; }\n.vq2-qe-item { padding: 10px 12px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }\n.vq2-qe-item.is-row { flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }\n.vq2-qe-item.is-row .vq2-input { flex: 1 1 140px; min-width: 0; }\n.vq2-qe-ih { display: flex; align-items: center; gap: 8px; }\n.vq2-qe-n { flex: 0 0 auto; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-qe-t { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-qe-ar { color: var(--vq-text-tertiary); flex: 0 0 auto; }\n.vq2-qe-more { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-qe-more summary { cursor: pointer; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-qe-more .vq2-grid { margin-top: 10px; }\n.vq2-qe-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }\n.vq2-qe-thumb { width: 84px; height: 64px; object-fit: cover; border-radius: var(--vq-r-md); border: 1px solid var(--vq-border-subtle); }\n.vq2-qe-canvas { margin: 8px 0 12px; }\n.vq2-qe-stage { position: relative; display: inline-block; max-width: 100%; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); overflow: hidden; cursor: crosshair; }\n.vq2-qe-stage img { display: block; max-width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }\n.vq2-qe-spot { position: absolute; transform: translate(-50%, -50%); border: 2px dashed var(--vq-accent);\n  border-radius: 50%; height: 0; background: var(--vq-accent-subtle); opacity: .8; }\n.vq2-qe-spot b { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 12px; }\n.vq2-qe-slot { position: absolute; transform: translate(-50%, -50%); min-width: 26px; height: 26px; padding: 0 6px;\n  display: inline-flex; align-items: center; justify-content: center; border-radius: var(--vq-r-md);\n  border: 2px solid var(--vq-accent); background: var(--vq-bg-elevated); font: var(--vq-type-caption); font-weight: 700; }\n.vq2-qe-preview { padding: 14px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); }\n\n/* ══════════════════════════════════════════════════════════════════\n   出題形式を決めるシート（V3 §14 / §26 / §27）\n   ・「何を作るつもりか」を、頼む前に見えるようにする。\n   ・使えない形式は灰色にして、必ず理由を添える。\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-mix-styles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }\n.vq2-mix-st { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; text-align: left;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; font-family: inherit; }\n.vq2-mix-st:hover { background: var(--vq-surface-hover); }\n.vq2-mix-st.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-mix-st b { font: var(--vq-type-body-sm); font-weight: 650; color: var(--vq-text-primary); }\n.vq2-mix-st span { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-mix-offs { display: flex; flex-wrap: wrap; gap: 10px 18px; }\n\n.vq2-mix-plan { display: flex; flex-direction: column; gap: 6px; }\n.vq2-mix-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) 88px; align-items: center; gap: 10px; }\n.vq2-mix-n { font: var(--vq-type-body-sm); font-weight: 700; text-align: right;\n  font-variant-numeric: tabular-nums; color: var(--vq-text-primary); }\n.vq2-mix-row b { display: block; font: var(--vq-type-body-sm); color: var(--vq-text-primary); }\n.vq2-mix-why { display: block; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-mix-bar { height: 6px; border-radius: var(--vq-r-full); background: var(--vq-surface-sunken); overflow: hidden; }\n.vq2-mix-bar i { display: block; height: 100%; background: var(--vq-accent); }\n.vq2-mix-notes { margin: 8px 0 0; padding-left: 18px; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-mix-notes.is-warn { color: var(--vq-warning-text, var(--vq-text-secondary)); }\n.vq2-mix-ng { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }\n.vq2-mix-ng > div { padding: 9px 11px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken); }\n.vq2-mix-ng b { display: block; font: var(--vq-type-body-sm); color: var(--vq-text-primary); }\n.vq2-mix-ng span { display: block; font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-mix-alt { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }\n\n.vq2-mix-cat { border-top: 1px solid var(--vq-border-subtle); }\n.vq2-mix-cat:first-of-type { border-top: 0; }\n.vq2-mix-cath { display: flex; align-items: center; justify-content: space-between; gap: 10px;\n  width: 100%; padding: 11px 2px; border: 0; background: none; cursor: pointer;\n  font-family: inherit; text-align: left; }\n.vq2-mix-cath b { font: var(--vq-type-body-sm); font-weight: 650; color: var(--vq-text-primary); }\n.vq2-mix-cn { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n.vq2-mix-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));\n  gap: 6px; padding: 0 0 12px; }\n.vq2-mix-t { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 4px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-mix-t.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-mix-t.is-off { opacity: .55; }\n.vq2-mix-t.is-ng { opacity: .55; background: var(--vq-surface-sunken); }\n.vq2-mix-tb { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px;\n  padding: 6px 8px; border: 0; background: none; text-align: left; cursor: pointer; font-family: inherit; }\n.vq2-mix-t.is-ng .vq2-mix-tb { cursor: default; }\n.vq2-mix-tb b { font: var(--vq-type-body-sm); color: var(--vq-text-primary); }\n.vq2-mix-tb span { font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.is-mobile .vq2-mix-styles { grid-template-columns: minmax(0, 1fr); }\n.is-mobile .vq2-mix-list { grid-template-columns: minmax(0, 1fr); }\n.is-mobile .vq2-mix-row { grid-template-columns: 26px minmax(0, 1fr) 56px; }\n\n/* ══════════════════════════════════════════════════════════════════\n   声を選ぶ画面\n   ・1 画面に 1 つの声。玉・名前・説明・矢印・点、その下に設定の行。\n   ・玉の色は声ごとに決まる（--vp-h）。同じ声はいつも同じ色。\n   ══════════════════════════════════════════════════════════════════ */\n/* シートの枠は使わない。カードそのものが枠になる（見本と同じ見た目にする）。\n   .is-sheet が付ける背景・境界・影・幅の制限を、この画面だけ打ち消す。 */\n.vq2-root.is-sheet.vq2-vp-host {\n  background: transparent; border: 0; box-shadow: none;\n  width: min(560px, calc(100vw - 32px)); max-height: 92vh; overflow: visible;\n}\n.vq2-root.is-sheet.is-mobile.vq2-vp-host {\n  left: 50%; right: auto; top: 50%; bottom: auto; transform: translate(-50%, -50%);\n  width: calc(100vw - 24px); border-radius: 0; padding-bottom: 0;\n}\n.vq2-vp-card { position: relative; width: min(560px, 100%); margin: auto;\n  background: var(--vq-bg-elevated); border-radius: 28px;\n  box-shadow: 0 24px 64px rgba(0, 0, 0, .28);\n  padding: 26px 26px 10px; display: flex; flex-direction: column; }\n.vq2-vp-card > .vq2-btn { position: absolute; top: 14px; right: 14px; }\n\n.vq2-vp-stage { display: flex; flex-direction: column; align-items: center;\n  padding: 22px 0 10px; }\n\n/* 玉。押すと試し聞き。 */\n.vq2-vp-orb { position: relative; width: 288px; height: 288px; max-width: 62vw; max-height: 62vw;\n  border: 0; padding: 0; border-radius: 50%; cursor: pointer; background: none;\n  transition: transform .18s ease; }\n.vq2-vp-orb:hover { transform: scale(1.02); }\n.vq2-vp-orb:active { transform: scale(.98); }\n.vq2-vp-orb-in { position: absolute; inset: 0; border-radius: 50%;\n  background:\n    radial-gradient(120% 100% at 50% 0%,\n      hsl(var(--vp-h, 28) 92% 55%) 0%,\n      hsl(var(--vp-h, 28) 90% 62%) 34%,\n      hsl(var(--vp-h, 28) 80% 88%) 62%,\n      hsl(var(--vp-h, 28) 70% 98%) 100%);\n  box-shadow: inset 0 -18px 40px rgba(255, 255, 255, .55); }\n.vq2-vp-orb.is-loading .vq2-vp-orb-in,\n.vq2-vp-orb.is-off .vq2-vp-orb-in {\n  background: radial-gradient(120% 100% at 50% 0%, var(--vq-surface-sunken) 0%, var(--vq-bg-elevated) 100%);\n  box-shadow: inset 0 0 0 1px var(--vq-border-subtle); }\n.vq2-vp-orb.is-loading { animation: vq2-vp-breathe 1.8s ease-in-out infinite; }\n@keyframes vq2-vp-breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }\n.vq2-vp-orb.is-playing .vq2-vp-orb-in { animation: vq2-vp-pulse 1.1s ease-in-out infinite; }\n@keyframes vq2-vp-pulse {\n  0%, 100% { box-shadow: inset 0 -18px 40px rgba(255,255,255,.55), 0 0 0 0 hsl(var(--vp-h,28) 90% 60% / .35); }\n  50%      { box-shadow: inset 0 -18px 40px rgba(255,255,255,.55), 0 0 0 22px hsl(var(--vp-h,28) 90% 60% / 0); }\n}\n.vq2-vp-wave { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);\n  display: flex; align-items: flex-end; gap: 5px; height: 26px; }\n.vq2-vp-wave i { display: block; width: 5px; border-radius: 3px; background: rgba(255, 255, 255, .92);\n  animation: vq2-vp-bar .9s ease-in-out infinite; }\n.vq2-vp-wave i:nth-child(2) { animation-delay: .15s; }\n.vq2-vp-wave i:nth-child(3) { animation-delay: .3s; }\n@keyframes vq2-vp-bar { 0%, 100% { height: 8px; } 50% { height: 24px; } }\n\n.vq2-vp-row1 { display: flex; align-items: center; justify-content: center;\n  gap: 6px; width: 100%; margin-top: 26px; }\n.vq2-vp-titles { min-width: 0; text-align: center; flex: 0 1 auto; padding: 0 6px; }\n.vq2-vp-name { font-size: 30px; font-weight: 700; letter-spacing: .01em;\n  color: var(--vq-text-primary); line-height: 1.25;\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-vp-desc { margin-top: 6px; font-size: 16px; color: var(--vq-text-tertiary); }\n.vq2-vp-arrow { flex: 0 0 auto; width: 44px; height: 44px; border: 0; background: none;\n  border-radius: 50%; cursor: pointer; color: var(--vq-text-tertiary);\n  display: inline-flex; align-items: center; justify-content: center; }\n.vq2-vp-arrow:hover:not(:disabled) { background: var(--vq-surface-hover); color: var(--vq-text-secondary); }\n.vq2-vp-arrow:disabled { opacity: .3; cursor: default; }\n\n.vq2-vp-dots { display: flex; align-items: center; justify-content: center; gap: 10px;\n  min-height: 22px; margin-top: 16px; flex-wrap: wrap; }\n.vq2-vp-dot { width: 9px; height: 9px; border-radius: 50%; border: 0; padding: 0;\n  background: var(--vq-border); cursor: pointer; transition: background .15s ease, transform .15s ease; }\n.vq2-vp-dot:hover { transform: scale(1.25); }\n.vq2-vp-dot.is-on { background: var(--vq-text-primary); }\n.vq2-vp-count { font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  margin-left: 6px; font-variant-numeric: tabular-nums; }\n.vq2-vp-sub { margin-top: 12px; font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n  display: flex; align-items: center; gap: 8px; }\n.vq2-vp-eng { padding: 2px 8px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-tertiary); }\n.vq2-vp-retry { margin-top: 18px; }\n\n/* 原稿の タグを 選ぶ シート（2026-08-26） */\n.vq2-tagsheet { padding: 4px 2px 10px; }\n.vq2-tagsheet__g { margin-bottom: 18px; }\n.vq2-tagsheet__t { font: var(--vq-type-label); color: var(--vq-text-secondary); margin-bottom: 8px; }\n.vq2-tagsheet__row { display: flex; flex-wrap: wrap; gap: 8px; }\n.vq2-tagsheet__row .vq2-chip { cursor: pointer; }\n\n/* 下の行（速さ・言語） */\n.vq2-vp-rows { margin-top: 18px; }\n.vq2-vp-rw { border-top: 1px solid var(--vq-border-subtle); }\n.vq2-vp-rwh { display: flex; align-items: center; gap: 14px; width: 100%;\n  padding: 18px 4px; border: 0; background: none; cursor: pointer;\n  font-family: inherit; text-align: left; color: var(--vq-text-primary); }\n.vq2-vp-rwh:hover { background: var(--vq-surface-hover); }\n.vq2-vp-ic { flex: 0 0 auto; color: var(--vq-text-secondary); display: inline-flex; }\n.vq2-vp-lb { flex: 1 1 auto; font-size: 18px; }\n.vq2-vp-val { flex: 0 0 auto; font-size: 17px; color: var(--vq-text-secondary); }\n.vq2-vp-ch { flex: 0 0 auto; color: var(--vq-text-tertiary); display: inline-flex;\n  transition: transform .18s ease; }\n.vq2-vp-rw.is-open .vq2-vp-ch { transform: rotate(180deg); }\n.vq2-vp-opts { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 4px 16px; }\n.vq2-vp-opt { padding: 8px 14px; border-radius: var(--vq-r-full);\n  border: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  color: var(--vq-text-secondary); cursor: pointer; font-family: inherit; font-size: 15px; }\n.vq2-vp-opt:hover { background: var(--vq-surface-hover); }\n.vq2-vp-opt.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle);\n  color: var(--vq-accent-text); font-weight: 650; }\n\n.is-mobile .vq2-vp-card { width: 100%; border-radius: 22px; padding: 20px 16px 6px; }\n.is-mobile .vq2-vp-name { font-size: 25px; }\n.is-mobile .vq2-vp-desc { font-size: 15px; }\n.is-mobile .vq2-vp-lb { font-size: 16px; }\n.is-mobile .vq2-vp-rwh { padding: 15px 2px; }\n\n/* プリセットの設定に出す「いまの声」 */\n.vq2-vc-dot { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%;\n  background: radial-gradient(120% 100% at 50% 0%,\n    hsl(var(--vp-h, 28) 92% 55%) 0%, hsl(var(--vp-h, 28) 80% 88%) 70%,\n    hsl(var(--vp-h, 28) 70% 98%) 100%); }\n.vq2-vc-name { font: var(--vq-type-body-sm); font-weight: 650; color: var(--vq-text-primary);\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-vc-sub { font: var(--vq-type-caption); color: var(--vq-text-tertiary); }\n\n/* ══════════════════════════════════════════════════════════════════\n   VocabuSpeak\n   ・PC は中央 1 列（読みやすい幅で止める）\n   ・スマートフォンは 1 列＋下の帯にタブ。横スクロールを出さない\n   ・色だけで伝えない。数字と文字を必ず添える\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-sp { display: flex; flex-direction: column; height: 100%; min-height: 0;\n  background: var(--vq-bg); }\n.vq2-sp-top { display: flex; align-items: center; gap: 12px; padding: 14px 20px;\n  border-bottom: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); flex: 0 0 auto; }\n.vq2-sp-top-l { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-top-r { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; }\n.vq2-sp-top-r .vq2-btn { max-width: 100%; overflow: hidden; }\n.vq2-sp-title { font: var(--vq-type-title); font-weight: 700; letter-spacing: .01em;\n  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.vq2-sp-title.is-sm { font: var(--vq-type-body); font-weight: 600; }\n.vq2-sp-sub { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 2px; }\n\n.vq2-sp-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 22px 20px 28px;\n  max-width: 760px; width: 100%; margin: 0 auto; -webkit-overflow-scrolling: touch; }\n\n/* ── タブ（PC は上寄せの帯、モバイルは下に固定）── */\n.vq2-sp-tabs { display: flex; gap: 2px; padding: 6px 10px; flex: 0 0 auto;\n  border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  padding-bottom: calc(6px + var(--vq-sab,0px)); }\n.vq2-sp-tab { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center;\n  gap: 3px; padding: 8px 4px; border: 0; background: none; cursor: pointer;\n  color: var(--vq-text-secondary); border-radius: var(--vq-r-lg); min-height: 48px;\n  transition: color .15s ease, background .15s ease; }\n.vq2-sp-tab svg { width: 20px; height: 20px; }\n.vq2-sp-tab-l { font-size: 11px; line-height: 1.2; white-space: nowrap; overflow: hidden;\n  text-overflow: ellipsis; max-width: 100%; }\n.vq2-sp-tab:hover { background: var(--vq-surface-sunken); color: var(--vq-text); }\n.vq2-sp-tab.is-on { color: var(--vq-accent); font-weight: 600; }\n.vq2-sp-tab.is-on svg { transform: translateY(-1px); }\n\n/* ══════════════════════════════════════════════════════════════════\n   ホーム\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-sp-today { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; }\n.vq2-sp-ring-wrap { flex: 0 0 auto; }\n.vq2-sp-ring { width: 80px; height: 80px; display: block; }\n.vq2-sp-ring.is-lg { width: 108px; height: 108px; }\n.vq2-sp-ring-bg { fill: none; stroke: var(--vq-border-subtle); stroke-width: 8; }\n.vq2-sp-ring-fg { fill: none; stroke: var(--vq-accent); stroke-width: 8; stroke-linecap: round;\n  transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset .6s ease; }\n.vq2-sp-ring-n { fill: var(--vq-text); font-size: 24px; font-weight: 700; text-anchor: middle;\n  font-variant-numeric: tabular-nums; }\n.vq2-sp-ring-u { fill: var(--vq-text-secondary); font-size: 11px; text-anchor: middle; }\n.vq2-sp-today-m { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-today-t { font: var(--vq-type-title); font-weight: 700; }\n.vq2-sp-today-s { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin: 4px 0 10px; }\n.vq2-sp-pills { display: flex; flex-wrap: wrap; gap: 6px; }\n.vq2-sp-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;\n  border-radius: var(--vq-r-full); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); white-space: nowrap; }\n.vq2-sp-pill svg { width: 14px; height: 14px; }\n.vq2-sp-pill.is-on { background: var(--vq-accent-subtle); color: var(--vq-accent-text); font-weight: 600; }\n\n.vq2-sp-start { padding: 22px; border-radius: var(--vq-r-xl); margin-bottom: 14px;\n  background: linear-gradient(150deg, var(--vq-accent-subtle), var(--vq-bg-elevated) 78%);\n  border: 1px solid var(--vq-border-subtle); }\n.vq2-sp-start-k { font: var(--vq-type-caption); color: var(--vq-accent-text); font-weight: 600;\n  letter-spacing: .04em; }\n.vq2-sp-start-t { font-size: 22px; font-weight: 700; line-height: 1.4; margin: 4px 0 6px;\n  word-break: break-word; }\n.vq2-sp-start-s { font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }\n.vq2-sp-start .vq2-sp-chips { margin: 12px 0 16px; }\n.vq2-sp-start .vq2-btn { width: 100%; }\n.vq2-sp-dot { width: 3px; height: 3px; border-radius: 50%; background: currentColor;\n  opacity: .45; display: inline-block; }\n\n.vq2-sp-resume { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;\n  padding: 14px; margin-bottom: 22px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); cursor: pointer;\n  font: var(--vq-type-body); min-height: 56px; }\n.vq2-sp-resume:hover { border-color: var(--vq-accent); }\n.vq2-sp-resume > span:nth-child(2) { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-resume b { display: block; font-weight: 600; }\n.vq2-sp-resume-s { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 2px; }\n.vq2-sp-resume-i { display: inline-flex; width: 34px; height: 34px; border-radius: var(--vq-r-full);\n  background: var(--vq-accent-subtle); color: var(--vq-accent); align-items: center;\n  justify-content: center; flex: 0 0 auto; }\n.vq2-sp-resume-i svg, .vq2-sp-resume > svg { width: 18px; height: 18px; }\n.vq2-sp-resume > svg { color: var(--vq-text-secondary); flex: 0 0 auto; }\n\n.vq2-sp-sec { margin: 0 0 26px; }\n.vq2-sp-h2 { font: var(--vq-type-body); font-weight: 700; margin: 0 0 10px; }\n.vq2-sp-lead { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin: 0 0 12px; line-height: 1.8; }\n\n/* ── 練習のタイル ── */\n.vq2-sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 10px; }\n.vq2-sp-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; text-align: left;\n  padding: 14px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; min-height: 116px; font: var(--vq-type-body);\n  transition: border-color .15s ease, transform .12s ease; }\n.vq2-sp-tile:hover:not([disabled]) { border-color: var(--vq-accent); transform: translateY(-1px); }\n.vq2-sp-tile[disabled] { opacity: .5; cursor: not-allowed; }\n.vq2-sp-tile-i { display: inline-flex; width: 36px; height: 36px; border-radius: var(--vq-r-lg);\n  align-items: center; justify-content: center; background: var(--vq-surface-sunken);\n  color: var(--vq-accent); flex: 0 0 auto; }\n.vq2-sp-tile-i svg { width: 19px; height: 19px; }\n.vq2-sp-tile-t { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }\n.vq2-sp-tile-s { font: var(--vq-type-caption); color: var(--vq-text-secondary); line-height: 1.6; }\n/* 練習ごとの色みを少し変える。**意味は文字が持つ**（色だけに頼らない） */\n.tone-listening { background: color-mix(in srgb, var(--vq-accent) 14%, transparent); }\n.tone-dictation { background: color-mix(in srgb, #0ea5e9 15%, transparent); color: #0284c7; }\n.tone-fill { background: color-mix(in srgb, #8b5cf6 15%, transparent); color: #7c3aed; }\n.tone-reorder { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }\n.tone-translate { background: color-mix(in srgb, #10b981 16%, transparent); color: #059669; }\n.tone-card { background: color-mix(in srgb, #ec4899 14%, transparent); color: #db2777; }\n.tone-speaking, .tone-shadowing { background: color-mix(in srgb, #6366f1 15%, transparent); color: #4f46e5; }\n.vq2-sp-beta { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: var(--vq-r-full);\n  background: var(--vq-warning-subtle, #fef3c7); color: var(--vq-warning-text, #92400e); }\n\n/* ── 7 日間の棒 ── */\n.vq2-sp-week { padding: 14px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-sp-week-b { display: flex; align-items: flex-end; gap: 6px; height: 76px; }\n.vq2-sp-week-c { flex: 1 1 0; display: flex; flex-direction: column; align-items: center;\n  justify-content: flex-end; height: 100%; gap: 5px; }\n.vq2-sp-week-v { width: 100%; max-width: 26px; border-radius: 4px; background: var(--vq-accent);\n  transition: height .4s ease; }\n.vq2-sp-week-v[data-zero] { background: var(--vq-border-subtle); }\n.vq2-sp-week-l { font-size: 11px; color: var(--vq-text-secondary); }\n.vq2-sp-week-s { margin-top: 10px; font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  text-align: right; }\n\n.vq2-sp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; }\n.vq2-sp-stat { padding: 13px 10px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); text-align: center; }\n.vq2-sp-stat-v { display: block; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }\n.vq2-sp-stat-l { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 3px; }\n\n/* ── 行（一覧・履歴・おすすめ）── */\n.vq2-sp-list { display: flex; flex-direction: column; gap: 8px; }\n.vq2-sp-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;\n  padding: 13px 14px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; font: var(--vq-type-body); min-height: 56px; }\n.vq2-sp-row.is-static { cursor: default; }\n.vq2-sp-row:hover:not(.is-static) { border-color: var(--vq-accent); }\n.vq2-sp-row-i { display: inline-flex; width: 32px; height: 32px; border-radius: var(--vq-r-md);\n  background: var(--vq-surface-sunken); color: var(--vq-text-secondary);\n  align-items: center; justify-content: center; flex: 0 0 auto; }\n.vq2-sp-row-i svg { width: 17px; height: 17px; }\n.vq2-sp-row-m { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-row-m b { display: block; font-weight: 600; }\n.vq2-sp-row-s { display: flex; align-items: center; gap: 7px; flex-wrap: wrap;\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 3px; }\n.vq2-sp-row-p { display: flex; align-items: center; gap: 6px; color: var(--vq-text-secondary);\n  font: var(--vq-type-caption); flex: 0 0 auto; font-variant-numeric: tabular-nums; }\n.vq2-sp-row-p svg { width: 16px; height: 16px; }\n\n.vq2-sp-chips { display: flex; flex-wrap: wrap; gap: 5px; }\n.vq2-sp-chips.is-center { justify-content: center; }\n.vq2-sp-chip { font-size: 11px; padding: 3px 9px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-secondary); }\n.vq2-sp-chip.is-en { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }\n\n/* ── レベルの帯 ── */\n.vq2-sp-levelbar { padding: 16px; border-radius: var(--vq-r-lg); margin-bottom: 20px;\n  border: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); }\n.vq2-sp-levelbar-t { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }\n.vq2-sp-levelbar-t b { font-size: 17px; }\n.vq2-sp-levelbar-t span { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-levelbar-b { display: flex; align-items: center; justify-content: space-between;\n  gap: 10px; margin-top: 8px; flex-wrap: wrap; }\n.vq2-sp-levelbar-s { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-meter { display: block; height: 6px; border-radius: var(--vq-r-full);\n  background: var(--vq-border-subtle); overflow: hidden; margin-top: 10px; }\n.vq2-sp-meter > span { display: block; height: 100%; background: var(--vq-accent);\n  border-radius: var(--vq-r-full); transition: width .4s ease; }\n.vq2-sp-meter.is-sm { height: 4px; margin-top: 8px; }\n\n/* ── レッスンの行 ── */\n.vq2-sp-lesson { display: flex; align-items: flex-start; gap: 12px; width: 100%; text-align: left;\n  padding: 14px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; font: var(--vq-type-body);\n  transition: border-color .15s ease; }\n.vq2-sp-lesson:hover { border-color: var(--vq-accent); }\n.vq2-sp-lesson-i { display: inline-flex; width: 38px; height: 38px; border-radius: var(--vq-r-lg);\n  align-items: center; justify-content: center; flex: 0 0 auto;\n  background: var(--vq-surface-sunken); color: var(--vq-accent); }\n.vq2-sp-lesson-i svg { width: 19px; height: 19px; }\n.tone-daily { background: color-mix(in srgb, var(--vq-accent) 14%, transparent); }\n.tone-outing { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }\n.tone-travel { background: color-mix(in srgb, #0ea5e9 16%, transparent); color: #0284c7; }\n.tone-school_work { background: color-mix(in srgb, #8b5cf6 15%, transparent); color: #7c3aed; }\n.tone-medical { background: color-mix(in srgb, #ef4444 14%, transparent); color: #dc2626; }\n.tone-grammar { background: color-mix(in srgb, #10b981 16%, transparent); color: #059669; }\n.vq2-sp-lesson-m { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-lesson-m b { display: block; font-weight: 600; margin-bottom: 3px; }\n.vq2-sp-lesson-s { display: flex; align-items: center; gap: 7px; flex-wrap: wrap;\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-lesson-m .vq2-sp-chips { margin-top: 8px; }\n.vq2-sp-lesson-p { display: flex; align-items: center; gap: 6px; flex: 0 0 auto;\n  font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  font-variant-numeric: tabular-nums; padding-top: 2px; }\n.vq2-sp-lesson-p svg { width: 16px; height: 16px; }\n\n.vq2-sp-banner { display: flex; gap: 12px; padding: 16px; border-radius: var(--vq-r-lg);\n  border: 1px solid var(--vq-border-subtle); background: var(--vq-surface-sunken); margin-bottom: 16px; }\n.vq2-sp-banner svg { width: 20px; height: 20px; flex: 0 0 auto; color: var(--vq-accent); }\n.vq2-sp-banner p { margin: 8px 0 0; font: var(--vq-type-caption); color: var(--vq-text-secondary); line-height: 1.8; }\n.vq2-sp-note { padding: 12px 14px; border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); line-height: 1.8; }\n\n.vq2-sp-rv { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-sp-rv-c { font-size: 11px; padding: 3px 8px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-secondary); flex: 0 0 auto; }\n.vq2-sp-rv > div { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-rv b { font-weight: 600; word-break: break-word; }\n.vq2-sp-rv-fix { color: var(--vq-accent); font: var(--vq-type-caption); margin-top: 3px; }\n.vq2-sp-rv-x { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 4px; line-height: 1.8; }\n.vq2-sp-rv-n { font: var(--vq-type-caption); color: var(--vq-text-secondary); flex: 0 0 auto; }\n\n/* ══════════════════════════════════════════════════════════════════\n   学習中\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-sp-runtop { display: flex; align-items: center; gap: 12px; padding: 12px 16px; flex: 0 0 auto;\n  border-bottom: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); }\n.vq2-sp-runtitle { font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34%; flex: 0 0 auto; }\n.vq2-sp-runacts { display: flex; gap: 4px; flex: 0 0 auto; }\n.vq2-sp-talktitle { flex: 1 1 auto; min-width: 0; }\n.vq2-sp-talktitle b { display: block; font-weight: 600; white-space: nowrap;\n  overflow: hidden; text-overflow: ellipsis; }\n.vq2-sp-talktitle span { display: block; font: var(--vq-type-caption);\n  color: var(--vq-text-secondary); margin-top: 1px; }\n\n/* 進み具合の点。**何問中の何問目か**が見える。 */\n.vq2-sp-steps { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; }\n.vq2-sp-step { flex: 1 1 0; height: 5px; border-radius: var(--vq-r-full);\n  background: var(--vq-border-subtle); transition: background .25s ease; min-width: 5px; }\n.vq2-sp-step.is-done { background: var(--vq-accent); }\n.vq2-sp-step.is-done.is-ng { background: var(--vq-danger, #dc2626); opacity: .55; }\n.vq2-sp-step.is-now { background: var(--vq-accent); opacity: .45;\n  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vq-accent) 18%, transparent); }\n.vq2-sp-steps .vq2-sp-meter { margin-top: 0; width: 100%; }\n\n.vq2-sp-qhead { display: flex; align-items: center; justify-content: space-between;\n  gap: 10px; margin-bottom: 14px; }\n.vq2-sp-qa { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;\n  padding: 4px 10px; border-radius: var(--vq-r-full);\n  background: var(--vq-accent-subtle); color: var(--vq-accent-text); }\n.vq2-sp-qa svg { width: 14px; height: 14px; }\n.vq2-sp-qn { font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  font-variant-numeric: tabular-nums; flex: 0 0 auto; }\n.vq2-sp-qnote { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px;\n  border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken);\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-bottom: 12px; line-height: 1.7; }\n.vq2-sp-qnote svg { width: 15px; height: 15px; flex: 0 0 auto; margin-top: 2px; }\n\n/* 問題文（promptHtml が中を作る） */\n.vq2-sp-stem { margin-bottom: 16px; }\n.vq2-sp-stem .vq2-qinst { font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  margin-bottom: 10px; line-height: 1.7; }\n.vq2-sp-stem .vq2-qctx { padding: 13px 15px; margin-bottom: 12px; border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); font: var(--vq-type-body); line-height: 1.9; }\n.vq2-sp-stem .vq2-qtext { font-size: 19px; font-weight: 600; line-height: 1.95;\n  white-space: pre-wrap; word-break: break-word; }\n.vq2-sp-q { margin-bottom: 16px; }\n\n.vq2-sp-foot { flex: 0 0 auto; padding: 12px 20px; border-top: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated); padding-bottom: calc(12px + var(--vq-sab,0px)); }\n.vq2-sp-foot .vq2-btn { width: 100%; }\n.vq2-sp-foot .vq2-btn + .vq2-btn { margin-top: 8px; }\n.vq2-sp-loading { padding: 20px 0; }\n\n.vq2-sp-fb { padding: 15px; border-radius: var(--vq-r-lg); border: 1px solid var(--vq-border-subtle);\n  background: var(--vq-bg-elevated); margin-top: 8px; border-left-width: 3px; }\n.vq2-sp-fb.is-ok { border-left-color: var(--vq-success, #16a34a); }\n.vq2-sp-fb.is-part { border-left-color: var(--vq-warning, #d97706); }\n.vq2-sp-fb.is-ng { border-left-color: var(--vq-danger, #dc2626); }\n.vq2-sp-fb-h { display: flex; align-items: center; gap: 8px; font-weight: 700; }\n.vq2-sp-fb.is-ok .vq2-sp-fb-h { color: var(--vq-success, #16a34a); }\n.vq2-sp-fb.is-part .vq2-sp-fb-h { color: var(--vq-warning, #d97706); }\n.vq2-sp-fb.is-ng .vq2-sp-fb-h { color: var(--vq-danger, #dc2626); }\n.vq2-sp-fb-h svg { width: 18px; height: 18px; }\n.vq2-sp-fb-p { margin-left: auto; font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  font-variant-numeric: tabular-nums; }\n.vq2-sp-fb-a { margin-top: 10px; }\n.vq2-sp-fb-a span { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-fb-a b { font-size: 17px; word-break: break-word; }\n.vq2-sp-fb-x { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--vq-border-subtle);\n  font: var(--vq-type-caption); color: var(--vq-text-secondary); line-height: 1.9; white-space: pre-wrap; }\n\n.vq2-sp-done { text-align: center; padding: 16px 0; }\n.vq2-sp-done-ring { display: flex; justify-content: center; margin-bottom: 12px; }\n.vq2-sp-done-n { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }\n.vq2-sp-done-s { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin: 4px 0 12px; }\n.vq2-sp-done .vq2-sp-sec { text-align: left; margin-top: 24px; }\n.vq2-sp-done .vq2-sp-note { text-align: left; margin-top: 14px; }\n\n/* ══════════════════════════════════════════════════════════════════\n   話す練習\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-sp-say { padding: 22px; border-radius: var(--vq-r-xl); background: var(--vq-surface-sunken);\n  border: 1px solid var(--vq-border-subtle); margin-bottom: 16px; }\n.vq2-sp-say-t { font-size: 23px; font-weight: 600; line-height: 1.65; word-break: break-word; }\n.vq2-sp-say-j { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 10px; }\n.vq2-sp-say-a { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }\n\n.vq2-sp-rec { display: flex; align-items: center; gap: 10px; padding: 13px 15px; margin-bottom: 14px;\n  border-radius: var(--vq-r-lg); border: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated); }\n.vq2-sp-rec.is-on { border-color: var(--vq-danger, #dc2626);\n  background: color-mix(in srgb, var(--vq-danger, #dc2626) 6%, var(--vq-bg-elevated)); }\n.vq2-sp-rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--vq-danger, #dc2626);\n  animation: vq2-sp-blink 1s ease-in-out infinite; flex: 0 0 auto; }\n@keyframes vq2-sp-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }\n.vq2-sp-rec-t { font-variant-numeric: tabular-nums; font-weight: 700; }\n.vq2-sp-rec-h { font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n\n.vq2-sp-score { display: flex; gap: 18px; align-items: center; padding: 16px;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); margin-bottom: 12px; }\n.vq2-sp-score-n { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; flex: 0 0 auto; }\n.vq2-sp-score-b { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 7px; }\n.vq2-sp-bar { display: flex; align-items: center; gap: 8px; }\n.vq2-sp-bar-l { flex: 0 0 84px; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-bar-t { flex: 1 1 auto; height: 6px; border-radius: var(--vq-r-full);\n  background: var(--vq-border-subtle); overflow: hidden; }\n.vq2-sp-bar-t span { display: block; height: 100%; background: var(--vq-accent);\n  border-radius: var(--vq-r-full); }\n.vq2-sp-bar-n { flex: 0 0 30px; text-align: right; font: var(--vq-type-caption);\n  font-variant-numeric: tabular-nums; }\n\n.vq2-sp-heard { padding: 13px 15px; border-radius: var(--vq-r-lg); background: var(--vq-surface-sunken);\n  margin-bottom: 10px; }\n.vq2-sp-heard span { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-heard b { font-weight: 600; word-break: break-word; }\n.vq2-sp-words { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }\n.vq2-sp-w { padding: 4px 9px; border-radius: var(--vq-r-md); font-size: 14px; }\n.vq2-sp-w.is-ok { background: var(--vq-surface-sunken); color: var(--vq-text-secondary); }\n.vq2-sp-w.is-ng { background: var(--vq-danger-subtle, #fee2e2); color: var(--vq-danger-text, #991b1b);\n  font-weight: 600; text-decoration: underline; text-decoration-style: wavy; }\n.vq2-sp-advice { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;\n  font: var(--vq-type-caption); line-height: 1.9; }\n\n/* ══════════════════════════════════════════════════════════════════\n   会話\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-sp-talk { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;\n  max-height: 50vh; overflow: auto; -webkit-overflow-scrolling: touch; padding-right: 2px; }\n.vq2-tk { display: flex; }\n.vq2-tk-ai { justify-content: flex-start; }\n.vq2-tk-me { justify-content: flex-end; }\n.vq2-tk-b { max-width: 84%; padding: 12px 15px; border-radius: 16px;\n  line-height: 1.75; word-break: break-word; }\n.vq2-tk-ai .vq2-tk-b { background: var(--vq-surface-sunken);\n  border: 1px solid var(--vq-border-subtle); border-bottom-left-radius: 5px; }\n.vq2-tk-me .vq2-tk-b { background: var(--vq-accent); color: #fff; border-bottom-right-radius: 5px; }\n.vq2-tk-j { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 6px; }\n.vq2-tk-ai > div { display: flex; flex-direction: column; }\n\n.vq2-sp-miss { margin-bottom: 14px; border: 1px solid var(--vq-border-subtle);\n  border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated); }\n.vq2-sp-miss > summary { padding: 12px 14px; cursor: pointer; font-weight: 600; min-height: 44px;\n  display: flex; align-items: center; }\n.vq2-sp-miss ul { list-style: none; margin: 0; padding: 0 14px 12px; display: flex;\n  flex-direction: column; gap: 9px; }\n.vq2-sp-miss li { display: flex; align-items: center; gap: 8px; font: var(--vq-type-caption);\n  color: var(--vq-text-secondary); }\n.vq2-sp-miss li.is-done { color: var(--vq-accent-text); }\n.vq2-sp-miss li.is-done svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--vq-accent); }\n.vq2-miss-box { width: 14px; height: 14px; border: 1.5px solid var(--vq-border); border-radius: 3px;\n  flex: 0 0 auto; }\n\n/* ══════════════════════════════════════════════════════════════════\n   レベルを選ぶ／設定\n   ══════════════════════════════════════════════════════════════════ */\n.vq2-lv-list { display: flex; flex-direction: column; gap: 10px; }\n.vq2-lv { display: flex; align-items: flex-start; gap: 14px; width: 100%; text-align: left;\n  padding: 15px; border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-lg);\n  background: var(--vq-bg-elevated); cursor: pointer; font: var(--vq-type-body);\n  transition: border-color .15s ease, background .15s ease; }\n.vq2-lv:hover { border-color: var(--vq-accent); }\n.vq2-lv.is-on { border-color: var(--vq-accent); background: var(--vq-accent-subtle); }\n.vq2-lv.is-empty { opacity: .72; }\n.vq2-lv > svg { width: 18px; height: 18px; color: var(--vq-accent); flex: 0 0 auto; margin-top: 4px; }\n.vq2-lv-badge { display: inline-flex; align-items: center; justify-content: center;\n  min-width: 52px; padding: 5px 9px; border-radius: var(--vq-r-md); flex: 0 0 auto;\n  background: var(--vq-surface-sunken); color: var(--vq-text-secondary);\n  font-size: 12px; font-weight: 700; letter-spacing: .03em; }\n.vq2-lv.is-on .vq2-lv-badge { background: var(--vq-accent); color: var(--vq-accent-contrast); }\n.vq2-lv-m { flex: 1 1 auto; min-width: 0; }\n.vq2-lv-t { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; flex-wrap: wrap; }\n.vq2-lv-now { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: var(--vq-r-full);\n  background: var(--vq-accent); color: var(--vq-accent-contrast); }\n.vq2-lv-s { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  margin: 4px 0 8px; line-height: 1.7; }\n.vq2-lv-facts { display: flex; flex-wrap: wrap; gap: 5px; }\n.vq2-lv-facts span { font-size: 11px; padding: 2px 8px; border-radius: var(--vq-r-full);\n  background: var(--vq-surface-sunken); color: var(--vq-text-secondary); }\n.vq2-lv.is-on .vq2-lv-facts span { background: var(--vq-bg-elevated); }\n.vq2-lv-prog { display: block; margin-top: 10px; }\n.vq2-lv-num { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary); margin-top: 6px; }\n.vq2-lv-num.is-none { margin-top: 10px; font-style: normal; }\n\n.vq2-set-sec { margin: 0 0 26px; }\n.vq2-set-sec h3 { font-size: 13px; font-weight: 700; letter-spacing: .04em;\n  color: var(--vq-text-secondary); margin: 0 0 10px; }\n.vq2-set-row { display: flex; align-items: center; justify-content: space-between; gap: 14px;\n  padding: 13px 0; border-bottom: 1px solid var(--vq-border-subtle); flex-wrap: wrap; }\n.vq2-set-row:last-child { border-bottom: 0; }\n.vq2-set-l { flex: 1 1 190px; min-width: 0; font-weight: 600; }\n.vq2-set-n { display: block; font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  font-weight: 400; margin-top: 3px; line-height: 1.6; }\n.vq2-seg { display: inline-flex; padding: 3px; border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); gap: 2px; flex: 0 1 auto; max-width: 100%;\n  overflow-x: auto; -webkit-overflow-scrolling: touch; }\n.vq2-seg-b { border: 0; background: none; cursor: pointer; padding: 7px 12px; min-height: 36px;\n  border-radius: var(--vq-r-md); font: var(--vq-type-caption); color: var(--vq-text-secondary);\n  white-space: nowrap; transition: background .15s ease, color .15s ease; }\n.vq2-seg-b:hover { color: var(--vq-text); }\n.vq2-seg-b.is-on { background: var(--vq-bg-elevated); color: var(--vq-text); font-weight: 700;\n  box-shadow: var(--vq-shadow-sm, 0 1px 2px rgba(0,0,0,.08)); }\n.vq2-vc-dot.is-sm { width: 22px; height: 22px; }\n.vq2-set-voice { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; flex-wrap: wrap; }\n.vq2-set-voice-n { font: var(--vq-type-caption); max-width: 150px; overflow: hidden;\n  text-overflow: ellipsis; white-space: nowrap; }\n\n.vq2-sp-set { margin: 0 0 18px; }\n.vq2-sp-set label { display: block; font-weight: 600; margin-bottom: 6px; }\n.vq2-sp-set select { width: 100%; min-height: 44px; padding: 8px 12px; font: var(--vq-type-body);\n  border: 1px solid var(--vq-border); border-radius: var(--vq-r-lg); background: var(--vq-bg-elevated);\n  color: var(--vq-text); }\n.vq2-sp-hint { font: var(--vq-type-caption); color: var(--vq-text-secondary); margin: 6px 0 0; line-height: 1.8; }\n\n/* ── スマートフォン ── */\n.vq2-root.is-mobile .vq2-sp-body { padding: 18px 14px 24px; }\n.vq2-root.is-mobile .vq2-sp-top { padding: 12px 14px; gap: 8px; }\n.vq2-root.is-mobile .vq2-sp-runtop { padding: 10px 12px; gap: 10px; }\n.vq2-root.is-mobile .vq2-sp-title { font-size: 18px; }\n.vq2-root.is-mobile .vq2-sp-sub { display: none; }\n.vq2-root.is-mobile .vq2-sp-runtitle { display: none; }\n.vq2-root.is-mobile .vq2-sp-grid { grid-template-columns: 1fr 1fr; }\n.vq2-root.is-mobile .vq2-sp-stats { grid-template-columns: repeat(3, 1fr); }\n.vq2-root.is-mobile .vq2-sp-start { padding: 18px 16px; }\n.vq2-root.is-mobile .vq2-sp-start-t { font-size: 20px; }\n.vq2-root.is-mobile .vq2-sp-today { gap: 14px; }\n.vq2-root.is-mobile .vq2-sp-ring { width: 68px; height: 68px; }\n.vq2-root.is-mobile .vq2-sp-say-t { font-size: 20px; }\n.vq2-root.is-mobile .vq2-sp-stem .vq2-qtext { font-size: 18px; }\n.vq2-root.is-mobile .vq2-sp-talk { max-height: 42vh; }\n@media (max-width: 380px) {\n  .vq2-root.is-mobile .vq2-sp-grid { grid-template-columns: 1fr; }\n  .vq2-sp-tab-l { font-size: 10px; }\n  .vq2-root.is-mobile .vq2-sp-stats { grid-template-columns: repeat(2, 1fr); }\n}\n\n/* ══════════════════════════════════════════════════════════════════════\n   学習プレイヤーの共通の枠（player-shell.js）\n\n   ・上（vq2-phead）と下（vq2-pfoot）は流れから外して固定する。\n   ・中身（vq2-pmain）だけが伸び縮みし、そこだけがスクロールする。\n     こうしておくと、下の固定操作が回答欄へかぶらない。\n   ・iPhone の下端（ホームバー）は var(--vq-sab,0px) で足す。\n   ・文字の大きさ・本文の幅・詰まり具合は CSS 変数で受け取る。\n     値を決めるのは設定（player-prefs.js）で、ここは受け取るだけ。\n   ══════════════════════════════════════════════════════════════════════ */\n.vq2-root { --vq-pfont: 1rem; --vq-pwidth: 760px; --vq-ppad: 20px; --vq-pgap: 10px; }\n\n.vq2-phead { flex: 0 0 auto; }\n.vq2-phead-t { min-width: 0; flex: 0 1 auto; }\n.vq2-phead-p { padding: 0 16px 10px; background: var(--vq-bg-elevated); border-bottom: 1px solid var(--vq-border-subtle); }\n\n/* 保存の状態。出しっぱなしにせず、状態で色を変える。 */\n.vq2-psave { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: var(--vq-r-full);\n  font: var(--vq-type-caption); color: var(--vq-text-muted); background: var(--vq-surface-sunken); white-space: nowrap; }\n.vq2-psave svg { width: 14px; height: 14px; }\n.vq2-psave.is-saving { color: var(--vq-text-muted); }\n.vq2-psave.is-saved { color: var(--vq-success-text); background: var(--vq-success-bg); }\n.vq2-psave.is-error { color: var(--vq-danger-text); background: var(--vq-danger-bg); }\n\n/* 中身とわき */\n.vq2-pbody { flex: 1 1 auto; min-height: 0; display: flex; background: var(--vq-bg-canvas); }\n.vq2-pmain { flex: 1 1 auto; min-width: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }\n.vq2-pmain-in { max-width: var(--vq-pwidth); margin: 0 auto; padding: var(--vq-ppad) var(--vq-ppad) 40px; font-size: var(--vq-pfont); }\n.vq2-pbody.has-side .vq2-pmain-in { margin: 0 auto; }\n\n.vq2-pside { flex: 0 0 272px; border-left: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  display: flex; flex-direction: column; min-height: 0; }\n.vq2-pside-h { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 12px 10px 12px 16px;\n  border-bottom: 1px solid var(--vq-border-subtle); font: var(--vq-type-label); color: var(--vq-text-muted); }\n.vq2-pside-b { flex: 1 1 auto; overflow-y: auto; padding: 14px 16px 24px; }\n\n/* 問題の一覧 */\n.vq2-qlist-sum { display: flex; gap: 12px; font: var(--vq-type-caption); color: var(--vq-text-muted); margin-bottom: 10px; }\n.vq2-qlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 8px; }\n.vq2-qlist-i { position: relative; min-width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-md); background: var(--vq-bg-elevated);\n  font: var(--vq-type-body); font-variant-numeric: tabular-nums; color: var(--vq-text-muted); cursor: pointer; }\n.vq2-qlist-i:hover { background: var(--vq-surface-hover); }\n.vq2-qlist-i.is-done { background: var(--vq-accent-subtle); border-color: var(--vq-accent); color: var(--vq-text); }\n.vq2-qlist-i.is-now { outline: 2px solid var(--vq-accent); outline-offset: 1px; color: var(--vq-text); font-weight: 700; }\n.vq2-qlist-f { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--vq-warning); }\n.vq2-qlist-a { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }\n\n/* 下の固定操作。**中身の上に浮かせない**（流れの外に置き、中身と場所を分ける）。 */\n.vq2-pfoot { flex: 0 0 auto; border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  padding: 10px 16px; padding-bottom: calc(10px + var(--vq-sab,0px)); }\n.vq2-pfoot-n { font: var(--vq-type-caption); color: var(--vq-text-muted); margin-bottom: 6px; }\n.vq2-pfoot-r { display: flex; align-items: center; gap: 8px; }\n.vq2-pfoot-l, .vq2-pfoot-x { display: flex; align-items: center; gap: 8px; }\n.vq2-pfoot-c { display: flex; align-items: center; justify-content: center; }\n/* 押せる場所は 44px 以上。狭い画面では指で押せることを最優先にする。 */\n.vq2-pfoot button { min-height: 44px; }\n.vq2-root.is-mobile .vq2-pfoot { padding: 8px 12px; padding-bottom: calc(8px + var(--vq-sab,0px)); }\n.vq2-root.is-mobile .vq2-pmain-in { padding: 14px 14px 28px; }\n.vq2-root.is-mobile .vq2-phead-p { padding: 0 12px 8px; }\n\n/* 集中モード：進み具合と時間だけ残し、まわりを静かにする。 */\n.vq2-root.is-pfocus .vq2-pside { display: none; }\n.vq2-root.is-pfocus .vq2-pmain-in { padding-top: 32px; }\n/* 動きを止める設定。端末側の「動きを減らす」とは別に、ここでも切れるようにする。 */\n.vq2-root.is-pnomotion *, .vq2-root.is-pnomotion *::before, .vq2-root.is-pnomotion *::after {\n  animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important;\n}\n\n/* 選択肢の詰まり具合（設定から） */\n.vq2-qanswer .vq2-choice + .vq2-choice { margin-top: var(--vq-pgap); }\n\n/* 話す練習の大きなマイク。\n   片手で持って話すので、指の届く下の真ん中に置き、丸く大きくする。 */\n.vq2-sp-foot-r { display: flex; align-items: center; gap: 12px; width: 100%; }\n.vq2-sp-foot-r.is-center { justify-content: center; }\n.vq2-sp-mic { flex: 0 0 auto; display: inline-flex; flex-direction: column; align-items: center; justify-content: center;\n  gap: 2px; width: 88px; height: 88px; border-radius: 50%; border: none; cursor: pointer;\n  background: var(--vq-accent); color: var(--vq-accent-contrast);\n  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16); transition: transform var(--vq-dur-fast) var(--vq-ease-standard); }\n.vq2-sp-mic svg { width: 30px; height: 30px; }\n.vq2-sp-mic-l { font: var(--vq-type-caption); font-weight: 700; }\n.vq2-sp-mic:hover { transform: translateY(-1px); }\n.vq2-sp-mic:active { transform: translateY(1px); }\n.vq2-sp-mic:focus-visible { outline: 3px solid var(--vq-accent); outline-offset: 3px; }\n.vq2-root.is-mobile .vq2-sp-mic { width: 76px; height: 76px; }\n/* 録音中の帯。やめる（採点しない）を必ず添える。 */\n.vq2-sp-rec .vq2-btn { margin-left: auto; }\n\n/* ══════════════════════════════════════════════════════════════════════\n   Quick Mock：段階と、狭い画面の下の操作\n   ══════════════════════════════════════════════════════════════════════ */\n/* 段階は押して移れる（button になった）。押せる場所として見えるようにする。 */\nbutton.vq2-steps-i { background: none; border: none; padding: 3px 6px; border-radius: var(--vq-r-md);\n  cursor: pointer; text-align: left; }\nbutton.vq2-steps-i:hover { background: var(--vq-surface-hover); }\nbutton.vq2-steps-i:focus-visible { outline: var(--vq-focus-ring); outline-offset: 1px; }\nbutton.vq2-steps-i.is-now { background: var(--vq-accent-subtle); }\n.vq2-steps-n { color: var(--vq-text-tertiary); font-variant-numeric: tabular-nums; }\nbutton.vq2-steps-i.is-now .vq2-steps-n { color: var(--vq-accent-text); }\n\n/* 狭い画面の下の帯。「戻る／いまの段階／次へ」。\n   下端（ホームバー）ぶんの余白を足して、指が届く場所に置く。 */\n.vq2-qmfoot { flex: 0 0 auto; border-top: 1px solid var(--vq-border-subtle); background: var(--vq-bg-elevated);\n  padding: 8px 10px; padding-bottom: calc(8px + var(--vq-sab,0px)); }\n.vq2-qmfoot-r { display: flex; align-items: center; gap: 6px; }\n.vq2-qmfoot-c { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }\n.vq2-qmfoot-n { font: var(--vq-type-caption); color: var(--vq-text-tertiary); font-variant-numeric: tabular-nums; }\n.vq2-qmfoot-t { font: var(--vq-type-label); color: var(--vq-text); white-space: nowrap; }\n.vq2-qmfoot button { min-height: 44px; }\n@media (max-width: 360px) { .vq2-qmfoot-n { display: none; } }\n.vq2-steps-l { white-space: nowrap; }\n\n/* VocabuSpeak：結果の「種類ごと」「できていた／直す」「次におすすめ」 */\n.vq2-sp-perlist { display: flex; flex-direction: column; gap: 8px; }\n.vq2-sp-per { display: flex; align-items: center; gap: 10px; }\n.vq2-sp-per-l { flex: 0 0 auto; min-width: 7em; font: var(--vq-type-caption); color: var(--vq-text-secondary); }\n.vq2-sp-per .vq2-sp-meter { flex: 1 1 auto; }\n.vq2-sp-per-n { flex: 0 0 auto; font: var(--vq-type-caption); color: var(--vq-text-muted);\n  font-variant-numeric: tabular-nums; }\n.vq2-sp-gw { display: flex; flex-direction: column; gap: 8px; }\n.vq2-sp-gw-i { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--vq-r-lg); }\n.vq2-sp-gw-i b { font: var(--vq-type-label); }\n.vq2-sp-gw-i span { font: var(--vq-type-caption); }\n.vq2-sp-gw-i.is-good { background: var(--vq-success-bg); color: var(--vq-success-text); }\n.vq2-sp-gw-i.is-weak { background: var(--vq-warning-bg); color: var(--vq-warning-text); }\n.vq2-sp-nextacts { display: flex; flex-direction: column; gap: 8px; }\n.vq2-sp-nextacts .vq2-btn { justify-content: flex-start; }\n\n/* 上の帯が詰まったときの逃がし方。\n   題名は縮んで「…」で切る。保存の印は狭い画面で印だけにする。\n   ここを決めておかないと、保存の印が副題の上に乗る（実測 390px）。 */\n.vq2-phead .vq2-top { gap: 8px; }\n.vq2-phead-t { min-width: 0; flex: 1 1 auto; overflow: hidden; }\n.vq2-phead-t .vq2-top-title, .vq2-phead-t .vq2-top-sub {\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.vq2-psave { flex: 0 0 auto; }\n.vq2-psave.is-mini { padding: 5px; gap: 0; }\n.vq2-psave.is-mini .vq2-psave-l {\n  position: absolute; width: 1px; height: 1px; overflow: hidden;\n  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }\n\n/* --vq-on-accent は **どこにも定義されていなかった**（トークンの名前は\n   --vq-accent-contrast）。未定義の変数は継承色へ落ちるので、\n   アクセント色の上に暗い文字が乗り、読みにくくなっていた\n   （実測: 話す練習の丸いマイクの「話す」と印が沈んでいた）。\n   名前を間違えても気づけるように、保険として既定値を置いておく。 */\n.vq2-root { --vq-on-accent: var(--vq-accent-contrast); }\n\n/* ログの「詳細を見る」。狭い画面でも指で押せる高さにする。 */\n.vq2-tl-more { min-height: 44px; }\n@media (min-width: 900px) { .vq2-tl-more { min-height: 28px; } }\n/* ここでは **1 行で切らない**。\n   1 件 1 行の一覧だったころの指定で、末尾を「…」にして横へ伸ばしていた。\n   いまは会話として読ませるので、切ると文の途中で消える（実測でそうなった）。 */\n\n/* ══════════════════════════════════════════════════════════════════════\n   並べ替えの行（文字が縦にならないように）\n\n   文の入れ物は flex の子なので、既定の min-width: auto では\n   最小内容幅（日本語は 1 文字）まで縮む。狭い画面で\n   つまみ・番号・上下ボタンに押されると 44px まで潰れ、\n   28 字が 14 行に折れて **縦書きのように見えていた**（実測 320px）。\n   ここで「縮んでよいが、行としては横に伸びる」と決めておく。\n   ══════════════════════════════════════════════════════════════════════ */\n.vq2-sort-t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }\n\n/* 狭い画面では、上下ボタンを次の行へ落として文に幅を渡す。\n   1 行に全部を並べると、どうやっても文の幅が足りない。 */\n@media (max-width: 420px) {\n  .vq2-sort-i { flex-wrap: wrap; row-gap: 6px; }\n  .vq2-sort-m { flex: 1 1 100%; order: 2; }\n  .vq2-sort-a { order: 3; margin-left: auto; }\n  .vq2-sort-h { order: 0; }\n  .vq2-sort-n { order: 1; }\n}\n\n\n/* ── シートの 出入りを ふわっと ───────────────────────────────\n   ★ これまで シートは **その場に 出て その場で 消えて** いた。\n     画面の 真ん中に 何かが 突然 現れるのは 目に つらいので、\n     出るとき: うすい → はっきり ＋ すこし 大きく なりながら\n     消えるとき: その 逆。時間は 本体の 尺（--vq-dur-*）に そろえる。\n   ★ 動きを 減らす 設定（is-reduced / prefers-reduced-motion）では 一切 動かさない。 */\n.vq2-sheet-bd{\n  opacity: 0;\n  transition: opacity var(--vq-dur-normal, 200ms) var(--vq-ease-standard, ease);\n}\n.vq2-sheet-bd.is-in{ opacity: 1; }\n\n/* 全画面で 開く ほう（sheet ではない）も、出るときに ふわっと。\n   （2026-08-29・訴え「モーダルを 開く時にも 動きを」）\n   transition ではなく keyframes。transition は 始まりの 姿が\n   別の コマに 無いと 走らないので、開く 側で よく 取りこぼす。 */\n@keyframes vq2RootIn{ from{ opacity:0; transform:scale(.994); } to{ opacity:1; transform:none; } }\n.vq2-root:not(.is-sheet){ animation: vq2RootIn .26s cubic-bezier(.22,1,.36,1) both; }\n.vq2-root:not(.is-sheet).is-reduced{ animation: none; }\n@media (prefers-reduced-motion: reduce){ .vq2-root:not(.is-sheet){ animation: none; } }\n.vq2-root.is-sheet{\n  opacity: 0;\n  transform: translate(-50%, -50%) scale(.965);\n  transition: opacity var(--vq-dur-normal, 200ms) var(--vq-ease-enter, cubic-bezier(.16,1,.3,1)),\n              transform var(--vq-dur-normal, 200ms) var(--vq-ease-enter, cubic-bezier(.16,1,.3,1));\n  will-change: opacity, transform;\n}\n.vq2-root.is-sheet.is-in{ opacity: 1; transform: translate(-50%, -50%) scale(1); }\n.vq2-root.is-sheet.is-out{\n  opacity: 0; transform: translate(-50%, -50%) scale(.975);\n  transition-duration: var(--vq-dur-fast, 120ms);\n  transition-timing-function: var(--vq-ease-exit, cubic-bezier(.45,0,.7,.4));\n}\n/* スマホは 下から。位置の 決め方が 違うので 別に 書く。 */\n.vq2-root.is-sheet.is-mobile{ transform: translateY(14px); }\n.vq2-root.is-sheet.is-mobile.is-in{ transform: translateY(0); }\n.vq2-root.is-sheet.is-mobile.is-out{ transform: translateY(10px); }\n.vq2-root.is-sheet.is-reduced,\n.vq2-root.is-sheet.is-reduced.is-in,\n.vq2-root.is-sheet.is-reduced.is-out{ transition: none; opacity: 1; }\n.vq2-root.is-sheet.is-reduced{ transform: translate(-50%, -50%); }\n.vq2-root.is-sheet.is-reduced.is-mobile{ transform: none; }\n@media (prefers-reduced-motion: reduce){\n  .vq2-sheet-bd, .vq2-root.is-sheet{ transition: none !important; opacity: 1 !important; }\n  .vq2-root.is-sheet{ transform: translate(-50%, -50%) !important; }\n  .vq2-root.is-sheet.is-mobile{ transform: none !important; }\n}\n\n\n/* ── 公開の モーダル: 2 段・表紙・新しい 見本 ────────────────────\n   ★ 見本は **一覧の 札と 同じ 組み立て**（表紙 → 重なる アイコン →\n     名前 → 作った人 → 科目・問題数 → 公開ID）。\n     前は 丸い アイコンと 名前だけで、実物と 別物だった。 */\n.vq2-pp-steps{\n  display:flex; align-items:center; gap:8px; margin:2px 0 10px;\n  font: var(--vq-type-caption); color: var(--vq-text-tertiary);\n}\n.vq2-pp-steps span{ font-weight:650; }\n.vq2-pp-steps span.is-on{ color: var(--vq-accent-text); }\n.vq2-pp-steps span.is-done{ color: var(--vq-success-text); }\n.vq2-pp-steps i{ flex:0 0 22px; height:1px; background: var(--vq-border); }\n\n.vq2-pp-pv{\n  --lib-l1: 90%; --lib-l2: 96%;\n  border-radius: calc(18px * var(--vq-r-scale,1)); overflow:hidden;\n  background: var(--vq-surface); border: 1px solid var(--vq-border-subtle);\n  box-shadow: var(--vq-shadow-raised);\n}\n:host([data-theme=\"dark\"]) .vq2-pp-pv{ --lib-l1: 26%; --lib-l2: 19%; }\n.vq2-pp-pv-cover{ height: 92px; background-size: cover; background-position: center; }\n.vq2-pp-pv-b{ padding: 0 15px 14px; display:grid; gap:5px; }\n.vq2-pp-pv-ico{\n  width:50px; height:50px; margin-top:-26px; margin-bottom:2px;\n  border-radius: calc(15px * var(--vq-r-scale,1));\n  border: 2.5px solid var(--vq-surface); box-shadow: 0 3px 10px rgba(84,72,140,.18);\n  display:grid; place-items:center; overflow:hidden; color:#fff;\n}\n.vq2-pp-pv-ico .vq2-ms{ font-size:25px; }\n.vq2-pp-pv-ico img{ width:100%; height:100%; object-fit:cover; display:block; }\n.vq2-pp-pv-t{ font-size:14.5px; font-weight:750; color: var(--vq-text); word-break: break-word; }\n.vq2-pp-pv-by{ display:flex; align-items:center; gap:6px; font-size:11.5px; color: var(--vq-text-secondary); font-weight:600; }\n.vq2-pp-pv-by .vq2-ms{ font-size:14px; color: var(--vq-text-tertiary); }\n.vq2-pp-pv-meta{ display:flex; gap:10px; flex-wrap:wrap; font-size:11.5px; color: var(--vq-text-secondary); }\n\n/* 表紙の 欄 */\n.vq2-pp-cover{\n  height:120px; border-radius: calc(14px * var(--vq-r-scale,1));\n  background: var(--vq-surface-sunken) center/cover no-repeat;\n  border: 1px dashed var(--vq-border-strong);\n  display:flex; align-items:center; justify-content:center; gap:8px;\n  color: var(--vq-text-tertiary); font-size:12px; margin-top:8px;\n}\n.vq2-pp-cover.has-img{ border-style: solid; }\n.vq2-pp-cover .vq2-ms{ font-size:22px; }\n.vq2-pp-coveracts{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }\n\n/* 決まり（2 段目） */\n.vq2-pp-terms{\n  max-height: 42vh; overflow-y:auto; overscroll-behavior: contain;\n  margin-top:8px; padding: 13px 14px; display:grid; gap:13px;\n  background: var(--vq-surface-sunken);\n  border: 1px solid var(--vq-border-subtle);\n  border-radius: calc(14px * var(--vq-r-scale,1));\n}\n.vq2-pp-terms:focus-visible{ outline:none; box-shadow: var(--vq-focus-ring); }\n.vq2-pp-term h4{ margin:0 0 4px; font-size:13.5px; font-weight:700; color: var(--vq-text); }\n.vq2-pp-term p{ margin:0; font-size:12.5px; line-height:1.75; color: var(--vq-text-secondary); }\n.vq2-pp-termend{ text-align:center; font-size:11.5px; color: var(--vq-text-tertiary); }\n.vq2-pp-readhint{\n  display:flex; align-items:center; gap:8px; margin-top:10px;\n  font-size:11.5px; color: var(--vq-text-secondary);\n}\n.vq2-pp-readhint .vq2-ms{ font-size:18px; }\n.vq2-pp-readhint.is-done{ color: var(--vq-success-text); }\n.vq2-pp-agree input[disabled]{ cursor: not-allowed; }\n\n\n/* ── 「見た目」を 選べなくする（画像を アイコンに した とき）────────\n   ★ 選べるように 見せておいて 効かない のが いちばん 分かりにくい。\n     押せなく した うえで うすい 覆いを かけ、外し方を その場に 書く。 */\n.vq2-pp-lookwrap{ position: relative; }\n.vq2-pp-lookwrap.is-locked .vq2-pp-lookin{\n  opacity: .32; filter: saturate(.35);\n  pointer-events: none; user-select: none;\n}\n.vq2-pp-lock{\n  position: absolute; inset: -4px;\n  display: grid; place-items: center;\n  padding: 10px;\n  border-radius: calc(12px * var(--vq-r-scale,1));\n  background: color-mix(in srgb, var(--vq-surface) 62%, transparent);\n  cursor: not-allowed;\n}\n.vq2-pp-lock-in{\n  display: inline-flex; align-items: center; gap: 8px;\n  max-width: 100%; text-align: left;\n  padding: 8px 12px;\n  border-radius: calc(999px * var(--vq-r-scale,1));\n  background: var(--vq-surface);\n  border: 1px solid var(--vq-border);\n  box-shadow: var(--vq-shadow-subtle);\n  font-size: 11.5px; line-height: 1.6; font-weight: 600;\n  color: var(--vq-text-secondary);\n}\n.vq2-pp-lock-in .vq2-ms{ font-size: 17px; color: var(--vq-text-tertiary); flex: 0 0 auto; }\n\n/* ── 共通テストの体裁（2026-09-11）── */\n/* マークの解答番号 <<12>>。紙の □12 と同じ見え方にする。 */\n.vq2-marknum { display: inline-flex; align-items: center; justify-content: center;\n  min-width: 1.9em; padding: 0 4px; margin: 0 3px; vertical-align: baseline;\n  border: 1.5px solid var(--vq-text); border-radius: 3px; font-weight: 700;\n  font-size: .92em; line-height: 1.5; }\n/* 本文・設問の空欄 {{ア}}。番号ではなく記号が入る。 */\n.vq2-fillbox { display: inline-flex; align-items: center; justify-content: center;\n  min-width: 1.7em; padding: 0 4px; margin: 0 2px; vertical-align: baseline;\n  border: 1px solid var(--vq-border-strong); border-radius: 3px;\n  font-size: .92em; line-height: 1.5; }\n/* 傍線部 [[…]]。紙と同じく下線で示す。 */\n.vq2-ul { text-decoration: underline; text-underline-offset: 3px;\n  text-decoration-thickness: 1.5px; }\n.vq2-ul-m { font-size: .62em; font-weight: 700; vertical-align: super;\n  margin-right: 1px; text-decoration: none; display: inline-block; }\n/* 計算で組み立てた図（domain/figures.js）。縦横比は変えない。 */\n.vqfig { margin: 12px auto; max-width: 440px; text-align: center; }\n.vqfig svg { display: block; width: 100%; height: auto;\n  border: 1px solid var(--vq-border-subtle); border-radius: var(--vq-r-md);\n  background: #fff; }\n.vqfig-cap { margin-top: 6px; font: var(--vq-type-caption); color: var(--vq-text-muted); }\n.vqfig-ng { display: none; }\n/* 長文の本文。画面でも紙と同じ並びで読めるようにする。 */\n.vq2-psg { margin: 0 0 16px; padding: 14px 16px; border-radius: var(--vq-r-lg);\n  background: var(--vq-surface-sunken); border: 1px solid var(--vq-border-subtle); }\n.vq2-psg-h { font-weight: 700; margin-bottom: 8px; }\n.vq2-psg-p { margin: 0 0 10px; text-indent: 1em; line-height: 1.95; }\n.vq2-psg.is-en .vq2-psg-p { text-indent: 1.4em; font-family: Georgia, 'Times New Roman', serif; }\n.vq2-psg-notes { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--vq-border-subtle);\n  font: var(--vq-type-caption); color: var(--vq-text-muted); }\n.vq2-psg-src { margin-top: 8px; text-align: right; font: var(--vq-type-caption);\n  color: var(--vq-text-muted); }\n";
 
   /* ── 小道具 ─────────────────────────────────────────────────── */
   function esc(s) {
@@ -43693,8 +50598,23 @@
      番号があるので、空欄が 2 つ以上でもどれがどの答えか分かる。
      **エスケープ済みの文字列に対して呼ぶこと**（中身は番号だけなので安全）。 */
   function blankMarks(escaped) {
-    return String(escaped == null ? "" : escaped).replace(/【\s*([0-9]{1,2})\s*】/g,
+    var h = String(escaped == null ? "" : escaped).replace(/【\s*([0-9]{1,2})\s*】/g,
       function (_, n) { return '<span class="vq2-blankmark"><i>' + n + "</i></span>"; });
+    /* 紙面と同じ記法を画面でも読む（pdf/renderer.js の richText と対）。
+       <<12>> … マークの解答番号 / {{ア}} … 本文の空欄
+       esc() を通ったあとなので < は &lt; になっている。 */
+    h = h.replace(/&lt;&lt;\s*([0-9０-９]{1,3})\s*&gt;&gt;/g,
+      function (_, n) { return '<span class="vq2-marknum">' + n + "</span>"; });
+    h = h.replace(/\{\{\s*([^{}\s]{1,6})\s*\}\}/g,
+      function (_, t) { return '<span class="vq2-fillbox">' + t + "</span>"; });
+    h = h.replace(/\[\[([^\][|]{1,4})\|([^\][]{0,120})\]\]/g,
+      function (_, mark, t) {
+        return '<span class="vq2-ul" data-mark="' + mark + '"><sup class="vq2-ul-m">'
+          + mark + "</sup>" + t + "</span>";
+      });
+    h = h.replace(/\[\[([^\][]{1,120})\]\]/g,
+      function (_, t) { return '<span class="vq2-ul">' + t + "</span>"; });
+    return h;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -43753,8 +50673,24 @@
       return VQM.svg.同期(uniToTex(t), !!display);
     } catch (e) { return null; }
   }
-  /* 生の文字列 → 画面に出す HTML（数式・空欄の印・改行まで面倒を見る）。 */
+  /* 生の文字列 → 画面に出す HTML（図・数式・空欄の印・改行まで面倒を見る）。
+
+     ★ 図（[[図: …]]）は **いちばん先**に取り分ける。
+       esc() を通したあとでは値が化けて読み取れないし、
+       [[…]] の傍線部の記法に食われて図の指定が下線になる。 */
+  function figsApi() {
+    try { return (root.VQ2 && root.VQ2.figures) || null; } catch (e) { return null; }
+  }
   function mathText(raw, opts) {
+    var F = figsApi();
+    if (F && F.has(raw)) {
+      return F.split(raw).map(function (seg) {
+        return seg.t === "text" ? mathTextOnly(seg.v, opts) : F.figureHtml(seg.spec);
+      }).join("");
+    }
+    return mathTextOnly(raw, opts);
+  }
+  function mathTextOnly(raw, opts) {
     var s = String(raw == null ? "" : raw);
     if (!s) return "";
     var plain = function (t) {
