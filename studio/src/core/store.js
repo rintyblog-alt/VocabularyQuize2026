@@ -8,13 +8,13 @@
 
    ★ なぜこの形か
      ・**clone は 1 dispatch につき 1 回だけ**。project を複製 → op に書き換えさせ
-       → 成功したら「元の object をそのまま履歴へ積む」。履歴用に もう 1 枚複製
-       するとドラッグ中に数 MB の複製が毎フレーム 2 回走って落ちる。ゆえに
+       → 成功したら「元の object をそのまま履歴へ積む」（履歴用にもう 1 枚複製
+       するとドラッグ中に数 MB の複製が毎フレーム 2 回走って落ちる）。ゆえに
        **store.project を外から書き換えてはいけない**（§3 の注記どおり。凍結は
        しない = app.js が updatedAt を触る）。op が throw したら複製を捨てるだけ
-       → 元の状態は無傷（巻き戻し処理が要らない）。
-     ・履歴の 1 件は「その op の **直前**の {project, selection}」。現在の状態は
-       present として別に置き、undo は present と履歴 1 枚の入れ替えで済ませる。
+       なので、元の状態は無傷（巻き戻し処理が要らない）。
+     ・履歴の 1 件は「その op の **直前**の {project, selection}」。今の状態は
+       present として別に持ち、undo は present と履歴 1 枚の入れ替えで済ませる。
      ・asset.analysis は数千点の配列。120 枚分複製すると iPhone の上限に当たるので
        **参照で共有**する（差し替えのみ・in-place で書き換えない約束つき。嫌なら
        createStore(p, { shareAnalysis:false })）。
@@ -22,8 +22,7 @@
        「描画中に選択を直す」を平気でやる。再入させると履歴が入れ子になって取消
        が壊れる）。後回しになった呼びは undefined を返す。
      ・ops.js はまだ無いことがある（担当が別）。静的 import だと 1 つ欠けただけで
-       store ごと落ちるので **動的 import を await せずに**始める（await すると
-       ops.js が誤って store を import した瞬間に永久に固まる）。
+       store ごと落ちるので **動的 import を await せずに**始める。
 
    ★ 触るときの注意
      ・project / selection / view を直に書き換えない。selection と view は
@@ -50,46 +49,35 @@ export const TOOLS = Object.freeze(["select", "ripple", "razor", "hand", "slip",
    CONTRACT-NOTE: 指示の文面は「clip.split や clip.add は合体しない」。clip.remove
    を合体させると「3 つ消した」が取消 1 回で戻ってしまい同じ理屈で困るので、
    動詞で括る形にした（指示の上位互換）。 */
-const NO_COALESCE_VERBS = new Set([
-  "add", "remove", "split", "duplicate", "paste", "insert", "overwrite", "group",
-  "ungroup", "detachAudio", "link", "unlink", "make", "enter", "flatten", "rippleDelete",
-  "import", "reorder", "reorderFx", "addFx", "removeFx", "freeze", "reverse",
-  "magneticClose", "replace"
-]);
+const NO_COALESCE_VERBS = new Set(("add remove split duplicate paste insert overwrite group ungroup " +
+  "detachAudio link unlink make enter flatten rippleDelete import reorder reorderFx addFx removeFx " +
+  "freeze reverse magneticClose replace").split(" "));
 /** 動詞では括れない例外（type 丸ごとで弾く） */
 export const NO_COALESCE_TYPES = new Set(["clip.split", "clip.add", "subtitle.import"]);
 
 /* 履歴に出す日本語の見出し。"<type> <日本語>" を | で並べただけ（行数を食わない
    ように圧縮してある。無い type は type 名をそのまま出す）。 */
 const LABELS = Object.freeze(Object.fromEntries(
-  ("asset.add 素材を追加|asset.remove 素材を削除|asset.update 素材を更新|" +
-   "track.add トラックを追加|track.remove トラックを削除|track.update トラックを変更|" +
-   "track.reorder トラックを並べ替え|clip.add クリップを追加|clip.remove クリップを削除|" +
-   "clip.update クリップを変更|clip.move クリップを移動|clip.trim トリム|clip.split 分割|" +
-   "clip.duplicate 複製|clip.rippleDelete 詰めて削除|clip.slip スリップ|clip.roll ロール|" +
-   "clip.reorder 並べ替え|clip.group グループ化|clip.ungroup グループ解除|" +
-   "clip.detachAudio 音声を分離|clip.link 映像と音声を結合|clip.setSpeed 速度を変更|" +
-   "clip.setSpeedRamp 速度ランプ|clip.freeze フリーズ|clip.reverse 逆再生|" +
-   "clip.setTransform 変形|clip.setColor カラー|clip.setMask マスク|clip.setChroma クロマキー|" +
-   "clip.setText テキスト|clip.setShape 図形|clip.addFx 効果を追加|clip.removeFx 効果を削除|" +
-   "clip.updateFx 効果を調整|clip.reorderFx 効果を並べ替え|clip.setTransition トランジション|" +
-   "clip.removeTransition トランジションを削除|key.add キーフレームを追加|" +
-   "key.remove キーフレームを削除|key.update キーフレームを変更|key.moveAll キーフレームを移動|" +
-   "marker.add マーカーを追加|marker.remove マーカーを削除|marker.update マーカーを変更|" +
-   "chapter.add チャプターを追加|chapter.remove チャプターを削除|settings.update 設定を変更|" +
-   "subtitle.import 字幕を読み込み|project.rename 名前を変更|timeline.paste 貼り付け|" +
-   "timeline.insert 挿入|timeline.overwrite 上書き|timeline.magneticClose 隙間を詰める|" +
-   "compound.make まとめる|compound.enter 中に入る|compound.flatten ばらす|" +
-   "project.replace 差し替え|batch まとめて編集"
-  ).split("|").map((s) => [s.slice(0, s.indexOf(" ")), s.slice(s.indexOf(" ") + 1)])
+  ("asset.add 素材を追加|asset.remove 素材を削除|asset.update 素材を更新|track.add トラックを追加|track.remove トラックを削除|" +
+   "track.update トラックを変更|track.reorder トラックを並べ替え|clip.add クリップを追加|clip.remove クリップを削除|clip.update クリップを変更|" +
+   "clip.move クリップを移動|clip.trim トリム|clip.split 分割|clip.duplicate 複製|clip.rippleDelete 詰めて削除|clip.slip スリップ|" +
+   "clip.roll ロール|clip.reorder 並べ替え|clip.group グループ化|clip.ungroup グループ解除|clip.detachAudio 音声を分離|" +
+   "clip.link 映像と音声を結合|clip.setSpeed 速度を変更|clip.setSpeedRamp 速度ランプ|clip.freeze フリーズ|clip.reverse 逆再生|" +
+   "clip.setTransform 変形|clip.setColor カラー|clip.setMask マスク|clip.setChroma クロマキー|clip.setText テキスト|" +
+   "clip.setShape 図形|clip.addFx 効果を追加|clip.removeFx 効果を削除|clip.updateFx 効果を調整|clip.reorderFx 効果を並べ替え|" +
+   "clip.setTransition トランジション|clip.removeTransition トランジションを削除|key.add キーフレームを追加|key.remove キーフレームを削除|" +
+   "key.update キーフレームを変更|key.moveAll キーフレームを移動|marker.add マーカーを追加|marker.remove マーカーを削除|" +
+   "marker.update マーカーを変更|chapter.add チャプターを追加|chapter.remove チャプターを削除|settings.update 設定を変更|" +
+   "subtitle.import 字幕を読み込み|project.rename 名前を変更|timeline.paste 貼り付け|timeline.insert 挿入|" +
+   "timeline.overwrite 上書き|timeline.magneticClose 隙間を詰める|compound.make まとめる|compound.enter 中に入る|" +
+   "compound.flatten ばらす|project.replace 差し替え|batch まとめて編集"
+  ).split("|").map((e) => [e.slice(0, e.indexOf(" ")), e.slice(e.indexOf(" ") + 1)])
 ));
-
 /** @param {string} type @returns {string} 履歴に出す日本語 */
 export function opLabel(type) {
   const t = typeof type === "string" ? type : "";
   return Object.prototype.hasOwnProperty.call(LABELS, t) ? LABELS[t] : (t || "編集");
 }
-
 /** store 自身の落ち方（op の失敗は ops.js の OpError がそのまま飛ぶ） */
 export class StoreError extends Error {
   /** @param {string} message @param {string} [code] @param {Object} [detail] */
@@ -109,9 +97,7 @@ export class StoreError extends Error {
  * @type {Record<string, (draft:Object, payload:Object, ctx:Object)=>any>}
  */
 export const OPS = Object.create(null);
-
 let opsPromise = null;
-
 /** ops.js の読み込み（1 回だけ・失敗しても解決する）。@returns {Promise<Object>} */
 export function opsReady() {
   if (!opsPromise) {
@@ -127,7 +113,6 @@ export function opsReady() {
   }
   return opsPromise;
 }
-
 /** op を足す（同名は上書き）。@param {Object} table @returns {number} 足した数 */
 export function registerOps(table) {
   let n = 0;
@@ -147,19 +132,16 @@ const arrOf = (v) => (Array.isArray(v) ? v : []);
 const byT = (a, b) => finite(a && a.t, 0) - finite(b && b.t, 0);
 /** view の数値の範囲（clamp に Infinity を渡すと util 側で 1 に落ちるので有限で） */
 const VIEW_LIM = { playhead: [0, 1e9], zoom: [0.001, 4000], scrollX: [0, 1e9] };
-
+const VIEW_KEYS = new Set(["playhead", "zoom", "scrollX", "inPoint", "outPoint", "tool", "followPlayhead"]);
 /** 選択を凍結して返す（外から書き換えたら その場で TypeError になる） */
 function freezeSelection(clipIds, trackId, keyframe) {
   return Object.freeze({
     clipIds: Object.freeze(clipIds.slice()),
     trackId: trackId == null ? null : String(trackId),
-    keyframe: keyframe ? Object.freeze({
-      clipId: String(keyframe.clipId), path: String(keyframe.path),
-      index: clampInt(keyframe.index, 0, 1e9)
-    }) : null
+    keyframe: keyframe ? Object.freeze({ clipId: String(keyframe.clipId),
+      path: String(keyframe.path), index: clampInt(keyframe.index, 0, 1e9) }) : null
   });
 }
-
 function sameSelection(a, b) {
   if (a === b) return true;
   if (a.trackId !== b.trackId || a.clipIds.length !== b.clipIds.length) return false;
@@ -168,7 +150,6 @@ function sameSelection(a, b) {
   if (!x || !y) return !x && !y;
   return x.clipId === y.clipId && x.path === y.path && x.index === y.index;
 }
-
 /** clip の id → clip（compound の中も深さ 2 まで見る） */
 function clipMapOf(project, into, depth) {
   const map = into || new Map();
@@ -181,7 +162,6 @@ function clipMapOf(project, into, depth) {
   }
   return map;
 }
-
 function trackIdsOf(project) {
   const s = new Set();
   for (const tr of arrOf(project && project.tracks)) if (tr && tr.id != null) s.add(String(tr.id));
@@ -231,8 +211,10 @@ function tidyKeys(list) {
   if (ok) return;
   const clean = [];
   for (const k of list) {
-    if (!k || typeof k !== "object" || !Number.isFinite(finite(k.t, NaN))) continue;
-    k.t = Math.max(0, finite(k.t, 0));
+    if (!k || typeof k !== "object") continue;
+    const t = typeof k.t === "number" ? k.t : Number(k.t);
+    if (!Number.isFinite(t)) continue;  // 読めない t は捨てる（schema.normalize と同じ）
+    k.t = t < 0 ? 0 : t;
     clean.push(k);
   }
   clean.sort((a, b) => a.t - b.t);
@@ -244,7 +226,6 @@ function tidyKeys(list) {
   list.length = 0;
   for (const k of out) list.push(k);
 }
-
 /** 遷移の尺を「隣と重ねられる長さ」に収める（契約書 §1-3） */
 function fitTransition(clip, field, neighbour) {
   const tr = clip[field];
@@ -261,20 +242,16 @@ function fitTransition(clip, field, neighbour) {
   }
   tr.duration = d > max ? max : d;
 }
-
 function tidyClips(clips, depth) {
   for (let i = clips.length - 1; i >= 0; i--) if (!clips[i] || typeof clips[i] !== "object") clips.splice(i, 1);
   for (const c of clips) {
-    const s = finite(c.start, 0);
-    c.start = s < 0 ? 0 : s;
-    const d = finite(c.duration, MIN_CLIP);
-    c.duration = d < MIN_CLIP ? MIN_CLIP : d;
+    c.start = Math.max(0, finite(c.start, 0));
+    c.duration = Math.max(MIN_CLIP, finite(c.duration, MIN_CLIP));
   }
   let sorted = true;
   for (let i = 1; i < clips.length; i++) if (clips[i - 1].start > clips[i].start + 1e-9) { sorted = false; break; }
-  if (!sorted) {
-    const at = new Map();
-    clips.forEach((c, i) => at.set(c, i));
+  if (!sorted) {                      // 同じ start は元の順を保つ（安定並べ替え）
+    const at = new Map(clips.map((c, i) => [c, i]));
     clips.sort((a, b) => (a.start - b.start) || (at.get(a) - at.get(b)));
   }
   /* 重なりは「前を縮める」— schema.normalizeProject と同じ規則にしておく（store と
@@ -282,10 +259,7 @@ function tidyClips(clips, depth) {
      縮めても足りない分は残す（消すのは op の仕事）。 */
   for (let i = 1; i < clips.length; i++) {
     const prev = clips[i - 1], cur = clips[i];
-    if (prev.start + prev.duration > cur.start + 1e-6) {
-      const room = cur.start - prev.start;
-      prev.duration = room > MIN_CLIP ? room : MIN_CLIP;
-    }
+    if (prev.start + prev.duration > cur.start + 1e-6) prev.duration = Math.max(MIN_CLIP, cur.start - prev.start);
   }
   for (let i = 0; i < clips.length; i++) {
     const c = clips[i];
@@ -309,11 +283,10 @@ function tidyClips(clips, depth) {
     }
   }
 }
-
 function tidyProject(draft, at) {
   if (!draft || typeof draft !== "object") return;
   if (!Array.isArray(draft.tracks)) draft.tracks = [];
-  for (const tr of draft.tracks) {
+  for (const tr of draft.tracks) {    // tidyClips が深さ 2 までの compound も見る
     if (!tr || typeof tr !== "object") continue;
     if (!Array.isArray(tr.clips)) tr.clips = [];
     tidyClips(tr.clips, 0);
@@ -352,9 +325,8 @@ export function createStore(project, opts) {
 
   function intake(p) {
     if (!doNormalize) return deepClone(p) || {};
-    try {
-      return normalizeProject(p);
-    } catch (e) {
+    try { return normalizeProject(p); }
+    catch (e) {
       warn("store", "normalizeProject が失敗したので複製だけで取り込む", e && e.message);
       return deepClone(p) || {};
     }
@@ -366,17 +338,14 @@ export function createStore(project, opts) {
     if (events.length && subs.size) {
       notifying++;
       try {
-        for (const ev of events) {
-          /* 1 つの購読者の事故で編集全体を止めない（error は常に出る） */
-          for (const fn of Array.from(subs)) {
-            try { fn(ev); } catch (e) { error("store", "subscribe の中で例外", e); }
-          }
+        /* 1 つの購読者の事故で編集全体を止めない（error は常に出る） */
+        for (const ev of events) for (const fn of Array.from(subs)) {
+          try { fn(ev); } catch (e) { error("store", "subscribe の中で例外", e); }
         }
       } finally { notifying--; }
     }
-    if (notifying === 0) drain();
+    if (notifying === 0) drain();      // 通知の中で溜まった変更をここで流す
   }
-
   function drain() {
     if (draining || queued.length === 0) return;
     draining = true;
@@ -392,19 +361,15 @@ export function createStore(project, opts) {
       }
     } finally { draining = false; }
   }
-
   /** 破棄済みなら黙って止め、通知中なら後回しにする入口（後回しは undefined） */
   function guard(name, fn) {
     return function (...args) {
       if (disposed) { warn("store", `破棄済みの store に ${name} が来た（無視する）`); return undefined; }
-      if (notifying > 0) {
-        queued.push(() => {
-          try { fn.apply(null, args); }
-          catch (e) { error("store", `後回しにした ${name} が失敗`, e); }
-        });
-        return undefined;
-      }
-      return fn.apply(null, args);
+      if (notifying === 0) return fn.apply(null, args);
+      queued.push(() => {
+        try { fn.apply(null, args); } catch (e) { error("store", `後回しにした ${name} が失敗`, e); }
+      });
+      return undefined;
     };
   }
 
@@ -426,7 +391,6 @@ export function createStore(project, opts) {
     if (Array.isArray(p.clipIds)) parts.push("clipIds:" + p.clipIds.join(","));
     return parts.join("|");
   }
-
   function pushHistory(entry) {
     redoStack.length = 0;
     const top = undoStack[undoStack.length - 1];
@@ -438,7 +402,6 @@ export function createStore(project, opts) {
     undoStack.push(entry);
     while (undoStack.length > limit) undoStack.shift();
   }
-
   function step(from, to, op) {
     const entry = from.pop();
     if (!entry) return false;
@@ -459,6 +422,9 @@ export function createStore(project, opts) {
 
   /* ── 選択 ───────────────────────────────────────────────────── */
 
+  /** 選択が勝手に変わったときの通知（消えた clip を外した等） */
+  const autoSelEvent = (sel) => ({ kind: "selection", op: "auto", detail: { reason: "removed", selection: sel } });
+
   /** 消えた clip / track / keyframe を選択から落とす（同じなら同じ参照） */
   function cleanSelection(p, sel) {
     if (!sel.clipIds.length && !sel.trackId && !sel.keyframe) return sel;
@@ -475,7 +441,6 @@ export function createStore(project, opts) {
     if (ids.length === sel.clipIds.length && trackId === sel.trackId && kf === sel.keyframe) return sel;
     return freezeSelection(ids, trackId, kf);
   }
-
   function applySelect(clipIds, sOpts) {
     const so = plain(sOpts);
     const list = clipIds == null ? [] : (Array.isArray(clipIds) ? clipIds : [clipIds]);
@@ -484,8 +449,8 @@ export function createStore(project, opts) {
     for (const raw of list) {
       const id = String(raw == null ? "" : raw);
       if (!id || wanted.indexOf(id) >= 0) continue;
-      if (!known.has(id)) { warn("store", `選べない clip id "${id}"（project に無い）`); continue; }
-      wanted.push(id);
+      if (known.has(id)) wanted.push(id);
+      else warn("store", `選べない clip id "${id}"（project に無い）`);
     }
     const cur = present.selection;
     let ids = so.toggle || so.additive ? cur.clipIds.slice() : wanted;
@@ -507,7 +472,6 @@ export function createStore(project, opts) {
     emit([{ kind: "selection", op: "select", detail: { selection: next } }]);
     return next;
   }
-
   function applySelectKeyframe(ref) {
     const cur = present.selection;
     let kf = null;
@@ -516,10 +480,7 @@ export function createStore(project, opts) {
       const clipId = String(r.clipId == null ? "" : r.clipId);
       const path = String(r.path == null ? "" : r.path);
       if (!clipId || !path) { warn("store", "selectKeyframe に clipId / path が無い"); return cur; }
-      if (!clipMapOf(present.project, null, 0).has(clipId)) {
-        warn("store", `selectKeyframe: clip "${clipId}" が無い`);
-        return cur;
-      }
+      if (!clipMapOf(present.project, null, 0).has(clipId)) { warn("store", `clip "${clipId}" が無い`); return cur; }
       kf = { clipId, path, index: clampInt(r.index, 0, 1e9) };
     }
     const next = freezeSelection(cur.clipIds, cur.trackId, kf);
@@ -549,9 +510,7 @@ export function createStore(project, opts) {
       if (TOOLS.indexOf(t) >= 0) put("tool", t);
       else warn("store", `知らない道具 "${t}" は無視した`);
     }
-    for (const k of Object.keys(p)) {
-      if (!Object.prototype.hasOwnProperty.call(next, k)) warn("store", `view に "${k}" は無い`);
-    }
+    for (const k of Object.keys(p)) if (!VIEW_KEYS.has(k)) warn("store", `view に "${k}" は無い`);
     /* イン・アウトが逆さに来たら入れ替える（ドラッグで普通に起きる） */
     if (next.inPoint !== null && next.outPoint !== null && next.inPoint > next.outPoint) {
       const a = next.inPoint;
@@ -573,14 +532,12 @@ export function createStore(project, opts) {
       fps: clamp(finite(st && st.fps, 30), 1, 240), now: nowFn(), batch: batchDepth > 0
     };
   }
-
   function lookup(type) {
     const t = typeof type === "string" ? type : "";
     const op = t ? (fixedOps || OPS)[t] : null;
     if (typeof op !== "function") throw new StoreError(`知らない操作です: "${t}"`, "unknown-op", { type: t });
     return op;
   }
-
   function applyDispatch(type, payload, dOpts) {
     const op = lookup(type);
     const load = payload === undefined || payload === null ? {} : payload;
@@ -604,9 +561,7 @@ export function createStore(project, opts) {
     present = { project: draft, selection: nextSel };
     dirtyFlag = true;
     const events = [{ kind: "project", op: type, detail: { label: opLabel(type), payload: load, result } }];
-    if (nextSel !== selBefore) {
-      events.push({ kind: "selection", op: "auto", detail: { reason: "removed", selection: nextSel } });
-    }
+    if (nextSel !== selBefore) events.push(autoSelEvent(nextSel));
     emit(events);
     return result;
   }
@@ -628,7 +583,6 @@ export function createStore(project, opts) {
       throw e;
     }
   }
-
   function runBatch(label, fn) {
     if (typeof fn !== "function") throw new StoreError("batch(label, fn) の fn が関数ではない", "bad-arg");
     if (batchDepth > 0) {               // 入れ子も 1 単位（深さを数えるだけ）
@@ -641,24 +595,17 @@ export function createStore(project, opts) {
     batchState = st;
     batchDepth = 1;
     present = { project: draft, selection: selBase };   // 途中でも store.project は読める
-    let out;
+    let out, done = false;
     try {
       out = fn(localDispatch);
-    } catch (e) {
-      batchDepth = 0; batchState = null;
-      present = { project: base, selection: selBase };
-      throw e;
+      done = true;
+    } finally {                         // fn が throw / 中の op が失敗 → 丸ごと捨てる
+      batchDepth = 0;
+      batchState = null;
+      if (!done || st.aborted || !st.changed) present = { project: base, selection: selBase };
     }
-    batchDepth = 0;
-    batchState = null;
-    if (st.aborted) {                   // fn が握りつぶしても巻き戻す
-      present = { project: base, selection: selBase };
-      throw st.aborted;
-    }
-    if (!st.changed) {                  // 何も当てなかったら履歴も通知も作らない
-      present = { project: base, selection: selBase };
-      return out;
-    }
+    if (st.aborted) throw st.aborted;   // fn が握りつぶしても巻き戻す
+    if (!st.changed) return out;        // 何も当てなかったら履歴も通知も作らない
     const nextSel = cleanSelection(draft, selBase);
     const name = typeof label === "string" && label ? label : opLabel("batch");
     pushHistory({
@@ -669,19 +616,15 @@ export function createStore(project, opts) {
     present = { project: draft, selection: nextSel };
     dirtyFlag = true;
     const events = [{ kind: "project", op: "batch", detail: { label: name, types: st.types.slice() } }];
-    if (nextSel !== selBase) {
-      events.push({ kind: "selection", op: "auto", detail: { reason: "removed", selection: nextSel } });
-    }
+    if (nextSel !== selBase) events.push(autoSelEvent(nextSel));
     emit(events);
     return out;
   }
-
   /** batch の fn へ渡す dispatch（batch を抜けた後に呼ばれても動く） */
   function localDispatch(type, payload, dOpts) {
     if (disposed) { warn("store", "破棄済みの store に batch の dispatch が来た"); return undefined; }
     return applyDispatch(type, payload, dOpts);
   }
-
   function applyReplace(next, label) {
     const base = present.project, selBase = present.selection;
     const p = intake(next);
@@ -694,7 +637,7 @@ export function createStore(project, opts) {
     present = { project: p, selection: sel };
     dirtyFlag = true;
     const events = [{ kind: "project", op: "replace", detail: { label } }];
-    if (sel !== selBase) events.push({ kind: "selection", op: "auto", detail: { selection: sel } });
+    if (sel !== selBase) events.push(autoSelEvent(sel));
     emit(events);
     return p;
   }
@@ -702,25 +645,18 @@ export function createStore(project, opts) {
   /* ── 外向きの形（契約書 §3）─────────────────────────────────── */
 
   return {
-    /** 編集中の project。**直接書き換えない**（履歴が壊れる） */
-    get project() { return present.project; },
-    /** { clipIds, trackId, keyframe }（凍結済み） */
-    get selection() { return present.selection; },
-    /** { playhead, zoom, scrollX, inPoint, outPoint, tool, followPlayhead }（凍結済み） */
-    get view() { return view; },
-    /** 最後の markClean() から project が変わったか（自動保存が見る） */
-    get dirty() { return dirtyFlag; },
+    get project() { return present.project; },       // **直接書き換えない**（履歴が壊れる）
+    get selection() { return present.selection; },   // { clipIds, trackId, keyframe }（凍結済み）
+    get view() { return view; },                     // §3 の表示状態（凍結済み）
+    get dirty() { return dirtyFlag; },               // markClean() から変わったか（自動保存用）
     get disposed() { return disposed; },
-    /** 保存できたことにする */
     markClean() { dirtyFlag = false; return false; },
-
     /** 変更の通知を受ける（同期）。fn({kind,op,detail}) / 返り値で解除 */
     subscribe(fn) {
       if (typeof fn !== "function") throw new StoreError("subscribe(fn) の fn が関数ではない", "bad-arg");
       subs.add(fn);
       return () => { subs.delete(fn); };
     },
-
     /** dispatch(type, payload, {label?,coalesce?}) → op の返り値。失敗時は無変化で throw */
     dispatch: guard("dispatch", applyDispatch),
     /** batch(label, (d) => ...) で 1 取消単位。入れ子も 1 単位。throw で全部巻き戻す */
@@ -731,7 +667,6 @@ export function createStore(project, opts) {
     canRedo() { return redoStack.length > 0; },
     /** 古い順の [{label, at, type}]（取消できる分だけ） */
     history() { return undoStack.map((e) => ({ label: e.label, at: e.at, type: e.type })); },
-
     /** select(ids|id|null, {additive,toggle,trackId}) — project に無い id は落ちる */
     select: guard("select", applySelect),
     /** selectKeyframe({clipId,path,index} | null) */
@@ -740,21 +675,18 @@ export function createStore(project, opts) {
     setView: guard("setView", applyView),
     /** project を丸ごと差し替える（1 取消単位）。読み込み直後は markClean() を */
     replace: guard("replace", applyReplace),
-
     /** project の深い複製（保存・書き出しへ渡す用） */
     snapshot() { return deepClone(present.project); },
     /** JSON.stringify(store) でも保存形式が出るように */
     toJSON() { return deepClone(present.project); },
     /** 履歴だけ捨てる（プロジェクトを開き直した直後などに） */
     clearHistory() { undoStack.length = 0; redoStack.length = 0; return true; },
-
     /** 使い終わり。購読と履歴を手放す（以後の変更は警告して何もしない） */
     dispose() {
       disposed = true;
       subs.clear();
       queued.length = 0;
-      undoStack.length = 0;
-      redoStack.length = 0;
+      undoStack.length = redoStack.length = 0;
       batchDepth = 0;
       batchState = null;
       return true;

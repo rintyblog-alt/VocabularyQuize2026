@@ -660,3 +660,100 @@ CapCut/Figma/Linear 級の作り込み。**凝る所はここ**（最初に目�
 6. **デバッグの窓**
    `window.VQSTUDIO = { app, cfg, storage, auth, schema, failures, version }`。
    `failures` に「読み込めなかった部品」が入る（selftest.html と通し試験が見る）。
+
+---
+
+## 13. 実機の壁（調査で確定した事実。**推測で覆さない**）
+
+出典: 2026-09 の対応状況調査（CapCut モバイル / デスクトップ NLE / Web メディア API /
+自動編集アルゴリズム）。ここに書いた事は「対応していない」側に倒して設計する。
+
+### 13.1 書き出し
+- **iOS Safari に `canvas.captureStream()` が無い**（iPhone/iPad の全ブラウザ = WebKit）。
+  → `mode:"realtime"`（MediaRecorder）は **iOS では使えない**。実行時に
+  `typeof canvas.captureStream === "function"` と、取れた track の readyState を見て判定する
+  （UA で判定しない）。iOS の書き出しは **WebCodecs + 自前 muxer のみ**。
+- `MediaRecorder` は仕様上 **実時間のみ**・実時計でタイムスタンプを打つ。
+  `captureStream(0)` + `requestFrame()` でも直らない（Firefox は requestFrame 未実装）。
+  → realtime は「速いが近似」と画面に明記し、既定は `precise`。
+- `VideoEncoder` は Safari 16.4+、**`AudioEncoder` は Safari 26+**。
+  → 音は 3 段構え: ① AudioEncoder（mp4a.40.2 / opus）② `MediaStreamAudioDestinationNode`
+  ＋ MediaRecorder（DOM capture ではないので iOS 14.5+ で動く）③ 無音動画 + .wav 別ファイル。
+  v1 は ① と ③ を必ず持つ。
+- MP4 は `VideoEncoder` の `decoderConfig.description` を **そのまま avcC として書く**。
+  コーデック文字列は `isConfigSupported` で選ぶ（avc1.42001f / avc1.4d0034）。
+
+### 13.2 描画
+- **`ctx.filter` は Safari に無い**（フラグの噂も当てにしない）。判定は CSS 文字列の
+  受理ではなく **画素で試す**（赤で塗る → `filter:invert(1)` → drawImage → getImageData）。
+  → 色補正・効果は WebGL2 のシェーダが唯一の本道。2d は「劣化版」と申告する。
+- OffscreenCanvas + WebGL2 は Safari 17.0 以降（16.4〜16.6 は 2D のみ）。
+  Worker 内 WebGL は当てにしない。**合成はメインスレッド**に置く
+  （`<video>` は Worker に無いし、`texImage2D(videoEl)` の速い道を失う）。
+
+### 13.3 素材と seek
+- iOS は同時に生かせる `<video>` が少ない（数は公表されていない。メモリと
+  デコーダ次第）。→ プールは **iPhone 2 本 / デスクトップ 4 本**。溢れたら
+  `pause()` → `removeAttribute("src")` → `load()` → `revokeObjectURL()` まで必ずやる。
+  画面外の `<video>` を生かしたままにしない。超過分は静止フレームで代替。
+- 巨大 Blob の objectURL を `<video>.src` に入れると iOS が落ちることがある。
+  → 1080p 超の素材は取り込み時に 720p の代理（プロキシ）を作り、プレビューは代理を見る。
+- **フレーム正確な seek はこの手順ひとつに集約する**:
+  `currentTime = (frameIndex + 0.5) / assetFps` → `seeked` を待つ →
+  `requestVideoFrameCallback` を 1 回待つ →（無ければ rAF 2 回 + タイムアウト）。
+  `fastSeek()` は使わない。**量子化は素材の fps で**行う（`sourceIn` と `speed` を
+  通した後の素材時刻で丸める。プロジェクト fps で丸めると 60fps 素材や速度変更で外れる）。
+  `+0.5` の中心寄せは **外へ漏らさない**（書き出しの timestamp は `frameStart(i,fps)=i/fps`）。
+  タイムアウトは書き出し時 1000ms 以上（4K HEVC の iPhone は 400〜1200ms かかる）。
+- `requestVideoFrameCallback` は **タブが隠れていると来ない**。書き出し中は
+  可視性を見て、隠れたら seek 待ちの方式を切り替える（または警告を出す）。
+
+### 13.4 モバイルの操作
+- **`navigator.vibrate` は iOS に無い**。→ 触覚は 1 つの関数に集約し、必ず
+  60ms の視覚の合図（吸着線の点滅・枠の明滅）を一緒に出す。振動は「在れば嬉しい」扱い。
+- `user-scalable=no` は iOS では無視される。ページのピンチズームを止める唯一の手は
+  `touch-action:none` + 非 passive な `touchmove` の preventDefault +
+  **WebKit 固有の `gesturestart` / `gesturechange` / `gestureend` の preventDefault**。
+- safe-area と flex の罠: `flex: 0 0 44px` に `padding-top: env(safe-area-inset-top)` を
+  足すと **中身の高さが 44 − 47 = 負**になり、ボタンがステータスバーに潜って押せない。
+  正しくは `flex: 0 0 auto; height: calc(44px + env(safe-area-inset-top))`。
+  下段タブも `min-height: calc(76px + env(safe-area-inset-bottom))`。
+- ホーム画面に追加した web アプリは **Safari とは別の保存領域**（WebKit bug 181849）。
+  「入れれば消えない」と案内してはいけない（そう案内すると逆にデータを失わせる）。
+  Wake Lock もホーム画面アプリでは効かない。
+- 全画面は iPhone では `requestFullscreen` が無い（iPad のみ）。
+  → 疑似全画面（`position:fixed` + `100dvh` + 周りを隠す）を用意する。
+
+### 13.5 タイムライン（CapCut 準拠の要点）
+- **再生ヘッドは画面中央に固定し、盤面が流れる**。
+  `currentSec = scrollX / pxPerSec`、先頭と末尾に `viewportW/2` の余白。
+  スクロールは `overflow-x` ではなく `transform: translate3d()` の自前実装
+  ＋自前慣性（`v *= 0.94`、停止 0.05px/frame、両端は超過 × 0.35 のゴム）。
+  iOS の慣性スクロールと programmatic scrollLeft は喧嘩するのでこれが必須。
+- ジェスチャは **1 つの調停役**が持つ: touchstart で 320ms のタイマー →
+  8px 超の移動でタイマー破棄＝スクロール確定 → 2 本目の指を見たら即ズーム。
+  一度決まったら他へ移らない。
+- ピンチの `pxPerSec` は 8〜480、段は [fit, 10, 20, 40, 80, 160, 320, 480]。
+  中心は常に画面中央（＝再生ヘッド）なので指の中点追跡は不要。
+  `fitPxPerSec = (viewportW - 2*edgeInset) / projectSec`（`max(8, …)` は誤り）。
+- トリムハンドルは見た目 14px・当たり判定 44px・反対端は固定・掴んだ端が中央へ
+  吸い付くよう自動スクロール・ドラッグ中は尺のふきだし。
+  **モデルの下限は `MIN_CLIP=0.04`、UI の下限は `MIN_TRIM_UI=0.1`**（UI ≧ モデル）。
+- 長押し 320ms で並べ替え（発火時に合図、`scale(1.04)`、他クリップは 180ms で隙間）。
+- 削除は確認ダイアログではなく **取消つきトースト 4 秒**。
+- フィルムストリップは 0.5 秒間隔の粗いスプライトを 1 回だけ作り、
+  ズームは `background-position` のタイル表示で済ます（DPR は最大 2、
+  1 枚のアトラスに入る枚数を device px で数える）。
+- サブトラックは高さ 32px、3 行を超えたらタイムライン内で縦スクロール
+  （メイントラックは `position:sticky`）。
+
+### 13.6 音と解析
+- 編集用の音は `decodeAudioData` + `AudioBufferSourceNode`（`MediaElementSource` は使わない）。
+  `AudioContext` は 1 つ、最初のユーザー操作で `resume()`。
+  **音が鳴っている間は `AudioContext.currentTime` が主時計**、完全に無音のときだけ
+  `performance.now()`。
+- 書き出しの音は `OfflineAudioContext` で、**再生と同じ組み立て関数**を使い回す
+  （別実装にすると必ずずれる）。
+- `decodeAudioData` はメインスレッドを数百 ms 止める。波形のピークは
+  1 秒 200 個の min/max だけ残して元データは捨てる。
+- 逆再生はブラウザでは安くない。**3 秒以下はフレーム抽出方式**、それ以上は出さない。

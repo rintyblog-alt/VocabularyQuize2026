@@ -235,10 +235,12 @@ export function createTimelineInteraction(arg) {
       const cEl = el && el.closest ? el.closest("[data-clip-id]") : null;
       const tEl = el && el.closest ? el.closest("[data-track-id]") : null;
       if (cEl) h = { kind: "clip", clipId: cEl.getAttribute("data-clip-id"), trackId: tEl && tEl.getAttribute("data-track-id"), el: cEl };
-      else {
-        if (!touch) for (const t of trackRects()) if (Math.abs(y - t.bottom) <= GAP_MOUSE) return { kind: "trackGap", trackId: t.trackId, el: t.el };
-        h = { kind: "empty", trackId: tEl && tEl.getAttribute("data-track-id") };
-      }
+      else h = { kind: "empty", trackId: tEl && tEl.getAttribute("data-track-id") };
+    }
+    // 空白なら、トラックの下端に近いか（= 高さを変える境界か）を見る。
+    // クリップに当たっているときは見ない（クリップの選択を奪わないため）
+    if (!touch && h.kind === "empty") {
+      for (const t of trackRects()) if (Math.abs(y - t.bottom) <= GAP_MOUSE) return { kind: "trackGap", trackId: t.trackId, el: t.el };
     }
     if (h.kind === "clip") {
       const ce = h.el || clipEl(h.clipId);
@@ -326,6 +328,34 @@ export function createTimelineInteraction(arg) {
   }
   const selected = () => ((store.selection && store.selection.clipIds) || []).slice();
   const select = (ids, o) => { if (has(store, "select")) store.select(ids, o || {}); };
+  let anchorId = "";
+  /**
+   * クリップを選ぶ。Shift = 同じトラックの範囲・Ctrl/Cmd = 付け外し・素 = 単独。
+   * 範囲の基準（anchor）は「最後に単独で選んだ物」。
+   */
+  function applySelect(clipId, trackId) {
+    const g = findClip(clipId);
+    if (!g) return;
+    if (G.shift && anchorId && anchorId !== clipId) {
+      const f = findClip(anchorId);
+      if (f && f.track.id === g.track.id) {
+        select(clipsInTimeRange({
+          project: P(), trackIds: [g.track.id],
+          t0: Math.min(f.clip.start, g.clip.start), t1: Math.max(clipEnd(f.clip), clipEnd(g.clip))
+        }), { additive: false, trackId: g.track.id });
+        return;
+      }
+    }
+    const sel = selected();
+    if (G.ctrl) {
+      const next = sel.indexOf(clipId) >= 0 ? sel.filter((x) => x !== clipId) : sel.concat([clipId]);
+      select(next, { additive: false, trackId });
+      anchorId = clipId;
+      return;
+    }
+    select([clipId], { trackId });
+    anchorId = clipId;
+  }
 
   /* ══ 5. フレーム更新（rAF・1 フレーム 1 回） ═════════════════ */
   const looping = () => LOOPING.indexOf(G.mode) >= 0;
@@ -495,6 +525,10 @@ export function createTimelineInteraction(arg) {
   function stopInertia() { if (G.inertia) { cancelAnimationFrame(G.inertia); G.inertia = 0; } }
 
   /* ── 5.8 モバイル: 2 本指のピンチ（中心は 2 指の中点） ───────── */
+  /** 2 指の間隔（下限 24px。0 に近いと倍率が暴れる） */
+  function fingerGap(two) {
+    return Math.max(24, Math.hypot(two[0].x - two[1].x, two[0].y - two[1].y));
+  }
   function twoTouch() {
     const a = [];
     for (const p of pointers.values()) if (p.touch) a.push(p);
@@ -503,7 +537,7 @@ export function createTimelineInteraction(arg) {
   function doPinch() {
     const two = twoTouch();
     if (!two) return;
-    const d = Math.abs(two[0].x - two[1].x) || 1;
+    const d = fingerGap(two);
     const mid = (two[0].x + two[1].x) / 2;
     const pps = clamp(G.pinch.pps0 * (d / G.pinch.d0), PPS_MIN, PPS_MAX);
     setPps(pps);
@@ -594,7 +628,7 @@ export function createTimelineInteraction(arg) {
       abort(true);
       const mid = (two[0].x + two[1].x) / 2;
       G.mode = "pinch"; G.touch = true;
-      G.pinch = { d0: Math.abs(two[0].x - two[1].x) || 1, pps0: pxPerSec(), t0: timeAt(mid) };
+      G.pinch = { d0: fingerGap(two), pps0: pxPerSec(), t0: timeAt(mid) };
       kick();
       return;
     }
@@ -628,7 +662,7 @@ export function createTimelineInteraction(arg) {
         G.mode = "pending";
         G.timer = setTimeout(() => {
           if (G.mode !== "pending") return;
-          if (!isSel) select([h.clipId], { trackId: h.trackId });
+          if (!isSel) applySelect(h.clipId, h.trackId);
           G.mode = "move"; G.lifted = true;
           G.items = pickItems(h.clipId);
           beginSnap(G.items.map((i) => i.clipId));
@@ -640,7 +674,7 @@ export function createTimelineInteraction(arg) {
       }
       /* マウス: 端 → トリム（Alt でロール）/ Ctrl → スリップ / 他 → 移動 */
       if (h.edge) { startTrim(h, G.alt); if (e.cancelable) e.preventDefault(); return; }
-      if (!isSel) select([h.clipId], { additive: G.shift || G.ctrl, trackId: h.trackId });
+      if (!isSel && !G.shift && !G.ctrl) applySelect(h.clipId, h.trackId);
       G.items = pickItems(h.clipId);
       G.mode = G.ctrl ? "slipPending" : "movePending";
       return;
@@ -712,13 +746,9 @@ export function createTimelineInteraction(arg) {
       else if (mode === "pan") { if (Math.abs(G.vel) > 1.2) startInertia(); }
       else if (!moved && (mode === "pending" || mode === "movePending" || mode === "slipPending")) {
         /* 動かなかった = 叩いた/押した → 選択（Ctrl/Cmd で付け外し・Shift で追加） */
-        if (hit && hit.clipId) {
-          const sel = selected(), additive = G.shift || G.ctrl;
-          if (additive && sel.indexOf(hit.clipId) >= 0) select(sel.filter((x) => x !== hit.clipId), { additive: false });
-          else select([hit.clipId], { additive, trackId: hit.trackId });
-        }
+        if (hit && hit.clipId) applySelect(hit.clipId, hit.trackId);
       } else if (!moved && (mode === "panPending" || mode === "marqueePending")) {
-        select([], { additive: false });                             // 空白を叩く → 選択解除
+        select([], { additive: false }); anchorId = "";              // 空白を叩く → 選択解除
         if (!G.touch) seek(snapFrame(timeAt(G.x), fps()), false);
       }
     } finally { finish(); }

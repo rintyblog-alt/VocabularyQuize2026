@@ -75,20 +75,10 @@ const UNKNOWN_SIZE = new Uint8Array([0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0
 
 const te = typeof TextEncoder === "function" ? new TextEncoder() : null;
 
-/** 文字列を UTF-8 に。TextEncoder が無い古い WebView でも動くようにする */
+/** 文字列を UTF-8 に（DocType / CodecID / MuxingApp 用。ASCII しか入れない） */
 export function utf8(s) {
-  const str = String(s);
-  if (te) return te.encode(str);
-  const out = [];
-  for (let i = 0; i < str.length; i++) {
-    let c = str.codePointAt(i);
-    if (c > 0xffff) i++;
-    if (c < 0x80) out.push(c);
-    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
-    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-  }
-  return new Uint8Array(out);
+  if (!te) throw new Error("utf8: この環境に TextEncoder が無いので webm を組めません");
+  return te.encode(String(s));
 }
 
 /**
@@ -223,19 +213,14 @@ function floatEl(id, v, n) { return ebmlElement(id, writeFloat(v, n)); }
 /* ── 2. EBML の id 表（Matroska の仕様どおり） ────────────────── */
 
 export const EBML_IDS = Object.freeze({
-  EBML: 0x1a45dfa3,
-  EBMLVersion: 0x4286, EBMLReadVersion: 0x42f7,
+  EBML: 0x1a45dfa3, EBMLVersion: 0x4286, EBMLReadVersion: 0x42f7,
   EBMLMaxIDLength: 0x42f2, EBMLMaxSizeLength: 0x42f3,
   DocType: 0x4282, DocTypeVersion: 0x4287, DocTypeReadVersion: 0x4285,
   Void: 0xec, CRC32: 0xbf,
-
   Segment: 0x18538067,
   SeekHead: 0x114d9b74, Seek: 0x4dbb, SeekID: 0x53ab, SeekPosition: 0x53ac,
-
-  Info: 0x1549a966,
-  TimecodeScale: 0x2ad7b1, Duration: 0x4489,
+  Info: 0x1549a966, TimecodeScale: 0x2ad7b1, Duration: 0x4489,
   MuxingApp: 0x4d80, WritingApp: 0x5741, DateUTC: 0x4461,
-
   Tracks: 0x1654ae6b, TrackEntry: 0xae,
   TrackNumber: 0xd7, TrackUID: 0x73c5, TrackType: 0x83,
   FlagEnabled: 0xb9, FlagDefault: 0x88, FlagForced: 0x55aa, FlagLacing: 0x9c,
@@ -244,10 +229,8 @@ export const EBML_IDS = Object.freeze({
   Video: 0xe0, PixelWidth: 0xb0, PixelHeight: 0xba,
   DisplayWidth: 0x54b0, DisplayHeight: 0x54ba,
   Audio: 0xe1, SamplingFrequency: 0xb5, Channels: 0x9f, BitDepth: 0x6264,
-
-  Cluster: 0x1f43b675, Timecode: 0xe7, SimpleBlock: 0xa3, BlockGroup: 0xa0,
-  Block: 0xa1, BlockDuration: 0x9b,
-
+  Cluster: 0x1f43b675, Timecode: 0xe7, SimpleBlock: 0xa3,
+  BlockGroup: 0xa0, Block: 0xa1, BlockDuration: 0x9b,
   Cues: 0x1c53bb6b, CuePoint: 0xbb, CueTime: 0xb3, CueTrackPositions: 0xb7,
   CueTrack: 0xf7, CueClusterPosition: 0xf1, CueRelativePosition: 0xf0,
 });
@@ -258,10 +241,8 @@ export const EBML_IDS = Object.freeze({
 export function buildEBMLHeader(opts) {
   const o = opts || {};
   return ebmlElement(EBML_IDS.EBML, [
-    uintEl(EBML_IDS.EBMLVersion, 1),
-    uintEl(EBML_IDS.EBMLReadVersion, 1),
-    uintEl(EBML_IDS.EBMLMaxIDLength, 4),
-    uintEl(EBML_IDS.EBMLMaxSizeLength, 8),
+    uintEl(EBML_IDS.EBMLVersion, 1), uintEl(EBML_IDS.EBMLReadVersion, 1),
+    uintEl(EBML_IDS.EBMLMaxIDLength, 4), uintEl(EBML_IDS.EBMLMaxSizeLength, 8),
     strEl(EBML_IDS.DocType, o.docType || "webm"),
     uintEl(EBML_IDS.DocTypeVersion, int(o.docTypeVersion, 2)),
     uintEl(EBML_IDS.DocTypeReadVersion, int(o.docTypeReadVersion, 2)),
@@ -316,6 +297,16 @@ function preSkipOf(head, fallback) {
   return new DataView(head.buffer, head.byteOffset, head.byteLength).getUint16(10, true);
 }
 
+/** どのトラックにも同じに書く所（lacing は使わないので 0 で固定） */
+function trackCommon(n, uid, type, language) {
+  return [
+    uintEl(EBML_IDS.TrackNumber, n), uintEl(EBML_IDS.TrackUID, uid),
+    uintEl(EBML_IDS.TrackType, type), uintEl(EBML_IDS.FlagEnabled, 1),
+    uintEl(EBML_IDS.FlagDefault, 1), uintEl(EBML_IDS.FlagLacing, 0),
+    strEl(EBML_IDS.Language, language || "und"),
+  ];
+}
+
 /** 映像の TrackEntry */
 function videoTrackEntry(v) {
   const n = int(v.trackNumber, VIDEO_TRACK);
@@ -323,20 +314,13 @@ function videoTrackEntry(v) {
   if (!(w > 0) || !(h > 0)) throw new RangeError(`buildTracks: 映像の width/height が要ります（${w}x${h}）`);
   const fps = num(v.fps, 0);
   const parts = [
-    uintEl(EBML_IDS.TrackNumber, n),
-    uintEl(EBML_IDS.TrackUID, int(v.trackUID, n)),
-    uintEl(EBML_IDS.TrackType, 1),
-    uintEl(EBML_IDS.FlagEnabled, 1),
-    uintEl(EBML_IDS.FlagDefault, 1),
-    uintEl(EBML_IDS.FlagLacing, 0),
-    strEl(EBML_IDS.Language, v.language || "und"),
+    ...trackCommon(n, int(v.trackUID, n), 1, v.language),
     strEl(EBML_IDS.CodecID, v.codec),
   ];
   if (v.codecPrivate && v.codecPrivate.length) parts.push(ebmlElement(EBML_IDS.CodecPrivate, v.codecPrivate));
   if (fps > 0) parts.push(uintEl(EBML_IDS.DefaultDuration, Math.round(1e9 / fps)));
   parts.push(ebmlElement(EBML_IDS.Video, [
-    uintEl(EBML_IDS.PixelWidth, w),
-    uintEl(EBML_IDS.PixelHeight, h),
+    uintEl(EBML_IDS.PixelWidth, w), uintEl(EBML_IDS.PixelHeight, h),
     uintEl(EBML_IDS.DisplayWidth, int(v.displayWidth, w)),
     uintEl(EBML_IDS.DisplayHeight, int(v.displayHeight, h)),
   ]));
@@ -357,13 +341,7 @@ function audioTrackEntry(a) {
   }
   const priv = given || buildOpusHead({ channels: ch, sampleRate: rate, preSkip: int(a.preSkip, OPUS_PRE_SKIP) });
   const parts = [
-    uintEl(EBML_IDS.TrackNumber, n),
-    uintEl(EBML_IDS.TrackUID, int(a.trackUID, n)),
-    uintEl(EBML_IDS.TrackType, 2),
-    uintEl(EBML_IDS.FlagEnabled, 1),
-    uintEl(EBML_IDS.FlagDefault, 1),
-    uintEl(EBML_IDS.FlagLacing, 0),
-    strEl(EBML_IDS.Language, a.language || "und"),
+    ...trackCommon(n, int(a.trackUID, n), 2, a.language),
     strEl(EBML_IDS.CodecID, a.codec),
     ebmlElement(EBML_IDS.CodecPrivate, priv),
   ];
@@ -372,10 +350,7 @@ function audioTrackEntry(a) {
     parts.push(uintEl(EBML_IDS.CodecDelay, Math.round((skip / rate) * 1e9)));
     parts.push(uintEl(EBML_IDS.SeekPreRoll, OPUS_SEEK_PRE_ROLL));
   }
-  parts.push(ebmlElement(EBML_IDS.Audio, [
-    floatEl(EBML_IDS.SamplingFrequency, rate, 8),
-    uintEl(EBML_IDS.Channels, ch),
-  ]));
+  parts.push(ebmlElement(EBML_IDS.Audio, [floatEl(EBML_IDS.SamplingFrequency, rate, 8), uintEl(EBML_IDS.Channels, ch)]));
   return ebmlElement(EBML_IDS.TrackEntry, parts);
 }
 
@@ -524,9 +499,8 @@ function normalizeOptions(o) {
   if (!vsrc && !asrc) throw new Error("createWebMMuxer: video か audio のどちらかは要ります");
 
   const video = vsrc ? {
-    codec: videoCodecId(vsrc.codec),
+    codec: videoCodecId(vsrc.codec), fps: num(vsrc.fps, 30),
     width: int(vsrc.width, 0), height: int(vsrc.height, 0),
-    fps: num(vsrc.fps, 30),
     displayWidth: int(vsrc.displayWidth, int(vsrc.width, 0)),
     displayHeight: int(vsrc.displayHeight, int(vsrc.height, 0)),
     codecPrivate: vsrc.codecPrivate ? toBytes(vsrc.codecPrivate).slice() : null,
@@ -538,8 +512,7 @@ function normalizeOptions(o) {
   if (video && !(video.fps > 0)) { warn("mux/webm", "fps が変なので 30 とみなします", vsrc.fps); video.fps = 30; }
 
   const audio = asrc ? {
-    codec: audioCodecId(asrc.codec),
-    sampleRate: num(asrc.sampleRate, 48000),
+    codec: audioCodecId(asrc.codec), sampleRate: num(asrc.sampleRate, 48000),
     channels: int(firstNum(asrc.channels, asrc.numberOfChannels, 2), 2),
     preSkip: int(asrc.preSkip, OPUS_PRE_SKIP),
     codecPrivate: asrc.codecPrivate ? toBytes(asrc.codecPrivate).slice() : null,
@@ -603,18 +576,16 @@ export function createWebMMuxer(options) {
   const cfg = normalizeOptions(options);
   const cutTrack = cfg.video ? VIDEO_TRACK : AUDIO_TRACK;
   const st = {
-    phase: "open",          // open → finalized → (disposed)
-    frames: [],             // 溜める方式で持つ全 frame
-    pending: [],            // 逐次方式でまだ Cluster に出来ていない frame
-    emitted: [],            // 逐次方式で流したバイト列（retain の時だけ）
-    cues: [],               // {timeMs, clusterPos, relPos, track}
-    written: 0,             // 逐次方式で流した総バイト数
-    segmentDataStart: 0,    // Segment の中身が始まる絶対位置
-    headWritten: false,
-    newestMs: 0,
-    baseUs: null,
+    phase: "open",        // open → finalized → (disposed)
+    frames: [],           // 溜める方式で持つ全 frame
+    pending: [],          // 逐次方式でまだ Cluster に出来ていない frame
+    emitted: [],          // 逐次方式で流したバイト列（retain の時だけ持つ）
+    cues: [],             // {timeMs, clusterPos, relPos, track}
+    written: 0,           // 逐次方式で流した総バイト数
+    segmentDataStart: 0,  // Segment の中身が始まる絶対位置
+    headWritten: false, newestMs: 0, baseUs: null,
     seq: 0, vCount: 0, aCount: 0,
-    file: null,             // finalize 済みのバイト列
+    file: null,           // finalize 済みのバイト列
   };
 
   /* --- 受け取り --- */
@@ -697,12 +668,6 @@ export function createWebMMuxer(options) {
     if (cfg.onData) cfg.onData(bytes);
   }
 
-  function trackOpts() {
-    return {
-      video: cfg.video, audio: cfg.audio,
-    };
-  }
-
   /** EBML Header + 大きさ不明の Segment + Info（Duration 無し）+ Tracks */
   function writeHead() {
     if (st.headWritten) return;
@@ -713,7 +678,7 @@ export function createWebMMuxer(options) {
     emit(concatBytes([
       header, segHead,
       buildSegmentInfo({ timecodeScale: cfg.timecodeScale, duration: null }),
-      buildTracks(trackOpts()),
+      buildTracks({ video: cfg.video, audio: cfg.audio }),
     ]));
   }
 
@@ -779,7 +744,7 @@ export function createWebMMuxer(options) {
       timecodeScale: cfg.timecodeScale,
       duration: withDuration ? msFromUs(endUs, cfg.timecodeScale) : null,
     });
-    const tracks = buildTracks(trackOpts());
+    const tracks = buildTracks({ video: cfg.video, audio: cfg.audio });
 
     // 位置（Segment の中身の先頭を 0 とする）を数える。
     // SeekHead は SeekPosition を 8 バイト固定にしているので、

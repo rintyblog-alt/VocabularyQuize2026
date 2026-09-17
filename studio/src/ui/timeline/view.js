@@ -244,6 +244,13 @@ export function createTimelineView(deps) {
   let dead = false;
   let mediaTimer = 0;
   let emptyEl = null;
+  /** render 1 回ぶんの素材索引（assetId → asset）。assetById の線形探索を避ける */
+  let assetIndex = new Map();
+  function assetOf(id) {
+    if (!id) return null;
+    const a = assetIndex.get(id);
+    return a !== undefined ? a : assetById(store.project || {}, id);
+  }
 
   /* ── 重ねる層を用意（ghost と ルーラー canvas はこちらで作る） ───── */
   const ghostLayer = div("vqs-tl-ghosts");
@@ -259,6 +266,16 @@ export function createTimelineView(deps) {
     els.ruler.appendChild(rulerCanvas);
   }
   els.tracks.style.position = "relative";
+  /* #tlScroll は「中身より狭い窓」でなければならない。CSS がまだ無い / overflow を
+     visible のままにしていると scrollLeft が効かず、盤面が動かない。
+     ここは見た目ではなく仕組みなので、足りなければ最小限だけ補う。 */
+  try {
+    const cs = typeof getComputedStyle === "function" ? getComputedStyle(els.scroll) : null;
+    if (cs) {
+      if (cs.position === "static") els.scroll.style.position = "relative";
+      if (cs.overflowX === "visible") { els.scroll.style.overflowX = "auto"; els.scroll.style.overflowY = "auto"; }
+    } else { els.scroll.style.position = els.scroll.style.position || "relative"; }
+  } catch (_e) { /* 読めない器では触らない */ }
   if (els.playhead) { els.playhead.style.position = "absolute"; els.playhead.style.top = "0"; els.playhead.style.zIndex = "8"; }
   if (els.snapLine) { els.snapLine.style.position = "absolute"; els.snapLine.style.top = "0"; els.snapLine.style.zIndex = "7"; }
   if (els.marquee) { els.marquee.style.position = "absolute"; els.marquee.style.zIndex = "9"; }
@@ -306,6 +323,10 @@ export function createTimelineView(deps) {
   function layout() {
     const project = store.project || {};
     const list = Array.isArray(project.tracks) ? project.tracks : [];
+    assetIndex = new Map();
+    for (const a of (Array.isArray(project.assets) ? project.assets : [])) {
+      if (a && a.id) assetIndex.set(a.id, a);
+    }
     rows = [];
     let y = 0;
     for (let i = list.length - 1; i >= 0; i--) {
@@ -509,11 +530,15 @@ export function createTimelineView(deps) {
     const fadeIn = finite(clip.audioFade && clip.audioFade.in, 0);
     const fadeOut = finite(clip.audioFade && clip.audioFade.out, 0);
     const tIn = clip.transitionIn, tOut = clip.transitionOut;
+    const asset = clip.assetId ? assetOf(clip.assetId) : null;
+    const name = clipName(clip, asset);
+    const selKey = (store.selection && store.selection.keyframe) || null;
+    const keySel = selKey && selKey.clipId === clip.id ? String(selKey.path) + "#" + selKey.index : "";
     const sig = [
       Math.round(x * 10), Math.round(w * 10), Math.round(row.y), row.h, row.id,
       clip.kind, selected ? 1 : 0, lite ? 1 : 0, tiny ? 1 : 0,
       clip.locked ? 1 : 0, clip.hidden ? 1 : 0, clip.groupId || "", clip.label || "",
-      clipName(clip, null).length, badges.map((b) => b[1]).join(","),
+      name, keySel, badges.map((b) => b[1]).join(","),
       keys.length ? keys.map((k) => Math.round(k.t * 100)).join(".") : "",
       tIn ? tIn.type + Math.round(finite(tIn.duration, 0) * 100) : "",
       tOut ? tOut.type + Math.round(finite(tOut.duration, 0) * 100) : "",
@@ -523,11 +548,10 @@ export function createTimelineView(deps) {
     ].join("|");
 
     rec.x = x; rec.w = w; rec.rowId = row.id; rec.lite = lite; rec.h = row.h;
+    rec.clip = clip;
+    rec.asset = asset;
     if (rec.sig === sig) return rec;
     rec.sig = sig;
-
-    const project = store.project || {};
-    const asset = clip.assetId ? assetById(project, clip.assetId) : null;
 
     /* 位置と大きさ（transform だけで動かす） */
     p.el.style.transform = "translateX(" + px(x) + ")";
@@ -538,7 +562,7 @@ export function createTimelineView(deps) {
     p.el.dataset.kind = clip.kind || "video";
     if (clip.label) p.el.style.setProperty("--vqs-clip-label", String(clip.label));
     else p.el.style.removeProperty("--vqs-clip-label");
-    p.el.setAttribute("aria-label", clipName(clip, asset));
+    p.el.setAttribute("aria-label", name);
 
     /* 掴み代（モバイルは太く）と波形の帯の高さ */
     const hw = Math.min(handleW(), Math.max(4, w / 3));
@@ -547,8 +571,7 @@ export function createTimelineView(deps) {
     p.wave.style.height = px(waveBandH(clip, row.h));
 
     /* 名前と印 */
-    const nm = clipName(clip, asset);
-    if (p.name.textContent !== nm) p.name.textContent = nm;
+    if (p.name.textContent !== name) p.name.textContent = name;
     const bsig = badges.map((b) => b[1]).join(",");
     if (p.badgeSig !== bsig) {
       p.badgeSig = bsig;
@@ -594,9 +617,8 @@ export function createTimelineView(deps) {
     if (keys.length) {
       const host = ensurePart(p, "keys", "vqs-clip__keys");
       host.textContent = "";
-      const sel = (store.selection && store.selection.keyframe) || null;
       for (const k of keys) {
-        const d = div("vqs-clip__key" + (sel && sel.clipId === clip.id && sel.path === k.path && sel.index === k.index ? " vqs-clip__key--sel" : ""));
+        const d = div("vqs-clip__key" + (selKey && selKey.clipId === clip.id && selKey.path === k.path && selKey.index === k.index ? " vqs-clip__key--sel" : ""));
         d.style.cssText = "position:absolute;left:-4px;bottom:3px;width:8px;height:8px";
         /* 45 度回して菱形にする（CSS が無くても菱形に見えるように） */
         d.style.transform = "translateX(" + px(clamp(k.t * zoom, 0, w)) + ") rotate(45deg)";
@@ -607,6 +629,7 @@ export function createTimelineView(deps) {
       rec.keys = keys;
     } else { dropPart(p, "keys"); rec.keys = null; }
 
+
     /* 中身（帯・波形）は仮想化して別便で入れる */
     if (lite) {
       p.media.textContent = "";
@@ -614,8 +637,6 @@ export function createTimelineView(deps) {
       rec.mediaKey = "";
       rec.waveKey = "";
     }
-    rec.clip = clip;
-    rec.asset = asset;
     return rec;
   }
 
@@ -827,11 +848,25 @@ export function createTimelineView(deps) {
     if (tc !== tcText) { tcText = tc; els.playhead.dataset.tc = tc; }
   }
 
-  function setSnapLine(x) {
+  /**
+   * 吸着線を出す。
+   * @param {number|null} x 内容座標の px（契約書の形）
+   * @param {Object|{unit:"time"}} [hit] 第 2 引数が在る時は x を **秒** と読む
+   *   （interact.js は `setSnapLine(t, hit)` と秒で呼ぶ。px と秒を間違えると
+   *    線が 1/80 の位置に出て「壊れている」ように見えるので、両方飲む）
+   */
+  function setSnapLine(x, hit) {
     if (!els.snapLine) return;
-    if (x == null || !Number.isFinite(Number(x))) { els.snapLine.classList.add("hidden"); return; }
-    els.snapLine.style.transform = "translateX(" + px(Number(x)) + ")";
+    if (x == null || !Number.isFinite(Number(x))) {
+      els.snapLine.classList.add("hidden");
+      els.snapLine.removeAttribute("data-snap");
+      return;
+    }
+    const asTime = hit !== undefined && hit !== null;
+    const cx = asTime ? timeToX(Number(x)) : Number(x);
+    els.snapLine.style.transform = "translateX(" + px(cx) + ")";
     els.snapLine.classList.remove("hidden");
+    if (hit && hit.kind) els.snapLine.dataset.snap = String(hit.kind);
   }
 
   function setMarquee(rect) {
@@ -845,18 +880,35 @@ export function createTimelineView(deps) {
     els.marquee.classList.remove("hidden");
   }
 
+  /**
+   * ドラッグ中の影。次の 3 通りを飲む（呼ぶ側を直さなくて済むように）:
+   *   setGhost({ trackId, start, duration, label })            … 1 個
+   *   setGhost([{…}, {…}])                                      … 複数
+   *   setGhost({ mode, valid, dup, items:[{clipId,trackId,start,duration,dy}] })
+   *                                                             … interact.js の形
+   */
   function setGhost(ghost) {
     ghostLayer.textContent = "";
     if (!ghost) return;
-    const list = Array.isArray(ghost) ? ghost : (Array.isArray(ghost.clips) ? ghost.clips : [ghost]);
+    const wrap = !Array.isArray(ghost) ? ghost : null;
+    const list = Array.isArray(ghost) ? ghost
+      : (Array.isArray(ghost.items) ? ghost.items : (Array.isArray(ghost.clips) ? ghost.clips : [ghost]));
+    let mod = "";
+    if (wrap) {
+      if (wrap.mode) mod += " vqs-tl-ghost--" + String(wrap.mode).replace(/[^a-z0-9-]/gi, "");
+      if (wrap.valid === false) mod += " vqs-tl-ghost--invalid";
+      if (wrap.dup) mod += " vqs-tl-ghost--dup";
+      if (wrap.lifted) mod += " vqs-tl-ghost--lifted";
+    }
     for (const g of list) {
       if (!g) continue;
       const row = g.trackId ? rowById(g.trackId) : null;
       const x = Number.isFinite(Number(g.x)) ? Number(g.x) : timeToX(finite(g.start, 0));
       const w = Number.isFinite(Number(g.w)) ? Number(g.w) : Math.max(2, finite(g.duration, 0) * zoom);
-      const y = row ? row.y : Math.max(0, finite(g.y, 0) - rulerH());
+      const y = (row ? row.y : Math.max(0, finite(g.y, 0) - rulerH())) + finite(g.dy, 0);
       const h = row ? row.h : finite(g.h, mobile ? ROW_H_MOBILE : ROW_H);
-      const e = div("vqs-tl-ghost" + (g.invalid ? " vqs-tl-ghost--invalid" : ""));
+      const e = div("vqs-tl-ghost" + (g.invalid || g.valid === false ? " vqs-tl-ghost--invalid" : "") + mod);
+      if (g.clipId) e.dataset.ghostFor = String(g.clipId);
       e.style.cssText = "position:absolute;left:0;top:0;pointer-events:none";
       e.style.transform = "translate(" + px(x) + "," + px(y) + ")";
       e.style.width = px(w);
@@ -1026,8 +1078,9 @@ export function createTimelineView(deps) {
     }
     /* ③ トリムハンドル（掴める幅は見た目より広い） */
     const hw = Math.min(handleHit(), Math.max(4, w / 3));
-    if (cx - hit.x0 <= hw) return Object.assign(base, { kind: "handleL", handle: "L" });
-    if (hit.x1 - cx <= hw) return Object.assign(base, { kind: "handleR", handle: "R" });
+    /* handle / edge の両方を入れる（呼ぶ側の語彙が "L/R" と "in/out" で分かれている） */
+    if (cx - hit.x0 <= hw) return Object.assign(base, { kind: "handleL", handle: "L", edge: "in" });
+    if (hit.x1 - cx <= hw) return Object.assign(base, { kind: "handleR", handle: "R", edge: "out" });
     return Object.assign(base, { kind: "clip" });
   }
 
@@ -1080,6 +1133,7 @@ export function createTimelineView(deps) {
   function dispose() {
     dead = true;
     if (mediaTimer) { clearTimeout(mediaTimer); mediaTimer = 0; }
+    clearTimeout(firstTimer);
     els.scroll.removeEventListener("scroll", onScroll);
     if (typeof globalThis.removeEventListener === "function") globalThis.removeEventListener("resize", onResize);
     if (onScroll.cancel) onScroll.cancel();
@@ -1097,9 +1151,15 @@ export function createTimelineView(deps) {
     if (waves && waves.dispose) { try { waves.dispose(); } catch (_e) { /* noop */ } }
   }
 
-  /* 初回 */
+  /* ── 初回 ─────────────────────────────────────────────────────
+     app.js は `show("editor")` の **前に** 部品を起こす（= この時点では
+     #app が hidden で clientWidth が 0）。なので次のフレームともう一度
+     測り直す。ResizeObserver が在る端末では二重になるが、render は
+     差分更新なので 2 回目はほぼ何もしない。 */
   readViewport();
   render();
+  const firstTimer = setTimeout(() => { if (!dead) render(); }, 240);
+  onResize();
 
   return {
     render, renderTrack, invalidate,
@@ -1108,6 +1168,26 @@ export function createTimelineView(deps) {
     setPlayhead, setSnapLine, setMarquee, setGhost, hitTest, dispose,
     /* 追補（interact / heads / minimap が要るもの。契約の上位互換） */
     toContent, toClient,
+    /* interact.js が探す別名。ここに在れば向こうは控えの計算に落ちない */
+    get pxPerSec() { return zoom; },
+    get scrollX() { return vp.left; },
+    setPxPerSec: (v) => setZoom(v),
+    setScrollX: (x) => scrollTo(x),
+    centerOn: (t) => scrollToTime(t, { center: true }),
+    timeAtClientX: (clientX) => xToTime(toContent(clientX, 0).x),
+    /** 行の画面座標（interact.js の trackAtY / trackGap 判定用） */
+    trackRects: () => {
+      const r = els.scroll.getBoundingClientRect();
+      const base = r.top - vp.top + rulerH();
+      return rows.map((row) => {
+        const rr = rowRecs.get(row.id);
+        return {
+          trackId: row.id, kind: row.kind,
+          top: base + row.y, bottom: base + row.y + row.h, height: row.h,
+          left: r.left, right: r.right, el: rr ? rr.el : null
+        };
+      });
+    },
     get rulerHeight() { return rulerH(); },
     get handleWidth() { return handleW(); },
     get handleHitWidth() { return handleHit(); },

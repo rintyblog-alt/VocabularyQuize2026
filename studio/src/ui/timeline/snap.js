@@ -467,9 +467,11 @@ export function resolveTrim(a) {
 export function resolveSlip(a) {
   const o = a || {};
   const it = o.item || {};
-  const head = Math.max(0, finite(it.headroom, 0));
+  // resolveTrim と同じ約束: 余裕が分からないときは縛らない
+  const head = typeof it.headroom === "number" ? Math.max(0, it.headroom) : Infinity;
   const tail = typeof it.tailroom === "number" ? Math.max(0, it.tailroom) : Infinity;
-  return { delta: span(-finite(o.deltaTime, 0), -head, tail) };
+  // +0 は -0 を潰すため（-0 は JSON でも比較でも驚きの元）
+  return { delta: span(-finite(o.deltaTime, 0), -head, tail) + 0 };
 }
 
 /**

@@ -88,6 +88,11 @@ const MAX_DEPTH = 2;
 const PLACE_MODES = ["overwrite", "insert", "fit"];
 
 function str(v) { return typeof v === "string" ? v : (v === undefined || v === null ? "" : String(v)); }
+/** 数として読めなければ NaN（util.finite は fallback へ落とすので、
+    「来ていない／壊れている」を投げ分けたい所ではこちらを使う） */
+function numOrNaN(v) { const n = typeof v === "number" ? v : Number(v); return Number.isFinite(n) ? n : NaN; }
+/** -0 を外へ出さない（表示と === 0 の比較で厄介なだけ） */
+function nz(v) { return v === 0 ? 0 : v; }
 function plain(v) { return v && typeof v === "object" && !Array.isArray(v) ? v : null; }
 function arr(v) { return Array.isArray(v) ? v : []; }
 function bool(v, d) { return typeof v === "boolean" ? v : !!d; }
@@ -750,8 +755,8 @@ function placeClip(draft, track, clip, at, mode, c) {
  * in/out は ∫v dt で分け、ramp・keys・遷移も左右へ分配する。
  */
 function splitOne(draft, track, clip, t, c) {
-  const at = finite(t, NaN);
-  if (!Number.isFinite(at)) throw new OpError("分割する時刻 t が要ります");
+  const at = numOrNaN(t);
+  if (!Number.isFinite(at)) throw new OpError("分割する時刻 t が要ります（秒）");
   const l = at - finite(clip.start, 0);
   const D = Math.max(MIN_CLIP, finite(clip.duration, MIN_CLIP));
   if (!(l >= MIN_CLIP - EPS) || !(D - l >= MIN_CLIP - EPS)) {
@@ -831,7 +836,16 @@ function buildClip(draft, spec, c) {
   return cl;
 }
 
-/** kind ごとの次のトラック名（V1 V2 … / A1 … / OL1 … / ADJ1 …） */
+/**
+ * kind ごとの次のトラック名（V1 V2 … / A1 … / OL1 … / ADJ1 …）。
+ *
+ * CONTRACT-NOTE: 指示の文面では overlay の既定名が「T1」だったが、既に在る
+ *   schema.js の `defaultTrackName()` は overlay を "OL1" と付ける。ops だけ
+ *   "T1" にすると「schema が作ったトラック」と「ops が作ったトラック」で名前の
+ *   付け方が食い違い、番号（OL2 の次が T3）まで狂う。そこで **接頭は schema の
+ *   既定名から取り、番号だけ ops が付ける**形にした（表示名を変えたいときは
+ *   schema.defaultTrackName の 1 か所を直せば両方に効く）。
+ */
 function nextTrackName(draft, kind) {
   const base = str(newTrack(kind).name).replace(/\d+$/, "") || "V";
   const used = new Set(arr(draft.tracks).map((t) => str(t && t.name)));
@@ -1009,7 +1023,7 @@ const opClipTrim = op((draft, p, c) => {
       lo = Math.max(lo, floor - S);
     }
     const hi = D - MIN_CLIP;
-    l0 = hi < lo ? 0 : clamp(delta, lo, hi);
+    l0 = nz(hi < lo ? 0 : clamp(delta, nz(lo), hi));
   } else {
     let hi = D + room.tail;
     if (!ripple) {
@@ -1017,7 +1031,7 @@ const opClipTrim = op((draft, p, c) => {
       if (nx) hi = Math.min(hi, nx.start - S);
     }
     const lo = MIN_CLIP;
-    l1 = hi < lo ? D : clamp(D - delta, lo, hi);
+    l1 = nz(hi < lo ? D : clamp(D - delta, lo, hi));
   }
   sliceClip(clip, l0, l1, asset);
   if (edge === "start" && ripple) clip.start = S;
@@ -1027,7 +1041,7 @@ const opClipTrim = op((draft, p, c) => {
   return {
     clipId: clip.id, edge,
     start: clip.start, duration: clip.duration, in: clip.in, out: clip.out,
-    applied: edge === "start" ? l0 : D - l1
+    applied: nz(edge === "start" ? l0 : D - l1)
   };
 });
 
@@ -1040,7 +1054,7 @@ const opClipTrim = op((draft, p, c) => {
  */
 const opClipSplit = op((draft, p, c) => {
   const found = needClipAt(draft, p.clipId);
-  const right = splitOne(draft, found.track, found.clip, finite(p.t, NaN), c);
+  const right = splitOne(draft, found.track, found.clip, p.t, c);
   let linked = null;
   const partnerId = str(found.clip.linkedId);
   if (p.linked !== false && partnerId) {
@@ -1239,7 +1253,7 @@ const opClipRoll = op((draft, p, c) => {
 const opClipSetSpeed = op((draft, p, c) => {
   const found = needClipAt(draft, p.clipId);
   const clip = found.clip, track = found.track;
-  const raw = finite(p.speed, NaN);
+  const raw = numOrNaN(p.speed);
   if (!Number.isFinite(raw) || raw <= 0) throw new OpError("speed は 0 より大きい数です", { speed: p.speed });
   const speed = clamp(Math.abs(raw), 0.02, 100);
   const asset = assetFor(draft, clip, c);
@@ -1284,8 +1298,8 @@ const opClipSetSpeedRamp = op((draft, p, c) => {
   if (Array.isArray(p.ramp) && p.ramp.length) {
     const raw = p.ramp.map((k) => {
       const o = plain(k) || {};
-      const t = finite(o.t, NaN);
-      const v = finite(o.v, NaN);
+      const t = numOrNaN(o.t);
+      const v = numOrNaN(o.v);
       if (!Number.isFinite(t) || !Number.isFinite(v) || v <= 0) throw new OpError("ramp の要素は { t:秒, v:0 より大きい倍率 } です", { point: o });
       return { t: Math.max(0, t), v: clamp(Math.abs(v), 0.02, 100) };
     }).sort(byT);
@@ -1730,10 +1744,12 @@ function checkKeyPath(clip, path) {
 function checkKeyValue(v) {
   if (typeof v === "string") {
     const s = v.trim();
-    if (!/^#[0-9a-fA-F]{3,8}$/.test(s)) throw new OpError(`v は数値か #rrggbb です（来たのは ${s}）`, { v });
-    return s;
+    if (/^#[0-9a-fA-F]{3,8}$/.test(s)) return s;
+    const n = numOrNaN(s);
+    if (s && Number.isFinite(n)) return n;   // JSON 往復で "1.5" になった数は通す
+    throw new OpError(`v は数値か #rrggbb です（来たのは ${s}）`, { v });
   }
-  const n = finite(v, NaN);
+  const n = typeof v === "number" && Number.isFinite(v) ? v : NaN;
   if (!Number.isFinite(n)) throw new OpError("v は数値か #rrggbb です", { v });
   return n;
 }

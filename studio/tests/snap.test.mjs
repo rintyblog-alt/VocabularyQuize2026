@@ -17,8 +17,10 @@ import assert from "node:assert/strict";
 import {
   buildSnapPoints, snapTime, snapMove, nearestSnap, dedupeSnapPoints,
   visibleTimeRange, toleranceSeconds, snapPriority, snapLabel,
+  resolveMove, resolveTrim, resolveSlip, clipsInTimeRange,
   DEFAULT_TOLERANCE_PX, SNAP_KIND_PRIORITY
 } from "../src/ui/timeline/snap.js";
+import { MIN_CLIP } from "../src/core/schema.js";
 
 /** 試験用の最小 Project（clip は tr1 に 0-2 秒 と 5-8 秒） */
 function proj(over) {
@@ -267,4 +269,141 @@ test("buildSnapPoints: 画面外の候補は落ちる", () => {
   const view = { pxPerSec: 100, scrollX: 0, width: 100 };  // 余白 240px → -2.4〜3.4 秒
   const pts = buildSnapPoints({ project: proj(), view });
   assert.deepEqual(times(pts), [0, 2]);
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   §4 掴んだ物の行き先（resolveMove / resolveTrim / resolveSlip）
+   ここが interact.js から切り出した「算数」。境界を全部ここで固定する。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, a + " ≠ " + b);
+
+test("resolveMove: 吸着が無ければフレームに丸める", () => {
+  const r = resolveMove({
+    items: [{ clipId: "c", fromTrackId: "tr1", fromStart: 1, duration: 1 }],
+    deltaTime: 0.51, points: [], pxPerSec: 100, fps: 10
+  });
+  assert.equal(r.items[0].start, 1.5);       // 1.51 → 1/10 秒に丸め
+  assert.equal(r.items[0].duration, 1);      // 尺は絶対に変わらない
+  assert.equal(r.hit, null);
+});
+
+test("resolveMove: 吸着したらフレーム丸めをしない（隣とぴったり接する）", () => {
+  const r = resolveMove({
+    items: [{ clipId: "c", fromTrackId: "tr1", fromStart: 1, duration: 1 }],
+    deltaTime: 0.97, points: [{ t: 2, kind: "clipStart" }], pxPerSec: 100, fps: 30
+  });
+  assert.equal(r.items[0].start, 2);
+  assert.equal(r.hit.kind, "clipStart");
+});
+
+test("resolveMove: 複数掴んだら相対位置を保ち、0 秒より前に出ない", () => {
+  const r = resolveMove({
+    items: [
+      { clipId: "a", fromTrackId: "tr1", fromStart: 1, duration: 1 },
+      { clipId: "b", fromTrackId: "tr1", fromStart: 3, duration: 1 }
+    ],
+    deltaTime: -5, points: [], pxPerSec: 100, fps: 30
+  });
+  assert.equal(r.items[0].start, 0);
+  assert.equal(r.items[1].start, 2);          // 間隔 2 秒は保たれる
+});
+
+test("resolveMove: 縦移動は掴んだ全部に効く。null なら元のトラック", () => {
+  const items = [
+    { clipId: "a", fromTrackId: "tr1", fromStart: 0, duration: 1 },
+    { clipId: "b", fromTrackId: "tr1", fromStart: 2, duration: 1 }
+  ];
+  const to = resolveMove({ items, deltaTime: 0, toTrackId: "tr2", points: [], pxPerSec: 100 });
+  assert.deepEqual(to.items.map((i) => i.trackId), ["tr2", "tr2"]);
+  const stay = resolveMove({ items, deltaTime: 0, toTrackId: null, points: [], pxPerSec: 100 });
+  assert.deepEqual(stay.items.map((i) => i.trackId), ["tr1", "tr1"]);
+});
+
+test("resolveMove: 壊れた引数でも落ちない", () => {
+  assert.deepEqual(resolveMove().items, []);
+  assert.deepEqual(resolveMove({ items: [], deltaTime: NaN, pxPerSec: 0 }).items, []);
+});
+
+test("resolveTrim: 末尾を引くと尺が伸びる", () => {
+  const r = resolveTrim({
+    item: { fromStart: 1, duration: 2, maxDur: 5, tailroom: 3 },
+    edge: "out", time: 4, points: [], pxPerSec: 100, fps: 30
+  });
+  near(r.duration, 3); near(r.time, 4); assert.equal(r.start, 1);
+});
+
+test("resolveTrim: 末尾は素材の尻（tailroom）と尺の上限（maxDur）で止まる", () => {
+  const byMax = resolveTrim({ item: { fromStart: 1, duration: 2, maxDur: 2.5 }, edge: "out", time: 99, points: [], pxPerSec: 100 });
+  near(byMax.duration, 2.5);
+  const byTail = resolveTrim({ item: { fromStart: 1, duration: 2, tailroom: 0.5 }, edge: "out", time: 99, points: [], pxPerSec: 100 });
+  near(byTail.duration, 2.5);
+});
+
+test("resolveTrim: 上限が無い（画像・図形）なら伸ばせる ※util.clamp では潰れる所", () => {
+  const r = resolveTrim({ item: { fromStart: 0, duration: 2 }, edge: "out", time: 100, points: [], pxPerSec: 100 });
+  near(r.duration, 100);
+});
+
+test("resolveTrim: 先頭は素材の頭（headroom）より前へ出せない", () => {
+  const r = resolveTrim({ item: { fromStart: 1, duration: 2, headroom: 0.5 }, edge: "in", time: 0, points: [], pxPerSec: 100 });
+  near(r.start, 0.5); near(r.duration, 2.5); near(r.time, 0.5);
+});
+
+test("resolveTrim: MIN_CLIP より短くはならない", () => {
+  const out = resolveTrim({ item: { fromStart: 1, duration: 2 }, edge: "out", time: 0, points: [], pxPerSec: 100 });
+  near(out.duration, MIN_CLIP);
+  const inn = resolveTrim({ item: { fromStart: 1, duration: 2 }, edge: "in", time: 99, points: [], pxPerSec: 100 });
+  near(inn.duration, MIN_CLIP);
+  near(inn.start, 3 - MIN_CLIP);
+});
+
+test("resolveTrim: ロールは隣の尺の中でしか動かない（全体の長さは不変）", () => {
+  // 自分 1〜3、右隣 3〜5。境界を 4.5 へ
+  const r = resolveTrim({
+    item: { fromStart: 1, duration: 2 }, edge: "out", time: 4.5,
+    other: { start: 3, duration: 2 }, points: [], pxPerSec: 100
+  });
+  near(r.duration, 3.5);
+  // 隣を潰し切ることはできない
+  const over = resolveTrim({
+    item: { fromStart: 1, duration: 2 }, edge: "out", time: 99,
+    other: { start: 3, duration: 2 }, points: [], pxPerSec: 100
+  });
+  near(over.time, 5 - MIN_CLIP);
+});
+
+test("resolveTrim: ロール（先頭側）は左隣の先頭より前へ行かない", () => {
+  const r = resolveTrim({
+    item: { fromStart: 1, duration: 2 }, edge: "in", time: -5,
+    other: { start: 0, duration: 1 }, points: [], pxPerSec: 100
+  });
+  near(r.start, MIN_CLIP);
+  near(r.duration, 3 - MIN_CLIP);
+});
+
+test("resolveTrim: 吸着が効いたらその時刻がそのまま境界になる", () => {
+  const r = resolveTrim({
+    item: { fromStart: 1, duration: 2 }, edge: "out", time: 4.97,
+    points: [{ t: 5, kind: "clipStart" }], pxPerSec: 100, tolerancePx: 8
+  });
+  near(r.time, 5);
+  assert.equal(r.hit.kind, "clipStart");
+});
+
+test("resolveSlip: 右へ引くと素材は前へ戻る（符号が逆）", () => {
+  assert.equal(resolveSlip({ item: { headroom: 1, tailroom: 2 }, deltaTime: 0.5 }).delta, -0.5);
+  assert.equal(resolveSlip({ item: { headroom: 1, tailroom: 2 }, deltaTime: 5 }).delta, -1);   // 頭で止まる
+  assert.equal(resolveSlip({ item: { headroom: 1, tailroom: 2 }, deltaTime: -5 }).delta, 2);   // 尻で止まる
+  assert.equal(resolveSlip({ item: {}, deltaTime: 3 }).delta, -3);                             // 余裕不明なら縛らない
+  assert.equal(resolveSlip().delta, 0);
+});
+
+test("clipsInTimeRange: 重なった物だけ。端が触れているだけでは入らない", () => {
+  const p = proj();
+  assert.deepEqual(clipsInTimeRange({ project: p, t0: 2, t1: 5 }), []);
+  assert.deepEqual(clipsInTimeRange({ project: p, t0: 1, t1: 6 }), ["c1", "c2"]);
+  assert.deepEqual(clipsInTimeRange({ project: p, t0: 6, t1: 1 }), ["c1", "c2"]);   // 逆さでも良い
+  assert.deepEqual(clipsInTimeRange({ project: p, trackIds: ["tr9"], t0: 0, t1: 9 }), []);
+  assert.deepEqual(clipsInTimeRange({ project: null, t0: 0, t1: 9 }), []);
 });
