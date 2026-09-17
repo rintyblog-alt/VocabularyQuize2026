@@ -74,6 +74,18 @@ export function nextPow2(n) {
   return p;
 }
 
+/**
+ * 窓の間隔（標本）と、その hop から決まる **本当の frame 周波数**。
+ * `sampleRate / hz` は整数で割り切れない事が多く（22050Hz で 100Hz を頼むと
+ * hop 221 = 99.77Hz）、申告どおりの hz で frame 番号を秒に直すと後ろへ行くほど
+ * ずれる（50 秒で 100ms 級 = 無音カットが 1 音節ぶん外れる）。時刻に直す側は
+ * 必ずこちらの hz を使う。
+ */
+function frameStep(sampleRate, hz) {
+  const hop = Math.max(1, Math.round(sampleRate / hz));
+  return { hop, hz: sampleRate / hop };
+}
+
 /** 昇順に並んだ列の百分位（空なら fallback） */
 function percentileOf(sorted, p, fallback = 0) {
   const n = sorted ? sorted.length : 0;
@@ -175,8 +187,11 @@ export function readAudio(buf, opts = {}) {
  */
 export function decimateMono(mono, factor) {
   const f = clampInt(finite(factor, 1), 1, 16);
-  const n = mono ? mono.length : 0;
-  if (f <= 1 || !n) return mono instanceof Float32Array ? mono : new Float32Array(0);
+  const n = mono && typeof mono.length === "number" ? mono.length : 0;
+  if (!n) return new Float32Array(0);
+  // factor 1 の Float32Array はそのまま返す（内側の hot path で写しを作らないため）。
+  // 素の配列は Float32Array に直して返す（前は長さ 0 を返して中身を丸ごと捨てていた）
+  if (f <= 1) return mono instanceof Float32Array ? mono : toMono(mono);
   const count = Math.floor(n / f);
   const out = new Float32Array(count);
   for (let i = 0, o = 0; i < count; i++) {
@@ -213,8 +228,8 @@ function twiddles(n) {
 
 const hannCache = new Map();
 
-/** Hann 窓（長さごとに使い回す）。矩形窓だと立ち上がりの検出が滲む */
-export function hannWindow(n) {
+/** Hann 窓の表（この中だけで使う。返した物を書き換えないこと） */
+function hannCached(n) {
   const len = Math.max(1, Math.round(finite(n, 1)));
   let w = hannCache.get(len);
   if (w) return w;
@@ -225,6 +240,14 @@ export function hannWindow(n) {
   hannCache.set(len, w);
   return w;
 }
+
+/**
+ * Hann 窓（長さごとに表を使い回す）。矩形窓だと立ち上がりの検出が滲む。
+ * **外へは必ず写しを返す**: 表そのものを渡すと、呼ぶ側がうっかり書き換えた時に
+ * 以降の FFT が全部静かに狂う（窓は解析の全ての口が共有している）。
+ * @param {number} n @returns {Float32Array}
+ */
+export function hannWindow(n) { return hannCached(n).slice(); }
 
 /**
  * その場で複素 FFT をかける（長さは 2 の冪。re / im を直に書き換える）。
@@ -302,7 +325,7 @@ export function rmsCurve(mono, sampleRate, opts = {}) {
   const x = src.mono, sr = src.sampleRate, n = x.length;
   if (!n) return new Float32Array(0);
   const hz = clamp(finite(o.hz, 20), 0.25, 1000);
-  const hop = Math.max(1, Math.round(sr / hz));
+  const hop = frameStep(sr, hz).hop;
   const win = Math.max(1, Math.round(clamp(finite(o.win, 1 / hz), 1 / sr, 8) * sr));
   const center = o.center === true;
   const count = Math.max(1, Math.ceil(n / hop));
@@ -356,10 +379,14 @@ export function loudnessCurve(buf, opts = {}) {
   const hz = clamp(finite(o.hz, 20), 0.25, 200);
   const { mono, sampleRate } = readAudio(buf, o);
   if (!mono.length) return { hz, values: [] };
+  // 返す hz は **hop から決まる本当の刻み**（sampleRate/hz が割り切れない素材で
+  // 申告どおりの hz を返すと、値を秒に直す側〈ai/tools.js の無音・graph.js の
+  // ダッキング〉が後ろへ行くほどずれる）
+  const step = frameStep(sampleRate, hz);
   const db = rmsCurve(kWeight(mono, sampleRate, o), sampleRate, { hz, win: clamp(finite(o.win, 0.4), 0.05, 3), center: true });
   const values = new Array(db.length);
   for (let i = 0; i < db.length; i++) values[i] = clamp(finite(db[i], -70), -70, 0);
-  return { hz, values };
+  return { hz: step.hz, values };
 }
 
 /* ── 4. 無音 ───────────────────────────────────────────────── */
@@ -392,8 +419,9 @@ export function detectSilence(buf, opts = {}) {
   const o = opts || {};
   const { mono, sampleRate, duration } = readAudio(buf, o);
   if (!mono.length) return [];
-  const hz = clamp(finite(o.hz, 100), 10, 500);          // 10ms 刻み（端を ±1 フレームに収める）
-  const curve = rmsCurve(mono, sampleRate, { hz });
+  const reqHz = clamp(finite(o.hz, 100), 10, 500);       // 10ms 刻み（端を ±1 フレームに収める）
+  const hz = frameStep(sampleRate, reqHz).hz;            // 秒に直すのは実効 hz で（hop の丸めで後ろがずれる）
+  const curve = rmsCurve(mono, sampleRate, { hz: reqHz });
   const thr = silenceThreshold(curve, o);
   const hyst = clamp(finite(o.hysteresis, 2), 0, 12);
   const minDur = Math.max(0, finite(o.minDur, 0.35));
@@ -436,7 +464,7 @@ function eachSpectrum(x, opts, cb) {
   const hop = clampInt(finite(opts.hop, fftSize >> 1), 1, 1 << 20);
   const count = frameCount(x.length, hop);
   const re = new Float32Array(fftSize), im = new Float32Array(fftSize);
-  const pow = new Float32Array((fftSize >> 1) + 1), win = hannWindow(fftSize);
+  const pow = new Float32Array((fftSize >> 1) + 1), win = hannCached(fftSize);
   for (let i = 0; i < count; i++) {
     const at = opts.center === true ? Math.round(i * hop + hop / 2 - fftSize / 2) : i * hop;
     cb(i, powerSpectrum(x, at, re, im, win, pow));
@@ -444,10 +472,16 @@ function eachSpectrum(x, opts, cb) {
   return { count, fftSize, hop };
 }
 
-/** [lo, hi) Hz の power の合計 */
+/**
+ * `[lo, hi)` Hz の power の合計。**上端は含めない**のが要点で、含めてしまうと
+ * `lowHz` がちょうど bin の境界に乗った時（例 fftSize 2048・sampleRate 48000 で
+ * lowHz 375）に low と mid が同じ bin を二重に数え、帯域どうしの釣り合いが崩れる。
+ * 一番上の帯域だけは `hi` に `Infinity` を渡して Nyquist の bin まで拾う。
+ */
 function bandPower(pow, binHz, lo, hi) {
+  const top = pow.length - 1;
   const a = Math.max(1, Math.ceil(finite(lo, 0) / binHz));
-  const b = Math.min(pow.length - 1, Math.floor(finite(hi, 0) / binHz));
+  const b = Number.isFinite(hi) ? Math.min(top, Math.ceil(hi / binHz) - 1) : top;
   let s = 0;
   for (let i = a; i <= b; i++) s += pow[i];
   return s;
@@ -492,9 +526,9 @@ export function speechFeatures(buf, opts = {}) {
       for (let k = a; k <= b; k++) ln += Math.log(pow[k] + floor);
       flat[i] = clamp01(Math.exp(ln / m) / (sum / m + floor));
     }
-    const total = bandPower(pow, binHz, 50, nyq);
+    const total = bandPower(pow, binHz, 50, Infinity);
     band[i] = total > 0 ? clamp01(bandPower(pow, binHz, 200, Math.min(3800, nyq)) / total) : 0;
-    hf[i] = total > 0 ? clamp01(bandPower(pow, binHz, Math.min(2000, nyq * 0.5), nyq) / total) : 0;
+    hf[i] = total > 0 ? clamp01(bandPower(pow, binHz, Math.min(2000, nyq * 0.5), Infinity) / total) : 0;
     // 音量とゼロ交差率は「その窓が代表する区間」から直に数える
     const from = i * hop, to = Math.min(x.length, from + hop);
     let s2 = 0, cross = 0, n = 0;
@@ -836,7 +870,7 @@ export function energyBands(buf, opts = {}) {
   eachSpectrum(mono, { fftSize, hop, center: true }, (i, pow) => {
     low[i] = bandPower(pow, binHz, 20, lowHz);
     mid[i] = bandPower(pow, binHz, lowHz, Math.min(highHz, nyq));
-    high[i] = bandPower(pow, binHz, Math.min(highHz, nyq), nyq);
+    high[i] = bandPower(pow, binHz, Math.min(highHz, nyq), Infinity);
   });
   let mx = 0;
   for (let i = 0; i < count; i++) mx = Math.max(mx, low[i], mid[i], high[i]);

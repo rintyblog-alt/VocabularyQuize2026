@@ -1123,8 +1123,8 @@ export function slider(o) {
       if (!atC) snapped = false;
     }
     paint();
-    if (emit && changed) call(c.onInput, value);
-    else if (emit && !changed) call(c.onInput, value);
+    void changed;
+    if (emit) call(c.onInput, value);
   }
 
   const fromX = (x) => {
@@ -1674,7 +1674,7 @@ export function accordion(o) {
       head.setAttribute("aria-expanded", on ? "true" : "false");
       body.style.display = on ? "" : "none";
     };
-    setOpen(s.open !== false && s.open !== undefined ? !!s.open : !!s.open);
+    setOpen(!!s.open);
     b.on(head, "click", () => {
       const on = !sec.classList.contains("vqs-acc__sec--open");
       if (c.single && on) for (const x of secs) x.setOpen(false);
@@ -1830,9 +1830,10 @@ export function curveEditor(o) {
         const n = nearest(l.x, l.y);
         if (n.d <= 0.07) { dragIdx = n.i; return; }
         /* 空いた所を触ったら点を足す */
-        pts.push({ x: l.x, y: l.y });
+        const np = { x: l.x, y: l.y };
+        pts.push(np);
         pts.sort((a, b2) => a.x - b2.x);
-        dragIdx = pts.findIndex((p) => p.x === l.x && p.y === l.y);
+        dragIdx = pts.indexOf(np);
         vibrate(8, el);
         emit(true);
       },
@@ -1919,7 +1920,11 @@ export function keyframeRow(o) {
   const atNow = () => keys.some((t) => Math.abs(t - time) < 0.001);
 
   const b = binder();
+  /* キーの listener は paint ごとに作り直すので別の袋に入れる（溜めない） */
+  let kb = binder();
   function paint() {
+    kb.off();
+    kb = binder();
     while (track.firstChild) track.removeChild(track.firstChild);
     const s = span();
     for (const t of keys) {
@@ -1928,8 +1933,8 @@ export function keyframeRow(o) {
       k.style.left = (clamp(t / s, 0, 1) * 100) + "%";
       k.title = t.toFixed(2) + " 秒";
       k.setAttribute("aria-label", t.toFixed(2) + " 秒のキーフレーム");
-      b.on(k, "click", () => call(c.onSeek, t));
-      b.add(longPress(k, () => call(c.onRemove, t), { ms: 420 }));
+      kb.on(k, "click", () => call(c.onSeek, t));
+      kb.add(longPress(k, () => call(c.onRemove, t), { ms: 420 }));
       track.append(k);
     }
     dot.classList.toggle("vqs-kfrow__dot--on", atNow());
@@ -1962,7 +1967,7 @@ export function keyframeRow(o) {
       paint();
     },
     set: (st) => { if (st && typeof st === "object") { if (st.keys) keys = normKeys(st.keys); if (st.time !== undefined) time = num(st.time, time); } else { time = num(st, time); } paint(); },
-    destroy: () => b.off()
+    destroy: () => { kb.off(); b.off(); }
   });
 }
 
