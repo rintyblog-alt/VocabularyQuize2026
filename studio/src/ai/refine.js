@@ -203,7 +203,7 @@ export const RULES = [
       const list = c.pick(["video", "audio"]);
       if (!list.length) return null;
       return {
-        ops: list.map((x) => op("clip.setSpeed", { clipId: str(x.clip.id), speed: clamp(finite(x.clip.speed, 1) === 1 ? sp : sp, 0.1, 8), ripple: true })),
+        ops: list.map((x) => op("clip.setSpeed", { clipId: str(x.clip.id), speed: clamp(sp, 0.1, 8), ripple: true })),
         summary: `${list.length} 個のクリップを ${s1(sp)} 倍速にしました`
       };
     }
@@ -377,6 +377,17 @@ export const RULES = [
       };
     }
   },
+  {
+    /* 「テロップを消して」の相手は **text クリップ**。clip.delete（選択を消す）
+       より先に group "delete" を取らせないと、選んでいた映像が消える。 */
+    id: "telop.delete", group: "delete", say: "テロップを消して",
+    test: /(テロップ|字幕|文字|テキスト)[^。]{0,8}(削除|消|削|要らな|いらな|無くし|なくし)/,
+    build(c) {
+      const list = c.pick(["text"]);
+      if (!list.length) return null;
+      return { ops: [op("clip.rippleDelete", { clipIds: list.map((x) => str(x.clip.id)) })], summary: `テロップ ${list.length} 個を消しました` };
+    }
+  },
   /* ── 色 ───────────────────────────────────────────────── */
   {
     id: "color.mono", group: "sat", say: "白黒にして",
@@ -416,6 +427,19 @@ export const RULES = [
       const f = upFactor(c, 1.3);
       const vol = Math.round(clamp(finite(tr.volume, 1) * f, 0, 4) * 1000) / 1000;
       return { ops: [op("track.update", { trackId: str(tr.id), patch: { volume: vol } })], summary: `BGM を ${Math.round((f - 1) * 100)}% 大きくしました` };
+    }
+  },
+  {
+    /* 「音楽を消して」は **BGM のトラック**を黙らせる。これを audio.mute へ
+       渡すと「音」に当たってしまい、選択した映像クリップが黙る（別物）。
+       同じ group なので、先に置いたこちらだけが効く。 */
+    id: "audio.bgm.mute", group: "audio", say: "BGMを消して",
+    test: /(bgm|音楽|曲)[^。]{0,8}(消|ミュート|切っ|黙|無音)/,
+    build(c) {
+      const tr = musicTrackOf(c.project);
+      if (!tr) return null;
+      if (tr.muted) return null;
+      return { ops: [op("track.update", { trackId: str(tr.id), patch: { muted: true } })], summary: "BGM を消しました" };
     }
   },
   {
@@ -535,8 +559,12 @@ export const RULES = [
     }
   },
   {
+    /* CONTRACT-NOTE: ここは以前 /(削除|消して|…)/ だけを見ていたが、それだと
+       「音を消して」「BGMを消して」でも当たり、**選択したクリップが消えた**
+       （音の規則は group "audio" なので止められない）。削除は取り返しが
+       付きにくいので「何を」消すのかが文に在るときだけ当てる。 */
     id: "clip.delete", group: "delete", say: "この部分を削除して",
-    test: /(削除|消して|消す|削って|抜いて|要らない|いらない|不要)/,
+    test: /(この|これ|ここ|その|選(んだ|択した)|要らない|いらない|不要|邪魔)[^。]{0,8}(削除|消|削|抜|カット|取っ)|(クリップ|部分|場面|ところ|箇所|所)[^。]{0,8}(削除|消|削|抜)/,
     build(c) {
       const list = !c.wantAll && c.selected.length ? c.selected : (/(この|これ|ここ|その)/.test(c.text) ? c.selected : []);
       if (!list.length) return null;

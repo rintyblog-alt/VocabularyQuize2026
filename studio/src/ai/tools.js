@@ -818,6 +818,13 @@ export function readHistogram(hist) {
      （ここを逆にすると Float32Array の RGB ヒストが読めなくなる） */
   if (plain(hist) && !isBins(hist)) {
     const o = hist;
+    /* analysis/video.js の Frame（`{t,w,h,gray,rgb}`・rgb は w*h*3 の **生画素**）は
+       その場でヒストへ落とす。autoReframe の opts.frames は Frame 列なので、
+       同じ物を autoColor に渡されても「57600 段の輝度ヒスト」と読み違えない。 */
+    const fw = Math.round(finite(o.w, 0)), fh = Math.round(finite(o.h, 0));
+    if (isBins(o.rgb) && fw > 0 && fh > 0 && o.rgb.length === fw * fh * 3) {
+      return readHistogram(histogramRGB(o.rgb));
+    }
     if (o.hist !== undefined && o.hist !== null) return readHistogram(o.hist);
     if (isBins(o.rgb)) return readHistogram(o.rgb);
     const r = isBins(o.r) ? normalizeBins(o.r) : null;
@@ -1164,16 +1171,22 @@ export function autoDuck(project, opts = {}) {
   let regions = [];
   if (Array.isArray(o.voiceSpans) && o.voiceSpans.length) regions = mergeSpans(o.voiceSpans);
   else {
-    let guessed = 0;
+    let guessed = 0, silentKinds = 0;
     for (const tr of voiceTracks) {
       for (const cl of sortedClips(tr)) {
         if (cl.muteAudio) continue;
+        /* 声を持ち得ない物を「声」と見なしてはいけない（静止画の上で BGM が
+           下がったままになる）。映像トラックには image / text / shape も乗る。 */
+        if (!hasAudioKind(str(cl.kind))) { silentKinds++; continue; }
+        const src = assetById(project, str(cl.assetId));
+        if (src && src.hasAudio === false) { silentKinds++; continue; }
         const v = voiceSpansOf(project, cl);
         if (v.via === "clip") guessed++;
         regions = regions.concat(v.spans);
       }
     }
     if (guessed) warnings.push(`${guessed} 個のクリップは声の解析が無いので全体を声と見なしました`);
+    if (silentKinds) warnings.push(`${silentKinds} 個のクリップは音を持たないので声として数えませんでした`);
   }
   regions = mergeSpans(regions, attack + release);
   if (!regions.length) return nothing("下げる所（声）が見つかりません", warnings);
@@ -1259,13 +1272,23 @@ export function autoHighlights(project, opts = {}) {
   if (!ranges.length) warnings.push("見せ場として選べる長さがありませんでした");
   const host = hostClipOf(project, assetId);
   if (host) {
-    let i = 0;
+    /* ranges は **素材の全体**から選ぶ（呼び出し側が「どこを使うか」決める材料）。
+       印はタイムライン上の話なので、**その素材を使っているクリップが見ている
+       範囲（in..out）** に入る見せ場だけに付ける。外の秒を素直に写すと、
+       クリップの外（空っぽの所）へ印が飛ぶ。 */
+    const lo = Math.min(finite(host.in, 0), finite(host.out, 0));
+    const hi = Math.max(finite(host.in, 0), finite(host.out, 0));
+    const tail = clipEnd(host);
+    let i = 0, skipped = 0;
     for (const r of ranges) {
-      const t = toTimeline(host, finite(r.start, 0));
-      if (!(t >= 0)) continue;
+      const s = finite(r.start, 0);
+      if (s < lo - 1e-6 || s > hi + 1e-6) { skipped++; continue; }
+      const t = toTimeline(host, s);
+      if (!(t >= 0) || t > tail + 1e-6) { skipped++; continue; }
       i++;
       push(ops, "marker.add", { t, name: `見せ場 ${i}`, color: "#ffcc00", note: str(r.why) });
     }
+    if (skipped) warnings.push(`${skipped} か所はタイムラインで使っていない所なので印は付けませんでした`);
   } else if (ranges.length) {
     warnings.push("この素材はまだタイムラインに無いので印は付けませんでした");
   }

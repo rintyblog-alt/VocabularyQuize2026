@@ -351,7 +351,11 @@ export function captionsToClips(captions, opts = {}) {
   const maxChars = Math.max(4, Math.round(finite(o.maxCharsPerLine, DEFAULT_MAX_CHARS)));
   const maxLines = Math.max(1, Math.round(finite(o.maxLines, DEFAULT_MAX_LINES)));
   const offset = finite(o.offset, 0);
-  const style = plain(o.style) || (o.project ? autoSubtitleStyle(o.project) : (plain(o.project && o.project.subtitleStyle) || defaultTextStyle()));
+  /* 様式の優先順（core/ops.js の subtitle.import と揃える）:
+     ① 呼び出し側の指定 ② project.subtitleStyle（人が画面で決めた既定）
+     ③ 画面の寸法から決めた読める様式 ④ 素の既定 */
+  const style = plain(o.style) || plain(o.project && o.project.subtitleStyle)
+    || (o.project ? autoSubtitleStyle(o.project) : defaultTextStyle());
   const list = normalizeCaptions(captions);
   const ops = [];
   for (const c of list) {
@@ -442,7 +446,7 @@ const CUE_RE = /(-?[\d:.,]+)\s*--?>\s*(-?[\d:.,]+)(.*)$/;
 
 /** 字幕の本文（SRT / VTT 共通の読み取り） */
 function parseCues(text) {
-  const src = str(text).replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+  const src = str(text).replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   const out = [];
   const blocks = src.split(/\n{2,}/);
   for (const block of blocks) {
@@ -669,6 +673,15 @@ export function listenWebSpeech(opts = {}) {
   });
 }
 
+/**
+ * ここで自分から復号してよい実体の上限（バイト）。
+ * `blob.arrayBuffer()` は **丸ごとメモリに載せる**ので、4K の長回しを渡されると
+ * iPhone は復号に入る前に落ちる（契約書 §13.6「decodeAudioData はメインスレッドを
+ * 数百 ms 止める」・§13.3「巨大 Blob は iOS が落ちる」）。大きい物は解析担当
+ * （analysis/index.js の analyzeAsset）に任せ、ここは理由を返して手を引く。
+ */
+const MAX_DECODE_BYTES = 96 * 1024 * 1024;
+
 /** ③ 無音区間（指定 → 解析 → AudioBuffer → Blob を復号） */
 async function silenceOf(input, opts) {
   const o = plain(opts) || {};
@@ -684,14 +697,24 @@ async function silenceOf(input, opts) {
   const Ctx = g.AudioContext || g.webkitAudioContext || null;
   const blob = await resolveBlob(input, o);
   if (!blob || !Ctx || typeof blob.arrayBuffer !== "function") return { spans: [], duration: finite(o.duration, 0) };
+  const size = finite(blob.size, 0);
+  const cap = Math.max(1, finite(o.maxDecodeBytes, MAX_DECODE_BYTES));
+  if (size > cap) {
+    return {
+      spans: [], duration: finite(o.duration, 0),
+      note: `素材が大きすぎてここでは音を読めません（${Math.round(size / 1048576)}MB）。先に素材を解析してください`
+    };
+  }
   let ctx = null;
   try {
     ctx = new Ctx();
     const ab = await blob.arrayBuffer();
+    throwIfAborted(o.signal);
     const decoded = await ctx.decodeAudioData(ab);
     return { spans: detectSilence(decoded, o), duration: finite(decoded.duration, 0) };
-  } catch (_e) {
-    return { spans: [], duration: finite(o.duration, 0) };
+  } catch (e) {
+    if (isAbort(e)) throw e;
+    return { spans: [], duration: finite(o.duration, 0), note: str(e && e.message) || "音を読めませんでした" };
   } finally {
     if (ctx && typeof ctx.close === "function") { try { ctx.close(); } catch (_e) { /* 閉じられないだけ */ } }
   }
@@ -761,13 +784,14 @@ export async function transcribe(blobOrAssetId, opts = {}) {
   report(0.6, "話している区間を探しています");
   const sil = await silenceOf(blobOrAssetId, o);
   throwIfAborted(o.signal);
+  if (str(sil.note)) warnings.push(str(sil.note));
   const captions = captionsFromSilence(sil.spans, {
     duration: finite(o.duration, 0) || sil.duration,
     minDur: o.minDur, maxDur: o.maxDur
   });
   report(1, captions.length ? "枠を作りました" : "できませんでした");
   if (!captions.length) {
-    warnings.push("音の解析が無いので区間も作れませんでした（先に素材を解析してください）");
+    if (!str(sil.note)) warnings.push("音の解析が無いので区間も作れませんでした（先に素材を解析してください）");
     return { captions: [], via: "none", warnings };
   }
   warnings.push("文字起こしは使えないので、話している区間の空の枠だけ作りました");

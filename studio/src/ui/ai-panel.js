@@ -26,6 +26,12 @@
      ・この画面は project を直接書き換えない。全て op 経由。
      ・進捗・中止は AbortController 1 本で回す（解析 → 構成の両方に渡す）。
      ・CSS は styles/ai.css の `vqs-ai*` だけ。色は tokens の変数のみ。
+
+   CONTRACT-NOTE: 共通前提は「1 ファイル 700 行で分割」だが、分割先
+     （ui/ai-panel/*.js）は担当外なので作れない（ai/tools.js が同じ理由で 1 枚に
+     なっているのと同じ）。読む人のために §0〜§6 の章立てを入れて 1 枚に収めた。
+     統合担当が分けるときは §3 作る / §4 直す / §5 道具 を切り出せば、import は
+     `../core/*` のままで動く（章の間で共有しているのは state と小道具だけ）。
    ══════════════════════════════════════════════════════════════════════ */
 
 import { warn } from "../core/log.js";
@@ -728,8 +734,9 @@ export function createAiPanel(deps) {
     for (const o of Array.isArray(rv && rv.ops) ? rv.ops : []) {
       if (!o || o.type !== "clip.add") continue;
       const c = (o.payload && (o.payload.clip || o.payload)) || {};
-      const st = num(c.start, 0);
-      const du = num(c.duration, 0);
+      /* resolve.js は置き場所を payload.at で渡す（clip.start は空のことがある）*/
+      const st = num(c.start, num(o.payload && o.payload.at, 0));
+      const du = num(c.duration, Math.max(0, num(c.out, 0) - num(c.in, 0)));
       if (st + du > end) end = st + du;
     }
     return end;
