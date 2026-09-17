@@ -106,10 +106,15 @@ export function halfGray(gray, w, h) {
   return { gray: g, w: w2, h: h2 };
 }
 
-/** 矩形を切り出す（端は縁の色で伸ばす。外に出ても落ちない） */
-export function extractPatch(gray, w, h, r) {
-  const out = new Float32Array(Math.max(0, r.w * r.h));
-  if (!gray || !(w > 0) || !(h > 0)) return out;
+/**
+ * 矩形を切り出す（端は縁の色で伸ばす。外に出ても落ちない）。
+ * `reuse` に同じ長さの Float32Array を渡すと詰め直して返す（局所探索は 1 フレームで
+ * 100 回以上ここを通るので、毎回確保すると GC だけで無視できない時間になる）。
+ */
+export function extractPatch(gray, w, h, r, reuse = null) {
+  const n = Math.max(0, r.w * r.h);
+  const out = reuse && reuse.length === n ? reuse : new Float32Array(n);
+  if (!gray || !(w > 0) || !(h > 0)) { out.fill(0); return out; }
   for (let y = 0; y < r.h; y++) {
     const sy = Math.min(h - 1, Math.max(0, r.y + y)) * w, row = y * r.w;
     for (let x = 0; x < r.w; x++) out[row + x] = gray[sy + Math.min(w - 1, Math.max(0, r.x + x))];
@@ -133,12 +138,14 @@ export function ncc(a, b) {
   return den > 1e-6 ? clamp(num / den, -1, 1) : 0;
 }
 
-/** rect の周り ±R を全部試して一番似ている位置を返す */
+/** rect の周り ±R を全部試して一番似ている位置を返す（切り出しは 1 枚を使い回す） */
 function searchBest(tpl, rect, gray, w, h, R) {
   let best = { dx: 0, dy: 0, score: -2 };
+  const buf = new Float32Array(Math.max(0, rect.w * rect.h)), box = { x: 0, y: 0, w: rect.w, h: rect.h };
   for (let dy = -R; dy <= R; dy++) {
     for (let dx = -R; dx <= R; dx++) {
-      const s = ncc(tpl, extractPatch(gray, w, h, { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h }));
+      box.x = rect.x + dx; box.y = rect.y + dy;
+      const s = ncc(tpl, extractPatch(gray, w, h, box, buf));
       if (s > best.score) best = { dx, dy, score: s };
     }
   }

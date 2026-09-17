@@ -702,8 +702,12 @@ export function createAudioEngine(o) {
         const fwd = await bufferFor(asset, false);
         if (!fwd) return null;
         if (fwd.duration > REVERSE_MAX_SEC) {
-          warnOnce("rev:" + base, "長い素材（" + Math.round(fwd.duration) + "秒）の逆再生は音を作りません");
-          return fwd;
+          /* 逆順の写しは元と同じ大きさを食うので長尺では作らない。
+             **元の buffer を代わりに返してはいけない**（planVoice の offset は
+             逆順 buffer の座標で出ているので、鳴らすと別の場所が鳴る）。
+             鳴らさない方が正直な失敗。 */
+          warnOnce("rev:" + base, "長い素材（" + Math.round(fwd.duration) + "秒）の逆再生は音を出しません: " + (asset.name || base));
+          return null;
         }
         return put(key, reverseOf(fwd));
       }

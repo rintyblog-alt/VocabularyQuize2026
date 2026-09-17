@@ -1,0 +1,456 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   studio/styles/tokens.css — 色・寸法・影・遷移・重なり順の「唯一の出所」
+
+   ★ 何をする所か
+     VQ Studio の見た目の素（token）を **CSS 変数**として :root に置く。
+     他の css も JS（`cssVar("--vqs-…")` で canvas に色を渡す所）も、
+     色と寸法は必ずここを経由する。直に #hex を書いた所は差し戻し。
+
+   ★ なぜこの形か
+     ・プロの編集ソフト（CapCut / Premiere / DaVinci）の見た目は
+       「暗い無彩色の層 + 1 色の強調 + 種類別のクリップ色」でできている。
+       層を bg-0..3 / panel の 5 段に切って、境界は線ではなく
+       **明度差 + 細い半透明線**で出す。情報密度を上げても濁らない。
+     ・canvas に描く物（ルーラ・波形・スコープ・ミニマップ）は CSS が届かない。
+       JS が `cssVar()` で読むので、**JS 側の控えの値と同じ名前**で必ず定義する
+       （名前が食い違うと画面の中で色がずれる。ここが唯一の同期点）。
+     ・`--vqs-ink` / `--vqs-ink-dim` は先に書かれた mobile.css と timeline 系が
+       使っている綴り。契約書の `--vqs-text-1..3` を本体にして、
+       CONTRACT-NOTE: 実物に合わせた別名として両方を出す（片方を消すと既存が壊れる）。
+     ・寸法（帯の高さ・触り所 44px）は §13.4 の safe-area の罠を避けるため
+       「素の高さ」だけを持つ。`env(safe-area-inset-*)` の足し算は layout.css で
+       `height: calc(var(--vqs-topbar-h) + env(...))` の形にする。
+
+   ★ 触るときの注意
+     ・@import は使わない（index.html が順番に読む: tokens → layout → widgets → 各部）。
+     ・変数を消す・改名するときは `grep -rn "--vqs-xxx" studio/` で
+       CSS と JS の両方を見る。JS は控えの値で黙って動いてしまう。
+     ・`[data-theme="light"]` は既定ではない。index.html は `data-theme="dark"`。
+     ・`prefers-reduced-motion` で遷移時間を 0 にする（機能は削らない）。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 0. 全体の下敷き ───────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+
+  /* ── 1. 面（暗い無彩色の 5 段。数字が大きいほど手前・明るい） ───── */
+  --vqs-bg-0: #07090c;          /* 一番奥（body・幕・letterbox の外） */
+  --vqs-bg-1: #0b0d10;          /* 画面の地（index.html の theme-color と同じ） */
+  --vqs-bg-2: #11141a;          /* 帯・ツールバー */
+  --vqs-bg-3: #171b22;          /* 浮いた物・入力欄・押せる物 */
+  --vqs-panel: #14181f;         /* 左右のパネル */
+  --vqs-panel-2: #1b2029;       /* パネルの中の一段浮いた区画 */
+  --vqs-elev: #20262f;          /* menu / sheet / modal の面 */
+  --vqs-line: rgba(255, 255, 255, 0.085);   /* 細い境界線 */
+  --vqs-line-2: rgba(255, 255, 255, 0.16);  /* 強い境界線（focus 前段・つまみ） */
+  --vqs-veil: rgba(4, 6, 9, 0.62);          /* 暗幕（sheet / modal の後ろ） */
+  --vqs-hover: rgba(255, 255, 255, 0.06);   /* 触れた時 */
+  --vqs-active: rgba(255, 255, 255, 0.11);  /* 押した時 */
+  --vqs-inset: rgba(0, 0, 0, 0.32);         /* 窪み（溝・trough） */
+
+  /* ── 2. 文字 ─────────────────────────────────────────────────── */
+  --vqs-text-1: #e9eef5;                    /* 主 */
+  --vqs-text-2: rgba(233, 238, 245, 0.68);  /* 従（ラベル） */
+  --vqs-text-3: rgba(233, 238, 245, 0.42);  /* 補助（単位・注記） */
+  --vqs-text-on-accent: #061018;            /* 強調色の上に乗る字 */
+  /* CONTRACT-NOTE: 既存の mobile.css / timeline が使う綴りの別名（消さない） */
+  --vqs-ink: var(--vqs-text-1);
+  --vqs-ink-dim: var(--vqs-text-2);
+  --vqs-ink-faint: var(--vqs-text-3);
+
+  /* ── 3. 強調と状態（水色〜青。NLE の「今ここ」を示す唯一の色） ── */
+  --vqs-accent: #4f8cff;                    /* 青 */
+  --vqs-accent-2: #46d8ff;                  /* 水色（AI・解析・波形寄り） */
+  --vqs-accent-dim: rgba(79, 140, 255, 0.22);
+  --vqs-accent-line: rgba(79, 140, 255, 0.55);
+  --vqs-accent-glow: rgba(79, 140, 255, 0.34);
+  --vqs-ok: #31c48d;
+  --vqs-warn: #ffb020;
+  --vqs-danger: #ff4d4f;
+  --vqs-danger-dim: rgba(255, 77, 79, 0.18);
+  --vqs-ai: linear-gradient(135deg, #46d8ff 0%, #6b7bff 52%, #a78bfa 100%);
+  --vqs-sel: rgba(79, 140, 255, 0.28);      /* 選択の面 */
+  --vqs-sel-line: #7fb0ff;                  /* 選択の縁（クリップの白枠代わり） */
+
+  /* ── 4. クリップの種類色（JS の控えの値と必ず同じにする） ─────── */
+  --vqs-clip-video: #4f8cff;
+  --vqs-clip-audio: #31c48d;
+  --vqs-clip-text: #a78bfa;
+  --vqs-clip-sticker: #f472b6;
+  --vqs-clip-adjust: #f0b429;
+  --vqs-clip-image: #3aa7ff;
+  --vqs-clip-shape: #94a3b8;
+  --vqs-clip-compound: #f2643d;
+  --vqs-clip-label: rgba(9, 12, 17, 0.86);  /* クリップ上の字 */
+  --vqs-clip-line: rgba(0, 0, 0, 0.42);     /* クリップの縁（沈ませる） */
+
+  /* ── 5. タイムラインが canvas に描く色 ─────────────────────────── */
+  --vqs-wave: rgba(150, 214, 255, 0.82);    /* 波形（契約書の名前） */
+  --vqs-wave-dim: rgba(150, 214, 255, 0.34);
+  --vqs-tl-wave: var(--vqs-wave);           /* view.js が読む綴り */
+  --vqs-tl-ruler-ink: rgba(233, 238, 245, 0.62);
+  --vqs-tl-ruler-dim: rgba(233, 238, 245, 0.22);
+  --vqs-tl-playhead: #ff4d4f;
+  --vqs-tl-marker: #ffd666;
+  --vqs-tl-chapter: rgba(255, 214, 102, 0.9);
+  --vqs-tl-range: rgba(79, 140, 255, 0.18);
+  --vqs-tl-range-line: rgba(79, 140, 255, 0.55);
+  --vqs-tl-mini-bg: rgba(10, 12, 17, 0.72);
+  --vqs-tl-mini-frame: rgba(79, 140, 255, 0.14);
+  --vqs-tl-mini-veil: rgba(8, 10, 14, 0.46);
+  --vqs-tl-snap: #ff4dd8;                   /* 吸着線（プレビューと同じ色） */
+  --vqs-tl-row-gap: 4px;
+  --vqs-tlheads-w: 148px;
+  --vqs-tlmini-h: 34px;
+  --vqs-tlmenu-dot: rgba(233, 238, 245, 0.55);
+  --vqs-mixer-strip: 76px;
+
+  /* ── 6. プレビューの上書き（overlay canvas が読む） ────────────── */
+  --vqs-pv-frame: rgba(233, 238, 245, 0.28);
+  --vqs-pv-guide: rgba(233, 238, 245, 0.20);
+  --vqs-pv-handle: #ffffff;
+  --vqs-pv-mask: #56ff8c;
+  --vqs-pv-safe: rgba(255, 214, 102, 0.55);
+  --vqs-pv-snap: #ff4dd8;
+  --vqs-pv-veil: rgba(6, 8, 12, 0.62);
+  /* 透明の市松模様（letterbox の外と素材の抜け） */
+  --vqs-checker-a: #15181d;
+  --vqs-checker-b: #1d2128;
+  --vqs-checker-size: 16px;
+
+  /* ── 7. スコープ（波形モニタ・ベクトルスコープ） ───────────────── */
+  --vqs-scope-bg: rgba(8, 10, 14, 0.92);
+  --vqs-scope-grid: rgba(233, 238, 245, 0.14);
+  --vqs-scope-ink: rgba(233, 238, 245, 0.62);
+  --vqs-scope-luma: rgba(226, 238, 255, 0.9);
+  --vqs-scope-r: rgba(255, 86, 86, 0.85);
+  --vqs-scope-g: rgba(86, 255, 140, 0.85);
+  --vqs-scope-b: rgba(96, 150, 255, 0.9);
+  --vqs-col-canvas-bg: rgba(10, 12, 17, 0.9);
+  --vqs-col-grid: rgba(233, 238, 245, 0.16);
+  --vqs-col-ink: rgba(233, 238, 245, 0.72);
+
+  /* ── 8. 寸法（帯の高さ。safe-area は足さない。足すのは layout.css） ── */
+  --vqs-topbar-h: 48px;
+  --vqs-transport-h: 44px;
+  --vqs-track-h: 72px;
+  --vqs-track-h-sm: 56px;
+  --vqs-track-h-xs: 32px;       /* サブトラック（§13.5） */
+  --vqs-ruler-h: 28px;
+  --vqs-tl-ruler-h: var(--vqs-ruler-h);
+  --vqs-mobilebar-h: 56px;
+  --vqs-hit: 44px;              /* 指の触り所の下限（§7.2） */
+  --vqs-left-w: 288px;          /* ui/layout.js が書き換える */
+  --vqs-right-w: 320px;         /* 同上 */
+  --vqs-left-w-min: 200px;
+  --vqs-right-w-min: 240px;
+  --vqs-tl-h: 300px;            /* タイムライン帯の高さ（ドラッグで可変） */
+  --vqs-splitter-w: 6px;
+  --vqs-thumb: 28px;            /* スライダーのつまみ */
+  --vqs-handle-w: 14px;         /* トリムハンドルの見た目（当たり判定は 44px） */
+
+  /* ── 9. 角・間隔 ─────────────────────────────────────────────── */
+  --vqs-radius-1: 4px;
+  --vqs-radius-2: 7px;
+  --vqs-radius-3: 10px;
+  --vqs-radius-4: 14px;
+  --vqs-radius-5: 20px;
+  --vqs-radius-pill: 999px;
+  --vqs-gap-0: 2px;
+  --vqs-gap-1: 4px;
+  --vqs-gap-2: 8px;
+  --vqs-gap-3: 12px;
+  --vqs-gap-4: 16px;
+  --vqs-gap-5: 24px;
+
+  /* ── 10. 影（暗い面の上では「縁 + 落ち影」で浮かせる） ─────────── */
+  --vqs-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --vqs-shadow-2: 0 6px 18px rgba(0, 0, 0, 0.44);
+  --vqs-shadow-3: 0 18px 48px rgba(0, 0, 0, 0.56);
+  --vqs-shadow-4: 0 -12px 40px rgba(0, 0, 0, 0.5);   /* 下から出る sheet 用 */
+  --vqs-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  --vqs-shadow-focus: 0 0 0 2px var(--vqs-bg-1), 0 0 0 4px var(--vqs-accent);
+
+  /* ── 11. 遷移 ────────────────────────────────────────────────── */
+  --vqs-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --vqs-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --vqs-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --vqs-dur-1: 90ms;
+  --vqs-dur-2: 160ms;
+  --vqs-dur-3: 240ms;
+  --vqs-dur-4: 320ms;
+  --vqs-t-fast: var(--vqs-dur-1) var(--vqs-ease);
+  --vqs-t: var(--vqs-dur-2) var(--vqs-ease);
+  --vqs-t-slow: var(--vqs-dur-4) var(--vqs-ease-out);
+
+  /* ── 12. 重なり順（ここに全部集める。他所で z-index の生数字を書かない） ── */
+  --vqs-z-base: 0;
+  --vqs-z-timeline: 5;
+  --vqs-z-panel: 10;
+  --vqs-z-bar: 20;        /* モバイルの下段タブ・文脈ツールバー */
+  --vqs-z-veil: 50;       /* 暗幕 */
+  --vqs-z-sheet: 60;
+  --vqs-z-modal: 70;
+  --vqs-z-menu: 80;
+  --vqs-z-toast: 90;
+  --vqs-z-drag: 100;      /* ドラッグ中の分身 */
+  --vqs-z-boot: 120;      /* 起動の幕は全部の上 */
+
+  /* ── 13. 書体 ────────────────────────────────────────────────── */
+  --vqs-font: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN",
+              "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", Meiryo,
+              "Segoe UI", Roboto, system-ui, sans-serif;
+  --vqs-mono: ui-monospace, SFMono-Regular, "SF Mono", "JetBrains Mono",
+              Menlo, Consolas, "Roboto Mono", monospace;
+  --vqs-fs-0: 10px;   /* 目盛り・単位 */
+  --vqs-fs-1: 11px;   /* パネルの細字 */
+  --vqs-fs-2: 12px;   /* 既定 */
+  --vqs-fs-3: 13px;
+  --vqs-fs-4: 15px;   /* 見出し */
+  --vqs-fs-5: 18px;
+  --vqs-lh: 1.45;
+  --vqs-fw-1: 400;
+  --vqs-fw-2: 550;
+  --vqs-fw-3: 700;
+}
+
+/* ── 14. 明るい版（[data-theme="light"]。既定ではない） ────────────── */
+[data-theme="light"] {
+  --vqs-bg-0: #e6e8ec;
+  --vqs-bg-1: #f2f4f7;
+  --vqs-bg-2: #e9ecf1;
+  --vqs-bg-3: #ffffff;
+  --vqs-panel: #f7f8fa;
+  --vqs-panel-2: #eef1f5;
+  --vqs-elev: #ffffff;
+  --vqs-line: rgba(10, 14, 22, 0.10);
+  --vqs-line-2: rgba(10, 14, 22, 0.20);
+  --vqs-veil: rgba(28, 34, 44, 0.38);
+  --vqs-hover: rgba(10, 14, 22, 0.05);
+  --vqs-active: rgba(10, 14, 22, 0.10);
+  --vqs-inset: rgba(10, 14, 22, 0.08);
+
+  --vqs-text-1: #12161d;
+  --vqs-text-2: rgba(18, 22, 29, 0.68);
+  --vqs-text-3: rgba(18, 22, 29, 0.45);
+  --vqs-text-on-accent: #ffffff;
+
+  --vqs-accent: #1f6feb;
+  --vqs-accent-2: #0aa2c0;
+  --vqs-accent-dim: rgba(31, 111, 235, 0.14);
+  --vqs-accent-line: rgba(31, 111, 235, 0.5);
+  --vqs-accent-glow: rgba(31, 111, 235, 0.22);
+  --vqs-ok: #17845b;
+  --vqs-warn: #a86400;
+  --vqs-danger: #d92d30;
+  --vqs-sel: rgba(31, 111, 235, 0.18);
+  --vqs-sel-line: #1f6feb;
+
+  --vqs-clip-video: #2f6fd0;
+  --vqs-clip-audio: #178a63;
+  --vqs-clip-text: #7c5cf0;
+  --vqs-clip-sticker: #d94f97;
+  --vqs-clip-adjust: #c98a0a;
+  --vqs-clip-image: #1f8fdc;
+  --vqs-clip-shape: #6b7787;
+  --vqs-clip-compound: #cf4c27;
+  --vqs-clip-label: rgba(255, 255, 255, 0.94);
+  --vqs-clip-line: rgba(10, 14, 22, 0.24);
+
+  --vqs-wave: rgba(24, 92, 168, 0.8);
+  --vqs-wave-dim: rgba(24, 92, 168, 0.3);
+  --vqs-tl-ruler-ink: rgba(18, 22, 29, 0.66);
+  --vqs-tl-ruler-dim: rgba(18, 22, 29, 0.26);
+  --vqs-tl-mini-bg: rgba(233, 236, 241, 0.86);
+  --vqs-tl-mini-frame: rgba(31, 111, 235, 0.16);
+  --vqs-tl-mini-veil: rgba(210, 214, 222, 0.5);
+
+  --vqs-pv-frame: rgba(18, 22, 29, 0.32);
+  --vqs-pv-guide: rgba(18, 22, 29, 0.2);
+  --vqs-pv-handle: #ffffff;
+  --vqs-pv-veil: rgba(30, 36, 46, 0.5);
+  --vqs-checker-a: #dfe3e9;
+  --vqs-checker-b: #eef1f5;
+
+  --vqs-scope-bg: rgba(238, 241, 245, 0.94);
+  --vqs-scope-grid: rgba(18, 22, 29, 0.16);
+  --vqs-scope-ink: rgba(18, 22, 29, 0.6);
+  --vqs-scope-luma: rgba(24, 32, 44, 0.9);
+  --vqs-col-canvas-bg: rgba(238, 241, 245, 0.92);
+  --vqs-col-grid: rgba(18, 22, 29, 0.16);
+  --vqs-col-ink: rgba(18, 22, 29, 0.72);
+
+  --vqs-shadow-1: 0 1px 2px rgba(16, 24, 40, 0.1);
+  --vqs-shadow-2: 0 6px 18px rgba(16, 24, 40, 0.14);
+  --vqs-shadow-3: 0 18px 48px rgba(16, 24, 40, 0.18);
+  --vqs-shadow-4: 0 -12px 40px rgba(16, 24, 40, 0.16);
+  --vqs-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --vqs-shadow-focus: 0 0 0 2px var(--vqs-bg-1), 0 0 0 4px var(--vqs-accent);
+}
+
+/* ── 15. 素の要素 ──────────────────────────────────────────────── */
+
+html {
+  height: 100%;
+  background: var(--vqs-bg-0);
+  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+[data-theme="light"] { color-scheme: light; }
+
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;                 /* 編集ソフトなので画面は 1 枚。中で個別に転がす */
+  background: var(--vqs-bg-1);
+  color: var(--vqs-text-1);
+  font-family: var(--vqs-font);
+  font-size: var(--vqs-fs-2);
+  line-height: var(--vqs-lh);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--vqs-accent); text-decoration: none; }
+:focus { outline: none; }
+::selection { background: var(--vqs-sel); color: var(--vqs-text-1); }
+
+/* 等幅（タイムコード・座標・kbps）はこの class か .vqs-mono で */
+.vqs-tc, .vqs-mono {
+  font-family: var(--vqs-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+/* 細い転がし棒（パネル・一覧。暗い面に馴染ませる） */
+* { scrollbar-width: thin; scrollbar-color: var(--vqs-line-2) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--vqs-line-2);
+  border: 3px solid transparent;
+  border-radius: var(--vqs-radius-pill);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ── 16. どこでも効く小道具 ────────────────────────────────────── */
+
+.hidden { display: none !important; }
+.vqs-sr {                        /* 読み上げにだけ出す */
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
+.vqs-accent { color: var(--vqs-accent); }
+.vqs-danger { color: var(--vqs-danger); }
+.vqs-warn { color: var(--vqs-warn); }
+.vqs-ok { color: var(--vqs-ok); }
+.vqs-nosel { -webkit-user-select: none; user-select: none; }
+
+/* 触覚の代わりの明滅（core/caps.js の haptic() が 90ms だけ付ける） */
+.vqs-flash { animation: vqs-flash var(--vqs-dur-1) var(--vqs-ease) 2 alternate; }
+@keyframes vqs-flash {
+  from { box-shadow: 0 0 0 0 var(--vqs-accent-glow); filter: none; }
+  to   { box-shadow: 0 0 0 3px var(--vqs-accent-glow); filter: brightness(1.35); }
+}
+
+/* ── 17. 起動の幕（JS が落ちても文字だけは出る。main.js が .hidden を付ける） ── */
+
+.vqs-boot {
+  position: fixed;
+  inset: 0;
+  z-index: var(--vqs-z-boot);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vqs-gap-4);
+  padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(79, 140, 255, 0.12) 0%, rgba(0, 0, 0, 0) 62%),
+    var(--vqs-bg-0);
+  color: var(--vqs-text-1);
+  text-align: center;
+  transition: opacity var(--vqs-dur-3) var(--vqs-ease);
+}
+.vqs-boot__mark {
+  font-size: 30px;
+  font-weight: var(--vqs-fw-3);
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+.vqs-boot__mark span {
+  margin-left: 0.34em;
+  font-weight: var(--vqs-fw-1);
+  background: var(--vqs-ai);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.vqs-boot__bar {
+  position: relative;
+  width: min(240px, 62vw);
+  height: 3px;
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-inset);
+  overflow: hidden;
+}
+.vqs-boot__bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--vqs-accent-2), var(--vqs-accent));
+  animation: vqs-boot-slide 1.15s var(--vqs-ease) infinite;
+}
+@keyframes vqs-boot-slide {
+  0%   { transform: translateX(-105%); }
+  100% { transform: translateX(245%); }
+}
+.vqs-boot__msg {
+  margin: 0;
+  max-width: 34em;
+  color: var(--vqs-text-2);
+  font-size: var(--vqs-fs-3);
+}
+.vqs-boot__fatal {
+  max-width: 44em;
+  margin: 0;
+  padding: var(--vqs-gap-3) var(--vqs-gap-4);
+  border: 1px solid rgba(255, 77, 79, 0.4);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-danger-dim);
+  color: var(--vqs-text-1);
+  font-family: var(--vqs-mono);
+  font-size: var(--vqs-fs-1);
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  max-height: 46vh;
+}
+.vqs-boot__fatal b { color: var(--vqs-danger); }
+
+/* ── 18. 動きを控える設定（機能は削らない。時間だけ 0 にする） ───── */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --vqs-dur-1: 0ms; --vqs-dur-2: 0ms; --vqs-dur-3: 0ms; --vqs-dur-4: 0ms;
+  }
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+  .vqs-boot__bar > i { animation: none; width: 100%; opacity: 0.7; }
+}

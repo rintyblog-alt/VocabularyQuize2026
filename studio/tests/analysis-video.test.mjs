@@ -10,6 +10,9 @@
      ④ 追跡と自動リフレームが画面から出ない・滑らかである
      ⑤ analyzeAsset が **ブラウザ API が無い Node でも落ちない**（諦めた理由が
         warnings に入る）・version が同じなら再計算しない
+     ⑥ 回帰: パンの途中のカットが重心へずれない / 塊の中の複数カットを落とさない /
+        枚数の上限に当たっても素材の後半を見捨てない / gray だけの Frame で
+        全フレームが境界にならない
 
    ★ 走らせ方
      cd /home/user/VocabularyQuize2026 && node --test studio/tests/analysis-video.test.mjs
@@ -25,12 +28,15 @@ import {
   motionCurve, sharpnessCurve, brightnessCurve, saturationCurve, estimateShift, shakeScore,
   detectFaces, sampleCurve, meanCurve, curveDuration, analysisDuration, sceneBoundaries,
   faceRatio, scoreRange, pickBestRange, pickHighlights, summarizeForLLM, frameFromSource,
+  sampleFrames,
 } from "../src/analysis/video.js";
 import {
   normalizeBox, boxCenter, largestBox, halfGray, extractPatch, ncc,
   trackSubject, parseRatio, motionCentroid, autoReframeCurve,
 } from "../src/analysis/track.js";
-import { analyzeAsset, analyzeAssets, emptyAnalysis, needsAnalysis, kindOf, ANALYSIS_VERSION } from "../src/analysis/index.js";
+import {
+  analyzeAsset, analyzeAssets, emptyAnalysis, needsAnalysis, kindOf, ANALYSIS_VERSION, DEFAULT_WANT,
+} from "../src/analysis/index.js";
 
 /* ── 人工フレームを作る道具 ─────────────────────────────────── */
 
@@ -613,4 +619,73 @@ test("sceneDiffs: 長さはフレーム数 - 1・値は 0..1", () => {
   for (const v of d) assert.ok(v >= 0 && v <= 1);
   assert.ok(d[2] > 0.5, "切替の所が高くない");
   assert.deepEqual(sceneDiffs([solid(0, 0)]), []);
+});
+
+/* ── ⑦ 回帰（一度やった間違いを二度としないため） ─────────────── */
+
+test("boundariesFromDiffs: 動きが続く中のカットは位置がずれず、2 回目も落ちない", () => {
+  // パン（0.15 が続く）の 6 枚目でカット。塊全体の重心で決めると index 18 付近まで
+  // 流れてしまう（境界の時刻が 3 秒ずれる）ので、強い所だけを拾う事を固定する
+  const pan = new Array(5).fill(0.15).concat([0.9], new Array(35).fill(0.15));
+  const one = boundariesFromDiffs(pan, { threshold: 0.28 });
+  assert.equal(one.length, 1, "カットが 1 本だけ出ていない");
+  assert.equal(one[0].index, 5, `カットの位置がずれた (${one[0].index})`);
+  assert.equal(one[0].kind, "cut");
+  // 同じ塊の中に 2 回カットが在れば 2 本とも出す（1 本に潰すと後半が丸ごと 1 ショットになる）
+  const two = boundariesFromDiffs([0.15, 0.15, 0.9, 0.15, 0.15, 0.15, 0.85, 0.15], { threshold: 0.28 });
+  assert.deepEqual(two.map((b) => b.index), [2, 6], `2 回のカットを拾えていない: ${JSON.stringify(two)}`);
+});
+
+test("sceneDiffs: gray だけの Frame では色の重みを落とす（全フレームが境界にならない）", () => {
+  const grayOnly = (t, v) => { const f = solid(t, v, 32, 24); return { t, w: f.w, h: f.h, gray: f.gray }; };
+  const same = [grayOnly(0, 100), grayOnly(0.25, 100), grayOnly(0.5, 100), grayOnly(0.75, 100)];
+  for (const v of sceneDiffs(same)) assert.equal(v, 0, "同じ絵なのに差が出ている（零ヒストグラム同士を別の絵と読んでいる）");
+  assert.equal(detectScenes(same).length, 1, "無地の gray 列がショットに割れた");
+  // 輝度だけでも本物の切替は拾える
+  const cut = [grayOnly(0, 20), grayOnly(0.25, 20), grayOnly(0.5, 235), grayOnly(0.75, 235),
+    grayOnly(1, 235), grayOnly(1.25, 235)];
+  assert.equal(detectScenes(cut, { minShot: 0.3 }).length, 2, "gray だけだと切替を拾えない");
+});
+
+test("sampleFrames: 枚数の上限に当たっても素材の最後まで見る", async () => {
+  // 偽の <video>（seek は同期で返る）と偽の canvas で、DOM 無しに枚数と時刻だけ確かめる
+  const hadRaf = "requestAnimationFrame" in globalThis, hadOC = "OffscreenCanvas" in globalThis;
+  globalThis.requestAnimationFrame = (fn) => { fn(); return 0; };
+  globalThis.OffscreenCanvas = class {
+    constructor(w, h) { this.width = w; this.height = h; this.px = new Uint8ClampedArray(w * h * 4); }
+    getContext() { return { drawImage: () => {}, getImageData: () => ({ data: this.px }) }; }
+  };
+  const fakeVideo = (dur) => {
+    const subs = new Map();
+    let t = 0;
+    return {
+      readyState: 2, duration: dur, videoWidth: 640, videoHeight: 360, pause() {},
+      get currentTime() { return t; },
+      set currentTime(v) { t = v; for (const f of subs.get("seeked") || []) f(); },
+      addEventListener(k, f) { subs.set(k, (subs.get(k) || []).concat(f)); },
+      removeEventListener(k, f) { subs.set(k, (subs.get(k) || []).filter((x) => x !== f)); },
+    };
+  };
+  try {
+    // 600s を 4hz で頼むと 2400 枚。上限 2000 枚でも「先頭 500 秒だけ」にしてはいけない
+    const long = await sampleFrames(fakeVideo(600), { hz: 4, size: 8 });
+    assert.ok(long.length <= 2000, `枚数の上限を超えた (${long.length})`);
+    assert.ok(long[long.length - 1].t > 600 * 0.95, `素材の後半を見ていない (末尾 ${long[long.length - 1].t}s)`);
+    assert.ok(long[0].t < 1, `先頭を飛ばしている (${long[0].t}s)`);
+    // 短い素材でも 1 枚は返る（0 枚だと呼ぶ側が「解析できない」と誤解する）
+    const tiny = await sampleFrames(fakeVideo(0.1), { hz: 4, size: 8 });
+    assert.equal(tiny.length, 1);
+    allFinite([tiny[0].t], "短い素材のフレーム時刻");
+  } finally {
+    if (!hadRaf) delete globalThis.requestAnimationFrame;
+    if (!hadOC) delete globalThis.OffscreenCanvas;
+  }
+});
+
+test("DEFAULT_WANT: 契約書 §1 の欄をすべて作る（speech を落とすと永久に埋まらない）", () => {
+  for (const k of ["scenes", "motion", "sharp", "bright", "sat", "faces",
+    "loudness", "silence", "speech", "beats", "highlights"]) {
+    assert.ok(DEFAULT_WANT.includes(k), `${k} が既定の want に無い（needsAnalysis は鍵の有無しか見ないので後から足せない）`);
+  }
+  assert.equal(needsAnalysis({ analysis: emptyAnalysis() }, ["speech"]), false);
 });

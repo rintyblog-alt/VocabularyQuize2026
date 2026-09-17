@@ -42,8 +42,15 @@ export * from "./track.js";
 /** 解析結果の版。中身の作り方を変えたら上げる（上げると次に開いた時に作り直される） */
 export const ANALYSIS_VERSION = 1;
 
-/** 既定で欲しい物（契約書 §6 の want） */
-export const DEFAULT_WANT = ["scenes", "motion", "sharp", "bright", "sat", "faces", "loudness", "silence", "beats", "highlights"];
+/**
+ * 既定で欲しい物（契約書 §6 の want）。
+ * `speech` を入れているのは、needsAnalysis が「鍵が在るか」しか見ないため。既定で
+ * 作らないと `analysis.speech` は null のまま固まり、後から `want:["speech"]` で呼んでも
+ * 「もう解析済み」と判断されて永久に埋まらない（ai/tools.js の autoSubtitleFromSpeech が
+ * 黙って無音の推定へ落ちる）。作る側の audio.js には detectSpeech が在る。
+ */
+export const DEFAULT_WANT = ["scenes", "motion", "sharp", "bright", "sat", "faces",
+  "loudness", "silence", "speech", "beats", "highlights"];
 
 const AUDIO_WANT = ["loudness", "silence", "beats", "speech"];
 
@@ -293,7 +300,8 @@ export async function analyzeAsset(asset, opts = {}) {
     }
   }
   ctx.progress(0.95, "highlights");
-  const canRank = !!(out.motion || out.sharp || out.bright || out.sat || out.scenes.length);
+  // 画像は除く（1 枚しか無いので curve の見かけの尺 = 1/hz 秒の偽の区間が出る）
+  const canRank = kind !== "image" && !!(out.motion || out.sharp || out.bright || out.sat || out.scenes.length);
   if (want.has("highlights") && canRank) {
     try {
       out.highlights = pickHighlights(out, {

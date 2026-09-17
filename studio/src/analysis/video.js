@@ -237,8 +237,7 @@ export function seekFrame(videoEl, t, opts = {}) {
     let settled = false;
     const finish = (err) => {
       if (settled) return;
-      settled = true; clearTimeout(timer); offEl(); offSig();
-      if (err) reject(err); else resolve();
+      settled = true; clearTimeout(timer); offEl(); offSig(); if (err) reject(err); else resolve();
     };
     const onSeeked = () => {   // seeked の直後はまだ前のフレームが出ている事がある（§13.3）
       if (typeof videoEl.requestVideoFrameCallback === "function") {
@@ -314,12 +313,11 @@ export function sceneDiff(prev, cur, weights = SCENE_WEIGHTS) {
 /** 隣り合うフレームの差の列（長さ = frames.length - 1） */
 export function sceneDiffs(frames, weights = SCENE_WEIGHTS) {
   if (!Array.isArray(frames) || frames.length < 2) return [];
-  let fa = frameFeatures(frames[0]);
   const out = [];
-  for (let i = 1; i < frames.length; i++) {
-    const fb = frameFeatures(frames[i]);
-    out.push(diffFeatures(frames[i - 1], frames[i], fa, fb, weights).score);
-    fa = fb;
+  let fa = frameFeatures(frames[0]);
+  for (let i = 1, fb = null; i < frames.length; i++) {
+    fb = frameFeatures(frames[i]);
+    out.push(diffFeatures(frames[i - 1], frames[i], fa, fb, weights).score); fa = fb;
   }
   return out;
 }
@@ -416,9 +414,8 @@ export function detectScenes(framesOrVideo, opts = {}) {
 
 /** 動きの強さ。画素差の平均を飽和曲線で 0..1 に（k=0.08 → 8% 差で 0.5） */
 export function motionCurve(frames, opts = {}) {
-  const hz = curveHz(frames);
+  const hz = curveHz(frames), k = finite(opts.k, 0.08), vs = [0];   // 0 番は下で 1 番に上書きする
   if (!Array.isArray(frames) || !frames.length) return makeCurve([], hz);
-  const k = finite(opts.k, 0.08), vs = [0];
   for (let i = 1; i < frames.length; i++) vs.push(soften(meanAbsDiffU8(frames[i - 1].gray, frames[i].gray) / 255, k));
   if (vs.length > 1) vs[0] = vs[1]; // 先頭を 0 にすると「頭は必ず静止」と誤解される
   return makeCurve(vs, hz);
@@ -450,9 +447,9 @@ export function estimateShift(prevGray, curGray, w, h, radius = 3, stride = 1) {
   for (let dy = -R; dy <= R; dy++) {
     for (let dx = -R; dx <= R; dx++) {
       let sum = 0, n = 0;
-      for (let y = Math.max(0, -dy), y1 = Math.min(h, h - dy), x1 = Math.min(w, w - dx); y < y1; y += st) {
-        const row = y * w, row2 = (y + dy) * w;
-        for (let x = Math.max(0, -dx); x < x1; x += st) { sum += Math.abs(prevGray[row + x] - curGray[row2 + x + dx]); n++; }
+      for (let y = Math.max(0, -dy), y1 = Math.min(h, h - dy), x1 = Math.min(w, w - dx), r0 = 0, r1 = 0; y < y1; y += st) {
+        r0 = y * w; r1 = (y + dy) * w;
+        for (let x = Math.max(0, -dx); x < x1; x += st) { sum += Math.abs(prevGray[r0 + x] - curGray[r1 + x + dx]); n++; }
       }
       if (!n) continue;
       const sad = sum / n + (Math.abs(dx) + Math.abs(dy)) * 0.15; // 同点なら動かない方を選ぶ
@@ -541,14 +538,12 @@ export function meanCurve(curve, a, b, fallback = null) {
 export function curveDuration(curve) {
   const vs = curve && Array.isArray(curve.values) ? curve.values : null;
   if (!vs || !vs.length) return 0;
-  const hz = finite(curve.hz, 0);
-  return hz > 0 ? vs.length / hz : 0;
+  return finite(curve.hz, 0) > 0 ? vs.length / finite(curve.hz, 0) : 0;
 }
 
 /** analysis から素材の尺を推す（duration / scenes / curve の最大） */
 export function analysisDuration(analysis) {
-  const A = analysis && typeof analysis === "object" ? analysis : {};
-  const scenes = Array.isArray(A.scenes) ? A.scenes : [];
+  const A = analysis && typeof analysis === "object" ? analysis : {}, scenes = Array.isArray(A.scenes) ? A.scenes : [];
   return Math.max(finite(A.duration, 0), scenes.length ? finite(scenes[scenes.length - 1].end, 0) : 0,
     curveDuration(A.motion), curveDuration(A.sharp), curveDuration(A.bright), curveDuration(A.sat));
 }
@@ -661,15 +656,13 @@ export function pickHighlights(analysis, opts = {}) {
   const step = Math.max(dur / 160, 1 / hz);
   const cands = [];
   for (let a = 0, r = null; a + want <= dur + 1e-9; a += step) {
-    r = scoreRange(A, a, a + want, opts);
-    cands.push({ start: a, end: a + want, score: r.score, why: r.why });
+    r = scoreRange(A, a, a + want, opts); cands.push({ start: a, end: a + want, score: r.score, why: r.why });
   }
   cands.sort((x, y) => y.score - x.score);
   const gap = Math.max(0, finite(opts.minGap, want * 0.6)), out = [];
   for (const c of cands) {
     if (out.length >= count) break;
-    if (out.some((o) => c.start < o.end + gap && o.start < c.end + gap)) continue;
-    out.push(c);
+    if (!out.some((o) => c.start < o.end + gap && o.start < c.end + gap)) out.push(c);
   }
   out.sort((x, y) => x.start - y.start);
   return out;
