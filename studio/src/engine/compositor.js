@@ -904,13 +904,15 @@ export function createCompositor(canvas, options) {
     });
     pp.swap();
     st.passes++;
-    const rpx = clamp(finite(bg.blur, 40), 0, 100) / 100 * Math.min(bw, bh) * 0.25;
-    for (const dir of ["h", "v"]) {
+    /* 分離ガウスは 5 タップなので、半径を欲張ると縞が出る。
+       小さめの半径で h→v を 2 巡させる方が同じ費用で滑らかになる。 */
+    const rpx = clamp(finite(bg.blur, 40), 0, 100) / 100 * Math.min(bw, bh) * 0.09;
+    for (const dir of ["h", "v", "h", "v"]) {
       const pg = prog("gauss|" + dir, () => SH.fsGauss(dir));
       if (!pg) break;
       G.drawQuad(pg, {
         target: pp.write(), blend: "none", textures: [pp.read().tex, null, null, null],
-        uniforms: { uTexRes: [bw, bh], uRadius: rpx, uOpacity: 1 }
+        uniforms: { uTexRes: [bw, bh], uRadius: Math.max(0.5, rpx), uOpacity: 1 }
       });
       pp.swap();
       st.passes++;

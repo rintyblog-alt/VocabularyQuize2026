@@ -221,18 +221,21 @@ export function silenceFromLoudness(loudness, opts = {}) {
   return out;
 }
 
-/** この clip に効く無音（素材秒）を集める。opts の指定 → 解析 → 音量曲線 */
+/**
+ * この clip に効く無音（素材秒）を集める。opts の指定 → 解析 → 音量曲線。
+ * `padded` は「もう端を詰めてある区間か」。解析済みの `analysis.silence` は
+ * detectSilence が pad を引いてあるので、既定では **二重に詰めない**
+ * （opts.pad を明示したときだけ更に詰める）。
+ * @returns {{spans:{start:number,end:number}[], padded:boolean}}
+ */
 function silenceFor(project, clip, o) {
   const assetId = str(clip.assetId);
   const given = plain(o.silence) ? (o.silence[assetId] || o.silence[str(clip.id)]) : o.silence;
-  if (Array.isArray(given)) return mergeSpans(given);
+  if (Array.isArray(given)) return { spans: mergeSpans(given), padded: true };
   const A = analysisOf(project, clip);
-  if (!A) return [];
-  if (Array.isArray(A.silence) && A.silence.length) {
-    // 解析済みの無音は既に pad 済み。opts.pad は「さらに内側へ」の意味で使う
-    return mergeSpans(A.silence);
-  }
-  return silenceFromLoudness(A.loudness, o);
+  if (!A) return { spans: [], padded: false };
+  if (Array.isArray(A.silence) && A.silence.length) return { spans: mergeSpans(A.silence), padded: true };
+  return { spans: silenceFromLoudness(A.loudness, o), padded: true };
 }
 
 /**
@@ -248,15 +251,19 @@ export function autoCutSilence(project, opts = {}) {
   const o = plain(opts) || {};
   const ripple = o.ripple !== false;
   const minDur = Math.max(0.05, finite(o.minDur, AUTO_DEFAULTS.silence.minDur));
-  const pad = Math.max(0, finite(o.pad, AUTO_DEFAULTS.silence.pad));
   const targets = targetClips(project, o, ["video", "audio"]);
   const ops = [], warnings = [];
   let cutSec = 0, spots = 0, gone = 0;
   if (!targets.length) return nothing("無音を探せるクリップがありません");
 
   for (const { clip } of targets) {
-    const src = silenceFor(project, clip, o);
+    const found = silenceFor(project, clip, o);
+    const src = found.spans;
     if (!src.length) continue;
+    /* 端に残す余白。解析済みの区間は既に詰まっているので既定では 0 */
+    const pad = o.pad !== undefined && o.pad !== null
+      ? Math.max(0, finite(o.pad, AUTO_DEFAULTS.silence.pad))
+      : (found.padded ? 0 : AUTO_DEFAULTS.silence.pad);
     if (clip.speedRamp) warnings.push(`「${str(clip.name) || clip.id}」は速度変化が在るので位置がずれることがあります`);
     if (str(clip.linkedId)) warnings.push(`「${str(clip.name) || clip.id}」は音が分離されています（相棒は別に処理してください）`);
     const S = finite(clip.start, 0);
@@ -334,7 +341,9 @@ export function removeGaps(project, opts = {}) {
  */
 export function evenOut(project, opts = {}) {
   const o = plain(opts) || {};
-  const targets = targetClips(project, o, ["video", "image", "audio", "text", "shape"]);
+  const explicit = arr(o.clipIds).length > 0 || arr(o.selection).length > 0 || arr(o.trackIds).length > 0;
+  /* 選ばずに呼ばれたら「絵のクリップ」だけ（BGM の尺まで変えると事故になる） */
+  const targets = targetClips(project, o, explicit ? ["video", "image", "audio", "text", "shape"] : ["video", "image"]);
   if (targets.length < 2) return nothing("そろえるにはクリップが 2 つ以上必要です");
   const durs = targets.map((x) => Math.max(MIN_CLIP, finite(x.clip.duration, MIN_CLIP)));
   const want = finite(o.duration, 0) > 0
@@ -797,7 +806,9 @@ export function readHistogram(hist) {
     }
     return acc.luma ? acc : null;
   }
-  if (plain(hist)) {
+  /* 型付き配列は plain() にも当たるので、**段の配列を先に**見る
+     （ここを逆にすると Float32Array の RGB ヒストが読めなくなる） */
+  if (plain(hist) && !isBins(hist)) {
     const o = hist;
     if (o.hist !== undefined && o.hist !== null) return readHistogram(o.hist);
     if (isBins(o.rgb)) return readHistogram(o.rgb);
@@ -988,23 +999,27 @@ export function autoColor(project, opts = {}) {
     const byAsset = plain(o.histByAsset) ? (o.histByAsset[assetId] || o.histByAsset[str(clip.id)]) : null;
     let hist = byAsset || o.hist || (Array.isArray(o.frames) && o.frames.length ? o.frames : null);
     const A = analysisOf(project, clip);
+    let estimated = null;
     if (!hist && A) {
-      const est = histFromCurve(A.bright, finite(clip.in, 0), finite(clip.out, 0));
-      if (est) { hist = est; guessed++; }
+      estimated = histFromCurve(A.bright, finite(clip.in, 0), finite(clip.out, 0));
+      if (estimated) { hist = estimated; guessed++; }
     }
     if (!hist) continue;
     const lv = autoLevels(hist);
+    /* 画素のヒストが無くて曲線から見積もった時は **半分**だけ当てる
+       （見積もりは分布が細いので、そのまま当てると過補正になる） */
+    const k = strength * (hist === estimated ? 0.5 : 1);
     const color = {
-      exposure: Math.round(lv.exposure * strength * 1000) / 1000,
-      contrast: Math.round(lv.contrast * strength * 1000) / 1000,
-      blacks: Math.round(lv.blacks * strength * 1000) / 1000,
-      whites: Math.round(lv.whites * strength * 1000) / 1000,
-      temperature: Math.round(lv.temperature * strength * 1000) / 1000
+      exposure: Math.round(lv.exposure * k * 1000) / 1000,
+      contrast: Math.round(lv.contrast * k * 1000) / 1000,
+      blacks: Math.round(lv.blacks * k * 1000) / 1000,
+      whites: Math.round(lv.whites * k * 1000) / 1000,
+      temperature: Math.round(lv.temperature * k * 1000) / 1000
     };
     /* 彩度は「眠い素材だけ」少し足す（濃い素材を更に濃くしない） */
     if (A && A.sat) {
       const satMean = meanCurve(A.sat, finite(clip.in, 0), finite(clip.out, 0), null);
-      if (satMean !== null && satMean < 0.34) color.saturation = Math.round(clamp((0.34 - satMean) * 0.8, 0, 0.2) * strength * 1000) / 1000;
+      if (satMean !== null && satMean < 0.34) color.saturation = Math.round(clamp((0.34 - satMean) * 0.8, 0, 0.2) * k * 1000) / 1000;
     }
     const biggest = Math.max.apply(null, Object.keys(color).map((k) => Math.abs(color[k])));
     if (!(biggest > 0.005)) continue;
@@ -1186,7 +1201,10 @@ export function autoDuck(project, opts = {}) {
     for (const k of keys) {
       if (k.t - last < 1 / 120) continue;                       // 近すぎるキーは 1 つに
       last = k.t;
-      push(ops, "key.add", { clipId: str(clip.id), path: "volume", t: Math.round(k.t * 1000) / 1000, v: clamp01(k.v), ease: k.ease });
+      push(ops, "key.add", {
+        clipId: str(clip.id), path: "volume",
+        t: Math.round(k.t * 1000) / 1000, v: Math.round(clamp01(k.v) * 10000) / 10000, ease: k.ease
+      });
     }
     n++;
   }
@@ -1319,7 +1337,7 @@ export function autoTelopFromSilence(project, opts = {}) {
   let spans = [];
   for (const tr of pool) {
     for (const clip of sortedClips(tr)) {
-      const sil = silenceFor(project, clip, o);
+      const sil = silenceFor(project, clip, o).spans;
       if (!sil.length) continue;
       const asset = assetById(project, str(clip.assetId));
       const A = analysisOf(project, clip);

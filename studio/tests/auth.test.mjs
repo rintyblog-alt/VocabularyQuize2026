@@ -211,7 +211,11 @@ test("normalizeGradePrefix: h1 → H1、全角も、知らない形は通す", (
   assert.equal(normalizeGradePrefix(""), "");
   assert.equal(normalizeGradePrefix(null), "");
   assert.equal(normalizeGradePrefix("zz9"), "ZZ9", "知らない形でも通す（サーバが正）");
-  assert.equal(GRADE_PREFIX_RE.test(normalizeGradePrefix("h1")), true);
+  // 本体の選択肢（AUTH_GRADE_VALUES）を 1 つ残らず通すこと。
+  // "OT" だけ英字 2 文字なので /^[A-Z][0-9]$/ では弾かれてしまう。
+  for (const g of ["J1", "J2", "J3", "H1", "H2", "H3", "OT", "h1", "その他"]) {
+    assert.equal(GRADE_PREFIX_RE.test(normalizeGradePrefix(g)), true, `${g} を弾いている`);
+  }
 });
 
 test("expiresAt: 秒とミリ秒が混ざっても比べられる", () => {
@@ -759,6 +763,81 @@ test("storage が throw する環境でも落ちない", async () => {
   const reopened = createAuth({ ...opts, fetchImpl: fakeFetch(routes) });
   assert.equal(reopened.state.status, "anon");
   assert.equal((await reopened.boot()).status, "anon");
+});
+
+/* ── 10. 検収で見つけた穴（回帰させないための試験） ───────────── */
+
+test("巨大な貼り付けでも純関数が固まらない（強度・ID・メールの検め）", () => {
+  const huge = "Qw3z!".repeat(400000);          // 200 万文字
+  const t0 = Date.now();
+  const r = passwordStrength(huge);
+  assert.equal(r.length, huge.length, "長さは正直に返す");
+  assert.ok(r.score >= 0 && r.score <= 4);
+  assert.equal(validateNickname(huge).ok, false, "長すぎる ID は弾く");
+  assert.equal(validateEmail(`${huge}@b.jp`).ok, false);
+  const ms = Date.now() - t0;
+  assert.ok(ms < 2000, `重すぎる（${ms}ms）。頭だけ調べる打ち切りが効いていない`);
+  // 頭だけ調べても 強い物は強い（打ち切りのせいで下がらない）
+  assert.equal(passwordStrength("Qw3zP1x2!m9Kd#7Vb".padEnd(9000, "x")).score, 4);
+});
+
+test("request: 本文が止まる応答も timeout で切れる（ボタンが回り続けない）", async () => {
+  /* headers は返るが body が来ない回線を真似る。timeout を本文の読み取りまで
+     効かせていないと、この試験は永遠に終わらない。 */
+  const stalled = async (url, init) => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    text: () => new Promise((_r, reject) => {
+      init.signal.addEventListener("abort", () => reject(new Error("aborted")));
+    }),
+  });
+  const { auth } = makeAuth(stalled, { timeout: 30 });
+  await assert.rejects(
+    () => auth.login({ gradePrefix: "H1", nickname: "minato", password: "Qw3zP1x2!" }),
+    (err) => {
+      assert.equal(err.code, "TIMEOUT");
+      assert.equal(err.isOffline, true);
+      return true;
+    },
+  );
+});
+
+test("request: 呼び出し側の signal で中止できる（ABORTED は「もう一度」ではない）", async () => {
+  const hang = (url, init) => new Promise((_r, reject) => {
+    init.signal.addEventListener("abort", () => reject(new Error("aborted")));
+  });
+  const { auth } = makeAuth(hang, { timeout: 5000 });
+  const ctrl = new AbortController();
+  const p = auth.request("/api/profile/me", { method: "GET", auth: true, signal: ctrl.signal });
+  ctrl.abort();
+  await assert.rejects(p, (err) => {
+    assert.equal(err.code, "ABORTED");
+    assert.equal(err.isOffline, false);
+    return true;
+  });
+});
+
+test("guest: 本体の token を借りて通信しない（選んでいない身元で叩かない）", async () => {
+  const store = loggedInStore();                // 本体がログイン済みの端末
+  const { auth, fetchImpl } = makeAuth({
+    "/api/profile/me": () => res(200, { profile: {} }),
+  }, { store });
+  auth.guest();
+  assert.deepEqual(auth.authHeader(), {}, "ゲストに Bearer は付けない");
+  await auth.profile();
+  assert.equal(fetchImpl.last().headers.Authorization, undefined, "本体の token を混ぜない");
+  assert.equal(store.get(AUTH_KEYS.token), "tk_main_app", "本体の token は消さない");
+});
+
+test("register.resend: 応答の challengeId が空でも受付を捨てない", async () => {
+  const { auth } = makeAuth({
+    "/api/auth/register/resend": () => res(200, { ok: true, challengeId: null, resendsRemaining: 1, devCode: "424242" }),
+  });
+  const ch = await auth.register.resend({ challengeId: "ch_keep" });
+  assert.equal(ch.challengeId, "ch_keep", "渡した受付を保つ（BAD_RESPONSE にしない）");
+  assert.equal(ch.resendsRemaining, 1);
+  assert.equal(ch.devCode, "424242");
 });
 
 test("createAuth: 契約書 §10.2 の口が揃っている", () => {

@@ -37,6 +37,10 @@ import {
   PRESETS, getPreset, applyPreset, recommendPreset, presetGroups,
 } from "../src/export/presets.js";
 
+/* 契約書 §5 は PRESETS を exporter.js の枠に並べている（実体は presets.js）。
+   ui/app.js は書き出し画面へ exporter だけを渡すので、こちらからも引けること。 */
+import * as exporterMod from "../src/export/exporter.js";
+
 /* ── 試験用のプロジェクトを組む小道具 ─────────────────────────── */
 
 function clip(o) {
@@ -756,5 +760,134 @@ test("capabilities: Node でも落ちず、形が揃う", async () => {
   assert.ok(caps.notes.length > 0, "出来ない理由が書かれていない");
   for (const c of ["wav", "gif", "png", "jpeg"]) {
     assert.ok(caps.containers.includes(c), `${c} が containers に無い`);
+  }
+});
+
+/* ── 13. 音のトラック選別（§11.3 の「BGM 抜き・特定トラックのみ」）── */
+
+/** 絵 1 本 + 音 2 本（BGM と ナレーション）のプロジェクト */
+function avProj() {
+  return proj({
+    tracks: [
+      { id: "tr_v", kind: "video", name: "V1", clips: [clip({})] },
+      { id: "tr_bgm", kind: "audio", name: "BGM", clips: [clip({ id: "cl_b", kind: "audio", duration: 4 })] },
+      { id: "tr_na", kind: "audio", name: "ナレーション", clips: [clip({ id: "cl_n", kind: "audio", duration: 4 })] },
+    ],
+  });
+}
+
+test("planExport: audioTracks で混ぜるトラックを絞れる", () => {
+  const p = planExport(avProj(), { audioTracks: ["tr_na"] });
+  assert.deepEqual(p.audioTracks, ["tr_na"]);
+  assert.equal(p.excludeAudioTracks, null);
+});
+
+test("planExport: excludeAudioTracks で BGM を抜ける", () => {
+  const p = planExport(avProj(), { excludeAudioTracks: "tr_bgm" });
+  assert.deepEqual(p.excludeAudioTracks, ["tr_bgm"]);
+  assert.equal(p.audioTracks, null);
+});
+
+test("planExport: 指定が無ければ両方 null（今まで通り全部混ぜる）", () => {
+  const p = planExport(avProj(), {});
+  assert.equal(p.audioTracks, null);
+  assert.equal(p.excludeAudioTracks, null);
+});
+
+test("planExport: 在りもしないトラックの指定は BAD_FORMAT（黙って無音にしない）", () => {
+  assert.throws(
+    () => planExport(avProj(), { audioTracks: ["tr_zzz"] }),
+    (e) => e instanceof ExportError && e.code === "BAD_FORMAT",
+  );
+  assert.throws(
+    () => planExport(avProj(), { excludeAudioTracks: ["tr_zzz"] }),
+    (e) => e instanceof ExportError && e.code === "BAD_FORMAT",
+  );
+  // 一部だけ当たっているなら当たった分で進む
+  const ok = planExport(avProj(), { audioTracks: ["tr_na", "tr_zzz"] });
+  assert.deepEqual(ok.audioTracks, ["tr_na"]);
+});
+
+test("planExport: 無音（audio:none）ならトラック指定は見ない", () => {
+  const p = planExport(avProj(), { audio: "none", audioTracks: ["tr_zzz"] });
+  assert.equal(p.audio, "none");
+  assert.equal(p.audioTracks, null);
+});
+
+/* ── 14. 字幕に含めるかの印（ui/inspector/text.js からの申し送り）── */
+
+test("字幕: text.subtitle === false の 1 枚だけ外す（既定は今まで通り含める）", () => {
+  const p = subProj([
+    textClip(0, 1, "出す"),
+    textClip(2, 1, "出さない", { text: { content: "出さない", subtitle: false, style: {}, layout: {}, anim: {} } }),
+    textClip(4, 1, "これも出す", { text: { content: "これも出す", subtitle: true, style: {}, layout: {}, anim: {} } }),
+  ]);
+  assert.deepEqual(collectCues(p, {}).map((c) => c.text), ["出す", "これも出す"]);
+  const srt = buildSubtitles(p, { format: "srt" });
+  assert.ok(!srt.includes("出さない"), srt);
+  // 連番は詰まる（2 枚目が 2 番）
+  assert.ok(srt.includes("2\n00:00:04,000 --> 00:00:05,000\nこれも出す"), srt);
+});
+
+/* ── 15. surveyMedia の hidden と muted ───────────────────────── */
+
+test("surveyMedia: muted のトラックの音は「無い」・hidden でも音は「在る」", () => {
+  const muted = proj({
+    tracks: [{ id: "tr_a", kind: "audio", muted: true, clips: [clip({ kind: "audio", duration: 8 })] }],
+  });
+  assert.deepEqual(surveyMedia(muted), { visual: false, audio: false });
+
+  const hidden = proj({
+    tracks: [{ id: "tr_a", kind: "audio", hidden: true, clips: [clip({ kind: "audio", duration: 8 })] }],
+  });
+  assert.deepEqual(surveyMedia(hidden), { visual: false, audio: true });
+
+  // 絵のトラックを隠したら「絵は無い」が、素材の音は残る
+  const hiddenVideo = proj({
+    tracks: [{ id: "tr_v", kind: "video", hidden: true, clips: [clip({})] }],
+  });
+  assert.deepEqual(surveyMedia(hiddenVideo), { visual: false, audio: true });
+});
+
+test("surveyMedia: 隠したクリップは絵として数えない", () => {
+  const p = subProj([textClip(0, 2, "隠し", { hidden: true })]);
+  assert.equal(surveyMedia(p).visual, false);
+});
+
+/* ── 16. encodeWav の上限（黙って壊れた wav を出さない）──────── */
+
+test("encodeWav: 4GB を超える長さは NO_AUDIO で断る（RIFF の頭が 32bit）", () => {
+  /* 実体は確保しない（確保する前に断るのが正しい）。
+     48kHz ステレオで 2^31 サンプル ≒ 12 時間 24 分。 */
+  const huge = {
+    sampleRate: 48000, numberOfChannels: 2, length: 2 ** 31,
+    getChannelData() { throw new Error("ここまで来てはいけない（確保前に断るはず）"); },
+  };
+  assert.throws(
+    () => encodeWav(huge),
+    (e) => e instanceof ExportError && e.code === "NO_AUDIO" && /wav/.test(e.message),
+  );
+});
+
+/* ── 17. 契約書 §5 の並び（exporter.js から presets も引ける）── */
+
+test("exporter.js から PRESETS と preset の関数を引ける（§5 の並び）", () => {
+  assert.equal(exporterMod.PRESETS, PRESETS);
+  assert.equal(typeof exporterMod.getPreset, "function");
+  assert.equal(typeof exporterMod.applyPreset, "function");
+  assert.equal(typeof exporterMod.recommendPreset, "function");
+  assert.equal(typeof exporterMod.presetGroups, "function");
+  // 輪（presets.js → exporter.js）になっても中身が空にならないこと
+  assert.equal(exporterMod.getPreset("yt-1080p").id, "yt-1080p");
+  assert.equal(exporterMod.presetGroups().length, 3);
+});
+
+test("契約書 §5 の export が 1 つも欠けていない", () => {
+  for (const name of [
+    "exportVideo", "exportStill", "exportAudio", "exportProject", "importProject",
+    "exportSubtitles", "exportEDL", "exportGif", "exportStillSequence",
+    "planExport", "capabilities", "deliver", "PRESETS",
+  ]) {
+    assert.ok(exporterMod[name] !== undefined, `${name} が export されていない`);
   }
 });

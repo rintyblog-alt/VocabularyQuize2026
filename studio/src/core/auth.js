@@ -34,6 +34,14 @@
      ・expiresAt は本体が書いた値をそのまま持ち、**比べるときだけ** ms に直す
        （normalizeExpiresAt。書き戻して形を変えると本体と食い違う）。
      ・boot() は例外を投げない。どんな失敗でも anon か user(stale) に落ちる。
+     ・学年接頭の「その他」は **"OT"**（本体 index.html の
+       AUTH_GRADE_VALUES = J1/J2/J3/H1/H2/H3/OT）。"OTHER" を送ると 身元が
+       （学年接頭 + ニックネーム）なのでサーバの会員に一致せず、
+       「ログイン情報が正しくありません」しか出ない口になる。
+     ・request() の timeout と 呼び出し側 signal は **本文を読み終えるまで** 効かせる
+       （headers だけ返って body が止まる回線が在る。先に片付けると永遠に回る）。
+     ・status:"guest" のときは 保管に残る本体の token を **使わない**
+       （storedToken()）。選んでいない身元で API を叩かないため。
      ・passwordStrength / validate* / normalizeGradePrefix は純関数のまま保つ
        （tests/auth.test.mjs が単調性と境界まで見る）。
      ・CONTRACT-NOTE: 契約書 §10.2 の createAuth は { apiBase, storage } だが、

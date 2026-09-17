@@ -40,7 +40,8 @@
        次に触る人が分けるなら境目はここ:
          §10-§12（stage / renderAt / mixAudio / loadMuxer）→ export/render.js
          §13-§15（runPrecise / runRealtime / renderStills）→ export/encode.js
-       公開の export（§16）だけを このファイルに残せば 400 行を切る。
+       公開の入口（§16）と presets の再輸出（§17）だけを このファイルに
+       残せば 400 行を切る。
      ・進捗は 200ms より短い間隔で必ず呼ぶ（契約書 §11.8）。重い所の前後で
        tick(..., true) を打つ。
      ・signal.aborted は各段の頭と 1 フレームごとに見る。中止時は encoder /
@@ -191,19 +192,91 @@ export function surveyMedia(project) {
   const byId = new Map(assets.map((a) => [a && a.id, a]));
   let visual = false, audio = false;
   for (const tr of tracks) {
-    if (!tr || !Array.isArray(tr.clips) || tr.hidden) continue;
+    if (!tr || !Array.isArray(tr.clips)) continue;
+    /* CONTRACT-NOTE: 契約書 §1 の hidden は「絵を隠す」、muted は「音を止める」で
+       別の印。まとめて弾くと 隠したトラックの音まで「無い」ことになり、
+       音を切ったトラックの音が「在る」ことになる（recommendPreset が
+       「音声のみ」を勧め損なう／無音なのに音を混ぜようとする）。別々に見る。 */
+    const seeable = !tr.hidden;
+    const hearable = !tr.muted;
     for (const c of tr.clips) {
-      if (!c) continue;
+      if (!c || c.hidden) continue;
       const k = c.kind;
-      if (k === "video" || k === "image" || k === "text" || k === "shape" || k === "compound") visual = true;
-      if (k === "audio") audio = true;
-      if (k === "video" && !c.muteAudio) {
+      if (seeable && (k === "video" || k === "image" || k === "text" || k === "shape" || k === "compound")) visual = true;
+      if (hearable && k === "audio") audio = true;
+      if (hearable && k === "video" && !c.muteAudio) {
         const a = byId.get(c.assetId);
         if (!a || a.hasAudio !== false) audio = true;
       }
     }
   }
   return { visual, audio };
+}
+
+/**
+ * トラックの指定（id の配列 / 1 つの id / トラックそのもの）を id の一覧へ。
+ * @param {*} v @returns {string[]|null} 指定が無ければ null
+ */
+function idList(v) {
+  if (v === undefined || v === null || v === "") return null;
+  const a = Array.isArray(v) ? v : [v];
+  const out = [];
+  for (const x of a) {
+    const id = x && typeof x === "object" ? x.id : x;
+    if (typeof id === "string" && id && out.indexOf(id) < 0) out.push(id);
+  }
+  return out.length ? out : null;
+}
+
+/**
+ * 「どのトラックの音を混ぜるか」を解く（契約書 §11.3 の
+ * 「BGM 抜き・特定トラックのみも可」）。
+ *   audioTracks        … この id のトラックだけ混ぜる
+ *   excludeAudioTracks … この id のトラックだけ外す（BGM 抜き）
+ * 全部が空振りなら **黙って無音にせず** BAD_FORMAT で断る
+ * （指定が古いまま無音の動画が出来上がるのが一番困る）。
+ * @param {any} project @param {Object} o
+ * @returns {{only:string[]|null, skip:string[]|null}}
+ */
+function resolveAudioTracks(project, o) {
+  const only = idList(o.audioTracks);
+  const skip = idList(o.excludeAudioTracks);
+  if (!only && !skip) return { only: null, skip: null };
+  const have = new Set();
+  const tracks = project && Array.isArray(project.tracks) ? project.tracks : [];
+  for (const tr of tracks) if (tr && typeof tr.id === "string") have.add(tr.id);
+  const hitOnly = only ? only.filter((id) => have.has(id)) : null;
+  const hitSkip = skip ? skip.filter((id) => have.has(id)) : null;
+  if (only && hitOnly.length === 0) {
+    throw new ExportError(`音に混ぜるトラックが見つかりません: ${only.join(", ")}`, "BAD_FORMAT");
+  }
+  if (skip && hitSkip.length === 0) {
+    throw new ExportError(`音から外すトラックが見つかりません: ${skip.join(", ")}`, "BAD_FORMAT");
+  }
+  return { only: hitOnly && hitOnly.length ? hitOnly : null, skip: hitSkip && hitSkip.length ? hitSkip : null };
+}
+
+/**
+ * 選ばれなかったトラックに muted を立てた **浅い複製**を返す。
+ * CONTRACT-NOTE: 契約書 §4 の renderMixdown は「どのトラックを混ぜるか」を
+ * 受け取らない。引数で頼むだけでは 実装が無視すると黙って BGM が入るので、
+ * 渡す project の側でも印を立てる（volume も 0 にして二重に止める）。
+ * 元の project は書き換えない（store の中身を触ると取消が壊れる）。
+ * @param {any} project @param {{audioTracks?:string[]|null, excludeAudioTracks?:string[]|null}} plan
+ */
+function muteUnselected(project, plan) {
+  const only = plan && plan.audioTracks ? new Set(plan.audioTracks) : null;
+  const skip = plan && plan.excludeAudioTracks ? new Set(plan.excludeAudioTracks) : null;
+  if (!only && !skip) return project;
+  const tracks = project && Array.isArray(project.tracks) ? project.tracks : [];
+  let touched = 0;
+  const next = tracks.map((tr) => {
+    if (!tr || typeof tr !== "object" || tr.muted) return tr;
+    if (!((only && !only.has(tr.id)) || (skip && skip.has(tr.id)))) return tr;
+    touched++;
+    return Object.assign({}, tr, { muted: true, volume: 0 });
+  });
+  return touched ? Object.assign({}, project, { tracks: next }) : project;
 }
 
 /* ── 4. planExport（純関数・試験する） ─────────────────────────── */
@@ -336,10 +409,12 @@ function preciseLikely() {
  * 書き出しの段取りを決める（**純関数**。DOM も await も無い）。
  * @param {any} project
  * @param {Object} [opts] range/width/height/fps/videoBitrate/audioBitrate/
- *   container/codec/mode/audio/quality/sequence/sampleRate
+ *   container/codec/mode/audio/quality/sequence/sampleRate/
+ *   audioTracks/excludeAudioTracks（§11.3 の「BGM 抜き・特定トラックのみ」）
  * @returns {{width:number,height:number,fps:number,frames:number,
  *   range:{start:number,end:number},duration:number,mode:string,codec:string,
- *   container:string,audio:string,videoBitrate:number,audioBitrate:number,
+ *   container:string,audio:string,audioTracks:string[]|null,
+ *   excludeAudioTracks:string[]|null,videoBitrate:number,audioBitrate:number,
  *   sampleRate:number,estimatedBytes:number,mime:string,warnings:string[]}}
  */
 export function planExport(project, opts) {
@@ -348,6 +423,8 @@ export function planExport(project, opts) {
   const range = resolveRange(project, o);
   let { container, codec } = resolveOutput(o, warnings);
   const audio = resolveAudioMode(o, container);
+  // 音のトラック指定は **押した瞬間に**確かめる（書き出し途中で気付くより良い）
+  const audioSel = audio === "none" ? { only: null, skip: null } : resolveAudioTracks(project, o);
 
   // 音声のみは容器を音の物へ寄せる（mp4 の音だけ = m4a は自前で作れない）
   if (audio === "only" && container !== "wav" && container !== "webm") {
@@ -389,6 +466,7 @@ export function planExport(project, opts) {
   const plan = {
     width: size.width, height: size.height, fps, frames,
     range, duration, mode, codec, container, audio,
+    audioTracks: audioSel.only, excludeAudioTracks: audioSel.skip,
     videoBitrate, audioBitrate, sampleRate,
     estimatedBytes: 0,
     mime: MIME[container] || "application/octet-stream",
@@ -501,6 +579,12 @@ export function collectCues(project, opts) {
     if (!tr || !Array.isArray(tr.clips)) continue;
     for (const c of tr.clips) {
       if (!c || c.kind !== "text" || c.hidden) continue;
+      /* CONTRACT-NOTE: 1 枚ごとの「字幕に含めるか」の印。
+         ui/inspector/text.js の CONTRACT-NOTE 1（`clip.text.subtitle`・
+         **既定 true**）からの申し送りを受けた口。既定が true なので、
+         schema がこの枝を落としても 今までと同じ結果に倒れる
+         （切った覚えのない字幕が消える事故を起こさない）。 */
+      if (c.text && c.text.subtitle === false) continue;
       const text = cueText(c);
       if (!text) continue;
       const start = Math.max(0, finite(c.start, 0));
@@ -753,7 +837,23 @@ export function encodeWav(buffer, sel) {
   const s1 = clampInt(finite(o.endSample, len), s0, len);
   const n = s1 - s0;
   const bytes = 44 + n * ch * 2;
-  const ab = new ArrayBuffer(bytes);
+  /* RIFF の大きさは 32bit なので 4GB を超えると頭の数字が嘘になる
+     （再生機が黙って壊れた音として読む）。手前で断る。
+     実際はもっと早く ArrayBuffer が取れなくなるので、そちらも同じ言い方で。 */
+  if (bytes > 0xffffffff) {
+    throw new ExportError(
+      `音が長すぎて 1 つの wav に入りません（${formatBytes(bytes)}）。範囲を分けて書き出してください`,
+      "NO_AUDIO",
+    );
+  }
+  let ab;
+  try { ab = new ArrayBuffer(bytes); }
+  catch (e) {
+    throw new ExportError(
+      `音のための場所（${formatBytes(bytes)}）を確保できませんでした。範囲を分けて書き出してください`,
+      "NO_AUDIO", e,
+    );
+  }
   const v = new DataView(ab);
   writeAscii(v, 0, "RIFF");
   v.setUint32(4, bytes - 8, true);
@@ -860,11 +960,29 @@ async function makeStage(project, plan, opts) {
   const w = Math.max(2, Math.round(finite(plan.width, 1920)));
   const h = Math.max(2, Math.round(finite(plan.height, 1080)));
   const needDom = plan.mode === "realtime";
-  const canvas = o.canvas || createCanvas(w, h, needDom);
-  if (o.canvas && (canvas.width !== w || canvas.height !== h)) {
-    try { canvas.width = w; canvas.height = h; } catch (e) { L.warn("借りた canvas の大きさを変えられません", e); }
+  /* 借り物は「使えるか」を確かめてから使う。駄目なら自前で作り直す。
+     ・書き出しの大きさに変えられない canvas を使うと、符号化器の設定と
+       絵の大きさが食い違って VideoEncoder が途中で投げる（原因が見えない）。
+     ・実時間録画なのに captureStream を持たない（OffscreenCanvas 等）。
+     canvas を作り直したら **compositor も借りない**（借りた compositor は
+     借りた canvas に縛られているので、別の canvas には描いてくれない）。 */
+  const borrowed = o.canvas || (o.compositor && o.compositor.canvas) || null;
+  let canvas = borrowed;
+  if (canvas && (canvas.width !== w || canvas.height !== h)) {
+    try { canvas.width = w; canvas.height = h; }
+    catch (e) { L.warn("借りた canvas の大きさを変えられません", e); }
+    if (canvas.width !== w || canvas.height !== h) {
+      L.warn("借りた canvas を書き出しの大きさにできないので自前で作ります");
+      canvas = null;
+    }
   }
-  let compositor = o.compositor || null;
+  if (canvas && needDom && typeof canvas.captureStream !== "function") {
+    L.warn("借りた canvas は captureStream を持たないので録画用に自前で作ります");
+    canvas = null;
+  }
+  const ownCanvas = !canvas;
+  if (!canvas) canvas = createCanvas(w, h, needDom);
+  let compositor = ownCanvas ? null : (o.compositor || null);
   let ownComp = false;
   if (!compositor) {
     let mod;
@@ -896,10 +1014,19 @@ async function makeStage(project, plan, opts) {
   return {
     canvas, compositor, sources, width: w, height: h,
     dispose() {
-      /* 録画のために画面へ載せた canvas は必ず外す */
-      try {
-        if (canvas && canvas.__vqsOwned && canvas.parentNode) canvas.parentNode.removeChild(canvas);
-      } catch (e) { L.warn("書き出し用 canvas を外せません", e); }
+      /* 録画のために画面へ載せた canvas は必ず外す。
+         compositor は WebGL を失うと 2d へ落ち、そのとき **canvas ごと
+         差し替える**（engine/compositor.js の degrade は元の canvas を
+         DOM から抜いて代わりを挿す）。作った時の 1 枚だけ見ていると
+         2px の canvas が画面に残るので、今 compositor が持っている物も見る。
+         借り物は外さない（画面の持ち物を勝手に抜かない）。 */
+      const live = compositor && compositor.canvas ? compositor.canvas : null;
+      const mine = live && live !== canvas ? [canvas, live] : [canvas];
+      for (const c of mine) {
+        try {
+          if (ownCanvas && c && c !== borrowed && c.parentNode) c.parentNode.removeChild(c);
+        } catch (e) { L.warn("書き出し用 canvas を外せません", e); }
+      }
       if (ownSrc && sources && typeof sources.dispose === "function") {
         try { sources.dispose(); } catch (_e) { /* 後片付けで落ちない */ }
       }
@@ -908,6 +1035,19 @@ async function makeStage(project, plan, opts) {
       }
     },
   };
+}
+
+/**
+ * 今まさに絵が載っている canvas。
+ * compositor は WebGL の文脈を失うと 2d へ落ち、そのとき **canvas を
+ * 差し替える**（engine/compositor.js の degrade）。作った時の canvas を
+ * 握り続けると、差し替え後は「DOM から外された空の canvas」を写して
+ * 真っ黒な動画／真っ白な静止画になる。だから毎回 compositor に聞き直す。
+ * @param {{compositor?:any, canvas?:any}} stage
+ */
+function liveCanvas(stage) {
+  const c = stage && stage.compositor && stage.compositor.canvas;
+  return c || (stage && stage.canvas) || null;
 }
 
 /**
@@ -979,14 +1119,19 @@ async function mixAudio(project, plan, opts, warnings, tick) {
     return null;
   }
   try {
-    // CONTRACT-NOTE: 契約書 §4 の renderMixdown は範囲の開始を受け取らない。
-    // range/start も一緒に渡し、無視された（= 全体が返った）場合は
-    // 下の pickAudioWindow で切り出す。どちらの実装でも音がずれない。
-    return await fn(project, {
+    // CONTRACT-NOTE: 契約書 §4 の renderMixdown は「範囲の開始」も
+    // 「どのトラックを混ぜるか」も受け取らない。start / range と
+    // audioTracks / excludeAudioTracks を一緒に渡し（対応した実装なら
+    // 使ってくれる）、外すトラックには muteUnselected で印も立てる。
+    // これで実装が何であっても §11.3 の「BGM 抜き・特定トラックのみ」が効く。
+    // 範囲が無視された（= 全体尺が返った）場合は下の pickAudioWindow で切り出す。
+    return await fn(muteUnselected(project, plan), {
       sampleRate: plan.sampleRate,
       duration: plan.duration,
       start: plan.range.start,
       range: plan.range,
+      audioTracks: plan.audioTracks || null,
+      excludeAudioTracks: plan.excludeAudioTracks || null,
       onProgress: (p) => tick(0.02 + 0.12 * clamp(finite(p, 0), 0, 1), { stage: "audio" }),
       signal: opts.signal,
     });
@@ -1094,6 +1239,10 @@ async function loadMuxer(container, cfg) {
       const r = await callAny(m, ["finalize", "finish", "close", "toBlob"], [], "finalize");
       return toBlob(r, mime);
     },
+    /** 溜め込んだバイト列を放させる（中止・失敗の後片付け。無い実装は素通り） */
+    dispose() {
+      if (typeof m.dispose === "function") m.dispose();
+    },
   };
 }
 
@@ -1179,9 +1328,24 @@ async function runPrecise(project, plan, opts, warnings, tick) {
         const sup = await AE.isConfigSupported(cand);
         if (sup && sup.supported) aconf = sup.config || cand;
       } catch (_e) { /* 下で warnings に積む */ }
-      if (!aconf) warnings.push("この端末では音声を符号化できませんでした（無音で書き出します）");
+      if (!aconf) warnings.push("この端末では音声を符号化できませんでした");
     } else if (buffer) {
-      warnings.push("AudioEncoder が無いので無音で書き出します");
+      warnings.push("AudioEncoder が無いので動画に音を入れられません");
+    }
+    /* 契約書 §13.1 の「音は 3 段構え」の ③:
+       動画に音を入れられない端末では **無音の動画 + 別ファイルの .wav** を渡す
+       （音を黙って捨てない）。① の AudioEncoder は上、② の
+       MediaStreamAudioDestinationNode + MediaRecorder は runRealtime が持つ。
+       混ぜた音は既に手元に在るので、ここで wav にするだけで済む。 */
+    let sideAudio = null;
+    if (buffer && !aconf) {
+      try {
+        sideAudio = encodeWav(buffer, win);
+        warnings.push("音は別の .wav にしました（動画は無音です）");
+      } catch (e) {
+        warnings.push(`音を別ファイルにもできませんでした: ${msgOf(e)}`);
+        L.warn("別 wav も作れません", e);
+      }
     }
 
     mux = await loadMuxer(plan.container, {
@@ -1217,7 +1381,7 @@ async function runPrecise(project, plan, opts, warnings, tick) {
       if (errs.length) throw errs[0];
       const rel = frameStart(i, plan.fps);
       await renderAt(stage, project, plan.range.start + rel, signal);
-      const frame = new globalThis.VideoFrame(stage.canvas, {
+      const frame = new globalThis.VideoFrame(liveCanvas(stage), {
         timestamp: Math.round(rel * 1e6), duration: frameUs,
       });
       try { venc.encode(frame, { keyFrame: i % keyEvery === 0 }); }
@@ -1234,10 +1398,14 @@ async function runPrecise(project, plan, opts, warnings, tick) {
     if (errs.length) throw errs[0];
     const blob = await mux.finish();
     tick(0.99, { frame: plan.frames, stage: "finalize" }, true);
-    return { blob, mime: blob.type || plan.mime, frames: plan.frames };
+    return { blob, mime: blob.type || plan.mime, frames: plan.frames, audio: sideAudio };
   } finally {
     try { if (venc && venc.state !== "closed") venc.close(); } catch (_e) { /* 既に閉じている */ }
     try { if (aenc && aenc.state !== "closed") aenc.close(); } catch (_e) { /* 同上 */ }
+    /* 中止・失敗のときに muxer が抱えたバイト列を放させる
+       （4K を数分だと数百 MB 単位。次の書き出しまで持たせない）。
+       finalize 済みでも返した Blob は別物なので捨てて構わない。 */
+    if (mux) { try { mux.dispose(); } catch (_e) { /* 無い実装は素通り */ } }
     stage.dispose();
   }
 }
@@ -1267,20 +1435,39 @@ async function runRealtime(project, plan, opts, warnings, tick, caps0) {
   const stage = await makeStage(project, plan, opts);
   let rec = null, engine = opts.audioEngine || null, dest = null;
   try {
-    if (typeof stage.canvas.captureStream !== "function") {
-      throw new ExportError("canvas.captureStream に対応していないので実時間録画ができません", "NO_RECORDER");
+    /* ★ 捕まえる前に 1 枚描く。compositor は WebGL を失うと 2d へ落ちて
+       **canvas を差し替える**ので、描く前に captureStream すると
+       差し替え前の（画面から外された）canvas を録り続けて真っ黒になる。
+       ここで落ちるなら まだ引き返せる（exportVideo が precise へ回す）。 */
+    await renderAt(stage, project, plan.range.start, signal);
+    const cv = liveCanvas(stage);
+    if (!cv || typeof cv.captureStream !== "function") {
+      throw new ExportError("canvas.captureStream に対応していないので実時間録画ができません（iPhone / iPad はこの道が使えません）", "NO_RECORDER");
     }
     /* ★ captureStream(0) + track.requestFrame() が使えるなら、描いた直後に
        1 枚ずつ渡す（合成の都合で取り落とすのを防げる）。
        Firefox は requestFrame 未実装なので、その場合は fps 指定に落とす。 */
-    let stream = stage.canvas.captureStream(0);
+    let stream = cv.captureStream(0);
     let manualTrack = null;
-    const vt = stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+    let vt = stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
     if (vt && typeof vt.requestFrame === "function") {
       manualTrack = vt;
     } else {
-      try { for (const t of stream.getTracks()) t.stop(); } catch (_e) { /* noop */ }
-      stream = stage.canvas.captureStream(plan.fps);
+      try { if (stream.getTracks) for (const t of stream.getTracks()) t.stop(); } catch (_e) { /* noop */ }
+      stream = cv.captureStream(plan.fps);
+      vt = stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+    }
+    /* 契約書 §13.1: UA では判定せず **取れた track の readyState** を見る。
+       captureStream が在っても死んだ track を返す実装だと、進捗だけ進んで
+       真っ黒（または 0 バイト）の動画が出来上がる。先に断って precise へ回す。 */
+    if (!vt) {
+      throw new ExportError("canvas から映像トラックを取れませんでした（実時間録画ができません）", "NO_RECORDER");
+    }
+    if (vt.readyState !== undefined && vt.readyState !== "live") {
+      throw new ExportError(`canvas の映像トラックが生きていません（readyState=${vt.readyState}）`, "NO_RECORDER");
+    }
+    if (plan.audio !== "none" && (plan.audioTracks || plan.excludeAudioTracks)) {
+      warnings.push("実時間録画では音のトラックを選べません（今の再生と同じ音が入ります）");
     }
     if (plan.audio !== "none") {
       if (engine && engine.ctx && typeof engine.ctx.createMediaStreamDestination === "function") {
@@ -1322,11 +1509,19 @@ async function runRealtime(project, plan, opts, warnings, tick, caps0) {
 
     const t0 = nowMs();
     let frames = 0;
+    let swapped = false;
     for (;;) {
       throwIfAborted(signal);
       const el = (nowMs() - t0) / 1000;
       const t = plan.range.start + Math.min(el, plan.duration);
       await renderAt(stage, project, t, signal);
+      /* 録画中に canvas が差し替わったら もう捕まえ直せない（1 度きりの
+         stream）。黙って真っ黒を渡さないよう理由を残す。 */
+      if (!swapped && liveCanvas(stage) !== cv) {
+        swapped = true;
+        warnings.push("合成が WebGL から 2d へ落ちたため、ここから先の絵が録れていないことが在ります（高精度の書き出しをお試しください）");
+        L.warn("録画中に canvas が差し替わりました");
+      }
       if (manualTrack) { try { manualTrack.requestFrame(); } catch (_e) { /* 取り落としは許す */ } }
       frames++;
       tick(0.02 + 0.95 * clamp(el / plan.duration, 0, 1), { frame: frames, stage: "video" });
@@ -1337,10 +1532,31 @@ async function runRealtime(project, plan, opts, warnings, tick, caps0) {
     tick(0.98, { frame: frames, stage: "finalize" }, true);
     try { if (rec.state !== "inactive") rec.stop(); } catch (_e) { /* 既に止まっている */ }
     await stopped;
-    for (const tr of stream.getTracks()) { try { tr.stop(); } catch (_e) { /* 同上 */ } }
+    try { if (stream.getTracks) for (const tr of stream.getTracks()) tr.stop(); } catch (_e) { /* 同上 */ }
     if (chunks.length === 0) throw new ExportError("録画の中身が空でした", "NO_RECORDER");
     const blob = new Blob(chunks, { type: mime });
-    return { blob, mime, frames };
+    /* 契約書 §13.1 の 3 段構え ③: ②（MediaStreamAudioDestinationNode）で
+       音を載せられなかったのに音が欲しかった場合は、無音の動画に加えて
+       別ファイルの .wav を渡す（音を黙って捨てない）。
+       ここで初めて混ぜるので少し待たせるが、音無しで渡すより良い。 */
+    let sideAudio = null;
+    if (plan.audio !== "none" && !dest) {
+      tick(0.99, { frame: frames, stage: "audio" }, true);
+      try {
+        sideAudio = await exportAudio(project, {
+          range: plan.range, format: "wav", sampleRate: plan.sampleRate,
+          audioTracks: plan.audioTracks || undefined,
+          excludeAudioTracks: plan.excludeAudioTracks || undefined,
+          signal, warningsOut: warnings, onProgress: null,
+        });
+        warnings.push("音は別の .wav にしました（動画は無音です）");
+      } catch (e) {
+        if (isAbort(e)) throw e;
+        warnings.push(`音を別ファイルにもできませんでした: ${msgOf(e)}`);
+        L.warn("realtime の別 wav も作れません", e);
+      }
+    }
+    return { blob, mime, frames, audio: sideAudio };
   } finally {
     try { if (rec && rec.state !== "inactive") rec.stop(); } catch (_e) { /* 同上 */ }
     if (engine && typeof engine.stop === "function") { try { engine.stop(); } catch (_e) { /* 同上 */ } }
@@ -1357,9 +1573,17 @@ async function runRealtime(project, plan, opts, warnings, tick, caps0) {
  */
 async function renderStills(project, plan, opts, warnings, tick, type) {
   const o = opts || {};
-  const cap = clampInt(finite(o.maxStills, 600), 1, 3000);
+  /* 間引きは「枚数」と「合計の大きさ」の両方で決める。
+     4K の PNG は 1 枚 5MB 前後なので、枚数だけで 600 枚許すと 3GB を
+     抱えて端末が落ちる（返り値は Blob の配列 = 呼び出し側が捨てるまで
+     消えない）。opts.maxStillBytes で増やせる。 */
+  const perFrame = Math.max(1, Math.round(
+    Math.max(1, finite(plan.width, 1920) * finite(plan.height, 1080)) * (type === "image/png" ? 0.6 : 0.2),
+  ));
+  const budget = clampInt(finite(o.maxStillBytes, 512 * 1024 * 1024), 8 * 1024 * 1024, 4 * 1024 * 1024 * 1024);
+  const cap = Math.max(1, Math.min(clampInt(finite(o.maxStills, 600), 1, 3000), Math.floor(budget / perFrame)));
   const step = plan.frames > cap ? Math.ceil(plan.frames / cap) : 1;
-  if (step > 1) warnings.push(`静止画は ${step} フレームおきに書き出します（枚数が多すぎるため）`);
+  if (step > 1) warnings.push(`静止画は ${step} フレームおきに書き出します（端末が抱えられる枚数と大きさに収めるため）`);
   const ext = type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "png";
   const base = sanitizeName(project && project.name) || "無題のプロジェクト";
   const quality = clamp(finite(o.quality, 0.92), 0.1, 1);
@@ -1370,7 +1594,7 @@ async function renderStills(project, plan, opts, warnings, tick, type) {
       throwIfAborted(o.signal);
       const rel = plan.frames === 1 ? 0 : frameStart(i, plan.fps);
       await renderAt(stage, project, plan.range.start + rel, o.signal);
-      const blob = await canvasBlob(stage.canvas, type, quality);
+      const blob = await canvasBlob(liveCanvas(stage), type, quality);
       out.push({
         filename: `${base}_${String(i).padStart(5, "0")}.${ext}`,
         blob, frame: i, time: round3(plan.range.start + rel),
@@ -1404,7 +1628,10 @@ function containerOfMime(mime) {
  *   onProgress(p, {frame,frames,etaMs,stage}) / signal / strict /
  *   canvas / compositor / sources / storage / audioEngine
  * @returns {Promise<{blob:Blob, mime:string, filename:string, frames:number,
- *   mode:string, warnings:string[], plan:Object, stills?:Array, audio?:Blob|null}>}
+ *   mode:string, warnings:string[], plan:Object, stills:Array|null,
+ *   audio:Blob|null, audioFilename:string|null}>}
+ *   audio は「動画に音を入れられなかったので別ファイルにした」時だけ入る
+ *   （契約書 §13.1 の 3 段構え ③）。UI は在れば一緒に渡す。
  */
 export async function exportVideo(project, opts) {
   const o = opts || {};
@@ -1428,6 +1655,11 @@ export async function exportVideo(project, opts) {
       plan,
       stills: r.stills || null,
       audio: r.audio === undefined ? null : r.audio,
+      /* 別ファイルになった音（契約書 §13.1 ③）の名前。無ければ null。
+         UI は blob と 2 つ並べて deliver() する。 */
+      audioFilename: r.audio
+        ? buildFilename(project, { container: "wav", label: o.filenameLabel, at: o.at })
+        : null,
     };
   };
 
@@ -1443,7 +1675,7 @@ export async function exportVideo(project, opts) {
     return done({ blob, mime: blob.type || plan.mime, frames: 0, mode: "audio" });
   }
   if (plan.mode === "gif") {
-    const r = await runGif(project, plan, o);
+    const r = await runGif(project, plan, o, tick);
     tick(1, { stage: "done" }, true);
     return done(Object.assign({ mode: "gif" }, r));
   }
@@ -1528,7 +1760,7 @@ export async function exportStill(project, time, opts) {
   const stage = await makeStage(project, { width: size.width, height: size.height, mode: "still" }, o);
   try {
     await renderAt(stage, project, t, o.signal);
-    return await canvasBlob(stage.canvas, type, clamp(finite(o.quality, 0.92), 0.1, 1));
+    return await canvasBlob(liveCanvas(stage), type, clamp(finite(o.quality, 0.92), 0.1, 1));
   } finally {
     stage.dispose();
   }
@@ -1540,20 +1772,26 @@ export async function exportStill(project, time, opts) {
  * 知りたい呼び出し側は `warningsOut: []` を渡すと そこへ積まれる。
  * @param {any} project
  * @param {{format?:string,container?:string,range?:Object,sampleRate?:number,
- *   audioBitrate?:number,onProgress?:Function,signal?:any,warningsOut?:string[]}} [opts]
+ *   audioBitrate?:number,audioTracks?:string[],excludeAudioTracks?:string[],
+ *   onProgress?:Function,signal?:any,warningsOut?:string[]}} [opts]
  * @returns {Promise<Blob>}
  */
 export async function exportAudio(project, opts) {
   const o = opts || {};
   const warnings = Array.isArray(o.warningsOut) ? o.warningsOut : [];
+  throwIfAborted(o.signal);
   const range = resolveRange(project, o);
   const fmt = String(o.format || o.container || "wav").toLowerCase();
+  // §11.3 の「BGM 抜き・特定トラックのみ」。指定が空振りなら ここで断る
+  const sel = resolveAudioTracks(project, o);
   const plan = {
     mode: "audio",
     audio: "include",
     container: fmt === "webm" || fmt === "opus" ? "webm" : "wav",
     range,
     duration: round3(range.end - range.start),
+    audioTracks: sel.only,
+    excludeAudioTracks: sel.skip,
     sampleRate: clampInt(
       finite(o.sampleRate, finite(project && project.settings && project.settings.sampleRate, 48000)),
       8000, 192000,
@@ -1563,6 +1801,7 @@ export async function exportAudio(project, opts) {
   const tick = makeProgress(o.onProgress, 0);
   tick(0.01, { stage: "audio" }, true);
   const buffer = await mixAudio(project, plan, o, warnings, tick);
+  throwIfAborted(o.signal);
   if (!buffer || typeof buffer.getChannelData !== "function") {
     throw new ExportError("音を作れませんでした（素材に音が無いか、合成器が使えません）", "NO_AUDIO");
   }
@@ -1602,6 +1841,9 @@ async function encodeAudioWebm(buffer, plan, win, opts) {
     audioCodec: conf.codec, sampleRate: conf.sampleRate,
     numberOfChannels: conf.numberOfChannels, audioBitrate: conf.bitrate,
     duration: plan.duration,
+    /* 音だけの webm を "video/webm" で名乗ると、音声として受け取らない
+       相手（音楽アプリ・文字起こし）が在る。muxer の既定を上書きする。 */
+    mime: "audio/webm",
   });
   const errs = [];
   const enc = new AE({
@@ -1621,7 +1863,7 @@ async function encodeAudioWebm(buffer, plan, win, opts) {
 }
 
 /** GIF（export/gif.js に任せる。契約書 §11.4） */
-async function runGif(project, plan, opts) {
+async function runGif(project, plan, opts, tick) {
   let mod;
   try { mod = await import("./gif.js"); }
   catch (e) { throw new ExportError("GIF の書き出し（export/gif.js）が在りません", "NO_GIF", e); }
@@ -1630,6 +1872,13 @@ async function runGif(project, plan, opts) {
   const blob = await fn(project, Object.assign({}, opts, {
     width: plan.width, height: plan.height, fps: plan.fps,
     range: plan.range, frames: plan.frames,
+    /* 進捗は こちらの窓口へ通す（100ms の間引きと stage の呼び名を
+       他の道と揃える。gif.js は stage:"encode" と言うが、契約書 §11.8 で
+       並べた呼び名は prepare/audio/video/still/mux/finalize/done だけ）。 */
+    onProgress: (p, info) => tick(
+      0.02 + 0.96 * clamp(finite(p, 0), 0, 1),
+      { frame: Math.round(finite(info && info.frame, 0)), frames: plan.frames, stage: "video" },
+    ),
   }));
   return { blob: toBlob(blob, MIME.gif), mime: "image/gif", frames: plan.frames };
 }
@@ -1679,13 +1928,28 @@ export async function importProject(blob, opts) {
 }
 
 /**
+ * 保存に使う名前へ直す。sanitizeName は「名前の部品」向けで 80 字で切る
+ * （拡張子まで落ちる）ので、こちらは **区切り文字と制御文字だけ**を落とす。
+ * a.download にパス区切りが混ざると端末次第で保存名が崩れる。
+ * @param {*} filename @returns {string}
+ */
+function downloadName(filename) {
+  const n = String(filename === undefined || filename === null ? "" : filename)
+    .replace(/[\\/]+/g, "_")
+    .replace(CTRL_CHARS, "")
+    .trim();
+  if (!n || /^\.+$/.test(n)) return "export.bin";
+  return n.length > 120 ? n.slice(n.length - 120) : n;
+}
+
+/**
  * 出来た物を利用者へ渡す（共有が在れば共有・無ければダウンロード）。
  * 契約書 §11.8 の「完了後の共有 / ダウンロード」。DOM が無ければ false。
  * @param {Blob} blob @param {string} filename @returns {Promise<boolean>}
  */
 export async function deliver(blob, filename) {
   if (!blob) return false;
-  const name = sanitizeName(filename) ? filename : "export.bin";
+  const name = downloadName(filename);
   const nav = globalThis.navigator;
   try {
     const F = globalThis.File;
@@ -1718,3 +1982,15 @@ export async function deliver(blob, filename) {
   }
   return true;
 }
+
+/* ── 17. presets の再輸出（契約書 §5 の並びに合わせる） ───────── */
+
+/* CONTRACT-NOTE: 契約書 §5 は `PRESETS` を export/exporter.js の枠の中に
+   並べている（実体は export/presets.js）。ui/app.js は書き出し画面へ
+   `exporter: exporterMod` だけを渡すので、ここから出しておかないと
+   画面が preset を引けない（§11.8 の presets が画面に出ない）。
+   presets.js → exporter.js の輪になるが、presets.js は **読み込み時には**
+   exporter.js の中身を呼ばない（関数の中だけで使う）ので、ES modules の
+   循環でも初期化の穴（TDZ）には落ちない。どちらを先に import しても同じ。
+   ここに新しい物を足すときも「読み込み時に相手を呼ばない」ことを守る。 */
+export { PRESETS, getPreset, applyPreset, recommendPreset, presetGroups } from "./presets.js";

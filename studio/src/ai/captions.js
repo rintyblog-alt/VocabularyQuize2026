@@ -29,6 +29,11 @@
      ・秒はタイムライン秒。SRT / VTT のミリ秒は 3 桁で丸める。
      ・`transcribe` は async。中止は `signal`。DOM が無い所（Node の試験）でも
        ③ の道だけは動く（`opts.silence` を渡せる）。
+
+   CONTRACT-NOTE: 共通前提は「1 ファイル 700 行で分割」だが、分割先
+     （ai/captions/*.js）は担当外なので作れない。§A〜§F の章立てで 1 ファイルに
+     収めた。統合担当が分けるときは §C（改行）・§E（SRT/VTT）が pure で
+     独立しているので、その 2 章から切り出すのが安全。
    ══════════════════════════════════════════════════════════════════════ */
 
 import { clamp, clamp01, finite } from "../core/util.js";
@@ -158,7 +163,13 @@ const NO_START = "、。，．,.!?！？…‥・:;：；」』）］｝〉》�
 const NO_END = "「『（［｛〈《【“‘";
 /** 切れ目として良い助詞・助動詞（後ろで切る） */
 const PARTICLES_2 = ["から", "まで", "より", "ので", "けど", "ても", "でも", "には", "とは", "では", "って", "ながら", "そして", "しかし"];
-const PARTICLES_1 = "はがをにでとへもやのねよかしばなぞ";
+const PARTICLES_1 = "はがをにでとへもやねよか";
+/** ここで切ると語が割れる 2 文字（「です」「でき」「から」…）。切らせない */
+const NO_BREAK_PAIRS = new Set([
+  "です", "でし", "ます", "まし", "ませ", "でき", "でい", "でも", "では", "ても", "ては",
+  "には", "とは", "にも", "とも", "から", "まで", "より", "ので", "のに", "ない", "なく",
+  "なけ", "たい", "てい", "って", "った", "ちゃ", "じゃ", "しょ", "まと", "につ", "にお", "とし"
+]);
 /** 強い切れ目（この後ろは最優先で切る） */
 const STRONG = "。！？!?…";
 const WEAK = "、，,・";
@@ -205,26 +216,31 @@ function atomsOf(text) {
 }
 
 /** その塊の末尾で切る良さ（大きいほど良い） */
-function breakScore(atom, next) {
-  const a = str(atom);
-  const lastReal = a.replace(/[ 　]+$/, "");
-  const tail = lastReal.slice(-1);
+function breakScore(prev, next) {
+  const left = str(prev).replace(/[ \u3000]+$/, "");
+  const tail = left.slice(-1);
   const head = str(next).slice(0, 1);
+  if (NO_BREAK_PAIRS.has(tail + head)) return -100;             // 語の途中（「です」「でき」）で切らない
   if (STRONG.indexOf(tail) >= 0) return 100;
   if (WEAK.indexOf(tail) >= 0) return 80;
   if ("」』）］｝〉》】".indexOf(tail) >= 0) return 70;
   if (NO_END.indexOf(head) >= 0) return 66;                     // 開き括弧の前
-  if (lastReal.length >= 2 && PARTICLES_2.indexOf(lastReal.slice(-2)) >= 0) return 62;
-  if (lastReal.length >= 2 && PARTICLES_1.indexOf(tail) >= 0) return 58;  // 一字の助詞（語頭の「の」等は除く）
+  if (left.length >= 3 && PARTICLES_2.indexOf(left.slice(-2)) >= 0) return 62;
+  if (left.length >= 2 && PARTICLES_1.indexOf(tail) >= 0) return 58;   // 一字の助詞（語頭の「の」等では切らない）
   const ct = charClass(tail), ch = charClass(head);
-  if (ct !== ch && ct !== "none" && ch !== "none") return 34;    // 漢字↔かな・英数の境目
+  if (ct === "none" || ch === "none") return 10;
+  /* 語の始まり（漢字・カタカナ・英数）の **前** は良い切れ目。
+     逆に漢字の **後ろ**（＝送り仮名の手前）で切ると動詞が割れるので下げる。 */
+  if ((ct === "hira" || ct === "kata") && (ch === "kanji" || ch === "latin")) return 40;
+  if (ct === "kanji" && ch === "hira") return 24;
+  if (ct !== ch) return 30;
   return 10;
 }
 
 /** 表示上の長さ（末尾の句読点はぶら下げるので数えない） */
 function visualLen(s) {
-  let t = str(s);
-  while (t.length && (STRONG + WEAK).indexOf(t.slice(-1)) >= 0) t = t.slice(0, -1);
+  const t = str(s);
+  if (t.length && (STRONG + WEAK).indexOf(t.slice(-1)) >= 0) return t.length - 1;   // ぶら下げは 1 文字だけ
   return t.length;
 }
 
@@ -263,7 +279,7 @@ export function wrapJa(text, maxCharsPerLine = DEFAULT_MAX_CHARS) {
       for (let k = cur.length; k >= 1; k--) {
         const len = visualLen(cur.slice(0, k).join(""));
         if (len < Math.min(max, fitLen) * 0.45) break;           // 半分より短い所では折らない
-        const score = breakScore(cur[k - 1], k < cur.length ? cur[k] : atom) - (fitLen - len) * 6;
+        const score = breakScore(cur.slice(0, k).join(""), k < cur.length ? cur[k] : atom) - (fitLen - len) * 3.5;
         if (score > bestScore) { bestScore = score; bestAt = k; }
       }
       const rest = cur.slice(bestAt);
@@ -364,6 +380,32 @@ export function captionsToClips(captions, opts = {}) {
     }
   }
   return ops;
+}
+
+/**
+ * タイムラインの text クリップ → 字幕（**書き出し用**・pure）。
+ * 契約書 §11-5 の「SRT / VTT 書き出し」は これで字幕を集めてから
+ * `srtStringify` / `vttStringify` に渡す。
+ * CONTRACT-NOTE: 依存の向きは `ui → ai → … → export` なので、export 側から
+ *   ここを import してはいけない。**ui が文字列を作って exporter へ渡す**。
+ * @param {Object} project @param {{trackId?:string, trackIds?:string[]}} [opts]
+ * @returns {Caption[]}
+ */
+export function captionsFromProject(project, opts = {}) {
+  const o = plain(opts) || {};
+  const want = str(o.trackId) ? [str(o.trackId)] : arr(o.trackIds).map(str).filter(Boolean);
+  const out = [];
+  for (const track of arr(project && project.tracks)) {
+    if (!track || (want.length && want.indexOf(str(track.id)) < 0)) continue;
+    for (const clip of arr(track.clips)) {
+      if (str(clip && clip.kind) !== "text") continue;
+      const text = str(clip.text && clip.text.content).trim();
+      if (!text) continue;
+      const start = Math.max(0, finite(clip.start, 0));
+      out.push({ start, end: start + Math.max(MIN_CLIP, finite(clip.duration, MIN_CLIP)), text });
+    }
+  }
+  return normalizeCaptions(out);
 }
 
 /* ══ §E SRT / VTT（pure・往復できること）════════════════════════ */

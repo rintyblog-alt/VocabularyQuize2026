@@ -179,11 +179,21 @@ export function getPreset(presetId) {
   return BY_ID.get(String(presetId || "")) || null;
 }
 
-/** opts から そのまま持って行く鍵（利用者が画面で触った値・呼び出し側の道具） */
+/**
+ * opts から そのまま持って行く鍵（利用者が画面で触った値・呼び出し側の道具）。
+ * ここに無い鍵は **落ちる**。画面に出す操作を増やしたら必ず足すこと
+ * （落ちても例外にならないので、GIF のループが効かない等の形で後から気付く）。
+ */
 const PASS_THROUGH = [
-  "range", "mode", "audio", "quality", "sequence", "type", "maxStills",
+  "range", "mode", "audio", "quality", "sequence", "type",
   "width", "height", "fps", "videoBitrate", "audioBitrate", "sampleRate",
   "container", "codec", "strict", "filenameLabel", "at",
+  // 音のトラック選び（契約書 §11.3 の「BGM 抜き・特定トラックのみ」）
+  "audioTracks", "excludeAudioTracks", "warningsOut", "format",
+  // GIF の操作（契約書 §11.4 の「幅指定・ループ・ディザ」）
+  "loop", "dither", "colors", "background",
+  // 静止画の連番（契約書 §11.2）。枚数と合計の大きさで間引きを決める
+  "maxStills", "maxStillBytes",
   "onProgress", "signal", "canvas", "compositor", "sources", "storage", "audioEngine",
 ];
 
