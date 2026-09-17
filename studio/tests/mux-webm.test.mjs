@@ -787,3 +787,125 @@ test("finalize(): Blob が在る環境では video/webm の Blob を返す", () 
     assert.ok(m.finalizeBytes().length > 0);
   }
 });
+
+/* ══ 10. 検収で見つけた穴の回帰試験 ════════════════════════════
+   どれも「実際に壊れているのを再現してから直した」物。
+   消すと同じ穴が戻るので、落ちたら webm.js 側を直す。 */
+
+test("Opus は 48kHz 基準で書く（44.1k 指定でも SamplingFrequency は 48000）", () => {
+  // Opus は常に 48kHz で復号する。OpusHead の sampleRate は「元の音の
+  // 周波数」で再生用ではない（RFC 7845 §5.1）。ここを渡された rate で
+  // 書くと exportAudio(sampleRate:44100) が 9% 遅く鳴り、pre-skip の
+  // ns 換算（CodecDelay）も狂って音ずれになる。
+  const t = buildTracks({ audio: { codec: "A_OPUS", sampleRate: 44100, channels: 2, trackNumber: AUDIO_TRACK } });
+  const entry = kids(allEl(kids(walk(t, 0, t.length)[0]), EBML_IDS.TrackEntry)[0]);
+  assert.equal(floatOf(findEl(kids(findEl(entry, EBML_IDS.Audio)), EBML_IDS.SamplingFrequency)), 48000,
+    "SamplingFrequency は Opus の復号周波数");
+  assert.equal(uintOf(findEl(entry, EBML_IDS.CodecDelay)), Math.round((312 / 48000) * 1e9),
+    "CodecDelay は pre-skip ÷ 48000（渡された rate では割らない）");
+  // OpusHead 側は「元の周波数」なので 44100 のまま
+  const priv = findEl(entry, EBML_IDS.CodecPrivate).data;
+  assert.equal(new DataView(priv.buffer, priv.byteOffset, priv.byteLength).getUint32(12, true), 44100,
+    "OpusHead の入力周波数は渡された値のまま");
+  // 24kHz でも CodecDelay は変わらない（前は 2 倍になっていた）
+  const t2 = buildTracks({ audio: { codec: "A_OPUS", sampleRate: 24000, channels: 1, trackNumber: AUDIO_TRACK } });
+  const e2 = kids(allEl(kids(walk(t2, 0, t2.length)[0]), EBML_IDS.TrackEntry)[0]);
+  assert.equal(uintOf(findEl(e2, EBML_IDS.CodecDelay)), Math.round((312 / 48000) * 1e9));
+});
+
+test("duration の無い chunk でも Info/Duration が最後の 1 枚を数える", () => {
+  // WebCodecs の EncodedAudioChunk は duration を必ず入れてくれるとは
+  // 限らない。0 のまま最後の 1 枚を数えないと Duration が 1 packet 分
+  // （Opus なら 20ms）足りず、再生機が末尾を切る。
+  const m = createWebMMuxer({ video: null, audio: AUDIO });
+  for (let i = 0; i < 300; i++) m.addAudioChunk({ data: new Uint8Array(12).fill(7), timestampUs: i * 20000 });
+  const f = openFile(m.finalizeBytes());
+  assert.equal(floatOf(findEl(kids(f.info), EBML_IDS.Duration)), 6000, "20ms × 300 = 6 秒（5980 では足りない）");
+
+  // 映像も同じ（fps から補う）
+  const m2 = createWebMMuxer({ video: VIDEO });
+  for (let i = 0; i < 30; i++) m2.addVideoChunk({ data: new Uint8Array(40).fill(i + 1), timestampUs: i * 100000, key: i % 10 === 0 });
+  const f2 = openFile(m2.finalizeBytes());
+  assert.equal(floatOf(findEl(kids(f2.info), EBML_IDS.Duration)), 3000, "fps 10 なので最後の 1 枚は 100ms");
+});
+
+test("逐次: 片方のトラックが遅れても throw せず 16bit に収まる", () => {
+  // 以前は「音声を 1 枚入れた後に映像だけ 40 秒進める」と、
+  // 追いつき監視が全トラックの **max** を見ていたので Cluster を
+  // 先に閉じてしまい、後から来た音声の相対時刻 -35980 が
+  // 16bit を外れて **書き出しの途中で RangeError** になっていた。
+  const got = [];
+  const m = createWebMMuxer({
+    video: { codec: "V_VP9", width: 320, height: 180, fps: 10 },
+    audio: AUDIO, retain: true, onData: (b) => got.push(b),
+  });
+  m.addAudioChunk({ data: new Uint8Array(12).fill(1), timestampUs: 0, durationUs: 20000 });
+  for (let i = 0; i < 400; i++) {
+    m.addVideoChunk({ data: new Uint8Array(60).fill((i + 1) & 0xff), timestampUs: i * 100000, durationUs: 100000, key: i % 10 === 0 });
+  }
+  for (let i = 1; i < 2000; i++) {
+    m.addAudioChunk({ data: new Uint8Array(12).fill(2), timestampUs: i * 20000, durationUs: 20000 });
+  }
+  const f = openFile(m.finalizeBytes());
+  assert.equal(f.clusters.reduce((s, c) => s + c.blocks.length, 0), 400 + 2000, "1 枚も落ちない");
+  for (const c of f.clusters) {
+    for (const b of c.blocks) {
+      assert.ok(b.relMs >= -32768 && b.relMs <= MAX_BLOCK_REL, `相対時刻が 16bit に収まる（${b.relMs}）`);
+    }
+  }
+  // 少しの遅れ（追いつき待ちの上限内）なら待つ = 早すぎる Cluster を閉じない
+  const m2 = createWebMMuxer({ video: VIDEO, audio: AUDIO, onData: () => {} });
+  m2.addAudioChunk({ data: new Uint8Array(12).fill(1), timestampUs: 0, durationUs: 20000 });
+  for (const c of fakeVideo({ n: 60 })) m2.addVideoChunk(c);   // 映像だけ 6 秒
+  assert.equal(m2.stats().bytesWritten, 0, "音声を待っているので まだ流さない");
+  assert.ok(m2.stats().pending > 0, "溜めて待っている");
+});
+
+test("stats(): 既定モードでも cues / bytesWritten / bufferedBytes を答える", () => {
+  // exporter.js が使うのは既定モード。ここが 0 のままだと
+  // 「長尺で onData に切り替えるか」の判断材料が無い。
+  const m = createWebMMuxer({ video: VIDEO });
+  for (const c of fakeVideo({ n: 60, size: 100 })) m.addVideoChunk(c);
+  const mid = m.stats();
+  assert.equal(mid.streaming, false);
+  assert.ok(mid.bufferedBytes > 0, "抱えている chunk の量が見える");
+  const bytes = m.finalizeBytes();
+  const after = m.stats();
+  assert.equal(after.bytesWritten, bytes.length, "bytesWritten = 出来たファイルの長さ");
+  assert.equal(after.cues, allEl(kids(openFile(bytes).cues), EBML_IDS.CuePoint).length, "cues = 実際の CuePoint の数");
+  assert.equal(after.bufferedBytes, 0, "finalize で手放す");
+  m.dispose();
+  assert.equal(m.stats().bufferedBytes, 0);
+});
+
+test("simpleBlock: トラック番号 0 は弾く（どの再生機も対応付けられない）", () => {
+  assert.throws(() => simpleBlock(0, 0, new Uint8Array([1]), true), RangeError, "0 は不可");
+  assert.throws(() => simpleBlock(-1, 0, new Uint8Array([1]), true), RangeError, "負も不可");
+  assert.ok(simpleBlock(1, 0, new Uint8Array([1]), true).length > 0);
+});
+
+test("finalizeBytes(): 中身を 1 回しか確保しない（iOS の memory 回帰）", () => {
+  // ebmlElement(Segment, body) → concatBytes([header, …]) と重ねると
+  // 中身の大きさを 3 回確保する。1080p 5 分 ≒ 110MB なら 330MB を
+  // 一度に握るので iPhone で落ちる。1 回に収まっている事を固める。
+  const real = globalThis.Uint8Array;
+  const chunks = [];
+  for (let i = 0; i < 300; i++) {
+    chunks.push({ data: new real(4000).fill(i & 0xff), timestampUs: i * 33333, durationUs: 33333, key: i % 30 === 0 });
+  }
+  const m = createWebMMuxer({ video: { codec: "V_VP9", width: 640, height: 360, fps: 30 } });
+  for (const c of chunks) m.addVideoChunk(c);
+  let big = 0;
+  class Counting extends real {
+    constructor(...a) { super(...a); if (this.length > 250000) big += this.length; }
+  }
+  let bytes;
+  try {
+    globalThis.Uint8Array = Counting;
+    bytes = m.finalizeBytes();
+  } finally {
+    globalThis.Uint8Array = real;
+  }
+  assert.ok(bytes.length > 1000000, `試料が小さすぎます（${bytes.length}）`);
+  assert.ok(big <= bytes.length * 1.2, `大きな確保が ${big} バイト（本体 ${bytes.length} の 1 回分で足りる）`);
+});

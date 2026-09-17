@@ -561,3 +561,60 @@ test("default export は createGIFEncoder / exportGif も在る（exporter.js �
   assert.equal(createDefault, createGIFEncoder, "default は createGIFEncoder");
   assert.equal(typeof exportGif, "function", "exporter.js の runGif が探す名前");
 });
+
+test("createGIFEncoder: bytes() で途中を覗いてもパレットの学習を汚さない", () => {
+  /* 回帰試験。bytes() が learnAndFlush() を呼んでいた頃は «下書きを 1 回
+     覗いただけ» でグローバルパレットが 1 枚目だけから確定してしまい、
+     冒頭が単色の動画が真っ黒な GIF になった（後から出る色が全部潰れる）。 */
+  const build = (peek) => {
+    const enc = createGIFEncoder({ width: 8, height: 8, fps: 10, quality: 1, learnFrames: 3 });
+    enc.addFrame(solidFrame(8, 8, [0, 0, 0]), { delayMs: 100 });
+    let draft = null;
+    if (peek) {
+      draft = enc.bytes();
+      assert.equal(enc.palette(), null, "覗いただけではパレットは決まらない");
+      assert.equal(enc.stats().pending, 1, "待っているフレームも消えない");
+    }
+    enc.addFrame(solidFrame(8, 8, [255, 0, 0]), { delayMs: 100 });
+    enc.addFrame(solidFrame(8, 8, [0, 0, 255]), { delayMs: 100 });
+    return { bytes: enc.finalizeBytes(), palette: enc.palette(), stats: enc.stats(), draft };
+  };
+  const plain = build(false);
+  const peeked = build(true);
+
+  assert.equal(asciiOf(peeked.draft, 0, 6), "GIF89a", "下書きも GIF として読める");
+  assert.equal(peeked.draft[peeked.draft.length - 1], GIF_TRAILER, "下書きにも末尾が付く");
+  assert.equal(readGif(peeked.draft).frames.length, 1, "下書きには 1 枚目が入る");
+
+  assert.deepEqual(peeked.palette, plain.palette, "覗いても同じパレットに落ち着く");
+  assert.equal(peeked.palette.length, 3, "黒・赤・青の 3 色が残る");
+  assert.equal(peeked.stats.frames, 3, "3 枚とも書かれる");
+  assert.equal(peeked.stats.skipped, 0, "潰れて «前と同じ» になったフレームが無い");
+  assert.deepEqual(Array.from(peeked.bytes), Array.from(plain.bytes), "覗いた有無でバイト列が変わらない");
+
+  const shots = composite(readGif(peeked.bytes));
+  const distinct = shots.map((s) => new Set(s).size);
+  assert.deepEqual(distinct, [1, 1, 1], "各フレームは単色");
+  assert.equal(new Set(shots.map((s) => s[0])).size, 3, "3 枚が別々の色を指す");
+});
+
+test("quantizeFrame: background は #rrggbb / [r,g,b] / §1 の settings.background を受ける", () => {
+  /* 呼び出し側が契約書 §1 の settings.background（{type,color,…} という object）を
+     そのまま渡しても «背景が黒い GIF» にならないこと。 */
+  const clear = solidFrame(4, 4, [255, 255, 255], 0).data;   // 完全に透明な白
+  const mapper = createPaletteMapper([[0, 0, 0], [255, 0, 0], [255, 255, 255]]);
+  const reds = [
+    "#ff0000",
+    [255, 0, 0],
+    { type: "color", color: "#ff0000", assetId: null, blur: 40 },
+  ];
+  for (const bg of reds) {
+    const idx = quantizeFrame(clear, 4, 4, mapper, { dither: false, background: bg });
+    assert.deepEqual(
+      mapper.palette[idx[0]], [255, 0, 0],
+      `${JSON.stringify(bg)} は赤に潰れる`,
+    );
+  }
+  const fallback = quantizeFrame(clear, 4, 4, mapper, { dither: false });
+  assert.deepEqual(mapper.palette[fallback[0]], [0, 0, 0], "指定が無ければ黒（今までどおり）");
+});

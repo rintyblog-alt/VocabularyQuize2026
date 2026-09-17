@@ -8,23 +8,22 @@
      要るのは sampleFrames と detectFaces だけで、判定の中身は全て pure 関数
      （frames を受けて数を返す）に切り出した。そうしないと Node の試験で 1 行も
      確かめられず、静かに壊れたまま AI 自動編集が狂う。フレームは 64px 級まで縮めて
-     から見る（欲しいのは「どこで切れたか」「動いているか」で細部ではない。縮めれば
-     1 素材が 1 秒台で終わる）。rgb は RGBA ではなく 3 バイト詰め（64x36 でも 4 バイト
-     持つと 100 フレームで約 1MB 増え、モバイルでは効く）。ショット境界は 1 つの指標で
-     必ず誤る（フラッシュ・パン・フェード）ので 8x8x8 ヒストグラム交差 + 輝度差 +
-     エッジ密度差の重み付き和にし、連続した中程度の変化（フェード）は 1 本にまとめる。
+     から見る（欲しいのは「どこで切れたか」「動いているか」で細部ではない）。rgb は
+     RGBA ではなく 3 バイト詰め（64x36 でも 4 バイト持つと 100 フレームで約 1MB 増え、
+     モバイルでは効く）。ショット境界は 1 つの指標で必ず誤る（フラッシュ・パン・
+     フェード）ので 8x8x8 ヒストグラム交差 + 輝度差 + エッジ密度差の重み付き和にする。
 
    ★ 触るときの注意
      ・pure 関数に DOM を持ち込まない（試験が死ぬ）。curve は 0..1 に正規化し NaN を
-       外へ出さない（真っ黒・1 フレームの素材でも 0）。NaN は transform や書き出し
-       フレーム数まで伝染して原因が分からなくなる。
+       外へ出さない（真っ黒・1 フレームでも 0）。NaN は transform や書き出しフレーム数
+       まで伝染して原因が分からなくなる。
      ・CONTRACT-NOTE: §6 の detectScenes は `(videoEl, opts)` だが、試験できる形にする
        ため frames でも videoEl でも受ける（videoEl のときだけ Promise。`await
        detectScenes(x, o)` ならどちらも同じ）。detectFaces も seek が要るので Promise。
      ・CONTRACT-NOTE: Frame に w/h を足した（契約書は t/gray/rgb だけ）。エッジ密度・
        ラプラシアン・移動量は 2 次元の並びが要る。無ければ正方形と見なして推す。
-     ・CONTRACT-NOTE: curve の返り値は §1 の形（`{hz, values}`）。index.js が詰め替え
-       ずにそのまま analysis へ入れられるようにした。
+     ・CONTRACT-NOTE: curve の返り値は §1 の形（`{hz, values}`）。詰め替え無しで
+       index.js が analysis へ入れられるようにした。
    ══════════════════════════════════════════════════════════════════════ */
 
 import { clamp, clamp01, finite } from "../core/util.js";
@@ -52,8 +51,8 @@ export function throwIfAborted(signal) { if (signal && signal.aborted) throw abo
 export function frameDims(frame) {
   const n = frame && frame.gray ? frame.gray.length : 0;
   if (!n) return { w: 0, h: 0 };
-  const w = Number.isFinite(frame.w) && frame.w > 0 ? Math.round(frame.w) : 0;
-  const h = Number.isFinite(frame.h) && frame.h > 0 ? Math.round(frame.h) : 0;
+  const w = Number.isFinite(frame.w) && frame.w > 0 ? Math.round(frame.w) : 0,
+    h = Number.isFinite(frame.h) && frame.h > 0 ? Math.round(frame.h) : 0;
   if (w && h && w * h <= n) return { w, h };  // 素直に信じる道
   if (w) return { w, h: Math.max(1, Math.floor(n / w)) };
   const side = Math.max(1, Math.round(Math.sqrt(n)));
@@ -96,8 +95,8 @@ export function histogramRGB(rgb, bins = 8) {
 /** ヒストグラム交差（1 = 同じ / 0 = 全く別）。長さ違いは短い方まで */
 export function histIntersection(a, b) {
   if (!a || !b || !a.length || !b.length) return 1;
-  let s = 0, n = Math.min(a.length, b.length);
-  for (let i = 0; i < n; i++) s += Math.min(a[i], b[i]);
+  let s = 0;
+  for (let i = 0, n = Math.min(a.length, b.length); i < n; i++) s += Math.min(a[i], b[i]);
   return clamp01(s);
 }
 
@@ -107,10 +106,8 @@ export function edgeDensity(gray, w, h, thr = 28) {
   const t = Math.max(1, finite(thr, 28));
   let hit = 0, n = 0;
   for (let y = 1; y < h - 1; y++) {
-    const row = y * w;
-    for (let x = 1, i = row + 1; x < w - 1; x++, i++) {
+    for (let x = 1, i = y * w + 1; x < w - 1; x++, i++, n++) {
       if (Math.abs(gray[i + 1] - gray[i - 1]) + Math.abs(gray[i + w] - gray[i - w]) > t) hit++;
-      n++;
     }
   }
   return n ? hit / n : 0;
@@ -121,15 +118,12 @@ export function laplacianVar(gray, w, h) {
   if (!gray || !(w > 2) || !(h > 2)) return 0;
   let sum = 0, sum2 = 0, n = 0;
   for (let y = 1; y < h - 1; y++) {
-    const row = y * w;
-    for (let x = 1, i = row + 1; x < w - 1; x++, i++) {
+    for (let x = 1, i = y * w + 1; x < w - 1; x++, i++, n++) {
       const v = 4 * gray[i] - gray[i - 1] - gray[i + 1] - gray[i - w] - gray[i + w];
-      sum += v; sum2 += v * v; n++;
+      sum += v; sum2 += v * v;
     }
   }
-  if (!n) return 0;
-  const m = sum / n;
-  return Math.max(0, sum2 / n - m * m);
+  return n ? Math.max(0, sum2 / n - (sum / n) * (sum / n)) : 0;
 }
 
 /** 平均輝度 0..255 */
@@ -143,7 +137,8 @@ export function meanU8(a) {
 /** 画素ごとの差の平均 0..255（長さ違いは短い方まで） */
 export function meanAbsDiffU8(a, b) {
   if (!a || !b || !a.length || !b.length) return 0;
-  let s = 0, n = Math.min(a.length, b.length);
+  const n = Math.min(a.length, b.length);
+  let s = 0;
   for (let i = 0; i < n; i++) s += Math.abs(a[i] - b[i]);
   return s / n;
 }
@@ -155,19 +150,23 @@ export function satMeanRGB(rgb) {
   let s = 0;
   for (let i = 0, o = 0; i < n; i++, o += 3) {
     const r = rgb[o], g = rgb[o + 1], b = rgb[o + 2];
-    const mx = r > g ? (r > b ? r : b) : (g > b ? g : b), mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
-    if (mx > 0) s += (mx - mn) / mx;
+    const mx = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    if (mx > 0) s += (mx - (r < g ? (r < b ? r : b) : (g < b ? g : b))) / mx;
   }
   return clamp01(s / n);
 }
 
-/** 1 フレームから使う特徴を一度だけ作る（毎回作り直すと倍遅い） */
+/**
+ * ショット判定に使う特徴（毎フレーム作り直すと倍遅い）。明るさ・彩度・ピントは各
+ * curve が直に計算するのでここでは作らない（作ると detectScenes が laplacianVar を
+ * 全フレームぶん余分に回す）。rgb 無しの Frame は hist を **null** にする（零
+ * ヒストグラム同士の交差は 0 = 別の絵と読まれ、全フレームが境界になってしまう）。
+ */
 export function frameFeatures(frame) {
   const { w, h } = frameDims(frame);
-  const gray = frame && frame.gray ? frame.gray : null;
   const rgb = frame && frame.rgb ? frame.rgb : null;
-  return { w, h, hist: histogramRGB(rgb), edge: edgeDensity(gray, w, h),
-           mean: meanU8(gray), sat: satMeanRGB(rgb), lap: laplacianVar(gray, w, h) };
+  return { w, h, hist: rgb && rgb.length >= 3 ? histogramRGB(rgb) : null,
+           edge: edgeDensity(frame && frame.gray, w, h) };
 }
 /* ── 1. フレームを取る（DOM を触るのはこの節だけ） ───────────── */
 
@@ -176,10 +175,8 @@ const raf = (fn) => (typeof requestAnimationFrame === "function" ? requestAnimat
 function makeCanvas(w, h) {
   if (typeof OffscreenCanvas === "function") return new OffscreenCanvas(w, h);
   const doc = globalThis.document;
-  if (doc && typeof doc.createElement === "function") {
-    const c = doc.createElement("canvas"); c.width = w; c.height = h; return c;
-  }
-  throw new Error("canvas が無い環境では映像を解析できない");
+  if (!doc || typeof doc.createElement !== "function") throw new Error("canvas が無い環境では映像を解析できない");
+  const c = doc.createElement("canvas"); c.width = w; c.height = h; return c;
 }
 
 /**
@@ -204,7 +201,7 @@ export function frameFromSource(source, opts = {}) {
   for (let i = 0, o = 0, q = 0; i < n; i++, o += 4, q += 3) {
     const r = data[o], g = data[o + 1], b = data[o + 2];
     rgb[q] = r; rgb[q + 1] = g; rgb[q + 2] = b;
-    gray[i] = (r * 77 + g * 150 + b * 29) >> 8; // BT.601 の整数近似
+    gray[i] = (r * 77 + g * 150 + b * 29) >> 8;   // BT.601 の整数近似
   }
   return { t: finite(opts.t, 0), w, h, gray, rgb };
 }
@@ -221,8 +218,7 @@ function waitMetadata(videoEl, signal) {
   if (finite(videoEl.readyState, 0) >= 1) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const end = (err) => { clearTimeout(timer); offEl(); offSig(); if (err) reject(err); else resolve(); };
-    const offEl = bind(videoEl, { loadedmetadata: () => end(),
-      error: () => end(new Error("素材を読み込めない（形式が非対応か壊れている）")) });
+    const offEl = bind(videoEl, { loadedmetadata: () => end(), error: () => end(new Error("素材を読み込めない（形式が非対応か壊れている）")) });
     const offSig = bind(signal, { abort: () => end(abortError()) });
     const timer = setTimeout(() => end(new Error("素材の読み込みが 15 秒で終わらない")), 15000);
     if (signal && signal.aborted) end(abortError());
@@ -244,8 +240,7 @@ export function seekFrame(videoEl, t, opts = {}) {
       settled = true; clearTimeout(timer); offEl(); offSig();
       if (err) reject(err); else resolve();
     };
-    const onSeeked = () => {
-      // seeked の直後はまだ前のフレームが出ている事がある（§13.3）
+    const onSeeked = () => {   // seeked の直後はまだ前のフレームが出ている事がある（§13.3）
       if (typeof videoEl.requestVideoFrameCallback === "function") {
         try { videoEl.requestVideoFrameCallback(() => finish()); return; } catch (_e) { /* 下の rAF へ */ }
       }
@@ -275,9 +270,14 @@ export async function sampleFrames(videoEl, opts = {}) {
   if (!(dur > 0)) throw new Error("素材の尺が分からない（duration が無い）");
   const vw = finite(videoEl.videoWidth, 0), vh = finite(videoEl.videoHeight, 0);
   if (!(vw > 0) || !(vh > 0)) throw new Error("映像の大きさが取れない（音だけの素材かもしれない）");
-  const step = 1 / clamp(finite(o.hz, 4), 0.2, 30);
-  const count = Math.round(clamp(Math.floor(dur / step), 1, 2000));
+  const hz = clamp(finite(o.hz, 4), 0.2, 30);
   const w = Math.max(8, Math.round(finite(o.size, 64))), h = Math.max(4, Math.round((w * vh) / vw));
+  // 枚数は「枚数」と「総バイト」の両方で抑える（1 枚 = gray 1B + rgb 3B。size を
+  // 上げると二乗で効く）。上限に当たったら **間隔を広げる**: step を 1/hz に固定すると
+  // 長い素材は先頭 count/hz 秒で枚数が尽き、その先を一切見ないまま終わる
+  const budget = Math.max(8, Math.floor((64 * 1024 * 1024) / Math.max(1, w * h * 4)));
+  const count = Math.round(clamp(Math.floor(dur * hz), 1, Math.min(2000, budget)));
+  const step = dur / count;
   const canvas = makeCanvas(w, h);
   try { videoEl.pause(); } catch (_e) { /* 止められなくても seek は効く */ }
   const frames = [];
@@ -287,9 +287,8 @@ export async function sampleFrames(videoEl, opts = {}) {
     const want = Math.min(Math.max(0, dur - 1e-3), (i + 0.5) * step);
     await seekFrame(videoEl, want, { signal: o.signal, timeout: o.timeout });
     frames.push(frameFromSource(videoEl, { size: w, t: finite(videoEl.currentTime, want), canvas }));
-    if (typeof o.onProgress === "function") {
-      try { o.onProgress((i + 1) / count, { stage: "frames", index: i, count }); } catch (_e) { /* 進捗で落ちない */ }
-    }
+    // 進捗で落ちない（呼ぶ側の描画が投げても解析は続ける）
+    if (typeof o.onProgress === "function") try { o.onProgress((i + 1) / count, { stage: "frames", index: i, count }); } catch (_e) { /* 無視 */ }
   }
   return frames;
 }
@@ -297,10 +296,11 @@ export async function sampleFrames(videoEl, opts = {}) {
 
 function diffFeatures(a, b, fa, fb, weights) {
   const W = weights || SCENE_WEIGHTS;
-  const hist = clamp01(1 - histIntersection(fa.hist, fb.hist));
+  const hasHist = !!(fa.hist && fb.hist);   // 片方でも色が無ければ重みごと落とす
+  const hist = hasHist ? clamp01(1 - histIntersection(fa.hist, fb.hist)) : 0;
   const luma = clamp01(meanAbsDiffU8(a.gray, b.gray) / 255);
   const edge = clamp01(Math.abs(fa.edge - fb.edge));
-  const wh = finite(W.hist, 0), wl = finite(W.luma, 0), we = finite(W.edge, 0);
+  const wh = hasHist ? finite(W.hist, 0) : 0, wl = finite(W.luma, 0), we = finite(W.edge, 0);
   const sum = wh + wl + we || 1;
   return { score: clamp01((hist * wh + luma * wl + edge * we) / sum), hist, luma, edge };
 }
@@ -325,8 +325,11 @@ export function sceneDiffs(frames, weights = SCENE_WEIGHTS) {
 }
 
 /**
- * 差の列から境界を拾う（フェードの扱いの中心・pure）。連続した変化は 1 本にまとめ、
- * 強い山が在れば "cut"、中程度が続いて合計が fadeSum を超えたら "fade"（重心を採る）。
+ * 差の列から境界を拾う（フェードの扱いの中心・pure）。warm（threshold の 45%）以上が
+ * 続く塊の中で、**threshold を超える連なりごとに 1 本**出す（1 枚なら "cut"、複数枚に
+ * 渡れば "fade"）。強い所が無い塊は合計が fadeSum を超えた時だけ 1 本のフェード。
+ * 塊ごとに重心 1 本だと、パンや手持ちで warm が続く素材で本物のカットが数秒ずれ、
+ * 2 回目以降のカットが消える（だから強い所だけ別に拾う）。
  * @returns {{index:number,score:number,kind:"cut"|"fade"}[]} index は「index と index+1 の間」
  */
 export function boundariesFromDiffs(diffs, opts = {}) {
@@ -335,21 +338,26 @@ export function boundariesFromDiffs(diffs, opts = {}) {
   const fadeSum = Math.max(threshold, finite(opts.fadeSum, threshold * 1.5));
   const d = Array.isArray(diffs) ? diffs.map((v) => clamp01(finite(v, 0))) : [];
   const out = [];
+  /** [from,to] の重心（差で重み付け）。全部 0 なら真ん中 */
+  const centerOf = (from, to) => {
+    let sum = 0, wsum = 0;
+    for (let k = from; k <= to; k++) { sum += d[k]; wsum += d[k] * k; }
+    return sum > 0 ? Math.round(clamp(wsum / sum, from, to)) : Math.round((from + to) / 2);
+  };
   let i = 0;
   while (i < d.length) {
     if (d[i] < warm) { i++; continue; }
-    let j = i, peak = d[i], peakAt = i, sum = 0, wsum = 0;
-    while (j < d.length && d[j] >= warm) {
-      sum += d[j]; wsum += d[j] * j;
-      if (d[j] > peak) { peak = d[j]; peakAt = j; }
-      j++;
+    let j = i, peak = 0, sum = 0, strong = 0;
+    while (j < d.length && d[j] >= warm) { sum += d[j]; if (d[j] > peak) peak = d[j]; j++; }
+    for (let k = i; k < j; k++) {          // 強い変化は連なりごとに 1 本ずつ
+      if (d[k] < threshold) continue;
+      let e = k, sub = d[k], mx = d[k];
+      while (e + 1 < j && d[e + 1] >= threshold) { e++; sub += d[e]; if (d[e] > mx) mx = d[e]; }
+      out.push({ index: centerOf(k, e), score: clamp01(Math.max(mx, Math.min(1, sub))), kind: e > k ? "fade" : "cut" });
+      strong++; k = e;
     }
-    const len = j - i;
-    if (peak >= threshold || (len > 1 && sum >= fadeSum)) {
-      const center = sum > 0 ? Math.round(wsum / sum) : peakAt;
-      out.push({ index: len <= 1 ? peakAt : Math.round(clamp(center, i, j - 1)),
-                 score: clamp01(Math.max(peak, Math.min(1, sum))), kind: len > 1 ? "fade" : "cut" });
-    }
+    // 弱い変化しか無い塊（本当のフェード・ディゾルブ）は合計で判断して 1 本
+    if (!strong && j - i > 1 && sum >= fadeSum) out.push({ index: centerOf(i, j - 1), score: clamp01(Math.max(peak, Math.min(1, sum))), kind: "fade" });
     i = j;
   }
   return out;
@@ -364,8 +372,8 @@ export function mergeShortShots(shots, minShot = 0.6) {
   let guard = 0;
   while (out.length > 1 && guard++ < 4000) {
     let k = -1, dmin = Infinity;
-    for (let i = 0; i < out.length; i++) {
-      const d = out[i].end - out[i].start;
+    for (let i = 0, d = 0; i < out.length; i++) {
+      d = out[i].end - out[i].start;
       if (d < m && d < dmin) { dmin = d; k = i; }
     }
     if (k < 0) break;
@@ -385,12 +393,12 @@ export function mergeShortShots(shots, minShot = 0.6) {
 export function detectScenes(framesOrVideo, opts = {}) {
   if (!Array.isArray(framesOrVideo)) { // CONTRACT-NOTE: §6 の (videoEl, {hz,threshold,onProgress}) 形
     return sampleFrames(framesOrVideo, { hz: finite(opts.hz, 4), size: finite(opts.size, 64),
-      signal: opts.signal, onProgress: opts.onProgress }).then((fs) => detectScenes(fs, opts));
+      timeout: opts.timeout, signal: opts.signal, onProgress: opts.onProgress })
+      .then((fs) => detectScenes(fs, opts));
   }
   const frames = framesOrVideo;
   if (!frames.length) return [];
-  const dt = frameInterval(frames);
-  const t0 = finite(frames[0].t, 0);
+  const dt = frameInterval(frames), t0 = finite(frames[0].t, 0);
   const tEnd = Math.max(t0 + dt, finite(frames[frames.length - 1].t, t0) + dt);
   if (frames.length === 1) return [{ start: t0, end: tEnd, score: 0 }];
   const shots = [];
@@ -462,7 +470,8 @@ export function shakeScore(frames, opts = {}) {
   if (!Array.isArray(frames) || frames.length < 3) return 0;
   const { w, h } = frameDims(frames[0]);
   const R = Math.max(1, Math.round(finite(opts.radius, 3))), sh = [];
-  for (let i = 1; i < frames.length; i++) sh.push(estimateShift(frames[i - 1].gray, frames[i].gray, w, h, R, 1));
+  const st = Math.max(1, Math.round(Math.sqrt((w * h) / 4096))); // 大きい絵は間引く
+  for (let i = 1; i < frames.length; i++) sh.push(estimateShift(frames[i - 1].gray, frames[i].gray, w, h, R, st));
   let acc = 0, n = 0;
   for (let i = 1; i < sh.length; i++, n++) acc += Math.hypot(sh[i].dx - sh[i - 1].dx, sh[i].dy - sh[i - 1].dy);
   return n ? clamp01(soften(acc / n / R, finite(opts.k, 0.6))) : 0;
@@ -476,9 +485,8 @@ export function shakeScore(frames, opts = {}) {
 export async function detectFaces(videoEl, times, opts = {}) {
   const FD = globalThis.FaceDetector;
   if (typeof FD !== "function" || !videoEl) return null;
-  let det;
-  try { det = new FD({ maxDetectedFaces: Math.round(clamp(finite(opts.maxFaces, 8), 1, 32)), fastMode: true }); }
-  catch (_e) { return null; } // API が在っても作れない環境
+  let det;   // API が在っても作れない環境がある
+  try { det = new FD({ maxDetectedFaces: Math.round(clamp(finite(opts.maxFaces, 8), 1, 32)), fastMode: true }); } catch (_e) { return null; }
   const vw = finite(videoEl.videoWidth, 0) || 1, vh = finite(videoEl.videoHeight, 0) || 1;
   const out = [];
   for (const t of (Array.isArray(times) ? times : []).map((v) => finite(v, 0))) {
@@ -522,8 +530,8 @@ export function meanCurve(curve, a, b, fallback = null) {
   const lo = Math.min(finite(a, 0), finite(b, 0)), hi = Math.max(finite(a, 0), finite(b, 0));
   const steps = Math.round(clamp((hi - lo) * hz, 1, 512));
   let sum = 0, n = 0;
-  for (let i = 0; i <= steps; i++) {
-    const v = sampleCurve(curve, lo + ((hi - lo) * i) / steps, null);
+  for (let i = 0, v = null; i <= steps; i++) {
+    v = sampleCurve(curve, lo + ((hi - lo) * i) / steps, null);
     if (v !== null) { sum += v; n++; }
   }
   return n ? sum / n : fallback;
@@ -595,7 +603,7 @@ export function scoreRange(analysis, a, b, opts = {}) {
     if (value === null || value === undefined) return;
     const v = clamp01(value), w = finite(W[key], 0);
     terms[key] = v; acc += v * w; wsum += w;
-    if (v >= 0.6 && label) plus.push(label);
+    if (v >= 0.6 && label) plus.push(label);          // 「なぜ」に出す褒め言葉
   };
   const mot = meanCurve(A.motion, lo, hi, null);
   add("motion", mot === null ? null : motionTerm(mot), "動きがある");

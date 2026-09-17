@@ -36,11 +36,32 @@
      ・Cluster は **必ずキーフレームで始める**。例外は「相対時刻が 16bit を
        超える」時だけ（Matroska 的には非キー始まりも合法。壊れたバイト列を
        出すより良い）。その時は warn を出す。
+     ・Opus は **常に 48kHz で復号する** codec。SamplingFrequency と
+       CodecDelay（pre-skip の ns 換算）は渡された sampleRate ではなく
+       48000 で書く（RFC 7845 §5.1）。渡された値は OpusHead の
+       「元の音の周波数」欄に入るだけ。ここを取り違えると
+       exportAudio(44100Hz) が 9% 遅く鳴る。
+     ・逐次出力で Cluster を閉じて良いのは「**全トラックが**その時刻を
+       越えた」時だけ（watermarkMs）。全体の max で判断すると、映像だけ
+       先に進んだ場面で Cluster を閉じてしまい、後から来た音声の相対時刻が
+       16bit を外れて **書き出しの途中で throw** する。
+     ・完成品は assembleFile で **1 回だけ確保**する。ebmlElement と
+       concatBytes を重ねると中身の 3 倍を一度に握る（110MB の書き出しで
+       330MB。iPhone で落ちる）。
+     ・memory の様子は stats().bufferedBytes で見られる（既定モードは
+       全 chunk を抱えるので、長尺は onData へ切り替える判断に使う）。
      ・EncodedVideoChunk は中身を直接読めない実装が在る。copyTo() で写す
        （normalizeChunk がどちらの形でも受ける）。渡された bytes は必ず
        **複製**して持つ（呼び出し側が使い回しても壊れないため）。
      ・低レベル（writeVInt / ebmlElement …）は試験のために export している。
        署名を変えると tests/mux-webm.test.mjs が落ちる。
+     ・CONTRACT-NOTE: 共通前提の「1 ファイル 700 行超えたら分割」を
+       超えている（検収後 989 行）。低レベル §1〜§3（writeVInt /
+       writeUInt / writeFloat / ebmlElement / EBML_IDS / build* の純関数）を
+       export/mux/ebml.js へ出せば 600 行を割るが、module の境界を動かす
+       のは統合担当の判断なので ここでは分けていない。分ける時は
+       webm.js から re-export すれば tests/mux-webm.test.mjs の import は
+       そのままで済む。
      ・CONTRACT-NOTE: 契約書 §5 は muxer の関数名を定めていない。
        exporter.js の loadMuxer() は `createWebmMuxer` → `createWebMMuxer`
        → `createMuxer` → `default` の順で探し、設定を **平らな形**
@@ -66,6 +87,8 @@ export const AUDIO_TRACK = 2;
 /** libopus の既定の先頭切り捨て（サンプル数）と seek 前の助走（ns） */
 const OPUS_PRE_SKIP = 312;
 const OPUS_SEEK_PRE_ROLL = 80000000;
+/** Opus は **常に 48kHz で復号する**（RFC 7845 §5.1）。pre-skip もこの単位 */
+const OPUS_RATE = 48000;
 const MUXING_APP = "VQ Studio webm muxer";
 const MIME = "video/webm";
 /** 「大きさ不明」の vint（逐次出力の Segment 用） */
@@ -346,12 +369,22 @@ function audioTrackEntry(a) {
     strEl(EBML_IDS.CodecID, a.codec),
     ebmlElement(EBML_IDS.CodecPrivate, priv),
   ];
+  /* Opus は 48kHz で復号する codec。OpusHead の sampleRate は「元の音の
+     周波数」で再生用ではない（RFC 7845 §5.1）ので、Matroska の
+     SamplingFrequency と pre-skip の ns 換算は **48000 で固定**する。
+     ここを渡された rate でやると exportAudio(44100Hz) が 9% 狂い、
+     24kHz 指定では CodecDelay が 2 倍（音ずれ）になる。 */
+  let outRate = rate;
   if (isOpus) {
+    if (rate !== OPUS_RATE) {
+      warn("mux/webm", "Opus は 48kHz で復号するので SamplingFrequency は 48000 で書きます", rate);
+      outRate = OPUS_RATE;
+    }
     const skip = preSkipOf(priv, int(a.preSkip, OPUS_PRE_SKIP));
-    parts.push(uintEl(EBML_IDS.CodecDelay, Math.round((skip / rate) * 1e9)));
+    parts.push(uintEl(EBML_IDS.CodecDelay, Math.round((skip / OPUS_RATE) * 1e9)));
     parts.push(uintEl(EBML_IDS.SeekPreRoll, OPUS_SEEK_PRE_ROLL));
   }
-  parts.push(ebmlElement(EBML_IDS.Audio, [floatEl(EBML_IDS.SamplingFrequency, rate, 8), uintEl(EBML_IDS.Channels, ch)]));
+  parts.push(ebmlElement(EBML_IDS.Audio, [floatEl(EBML_IDS.SamplingFrequency, outRate, 8), uintEl(EBML_IDS.Channels, ch)]));
   return ebmlElement(EBML_IDS.TrackEntry, parts);
 }
 
@@ -381,10 +414,12 @@ export function simpleBlock(trackNumber, relMs, data, key) {
   if (relMs < -32768 || relMs > MAX_BLOCK_REL) {
     throw new RangeError(`simpleBlock: 相対時刻 ${relMs} は 16bit 符号付きに入りません（Cluster を切ってください）`);
   }
+  const tn = int(trackNumber, VIDEO_TRACK);
+  if (!(tn >= 1)) throw new RangeError(`simpleBlock: トラック番号は 1 以上です（${String(trackNumber)}）`);
   const head = new Uint8Array(3);
   new DataView(head.buffer).setInt16(0, relMs, false);
   head[2] = key ? 0x80 : 0x00;
-  return ebmlElement(EBML_IDS.SimpleBlock, [writeVInt(int(trackNumber, VIDEO_TRACK)), head, data]);
+  return ebmlElement(EBML_IDS.SimpleBlock, [writeVInt(tn), head, data]);
 }
 
 /**
@@ -441,6 +476,32 @@ export function buildSeekHead(entries) {
     ebmlElement(EBML_IDS.SeekID, idBytes(e.id)),
     uintEl(EBML_IDS.SeekPosition, Math.max(0, int(e.pos, 0)), 8),
   ])));
+}
+
+/**
+ * 完成品（EBML Header + Segment）を **1 回の確保**で組む。
+ * ebmlElement(Segment, body) → concatBytes([header, …]) と重ねると
+ * 中身の大きさを **3 回**確保してしまう（1080p 5 分 ≒ 110MB なら 330MB。
+ * iPhone ではこれで落ちる）。総量を先に数えて 1 本だけ確保し、
+ * 写し終わった部品はその場で手放す。
+ * @param {Uint8Array} header
+ * @param {Array<Uint8Array|null>} parts Segment の中身（**この配列は壊す**）
+ */
+function assembleFile(header, parts) {
+  let payload = 0;
+  for (let i = 0; i < parts.length; i++) payload += parts[i].length;
+  const segId = idBytes(EBML_IDS.Segment);
+  const segSize = writeVInt(payload);
+  const out = new Uint8Array(header.length + segId.length + segSize.length + payload);
+  let at = 0;
+  out.set(header, at); at += header.length;
+  out.set(segId, at); at += segId.length;
+  out.set(segSize, at); at += segSize.length;
+  for (let i = 0; i < parts.length; i++) {
+    out.set(parts[i], at); at += parts[i].length;
+    parts[i] = null;                     // 写した物は即座に GC へ返す
+  }
+  return out;
 }
 
 /* ── 4. 小道具 ─────────────────────────────────────────────────── */
@@ -530,6 +591,10 @@ function normalizeOptions(o) {
     timecodeScale: int(src.timecodeScale, DEFAULT_TIMECODE_SCALE),
     clusterMaxMs: Math.max(100, int(src.clusterMaxMs, CLUSTER_MAX_MS)),
     clusterMaxBytes: Math.max(64 * 1024, int(src.clusterMaxBytes, CLUSTER_MAX_BYTES)),
+    /* 逐次出力で «遅れているトラック» を待つ上限。これを越えたら
+       待たずに閉じる（待ち続けると溜め込みで逐次出力の意味が無くなる）。
+       16bit 符号付き（32767ms）より十分小さく取る。 */
+    maxLookaheadMs: Math.max(2000, Math.min(16000, int(src.maxLookaheadMs, 16000))),
     startAtZero: src.startAtZero !== false,
     retain: src.retain === undefined || src.retain === null ? !onData : !!src.retain,
     mime: src.mime || MIME,
@@ -548,7 +613,11 @@ function findCutIndex(frames, cfg, cutTrack) {
   for (let i = 1; i < frames.length; i++) {
     const rel = frames[i].ms - start;
     if (rel > MAX_BLOCK_REL) {
-      warn("mux/webm", "キーフレームが遠すぎるので非キーで Cluster を切ります", rel);
+      /* キーフレームの所で偶々この行に来る事も在るので、本当に非キーで
+         切る時だけ warn する（嘘の警告で現場を惑わせない）。 */
+      if (!(frames[i].track === cutTrack && frames[i].key)) {
+        warn("mux/webm", "キーフレームが遠すぎるので非キーで Cluster を切ります", rel);
+      }
       return i;
     }
     if (frames[i].track === cutTrack && frames[i].key && (rel >= cfg.clusterMaxMs || bytes >= cfg.clusterMaxBytes)) return i;
@@ -590,6 +659,10 @@ export function createWebMMuxer(options) {
     segmentDataStart: 0,  // Segment の中身が始まる絶対位置
     headWritten: false, newestMs: 0, baseUs: null, lastTimecodeMs: 0,
     seq: 0, vCount: 0, aCount: 0,
+    /** トラック番号 → «そこまで来た» 時刻。1 本でも遅れていたら待つ */
+    seenMs: Object.create(null),
+    buffered: 0,          // memory に抱えている chunk の総バイト（iOS の判断材料）
+    cueCount: 0,          // 直近に組んだファイルの Cues の数
     file: null,           // finalize 済みのバイト列
   };
 
@@ -631,10 +704,13 @@ export function createWebMMuxer(options) {
   }
 
   function accept(f) {
+    st.buffered += f.data.length;
     if (cfg.onData) {
       if (st.baseUs === null) st.baseUs = cfg.startAtZero ? f.tsUs : 0;
       f.ms = msFromUs(f.tsUs - st.baseUs, cfg.timecodeScale);
       st.newestMs = Math.max(st.newestMs, f.ms);
+      const seen = st.seenMs[f.track];
+      if (seen === undefined || f.ms > seen) st.seenMs[f.track] = f.ms;
       st.pending.push(f);
       st.pending.sort(cmpFrame);
       flushReady(false);
@@ -690,9 +766,17 @@ export function createWebMMuxer(options) {
   function emitCluster(group) {
     writeHead();
     // Timecode は前の Cluster より戻さない（遅れて来た frame の相対時刻が
-    // 負になるだけで済む。負の相対時刻は int16 なので合法）
-    const tc = Math.max(0, group[0].ms, st.lastTimecodeMs);
+    // 負になるだけで済む。負の相対時刻は int16 なので合法）。
+    // ただし **下に桁溢れる**（-32768 未満）ほど遅れた frame が来たら
+    // 時刻を戻す。Cluster の時刻が前後しても再生機は読めるが、
+    // 溢れたバイト列は誰も読めない（前は ここで RangeError で落ちていた）。
+    let tc = Math.max(0, group[0].ms, st.lastTimecodeMs);
+    if (tc - group[0].ms > 32768) {
+      warn("mux/webm", "遅れて来た frame のために Cluster の時刻を戻します", group[0].ms, tc);
+      tc = Math.max(0, group[0].ms);
+    }
     st.lastTimecodeMs = tc;
+    for (let i = 0; i < group.length; i++) st.buffered -= group[i].data.length;
     const c = buildCluster({ timecodeMs: tc, frames: group, timecodeScale: cfg.timecodeScale });
     const pos = st.written - st.segmentDataStart;
     addCue(c, pos);
@@ -708,13 +792,35 @@ export function createWebMMuxer(options) {
     }
   }
 
+  /**
+   * どのトラックも «ここまでは来た» と言える時刻。
+   * 1 枚も来ていないトラックは数えない（音声が最初から無い書き出しで
+   * 止まってしまわないため）。max ではなく **min** を見るのが要点で、
+   * ここを全体の max にすると「映像だけ先に 40 秒進んだ」場面で
+   * Cluster を閉じてしまい、後から来た音声の相対時刻が桁溢れして
+   * 書き出しの途中で RangeError になる。
+   */
+  function watermarkMs() {
+    let w = Infinity;
+    for (const k in st.seenMs) { const v = st.seenMs[k]; if (v < w) w = v; }
+    return w === Infinity ? -Infinity : w;
+  }
+
   /** 切れる所まで Cluster にして流す。force は finalize の時（全部出す） */
   function flushReady(force) {
     for (;;) {
       if (!st.pending.length) return;
       const cut = findCutIndex(st.pending, cfg, cutTrack);
       if (cut < 0) break;
-      if (!force && st.newestMs - st.pending[cut].ms < GUARD_MS) break;
+      if (!force) {
+        const cutMs = st.pending[cut].ms;
+        if (watermarkMs() - cutMs < GUARD_MS) {
+          // 遅れているトラックを待つ。ただし待ち続けると溜め込みで
+          // 逐次出力の意味が無くなるので、上限を越えたら諦めて閉じる。
+          if (st.newestMs - cutMs < cfg.maxLookaheadMs) break;
+          warn("mux/webm", "片方のトラックが遅れているので待たずに Cluster を閉じます", cutMs);
+        }
+      }
       emitCluster(st.pending.splice(0, cut));
     }
     if (force && st.pending.length) {
@@ -730,12 +836,26 @@ export function createWebMMuxer(options) {
     if (!st.frames.length) throw new Error("finalize: chunk が 1 つも在りません（空の webm は作れません）");
     const frames = st.frames.slice().sort(cmpFrame);
     const base = cfg.startAtZero ? frames[0].tsUs : 0;
+    /* WebCodecs の EncodedAudioChunk は duration を **必ず入れてくれるとは
+       限らない**。0 のまま最後の 1 枚を数えないと Info/Duration が
+       1 packet 分（Opus なら 20ms）足りず、再生機が末尾を切る。
+       そこで「そのトラックで最後に見た間隔」を控えて尺の代わりに使う。 */
+    const lastTs = Object.create(null);
+    const gapUs = Object.create(null);
     let endUs = 0;
     for (let i = 0; i < frames.length; i++) {
       const f = frames[i];
       f.ms = msFromUs(f.tsUs - base, cfg.timecodeScale);
-      const dur = f.durUs > 0 ? f.durUs : (f.track === VIDEO_TRACK && cfg.video ? 1e6 / cfg.video.fps : 0);
-      endUs = Math.max(endUs, f.tsUs - base + dur);
+      const prev = lastTs[f.track];
+      if (prev !== undefined && f.tsUs > prev) gapUs[f.track] = f.tsUs - prev;
+      lastTs[f.track] = f.tsUs;
+      if (f.durUs > 0) endUs = Math.max(endUs, f.tsUs - base + f.durUs);
+    }
+    for (const k in lastTs) {
+      const t = Number(k);
+      const fallback = t === VIDEO_TRACK && cfg.video && cfg.video.fps > 0
+        ? 1e6 / cfg.video.fps : num(gapUs[t], 0);
+      endUs = Math.max(endUs, lastTs[t] - base + Math.max(0, fallback));
     }
 
     // Cluster を切って組む（bytes は位置に依らないので先に作れる）
@@ -782,10 +902,11 @@ export function createWebMMuxer(options) {
     const seekHead = buildSeekHead(seekPlan);
     if (seekHead.length !== seekLen) throw new Error("内部エラー: SeekHead の大きさが揺れました");
 
+    st.cueCount = cues.length;
     const body = [seekHead, info, tracks];
-    for (let i = 0; i < clusters.length; i++) body.push(clusters[i].bytes);
+    for (let i = 0; i < clusters.length; i++) { body.push(clusters[i].bytes); clusters[i].bytes = null; }
     body.push(buildCues(cues));
-    return concatBytes([buildEBMLHeader({}), ebmlElement(EBML_IDS.Segment, body)]);
+    return assembleFile(buildEBMLHeader({}), body);
   }
 
   /* --- 仕上げ --- */
@@ -798,10 +919,12 @@ export function createWebMMuxer(options) {
       st.file = cfg.retain ? concatBytes(st.emitted) : null;
     } else {
       st.file = buildFile(true);
+      st.written = st.file.length;       // 既定モードでも «出した量» を答える
     }
     st.phase = "finalized";
     st.frames = [];
     st.pending = [];
+    st.buffered = 0;
   }
 
   function finalizeBytes() {
@@ -833,6 +956,7 @@ export function createWebMMuxer(options) {
     st.pending = [];
     st.emitted = [];
     st.cues = [];
+    st.buffered = 0;
     st.file = null;
   }
 
@@ -844,8 +968,14 @@ export function createWebMMuxer(options) {
     stats() {
       return {
         phase: st.phase, videoChunks: st.vCount, audioChunks: st.aCount,
-        cues: st.cues.length, pending: st.pending.length,
+        /* 逐次は流しながら数えた分、既定は直近に組んだファイルの分。
+           どちらのモードでも 0 のまま返さない（前は既定モードで
+           cues も bytesWritten も常に 0 だった）。 */
+        cues: cfg.onData ? st.cues.length : st.cueCount,
+        pending: st.pending.length,
         streaming: !!cfg.onData, bytesWritten: st.written,
+        /** memory に抱えている chunk の総バイト（長尺で onData に切り替える判断材料） */
+        bufferedBytes: st.buffered,
       };
     },
     mime: cfg.mime,

@@ -30,7 +30,9 @@
        grabPixels() が読めればそれを使い、読めなければ canvas を直に写す。
 
    ★ 触るときの注意
-     ・短絡キーの割り当ては ui/shortcuts.js が正。ここは tooltip に書くだけ。
+     ・短絡キーの割り当ては ui/shortcuts.js が正。ここは tooltip に書くだけで、
+       **契約書 §7.4 に在る鍵だけ**書く（無い鍵を書くと「押しても効かない」嘘になる）。
+       先頭へ / 末尾へ（Home / End）は §7.4 に無いので鍵を出していない。
      ・速度とループは **保存形式に枝が無い**（契約書 §1）。
        CONTRACT-NOTE: 速度は engine の Transport が持つ値（= 保存しない）、
        ループだけ localStorage に覚える。project を汚さない。
@@ -418,6 +420,22 @@ export function createTransportBar(deps) {
       }
     } catch (e) { warn("transport", "snapshot", e); }
     if (!blob) { say("スナップショットを作れませんでした", "error"); return null; }
+    /* スマホは「共有」が自然な保存口（写真に保存もここから）。
+       断られたとき（AbortError）は落とさない＝ユーザーの意思を尊重する。 */
+    const nav = globalThis.navigator;
+    if (typeof File === "function" && has(nav, "share") && has(nav, "canShare")) {
+      try {
+        const file = new File([blob], name, { type: "image/png" });
+        if (nav.canShare({ files: [file] })) {
+          await nav.share({ files: [file], title: name });
+          say("共有しました", "ok");
+          return blob;
+        }
+      } catch (e) {
+        if (e && e.name === "AbortError") return blob;      // 取り消した
+        warn("transport", "share", e);                      // 使えない器 → 落とす道へ
+      }
+    }
     if (download(blob, name)) say("PNG を保存しました（" + name + "）", "ok");
     return blob;
   }
@@ -588,9 +606,9 @@ export function createTransportBar(deps) {
       }
     } else {
       const mid = el("div", "vqs-transport__center", { "data-test": "tr-center" });
-      const bHead = btn("vqs-transport__btn", { id: "head", icon: "skip-start", glyph: "⏮", label: "先頭へ", key: "Home" });
+      const bHead = btn("vqs-transport__btn", { id: "head", icon: "skip-start", glyph: "⏮", label: "先頭へ" });
       bHead.addEventListener("click", toHead);
-      const bTail = btn("vqs-transport__btn", { id: "tail", icon: "skip-end", glyph: "⏭", label: "末尾へ", key: "End" });
+      const bTail = btn("vqs-transport__btn", { id: "tail", icon: "skip-end", glyph: "⏭", label: "末尾へ" });
       bTail.addEventListener("click", toTail);
       const bLoop = btn("vqs-transport__btn vqs-transport__btn--toggle", { id: "loop", icon: "loop", glyph: "⟳", label: "繰り返し再生" });
       bLoop.addEventListener("click", () => setLoop(!loop));

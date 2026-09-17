@@ -25,6 +25,11 @@
        切り出して avcC を組み、サンプル本体を Annex-B → 4 バイト長接頭に
        変換する道も持つ。avcC の長さフィールドは 4 バイト固定
        （lengthSizeMinusOne = 3）なので、変換側も必ず 4 バイトで書く。
+     ・**Annex-B と長さ接頭の見分けは `isAnnexB` だけでは付かない**。
+       長さ 256〜511 の NAL の長さ接頭は `00 00 01 xx` で、3 バイトの
+       スタートコードと 1 バイトも違わない。`looksAnnexB()` で
+       「長さで歩き切れる物は Annex-B ではない」を先に見る（ここを
+       間違えると全サンプルが 0 バイトになる。§3 の CONTRACT-NOTE を見る）。
      ・`tfdt`（baseMediaDecodeTime）を必ず入れる。これが無いと Safari は
        2 つ目以降の fragment の時刻を 0 と解釈して音がずれる。
      ・timescale は 映像 = fps×1000（30fps なら 30000）、音声 = sampleRate。
@@ -42,7 +47,13 @@
        書き直し、末尾に `mfra`（ランダムアクセス表）を足す。**`onData` で
        流れていくバイト列にはこの後始末が載らない**（moov は既に出て
        しまっている）。シーク可能な 1 本が欲しい所は `finalizeBytes()` を
-       使うこと。`onData` は「書きながら捨てたい」用。
+       使うこと。`onData` は「書きながら別の所へ流したい」用。
+       **v1 では `onData` を渡してもメモリは減らない**（finalizeBytes で
+       moov を差し替えられるように破片は抱えたまま）。真に捨てるには
+       「finalize を諦める streaming 版」が要る。未実装の穴として挙げる。
+     ・`finalize()` は破片の配列をそのまま `Blob` へ渡す（1 本の
+       Uint8Array に繋がない）。繋ぐと同じ中身が一時的に 2 重に載り、
+       4K 数分で iPhone Safari が落ちる。
      ・box の size は u32。1 つの box が 4GiB を超えたら throw する
        （largesize は使わない。1 秒 fragment なら届かない）。
      ・Node の試験から呼ばれる。DOM も Blob も無い前提で動く所と、
@@ -269,6 +280,45 @@ export function isAnnexB(bytes) {
   return b[2] === 1 || (b[2] === 0 && b[3] === 1);
 }
 
+/**
+ * 4 バイト長接頭（avcC 形式のサンプル本体）として **ぴったり歩き切れる**か。
+ * 1 本目の長さを読んで飛び、最後がちょうど末尾に落ちれば真。
+ */
+export function isLengthPrefixed(bytes) {
+  const b = toBytes(bytes);
+  if (!b || b.length < 5) return false;
+  let o = 0;
+  while (o + 4 <= b.length) {
+    const len = u32At(b, o);
+    // len=0 は無限ループの元。残りを超える長さも長さ接頭ではない
+    if (len < 1 || len > b.length - o - 4) return false;
+    o += 4 + len;
+  }
+  return o === b.length;
+}
+
+/**
+ * 「本当に Annex-B か」の判定。**`isAnnexB` だけでは足りない**。
+ *
+ * CONTRACT-NOTE: ここは実機で黒画面を作った所。WebCodecs が
+ * `format:"avc"`（= 4 バイト長接頭。description が在るときの既定）で吐いた
+ * サンプルでも、**先頭 NAL の長さが 256〜511 だと長さ接頭が `00 00 01 xx`**
+ * になり、3 バイトのスタートコードと 1 バイトも違わない。静かな場面の
+ * P フレームはこの範囲に普通に入る。誤判定すると `annexBToAvcc` が
+ * 先頭バイト（長さの下位 = 0x2c 等）を NAL ヘッダと読み、type が 12
+ * （filler）になって **全部捨てられ、サンプルが 0 バイトになる**。
+ * よって「長さで歩き切れる物は Annex-B ではない」を先に見る。
+ * ただし先頭が 4 バイトスタートコード（00 00 00 01）の場合は、長さ接頭と
+ * 読むと「1 バイトの NAL が先頭」になる。encoder がそれを出すことは無いので
+ * Annex-B を採る（Annex-B の 5 バイト chunk との取り違えを防ぐ）。
+ */
+function looksAnnexB(bytes) {
+  const b = toBytes(bytes);
+  if (!isAnnexB(b)) return false;
+  if (b[2] === 0 && b[3] === 1) return true;
+  return !isLengthPrefixed(b);
+}
+
 function trimZeros(b, start, end) {
   let e = end;
   while (e > start && b[e - 1] === 0) e--;
@@ -440,7 +490,8 @@ export function buildDOps(opusHead) {
   let gain = 0;
   let family = 0;
   let tail = null;
-  const h = toBytes(opusHead);
+  // description が dOps box ごと（size + 'dOps' + …）で来ても中身だけにする
+  const h = unwrapConfigBox(toBytes(opusHead), "dOps");
   if (h && h.length >= 19 && h[0] === 0x4f && h[1] === 0x70 && h[2] === 0x75 && h[3] === 0x73) {
     channels = h[9];
     preSkip = h[10] | (h[11] << 8);
@@ -701,6 +752,23 @@ function chunkIsKey(c) {
   return false;
 }
 
+/**
+ * 並んだ候補から最初の有限な数を採る（無ければ NaN）。
+ * CONTRACT-NOTE: WebCodecs の EncodedChunk は `timestamp` / `duration`（µs）
+ * だが、repo 内の呼び出し側（`export/mux/webm.js` と `selftest.html`）は
+ * **`timestampUs` / `durationUs`** という名前で渡す。webm 側は既に両方を
+ * 受けているので、mp4 も揃える。揃えないと selftest では全サンプルの
+ * pts が 0 になり（Number(undefined)→NaN→0）、時刻の壊れた mp4 が出る。
+ */
+function firstNum(...vals) {
+  for (const v of vals) {
+    if (v === null || v === undefined || v === "") continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return NaN;
+}
+
 function usToTs(us, ts) {
   return Math.max(0, Math.round((Number(us) || 0) * ts / 1e6));
 }
@@ -902,8 +970,13 @@ export function createMP4Muxer(config) {
   }
 
   function pushSample(t, data, chunk, flags, isKey) {
-    const pts = usToTs(chunk && chunk.timestamp, t.timescale);
-    const raw = Number(chunk && chunk.duration);
+    // 0 バイトのサンプルは「読めるが再生できない」mp4 になる（trun の size が
+    // 0 になり、読み手によっては そこで止まる）。黙って書かずに止める。
+    if (!data || !data.length) {
+      throw new Error(`${t.kind === "audio" ? "音声" : "映像"} chunk のバイト列が空です（壊れた mp4 を書かないため止めます）`);
+    }
+    const pts = usToTs(firstNum(chunk && chunk.timestampUs, chunk && chunk.timestamp), t.timescale);
+    const raw = firstNum(chunk && chunk.durationUs, chunk && chunk.duration);
     const provided = Number.isFinite(raw) && raw > 0;
     const dur = provided ? Math.max(1, usToTs(raw, t.timescale)) : t.fallbackDur;
     t.pending.push({ data, size: data.length, pts, duration: dur, provided, flags, key: !!isKey });
@@ -926,7 +999,7 @@ export function createMP4Muxer(config) {
     let data = chunkBytes(chunkLike);
     const isKey = chunkIsKey(chunkLike);
     const isAvc = cfg.video.codec === "avc1" || cfg.video.codec === "avc3";
-    if (isAvc && isAnnexB(data)) {
+    if (isAvc && looksAnnexB(data)) {
       // Annex-B で来た。avcC が無ければ SPS/PPS から組み、本体は 4 バイト長接頭へ
       if (!vTrack.description) {
         const rec = avccFromAnnexB(data);
@@ -980,8 +1053,12 @@ export function createMP4Muxer(config) {
     return b;
   }
 
-  function finalizeBytes() {
-    if (finalBytes) return finalBytes;
+  /**
+   * 後始末（残りを flush → moov の duration を実測へ → 末尾に mfra）をして
+   * `out`（破片の配列）を確定させる。2 回目以降は何もしない。
+   */
+  function finishParts() {
+    if (finalized) return out;
     if (disposed) throw new Error("dispose 済みの muxer を finalize しようとしました");
     if (aTrack && !dropAudio && aTrack.seen === 0 && !headWritten) {
       dropAudio = true;
@@ -999,14 +1076,28 @@ export function createMP4Muxer(config) {
     else warn(TAG, "moov の長さが変わったので duration を書き直せませんでした");
     if (mfraEntries.length) write(buildMfra([{ trackId: vTrack.id, entries: mfraEntries }]));
     finalized = true;
+    return out;
+  }
+
+  function finalizeBytes() {
+    if (finalBytes) return finalBytes;
+    finishParts();
     finalBytes = concatOut();
     return finalBytes;
   }
 
   function finalize() {
-    const b = finalizeBytes();
-    if (typeof Blob !== "function") throw new Error("この環境には Blob が在りません（finalizeBytes を使ってください）");
-    return new Blob([b], { type: "video/mp4" });
+    // Blob が無い環境では **状態を壊す前に** throw する（finalizeBytes へ回れる）
+    if (typeof Blob !== "function") {
+      throw new Error("この環境には Blob が在りません（finalizeBytes を使ってください）");
+    }
+    if (finalBytes) return new Blob([finalBytes], { type: "video/mp4" });
+    /* CONTRACT-NOTE: 1 本の Uint8Array に繋いでから Blob へ渡すと、同じ中身が
+       一時的に 2 重に載る。4K を数分だと数百 MB × 2 で iPhone Safari が落ちる。
+       Blob は構築時に中身を写すので、破片の配列をそのまま渡して良い
+       （この後 dispose() で out を空にしても Blob の中身は残る）。 */
+    const parts = finishParts().slice();
+    return new Blob(parts, { type: "video/mp4" });
   }
 
   function bytes() {

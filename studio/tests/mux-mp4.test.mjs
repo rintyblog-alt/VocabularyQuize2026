@@ -23,7 +23,7 @@ import {
   cat, u8, u16, u24, u32, u64, i32, i16, fixed16_16, str4,
   box, fullBox,
   buildFtyp, buildMoov, buildMoof, buildMdat, buildTrun, buildMfra,
-  avccFromAnnexB, annexBToAvcc, splitAnnexB, isAnnexB,
+  avccFromAnnexB, annexBToAvcc, splitAnnexB, isAnnexB, isLengthPrefixed,
   buildEsdsForAAC, buildDOps,
   createMP4Muxer, createMp4Muxer,
   MOVIE_TIMESCALE, SAMPLE_FLAGS_SYNC, SAMPLE_FLAGS_DELTA,
@@ -767,6 +767,108 @@ test("通し: 壊れた入力は黙って通さない", () => {
   // バイト列を取り出せない chunk
   const m = createMP4Muxer({ video: { codec: "avc1", width: 640, height: 360, fps: 30, description: AVCC } });
   assert.throws(() => m.addVideoChunk({ type: "key", timestamp: 0 }, null), TypeError);
+});
+
+test("isLengthPrefixed: 4 バイト長接頭として歩き切れる物だけ真", () => {
+  const nal = new Uint8Array(300);
+  nal[0] = 0x41;
+  for (let i = 1; i < nal.length; i++) nal[i] = (i * 7) & 0x7f; // 00 00 01 を含まない
+  const sample = cat(u32(nal.length), nal);
+  // 長さ 300 の長さ接頭は 00 00 01 2c。3 バイトのスタートコードと同じ形
+  assert.deepEqual([...sample.subarray(0, 4)], [0, 0, 1, 0x2c]);
+  assert.equal(isAnnexB(sample), true, "isAnnexB だけでは見分けが付かない（ここが罠）");
+  assert.equal(isLengthPrefixed(sample), true);
+  // Annex-B は長さで歩けない
+  assert.equal(isLengthPrefixed(cat(SC4, SPS, SC3, PPS)), false);
+  assert.equal(isLengthPrefixed(new Uint8Array([0, 0, 1, 0x41, 0x11])), false);
+  // 2 本続けても歩き切れる / 1 バイトでも足りなければ偽
+  assert.equal(isLengthPrefixed(cat(u32(3), new Uint8Array([0x65, 1, 2]), u32(2), new Uint8Array([0x41, 9]))), true);
+  assert.equal(isLengthPrefixed(cat(u32(3), new Uint8Array([0x65, 1, 2, 0]))), false);
+  assert.equal(isLengthPrefixed(new Uint8Array(0)), false);
+  assert.equal(isLengthPrefixed(cat(u32(0), new Uint8Array([1, 2]))), false, "長さ 0 は無限ループの元");
+});
+
+test("通し: 長さ接頭（avcC 形式）のサンプルを Annex-B と間違えて削らない", () => {
+  /* 回帰試験。WebCodecs が format:"avc"（description が在るときの既定）で
+     吐いた P フレームの NAL が 256〜511 バイトだと、長さ接頭が 00 00 01 xx に
+     なる。以前はこれを Annex-B と誤判定し、先頭バイト 0x2c を NAL ヘッダと
+     読んで type=12（filler）→ 全部捨て、**全サンプルが 0 バイト**になっていた。 */
+  const nal = new Uint8Array(300);
+  nal[0] = 0x41;
+  for (let i = 1; i < nal.length; i++) nal[i] = (i * 7) & 0x7f;
+  const sample = cat(u32(nal.length), nal);
+  const fps = 30;
+  const n = 40;
+  const mux = createMP4Muxer({ video: { codec: "avc1", width: 640, height: 360, fps, description: AVCC } });
+  for (let i = 0; i < n; i++) {
+    mux.addVideoChunk({
+      type: i % 30 === 0 ? "key" : "delta",
+      timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps),
+      byteLength: sample.length, copyTo(d) { d.set(sample); },
+    }, i === 0 ? { decoderConfig: { codec: "avc1.64001f", description: AVCC } } : null);
+  }
+  const bytes = mux.finalizeBytes();
+  const { perTrack } = inspect(bytes);
+  assert.equal(perTrack.get(1).count, n);
+  const mdatTotal = walkBoxes(bytes)
+    .filter((x) => x.type === "mdat")
+    .reduce((s, x) => s + x.size - 8, 0);
+  assert.equal(mdatTotal, n * sample.length, "サンプルが削られている（Annex-B と誤判定している）");
+  for (const t of findAll(walkBoxes(bytes), "trun").map((x) => parseTrun(bytes, x.offset))) {
+    for (const s of t.samples) assert.equal(s.size, sample.length, "trun の size が本体と違う");
+  }
+  // avcC は description のまま（Annex-B から組み直していない）
+  const avcC = find(walkBoxes(bytes), "avcC");
+  assert.deepEqual([...bytes.subarray(avcC.offset + 8, avcC.offset + avcC.size)], [...AVCC]);
+});
+
+test("chunk は timestampUs / durationUs という名でも受ける（webm.js / selftest.html に揃える）", () => {
+  const fps = 30;
+  const n = 40;
+  const mux = createMP4Muxer({ video: { codec: "avc1", width: 320, height: 180, fps, description: AVCC } });
+  for (let i = 0; i < n; i++) {
+    const data = cat(u32(6), new Uint8Array([0x41, 9, 48, i & 0xff, 1, 2]));
+    // selftest.html が渡してくる形（data / timestampUs / durationUs / key）
+    mux.addVideoChunk({ data, timestampUs: Math.round((i * 1e6) / fps), durationUs: Math.round(1e6 / fps), key: i % 30 === 0 }, null);
+  }
+  const bytes = mux.finalizeBytes();
+  const { perTrack, frags } = inspect(bytes);
+  assert.equal(perTrack.get(1).count, n);
+  assert.equal(frags.length, 2, "timestampUs が読めていれば 1 秒ごとに切れる");
+  assert.deepEqual(perTrack.get(1).tfdts, [0, 30000], "pts が 0 に潰れていない");
+  assert.equal(perTrack.get(1).dur, n * 1000);
+});
+
+test("finalize: Blob の中身が finalizeBytes と 1 バイトも違わない", async () => {
+  const fps = 30;
+  const mux = createMP4Muxer({ video: { codec: "avc1", width: 320, height: 180, fps, description: AVCC } });
+  for (const c of fakeVideoChunks(45, fps, 1)) mux.addVideoChunk(c, null);
+  const blob = mux.finalize();
+  assert.equal(blob.type, "video/mp4");
+  const viaBytes = mux.finalizeBytes();
+  assert.equal(blob.size, viaBytes.length, "Blob と finalizeBytes の長さが違う");
+  const round = new Uint8Array(await blob.arrayBuffer());
+  assert.deepEqual([...round], [...viaBytes], "Blob の中身が finalizeBytes と違う");
+  inspect(round);
+  assert.equal(mux.finalize().size, blob.size, "finalize は冪等");
+  assert.throws(() => mux.addVideoChunk(fakeVideoChunks(1, fps, 1)[0], null), /finalize/);
+});
+
+test("空のサンプルは受け取らない（size 0 の trun を書かない）", () => {
+  const mux = createMP4Muxer({ video: { codec: "avc1", width: 320, height: 180, fps: 30, description: AVCC } });
+  assert.throws(
+    () => mux.addVideoChunk({ type: "key", timestamp: 0, duration: 33333, data: new Uint8Array(0) }, null),
+    /空です/
+  );
+  const m2 = createMP4Muxer({
+    video: { codec: "avc1", width: 320, height: 180, fps: 30, description: AVCC },
+    audio: { codec: "mp4a", sampleRate: 48000, channels: 2, description: new Uint8Array([0x11, 0x90]) },
+  });
+  m2.addVideoChunk(fakeVideoChunks(1, 30, 1)[0], null);
+  assert.throws(
+    () => m2.addAudioChunk({ type: "key", timestamp: 0, duration: 21333, data: new Uint8Array(0) }, null),
+    /空です/
+  );
 });
 
 test("通し: 29.97fps でも timescale が fps×1000 で丸めが積もらない", () => {

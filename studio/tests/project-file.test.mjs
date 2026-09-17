@@ -442,3 +442,117 @@ test("importEDLJson: 別の物・未来版・壊れた JSON は理由を言っ�
   assert.equal(ok.project.settings.ratio, "9:16", "比率は EDL に書いてある物を使う");
   assert.equal(ok.project.tracks.length, 0, "tracks が無くても落ちない");
 });
+
+test("packProject: 中止は素材 0 個 / includeAssets:false でも効く（契約書 §11-8）", async () => {
+  /* 回帰試験。中止の確認が «素材を回す loop の中» にしか無かった頃は、
+     素材が 0 個の時と includeAssets:false の時だけ signal が黙殺された。 */
+  const ac = new AbortController();
+  ac.abort();
+  const cases = [
+    ["素材 0 個", demoProject(0), {}],
+    ["includeAssets:false", demoProject(2), { includeAssets: false }],
+    ["素材 2 個", demoProject(2), { assets: demoBlobs(2) }],
+  ];
+  for (const [label, project, opts] of cases) {
+    await assert.rejects(
+      () => packProject(project, Object.assign({ signal: ac.signal }, opts)),
+      (e) => e.name === "AbortError",
+      `${label}: 中止した signal を渡したら AbortError`,
+    );
+  }
+  // 中止していない signal なら普通に通る
+  const ok = await packProject(demoProject(0), { signal: new AbortController().signal });
+  assert.ok((ok.size ?? ok.length) > 0, "中止していなければ書き出せる");
+});
+
+test("packProject: Float32Array の曲線が配列のまま往復する（黙って object にならない）", async () => {
+  /* JSON.stringify は TypedArray を {"0":…,"1":…} という object にする。
+     解析結果の曲線が そうなると読み戻した側の values.length が undefined に
+     なり、«在るのに空» という顔で黙って壊れる。 */
+  const project = demoProject(1);
+  project.assets[0].analysis = {
+    version: 1,
+    motion: { hz: 2, values: new Float32Array([0, 0.5, 1]) },
+    loudness: { hz: 20, values: [-20, -10] },
+    scenes: [], silence: [],
+  };
+  const packed = await packProject(project, { assets: demoBlobs(1) });
+  const { project: back } = await unpackProject(packed);
+  const motion = back.assets[0].analysis.motion;
+  assert.ok(Array.isArray(motion.values), `values は配列のまま（実際は ${JSON.stringify(motion.values)}）`);
+  assert.equal(motion.values.length, 3, "長さが読める");
+  assert.equal(motion.values[1], 0.5, "値も合う");
+  assert.deepEqual(back.assets[0].analysis.loudness.values, [-20, -10], "普通の配列は素通し");
+});
+
+test("packProject: NaN / Infinity / 循環参照でも «保存できない» にならない", async () => {
+  const project = demoProject(0);
+  project.meta.nan = NaN;
+  project.meta.inf = Infinity;
+  project.meta.shared = { a: 1 };
+  project.meta.also = project.meta.shared;   // 共有（循環ではない）
+  project.meta.self = project;               // 循環（素の JSON.stringify は throw する）
+  assert.throws(() => JSON.stringify(project), "素の JSON.stringify なら throw する形");
+
+  const packed = await packProject(project, {});
+  const { header } = await unpackProject(packed);
+  const meta = header.project.meta;
+  assert.equal(meta.nan, null, "NaN は null（«無い» と読める形）");
+  assert.equal(meta.inf, null, "Infinity も null");
+  assert.deepEqual(meta.shared, { a: 1 }, "共有参照は残る");
+  assert.deepEqual(meta.also, { a: 1 }, "同じ物を指していた枝も残る");
+  assert.equal(meta.self.meta, null, "循環はそこで切れる（保存自体は通る）");
+});
+
+test("packProject: id の無い素材は詰めずに理由を言う", async () => {
+  /* id が無いと projectForPack が packed に載せられない（id で引くため）ので、
+     中身を詰めてもファイルが太るだけで読み込み側から辿れない。 */
+  const project = demoProject(1);
+  project.assets.push({ name: "id無し.mp4", kind: "video", size: 4, storage: { kind: "idb", key: "x" } });
+  const packed = await packProject(project, {
+    assets: async (a) => (a.id ? demoBlobs(1).get(a.id) : new Uint8Array(9999)),
+  });
+  const { header, warnings } = await unpackProject(packed);
+  assert.equal(header.parts.length, 1, "詰まったのは id の在る 1 個だけ");
+  assert.ok(
+    warnings.some((w) => w.includes("id無し.mp4") && w.includes("id が無い")),
+    `理由を言う（実際は ${JSON.stringify(warnings)}）`,
+  );
+  assert.ok((packed.size ?? packed.length) < 9999, "9999 バイトの死んだ中身が入っていない");
+});
+
+test("importEDLJson: out が無い手書き EDL でもクリップが 40ms に潰れない", async () => {
+  /* 回帰試験。out が無いときに duration をそのまま out として入れていた頃は、
+     in の在るクリップで out < in になり、schema の «out > in» を守る所で
+     out = in + MIN_CLIP(0.04) へ潰されていた（4 秒のクリップが素材の
+     40ms だけを指す形で黙って壊れる）。渡さなければ schema.js が
+     out = in + duration * speed を当ててくれる。 */
+  const edl = {
+    kind: "vq-studio-edl", version: 1,
+    project: { id: "prj_x", name: "手書きの EDL" },
+    settings: { width: 1920, height: 1080, fps: 30 },
+    assets: [{ id: "as_0", kind: "video", name: "a.mp4", duration: 30 }],
+    tracks: [{ id: "tr_1", kind: "video", clips: [
+      { id: "cl_1", kind: "video", assetId: "as_0", start: 0, duration: 4, in: 10 },
+      { id: "cl_2", kind: "video", assetId: "as_0", start: 4, duration: 4, in: 2, speed: 2 },
+      { id: "cl_3", kind: "video", assetId: "as_0", start: 8, duration: 4, in: 1, out: 5 },
+    ] }],
+  };
+  const { project } = importEDLJson(edl);
+  const [c1, c2, c3] = project.tracks[0].clips;
+  assert.equal(c1.in, 10, "in はそのまま");
+  assert.equal(c1.out, 14, "out が無ければ in + duration * speed");
+  assert.equal(c2.out, 10, "速度 2 なら素材側は倍だけ進む（2 + 4*2）");
+  assert.equal(c3.out, 5, "out が書いて在ればそちらを使う");
+  for (const c of project.tracks[0].clips) {
+    assert.ok(c.out - c.in > 0.04 + 1e-9, `${c.id}: 素材の 40ms に潰れていない`);
+  }
+
+  // buildEDL が作った EDL（out が必ず入る）は往復しても変わらない
+  const round = importEDLJson(exportEDLJson(project)).project;
+  assert.deepEqual(
+    round.tracks[0].clips.map((c) => [c.in, c.out]),
+    project.tracks[0].clips.map((c) => [c.in, c.out]),
+    "書き出した EDL は in/out ごと往復する",
+  );
+});

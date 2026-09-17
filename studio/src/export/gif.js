@@ -44,7 +44,11 @@
        次のフレームへ送る（総尺がずれないようにする）。
      ・DOM を触るのは exportGif() だけ（engine/* は動的 import）。
        createGIFEncoder より上は純粋なので Node で試験できる。
-     ・CONTRACT-NOTE: 契約書 §0 の «1 ファイル 700 行» を 200 行ほど超えている。
+     ・bytes() は «途中を覗く» 口だが、覗いてもパレットの学習は進めない
+       （覗いた分は捨てる写しとして組む）。ここで学習を確定させると
+       «下書きを 1 回見ただけで後から出る色が全部潰れる» ので、
+       encodeInto() / assemble() は積み先とパレットを引数で取る形にしてある。
+     ・CONTRACT-NOTE: 契約書 §0 の «1 ファイル 700 行» を 270 行ほど超えている。
        担当の割り当てが この 1 ファイルなので今は分けない（他人のファイルを
        作らない規約が優先）。次に触る人が分けるなら境目はここ:
          §2-§3（medianCut / nearestColor / quantizeFrame）→ export/gif-quant.js
@@ -128,7 +132,12 @@ export function flattenPalette(palette) {
   return out;
 }
 
-/** "#rrggbb" / [r,g,b](0..255) / null → [r,g,b]（0..255 の整数） */
+/**
+ * "#rrggbb" / [r,g,b](0..255) / {color:"#rrggbb"} / null → [r,g,b]（0..255 の整数）。
+ * object も受けるのは、呼び出し側が契約書 §1 の
+ * `settings.background = { type, color, assetId, blur }` をそのまま渡しても
+ * 黙って黒にならないようにするため（α を潰す色がずれると «背景が黒い GIF» になる）。
+ */
 function toRgb255(v, fallback) {
   if (Array.isArray(v) && v.length >= 3) {
     return [clampInt(finite(v[0], 0), 0, 255), clampInt(finite(v[1], 0), 0, 255), clampInt(finite(v[2], 0), 0, 255)];
@@ -136,6 +145,9 @@ function toRgb255(v, fallback) {
   if (typeof v === "string") {
     const f = hexToRgb(v);
     if (f) return [Math.round(f[0] * 255), Math.round(f[1] * 255), Math.round(f[2] * 255)];
+  }
+  if (v && typeof v === "object" && (typeof v.color === "string" || Array.isArray(v.color))) {
+    return toRgb255(v.color, fallback);
   }
   return fallback ? fallback.slice() : [0, 0, 0];
 }
@@ -646,7 +658,7 @@ export function createGIFEncoder(opts) {
     file: null,
     addedMs: 0,
     skipped: 0,
-    bytesWritten: 0,
+    written: 0,
   };
 
   if (o.palette && o.palette.length) st.mapper = createPaletteMapper(o.palette);
@@ -676,11 +688,23 @@ export function createGIFEncoder(opts) {
     st.samples.push(buf.subarray(0, at));
   }
 
+  /** 溜めた学習用の画素を 1 本に繋ぐ（1 枚だけなら写しを作らない） */
+  function joinSamples() {
+    return st.samples.length === 1 ? st.samples[0] : concatBytes(st.samples);
+  }
+
+  /** 学習していないパレットを作る（本番の学習には触らない） */
+  function learnMapper() {
+    return createPaletteMapper(medianCut(joinSamples(), colors, { stride: 3, step: 1 }));
+  }
+
+  /** 積み先（下書き用に «捨てる» 物を作れるようにしてある） */
+  function newSink() { return { frames: [], prev: null, skipped: 0, written: 0 }; }
+
   /** 溜めた画素からグローバルパレットを決め、待っていたフレームを書く */
   function learnAndFlush() {
     if (!st.mapper) {
-      const all = st.samples.length === 1 ? st.samples[0] : concatBytes(st.samples);
-      st.mapper = createPaletteMapper(medianCut(all, colors, { stride: 3, step: 1 }));
+      st.mapper = learnMapper();
       st.samples = [];
     }
     const wait = st.pending;
@@ -688,28 +712,35 @@ export function createGIFEncoder(opts) {
     for (const f of wait) encodeOne(f.data, f.delayMs);
   }
 
-  function encodeOne(data, delayMs) {
-    const idx = quantizeFrame(data, width, height, st.mapper, { dither, background });
-    let rect = diffRect(st.prev, idx, width, height);
+  /**
+   * 1 枚を «添字 → 差分矩形 → LZW» に落として sink に積む。
+   * sink と mapper を引数で取るのは bytes() が「本番を汚さない下書き」を
+   * 組めるようにするため（下の bytes() の注意書きを見ること）。
+   */
+  function encodeInto(sink, mapper, data, delayMs) {
+    const idx = quantizeFrame(data, width, height, mapper, { dither, background });
+    let rect = diffRect(sink.prev, idx, width, height);
     if (!rect) {
       // 前と同じ絵。フレームを増やさず前の表示時間を延ばす（一番小さくなる）
-      if (st.frames.length) {
-        st.frames[st.frames.length - 1].delayMs += delayMs;
-        st.skipped++;
-        st.prev = idx;
+      if (sink.frames.length) {
+        sink.frames[sink.frames.length - 1].delayMs += delayMs;
+        sink.skipped++;
+        sink.prev = idx;
         return;
       }
       rect = { x: 0, y: 0, w: width, h: height };   // 1 枚目は必ず書く
     }
-    const min = paletteBits(st.mapper.palette.length);
+    const min = paletteBits(mapper.palette.length);
     const body = concatBytes([
       imageDescriptorBytes({ left: rect.x, top: rect.y, width: rect.w, height: rect.h }),
       lzwBlocks(cropIndices(idx, width, rect), min),
     ]);
-    st.frames.push({ delayMs, body });
-    st.bytesWritten += body.length;
-    st.prev = idx;
+    sink.frames.push({ delayMs, body });
+    sink.written += body.length;
+    sink.prev = idx;
   }
+
+  function encodeOne(data, delayMs) { encodeInto(st, st.mapper, data, delayMs); }
 
   /**
    * 1 枚足す。
@@ -730,14 +761,14 @@ export function createGIFEncoder(opts) {
     if (st.pending.length >= learnFrames) learnAndFlush();
   }
 
-  /** 今の中身で 1 本のバイト列を組む（下書きにも finalize にも使う） */
-  function assemble() {
-    const pal = st.mapper ? st.mapper.palette : [[0, 0, 0], [255, 255, 255]];
+  /** 1 本のバイト列を組む（下書きにも finalize にも使う） */
+  function assemble(frames, palette) {
+    const pal = palette && palette.length ? palette : [[0, 0, 0], [255, 255, 255]];
     const parts = [gifHeaderBytes({ width, height, palette: pal })];
     parts.push(netscapeLoopExtBytes(loop));
     // 遅延は 1/100 秒しか書けないので、累積時刻の引き算で丸め誤差を送る
     let accMs = 0, accCs = 0;
-    for (const f of st.frames) {
+    for (const f of frames) {
       accMs += f.delayMs;
       const cs = clampInt(Math.round(accMs / 10) - accCs, 0, 65535);
       accCs += cs;
@@ -752,7 +783,7 @@ export function createGIFEncoder(opts) {
     if (st.phase !== "finalized") {
       if (st.pending.length) learnAndFlush();
       if (!st.frames.length) throw new Error("finalizeBytes: GIF に 1 枚も入っていません（addFrame を先に呼んでください）");
-      st.file = assemble();
+      st.file = assemble(st.frames, st.mapper ? st.mapper.palette : null);
       st.phase = "finalized";
       st.pending = [];
       st.prev = null;
@@ -766,11 +797,21 @@ export function createGIFEncoder(opts) {
     return new Blob([b], { type: mime });
   }
 
+  /**
+   * 途中でも «見られる GIF» を返す（末尾の 0x3B まで付く）。
+   * ★ ここで learnAndFlush() を呼んではいけない。呼ぶと «下書きを覗いた» だけで
+   *   グローバルパレットが確定してしまい、まだ来ていないフレームの色が
+   *   全部潰れる（冒頭が単色の動画では下書きを 1 回見ただけで真っ黒な GIF に
+   *   なる）。下書きは **捨てる写し** として組み、本番の学習には触らない。
+   */
   function bytes() {
     if (st.phase === "disposed") throw new Error("bytes: この GIF エンコーダは dispose 済みです");
     if (st.phase === "finalized") return st.file || new Uint8Array(0);
-    if (st.pending.length) learnAndFlush();
-    return assemble();   // 途中でも «見られる GIF» を返す（末尾の 0x3B まで付く）
+    if (!st.pending.length) return assemble(st.frames, st.mapper ? st.mapper.palette : null);
+    const mapper = st.mapper || learnMapper();       // st.mapper には代入しない
+    const draft = newSink();
+    for (const f of st.pending) encodeInto(draft, mapper, f.data, f.delayMs);
+    return assemble(st.frames.concat(draft.frames), mapper.palette);
   }
 
   function dispose() {
@@ -790,7 +831,7 @@ export function createGIFEncoder(opts) {
         frames: st.frames.length, skipped: st.skipped,
         pending: st.pending.length,
         colors: st.mapper ? st.mapper.palette.length : 0,
-        durationMs: Math.round(st.addedMs), bytesWritten: st.bytesWritten,
+        durationMs: Math.round(st.addedMs), bytesWritten: st.written,
       };
     },
     mime,
@@ -864,7 +905,8 @@ function grabPixels(rig, width, height) {
  * @param {any} project
  * @param {{width?:number, height?:number, fps?:number, frames?:number,
  *          range?:{start:number,end:number}, loop?:number, dither?:boolean,
- *          quality?:number, colors?:number, onProgress?:Function, signal?:any,
+ *          quality?:number, colors?:number, background?:string|number[]|Object,
+ *          onProgress?:Function, signal?:any,
  *          canvas?:any, compositor?:any, sources?:any, storage?:any}} [opts]
  * @returns {Promise<Blob>}
  */

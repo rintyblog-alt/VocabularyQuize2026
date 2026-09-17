@@ -39,7 +39,12 @@
        Infinity を入れない（契約書 §1 も image は 0 と決めている）。
      ・ヘッダは «人が読める» ままにしておく（圧縮しない）。壊れたファイルを
        hexdump で追える事の方が、数 KB 縮む事より大事。
-     ・CONTRACT-NOTE: 契約書 §0 の «1 ファイル 700 行» を少し超えている。
+     ・保存する project は jsonSafe() を通す。TypedArray（解析結果の曲線が
+       Float32Array で来る道が在る）は JSON.stringify だと配列ではなく
+       {"0":…} という object になり、読み戻した側の values.length が
+       undefined になって黙って壊れるため。NaN / Infinity は null に、
+       循環参照はその枝だけ切る（「保存できません」に倒さない）。
+     ・CONTRACT-NOTE: 契約書 §0 の «1 ファイル 700 行» を 100 行ほど超えている。
        担当の割り当てが この 1 ファイルなので今は分けない。分けるなら
        §7（EDL の JSON）を export/edl.js へ出すのが素直。
      ・packProject は Blob を返す（契約どおり）。**Blob が無い環境
@@ -145,6 +150,67 @@ function concat(list) {
   let at = 0;
   for (const b of list) { if (b && b.length) { out.set(b, at); at += b.length; } }
   return out;
+}
+
+/** jsonSafe が潜る深さの上限（壊れた project で戻り切れなくならないため） */
+const JSON_MAX_DEPTH = 64;
+
+/**
+ * JSON に素直に落ちない物を «落ちる形» へ均す（純関数・写しを返す）。
+ *
+ * なぜ要るか:
+ *  ・`Float32Array` は `JSON.stringify` に渡すと **配列ではなく object**
+ *    （`{"0":0.1,"1":0.2}`）になる。読み戻した側は `values.length` が
+ *    undefined になり、曲線が «在るのに空» という顔をして黙って壊れる。
+ *    解析結果（契約書 §1 の analysis.motion / loudness の values）は
+ *    普通の配列と決まっているが、`structuredClone` は TypedArray を
+ *    そのまま通すので、途中の版や probe 経由で紛れ込む道が在る。
+ *  ・NaN / Infinity は `JSON.stringify` が **黙って** null にする。
+ *    どちらも «無い» と読める null に自分で倒して、気付ける形にする。
+ *  ・循環参照は `JSON.stringify` が throw する。ここで切って、
+ *    「保存できません」ではなく「その枝だけ落ちた」に倒す。
+ * @param {any} v @param {number} [depth] @param {Set<any>} [seen]
+ * @returns {any}
+ */
+function jsonSafe(v, depth, seen) {
+  const d = depth || 0;
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  const t = typeof v;
+  if (t === "number") return Number.isFinite(v) ? v : null;
+  if (t === "string" || t === "boolean") return v;
+  if (t !== "object") return undefined;              // function / symbol / bigint
+  if (ArrayBuffer.isView(v)) {
+    // TypedArray は普通の配列へ。DataView は数に落とせないので捨てる
+    if (typeof v.length !== "number") return null;
+    const out = new Array(v.length);
+    for (let i = 0; i < v.length; i++) out[i] = Number.isFinite(v[i]) ? v[i] : null;
+    return out;
+  }
+  if (v instanceof ArrayBuffer) return null;
+  if (d >= JSON_MAX_DEPTH) return null;
+  const set = seen || new Set();
+  if (set.has(v)) return null;                       // 循環はここで切る
+  set.add(v);
+  try {
+    if (Array.isArray(v)) {
+      const out = new Array(v.length);
+      for (let i = 0; i < v.length; i++) {
+        const x = jsonSafe(v[i], d + 1, set);
+        out[i] = x === undefined ? null : x;         // 配列の穴は null（JSON と同じ）
+      }
+      return out;
+    }
+    if (typeof v.toJSON === "function") return jsonSafe(v.toJSON(), d + 1, set);
+    const out = {};
+    for (const k of Object.keys(v)) {
+      const x = jsonSafe(v[k], d + 1, set);
+      if (x !== undefined) out[k] = x;               // undefined は JSON でも消える
+    }
+    return out;
+  } finally {
+    set.delete(v);   // «今たどっている道» だけを見る（共有参照は消さない）
+  }
 }
 
 /* ── 2. 容器の組み立て / 解釈（純関数）────────────────────────── */
@@ -350,11 +416,20 @@ export async function packProject(project, opts) {
   const packed = new Map();
   const warnings = [];
 
+  throwIfAborted(o.signal);   // 素材が 0 個 / includeAssets:false でも中止は効く
   tick(0, "", "prepare");
   if (includeAssets) {
     for (let i = 0; i < list.length; i++) {
       throwIfAborted(o.signal);
       const a = list[i];
+      /* id の無い素材は入れない。詰めても projectForPack が «packed» に
+         載せられず（id で引くため）読み込み側から絶対に辿れないので、
+         中身だけがファイルを太らせる死んだバイト列になる。 */
+      if (!(a.id && String(a.id))) {
+        warnings.push(`素材「${a.name || "(名前なし)"}」に id が無いので入れませんでした`);
+        tick(i + 1, a.name, "assets");
+        continue;
+      }
       let raw = null;
       try { raw = await get(a); }
       catch (e) { L.warn(`素材「${a.name || a.id}」を取り出せません`, e); raw = null; }
@@ -393,10 +468,13 @@ export async function packProject(project, opts) {
     createdAt: new Date().toISOString(),
     includeAssets,
     note: o.note ? String(o.note) : "",
-    project: projectForPack(project, packed),
+    /* jsonSafe を通すのは «TypedArray が object になって黙って壊れる» のを
+       止めるため（上の jsonSafe の説明を見ること）。 */
+    project: jsonSafe(projectForPack(project, packed)),
     assets: entries,
     warnings,
   };
+  throwIfAborted(o.signal);
   const head = containerHeaderBytes(header, sizes);
   tick(total, "", "write");
 
@@ -681,7 +759,13 @@ export function importEDLJson(text) {
     clips: (Array.isArray(t.clips) ? t.clips : []).filter(Boolean).map((c) => ({
       id: c.id, name: String(c.name || ""), assetId: c.assetId || null, kind: c.kind || "video",
       start: Math.max(0, finite(c.start, 0)), duration: Math.max(0.04, finite(c.duration, 1)),
-      in: Math.max(0, finite(c.in, 0)), out: Math.max(0, finite(c.out, finite(c.duration, 1))),
+      in: Math.max(0, finite(c.in, 0)),
+      /* out は «無ければ入れない»。ここで duration を out として入れてしまうと
+         in の在るクリップで out < in になり、normalizeProject が §1-2 の
+         «out > in» を守るために out = in + MIN_CLIP(0.04) へ潰す（4 秒の
+         クリップが素材の 40ms だけを指す形で黙って壊れる）。渡さなければ
+         schema.js が決め事どおり out = in + duration * speed を当ててくれる。 */
+      out: Number.isFinite(c.out) ? Math.max(0, c.out) : undefined,
       speed: finite(c.speed, 1), reverse: !!c.reverse,
       volume: finite(c.volume, 1), opacity: finite(c.opacity, 1), blend: c.blend || "normal",
       text: c.text ? { content: String(c.text) } : null,
