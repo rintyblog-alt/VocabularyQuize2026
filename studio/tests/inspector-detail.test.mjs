@@ -222,3 +222,19 @@ test("EASE_ITEMS: 契約書 §2 の 6 種が揃う", () => {
   const vals = EASE_ITEMS.map((e) => e.value);
   for (const e of ["linear", "in", "out", "inout", "hold", "bezier"]) assert.ok(vals.includes(e), e);
 });
+
+/* ── fmtNum: 整数の末尾の 0 を消してはいけない（実機で 1920 が "192" になった） ── */
+test("fmtNum: 整数の末尾の 0 を保つ", async () => {
+  const { fmtNum } = await import("../src/ui/inspector/index.js");
+  assert.equal(fmtNum(1920, 0), "1920");
+  assert.equal(fmtNum(1080, 0), "1080");
+  assert.equal(fmtNum(30, 0), "30");
+  assert.equal(fmtNum(100, 0), "100");
+  assert.equal(fmtNum(0, 0), "0");
+  /* 小数の尻尾は落とす */
+  assert.equal(fmtNum(1.50, 2), "1.5");
+  assert.equal(fmtNum(2.00, 2), "2");
+  assert.equal(fmtNum(0.25, 2), "0.25");
+  assert.equal(fmtNum(-40, 0), "-40");
+  assert.equal(fmtNum(120.0, 1), "120");
+});

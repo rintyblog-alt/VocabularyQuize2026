@@ -146,7 +146,12 @@ export function fmtNum(v, digits) {
   const n = finite(v, 0);
   const d = digits === undefined ? 1 : digits;
   const s = n.toFixed(d);
-  return s.replace(/\.?0+$/, "") || "0";
+  /* ★ 小数点より後ろの 0 だけを落とす。
+     以前は /\.?0+$/ で消していたので、**整数の末尾の 0 まで消えていた**
+     （1920 → "192"、1080 → "108"、30 → "3"。実機の画面で発覚）。
+     小数が無い（d===0）ときは何も削らない。 */
+  if (d <= 0) return s;
+  return s.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "") || "0";
 }
 
 /* ── 3. 部品の詰め合わせ（kit）──────────────────────────────────── */
