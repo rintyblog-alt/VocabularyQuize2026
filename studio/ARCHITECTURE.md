@@ -633,3 +633,30 @@ CapCut/Figma/Linear 級の作り込み。**凝る所はここ**（最初に目�
    完了後の共有（`navigator.share` 在れば）/ ダウンロード / もう一度、
    **書き出し中もタブが寝ないように**（`?keepAwake` ではなく `wakeLock` を試す）、
    presets（YouTube / Shorts / TikTok / Instagram / X / 4K / 軽量 / 音声のみ / GIF）。
+
+---
+
+## 12. 追補（統合時に決めたこと）
+
+1. **書き出しが合成と素材を得る道**
+   `exportVideo(project, opts)` の `opts` には `{ compositor, sources, audio }` を
+   渡せる（編集中の物を使い回す）。**渡されなかったら exporter が自分で作る**
+   （画面外の canvas + `createCompositor` + `createSourcePool` + `createAudioEngine`）。
+   自分で作った物は終わりに必ず dispose する。これは「書き出し中もプレビューを
+   触れるように」するため。
+2. **試験の走らせ方**
+   `cd studio && npm test`（= `node --test "tests/*.test.mjs"`）。
+   `node --test studio/tests` のようにディレクトリを渡すと Node 22 では動かない。
+3. **op の返り値**
+   `clip.add` は `{ clipId }`、`clip.split` は `{ ids: [a, b] }`、
+   `track.add` は `{ trackId }`、`asset.add` は `{ assetId }` を返す
+   （UI と AI が直後に選択・追記するため）。`id` も同時に入れて良い。
+4. **store.batch の使い方**
+   `store.batch(label, (d) => { d(type, payload); ... })` で 1 取消単位。
+   AI の適用（ops 配列）は必ずこれを通す。
+5. **画面の行き先**
+   `main.js` → `ui/app.js` の `start()` が決める。未ログインかつゲストでもない場合は
+   アカウント画面、それ以外は一覧。`?project=<id>` / `?new` / `?demo=1` で直行できる。
+6. **デバッグの窓**
+   `window.VQSTUDIO = { app, cfg, storage, auth, schema, failures, version }`。
+   `failures` に「読み込めなかった部品」が入る（selftest.html と通し試験が見る）。
