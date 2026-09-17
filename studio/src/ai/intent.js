@@ -90,8 +90,8 @@ const PACING_RULES = [
 
 /** 色の見た目 */
 const LOOK_RULES = [
-  [/シネマ|映画(風|的|みたい|っぽい)|シネマティック|cinematic|フィルム(調|風)/, "cinematic"],
-  [/レトロ|vhs|昭和|古い(感じ|フィルム)|ノスタル/, "retro"],
+  [/レトロ|vhs|昭和|古い(感じ|フィルム)|ノスタル|フィルム(調|風|っぽ)/, "retro"],
+  [/シネマ|映画(風|的|みたい|っぽい)|シネマティック|cinematic/, "cinematic"],
   [/モノクロ|白黒|グレースケール|monochrome/, "mono"],
   [/ビビッド|鮮やか|あざやか|色(を)?(濃く|鮮やか)|彩度(を)?(上|高)|vivid/, "vivid"],
   [/パキッ|バキッ|力強|コントラスト(を)?(強|上)|くっきり/, "punchy"],
@@ -177,6 +177,13 @@ function firstHit(rules, text) {
 export function parseTargetDuration(text) {
   const t = str(text);
   let m = null;
+  /* 「10分にまとめて」のように **仕上がりの長さ**だと分かる言い方を最優先に見る。
+     こうしないと「1時間の講義を10分にまとめて」で素材の長さ（1時間）を拾う。 */
+  if ((m = /(\d+(?:\.\d+)?)\s*(時間|分|秒)\s*(?:くらい|ほど|程度|前後)?\s*(?:に|へ|で)\s*(?:まとめ|して|収め|抑え|編集|作|仕上|縮め|短く)/.exec(t))) {
+    const n = Number(m[1]);
+    const mul = m[2] === "時間" ? 3600 : m[2] === "分" ? 60 : 1;
+    if (Number.isFinite(n) && n > 0) return clamp(n * mul, MIN_TARGET, MAX_TARGET);
+  }
   if ((m = /(\d+(?:\.\d+)?)\s*時間\s*(\d+(?:\.\d+)?)?\s*分?/.exec(t))) {
     const h = Number(m[1]) * 3600 + (m[2] ? Number(m[2]) * 60 : 0);
     return clamp(h, MIN_TARGET, MAX_TARGET);

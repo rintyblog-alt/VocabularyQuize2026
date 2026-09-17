@@ -34,6 +34,10 @@
        `export * from "./audio.js"` を index.js に足すと ESM の星取り込みが衝突して
        名前ごと消えるので、**足すなら `summarizeAudioForLLM` を使う**（同じ実装の別名を
        export してある）。
+     ・CONTRACT-NOTE: 700 行を超えている（約 1000 行）。契約書 §6 の音の解析は全て
+       この 1 ファイルに置く約束で、担当外のファイルは作れないため分けられなかった。
+       分けるなら `audio-fft.js`（FFT と窓）/ `audio-beat.js`（拍）/ `audio-speech.js`
+       （声）の 3 つで、境界は下の見出し（§2 / §6 / §8）がそのまま切れ目になる。
      ・時刻の決め方: 窓は「左寄せの敷き詰め」が基本（frame i = `[i/hz, (i+1)/hz)`）。
        無音の端がこれで ±1 フレームに収まる。窓が hop より長い物（loudness の 400ms、
        特徴量の 40ms）だけは中心を合わせる（そうしないと値が後ろへずれる）。
@@ -157,7 +161,7 @@ export function toMono(buf) {
  */
 export function readAudio(buf, opts = {}) {
   const o = opts || {};
-  const src = buf && !isRawSamples(buf) && typeof buf.getChannelData !== "function" && isRawSamples(buf.mono) ? buf.mono : buf;
+  const src = buf && !isRawSamples(buf) && isRawSamples(buf.mono) ? buf.mono : buf;   // {mono,sampleRate} も受ける
   const rate = finite(buf && buf.sampleRate, finite(o.sampleRate, 48000));
   const sampleRate = clamp(rate > 0 ? rate : 48000, 8000, 192000);
   const mono = toMono(src);

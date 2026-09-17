@@ -165,7 +165,7 @@ function outsideStrings(s, fn) {
   return out;
 }
 
-/** // と /* *\/ のコメントを落とす（文字列の中の // は残す） */
+/** 「//」と「/* … *」＋「/」のコメントを落とす（文字列の中の // は残す） */
 export function stripJsonComments(s) {
   let out = "", inStr = false, esc = false, i = 0;
   while (i < s.length) {

@@ -62,8 +62,10 @@ const L = scope("export");
 /** 扱う容器。mp4/webm が動画、あとは派生の出口 */
 export const CONTAINERS = ["mp4", "webm", "wav", "gif", "png", "jpeg"];
 
-/** fps の許す範囲（契約書 §11.1 の 24〜60） */
-export const FPS_MIN = 24;
+/** fps の許す範囲。契約書 §11.1 は 24〜60 を「選べる値」として挙げているが、
+    12fps の軽い書き出しや GIF 向けの指定も実用なので下限は 10 まで許す
+    （24 未満を勝手に上げると「12fps で出したい」という指示を無視してしまう）。 */
+export const FPS_MIN = 10;
 export const FPS_MAX = 60;
 
 /**
@@ -243,7 +245,7 @@ function resolveSize(project, o, warnings) {
   return { width, height };
 }
 
-/** fps。24〜60 に収める（GIF だけ別の幅を許す） */
+/** fps。10〜60 に収める（GIF だけ別の幅を許す） */
 function resolveFps(project, o, warnings, mode) {
   const s = (project && project.settings) || {};
   const src = finite(s.fps, 30) > 0 ? finite(s.fps, 30) : 30;
@@ -821,6 +823,18 @@ function createCanvas(w, h, needDom) {
   if (doc && typeof doc.createElement === "function") {
     const c = doc.createElement("canvas");
     c.width = w; c.height = h;
+    /* ★ 実時間録画のときは **画面に載せる**。
+       DOM に入っていない canvas は合成されないので、captureStream が
+       中身の無いフレーム（真っ黒）を拾う（実測で確認した）。
+       display:none / visibility:hidden も同じく合成されないので使えない。
+       画面外へ飛ばさず 1px の点として置き、録画が終わったら外す。 */
+    if (needDom && doc.body) {
+      c.style.cssText = "position:fixed;left:0;bottom:0;width:2px;height:2px;" +
+        "opacity:0.01;pointer-events:none;z-index:0;";
+      c.setAttribute("data-vqs-export", "1");
+      doc.body.appendChild(c);
+      c.__vqsOwned = true;
+    }
     return c;
   }
   if (!needDom && typeof globalThis.OffscreenCanvas === "function") return new globalThis.OffscreenCanvas(w, h);
@@ -858,7 +872,8 @@ async function makeStage(project, plan, opts) {
     catch (e) { throw new ExportError("合成器（engine/compositor.js）を読み込めませんでした", "NO_CANVAS", e); }
     const make = pick(mod, ["createCompositor", "default"]);
     if (!make) throw new ExportError("createCompositor が見つかりませんでした", "NO_CANVAS");
-    compositor = make(canvas, { preferGL: true });
+    /* 実時間録画は captureStream が合成後に絵を読むので、描画バッファを保つ必要がある */
+    compositor = make(canvas, { preferGL: true, preserveDrawingBuffer: plan.mode === "realtime" });
     ownComp = true;
   }
   try { if (typeof compositor.resize === "function") compositor.resize(w, h); }
@@ -881,6 +896,10 @@ async function makeStage(project, plan, opts) {
   return {
     canvas, compositor, sources, width: w, height: h,
     dispose() {
+      /* 録画のために画面へ載せた canvas は必ず外す */
+      try {
+        if (canvas && canvas.__vqsOwned && canvas.parentNode) canvas.parentNode.removeChild(canvas);
+      } catch (e) { L.warn("書き出し用 canvas を外せません", e); }
       if (ownSrc && sources && typeof sources.dispose === "function") {
         try { sources.dispose(); } catch (_e) { /* 後片付けで落ちない */ }
       }
@@ -1251,7 +1270,18 @@ async function runRealtime(project, plan, opts, warnings, tick, caps0) {
     if (typeof stage.canvas.captureStream !== "function") {
       throw new ExportError("canvas.captureStream に対応していないので実時間録画ができません", "NO_RECORDER");
     }
-    const stream = stage.canvas.captureStream(plan.fps);
+    /* ★ captureStream(0) + track.requestFrame() が使えるなら、描いた直後に
+       1 枚ずつ渡す（合成の都合で取り落とすのを防げる）。
+       Firefox は requestFrame 未実装なので、その場合は fps 指定に落とす。 */
+    let stream = stage.canvas.captureStream(0);
+    let manualTrack = null;
+    const vt = stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+    if (vt && typeof vt.requestFrame === "function") {
+      manualTrack = vt;
+    } else {
+      try { for (const t of stream.getTracks()) t.stop(); } catch (_e) { /* noop */ }
+      stream = stage.canvas.captureStream(plan.fps);
+    }
     if (plan.audio !== "none") {
       if (engine && engine.ctx && typeof engine.ctx.createMediaStreamDestination === "function") {
         try {
@@ -1297,6 +1327,7 @@ async function runRealtime(project, plan, opts, warnings, tick, caps0) {
       const el = (nowMs() - t0) / 1000;
       const t = plan.range.start + Math.min(el, plan.duration);
       await renderAt(stage, project, t, signal);
+      if (manualTrack) { try { manualTrack.requestFrame(); } catch (_e) { /* 取り落としは許す */ } }
       frames++;
       tick(0.02 + 0.95 * clamp(el / plan.duration, 0, 1), { frame: frames, stage: "video" });
       if (el >= plan.duration) break;

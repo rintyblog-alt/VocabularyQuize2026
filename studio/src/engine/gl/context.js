@@ -109,7 +109,10 @@ export function createGL(canvas, opts) {
       antialias: false,
       depth: false,
       stencil: false,
-      preserveDrawingBuffer: false,
+      /* ★ 実時間の録画（canvas.captureStream + MediaRecorder）は、描いた後の
+         合成のタイミングで絵を読む。false のままだと読む時には既に消えていて
+         **真っ黒な動画**が出る（実測で確認）。書き出し側が true を渡す。 */
+      preserveDrawingBuffer: o.preserveDrawingBuffer === true,
       desynchronized: o.desynchronized !== false,
       powerPreference: o.powerPreference || "high-performance",
       failIfMajorPerformanceCaveat: false,

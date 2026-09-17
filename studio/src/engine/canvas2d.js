@@ -29,9 +29,9 @@
 
    ★ 触るときの注意
      ・`layerBox()` の約束は ui/inspector/transform.js の `frameFit()` /
-       `shownSize()` と **必ず一致させる**（scale 1 = contain、x/y は画面幅
-       高さに対する割合で中心が原点、crop 後の窓は中央に残る）。片方だけ
-       直すと「数値と絵が合わない」になる。
+       `shownSize()` と揃える（scale 1 = contain、x/y は画面の幅・高さに対する
+       割合で中心が原点、anchor は回転と拡大の中心）。片方だけ直すと
+       「数値と絵が合わない」になる。**クロップだけは違う**（CONTRACT-NOTE (5)）。
      ・例外は握りつぶさない。層 1 枚の失敗は その層を飛ばして warnOnce する
        （契約書 §4 の「例外で真っ黒にしない」）。
      ・`console` は呼ばない（core/log.js の scope 経由）。
@@ -47,10 +47,20 @@
        { ctx, canvas, w, h, params, time, p, a, b, opacity }
      （a/b は遷移の元/先の canvas）。無い物は 自前の crossfade へ落として申告。
    CONTRACT-NOTE (3): `engine/text.js` / `engine/shapes.js` は契約どおりに使うが
-     **動的 import** にした。静的にすると 隣が 1 つ未着なだけで合成器が読み込め
-     ず、プレビューが丸ごと消える（app.js は import の失敗を飲むだけ）。
-     読めるまでの数フレームと 読めない端末では 図形は自前の最小実装で描き、
-     文字は `missing:["text"]` として申告する。
+     **top-level await の動的 import** にした。静的にすると 隣が 1 つ未着なだけで
+     合成器が読み込めず、プレビューが丸ごと消える（app.js は import の失敗を
+     飲むだけ）。読めない端末では 図形は自前の最小実装（`renderShapeFallback`）で
+     描き、文字は `missing:["text"]` として申告する。文字の呼び口は
+     `renderText(spec, opts)` と `textCanvas(resolved, opts)` の両方を見る。
+   CONTRACT-NOTE (5): **クロップは「その場で切り落とす」**（窓を動かさない）。
+     `gl/shaders.js` の `cropMask(uv, uCrop, res)` が「uv は素材全体・外は
+     alpha 0」という形なので、WebGL 版と 2d 版を揃えるために engine 側を
+     そちらに寄せた。ui/inspector/transform.js の整列/プリセットは「crop 後の
+     窓が中央に残る」前提で計算しているので、そこだけ食い違う（あちらの
+     CONTRACT-NOTE が「engine が違う約束なら整列の計算だけ直せば済む」と
+     書いて在る通り。統合時に UI 側を寄せてもらう）。
+     `layerBox()` は w/h を **クロップ前**の寸法で返し、見えている窓を
+     `vx/vy/vw/vh` で返す。
    CONTRACT-NOTE (4): 共通前提は「1 ファイル 700 行で分割」だが、分割先
      （engine/2d/*.js）は担当外で新規作成できない。章立て（§A〜§D）で読める
      ようにして 1 ファイルに収めた。§A の幾何は WebGL 版と共有する所なので、
@@ -61,19 +71,28 @@
 import { clipsAt, resolveClip } from "../core/eval.js";
 import { clamp, clamp01, finite } from "../core/util.js";
 import { assetById } from "../core/schema.js";
+import { frameIndex, frameStart } from "../core/time.js";
 import { scope } from "../core/log.js";
 
 const L = scope("engine2d");
 
-/* engine/text.js と engine/shapes.js は **遅延**で読む（CONTRACT-NOTE (3)）。
-   契約どおりの道具だが、静的 import にすると 隣が 1 つ未着なだけで
-   合成器ごと読み込めなくなり、プレビューが真っ黒になる。読めたら次の
-   フレームから本物を使い、読めるまで（と読めない時）は自前の保険で描く。 */
-let TEXT = null, SHAPES2 = null;
-try {
-  import("./text.js").then((m) => { TEXT = m; }).catch((e) => { L.warn("text.js が読めません", e); });
-  import("./shapes.js").then((m) => { SHAPES2 = m; }).catch(() => { /* 自前の図形で描く */ });
-} catch (_e) { /* 動的 import すら無い環境（試験など）。自前で描く */ }
+/* engine/text.js と engine/shapes.js は **top-level await の動的 import** で読む
+   （CONTRACT-NOTE (3)）。静的 import にすると 隣が 1 つ未着なだけで合成器ごと
+   読み込めず、プレビューが丸ごと消える（app.js は import の失敗を飲むだけ）。
+   await で待つので「最初の数フレームだけ文字が出ない」も起きない。
+   繋がらない網で永久に待たないよう 4 秒で諦める。 */
+async function loadOpt(path, ms) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      import(path),
+      new Promise((res) => { timer = setTimeout(() => res(null), ms || 4000); })
+    ]);
+  } catch (_e) { return null; }
+  finally { if (timer) clearTimeout(timer); }
+}
+const [TEXT, SHAPES2] = await Promise.all([loadOpt("./text.js"), loadOpt("./shapes.js")]);
+if (!TEXT) L.warn("engine/text.js が読めません（文字は missing に出します）");
 
 /** clip.blend → globalCompositeOperation（契約書 §1 の並び順） */
 export const BLEND_2D = Object.freeze({
@@ -131,17 +150,21 @@ export function outSize(project, cw, ch, quality) {
 /**
  * 層 1 枚の「画面に出る箱」。単位は出力 px。
  *
- * 約束（ui/inspector/transform.js と同一。勝手に変えない）:
- *   ・scale 1 = 素材を画面に **収めた**（contain）大きさ
+ * 約束:
+ *   ・scale 1 = 素材を画面に **収めた**（contain）大きさ（transform.js と同じ）
  *   ・transform.x / y = 画面の幅 / 高さに対する割合。0 = 中央・+ は右と下
- *   ・crop で残った窓は **中央に残る**（整列ボタンの計算がこれを前提にしている）
  *   ・anchorX / anchorY は **回転と拡大の中心**（位置ではない）
+ *   ・**w / h は「クロップ前」の表示寸法**。クロップは `v*`（見えている窓）で
+ *     表す = その場で切り落とす（動かさない）。gl/shaders.js の
+ *     `cropMask(uv, uCrop, res)` が「uv は素材全体・外は alpha 0」なので
+ *     engine 側をそれに合わせた（CONTRACT-NOTE (5)）。
  * @param {Object} r Resolved（core/eval.js）
  * @param {number} outW @param {number} outH 出力 px
  * @param {number} srcW @param {number} srcH 素材 px（不明なら 0 を渡す）
  * @returns {{w:number,h:number,cx:number,cy:number,px:number,py:number,
  *            rot:number,flipH:boolean,flipV:boolean,k:number,
- *            crop:{l:number,t:number,w:number,h:number}}}
+ *            crop:{l:number,t:number,r:number,b:number,w:number,h:number},
+ *            vx:number,vy:number,vw:number,vh:number}}
  */
 export function layerBox(r, outW, outH, srcW, srcH) {
   const tr = (r && r.transform) || {};
@@ -153,17 +176,21 @@ export function layerBox(r, outW, outH, srcW, srcH) {
   const k = Math.min(outW / aw, outH / ah);            // scale 1 = contain
   const sx = finite(tr.scaleX, 1) * finite(tr.scale, 1);
   const sy = finite(tr.scaleY, 1) * finite(tr.scale, 1);
-  const w = Math.max(1e-3, aw * k * Math.max(1e-4, cw) * Math.abs(sx || 1));
-  const h = Math.max(1e-3, ah * k * Math.max(1e-4, chh) * Math.abs(sy || 1));
+  const w = Math.max(1e-3, aw * k * Math.abs(sx || 1));       // ← クロップ前
+  const h = Math.max(1e-3, ah * k * Math.abs(sy || 1));
   const cx = outW * (0.5 + finite(tr.x, 0));
   const cy = outH * (0.5 + finite(tr.y, 0));
+  const l = clamp01(finite(cr.l, 0)), t = clamp01(finite(cr.t, 0));
+  const cwx = Math.max(1e-4, cw), chy = Math.max(1e-4, chh);
   return {
     w, h, cx, cy,
     px: cx + (clamp01(finite(tr.anchorX, 0.5)) - 0.5) * w,   // 回転・拡大の中心
     py: cy + (clamp01(finite(tr.anchorY, 0.5)) - 0.5) * h,
     rot: finite(tr.rotate, 0),                               // eval は rad で返す
     flipH: !!tr.flipH, flipV: !!tr.flipV, k,
-    crop: { l: clamp01(finite(cr.l, 0)), t: clamp01(finite(cr.t, 0)), w: Math.max(1e-4, cw), h: Math.max(1e-4, chh) }
+    crop: { l, t, r: clamp01(finite(cr.r, 0)), b: clamp01(finite(cr.b, 0)), w: cwx, h: chy },
+    /* 見えている窓（層の左上からの px。その場で切り落とす） */
+    vx: l * w, vy: t * h, vw: cwx * w, vh: chy * h
   };
 }
 
@@ -202,14 +229,17 @@ export function resolvePartner(project, r, time, fps) {
   if (!c) return null;
   const f = Math.max(1, finite(fps, 30));
   const dur = Math.max(0, finite(c.duration, 0));
-  const local = finite(time, 0) - finite(c.start, 0);
+  /* 時刻の量子化は eval.js と同じ規則で（ここで揃えないと 1 フレームずれる） */
+  const tq = frameStart(frameIndex(finite(time, 0), f), f);
+  const local = tq - finite(c.start, 0);
   const inside = clamp(local, 0, Math.max(0, dur - 0.5 / f));
   const asset = assetById(project, c.assetId);
   const out = resolveClip(c, finite(c.start, 0) + inside, {
     fps: f, asset, track: r.track, trackIndex: finite(r.trackIndex, -1), pool: null
   });
   if (!out) return null;
-  const over = local - inside;
+  /* eval が実際に使った localTime（フレームへ丸めた後）からのはみ出しを見る */
+  const over = local - finite(out.localTime, inside);
   if (Math.abs(over) > 1e-6 && asset) {
     const k = c.kind;
     if (k === "video" || k === "audio" || k === "compound") {
@@ -283,17 +313,30 @@ export function pickFn(ns, names) {
 
 /**
  * 文字クリップの canvas（engine/text.js に委ねる。契約書 §4）。
+ * 呼び口は 2 つ在り得るので両方見る:
+ *   `renderText(textSpec, opts)`（契約書 §4 の形）
+ *   `textCanvas(resolved, opts)`（text.js の CONTRACT-NOTE (2) の糖衣）
  * @returns {HTMLCanvasElement|null}
  */
-export function textCanvasFor(r, w, h, fps) {
-  const fn = pickFn(TEXT, ["renderText"]);
-  if (!fn || !r.text) return null;
-  const cv = fn(r.text, {
+export function textCanvasFor(r, w, h, fps, project) {
+  if (!r.text) return null;
+  const opts = {
     width: w, height: h, time: finite(r.localTime, 0),
     duration: finite(r.duration, 0), dpr: 1, fps: finite(fps, 30),
+    project: project || null,
     style: r.text.style, layout: r.text.layout, anim: r.text.anim
-  });
-  return cv && cv.width ? cv : null;
+  };
+  const fn = pickFn(TEXT, ["renderText"]);
+  if (fn) {
+    const cv = fn(r.text, opts);
+    if (cv && cv.width) return cv;
+  }
+  const fn2 = pickFn(TEXT, ["textCanvas"]);
+  if (fn2) {
+    const cv = fn2(r, opts);
+    if (cv && cv.width) return cv;
+  }
+  return null;
 }
 
 /**
@@ -329,7 +372,7 @@ export function renderShapeFallback(spec, W, H) {
   const cx = W / 2, cy = H / 2;
   const x0 = cx - w / 2, y0 = cy - h / 2;
   const st = s.stroke || {};
-  const sw = Math.max(0, finite(st.width, 0)) * Math.min(W, H) / 1080 * 4;
+  const sw = Math.max(0, finite(st.width, 0)) * Math.min(W, H) / 1080;
   ctx.fillStyle = typeof s.fill === "string" ? s.fill : "#ffffff";
   ctx.strokeStyle = typeof st.color === "string" ? st.color : "#000000";
   ctx.lineWidth = sw;
@@ -497,10 +540,10 @@ export function createCompositor2D(canvas, opts) {
   }
 
   /** 素材（video/image/canvas）を取る */
-  function sourceFor(r, sources, w, h, fps, mode) {
+  function sourceFor(r, sources, w, h, fps, mode, project) {
     const kind = r.kind;
     if (kind === "text") {
-      const cv = cached(r, "t", w, h, () => textCanvasFor(r, w, h, fps));
+      const cv = cached(r, "t", w, h, () => textCanvasFor(r, w, h, fps, project));
       if (!cv) { warnOnce("text", "engine/text.js が使えません"); missing.add("text"); return null; }
       return { el: cv, w: cv.width, h: cv.height, full: true };
     }
@@ -607,7 +650,9 @@ export function createCompositor2D(canvas, opts) {
     try {
       c.imageSmoothingEnabled = true;
       c.imageSmoothingQuality = "high";
-      c.drawImage(src.el, sx, sy, sw, sh, -box.w / 2, -box.h / 2, box.w, box.h);
+      /* クロップは その場で切り落とす（窓を動かさない）= WebGL 側と同じ約束 */
+      c.drawImage(src.el, sx, sy, sw, sh,
+        -box.w / 2 + box.vx, -box.h / 2 + box.vy, box.vw, box.vh);
     } catch (e) {
       warnOnce("drawImage:" + r.kind, e);        // 読み込み途中の video などは飛ばす
     }
@@ -626,18 +671,17 @@ export function createCompositor2D(canvas, opts) {
       catch (e) { warnOnce("fx2d:" + f.type, e); missing.add("fx." + f.type); }
     }
   }
-  /** FX_REGISTRY を触るのは 2d でもここだけ（未読込でも落ちないように遅延） */
-  let fxReg = null;
+  /* fx / 遷移の 2d フォールバックの出所。**関数でも渡せる**ようにしてあるのは、
+     compositor.js が「まだ読めていない registry」を後から差せるようにするため。 */
+  let fxReg = o.fxRegistry || null, trReg = o.transitions || null;
+  function resolveReg(v) {
+    if (typeof v === "function") { try { return v() || null; } catch (_e) { return null; } }
+    return v && typeof v === "object" ? v : null;
+  }
+  /** FX_REGISTRY を触るのは 2d でもここだけ */
   function fxEntry(type) {
-    if (fxReg === null) {
-      fxReg = {};
-      try {
-        /* 静的 import を増やさないため、在れば globalThis 経由で受け取る。
-           通常は compositor.js が setFxRegistry() で渡す。 */
-        fxReg = (o.fxRegistry && typeof o.fxRegistry === "object") ? o.fxRegistry : {};
-      } catch (_e) { fxReg = {}; }
-    }
-    return fxReg && fxReg[type] ? fxReg[type] : null;
+    const r = resolveReg(fxReg);
+    return r && r[type] ? r[type] : null;
   }
 
   /** 遷移（crossfade / dip / slide。それ以外は crossfade へ落として申告） */
@@ -646,8 +690,8 @@ export function createCompositor2D(canvas, opts) {
     const type = String((r.transition && r.transition.type) || "crossfade");
     const p = pair.p;
     const A = pair.a, B = pair.b;
-    const sa = A ? (A === r ? src : sourceFor(A, sources, w, h, fps, mode)) : null;
-    const sb = B ? (B === r ? src : sourceFor(B, sources, w, h, fps, mode)) : null;
+    const sa = A ? (A === r ? src : sourceFor(A, sources, w, h, fps, mode, project)) : null;
+    const sb = B ? (B === r ? src : sourceFor(B, sources, w, h, fps, mode, project)) : null;
     const ca = sa ? scratch(0, w, h) : null;
     const cb = sb ? scratch(1, w, h) : null;
     if (ca && A) drawLayer(ca.ctx, A, sa, w, h, { blend: false });
@@ -690,10 +734,9 @@ export function createCompositor2D(canvas, opts) {
     c.restore();
     st.draws++;
   }
-  let trReg = null;
   function trEntry(type) {
-    if (trReg === null) trReg = (o.transitions && typeof o.transitions === "object") ? o.transitions : {};
-    return trReg && trReg[type] ? trReg[type] : null;
+    const r = resolveReg(trReg);
+    return r && r[type] ? r[type] : null;
   }
 
   /** 調整レイヤー（そこまでの合成結果に filter を掛ける） */
@@ -750,7 +793,7 @@ export function createCompositor2D(canvas, opts) {
     /* blur: 一番下の絵をぼかして敷く。ctx.filter が無ければ拡大だけ */
     const base = list.find((x) => x && x.visible && x.kind !== "adjust");
     if (!base) return;
-    const src = sourceFor(base, sources, w, h, fps, mode);
+    const src = sourceFor(base, sources, w, h, fps, mode, project);
     if (!src) return;
     const cb = coverBox(w, h, src.full ? w : src.w, src.full ? h : src.h);
     c.save();
@@ -796,7 +839,7 @@ export function createCompositor2D(canvas, opts) {
         try {
           if (!r.visible) continue;                       // hidden / opacity 0 は飛ばす
           if (r.kind === "adjust") { drawAdjust(c, r, sizes.w, sizes.h); st.layers++; continue; }
-          const src = sourceFor(r, op.sources, sizes.w, sizes.h, fps, mode);
+          const src = sourceFor(r, op.sources, sizes.w, sizes.h, fps, mode, project);
           if (!src) continue;
           st.layers++;
           if (r.transition) {
@@ -843,10 +886,14 @@ export function createCompositor2D(canvas, opts) {
       };
     },
 
-    /** fx / 遷移の 2d フォールバックを後から渡す口（compositor.js が使う） */
+    /**
+     * fx / 遷移の 2d フォールバックの出所を渡す口（compositor.js が使う）。
+     * まだ読み込めていない時のために **関数（遅延評価）でも渡せる**。
+     * @param {Object|Function|null} fx @param {Object|Function|null} transitions
+     */
     setRegistries(fx, transitions) {
-      if (fx && typeof fx === "object") fxReg = fx;
-      if (transitions && typeof transitions === "object") trReg = transitions;
+      if (fx) fxReg = fx;
+      if (transitions) trReg = transitions;
     },
 
     dispose() {

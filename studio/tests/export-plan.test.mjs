@@ -118,8 +118,14 @@ test("planExport: 極端な解像度も範囲と偶数に収める", () => {
 
 /* ── 2. planExport: fps ──────────────────────────────────────── */
 
-test("planExport: fps は 24〜60 に収める", () => {
-  const low = planExport(proj(), { fps: 10 });
+test("planExport: fps は 10〜60 に収める", () => {
+  /* 12fps の軽い書き出しは実用なので、10 は そのまま通す（警告も出さない）。
+     10 未満だけを引き上げる。 */
+  const keep = planExport(proj(), { fps: 12 });
+  assert.equal(keep.fps, 12);
+  assert.equal(keep.warnings.length, 0);
+
+  const low = planExport(proj(), { fps: 4 });
   assert.equal(low.fps, FPS_MIN);
   assert.ok(low.warnings.some((w) => w.includes("低すぎる")));
 

@@ -1002,6 +1002,11 @@ export function createColorPanel(o) {
   /* ══ 節 3. カラーホイール ═════════════════════════════════════ */
   const secWheel = kit.section({ title: "カラーホイール", id: "color-wheels" });
   const wheelGrid = el("div", "vqs-col-wheels");
+  /* CSS 担当が来る前でも 2 列に並ぶように（timeline のタブ帯と同じ作法で
+     最小限だけ inline。細かい寸法と間隔は .vqs-col-wheels 側で決めてほしい） */
+  wheelGrid.style.display = "grid";
+  wheelGrid.style.gridTemplateColumns = "repeat(2, minmax(0, 1fr))";
+  wheelGrid.style.gap = "8px";
   for (const w of WHEELS) {
     const paths = [0, 1, 2].map((i) => `color.wheels.${w.key}.${i}`);
     const drv = kit.driver({
