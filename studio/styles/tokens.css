@@ -74,6 +74,15 @@
   --vqs-sel: rgba(79, 140, 255, 0.28);      /* 選択の面 */
   --vqs-sel-line: #7fb0ff;                  /* 選択の縁（クリップの白枠代わり） */
 
+  /* つまみ・純白・純黒（部品が直に #hex を書かないための出口） */
+  --vqs-white: #ffffff;
+  --vqs-black: #000000;
+  --vqs-knob-1: #ffffff;        /* つまみの照り */
+  --vqs-knob-2: #cdd7e6;        /* つまみの地 */
+  --vqs-knob-3: #9fb0c6;        /* つまみの陰 */
+  --vqs-text-on-primary: #ffffff;
+  --vqs-text-on-ai: #06121c;    /* AI の明るい帯の上に乗る字（明暗どちらでも暗い字） */
+
   /* ── 4. クリップの種類色（JS の控えの値と必ず同じにする） ─────── */
   --vqs-clip-video: #4f8cff;
   --vqs-clip-audio: #31c48d;
@@ -236,6 +245,8 @@
   --vqs-text-2: rgba(18, 22, 29, 0.68);
   --vqs-text-3: rgba(18, 22, 29, 0.45);
   --vqs-text-on-accent: #ffffff;
+  --vqs-knob-2: #ffffff;
+  --vqs-knob-3: #b8c2d0;
 
   --vqs-accent: #1f6feb;
   --vqs-accent-2: #0aa2c0;

@@ -479,7 +479,7 @@
 .vqs-btn--primary {
   background: linear-gradient(180deg, var(--vqs-accent) 0%, #3a74e0 100%);
   border-color: rgba(0, 0, 0, 0.32);
-  color: #fff;
+  color: var(--vqs-text-on-primary);
   box-shadow: var(--vqs-shadow-1), inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 .vqs-btn--primary:hover { filter: brightness(1.08); background: var(--vqs-accent); }
@@ -488,12 +488,12 @@
   border-color: rgba(255, 77, 79, 0.5);
   color: var(--vqs-danger);
 }
-.vqs-btn--danger:hover { background: rgba(255, 77, 79, 0.28); color: #fff; }
+.vqs-btn--danger:hover { background: rgba(255, 77, 79, 0.28); color: var(--vqs-text-on-primary); }
 .vqs-btn--ai {
   position: relative;
   border-color: transparent;
   background: var(--vqs-ai);
-  color: #06121c;
+  color: var(--vqs-text-on-ai);
   font-weight: var(--vqs-fw-3);
 }
 .vqs-btn--ai:hover { filter: brightness(1.1) saturate(1.05); }
@@ -649,7 +649,7 @@
   height: 100dvh !important;
   margin: 0 !important;
   border-radius: 0 !important;
-  background: #000;
+  background: var(--vqs-black);
   z-index: var(--vqs-z-modal);
 }
 
@@ -659,6 +659,8 @@
   #app.vqs-app {
     grid-template-rows: auto minmax(0, 1fr) auto auto;
     grid-template-areas: "topbar" "main" "timeline" "mobilebar";
+    /* 画面が小さいのでタイムラインは低くする（mobile.js が更に上書きする） */
+    --vqs-tl-h: min(42dvh, 248px);
   }
 
   /* 左右パネルは「下から出る抽斗」になるので、ここでは畳む（mobile.css が出す） */
@@ -679,7 +681,7 @@
   #contextBar.vqs-contextbar { min-height: calc(var(--vqs-hit) + 4px); }
 
   #timelinePane.vqs-tlpane {
-    height: var(--vqs-tl-h, 224px);            /* 下段タブが safe-area を持つ */
+    height: var(--vqs-tl-h);                   /* safe-area は下段タブが持つ */
     min-height: calc(var(--vqs-ruler-h) + var(--vqs-track-h-sm) + 8px);
     padding-bottom: 0;
   }

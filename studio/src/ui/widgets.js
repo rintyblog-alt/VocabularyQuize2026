@@ -171,19 +171,20 @@ const BASE_CSS = `
 .vqs-sheet{position:absolute;left:0;right:0;bottom:0;max-height:92dvh;display:flex;flex-direction:column;
   background:#15181d;color:#e8ecf1;border-radius:14px 14px 0 0;box-shadow:0 -8px 32px rgba(0,0,0,.5);
   padding-bottom:env(safe-area-inset-bottom,0px);will-change:transform;touch-action:none}
-.vqs-sheet__grab{flex:0 0 auto;height:28px;display:flex;align-items:center;justify-content:center;touch-action:none;cursor:grab}
-.vqs-sheet__grab i{display:block;width:44px;height:4px;border-radius:2px;background:#5a626d}
+.vqs-sheet__grip,.vqs-sheet__grab{flex:0 0 auto;height:28px;display:flex;align-items:center;justify-content:center;touch-action:none;cursor:grab}
+.vqs-sheet__grip i,.vqs-sheet__grab i{display:block;width:44px;height:4px;border-radius:2px;background:#5a626d}
 .vqs-sheet__head,.vqs-modal__head{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:2px 12px 8px}
 .vqs-sheet__title,.vqs-modal__title{flex:1 1 auto;font-weight:700;font-size:15px}
 .vqs-sheet__body,.vqs-modal__body{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;padding:4px 12px 10px}
 .vqs-sheet__acts,.vqs-modal__acts{flex:0 0 auto;display:flex;gap:8px;justify-content:flex-end;padding:8px 12px 12px}
-.vqs-modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,440px);max-height:88dvh;
-  display:flex;flex-direction:column;background:#15181d;color:#e8ecf1;border-radius:12px;box-shadow:0 12px 48px rgba(0,0,0,.55)}
+.vqs-modal{position:absolute;inset:0;display:grid;place-items:center;padding:16px}
+.vqs-modal__panel{display:flex;flex-direction:column;width:min(92vw,560px);max-height:88dvh;
+  background:#15181d;color:#e8ecf1;border-radius:12px;box-shadow:0 12px 48px rgba(0,0,0,.55)}
 .vqs-act{min-height:44px;padding:0 14px;border-radius:10px;border:1px solid #2c323b;background:#1d2229;color:#e8ecf1;font-size:14px}
 .vqs-act--primary{background:#2f6df6;border-color:#2f6df6;color:#fff}
 .vqs-act--danger{background:#c8353a;border-color:#c8353a;color:#fff}
-.vqs-toasts{position:absolute;left:0;right:0;bottom:calc(16px + env(safe-area-inset-bottom,0px));
-  display:flex;flex-direction:column;align-items:center;gap:8px}
+#toastHost{display:flex;flex-direction:column-reverse;align-items:center;justify-content:flex-end;gap:8px;
+  padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))}
 .vqs-toast{display:flex;align-items:center;gap:10px;max-width:min(92vw,520px);padding:10px 14px;border-radius:10px;
   background:#22272e;color:#e8ecf1;box-shadow:0 6px 24px rgba(0,0,0,.45);font-size:14px}
 .vqs-toast--error{background:#5a1d20}.vqs-toast--warn{background:#5a4318}.vqs-toast--ok{background:#1d4a2c}
@@ -195,11 +196,12 @@ const BASE_CSS = `
 .vqs-menu__item--danger{color:#ff8a8f}
 .vqs-menu__item--disabled{opacity:.45}
 .vqs-menu__label{flex:1 1 auto}
-.vqs-menu__sk{opacity:.55;font-size:12px}
+.vqs-menu__sk,.vqs-menu__key{opacity:.55;font-size:12px}
 .vqs-menu__sep{height:1px;margin:4px 6px;background:#2c323b}
 .vqs-slider{display:flex;align-items:center;gap:8px;min-height:44px}
 .vqs-slider__label{flex:0 0 auto;font-size:12px;opacity:.8}
-.vqs-slider__rail{position:relative;flex:1 1 auto;height:44px;touch-action:none}
+.vqs-slider__wrap{position:relative;flex:1 1 auto;min-width:0}
+.vqs-slider__rail{position:relative;display:block;width:100%;height:44px;touch-action:none}
 .vqs-slider__rail::before{content:"";position:absolute;left:0;right:0;top:50%;height:4px;margin-top:-2px;border-radius:2px;background:#333a44}
 .vqs-slider__fill{position:absolute;top:50%;height:4px;margin-top:-2px;border-radius:2px;background:#2f6df6}
 .vqs-slider__knob{position:absolute;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.5)}
@@ -213,37 +215,37 @@ const BASE_CSS = `
 .vqs-numdrag__input{width:5.5em;min-height:36px;border-radius:8px;border:1px solid #2c323b;background:#12161b;color:inherit;
   padding:0 6px;font-variant-numeric:tabular-nums}
 .vqs-color{display:flex;align-items:center;gap:8px;position:relative}
-.vqs-color__swatch{width:44px;height:28px;border-radius:6px;border:1px solid #3a424e}
+.vqs-color__swatch,.vqs-color__sw{width:44px;height:28px;border-radius:6px;border:1px solid #3a424e}
 .vqs-color__hex{width:8em;min-height:36px;border-radius:8px;border:1px solid #2c323b;background:#12161b;color:inherit;padding:0 6px}
-.vqs-color__pop{position:absolute;z-index:1;top:calc(100% + 6px);left:0;width:232px;padding:10px;border-radius:10px;
+.vqs-color__pop,.vqs-picker{position:absolute;z-index:1;top:calc(100% + 6px);left:0;width:232px;padding:10px;border-radius:10px;
   background:#1b2027;box-shadow:0 10px 32px rgba(0,0,0,.5)}
-.vqs-color__sv{position:relative;height:132px;border-radius:8px;touch-action:none}
-.vqs-color__cursor{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.6)}
+.vqs-color__sv,.vqs-picker__sv{position:relative;height:132px;border-radius:8px;touch-action:none}
+.vqs-color__cursor,.vqs-picker__dot{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.6)}
 .vqs-color__bar{position:relative;height:20px;margin-top:10px;border-radius:10px;touch-action:none}
 .vqs-color__bar-knob{position:absolute;top:50%;width:14px;height:24px;margin:-12px 0 0 -7px;border-radius:4px;border:2px solid #fff}
 .vqs-seg{display:inline-flex;gap:2px;padding:2px;border-radius:10px;background:#12161b}
-.vqs-seg__item{min-height:40px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#aeb6c1;font-size:13px}
-.vqs-seg__item--on{background:#2f6df6;color:#fff}
+.vqs-seg__item,.vqs-seg__btn{min-height:40px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#aeb6c1;font-size:13px}
+.vqs-seg__item--on,.vqs-seg__btn--on{background:#2f6df6;color:#fff}
 .vqs-toggle{display:flex;align-items:center;gap:10px;min-height:44px}
 .vqs-toggle__label{flex:1 1 auto;font-size:14px}
-.vqs-toggle__switch{flex:0 0 auto;width:48px;height:28px;border-radius:14px;border:0;background:#333a44;position:relative}
-.vqs-toggle__switch i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:left .14s}
-.vqs-toggle--on .vqs-toggle__switch{background:#2f6df6}
-.vqs-toggle--on .vqs-toggle__switch i{left:23px}
+.vqs-toggle__switch,.vqs-toggle__box{flex:0 0 auto;width:48px;height:28px;border-radius:14px;border:0;background:#333a44;position:relative}
+.vqs-toggle__switch i,.vqs-toggle__box i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:left .14s}
+.vqs-toggle--on .vqs-toggle__switch,.vqs-toggle--on .vqs-toggle__box{background:#2f6df6}
+.vqs-toggle--on .vqs-toggle__switch i,.vqs-toggle--on .vqs-toggle__box i{left:23px}
 .vqs-stepper{display:flex;align-items:center;gap:6px}
 .vqs-stepper__btn{width:44px;min-height:44px;border-radius:8px;border:1px solid #2c323b;background:#1d2229;color:inherit;font-size:18px}
 .vqs-stepper__input{width:4.5em;min-height:36px;text-align:center;border-radius:8px;border:1px solid #2c323b;background:#12161b;color:inherit}
-.vqs-select,.vqs-field__input,.vqs-field__area{width:100%;min-height:44px;border-radius:8px;border:1px solid #2c323b;
+.vqs-select,.vqs-field__input,.vqs-field__area,.vqs-textfield__el,.vqs-textarea__el,.vqs-select__el{width:100%;min-height:44px;border-radius:8px;border:1px solid #2c323b;
   background:#12161b;color:inherit;padding:0 8px;font-size:15px}
-.vqs-field__area{min-height:88px;padding:8px;resize:vertical}
-.vqs-field{display:flex;flex-direction:column;gap:4px;margin:6px 0}
-.vqs-field__label{font-size:12px;opacity:.8}
+.vqs-field__area,.vqs-textarea__el{min-height:88px;padding:8px;resize:vertical}
+.vqs-field,.vqs-textfield,.vqs-textarea{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+.vqs-field__label,.vqs-textfield__label,.vqs-textarea__label{font-size:12px;opacity:.8}
 .vqs-tabs{display:flex;gap:4px;overflow-x:auto}
 .vqs-tab{min-height:40px;padding:0 12px;border:0;border-bottom:2px solid transparent;background:transparent;color:#aeb6c1;font-size:13px;white-space:nowrap}
 .vqs-tab--on{color:#fff;border-bottom-color:#2f6df6}
 .vqs-acc__head{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;border:0;background:transparent;color:inherit;font-size:14px;text-align:left}
 .vqs-acc__body{display:none;padding:2px 0 8px}
-.vqs-acc__sec--open>.vqs-acc__body{display:block}
+.vqs-acc__sec--open>.vqs-acc__body,.vqs-acc--open>.vqs-acc__body{display:block}
 .vqs-curve{position:relative;width:100%;aspect-ratio:1/1;max-height:220px;touch-action:none}
 .vqs-curve svg{display:block;width:100%;height:100%}
 .vqs-kfrow{display:flex;align-items:center;gap:8px;min-height:44px}
@@ -254,13 +256,13 @@ const BASE_CSS = `
 .vqs-kfrow__key--on{background:#2f6df6}
 .vqs-kfrow__btn{flex:0 0 auto;width:44px;min-height:44px;border:0;background:transparent;color:inherit}
 .vqs-ring{display:inline-block}
-.vqs-spinner{display:inline-block;width:20px;height:20px;border-radius:50%;border:2px solid #3a424e;border-top-color:#2f6df6;animation:vqs-spin .8s linear infinite}
+.vqs-spinner,.vqs-spin{display:inline-block;width:20px;height:20px;border-radius:50%;border:2px solid #3a424e;border-top-color:#2f6df6;animation:vqs-spin .8s linear infinite}
 @keyframes vqs-spin{to{transform:rotate(360deg)}}
 .vqs-meter{position:relative;height:6px;border-radius:3px;background:#12161b;overflow:hidden}
 .vqs-meter__fill{position:absolute;left:0;top:0;bottom:0;background:#3ecb7a}
 .vqs-tip{position:absolute;z-index:1;padding:4px 8px;border-radius:6px;background:#0c0f13;color:#e8ecf1;font-size:12px;white-space:nowrap}
 .vqs-tip__sk{opacity:.6;margin-left:6px}
-.vqs-dropzone--over{outline:2px dashed #2f6df6;outline-offset:-4px}
+.vqs-dropzone--over,.vqs-drop--over{outline:2px dashed #2f6df6;outline-offset:-4px}
 .vqs-ico--text{display:inline-flex;align-items:center;justify-content:center;min-width:1.25em;font-size:13px}
 .vqs-flash{animation:vqs-flash .09s steps(2,end) 2}
 @keyframes vqs-flash{50%{filter:brightness(1.9)}}
@@ -611,7 +613,9 @@ function actionsRow(cls, actions, closeFn) {
   const row = mk("div", cls);
   for (const a of list) {
     if (!a) continue;
-    const b = mkBtn("vqs-act" + (a.primary ? " vqs-act--primary" : "") + (a.danger ? " vqs-act--danger" : ""), String(a.label || ""));
+    const b = mkBtn("vqs-act vqs-btn"
+      + (a.primary ? " vqs-act--primary vqs-btn--primary" : "")
+      + (a.danger ? " vqs-act--danger vqs-btn--danger" : ""), String(a.label || ""));
     if (a.id) b.setAttribute("data-action", String(a.id));
     if (a.disabled) b.disabled = true;
     b.addEventListener("click", () => {
@@ -663,7 +667,7 @@ export function openSheet(o) {
   if (hh) el.style.height = hh;
 
   /* 掴み棒（ここを下へ引くと閉じる） */
-  const grab = mk("div", "vqs-sheet__grab");
+  const grab = mk("div", "vqs-sheet__grip vqs-sheet__grab");
   grab.setAttribute("aria-hidden", "true");
   grab.append(mk("i"));
   el.append(grab);
@@ -695,7 +699,9 @@ export function openSheet(o) {
     closed = true;
     popLayer(layer);
     b.off();
+    el.classList.remove("vqs-sheet--on");
     el.classList.add("vqs-sheet--out");
+    veil.classList.remove("vqs-veil--on");
     veil.classList.add("vqs-veil--out");
     const rm = () => { try { el.remove(); } catch (e) { /* noop */ } try { veil.remove(); } catch (e) { /* noop */ } };
     setTimeout(rm, 180);
@@ -727,7 +733,9 @@ export function openSheet(o) {
   }));
 
   h.append(veil, el);
-  requestAnimationFrame(() => el.classList.add("vqs-sheet--in"));
+  /* 実物の CSS は translate3d(0,100%) から `--on` で出て来るので、
+     入れた次の frame で必ず付ける（付け忘れると画面の外に居たままになる） */
+  requestAnimationFrame(() => { el.classList.add("vqs-sheet--in", "vqs-sheet--on"); veil.classList.add("vqs-veil--on"); });
   pushLayer(layer);
   return { close, el, body };
 }
@@ -743,12 +751,18 @@ export function openModal(o) {
   const h = host(c.hostId || "modalHost");
   const b = binder();
   const veil = mk("div", "vqs-veil vqs-veil--modal");
-  const el = mk("div", "vqs-modal" + (c.className ? " " + c.className : ""));
+  /* 実物の CSS は「.vqs-modal = 画面いっぱいの入れ物 / .vqs-modal__panel = 箱」。
+     panel に `--on` が付かないと opacity:0 のままなので、次の frame で必ず付ける。 */
+  const wrap = mk("div", "vqs-modal" + (c.className ? " " + c.className : ""));
+  const el = mk("div", "vqs-modal__panel");
+  wrap.append(el);
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-modal", "true");
   el.setAttribute("data-test", "modal");
   el.tabIndex = -1;
   if (c.width !== undefined && c.width !== null) {
+    const w = typeof c.width === "number" ? c.width : parseFloat(c.width);
+    if (Number.isFinite(w) && w >= 760) el.classList.add("vqs-modal__panel--wide");
     el.style.width = typeof c.width === "number" ? "min(92vw," + c.width + "px)" : String(c.width);
   }
 
@@ -780,13 +794,16 @@ export function openModal(o) {
     popLayer(layer);
     b.off();
     if (release) { try { release(); } catch (e) { /* noop */ } release = null; }
-    try { el.remove(); } catch (e) { /* noop */ }
+    wrap.classList.remove("vqs-modal--on");
+    veil.classList.remove("vqs-veil--on");
+    try { wrap.remove(); } catch (e) { /* noop */ }
     try { veil.remove(); } catch (e) { /* noop */ }
     call(c.onClose, reason === undefined ? "close" : reason);
   }
 
   if (c.dismissable !== false) b.on(veil, "pointerdown", () => close("veil"));
-  h.append(veil, el);
+  h.append(veil, wrap);
+  requestAnimationFrame(() => { wrap.classList.add("vqs-modal--on"); veil.classList.add("vqs-veil--on"); });
   release = trapFocus(el);
   pushLayer(layer);
   return { close, el, body };
@@ -794,13 +811,10 @@ export function openModal(o) {
 
 /* ── 8. トースト（取消つきも作れること）─────────────────────────── */
 
-function toastStack() {
-  const h = host("toastHost");
-  if (!h) return null;
-  let s = h.querySelector(".vqs-toasts");
-  if (!s) { s = mk("div", "vqs-toasts"); h.append(s); }
-  return s;
-}
+/* CONTRACT-NOTE: toast の並べ方は styles/layout.css の `#toastHost` が持っている
+   （flex の column-reverse）。だから **包みを作らず直下へ入れる**。
+   包みを挟むと layout.css の並びが効かなくなる。 */
+function toastStack() { return host("toastHost"); }
 
 /**
  * トースト。`action` を渡せば「取消つき」になる（契約書 §13.5 の削除はこれ）。
@@ -825,6 +839,7 @@ export function toast(msg, o) {
     if (closed) return;
     closed = true;
     if (timer) { clearTimeout(timer); timer = null; }
+    el.classList.remove("vqs-toast--on");
     el.classList.add("vqs-toast--out");
     setTimeout(() => { try { el.remove(); } catch (e) { /* noop */ } }, 180);
     call(c.onClose, reason === undefined ? "timeout" : reason);
@@ -843,6 +858,7 @@ export function toast(msg, o) {
   el.addEventListener("pointerenter", () => { if (timer) { clearTimeout(timer); timer = null; } });
   el.addEventListener("pointerleave", arm);
   if (s) s.append(el); else return { close: () => { }, el };
+  requestAnimationFrame(() => el.classList.add("vqs-toast--on"));
   arm();
   return { close, el };
 }
@@ -926,7 +942,7 @@ export function menu(anchorEl, items, o) {
     if (it.disabled) btn.disabled = true;
     btn.append(it.icon ? icon(it.icon) : mk("span", "vqs-menu__ico"));
     btn.append(mk("span", "vqs-menu__label", String(it.label === undefined ? "" : it.label)));
-    if (it.shortcut) btn.append(mk("span", "vqs-menu__sk", String(it.shortcut)));
+    if (it.shortcut) btn.append(mk("span", "vqs-menu__sk vqs-menu__key", String(it.shortcut)));
     if (it.sub) btn.append(icon("chevron"));
 
     const openSub = () => {
@@ -1067,6 +1083,7 @@ export function slider(o) {
 
   const el = mk("div", "vqs-slider" + (hasCenter ? " vqs-slider--centered" : ""));
   if (c.label) el.append(mk("span", "vqs-slider__label", String(c.label)));
+  const wrap = mk("div", "vqs-slider__wrap");
   const rail = mk("div", "vqs-slider__rail");
   rail.style.touchAction = "none";          /* CSS が無くても指で擦れること */
   rail.setAttribute("role", "slider");
@@ -1081,9 +1098,10 @@ export function slider(o) {
     cm.style.left = ((center - min) / span * 100) + "%";
     rail.append(cm);
   }
-  const out = mk("span", "vqs-slider__val");
+  wrap.append(rail);
+  const out = mk("span", "vqs-slider__val vqs-slider__num");
   out.setAttribute("data-value", "");
-  el.append(rail, out);
+  el.append(wrap, out);
   touchable(el);
 
   let value = clamp(num(c.value, min), min, max);
@@ -1119,6 +1137,7 @@ export function slider(o) {
     value = nv;
     if (hasCenter) {
       const atC = value === center;
+      el.classList.toggle("vqs-slider--atcenter", atC);
       if (atC && !snapped) { snapped = true; vibrate(8, knob); }
       if (!atC) snapped = false;
     }
@@ -1134,17 +1153,22 @@ export function slider(o) {
   };
 
   const b = binder();
+  /* 「擦った」のか「軽く叩いた」のかを分ける（擦り終わりを 2 度叩きと数えないため） */
+  let moved = false;
   b.add(drag(rail, {
-    onStart: (i) => { el.classList.add("vqs-slider--dragging"); setValue(fromX(i.x), false, true); },
-    onMove: (i) => setValue(fromX(i.x), false, true),
+    onStart: (i) => { moved = false; el.classList.add("vqs-slider--dragging"); setValue(fromX(i.x), false, true); },
+    onMove: (i) => { if (Math.abs(i.dx) > 6 || Math.abs(i.dy) > 6) moved = true; setValue(fromX(i.x), false, true); },
     onEnd: () => { el.classList.remove("vqs-slider--dragging"); call(commit, value); }
   }));
 
-  /* ダブルタップ / ダブルクリックで既定へ */
-  let lastTap = 0;
+  /* ダブルタップ / ダブルクリックで既定へ。
+     初期値を -1e9 にしてあるのは、**読み込み直後**（performance.now() がまだ小さい）に
+     1 回目の叩きを 2 度叩きと数えて勝手に既定へ戻さないため。 */
+  let lastTap = -1e9;
   b.on(rail, "pointerup", () => {
+    if (moved) { lastTap = -1e9; return; }
     const t = nowMs();
-    if (t - lastTap < 300) { setValue(def, false, true); call(commit, value); vibrate(10, knob); lastTap = 0; }
+    if (t - lastTap < 300) { setValue(def, false, true); call(commit, value); vibrate(10, knob); lastTap = -1e9; }
     else lastTap = t;
   }, { passive: true });
   b.on(el, "dblclick", () => { setValue(def, false, true); call(commit, value); });
@@ -1373,7 +1397,7 @@ export function colorField(o) {
 
   const el = mk("div", "vqs-color");
   if (c.label) el.append(mk("span", "vqs-color__label", String(c.label)));
-  const sw = mkBtn("vqs-color__swatch", "", (c.label ? c.label + "の" : "") + "色を選ぶ");
+  const sw = mkBtn("vqs-color__swatch vqs-color__sw", "", (c.label ? c.label + "の" : "") + "色を選ぶ");
   const hex = mk("input", "vqs-color__hex");
   hex.type = "text";
   hex.autocomplete = "off";
@@ -1382,12 +1406,12 @@ export function colorField(o) {
   hex.setAttribute("data-value", "");
   el.append(sw, hex);
 
-  const pop = mk("div", "vqs-color__pop");
+  const pop = mk("div", "vqs-color__pop vqs-picker");
   pop.hidden = true;
-  const sv = mk("div", "vqs-color__sv");
-  const cur = mk("div", "vqs-color__cursor");
+  const sv = mk("div", "vqs-color__sv vqs-picker__sv");
+  const cur = mk("div", "vqs-color__cursor vqs-picker__dot");
   sv.append(cur);
-  const hue = mk("div", "vqs-color__bar vqs-color__bar--hue");
+  const hue = mk("div", "vqs-color__bar vqs-color__bar--hue vqs-picker__hue");
   hue.style.background = "linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)";
   const hueK = mk("div", "vqs-color__bar-knob");
   hue.append(hueK);
@@ -1395,7 +1419,7 @@ export function colorField(o) {
   let alp = null;
   let alpK = null;
   if (useA) {
-    alp = mk("div", "vqs-color__bar vqs-color__bar--alpha");
+    alp = mk("div", "vqs-color__bar vqs-color__bar--alpha vqs-picker__alphabar");
     alpK = mk("div", "vqs-color__bar-knob");
     alp.append(alpK);
     pop.append(alp);
@@ -1500,7 +1524,7 @@ export function segmented(o) {
   const btns = [];
   const b = binder();
   for (const it of items) {
-    const btn = mkBtn("vqs-seg__item", it.icon ? "" : it.label, it.label);
+    const btn = mkBtn("vqs-seg__item vqs-seg__btn", it.icon ? "" : it.label, it.label);
     if (it.icon) { btn.append(icon(it.icon)); if (it.label) btn.append(mk("span", "vqs-seg__lb", it.label)); }
     btn.setAttribute("role", "radio");
     btn.setAttribute("data-value", String(it.value));
@@ -1519,6 +1543,7 @@ export function segmented(o) {
     for (const x of btns) {
       const on = String(x.it.value) === String(value);
       x.btn.classList.toggle("vqs-seg__item--on", on);
+      x.btn.classList.toggle("vqs-seg__btn--on", on);
       x.btn.setAttribute("aria-checked", on ? "true" : "false");
     }
   }
@@ -1532,7 +1557,7 @@ export function toggle(o) {
   ensureCss();
   const el = mk("div", "vqs-toggle");
   if (c.label) el.append(mk("span", "vqs-toggle__label", String(c.label)));
-  const sw = mkBtn("vqs-toggle__switch", "", String(c.label || "切り替え"));
+  const sw = mkBtn("vqs-toggle__switch vqs-toggle__box", "", String(c.label || "切り替え"));
   sw.setAttribute("role", "switch");
   sw.append(mk("i"));
   el.append(sw);
@@ -1555,7 +1580,7 @@ export function select(o) {
   const c = o || {};
   ensureCss();
   /* 選択は **native select**（iOS の輪っかが出るので指で確実に選べる） */
-  const sel = mk("select", "vqs-select");
+  const sel = mk("select", "vqs-select vqs-select__el");
   sel.setAttribute("aria-label", String(c.label || "選択"));
   const items = (Array.isArray(c.items) ? c.items : []).map(normItem);
   for (const it of items) {
@@ -1618,9 +1643,12 @@ export function tabs(o) {
 function makeTextish(tag, cls, o) {
   const c = o || {};
   ensureCss();
-  const el = mk("div", "vqs-field");
-  if (c.label) el.append(mk("span", "vqs-field__label", String(c.label)));
-  const inp = mk(tag, cls);
+  /* 実物の CSS は .vqs-textfield / .vqs-textarea（__label / __el）の名前で来るので
+     自分の名前（.vqs-field 系）と **両方** 付けておく（どちらの CSS でも整う） */
+  const kind = tag === "textarea" ? "vqs-textarea" : "vqs-textfield";
+  const el = mk("div", "vqs-field " + kind);
+  if (c.label) el.append(mk("span", "vqs-field__label " + kind + "__label", String(c.label)));
+  const inp = mk(tag, cls + " " + kind + "__el vqs-input");
   if (tag === "input") inp.type = c.type || "text";
   inp.value = c.value === undefined || c.value === null ? "" : String(c.value);
   if (c.placeholder) inp.placeholder = String(c.placeholder);
@@ -1671,6 +1699,7 @@ export function accordion(o) {
     sec.append(head, body);
     const setOpen = (on) => {
       sec.classList.toggle("vqs-acc__sec--open", !!on);
+      sec.classList.toggle("vqs-acc--open", !!on);
       head.setAttribute("aria-expanded", on ? "true" : "false");
       body.style.display = on ? "" : "none";
     };
@@ -1742,9 +1771,9 @@ export function curveEditor(o) {
   const mode = c.mode === "linear" ? "linear" : "smooth";
   const el = mk("div", "vqs-curve");
   el.style.touchAction = "none";
-  const svg = svgEl("svg", { viewBox: "0 0 100 100", preserveAspectRatio: "none" });
+  const svg = svgEl("svg", { class: "vqs-curve__svg", viewBox: "0 0 100 100", preserveAspectRatio: "none" });
   svg.setAttribute("aria-label", "カーブの編集");
-  const grid = svgEl("g", { class: "vqs-curve__grid" });
+  const grid = svgEl("g", { class: "vqs-curve__grid vqs-curve__guides" });
   for (let i = 1; i < 4; i++) {
     grid.append(svgEl("line", { x1: i * 25, y1: 0, x2: i * 25, y2: 100, stroke: "#2c323b", "stroke-width": 0.5 }));
     grid.append(svgEl("line", { x1: 0, y1: i * 25, x2: 100, y2: i * 25, stroke: "#2c323b", "stroke-width": 0.5 }));
@@ -1896,7 +1925,7 @@ export function keyframeRow(o) {
   const c = o || {};
   ensureCss();
   const el = mk("div", "vqs-kfrow");
-  const lab = mk("span", "vqs-kfrow__label", String(c.label || ""));
+  const lab = mk("span", "vqs-kfrow__label vqs-kfrow__name", String(c.label || ""));
   const prev = mkBtn("vqs-kfrow__btn", "‹", "前のキーフレームへ");
   const dot = mkBtn("vqs-kfrow__btn vqs-kfrow__dot", "", (c.label || "この値") + "のキーフレームを打つ／外す");
   dot.append(icon("keyframe"));
@@ -1989,16 +2018,17 @@ export function progressRing(o) {
   el.style.width = size + "px";
   el.style.height = size + "px";
   el.setAttribute("role", "progressbar");
-  const svg = svgEl("svg", { viewBox: "0 0 " + size + " " + size, width: size, height: size });
-  svg.append(svgEl("circle", { cx: size / 2, cy: size / 2, r, fill: "none", stroke: "#2c323b", "stroke-width": w }));
+  const svg = svgEl("svg", { class: "vqs-ring__svg", viewBox: "0 0 " + size + " " + size, width: size, height: size });
+  svg.append(svgEl("circle", { class: "vqs-ring__track", cx: size / 2, cy: size / 2, r, fill: "none", stroke: "#2c323b", "stroke-width": w }));
   const arc = svgEl("circle", {
+    class: "vqs-ring__fill",
     cx: size / 2, cy: size / 2, r, fill: "none", stroke: "#2f6df6", "stroke-width": w,
     "stroke-linecap": "round", "stroke-dasharray": len.toFixed(2),
     transform: "rotate(-90 " + (size / 2) + " " + (size / 2) + ")"
   });
   svg.append(arc);
   el.append(svg);
-  const text = mk("span", "vqs-ring__text");
+  const text = mk("span", "vqs-ring__text vqs-ring__label");
   if (c.label !== false) el.append(text);
 
   let value = clamp(num(c.value, 0), 0, 1);
@@ -2018,7 +2048,7 @@ export function progressRing(o) {
 export function spinner(o) {
   ensureCss();
   const c = o || {};
-  const el = mk("span", "vqs-spinner");
+  const el = mk("span", "vqs-spinner vqs-spin");
   if (c.size) { el.style.width = num(c.size, 20) + "px"; el.style.height = num(c.size, 20) + "px"; }
   el.setAttribute("role", "status");
   el.setAttribute("aria-label", String(c.label || "読み込み中"));
@@ -2063,7 +2093,7 @@ export function tooltip(el, text, o) {
     const h = host("menuHost");
     if (!h) return;
     tip = mk("div", "vqs-tip", label);
-    if (c.shortcut) tip.append(mk("span", "vqs-tip__sk", String(c.shortcut)));
+    if (c.shortcut) tip.append(mk("span", "vqs-tip__sk vqs-tip__key", String(c.shortcut)));
     tip.setAttribute("role", "tooltip");
     h.append(tip);
     placeNear(tip, anchorRect(el), {});
@@ -2111,7 +2141,7 @@ export function dropZone(el, o) {
 
   const b = binder();
   let depth = 0;
-  const over = (on) => el.classList.toggle("vqs-dropzone--over", on);
+  const over = (on) => { el.classList.toggle("vqs-dropzone--over", on); el.classList.toggle("vqs-drop--over", on); };
   b.on(el, "dragenter", (ev) => { ev.preventDefault(); depth++; over(true); });
   b.on(el, "dragover", (ev) => { ev.preventDefault(); if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy"; });
   b.on(el, "dragleave", (ev) => { ev.preventDefault(); depth = Math.max(0, depth - 1); if (!depth) over(false); });

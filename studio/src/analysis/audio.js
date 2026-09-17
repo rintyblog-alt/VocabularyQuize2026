@@ -347,26 +347,36 @@ export function rmsCurve(mono, sampleRate, opts = {}) {
  * **絶対値としての LUFS ではなく、素材どうしの相対比較に使う**。
  * @param {Float32Array} mono @param {number} sampleRate
  * @param {{hpHz?:number, shelfHz?:number, shelf?:number}} [opts]
- * @returns {Float32Array} 同じ長さの新しい列
+ * @returns {Float32Array} 同じ長さの新しい列（元は書き換えない）
  */
 export function kWeight(mono, sampleRate, opts = {}) {
-  const o = opts || {};
   const x = mono instanceof Float32Array ? mono : toMono(mono);
-  const sr = clamp(finite(sampleRate, 48000), 8000, 192000);
   const out = new Float32Array(x.length);
   if (!x.length) return out;
+  out.set(x);
+  return kWeightInto(out, clamp(finite(sampleRate, 48000), 8000, 192000), opts || {});
+}
+
+/**
+ * kWeight を **その場で** 掛ける（この中だけ）。`loudnessCurve` は `readAudio` が
+ * 作った自分専用の写しに掛けるので、もう 1 本 全長の配列を作る必要が無い
+ * （48kHz 5 分の素材で 57MB の節約。iPhone で解析ごと諦めさせないため・§13.6）。
+ * @param {Float32Array} x 書き換わる @param {number} sr @param {*} o
+ * @returns {Float32Array} 渡された x そのもの
+ */
+function kWeightInto(x, sr, o) {
   const a = Math.exp((-2 * Math.PI * clamp(finite(o.hpHz, 60), 10, 500)) / sr);       // high-pass の係数
   const b = Math.exp((-2 * Math.PI * clamp(finite(o.shelfHz, 1500), 200, 8000)) / sr); // シェルフの折れ点
   const g = clamp(finite(o.shelf, 0.6), 0, 4);
   let px = 0, py = 0, lp = 0;
   for (let i = 0; i < x.length; i++) {
-    const v = Number.isFinite(x[i]) ? x[i] : 0;
+    const v = Number.isFinite(x[i]) ? x[i] : 0;   // v を先に取るので その場で書いても差分は狂わない
     const y = a * (py + v - px);          // y = a(y[-1] + x - x[-1]): 直流を抜く
     px = v; py = y;
     lp = (1 - b) * y + b * lp;            // 低域だけ残す
-    out[i] = y + g * (y - lp);            // 引き算で高域成分を作って g 倍足す
+    x[i] = y + g * (y - lp);              // 引き算で高域成分を作って g 倍足す
   }
-  return out;
+  return x;
 }
 
 /**
@@ -383,7 +393,8 @@ export function loudnessCurve(buf, opts = {}) {
   // 申告どおりの hz を返すと、値を秒に直す側〈ai/tools.js の無音・graph.js の
   // ダッキング〉が後ろへ行くほどずれる）
   const step = frameStep(sampleRate, hz);
-  const db = rmsCurve(kWeight(mono, sampleRate, o), sampleRate, { hz, win: clamp(finite(o.win, 0.4), 0.05, 3), center: true });
+  // mono は readAudio が作った この呼び出し専用の写しなので その場で重み付けする
+  const db = rmsCurve(kWeightInto(mono, sampleRate, o), sampleRate, { hz, win: clamp(finite(o.win, 0.4), 0.05, 3), center: true });
   const values = new Array(db.length);
   for (let i = 0; i < db.length; i++) values[i] = clamp(finite(db[i], -70), -70, 0);
   return { hz: step.hz, values };
@@ -503,12 +514,15 @@ export function speechFeatures(buf, opts = {}) {
   const o = opts || {};
   const src = readAudio(buf, o);
   const z = new Float32Array(0);
-  const out = { hz: clamp(finite(o.hz, 50), 5, 200), count: 0, duration: src.duration, sampleRate: src.sampleRate, rmsDb: z, zcr: z, flat: z, band: z, hf: z, score: z };
+  const reqHz = clamp(finite(o.hz, 50), 5, 200);
+  const out = { hz: reqHz, count: 0, duration: src.duration, sampleRate: src.sampleRate, rmsDb: z, zcr: z, flat: z, band: z, hf: z, score: z };
   if (!src.mono.length) return out;
   // 声は 8kHz まで見れば足りる。先に間引いて FFT の回数を落とす（§13.6）
   const dec = decimateTo(src.mono, src.sampleRate, finite(o.targetRate, 16000));
   const x = dec.mono, sr = dec.sampleRate;
-  const hop = Math.max(1, Math.round(sr / out.hz));
+  const step = frameStep(sr, reqHz);
+  const hop = step.hop;
+  out.hz = step.hz;                       // 以降（modWin・秒への直し）は実効 hz で数える
   const fftSize = nextPow2(clamp(finite(o.win, 0.04), 0.008, 0.2) * sr);
   const binHz = sr / fftSize, nyq = sr / 2;
   const count = frameCount(x.length, hop);
@@ -564,7 +578,7 @@ export function speechFeatures(buf, opts = {}) {
       + W.mod * bell(dev, 7, 7);                                   // 音節ごとの揺れ（dB）。持続音は揺れない
     score[i] = clamp01(t / wsum);
   }
-  out.count = count; out.hz = sr / hop;
+  out.count = count;
   out.rmsDb = rmsDb; out.zcr = zcr; out.flat = flat; out.band = band; out.hf = hf; out.score = score;
   return out;
 }
@@ -746,22 +760,82 @@ function sampleEnv(d, env, t) {
   return a * (1 - u) + b * u;
 }
 
+/** `from` から `period` 刻みに並べた点で包絡を読んだ平均（格子の「当たり具合」） */
+function gridMean(d, env, from, period) {
+  if (!(period > 0)) return 0;
+  const last = env.t0 + (d.length - 1) / env.hz;
+  let s = 0, m = 0;
+  for (let t = from; t <= last && m < 20000; t += period) { s += sampleEnv(d, env, t); m++; }
+  return m ? s / m : 0;
+}
+
 /** 拍の位置に山が乗るずらし方を選ぶ（返り値は 0..period の「最初の拍」） */
 function bestPhase(d, env, period) {
   const steps = Math.max(1, Math.round(period * env.hz));
-  const last = env.t0 + (d.length - 1) / env.hz;
   let bestS = -1, bestT = env.t0;
   for (let j = 0; j < steps; j++) {
     const t0 = env.t0 + j / env.hz;
-    let s = 0, m = 0;
-    for (let t = t0; t <= last; t += period) { s += sampleEnv(d, env, t); m++; }
-    if (m && s / m > bestS) { bestS = s / m; bestT = t0; }
+    const s = gridMean(d, env, t0, period);
+    if (s > bestS) { bestS = s; bestT = t0; }
   }
   let t = bestT;
   while (t >= period) t -= period;
   while (t < 0) t += period;
   return t;
 }
+
+/** 裏拍が表と同じだけ強ければ「倍の速さ」が本当、と見る境目 */
+const OCTAVE_OFF_RATIO = 0.72;
+
+/**
+ * 倍・半分の取り違えを直す。自己相関は半分の速さでも同じだけ山が立つので、
+ * テンポの重み（tempoPrior）だけでは **168BPM 以上が必ず半分に化ける**
+ * （120 中心の重みでは 174 よりも 87 の方が得点が高い）。そこで
+ * 「拍と拍の間（裏）にも表と同じ強さの山が在るか」を包絡から直に測る。
+ * 在れば本当の拍は倍の速さ。クリック列やキックだけの曲では裏は空なので、
+ * 120BPM が 240BPM に化けることは無い。
+ * 探す範囲の境目は **lagMin だけ**を見る（maxBpm から別に計算し直すと、
+ * lagMin が floor で丸めてある分だけ食い違って、ちょうど maxBpm の素材
+ * 〈既定なら 200BPM〉が半分のまま残る）。
+ * @param {Float32Array} d 強調した立ち上がり @param {*} env onsetEnvelope の返り
+ * @param {number} lag 今選んでいる周期（frame）
+ * @param {number} lagMin 粗い探索と同じ下限。これより短い周期へは出ない
+ * @returns {number} 直した lag（半分になる事は在っても倍にはならない）
+ */
+function refineOctave(d, env, lag, lagMin) {
+  let cur = lag;
+  for (let k = 0; k < 3; k++) {                 // 4 倍までは追う（8 分・16 分の取り違え）
+    const half = cur / 2;
+    if (half < Math.max(2, lagMin)) break;
+    const period = cur / env.hz;
+    const phase = bestPhase(d, env, period);
+    const on = gridMean(d, env, phase, period);
+    const off = gridMean(d, env, phase + period / 2, period);
+    if (!(on > 0) || off < on * OCTAVE_OFF_RATIO) break;
+    cur = half;
+  }
+  return cur;
+}
+
+/** 立ち上がりの「絶対の高さ」の代表値（上位 5% の平均）。最大値 1 つでは数値雑音に振られる */
+function onsetStrength(env) {
+  const n = env && env.count > 0 ? env.count : 0;
+  if (!n) return 0;
+  const sorted = Float32Array.from(env.values.subarray(0, n)).sort();
+  const from = Math.max(0, n - Math.max(1, Math.round(n * 0.05)));
+  let s = 0, m = 0;
+  for (let i = from; i < n; i++) { s += sorted[i]; m++; }
+  return m ? s / m : 0;
+}
+
+/**
+ * これより立ち上がりが低い素材は「打撃が無い」と見て拍を返さない。
+ * 実測: クリック列 0.77〜0.95 / 打楽器入りの曲 0.17〜0.36 / 白色雑音 0.13 /
+ * 持続する和音 0.024 / 純音 0.0002。和音を通してしまうと、そのわずかな揺れを
+ * emphasize が 0..1 へ引き伸ばして **conf 0.6 で 96BPM を幻覚する**
+ * （conf の門〈0.3〉では止まらない）ので、ここで切る。
+ */
+const ONSET_MIN = 0.06;
 
 /** 各拍を近くの山へ吸い付けて、最小二乗で period / offset を仕上げる */
 function fitGrid(d, env, period, offset, duration) {
@@ -804,9 +878,7 @@ export function detectBeats(buf, opts = {}) {
   const dec = decimateTo(src.mono, src.sampleRate, finite(o.targetRate, 12000));  // 拍は低い帯域で足りる
   const env = onsetEnvelope(dec.mono, dec.sampleRate, { fftSize: finite(o.fftSize, 512), hop: finite(o.hop, 128) });
   if (env.count < 8) return none;
-  let envPeak = 0;
-  for (let i = 0; i < env.count; i++) if (env.values[i] > envPeak) envPeak = env.values[i];
-  if (envPeak < 0.02) return none;              // 立ち上がりが 1 つも無い（無音・持続音）
+  if (onsetStrength(env) < ONSET_MIN) return none;   // 打撃が無い（無音・持続音・持続する和音）
   const d = emphasize(env.values, env.hz);
   const minBpm = clamp(finite(o.minBpm, 60), 20, 400), maxBpm = clamp(finite(o.maxBpm, 200), minBpm + 1, 500);
   const lagMin = Math.max(2, Math.floor((60 / maxBpm) * env.hz));
@@ -818,6 +890,8 @@ export function detectBeats(buf, opts = {}) {
   let lag = 0, best = -Infinity;
   for (let L = lagMin; L <= lagMax; L++) { const s = rate(L); if (s > best) { best = s; lag = L; } }
   if (!(lag > 0)) return none;
+  lag = refineOctave(d, env, lag, lagMin);
+  best = rate(lag);                             // 半分に直した後は得点も取り直す（古い得点のままだと下の詰めが効かない）
   for (let L = Math.max(lagMin, lag - 1); L <= Math.min(lagMax, lag + 1); L += 0.02) {
     const s = rate(L);
     if (s > best) { best = s; lag = L; }
