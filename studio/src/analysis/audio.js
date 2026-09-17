@@ -760,6 +760,28 @@ function sampleEnv(d, env, t) {
   return a * (1 - u) + b * u;
 }
 
+/**
+ * 時刻 t の近く（±win frame）で一番高い値。frame の刻みは 10ms 級 在るので、
+ * 1 点だけ補間して読むと「半端な位置の山」を取りこぼす（拍の半分が 60.5 frame に
+ * 来る 186BPM で、裏の高さが 2 割低く見えた）。表と裏を同じ条件で比べるために使う。
+ */
+function peakNear(d, env, t, win) {
+  const c = (finite(t, 0) - env.t0) * env.hz;
+  const a = Math.max(0, Math.floor(c - win)), b = Math.min(d.length - 1, Math.ceil(c + win));
+  let mx = 0;
+  for (let i = a; i <= b; i++) if (d[i] > mx) mx = d[i];
+  return mx;
+}
+
+/** `from` から `period` 刻みに並べた点の「近くの山」の平均（丸めに強い当たり具合） */
+function gridPeakMean(d, env, from, period, win) {
+  if (!(period > 0)) return 0;
+  const last = env.t0 + (d.length - 1) / env.hz;
+  let s = 0, m = 0;
+  for (let t = from; t <= last && m < 20000; t += period) { s += peakNear(d, env, t, win); m++; }
+  return m ? s / m : 0;
+}
+
 /** `from` から `period` 刻みに並べた点で包絡を読んだ平均（格子の「当たり具合」） */
 function gridMean(d, env, from, period) {
   if (!(period > 0)) return 0;
@@ -784,8 +806,14 @@ function bestPhase(d, env, period) {
   return t;
 }
 
-/** 裏拍が表と同じだけ強ければ「倍の速さ」が本当、と見る境目 */
-const OCTAVE_OFF_RATIO = 0.72;
+/**
+ * 裏拍が表と **見分けが付かないほど** 強ければ「倍の速さ」が本当、と見る境目。
+ * 実測の隔たりは広い: 同じ打撃が並ぶクリック列や 174BPM の曲では 0.97 超、
+ * 100BPM でキックの裏に強いハイハットが入る曲では 0.85 未満。0.9 はその間。
+ * （下げ過ぎると「100BPM + 裏ハット」が 200BPM に化ける。上げ過ぎると
+ * 168BPM 以上が半分に戻る）
+ */
+const OCTAVE_OFF_RATIO = 0.9;
 
 /**
  * 倍・半分の取り違えを直す。自己相関は半分の速さでも同じだけ山が立つので、
@@ -809,8 +837,9 @@ function refineOctave(d, env, lag, lagMin) {
     if (half < Math.max(2, lagMin)) break;
     const period = cur / env.hz;
     const phase = bestPhase(d, env, period);
-    const on = gridMean(d, env, phase, period);
-    const off = gridMean(d, env, phase + period / 2, period);
+    // 表と裏は「近くの山」で比べる（1 点読みだと frame の丸めで裏が不当に低く出る）
+    const on = gridPeakMean(d, env, phase, period, 1);
+    const off = gridPeakMean(d, env, phase + period / 2, period, 1);
     if (!(on > 0) || off < on * OCTAVE_OFF_RATIO) break;
     cur = half;
   }
