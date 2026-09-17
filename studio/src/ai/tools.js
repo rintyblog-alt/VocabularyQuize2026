@@ -41,9 +41,9 @@
    ══════════════════════════════════════════════════════════════════════ */
 
 import { clamp, clamp01, finite } from "../core/util.js";
-import { MIN_CLIP, clipEnd, assetById, defaultTextStyle } from "../core/schema.js";
+import { MIN_CLIP, RATIOS, clipEnd, assetById } from "../core/schema.js";
 import { silenceThreshold, beatTimes, buildBeatGrid, snapToBeat } from "../analysis/audio.js";
-import { pickHighlights, analysisDuration, meanCurve } from "../analysis/video.js";
+import { pickHighlights, analysisDuration, meanCurve, histogramRGB } from "../analysis/video.js";
 import { parseRatio } from "../analysis/track.js";
 import { captionsToClips, autoSubtitleStyle } from "./captions.js";
 
@@ -698,9 +698,17 @@ export function autoReframe(project, opts = {}) {
   if (!targets.length) return nothing("リフレームできる映像クリップがありません");
   const maxKeys = Math.round(clamp(finite(o.maxKeys, 120), 2, 400));
   const ops = [], warnings = [];
-  /* 比率そのものを変える（「縦にして」は画面の比率も変わって初めて意味が出る） */
-  if (typeof ratioId === "string" && str(ratioId) && str(settings.ratio) && str(ratioId) !== str(settings.ratio) && o.applyRatio !== false) {
-    push(ops, "settings.update", { patch: { ratio: str(ratioId) } });
+  /* 比率そのものを変える（「縦にして」は画面の比率も変わって初めて意味が出る）。
+     CONTRACT-NOTE: core/ops.js の settings.update は schema.js の RATIOS に無い
+       比率で **OpError を投げる**。道具が投げる op を混ぜると store.batch が
+       丸ごと巻き戻って「何も当たらない」ので、知らない比率のときは画面の比率を
+       触らず、切り出し（transform）だけ合わせて warnings で申告する。 */
+  if (typeof ratioId === "string" && str(ratioId) && str(ratioId) !== str(settings.ratio) && o.applyRatio !== false) {
+    if (Object.prototype.hasOwnProperty.call(RATIOS, str(ratioId))) {
+      push(ops, "settings.update", { patch: { ratio: str(ratioId) } });
+    } else {
+      warnings.push(`「${str(ratioId)}」は選べる画面比率にないので、画面はそのままで切り出しだけ合わせました`);
+    }
   }
   let moving = 0;
   for (const { clip } of targets) {
@@ -1358,7 +1366,9 @@ export function autoTelopFromSilence(project, opts = {}) {
     const parts = Math.max(1, Math.ceil(len / maxDur));
     for (let i = 0; i < parts; i++) cut.push({ start: s.start + (len * i) / parts, end: s.start + (len * (i + 1)) / parts });
   }
-  const style = plain(o.style) || plain(project && project.subtitleStyle) || defaultTextStyle();
+  /* 既定は画面の寸法から決めた「読める」様式（defaultTextStyle は縁取りが 0 なので
+     白い絵の上で消える。テロップは読めて初めて意味が在る） */
+  const style = plain(o.style) || plain(project && project.subtitleStyle) || autoSubtitleStyle(project);
   const dest = telopTarget(project, o, cut[0].start, cut[cut.length - 1].end);
   const ops = [];
   if (dest.addTrack) {

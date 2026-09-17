@@ -319,7 +319,10 @@ export function createStore(project, opts) {
   /** 今の状態。project は「書き換えない値」として扱う */
   let present = { project: intake(project), selection: freezeSelection([], null, null) };
   let view = Object.freeze({
-    playhead: 0, zoom: 1, scrollX: 0, inPoint: null, outPoint: null,
+    /* zoom は「1 秒 = 何 px」。1 だと 1 画面に 20 分入ってしまい、
+       目盛りが分刻みになって編集できない（実測で確認）。
+       80px/秒 を既定にする（ui/timeline/view.js の ZOOM_DEFAULT と同じ）。 */
+    playhead: 0, zoom: 80, scrollX: 0, inPoint: null, outPoint: null,
     tool: "select", followPlayhead: true
   });
   /** 履歴（entry.snapshot = その op の直前の状態）・通知待ちの列・購読者 */

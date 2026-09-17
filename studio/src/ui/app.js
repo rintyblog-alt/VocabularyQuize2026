@@ -267,6 +267,15 @@ export async function createApp({ cfg, schema, storeMod, opsMod, storage, auth, 
       if (P.library && P.library.render) { try { P.library.render(); } catch (e) { /* noop */ } }
       if (P.mobile && P.mobile.render) { try { P.mobile.render(); } catch (e) { /* noop */ } }
     });
+    /* タイムラインの初期表示: 作品が入っていれば画面幅に収める。
+       空なら 80px/秒（既定）。これをやらないと 3 秒の作品でも目盛りが分刻みになる。 */
+    try {
+      const dur = schema.projectDuration ? schema.projectDuration(store.project) : 0;
+      const vw = (els.tlScroll && els.tlScroll.clientWidth) || (window.innerWidth - 360) || 900;
+      const zoom = dur > 0.2 ? Math.max(4, Math.min(400, (vw - 48) / dur)) : 80;
+      store.setView({ zoom, scrollX: 0, playhead: 0 });
+    } catch (e) { /* 表示だけの話なので黙って既定に任せる */ }
+
     if (els.projectName) {
       els.projectName.value = store.project.name || "無題のプロジェクト";
       els.projectName.oninput = () => {
