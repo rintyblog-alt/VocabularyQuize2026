@@ -23,6 +23,7 @@ import assert from "node:assert/strict";
 
 import {
   buildDuckCurve, envelopeFromBuffer, soundClipsInRange, planVoice, clipGainAt, clipPanAt,
+  duckPlanOf, duckSourceSpecOf,
   DUCK_HZ, DUCK_DEFAULTS, LOOKAHEAD, CACHE_BYTES
 } from "../src/engine/audio/graph.js";
 import {
@@ -493,4 +494,67 @@ test("clipGainAt / clipPanAt: フェードとキーを同じ式で読む", () =>
   assert.equal(clipPanAt(clip("c", 0, 4, { pan: 9 }), 1), 1, "値域に収める");
   /* 壊れた入力 */
   assert.ok(Number.isFinite(clipGainAt(null, 0)) || clipGainAt(null, 0) === 1);
+});
+
+/* ══ ⑦ ダッキングの相手と引き金（mix.js と同じ決め方）════════════ */
+
+const bgmMark = (params) => ({ id: "m", type: "bgm", enabled: true, params: { duck: true, ...params } });
+
+test("duckPlanOf: bgm の印が在るトラックを下げる", () => {
+  const p = {
+    assets: [asset("as1")],
+    tracks: [
+      { id: "voice", kind: "audio", clips: [clip("cv", 0, 5)] },
+      { id: "bgm", kind: "audio", clips: [clip("cb", 0, 20, { fx: [bgmMark({ amount: 0.6, attack: 0.2, release: 0.5 })] })] }
+    ]
+  };
+  const plan = duckPlanOf(p, null);
+  assert.equal(plan.length, 1);
+  assert.deepEqual(plan[0], { trackId: "bgm", amount: 0.6, attack: 0.2, release: 0.5, explicit: false });
+
+  /* 印が無ければ何もしない（勝手に BGM を推測しない） */
+  assert.deepEqual(duckPlanOf({ tracks: [{ id: "a", kind: "audio", clips: [clip("c", 0, 5)] }] }, null), []);
+  assert.deepEqual(duckPlanOf(null, null), []);
+  /* duck:false は対象外 */
+  p.tracks[1].clips[0].fx = [{ id: "m", type: "bgm", params: { duck: false } }];
+  assert.deepEqual(duckPlanOf(p, null), []);
+  /* 印の params が無ければ既定 */
+  p.tracks[1].clips[0].fx = [{ id: "m", type: "bgm" }];
+  assert.deepEqual(duckPlanOf(p, null)[0], {
+    trackId: "bgm", amount: DUCK_DEFAULTS.amount, attack: DUCK_DEFAULTS.attack,
+    release: DUCK_DEFAULTS.release, explicit: false
+  });
+  /* muted なトラックは触らない */
+  p.tracks[1].muted = true;
+  assert.deepEqual(duckPlanOf(p, null), []);
+});
+
+test("duckPlanOf: duckSource の印が在ればそれが引き金（値も優先）", () => {
+  const p = {
+    assets: [asset("as1")],
+    tracks: [
+      { id: "voice", kind: "audio", clips: [clip("cv", 0, 5, { fx: [{ id: "s", type: "duckSource", params: { amount: 0.5, attack: 0.1, release: 0.2 } }] })] },
+      { id: "bgm", kind: "audio", clips: [clip("cb", 0, 20, { fx: [bgmMark({ amount: 0.9, attack: 0.5, release: 0.9 })] })] }
+    ]
+  };
+  assert.deepEqual(duckSourceSpecOf(p), { params: { amount: 0.5, attack: 0.1, release: 0.2 } });
+  const plan = duckPlanOf(p, null);
+  assert.deepEqual(plan[0], { trackId: "bgm", amount: 0.5, attack: 0.1, release: 0.2, explicit: true },
+    "引き金の印の値が BGM の印より強い");
+  /* 印を外すと BGM の印の値に戻る */
+  p.tracks[0].clips[0].fx = [];
+  assert.equal(duckSourceSpecOf(p), null);
+  assert.deepEqual(duckPlanOf(p, null)[0], { trackId: "bgm", amount: 0.9, attack: 0.5, release: 0.9, explicit: false });
+});
+
+test("duckPlanOf: setDuck の明示指定は印より強い", () => {
+  const p = { tracks: [{ id: "bgm", kind: "audio", clips: [clip("cb", 0, 20, { fx: [bgmMark({ amount: 0.6 })] })] }] };
+  assert.deepEqual(duckPlanOf(p, { trackId: "other", amount: 0.4 }),
+    [{ trackId: "other", amount: 0.4, attack: DUCK_DEFAULTS.attack, release: DUCK_DEFAULTS.release, explicit: false }]);
+  assert.equal(duckPlanOf(p, { trackId: "other", enabled: false })[0].trackId, "bgm", "enabled:false は印に戻る");
+  /* 値域を守る */
+  const wild = duckPlanOf(p, { trackId: "x", amount: 9, attack: -1, release: NaN })[0];
+  assert.equal(wild.amount, 1);
+  assert.equal(wild.attack, 0.01);
+  assert.equal(wild.release, DUCK_DEFAULTS.release);
 });

@@ -80,6 +80,12 @@
      （向こうがその為に export している）。
      ai/tools.js の `autoDuck` は キーフレームを打つ別の道で、こちらとは
      喧嘩しない（あちらは音量キー、こちらは専用の GainNode）。
+   CONTRACT-NOTE (6): 作法は「1 ファイル 700 行で分割」だが、分割先
+     （engine/audio/scheduler.js など）は担当外で新規作成できない。
+     core/eval.js・ui/inspector/audio.js・engine/audio/mix.js と同じ事情なので、
+     章立てで割れる形にした: **§0〜§2 は純関数だけ**（Node で試験できる。
+     tests/audio-params.test.mjs が見ている所）、**§3 だけが Web Audio を触る**。
+     切り出すなら この線で割れる（§3 は §0〜§2 を import するだけになる）。
    ══════════════════════════════════════════════════════════════════════════ */
 "use strict";
 
