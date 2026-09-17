@@ -974,7 +974,12 @@ export function createAuth(opts = {}) {
       return () => { listeners.delete(fn); };
     },
 
-    /** 401 を受けたことを呼び出し側へ知らせる口 @param {(e:AuthError)=>void} fn @returns {()=>void} */
+    /**
+     * 401 を受けたことを呼び出し側へ知らせる口。**どの口の 401 でも呼ぶ**
+     * （ログイン画面での失敗も含む）。画面は今どこに居るかを知っているので、
+     * 「入り直させる」か「無視する」かは画面側で決める。
+     * @param {(e:AuthError)=>void} fn @returns {()=>void}
+     */
     onUnauthorized(fn) {
       if (typeof fn !== "function") return () => {};
       unauthorizedListeners.add(fn);

@@ -90,6 +90,12 @@ export const PRESETS = /** @type {Preset[]} */ ([
     note: "投稿欄で切られにくい形。",
   },
   {
+    id: "ig-feed", name: "Instagram フィード（4:5）", icon: "instagram", ratio: "4:5",
+    width: 1080, height: 1350, fps: 30, videoBitrate: 9000000, audioBitrate: 160000,
+    container: "mp4", codec: "avc",
+    note: "投稿欄で一番大きく映る形。縦長すぎないので写真と混ぜても揃います。",
+  },
+  {
     id: "x-post", name: "X（旧 Twitter）", icon: "x", ratio: "16:9",
     width: 1280, height: 720, fps: 30, videoBitrate: 5000000, audioBitrate: 128000,
     container: "mp4", codec: "avc",
@@ -226,7 +232,10 @@ export function recommendPreset(project) {
   const media = surveyMedia(project);
 
   if (!media.visual) return media.audio ? "audio-wav" : "yt-1080p";
-  if (h > w * 1.05) {
+  const tall = w > 0 ? h / w : 1;
+  if (tall > 1.05) {
+    // 4:5（1.25）のような「ゆるい縦」は 9:16 の投稿先に入れると上下が切れる
+    if (tall < 1.5) return "ig-feed";
     if (dur <= 60) return "yt-shorts";
     if (dur <= 90) return "ig-reel";
     return "tiktok";
@@ -247,7 +256,7 @@ export function recommendPreset(project) {
 export function presetGroups() {
   const pickIds = (ids) => ids.map((id) => BY_ID.get(id)).filter(Boolean);
   return [
-    { title: "投稿する", presets: pickIds(["yt-1080p", "yt-1440p", "yt-4k", "yt-shorts", "tiktok", "ig-reel", "ig-square", "x-post", "line"]) },
+    { title: "投稿する", presets: pickIds(["yt-1080p", "yt-1440p", "yt-4k", "yt-shorts", "tiktok", "ig-reel", "ig-square", "ig-feed", "x-post", "line"]) },
     { title: "手元に置く", presets: pickIds(["light-720p", "light-480p", "hq-60", "master", "source", "webm-vp9"]) },
     { title: "動画以外", presets: pickIds(["audio-wav", "audio-opus", "gif", "still-png"]) },
   ];

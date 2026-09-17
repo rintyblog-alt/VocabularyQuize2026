@@ -52,6 +52,8 @@
 import { scope } from "../core/log.js";
 import { finite, clamp, clampInt, formatBytes, isIOS, sleep } from "../core/util.js";
 import { frameStart } from "../core/time.js";
+// 尺の数え方は core/schema.js が持つ物を借りる（下で再輸出する）
+import { projectDuration } from "../core/schema.js";
 
 const L = scope("export");
 
@@ -170,23 +172,12 @@ function round3(n) { return Math.round(finite(n, 0) * 1000) / 1000; }
 /* ── 3. プロジェクトを測る ─────────────────────────────────────── */
 
 /**
- * タイムラインの終わり（秒）。全トラックの clip の start+duration の最大。
- * 書き出す範囲の上限であり、presets の推薦にも使う。
- * @param {any} project @returns {number}
+ * タイムラインの終わり（秒）。書き出す範囲の上限であり、presets の推薦にも使う。
+ * 実装は core/schema.js の物をそのまま使い、ここからも出し直す
+ * （2 つ持つと「尺」の数え方が黙って食い違う。export と presets は
+ *  ここから import するだけで済むよう再輸出しておく）。
  */
-export function projectDuration(project) {
-  const tracks = project && Array.isArray(project.tracks) ? project.tracks : [];
-  let end = 0;
-  for (const tr of tracks) {
-    if (!tr || !Array.isArray(tr.clips)) continue;
-    for (const c of tr.clips) {
-      if (!c) continue;
-      const e = finite(c.start, 0) + Math.max(0, finite(c.duration, 0));
-      if (e > end) end = e;
-    }
-  }
-  return end;
-}
+export { projectDuration };
 
 /**
  * 映像/音の中身が在るか（推薦と「無音で書き出す」判断に使う）。
@@ -426,7 +417,9 @@ function estimateBytes(plan) {
 /* ── 5. ファイル名 ─────────────────────────────────────────────── */
 
 /** ファイル名に置けない文字（Windows / macOS / iOS の共通の最大公約数） */
-const BAD_CHARS = /[\\/:*?"<>| -]/g;
+const BAD_CHARS = /[\\/:*?"<>|]/g;
+/** 制御文字。source に生の制御文字を残さないよう実行時に組む */
+const CTRL_CHARS = new RegExp(`[${String.fromCharCode(0)}-${String.fromCharCode(31)}${String.fromCharCode(127)}]`, "g");
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 /**
@@ -436,7 +429,9 @@ const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 export function sanitizeName(s) {
   let t = String(s === undefined || s === null ? "" : s);
   try { t = t.normalize("NFC"); } catch (_e) { /* 古い実装では そのまま */ }
-  t = t.replace(BAD_CHARS, "").replace(/\s+/g, "_").replace(/_{2,}/g, "_");
+  // 空白（改行・タブ・全角空白も含む）を先に _ へ。後にすると
+  // "行1\n行2" が "行1行2" と繋がって語が混ざる。
+  t = t.replace(/\s+/g, "_").replace(BAD_CHARS, "").replace(CTRL_CHARS, "").replace(/_{2,}/g, "_");
   t = t.replace(/^[._]+/, "").replace(/[._\s]+$/, "");
   if (t.length > 80) t = t.slice(0, 80).replace(/[._\s]+$/, "");
   if (RESERVED.test(t)) t = `_${t}`;
@@ -843,6 +838,8 @@ async function loadEval() {
 /**
  * 合成の一式を作る。opts で渡されていれば それを借りる（プレビューの物を
  * 使い回せば素材の decode をやり直さずに済む）。
+ * 注意: canvas / compositor を借りると **大きさが書き出しの解像度に変わる**。
+ * 借りた側（ui）は書き出しの後にプレビューを描き直すこと。
  */
 async function makeStage(project, plan, opts) {
   const o = opts || {};
@@ -850,7 +847,9 @@ async function makeStage(project, plan, opts) {
   const h = Math.max(2, Math.round(finite(plan.height, 1080)));
   const needDom = plan.mode === "realtime";
   const canvas = o.canvas || createCanvas(w, h, needDom);
-  if (!o.canvas) { /* 借り物の大きさは勝手に変えない（プレビューが崩れる） */ }
+  if (o.canvas && (canvas.width !== w || canvas.height !== h)) {
+    try { canvas.width = w; canvas.height = h; } catch (e) { L.warn("借りた canvas の大きさを変えられません", e); }
+  }
   let compositor = o.compositor || null;
   let ownComp = false;
   if (!compositor) {
@@ -1232,13 +1231,13 @@ function waitFrame(fps) {
   return sleep(Math.max(1, Math.round(1000 / (finite(fps, 30) || 30))));
 }
 
-async function runRealtime(project, plan, opts, warnings, tick) {
+async function runRealtime(project, plan, opts, warnings, tick, caps0) {
   const signal = opts.signal;
   const MR = globalThis.MediaRecorder;
   if (typeof MR !== "function") {
     throw new ExportError("この端末は MediaRecorder に対応していません", "NO_RECORDER");
   }
-  const caps = await capabilities();
+  const caps = caps0 || await capabilities();
   const mime = pickRecorderMime(caps.mediaRecorder, plan);
   if (!mime) throw new ExportError("録画できる形式が見つかりませんでした", "NO_RECORDER");
   if (mime.indexOf(plan.container) < 0) {
@@ -1382,6 +1381,7 @@ export async function exportVideo(project, opts) {
   const warnings = plan.warnings.slice();
   const tick = makeProgress(o.onProgress, plan.frames);
   throwIfAborted(o.signal);
+  tick(0, { stage: "prepare" }, true); // 押した瞬間に画面が反応するように
 
   const done = (r) => {
     const container = containerOfMime(r.mime) || plan.container;
@@ -1406,7 +1406,7 @@ export async function exportVideo(project, opts) {
       range: plan.range,
       format: plan.container === "webm" ? "webm" : "wav",
       onProgress: (p) => tick(clamp(finite(p, 0), 0, 1), { stage: "audio" }),
-      __warnings: warnings,
+      warningsOut: warnings,
     }));
     tick(1, { stage: "done" }, true);
     return done({ blob, mime: blob.type || plan.mime, frames: 0, mode: "audio" });
@@ -1441,7 +1441,7 @@ export async function exportVideo(project, opts) {
       try {
         const r = m === "precise"
           ? await runPrecise(project, plan, o, warnings, tick)
-          : await runRealtime(project, plan, o, warnings, tick);
+          : await runRealtime(project, plan, o, warnings, tick, caps);
         tick(1, { frame: r.frames, stage: "done" }, true);
         return done(Object.assign({ mode: m }, r));
       } catch (e) {
@@ -1461,7 +1461,7 @@ export async function exportVideo(project, opts) {
       if (plan.audio !== "none") {
         try {
           audio = await exportAudio(project, Object.assign({}, o, {
-            range: plan.range, format: "wav", onProgress: null, __warnings: warnings,
+            range: plan.range, format: "wav", onProgress: null, warningsOut: warnings,
           }));
         } catch (e) { warnings.push(`音声も書き出せませんでした: ${msgOf(e)}`); }
       }
@@ -1505,14 +1505,16 @@ export async function exportStill(project, time, opts) {
 
 /**
  * 音だけ（契約書 §5 / §11.3）。wav か webm(Opus)。
+ * 契約どおり返り値は Blob なので、劣化（Opus が使えず wav にした等）を
+ * 知りたい呼び出し側は `warningsOut: []` を渡すと そこへ積まれる。
  * @param {any} project
  * @param {{format?:string,container?:string,range?:Object,sampleRate?:number,
- *   audioBitrate?:number,onProgress?:Function,signal?:any}} [opts]
+ *   audioBitrate?:number,onProgress?:Function,signal?:any,warningsOut?:string[]}} [opts]
  * @returns {Promise<Blob>}
  */
 export async function exportAudio(project, opts) {
   const o = opts || {};
-  const warnings = Array.isArray(o.__warnings) ? o.__warnings : [];
+  const warnings = Array.isArray(o.warningsOut) ? o.warningsOut : [];
   const range = resolveRange(project, o);
   const fmt = String(o.format || o.container || "wav").toLowerCase();
   const plan = {
