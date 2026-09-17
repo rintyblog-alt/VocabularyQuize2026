@@ -34,11 +34,27 @@
        理屈は tests/gif.test.mjs の復号器（別に書いてある）が見張っている。
      ・低レベル（medianCut / nearestColor / lzwEncode / *Bytes）は試験のために
        export している。署名を変えると tests/gif.test.mjs が落ちる。
+     ・パレットは最初の `learnFrames`（既定 3）枚だけから学ぶので、
+       **冒頭が単色の動画では後から出る色が潰れる**。そういう素材は
+       learnFrames を増やすか、`palette` に自分で決めた色を渡す
+       （学習を丸ごと飛ばせる）。1 枚が 100 万画素を超える時は記憶を守るため
+       学習を 1 枚に落とす。
      ・遅延は **1/100 秒（centisecond）刻み**しか書けない。fps 12（83.3ms）は
        8cs にしか落ちないので、累積時刻から毎回引き算して丸め誤差を
        次のフレームへ送る（総尺がずれないようにする）。
      ・DOM を触るのは exportGif() だけ（engine/* は動的 import）。
        createGIFEncoder より上は純粋なので Node で試験できる。
+     ・CONTRACT-NOTE: 契約書 §0 の «1 ファイル 700 行» を 200 行ほど超えている。
+       担当の割り当てが この 1 ファイルなので今は分けない（他人のファイルを
+       作らない規約が優先）。次に触る人が分けるなら境目はここ:
+         §2-§3（medianCut / nearestColor / quantizeFrame）→ export/gif-quant.js
+         §4（lzwEncode / subBlocks）→ export/gif-lzw.js
+       §5 以降（バイト列と createGIFEncoder と exportGif）だけ残せば 400 行を切る。
+     ・CONTRACT-NOTE: exporter.js の runGif() は gif.js の
+       `exportGif(project, opts)` を探して «Blob を返す» 事だけを期待している
+       （契約書 §11-4 は関数名を決めていない）。そこで契約の
+       createGIFEncoder と 併せて exportGif も出し、default は
+       createGIFEncoder にしてある。
    ══════════════════════════════════════════════════════════════════════════ */
 
 import { scope } from "../core/log.js";
@@ -449,8 +465,8 @@ export function lzwEncode(indices, minCodeSize) {
         dict.set(key, next);
         next++;
       } else {
-        // 辞書が満杯。クリアして最初から（ここを忘れると 4096 色目で壊れる）
-        codeSize = 12; maxCode = (1 << 12) - 1;
+        // 辞書が満杯（next は 4096 = 符号長も既に 12）。クリアして最初から。
+        // ここを忘れると長い GIF が «途中から砂嵐» になる
         reset();
       }
       prefix = k;
@@ -621,6 +637,7 @@ export function createGIFEncoder(opts) {
     samples: [],     // 学習用の画素（Uint8Array・RGB 3 バイト刻み）
     mapper: null,
     prev: null,
+    file: null,
     addedMs: 0,
     skipped: 0,
     bytesWritten: 0,
@@ -864,6 +881,9 @@ export async function exportGif(project, opts) {
   };
 
   aborted();
+  // core/eval.js は «この時刻に見えるクリップ» を教えてくれる（無くても描ける）
+  let ev = null;
+  try { ev = await import("../core/eval.js"); } catch (_e) { ev = null; }
   const rig = await makeRig(project, width, height, o);
   const enc = createGIFEncoder({
     width, height, fps, loop: o.loop, dither: o.dither !== false,
@@ -878,11 +898,9 @@ export async function exportGif(project, opts) {
         try { await s.prepare(t, { lookahead: 0, mode: "export" }); }
         catch (e) { L.warn("prepare に失敗（続けます）", e); }
       }
-      if (s && typeof s.seekExact === "function") {
+      if (s && typeof s.seekExact === "function" && ev && typeof ev.clipsAt === "function") {
         try {
-          const ev = await import("../core/eval.js").catch(() => null);
-          const list = ev && typeof ev.clipsAt === "function" ? (ev.clipsAt(project, t) || []) : [];
-          for (const r of list) {
+          for (const r of ev.clipsAt(project, t) || []) {
             if (r && r.clip && (r.clip.kind === "video" || r.clip.kind === "compound")) await s.seekExact(r);
           }
         } catch (e) { L.warn("seekExact に失敗（前の絵で続けます）", e); }

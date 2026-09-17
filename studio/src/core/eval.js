@@ -59,7 +59,12 @@
      Resolved には `transition` が在るが、遷移は **同じトラックの隣**を見ないと
      出せない。そこで opts に `track`（と `trackIndex` / `asset` / `pool`）を
      足した。渡さなければ transition は null（他は全部出る）。
-   CONTRACT-NOTE (3): clip.color が null でも `color.*` のキーフレームが在れば
+   CONTRACT-NOTE (3): 共通前提は「1 ファイル 700 行を超えたら分割」だが、
+     分割先（core/eval/*.js）は担当外なので新しいファイルを作れない（ops.js と
+     同じ事情）。読む人のために章立て（§A〜§H）を入れて 1 ファイルに収めた。
+     統合担当が分けるときは §B（速度）・§C（キー）・§D（遷移）が独立して
+     切り出せる（import は `./util.js` `./time.js` `./schema.js` のまま）。
+   CONTRACT-NOTE (4): clip.color が null でも `color.*` のキーフレームが在れば
      既定の ColorGrade から組んで返す（null のままにしない）。ops.js の key.add
      は color が null のままでもキーを打てるので、null 固定にするとキーが黙って
      効かなくなる。`color.*` のキーも無ければ **null のまま**（契約どおり）。
@@ -157,7 +162,7 @@ function segArea(g, x) {
 const segT0 = (g) => g.t0;
 
 /** ramp が同じなら作り直さない（毎フレーム呼ばれるので効く） */
-const mapCache = new WeakMap();
+let mapCache = new WeakMap();
 
 /**
  * 速度の地図を作る（契約書 §2）。
@@ -232,8 +237,13 @@ export function buildSpeedMap(clip) {
   return map;
 }
 
-/** 速度地図の cache を捨てる（試験と「ramp を直に書き換えた」人のため） */
+/**
+ * 内部 cache（速度地図・素材の索引）を捨てる。
+ * 「ramp 配列の中身だけを書き換えた」人と 試験のための逃げ道。
+ * ops.js を通す限り 呼ぶ必要は無い（必ず配列ごと差し替わるので）。
+ */
 export function resetEvalCaches() {
+  mapCache = new WeakMap();
   assetCache = new WeakMap();
 }
 
@@ -493,7 +503,10 @@ function recordFor(pool, clip) {
   if (!r) { r = newResolved(); pool.byId.set(id, r); }
   return r;
 }
-/** pool が持つ器（色・マスク等）を使い回す。pool 無しなら毎回新品 */
+/**
+ * record が抱えている器（色・マスク等）を使い回す。pool 無しの record は
+ * 毎回新品なので、この 1 本で「使い回し」と「新品」の両方がまかなえる。
+ */
 function scratch(r, key, make) {
   if (!r) return make();
   let v = r[key];
@@ -565,7 +578,7 @@ function resolveColor(r, clip, K, local) {
   let src = clip.color;
   if (!src || typeof src !== "object") {
     if (!hasColorKeys(K)) return null;    // 契約どおり null は null のまま
-    src = CG0;                            // CONTRACT-NOTE (3)
+    src = CG0;                            // CONTRACT-NOTE (4)
   }
   const out = scratch(r, "_color", newColorRec);
   for (let i = 0; i < COLOR_NUM.length; i++) {
@@ -693,7 +706,6 @@ export function resolveClip(clip, timelineTime, opts) {
   const asset = o.asset || null;
   const K = (clip.keys && typeof clip.keys === "object" && !Array.isArray(clip.keys)) ? clip.keys : null;
   const r = recordFor(o.pool || null, clip);
-  const pool = o.pool || null;
   const kind = str(clip.kind) || "video";
   const trackKind = str(track && track.kind);
 
@@ -726,12 +738,13 @@ export function resolveClip(clip, timelineTime, opts) {
   r.blend = str(clip.blend) || "normal";
   r.visible = !hidden && !AUDIO_ONLY[kind] && r.opacity > 1e-4;
 
-  r.transform = resolveTransform(pool ? r.transform : newTransformRec(), clip, K, local);
-  r.color = resolveColor(pool ? r : null, clip, K, local);
-  r.mask = resolveMask(pool ? r : null, clip, K, local);
-  r.chroma = resolveChroma(pool ? r : null, clip, K, local);
-  r.fx = resolveFx(pool ? r : null, clip, K, local);
-  r.text = resolveText(pool ? r : null, clip, K, local);
+  // r が新品（pool 無し）なら 入れ子の器も新品なので、同じ道で両方まかなえる
+  r.transform = resolveTransform(r.transform, clip, K, local);
+  r.color = resolveColor(r, clip, K, local);
+  r.mask = resolveMask(r, clip, K, local);
+  r.chroma = resolveChroma(r, clip, K, local);
+  r.fx = resolveFx(r, clip, K, local);
+  r.text = resolveText(r, clip, K, local);
   r.shape = clip.shape || null;                     // キー対象外 → 参照のまま
 
   r.trackVolume = track ? clamp(finite(track.volume, 1), 0, 4) : 1;
