@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ja" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VQ Studio — 自己診断</title>
+<link rel="stylesheet" href="./styles/tokens.css">
+<style>
+  body { margin:0; padding:16px 16px 64px; font-family: system-ui, sans-serif;
+         background:#0b0d10; color:#e8ecf1; }
+  h1 { font-size:18px; margin:0 0 4px; } p.lead { color:#93a0af; margin:0 0 16px; font-size:13px; }
+  .sum { display:flex; gap:12px; flex-wrap:wrap; margin:0 0 16px; }
+  .sum b { font-size:20px; } .sum div { background:#15191f; border:1px solid #232a33; border-radius:10px; padding:8px 14px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  td, th { text-align:left; padding:6px 8px; border-bottom:1px solid #1d232b; vertical-align:top; }
+  .ok { color:#4ade80; } .ng { color:#f87171; } .skip { color:#fbbf24; }
+  code { font-family: ui-monospace, monospace; font-size:12px; color:#9fb3c8; }
+  pre { margin:4px 0 0; white-space:pre-wrap; color:#f87171; font-size:11px; }
+  canvas { display:none; }
+</style>
+</head>
+<body>
+<h1>VQ Studio 自己診断</h1>
+<p class="lead">読み込みと最小限の動作を確かめます。赤い行がある状態は「未完成」です。</p>
+<div class="sum" id="sum"></div>
+<table><thead><tr><th style="width:38%">項目</th><th style="width:8%">結果</th><th>備考</th></tr></thead>
+<tbody id="rows"></tbody></table>
+<canvas id="cv" width="320" height="180"></canvas>
+
+<script type="module">
+const rows = document.getElementById("rows");
+const results = [];
+function add(name, status, note, err) {
+  results.push({ name, status, note: note || "" });
+  const tr = document.createElement("tr");
+  const c1 = document.createElement("td"); c1.innerHTML = "<code>" + name + "</code>";
+  const c2 = document.createElement("td");
+  c2.className = status === "ok" ? "ok" : status === "skip" ? "skip" : "ng";
+  c2.textContent = status === "ok" ? "OK" : status === "skip" ? "SKIP" : "NG";
+  const c3 = document.createElement("td"); c3.textContent = note || "";
+  if (err) { const pre = document.createElement("pre"); pre.textContent = String(err && err.stack || err).slice(0, 400); c3.append(pre); }
+  tr.append(c1, c2, c3); rows.append(tr);
+}
+async function step(name, fn) {
+  try { const note = await fn(); add(name, note === "skip" ? "skip" : "ok", note === "skip" ? "この端末では試せません" : (note || "")); }
+  catch (e) { add(name, "ng", "", e); }
+}
+const MODULES = [
+  "./src/core/util.js", "./src/core/time.js", "./src/core/log.js", "./src/core/schema.js",
+  "./src/core/ops.js", "./src/core/store.js", "./src/core/eval.js", "./src/core/persist.js",
+  "./src/core/auth.js",
+  "./src/engine/gl/context.js", "./src/engine/gl/shaders.js", "./src/engine/compositor.js",
+  "./src/engine/canvas2d.js", "./src/engine/sources.js", "./src/engine/text.js",
+  "./src/engine/shapes.js", "./src/engine/playback.js", "./src/engine/transitions.js",
+  "./src/engine/fx/registry.js", "./src/engine/fx/luts.js",
+  "./src/engine/audio/graph.js", "./src/engine/audio/fx.js", "./src/engine/audio/meter.js",
+  "./src/engine/audio/mix.js",
+  "./src/export/exporter.js", "./src/export/presets.js", "./src/export/gif.js",
+  "./src/export/project-file.js", "./src/export/mux/webm.js", "./src/export/mux/mp4.js",
+  "./src/analysis/index.js", "./src/analysis/video.js", "./src/analysis/audio.js", "./src/analysis/track.js",
+  "./src/ai/llm.js", "./src/ai/intent.js", "./src/ai/planner.js", "./src/ai/resolve.js",
+  "./src/ai/templates.js", "./src/ai/tools.js", "./src/ai/captions.js", "./src/ai/refine.js",
+  "./src/ui/widgets.js", "./src/ui/icons.js", "./src/ui/i18n.js", "./src/ui/app.js",
+  "./src/ui/home.js", "./src/ui/auth-screen.js", "./src/ui/toolbar.js", "./src/ui/transport.js",
+  "./src/ui/library.js", "./src/ui/import.js", "./src/ui/preview.js", "./src/ui/mobile.js",
+  "./src/ui/shortcuts.js", "./src/ui/commands.js", "./src/ui/ai-panel.js",
+  "./src/ui/export-dialog.js", "./src/ui/settings.js", "./src/ui/mixer.js", "./src/ui/scopes.js",
+  "./src/ui/inspector/index.js", "./src/ui/inspector/transform.js", "./src/ui/inspector/color.js",
+  "./src/ui/inspector/audio.js", "./src/ui/inspector/text.js", "./src/ui/inspector/fx.js",
+  "./src/ui/inspector/speed.js", "./src/ui/inspector/keyframes.js", "./src/ui/inspector/project.js",
+  "./src/ui/timeline/view.js", "./src/ui/timeline/interact.js", "./src/ui/timeline/heads.js",
+  "./src/ui/timeline/toolbar.js", "./src/ui/timeline/minimap.js", "./src/ui/timeline/snap.js",
+  "./src/ui/timeline/filmstrip.js", "./src/ui/timeline/waveform.js"
+];
+const mods = {};
+for (const p of MODULES) {
+  await step("import " + p.replace("./src/", ""), async () => { mods[p] = await import(p); return ""; });
+}
+
+/* ── 最小の動作 ─────────────────────────────────────────────── */
+const schema = mods["./src/core/schema.js"], storeMod = mods["./src/core/store.js"],
+      evalMod = mods["./src/core/eval.js"], opsMod = mods["./src/core/ops.js"];
+
+let project = null, store = null;
+await step("schema: newProject", () => {
+  project = schema.newProject({ name: "診断" });
+  if (!project || !project.settings || !Array.isArray(project.tracks)) throw new Error("形が違う");
+  return "fps=" + project.settings.fps;
+});
+await step("store: 生成と取消", () => {
+  store = storeMod.createStore(project);
+  const before = JSON.stringify(store.project);
+  const tr = store.dispatch("track.add", { kind: "video" });
+  if (!store.canUndo()) throw new Error("履歴に積まれていない");
+  store.undo();
+  if (JSON.stringify(store.project) !== before) throw new Error("undo で元に戻らない");
+  return "ok";
+});
+await step("ops: clip 追加と分割", () => {
+  const s = storeMod.createStore(schema.newProject({}));
+  const t = s.dispatch("track.add", { kind: "video" });
+  const trackId = (t && (t.id || t.trackId)) || s.project.tracks[0].id;
+  const a = s.dispatch("asset.add", { asset: schema.newAsset({ kind: "video", name: "x.mp4", duration: 10, width: 1920, height: 1080 }) });
+  const assetId = (a && (a.id || a.assetId)) || s.project.assets[0].id;
+  s.dispatch("clip.add", { trackId, clip: schema.newClip("video", { assetId, start: 0, duration: 4, in: 0, out: 4 }) });
+  const clipId = s.project.tracks.find((x) => x.clips.length).clips[0].id;
+  s.dispatch("clip.split", { clipId, t: 2 });
+  const n = s.project.tracks.reduce((m, x) => m + x.clips.length, 0);
+  if (n !== 2) throw new Error("分割後のクリップ数が " + n);
+  return "2 分割できた";
+});
+await step("eval: resolveClip", () => {
+  const clip = schema.newClip("video", { assetId: "a", start: 1, duration: 2, in: 0, out: 2 });
+  const r = evalMod.resolveClip(clip, 1.5, { fps: 30 });
+  if (!r) throw new Error("見えるはずの時刻で null");
+  if (Math.abs(r.localTime - 0.5) > 1e-6) throw new Error("localTime=" + r.localTime);
+  if (evalMod.resolveClip(clip, 5, { fps: 30 })) throw new Error("範囲外で null にならない");
+  return "ok";
+});
+await step("compositor: 1 枚描く", async () => {
+  const cm = mods["./src/engine/compositor.js"];
+  const cv = document.getElementById("cv");
+  const c = cm.createCompositor(cv, { preferGL: true });
+  if (!c) throw new Error("生成できない");
+  const p = schema.newProject({});
+  await c.renderFrame(p, 0, { sources: null, quality: 1 });
+  return "backend=" + c.backend;
+});
+await step("text: 文字を描く", () => {
+  const tm = mods["./src/engine/text.js"];
+  const spec = schema.defaultTextSpec ? schema.defaultTextSpec() : { content: "テスト", style: {}, layout: {}, anim: {} };
+  spec.content = "こんにちは Studio";
+  const cv = tm.renderText(spec, { width: 640, height: 360, time: 0.2, duration: 2, dpr: 1, fps: 30 });
+  if (!cv || !cv.width) throw new Error("canvas が返らない");
+  return cv.width + "x" + cv.height;
+});
+await step("fx/遷移: 一覧", () => {
+  const fx = mods["./src/engine/fx/registry.js"], tr = mods["./src/engine/transitions.js"];
+  const nf = Object.keys(fx.FX_REGISTRY || {}).length, nt = Object.keys(tr.TRANSITIONS || {}).length;
+  if (nf < 20) throw new Error("効果が少ない: " + nf);
+  if (nt < 20) throw new Error("遷移が少ない: " + nt);
+  return "効果 " + nf + " / 遷移 " + nt;
+});
+await step("audio: AudioContext", async () => {
+  const am = mods["./src/engine/audio/graph.js"];
+  const e = am.createAudioEngine({ storage: null });
+  if (!e || !e.ctx) throw new Error("音の土台が作れない");
+  const st = e.ctx.state;
+  if (e.dispose) e.dispose();
+  return "state=" + st;
+});
+await step("persist: 保存庫の往復", async () => {
+  const pm = mods["./src/core/persist.js"];
+  const st = await pm.openStorage();
+  const p = schema.newProject({ name: "保存の試し" });
+  await st.putProject(p);
+  const list = await st.listProjects();
+  const got = await st.loadProject(p.id);
+  if (!got || got.id !== p.id) throw new Error("読み戻せない");
+  await st.deleteProject(p.id);
+  return (st.volatile ? "揮発（IndexedDB 不可）" : "IndexedDB") + " / " + list.length + " 件";
+});
+await step("muxer: webm の先頭", () => {
+  const wm = mods["./src/export/mux/webm.js"];
+  const mx = wm.createWebMMuxer({ video: { codec: "V_VP9", width: 320, height: 180, fps: 30 }, audio: null });
+  for (let i = 0; i < 10; i++) mx.addVideoChunk({ data: new Uint8Array([1, 2, 3, 4]), timestampUs: i * 33333, durationUs: 33333, key: i === 0 });
+  const b = mx.finalizeBytes ? mx.finalizeBytes() : null;
+  if (!b || b[0] !== 0x1A || b[1] !== 0x45 || b[2] !== 0xDF || b[3] !== 0xA3) throw new Error("EBML magic が違う");
+  return b.length + " バイト";
+});
+await step("muxer: mp4 の先頭", () => {
+  const mm = mods["./src/export/mux/mp4.js"];
+  const mx = mm.createMP4Muxer({ video: { codec: "avc1", width: 320, height: 180, fps: 30, description: new Uint8Array([1, 66, 0, 31, 255, 225, 0, 4, 103, 66, 0, 31, 1, 0, 4, 104, 206, 60, 128]) }, audio: null });
+  for (let i = 0; i < 10; i++) mx.addVideoChunk({ data: new Uint8Array([0, 0, 0, 2, 9, 48]), timestampUs: i * 33333, durationUs: 33333, key: i === 0 });
+  const b = mx.finalizeBytes ? mx.finalizeBytes() : null;
+  if (!b) throw new Error("バイト列が返らない");
+  const s = String.fromCharCode(b[4], b[5], b[6], b[7]);
+  if (s !== "ftyp") throw new Error("先頭が ftyp でない: " + s);
+  return b.length + " バイト";
+});
+await step("AI: プロンプトから組み立てる（端末内）", () => {
+  const intent = mods["./src/ai/intent.js"], planner = mods["./src/ai/planner.js"],
+        resolve = mods["./src/ai/resolve.js"];
+  const assets = [
+    schema.newAsset({ kind: "video", name: "a.mp4", duration: 12, width: 1920, height: 1080 }),
+    schema.newAsset({ kind: "video", name: "b.mp4", duration: 8, width: 1920, height: 1080 })
+  ];
+  const it = intent.parseIntentLocal("旅行の動画を30秒のテンポいいVlogにして、テロップ入れて", { assets });
+  const plan = planner.planLocal(it, assets, null);
+  if (!plan || !plan.segments || !plan.segments.length) throw new Error("plan が空");
+  const p = schema.newProject({});
+  p.assets = assets;
+  const out = resolve.resolvePlan(plan, { project: p, assets, beats: null, fps: 30 });
+  if (!out || !out.ops || !out.ops.length) throw new Error("ops が空");
+  const s = storeMod.createStore(p);
+  s.batch("AI 自動編集", (d) => { out.ops.forEach((o) => d(o.type, o.payload)); });
+  const clips = s.project.tracks.reduce((m, x) => m + x.clips.length, 0);
+  if (!clips) throw new Error("クリップが 1 つも置かれていない");
+  const v = schema.validateProject(s.project);
+  if (!v.ok) throw new Error("不整合: " + JSON.stringify(v.errors && v.errors.slice(0, 3)));
+  return clips + " クリップ / " + (out.summary || "");
+});
+await step("書き出し: 使える形式", async () => {
+  const ex = mods["./src/export/exporter.js"];
+  const cap = await ex.capabilities();
+  return "precise=" + !!cap.preciseAvailable + " / recorder=" + ((cap.mediaRecorder || []).length) + " 種";
+});
+await step("UI 部品: 生成", () => {
+  const w = mods["./src/ui/widgets.js"];
+  const s = w.slider({ label: "試し", min: 0, max: 1, step: 0.01, value: 0.5, onInput: () => {} });
+  const el = s && (s.el || s);
+  if (!el || !el.nodeType) throw new Error("slider が DOM を返さない");
+  const t = w.toast("診断中", { ms: 300 });
+  return "ok";
+});
+await step("命令表", () => {
+  const c = mods["./src/ui/commands.js"];
+  const n = (c.COMMANDS || []).length;
+  if (n < 60) throw new Error("命令が少ない: " + n);
+  const found = c.findCommands ? c.findCommands("分割").length : 0;
+  return n + " 個 / 「分割」で " + found + " 件";
+});
+
+/* ── まとめ ─────────────────────────────────────────────────── */
+const ok = results.filter((r) => r.status === "ok").length;
+const ng = results.filter((r) => r.status === "ng").length;
+const sk = results.filter((r) => r.status === "skip").length;
+document.getElementById("sum").innerHTML =
+  '<div><b class="ok">' + ok + '</b> OK</div><div><b class="ng">' + ng + '</b> NG</div>' +
+  '<div><b class="skip">' + sk + '</b> SKIP</div><div><b>' + results.length + '</b> 項目</div>';
+window.__SELFTEST__ = { ok, ng, skip: sk, results };
+document.title = (ng ? "NG " + ng + " — " : "") + "VQ Studio 自己診断";
+</script>
+</body>
+</html>
