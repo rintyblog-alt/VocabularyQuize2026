@@ -203,9 +203,11 @@ test("normalizeGradePrefix: h1 → H1、全角も、知らない形は通す", (
   assert.equal(normalizeGradePrefix(" h1 "), "H1");
   assert.equal(normalizeGradePrefix("Ｈ１"), "H1", "iOS の全角");
   assert.equal(normalizeGradePrefix("H1"), "H1");
+  /* 本体アプリ（repo ルートの index.html）の学年の選択肢は value="OT" なので、
+     "other" や "その他" も **OT に寄せる**のが正しい（OTHER を送るとサーバが弾く）。 */
   assert.equal(normalizeGradePrefix("ot"), "OT", "本体の その他 は OT");
-  assert.equal(normalizeGradePrefix("other"), "OTHER");
-  assert.equal(normalizeGradePrefix("その他"), "OTHER");
+  assert.equal(normalizeGradePrefix("other"), "OT");
+  assert.equal(normalizeGradePrefix("その他"), "OT");
   assert.equal(normalizeGradePrefix(""), "");
   assert.equal(normalizeGradePrefix(null), "");
   assert.equal(normalizeGradePrefix("zz9"), "ZZ9", "知らない形でも通す（サーバが正）");

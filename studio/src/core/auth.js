@@ -71,8 +71,17 @@ export const MIN_PASSWORD_LENGTH = 8;
 export const CODE_LENGTH = 6;
 /** ニックネームの厳しい形（新規登録の画面はこれを求めてよい。既存の名前は通す） */
 export const NICKNAME_STRICT_RE = /^[A-Za-z0-9._-]{2,24}$/;
-/** 学年接頭の形（例 "H1"） */
-export const GRADE_PREFIX_RE = /^[A-Z][0-9]$/;
+/**
+ * 学年接頭の形（例 "H1"）。本体 index.html の選択肢は
+ * `AUTH_GRADE_VALUES = ["J1","J2","J3","H1","H2","H3","OT"]` で、
+ * 「その他」だけが **英字 2 文字の "OT"** なので 別に許す
+ * （`/^[A-Z][0-9]$/` だけにすると その他の人を画面で弾いてしまう）。
+ */
+export const GRADE_PREFIX_RE = /^(?:[A-Z][0-9]|OT)$/;
+
+/** 強度を調べる最大の長さ。貼り付け事故（何 MB もの文字列）で画面が固まらないよう
+    ここで打ち切る。長さの加点は 16 文字で上限なので、切っても score は下がらない */
+const STRENGTH_SCAN_LIMIT = 4096;
 
 /** 強度の呼び名（score 0..4 と同じ並び） */
 const STRENGTH_LABELS = Object.freeze(["とても弱い", "弱い", "ふつう", "強い", "とても強い"]);
@@ -143,17 +152,26 @@ function hasControlChar(s) {
 }
 
 /**
- * 学年接頭を整える。"h1" → "H1"、"Ｈ１" → "H1"、"その他" → "OTHER"。
- * GRADE_PREFIX_RE と "OTHER"（本体は "OT"）を想定するが **知らない形でも通す**
+ * 学年接頭を整える。"h1" → "H1"、"Ｈ１" → "H1"、"その他" → "OT"。
+ * GRADE_PREFIX_RE の形を想定するが **知らない形でも通す**
  * （サーバが正。画面で勝手に弾くと入れない人が出る）。
+ *
+ * CONTRACT-NOTE: 「その他」は **"OT"**。本体 index.html は
+ * `<option value="OT">Other（その他）</option>` と
+ * `AUTH_GRADE_VALUES = new Set(["J1","J2","J3","H1","H2","H3","OT"])` で、
+ * サーバへ渡しているのも "OT" である。身元は（学年接頭 + ニックネーム）なので、
+ * ここで "OTHER" を作るとサーバの会員に一致せず、「ログイン情報が正しくありません」
+ * としか出ない口になる（学年違いは本体でも実際に踏んだ罠）。英語で "other" と
+ * 来た値も "OT" に寄せる。
  * @param {*} s @returns {string}
  */
 export function normalizeGradePrefix(s) {
   if (s == null) return "";
   const raw = toHalfWidth(String(s)).replace(/\s+/g, "").trim();
   if (!raw) return "";
-  if (/^(その他|ほか|他)$/.test(raw)) return "OTHER";
-  return raw.toUpperCase();
+  const up = raw.toUpperCase();
+  if (up === "OTHER" || up === "OTHERS" || /^(その他|ほか|他)$/.test(up)) return "OT";
+  return up;
 }
 
 /**
@@ -167,10 +185,12 @@ export function validateNickname(s) {
   const n = Array.from(value).length;
   let message = "";
   let ok = true;
+  /* 長さを **先に** 見る。見えない文字の走査は 1 文字ずつ数えるので、
+     貼り付け事故（何 MB もの文字列）を先に弾かないと画面が固まる。 */
   if (!n) { ok = false; message = "ログイン ID を入れてください。"; }
-  else if (hasControlChar(value)) { ok = false; message = "使えない文字が入っています。"; }
   else if (n < 2) { ok = false; message = "ログイン ID は 2 文字以上にしてください。"; }
   else if (n > 24) { ok = false; message = "ログイン ID は 24 文字以内にしてください。"; }
+  else if (hasControlChar(value)) { ok = false; message = "使えない文字が入っています。"; }
   return { ok, value, message, strict: NICKNAME_STRICT_RE.test(value) };
 }
 
@@ -261,13 +281,19 @@ function commonHit(s) {
  * @returns {{score:number, label:string, hints:string[], length:number, classes:number}}
  */
 export function passwordStrength(pw) {
-  const s = pw == null ? "" : String(pw);
-  const chars = Array.from(s);
-  const len = chars.length;
+  const raw = pw == null ? "" : String(pw);
+  const all = Array.from(raw);
+  const len = all.length;
   if (len === 0) {
     return { score: 0, label: STRENGTH_LABELS[0], length: 0, classes: 0,
       hints: ["8 文字以上のパスワードを決めてください。"] };
   }
+
+  /* 調べるのは頭 STRENGTH_SCAN_LIMIT 文字だけ。よくある語の探索は
+     語の数 × 文字数なので、何 MB も貼られると画面が固まる（貼り付け事故は在る）。
+     長さの加点は 16 文字で打ち切りなので、切っても score は下がらない。 */
+  const chars = len > STRENGTH_SCAN_LIMIT ? all.slice(0, STRENGTH_SCAN_LIMIT) : all;
+  const s = len > STRENGTH_SCAN_LIMIT ? chars.join("") : raw;
 
   const cls = charClasses(s);
   let points = 0;
@@ -553,8 +579,19 @@ export function createAuth(opts = {}) {
 
   /* ── 通信（全ての口はここを通る） ── */
 
+  /**
+   * 保管に残っている token を使ってよいか。**ゲストを選んだ人の通信に
+   * 本体の token を混ぜない。** guest() は 本体のログインを消さない作りなので、
+   * 「本体はログイン済み・Studio はゲストで試す」が同じ端末で成立する。
+   * そこで Bearer を付けると 本人が選んでいない身元で API を叩くことになる
+   * （書き出し・AI の回数もその人に付く）。
+   */
+  function storedToken() {
+    return state.status === "guest" ? "" : store.get(AUTH_KEYS.token);
+  }
+
   function authHeader() {
-    const t = state.token || store.get(AUTH_KEYS.token);
+    const t = state.token || storedToken();
     return t ? { Authorization: `Bearer ${t}` } : {};
   }
 
@@ -578,7 +615,7 @@ export function createAuth(opts = {}) {
     const headers = { Accept: "application/json" };
     if (o.body != null) headers["Content-Type"] = "application/json";
     if (o.auth) {
-      const t = str(o.token) || state.token || store.get(AUTH_KEYS.token);
+      const t = str(o.token) || state.token || storedToken();
       if (t) headers.Authorization = `Bearer ${t}`;
     }
 
@@ -600,6 +637,34 @@ export function createAuth(opts = {}) {
       }
     }
 
+    /* 後片付け（timer と abort の聞き耳）は **本文を読み終えてから**。
+       headers だけ返って本文が止まる回線は実在する（電波の細い所・途中の proxy）。
+       ここで先に clearTimeout すると res.text() が永遠に返らず、ボタンが回り続ける
+       ＝ timeout を付けた意味が無くなる。呼び出し側の signal も同じ理由で
+       本文の読み取りまで効かせる。 */
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (onAbort) {
+        try { o.signal.removeEventListener("abort", onAbort); } catch (_e) { /* 外せないだけ */ }
+        onAbort = null;
+      }
+    };
+    /** 通信の失敗を 時間切れ / 中止 / 不通 に分ける（利用者へ言うことが正反対） */
+    const netError = (err, httpStatus = 0, message = "") => {
+      if (timedOut) {
+        return new AuthError("時間内に応答がありませんでした。通信が不安定かもしれません。",
+          { code: "TIMEOUT", status: httpStatus, cause: err });
+      }
+      if (o.signal && o.signal.aborted) {
+        return new AuthError("中止しました。", { code: "ABORTED", status: httpStatus, cause: err });
+      }
+      return new AuthError(message || "サーバーへつながりませんでした。通信の状態を確かめてください。",
+        { code: "NETWORK", status: httpStatus, cause: err });
+    };
+
     let res = null;
     try {
       res = await fetchImpl(`${apiBase}${path}`, {
@@ -612,18 +677,18 @@ export function createAuth(opts = {}) {
         cache: "no-store",
       });
     } catch (err) {
-      if (timedOut) throw new AuthError("時間内に応答がありませんでした。通信が不安定かもしれません。", { code: "TIMEOUT", cause: err });
-      if (o.signal && o.signal.aborted) throw new AuthError("中止しました。", { code: "ABORTED", cause: err });
-      throw new AuthError("サーバーへつながりませんでした。通信の状態を確かめてください。", { code: "NETWORK", cause: err });
-    } finally {
-      if (timer) clearTimeout(timer);
-      if (onAbort) { try { o.signal.removeEventListener("abort", onAbort); } catch (_e) { /* 外せないだけ */ } }
+      cleanup();
+      throw netError(err);
     }
 
     const status = Number(res && res.status) || 0;
     let text = "";
-    try { text = await res.text(); } catch (err) {
-      throw new AuthError("応答を読み取れませんでした。", { code: "NETWORK", status, cause: err });
+    try {
+      text = await res.text();
+    } catch (err) {
+      throw netError(err, status, "応答を読み取れませんでした。");
+    } finally {
+      cleanup();
     }
     /** @type {any} */
     let data = {};
@@ -851,9 +916,13 @@ export function createAuth(opts = {}) {
       const challengeId = str(p.challengeId);
       if (!challengeId) throw new AuthError("受付が切れています。最初からやり直してください。", { code: "VALIDATION" });
       const data = await request("/api/auth/register/resend", { method: "POST", body: { challengeId } });
-      /* この口は challengeId を返さない。呼び出し側が同じ受付を続けられるよう
-         渡された challengeId を埋めて Challenge の形を保つ。 */
-      return toChallenge({ challengeId, ...(data && typeof data === "object" ? data : {}) }, "");
+      /* この口は challengeId を返さない（返す実装でも null が来ることが在る）。
+         呼び出し側が同じ受付を続けられるよう、渡された challengeId を **後から**
+         被せる。先に置くと 応答側の null / "" に潰されて BAD_RESPONSE になり、
+         まだ生きている受付を捨てさせてしまう。 */
+      const merged = data && typeof data === "object" ? { ...data } : {};
+      merged.challengeId = str(merged.challengeId) || challengeId;
+      return toChallenge(merged, "");
     },
 
     /**
