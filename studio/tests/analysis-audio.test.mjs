@@ -636,6 +636,96 @@ test("長さ 0・1 標本・NaN 塗れの入力でも落ちず NaN を返さな�
   }
 });
 
+/* ── 12. 一度やらかした所の見張り（検収で見付けた不具合の再発防止）──── */
+
+test("detectBeats: 60..200BPM を半分に化かさない（オクターブ誤り）", () => {
+  // tempoPrior（120 中心）だけで選ぶと 168BPM 以上は必ず半分に化ける。
+  // refineOctave が「裏拍にも同じ高さの山が在るか」を見て直している。
+  for (const bpm of [96, 120, 150, 162, 168, 174, 180, 186, 192, 200]) {
+    const r = detectBeats(mono(clicks(12, bpm, 0.3)));
+    assert.ok(Math.abs(r.bpm - bpm) <= 2, `${bpm}BPM → ${r.bpm}`);
+    assert.ok(Math.abs(r.offset - 0.3) <= 0.04, `${bpm}BPM の offset=${r.offset}`);
+    assert.ok(r.conf > 0.5, `${bpm}BPM の conf=${r.conf}`);
+  }
+  // 逆に「表が強く裏が弱い」素材を倍の速さに化かしてもいけない
+  const kickOnly = cat(...new Array(20).fill(0).map((_v, i) =>
+    i % 2 === 0 ? sine(0.05, 70, 0.9) : zeros(0.55)));   // 2 秒に 1 発 = 100BPM 相当の間隔
+  const k = detectBeats(mono(kickOnly));
+  assert.ok(!(k.conf > 0.5) || k.bpm <= 140, `裏の無い素材が倍速になった ${k.bpm}`);
+});
+
+test("detectBeats: 打撃の無い持続和音は拍を返さない（conf の門より手前で切る）", () => {
+  // 和音そのものは動かないのに、包絡のわずかな揺れを emphasize が 0..1 へ
+  // 引き伸ばすと conf 0.6 で 96BPM を幻覚していた（呼ぶ側の conf>=0.3 では止まらない）
+  const chord = (() => {
+    const a = sine(8, 261, 1), b = sine(8, 329, 1), c = sine(8, 392, 1);
+    const out = new Float32Array(a.length);
+    for (let i = 0; i < out.length; i++) out[i] = (a[i] + b[i] + c[i]) / 3;
+    return out;
+  })();
+  const r = detectBeats(mono(chord));
+  assert.deepEqual(r, { bpm: 0, offset: 0, times: [], downbeats: [], conf: 0 }, `持続和音で ${r.bpm}BPM を出した`);
+  // 打撃が在る素材は今までどおり通る（門で切り過ぎていない）
+  assert.ok(detectBeats(mono(clicks(12, 120, 0.3))).conf > 0.5);
+});
+
+test("時刻は hop から決まる実効 hz で数える（sampleRate が割り切れない素材）", () => {
+  // 22050Hz で 100Hz を頼むと hop 221 = 99.77Hz。申告どおりの 100 で秒に直すと
+  // 50 秒の所で 110ms ずれていた（無音カットが 1 音節ぶん外れる）
+  for (const sr of [22050, 11025, 44100]) {
+    const x = cat(sine(50, 440, 0.8, sr), zeros(2, sr), sine(8, 440, 0.8, sr));
+    const sp = detectSilence(mono(x, sr), { pad: 0, relative: false });
+    assert.equal(sp.length, 1, `sr=${sr} の無音が 1 つでない`);
+    assert.ok(Math.abs(sp[0].start - 50) <= 0.05, `sr=${sr} の無音の頭 ${sp[0].start}`);
+    assert.ok(Math.abs(sp[0].end - 52) <= 0.05, `sr=${sr} の無音の尻 ${sp[0].end}`);
+    // loudness も「本当の刻み」を申告する（values.length/hz が尺に合う）
+    const L = loudnessCurve(mono(x, sr), { hz: 20 });
+    const hop = Math.max(1, Math.round(sr / 20));
+    assert.ok(Math.abs(L.hz - sr / hop) < 1e-9, `sr=${sr} の loudness.hz=${L.hz}`);
+    assert.ok(Math.abs(L.values.length / L.hz - 60) < 0.1, `sr=${sr} の尺 ${L.values.length / L.hz}`);
+  }
+});
+
+test("loudnessCurve / kWeight は渡した素材を書き換えない", () => {
+  // loudnessCurve は写しの上で その場で重み付けする。写す前の物に掛けると
+  // 呼ぶ側の AudioBuffer が静かに壊れる
+  const raw = Float32Array.from([0.5, -0.5, 0.25, -0.25, 0.75, -0.75]);
+  const before = Array.from(raw);
+  loudnessCurve(raw, { sampleRate: SR });
+  assert.deepEqual(Array.from(raw), before, "素の Float32Array が書き換わった");
+  const ch = sine(0.2, 440, 0.7);
+  const snap = Array.from(ch);
+  loudnessCurve(mono(ch));
+  assert.deepEqual(Array.from(ch), snap, "AudioBuffer の channel が書き換わった");
+  const kin = Float32Array.from([0.5, -0.5, 0.25]);
+  const kSnap = Array.from(kin);
+  const kOut = kWeight(kin, SR);
+  assert.deepEqual(Array.from(kin), kSnap, "kWeight が引数を書き換えた");
+  assert.notEqual(kOut, kin, "kWeight は新しい列を返す");
+});
+
+test("energyBands: 帯域の境目がちょうど bin に乗っても二重に数えない", () => {
+  // binHz = 48000/2048 = 23.4375 なので lowHz 375 は bin 16 にぴったり乗る。
+  // 上端を含めて数えていた時は low と mid が同じ bin を数え、両方 1.0 になった
+  const b = energyBands(mono(sine(2, 375, 0.8)), { hz: 10, fftSize: 2048, lowHz: 375, highHz: 4000 });
+  const i = b.count >> 1;
+  assert.ok(b.mid[i] > 0.5, `375Hz が mid に出ない ${b.mid[i]}`);
+  assert.ok(b.low[i] < 0.5, `境目の bin を low にも数えている ${b.low[i]}`);
+  for (const k of ["low", "mid", "high"]) inRange(b[k], 0, 1, k);
+});
+
+test("hannWindow / decimateMono: 外へ渡す物で壊れない", () => {
+  // 表そのものを返していた頃は、呼ぶ側が書き換えると以降の FFT が全部狂った
+  const w = hannWindow(8);
+  w[4] = 999;
+  assert.ok(hannWindow(8)[4] < 1.001, "窓の表が書き換えられている");
+  // 素の配列 + factor 1 で長さ 0 を返して中身を捨てていた
+  assert.deepEqual(Array.from(decimateMono([1, 2, 3, 4], 1)), [1, 2, 3, 4]);
+  assert.deepEqual(Array.from(decimateMono([1, 1, 1, 1, -1, -1, -1, -1], 4)), [1, -1]);
+  assert.equal(decimateMono(null, 1).length, 0);
+  assert.equal(decimateMono([], 4).length, 0);
+});
+
 test("opts が壊れていても既定へ落ちる", () => {
   const x = mono(cat(sine(0.5, 440, 0.8), zeros(0.5), sine(0.5, 440, 0.8)));
   assert.ok(rmsCurve(toMono(x), SR, { hz: NaN }).length > 0);
