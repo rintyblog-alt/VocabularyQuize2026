@@ -391,7 +391,9 @@ export function makeCurveEditor(c) {
   let pts = normalizeCurve(c.points);
   let color = c.color || COL.ink();
   let drag = -1;
-  let lastTap = { at: 0, i: -1 };
+  /* 点の削除は「動かさずに離した 2 回」（ドラッグ直後の 1 回では消さない） */
+  let gest = { at: 0, x: 0, y: 0, moved: false, i: -1 };
+  let lastTap = null;
   const PAD = 10;
 
   const toPx = (box, p) => ({ x: PAD + p[0] * (box.w - PAD * 2), y: PAD + (1 - p[1]) * (box.h - PAD * 2) });
@@ -476,16 +478,16 @@ export function makeCurveEditor(c) {
     const p = localPoint(canvas, ev);
     let i = nearest(box, p.x, p.y);
     const now = Date.now();
-    if (i > 0 && i < pts.length - 1 && lastTap.i === i && now - lastTap.at < 320) {
-      /* ダブルタップ = その点を消す */
+    if (i > 0 && i < pts.length - 1 && lastTap && lastTap.i === i && now - lastTap.at < 320) {
+      /* 2 回目の軽い触り = その点を消す */
       pts.splice(i, 1);
-      lastTap = { at: 0, i: -1 };
+      lastTap = null;
       paint();
       c.onInput(pts.map((q) => q.slice()));
       c.onEnd();
       return;
     }
-    lastTap = { at: now, i };
+    gest = { at: now, x: p.x, y: p.y, moved: false, i };
     if (i < 0) {
       const u = toUnit(box, p.x, p.y);
       pts.push(u);
@@ -508,6 +510,7 @@ export function makeCurveEditor(c) {
     if (drag < 0) return;
     const box = boxNow();
     const p = localPoint(canvas, ev);
+    if (Math.hypot(p.x - gest.x, p.y - gest.y) > 8) gest.moved = true;
     const u = toUnit(box, p.x, p.y);
     const first = drag === 0;
     const last = drag === pts.length - 1;
@@ -519,6 +522,8 @@ export function makeCurveEditor(c) {
   };
   const onUp = () => {
     if (drag < 0) return;
+    const now = Date.now();
+    lastTap = !gest.moved && now - gest.at < 300 ? { at: now, i: drag } : null;
     drag = -1;
     paint();
     c.onEnd();
@@ -619,7 +624,10 @@ export function makeWheel(c) {
   let triple = [0, 0, 0];
   let mixed = false;
   let mode = "";                           // "disc" | "ring"
-  let lastTap = 0;
+  /* ダブルタップの判定。**動かさずに離した 2 回**だけを数える
+     （動かして離した直後の 1 回を数えると、触る度に中立へ戻って使えない） */
+  let gest = { at: 0, x: 0, y: 0, moved: false };
+  let lastTap = null;
 
   function paint() {
     const box = fitCanvas(canvas, 120, Math.max(96, Math.round(canvas.clientWidth || 120)));
@@ -718,14 +726,7 @@ export function makeWheel(c) {
     const R = Math.min(w, h) / 2;
     const ringW = Math.max(7, R * 0.16);
     const dist = Math.hypot(p.x - w / 2, p.y - h / 2);
-    const now = Date.now();
-    if (now - lastTap < 320) {
-      /* ダブルタップ = 中立へ */
-      lastTap = 0;
-      c.onReset();
-      return;
-    }
-    lastTap = now;
+    gest = { at: Date.now(), x: p.x, y: p.y, moved: false };
     mode = dist > R - ringW - 3 ? "ring" : "disc";
     try { canvas.setPointerCapture(ev.pointerId); } catch (e) { /* noop */ }
     ev.preventDefault();
@@ -736,13 +737,25 @@ export function makeWheel(c) {
   };
   const onMove = (ev) => {
     if (!mode) return;
-    triple = fromPoint(localPoint(canvas, ev));
+    const p = localPoint(canvas, ev);
+    if (Math.hypot(p.x - gest.x, p.y - gest.y) > 8) gest.moved = true;
+    triple = fromPoint(p);
     paint();
     c.onInput(triple.slice());
   };
   const onUp = () => {
     if (!mode) return;
     mode = "";
+    const now = Date.now();
+    const clean = !gest.moved && now - gest.at < 300;
+    if (clean && lastTap && now - lastTap.at < 320
+        && Math.hypot(gest.x - lastTap.x, gest.y - lastTap.y) < 24) {
+      lastTap = null;
+      c.onEnd();                           // 触った分を先に確定してから中立へ（取消 2 回で戻る）
+      c.onReset();
+      return;
+    }
+    lastTap = clean ? { at: now, x: gest.x, y: gest.y } : null;
     c.onEnd();
   };
   canvas.addEventListener("pointerdown", onDown);
@@ -827,6 +840,18 @@ export function createColorPanel(o) {
   root.setAttribute("data-test", "insp-color");
   /** dispose でまとめて外す */
   const cleanups = [];
+  /** 少し待ってからやる事（dispose 後に走らせない。ここを忘れると null を触る） */
+  const timers = new Set();
+  function later(fn, ms) {
+    const t = setTimeout(() => {
+      timers.delete(t);
+      if (dead) return;
+      try { fn(); } catch (e) { warn("color", "遅延処理で失敗", e); }
+    }, ms);
+    timers.add(t);
+    return t;
+  }
+  cleanups.push(() => { for (const t of timers) clearTimeout(t); timers.clear(); });
   const wheelParts = [];
   let curve = null;
   let scopes = null;
@@ -1574,7 +1599,7 @@ export function createColorPanel(o) {
       }
       cmp.timer = setInterval(() => renderProject(p), 150);
     }
-    if (scopes && typeof scopes.refresh === "function") setTimeout(() => { if (cmp.held) scopes.refresh(); }, 40);
+    later(() => { if (cmp.held && scopes && typeof scopes.refresh === "function") scopes.refresh(); }, 40);
   }
   function cmpEnd() {
     if (!cmp.held) return;
@@ -1586,7 +1611,7 @@ export function createColorPanel(o) {
     if (cmp.mode === "bypass2") { try { compositor.setColorBypass(false); } catch (e) { /* noop */ } }
     cmp.mode = "";
     renderProject(store.project);
-    if (scopes && typeof scopes.refresh === "function") setTimeout(() => scopes.refresh(), 40);
+    later(() => { if (scopes && typeof scopes.refresh === "function") scopes.refresh(); }, 40);
   }
   cmpBtn.addEventListener("pointerdown", (ev) => {
     ev.preventDefault();

@@ -518,3 +518,576 @@ const TR_ALIAS = Object.freeze({
 
 /** blend 名 → 固定機能で出せるか / シェーダの番号 */
 const BLEND_SHADER = Object.freeze({ lighten: 1, darken: 2, difference: 3, overlay: 4, softlight: 5 });
+
+/* ══ §C 小さな GL 層（プログラム / FBO / テクスチャ / 行列）════════ */
+
+/** 文脈の属性。preserveDrawingBuffer は「書き出しで読める」ための保険 */
+const GL_ATTRS = Object.freeze({
+  alpha: false, depth: false, stencil: false, antialias: false,
+  premultipliedAlpha: false, preserveDrawingBuffer: true,
+  powerPreference: "high-performance", failIfMajorPerformanceCaveat: false
+});
+
+/** マスク種別 → シェーダの番号（MASK_GLSL と合わせる） */
+const MASK_TYPE_N = Object.freeze({ rect: 1, ellipse: 2, polygon: 3, linear: 4, radial: 5 });
+
+/** 何も無い層の代わりに使う 1x1 透明。遷移の片側が無い時に要る */
+function makeEmptyTex(gl) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+  texParams(gl);
+  return t;
+}
+function texParams(gl) {
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+
+/** 文脈を取る（gl/context.js に任せられるなら任せる） */
+function getGL(canvas, preferGL) {
+  if (!preferGL) return null;
+  const mk = pickFn(GLCTX, ["createGLContext", "createContext", "createGL", "makeContext", "getGL"]);
+  if (mk) {
+    try {
+      const r = mk(canvas, GL_ATTRS);
+      const gl = r && (r.gl || (r.drawingBufferWidth !== undefined ? r : null));
+      if (gl && typeof gl.createProgram === "function") return gl;
+    } catch (e) { L.warn("gl/context.js が文脈を作れませんでした（自分で作ります）", e); }
+  }
+  try { return canvas.getContext("webgl2", GL_ATTRS) || null; }
+  catch (e) { L.warn("webgl2 を作れません", e); return null; }
+}
+
+function compileShader(gl, type, src, tag) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    const info = String(gl.getShaderInfoLog(sh) || "").slice(0, 400);
+    gl.deleteShader(sh);
+    throw new Error("シェーダを組めません（" + tag + "）: " + info);
+  }
+  return sh;
+}
+
+/**
+ * プログラムを 1 本作る。uniform は **実物を数えて**型ごとに覚える
+ * （fx が勝手に足した uFx_* も これで型どおりに渡せる）。
+ */
+function makeProgram(gl, vsSrc, fsSrc, tag) {
+  const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc, tag + ":vs");
+  let fs = null;
+  try { fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSrc, tag + ":fs"); }
+  catch (e) { gl.deleteShader(vs); throw e; }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.bindAttribLocation(prog, 0, "aPos");
+  gl.linkProgram(prog);
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    const info = String(gl.getProgramInfoLog(prog) || "").slice(0, 400);
+    gl.deleteProgram(prog);
+    throw new Error("シェーダを繋げません（" + tag + "）: " + info);
+  }
+  const u = new Map();
+  const n = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS) || 0;
+  for (let i = 0; i < n; i++) {
+    const info = gl.getActiveUniform(prog, i);
+    if (!info) continue;
+    const loc = gl.getUniformLocation(prog, info.name);
+    if (!loc) continue;
+    u.set(String(info.name).replace(/\[\d+\]$/, ""), { loc, type: info.type, size: info.size });
+  }
+  return { prog, u, tag };
+}
+
+/** 値を数の並びへ（#rrggbb も読む。足りない分は 0 で埋める） */
+function flatten(v, n) {
+  if (typeof v === "string") {
+    const c = hexToRgba(v);
+    if (c) return n === 4 ? c : [c[0], c[1], c[2]].slice(0, n);
+    return new Array(n).fill(0);
+  }
+  if (typeof v === "number") return new Array(n).fill(finite(v, 0));
+  if (typeof v === "boolean") return new Array(n).fill(v ? 1 : 0);
+  if (v && (Array.isArray(v) || v.length !== undefined)) {
+    const out = [];
+    for (let i = 0; i < v.length; i++) {
+      const x = v[i];
+      if (Array.isArray(x)) { for (const y of x) out.push(finite(y, 0)); }
+      else out.push(finite(x, 0));
+    }
+    while (out.length % n !== 0 || out.length === 0) out.push(0);
+    return out;
+  }
+  return new Array(n).fill(0);
+}
+function num1(v) {
+  if (typeof v === "number") return finite(v, 0);
+  if (typeof v === "boolean") return v ? 1 : 0;
+  if (Array.isArray(v)) return finite(v[0], 0);
+  return 0;
+}
+
+/** uniform を型どおりに渡す。無い名前は黙って捨てる（fx の任意 uniform 用） */
+function setUniform(gl, p, name, v) {
+  const e = p.u.get(name);
+  if (!e || v === undefined || v === null) return false;
+  const T = e.type;
+  if (T === gl.FLOAT) {
+    if (e.size > 1) gl.uniform1fv(e.loc, flatten(v, 1));
+    else gl.uniform1f(e.loc, num1(v));
+  } else if (T === gl.INT || T === gl.BOOL || T === gl.SAMPLER_2D ||
+             T === gl.SAMPLER_CUBE || T === gl.UNSIGNED_INT) {
+    if (e.size > 1) gl.uniform1iv(e.loc, flatten(v, 1).map((x) => Math.round(x)));
+    else gl.uniform1i(e.loc, Math.round(num1(v)));
+  } else if (T === gl.FLOAT_VEC2) { gl.uniform2fv(e.loc, flatten(v, 2)); }
+  else if (T === gl.FLOAT_VEC3) { gl.uniform3fv(e.loc, flatten(v, 3)); }
+  else if (T === gl.FLOAT_VEC4) { gl.uniform4fv(e.loc, flatten(v, 4)); }
+  else if (T === gl.INT_VEC2 || T === gl.BOOL_VEC2) { gl.uniform2iv(e.loc, flatten(v, 2).map((x) => Math.round(x))); }
+  else if (T === gl.INT_VEC3 || T === gl.BOOL_VEC3) { gl.uniform3iv(e.loc, flatten(v, 3).map((x) => Math.round(x))); }
+  else if (T === gl.INT_VEC4 || T === gl.BOOL_VEC4) { gl.uniform4iv(e.loc, flatten(v, 4).map((x) => Math.round(x))); }
+  else if (T === gl.FLOAT_MAT3) { gl.uniformMatrix3fv(e.loc, false, flatten(v, 9)); }
+  else if (T === gl.FLOAT_MAT4) { gl.uniformMatrix4fv(e.loc, false, flatten(v, 16)); }
+  else return false;
+  return true;
+}
+
+/**
+ * 単位四角形（0..1）を「箱」へ写す 3x3（列優先）。
+ * flipY のときだけ y を反転する（= canvas へ出す最後の 1 回）。§ 触るときの注意
+ */
+export function modelMatrix(box, tw, th, flipY) {
+  const c = Math.cos(finite(box.rot, 0)), s = Math.sin(finite(box.rot, 0));
+  const w = finite(box.w, tw), h = finite(box.h, th);
+  const ox = finite(box.cx, tw / 2) - w / 2, oy = finite(box.cy, th / 2) - h / 2;
+  const px = finite(box.px, finite(box.cx, tw / 2)), py = finite(box.py, finite(box.cy, th / 2));
+  const ax = w * c, bx = -h * s, tx = c * (ox - px) - s * (oy - py) + px;
+  const ay = w * s, by = h * c, ty = s * (ox - px) + c * (oy - py) + py;
+  const sx = 2 / Math.max(1, tw), sy = (flipY ? -2 : 2) / Math.max(1, th);
+  return new Float32Array([
+    ax * sx, ay * sy, 0,
+    bx * sx, by * sy, 0,
+    tx * sx - 1, ty * sy + (flipY ? 1 : -1), 1
+  ]);
+}
+/** 描き先いっぱいの箱 */
+export function fullBox(w, h) {
+  return { w, h, cx: w / 2, cy: h / 2, px: w / 2, py: h / 2, rot: 0, flipH: false, flipV: false };
+}
+
+/** FBO の貸し出し箱（大きさが同じ物を使い回す。毎フレーム作らない） */
+function makeFboPool(gl) {
+  let idle = [];
+  let made = 0;
+  function create(w, h) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    texParams(gl);
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (ok !== gl.FRAMEBUFFER_COMPLETE) {
+      try { gl.deleteFramebuffer(fb); gl.deleteTexture(tex); } catch (_e) { /* noop */ }
+      throw new Error("描き場（FBO " + w + "x" + h + "）を作れません: 0x" + ok.toString(16));
+    }
+    made++;
+    return { w, h, tex, fb, free: false };
+  }
+  return {
+    acquire(w, h) {
+      const W = Math.max(1, Math.round(w)), H = Math.max(1, Math.round(h));
+      for (let i = 0; i < idle.length; i++) {
+        if (idle[i].w === W && idle[i].h === H) {
+          const f = idle.splice(i, 1)[0];
+          f.free = false;
+          return f;
+        }
+      }
+      return create(W, H);
+    },
+    release(f) {
+      if (!f || f.free) return;
+      f.free = true;
+      idle.push(f);
+    },
+    /** 余った器を少しだけ捨てる（解像度を変えた後に溜まるのを防ぐ） */
+    sweep(keep) {
+      const k = Math.max(4, finite(keep, 8));
+      while (idle.length > k) {
+        const f = idle.shift();
+        try { gl.deleteFramebuffer(f.fb); gl.deleteTexture(f.tex); } catch (_e) { /* noop */ }
+      }
+    },
+    forget() { idle = []; },
+    disposeAll() {
+      for (const f of idle) {
+        try { gl.deleteFramebuffer(f.fb); gl.deleteTexture(f.tex); } catch (_e) { /* noop */ }
+      }
+      idle = [];
+    },
+    stats() { return { idle: idle.length, made }; }
+  };
+}
+
+/* ══ §D 合成器の本体 ═══════════════════════════════════════════════ */
+
+/** 2d へ落ちた時に「出せなくなった物」として申告する名前 */
+const MISSING_ON_2D = Object.freeze(["chroma", "fx", "mask.feather", "grade.curves", "grade.wheels", "grade.lut"]);
+/** 調整レイヤー用の素の transform */
+const IDENT_TRANSFORM = Object.freeze({
+  x: 0, y: 0, scale: 1, scaleX: 1, scaleY: 1, rotate: 0, rotateDeg: 0,
+  anchorX: 0.5, anchorY: 0.5, flipH: false, flipV: false,
+  crop: Object.freeze({ l: 0, t: 0, r: 0, b: 0, w: 1, h: 1 })
+});
+
+const nowMs = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+
+/**
+ * 合成器を作る（契約書 §4）。WebGL2 が使えなければ そのまま 2d の互換品を返す。
+ * @param {HTMLCanvasElement} canvas
+ * @param {{preferGL?:boolean}} [options]
+ * @returns {Object} Compositor
+ */
+export function createCompositor(canvas, options) {
+  if (!canvas) throw new Error("createCompositor: canvas が要ります");
+  const o = options || {};
+  const preferGL = o.preferGL !== false;
+  const gl = getGL(canvas, preferGL);
+  if (!gl) {
+    L.warn("WebGL2 が使えないので 2d の合成器で描きます");
+    return createCompositor2D(canvas, {
+      reason: preferGL ? "WebGL2 が使えません" : "preferGL:false",
+      missing: MISSING_ON_2D.slice()
+    });
+  }
+
+  /* ── 状態 ─────────────────────────────────────────────────────── */
+  let fb2d = null;                       // 2d へ落ちた後の代役
+  let lost = false, lostAt = 0, lostCount = 0, hardFails = 0;
+  let pool = null, vao = null, quadBuf = null, emptyTex = null;
+  let texCache = new WeakMap();          // 素材の要素 → {tex,w,h,once}
+  const canvasRegs = new Map();          // 文字/図形の clipId → {key,tex,w,h}
+  const curves = new Map();              // カーブの鍵 → {tex}
+  const luts = new Map();                // LUT の id → {tex,size} | null
+  const progs = new Map();
+  let progRev = -1;
+  const missing = new Set(), warned = new Set(), warnings = [];
+  const maxTex = Math.max(2048, finite(gl.getParameter(gl.MAX_TEXTURE_SIZE), 4096));
+  const st = {
+    ms: 0, avg: 0, frames: 0, layers: 0, draws: 0, q: 1, autoQ: 1,
+    slow: 0, fast: 0, auto: true, texUploads: 0
+  };
+
+  function warnOnce(key, ...args) {
+    if (warned.has(key)) return;
+    warned.add(key);
+    if (warnings.length < 60) warnings.push(key);
+    L.warn(key, ...args);
+  }
+
+  /* ── 起こす / 片付ける ────────────────────────────────────────── */
+  function init() {
+    pool = makeFboPool(gl);
+    quadBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+    vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+    emptyTex = makeEmptyTex(gl);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.enable(gl.BLEND);
+    blendNormal();
+    gl.clearColor(0, 0, 0, 1);
+  }
+  function dropGpuState() {
+    progs.clear();
+    curves.clear();
+    luts.clear();
+    canvasRegs.clear();
+    texCache = new WeakMap();
+    if (pool) pool.forget();
+    progRev = -1;
+    vao = quadBuf = emptyTex = null;
+  }
+
+  function onLost(ev) {
+    try { ev.preventDefault(); } catch (_e) { /* noop */ }
+    lost = true; lostCount++; lostAt = nowMs();
+    dropGpuState();
+    missing.add("webgl(文脈喪失)");
+    warnOnce("webgl.lost", "WebGL の文脈を失いました（" + lostCount + " 回目）");
+    if (lostCount >= 3) degrade("WebGL の文脈を 3 回失いました");
+  }
+  function onRestored() {
+    if (fb2d) return;
+    try {
+      init();
+      lost = false; lostAt = 0;
+      missing.delete("webgl(文脈喪失)");
+      L.log("WebGL の文脈が戻りました");
+    } catch (e) { degrade("文脈が戻っても作り直せませんでした: " + (e && e.message)); }
+  }
+  if (typeof canvas.addEventListener === "function") {
+    canvas.addEventListener("webglcontextlost", onLost, false);
+    canvas.addEventListener("webglcontextrestored", onRestored, false);
+  }
+
+  /**
+   * 2d の互換品へ移る。canvas 1 枚に文脈は 1 種類しか作れないので、
+   * DOM に居るなら **同じ属性の canvas を差し替える**（居ないなら内部の 1 枚）。
+   * 差し替えると 呼び側が持っている参照は古くなるので `compositor.canvas` を見る事。
+   */
+  function degrade(reason) {
+    if (fb2d) return fb2d;
+    let target = null;
+    try {
+      if (canvas.parentNode && typeof document !== "undefined" && document.createElement) {
+        const repl = document.createElement("canvas");
+        repl.width = Math.max(2, canvas.width || 2);
+        repl.height = Math.max(2, canvas.height || 2);
+        if (canvas.id) repl.id = canvas.id;
+        if (canvas.className) repl.className = canvas.className;
+        for (const a of ["style", "data-test", "aria-label", "role", "width", "height"]) {
+          try { if (canvas.getAttribute && canvas.getAttribute(a) !== null) repl.setAttribute(a, canvas.getAttribute(a)); }
+          catch (_e) { /* noop */ }
+        }
+        canvas.parentNode.insertBefore(repl, canvas);
+        canvas.parentNode.removeChild(canvas);
+        target = repl;
+      }
+    } catch (e) { L.warn("canvas を差し替えられませんでした", e); target = null; }
+    if (!target) {
+      try { target = makeCanvas(Math.max(2, canvas.width || 2), Math.max(2, canvas.height || 2)); }
+      catch (e) { L.error("2d へも移れません", e); return null; }
+      missing.add("blit(canvas 差し替え不可)");
+    }
+    const list = MISSING_ON_2D.concat(Array.from(missing));
+    try { fb2d = createCompositor2D(target, { reason: "webgl → 2d: " + reason, missing: list }); }
+    catch (e) { L.error("2d の合成器も作れません", e); return null; }
+    try {
+      fb2d.setRegistries(pickObj(FXMOD, ["FX_REGISTRY", "REGISTRY", "FX"]),
+        pickObj(TRMOD, ["TRANSITIONS", "REGISTRY"]));
+    } catch (_e) { /* 無くても描ける */ }
+    L.warn("2d の合成器へ移りました: " + reason);
+    try { disposeGL(); } catch (_e) { /* noop */ }
+    return fb2d;
+  }
+
+  function disposeGL() {
+    for (const p of progs.values()) { try { gl.deleteProgram(p.prog); } catch (_e) { /* noop */ } }
+    progs.clear();
+    for (const c of curves.values()) { try { gl.deleteTexture(c.tex); } catch (_e) { /* noop */ } }
+    curves.clear();
+    for (const e of canvasRegs.values()) { try { gl.deleteTexture(e.tex); } catch (_e) { /* noop */ } }
+    canvasRegs.clear();
+    luts.clear();
+    if (pool) pool.disposeAll();
+    try { if (vao) gl.deleteVertexArray(vao); } catch (_e) { /* noop */ }
+    try { if (quadBuf) gl.deleteBuffer(quadBuf); } catch (_e) { /* noop */ }
+    try { if (emptyTex) gl.deleteTexture(emptyTex); } catch (_e) { /* noop */ }
+    vao = quadBuf = emptyTex = null;
+    texCache = new WeakMap();
+  }
+
+  /* ── 描く道具 ─────────────────────────────────────────────────── */
+  function blendNormal() {
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);      // 事前乗算どうしの重ね
+  }
+  function blendFor(mode) {
+    gl.blendEquation(gl.FUNC_ADD);
+    if (mode === "add") gl.blendFunc(gl.ONE, gl.ONE);
+    else if (mode === "screen") gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR);
+    else if (mode === "multiply") gl.blendFuncSeparate(gl.DST_COLOR, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    else blendNormal();
+  }
+  function bind(target, w, h) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fb : null);
+    gl.viewport(0, 0, Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+  }
+  function clearTo(r, g, b, a) {
+    gl.clearColor(r, g, b, a);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+  function draw(p, uniforms, texes) {
+    gl.useProgram(p.prog);
+    gl.bindVertexArray(vao);
+    if (texes) {
+      for (let i = 0; i < texes.length; i++) {
+        const unit = texes[i][0];
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, texes[i][1] || emptyTex);
+      }
+    }
+    for (const k in uniforms) setUniform(gl, p, k, uniforms[k]);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    st.draws++;
+  }
+  /** 共通 uniform の下敷き（単位の割当は規約どおり固定） */
+  function baseU(w, h, texW, texH, time) {
+    return {
+      uTex: 0, uTexB: 1, uLut: 2, uMask: 3, uCurve: 4,
+      uRes: [w, h], uTexRes: [texW, texH], uTime: finite(time, 0),
+      uOpacity: 1, uP: 0, uFlip: [0, 0], uModel: modelMatrix(fullBox(w, h), w, h, false)
+    };
+  }
+
+  /* ── プログラム（隣が読めたら組み直す）─────────────────────── */
+  function vsSrc() { return pickStr(SH, ["VS_QUAD", "VS", "VERT"]) || VS_QUAD_DEFAULT; }
+  function gradeSrc() { return pickStr(SH, ["GRADE_GLSL", "GRADE_SRC", "GRADE"]) || GRADE_GLSL_DEFAULT; }
+
+  /** shaders.js の builder を試し、駄目なら自前の既定を使う */
+  function buildFs(kind, inject) {
+    const fn = pickFn(SH, kind === "layer" ? ["fsLayer"] : kind === "effect" ? ["fsEffect"] : ["fsTransition"]);
+    if (fn) {
+      const opt = { fx: inject, transition: inject, glsl: inject, grade: gradeSrc(), kind };
+      for (const args of [[opt], [inject], [inject, gradeSrc()]]) {
+        try {
+          const s = fn.apply(null, args);
+          if (typeof s === "string" && s.indexOf("#version") === 0) return s;
+        } catch (_e) { /* 次の呼び方を試す */ }
+      }
+      warnOnce("shaders." + kind, "shaders.js の " + kind + " を呼べないので既定のシェーダを使います");
+    }
+    const str = pickStr(SH, kind === "layer" ? ["FS_LAYER"] : kind === "effect" ? ["FS_EFFECT"] : ["FS_TRANSITION"]);
+    if (str && str.indexOf("#version") === 0) {
+      const ph = ["//__FX__", "/*__FX__*/", "//__INJECT__", "/*FX*/"].find((x) => str.indexOf(x) >= 0);
+      if (ph) return str.replace(ph, inject || FX_IDENTITY);
+      if (!inject) return str;
+    }
+    if (kind === "layer") return fsLayerDefault(inject, gradeSrc());
+    if (kind === "effect") return fsEffectDefault(inject);
+    return fsTransitionDefault(inject);
+  }
+
+  function prog(key, make) {
+    if (progRev !== siblingRev) {
+      for (const p of progs.values()) { try { gl.deleteProgram(p.prog); } catch (_e) { /* noop */ } }
+      progs.clear();
+      progRev = siblingRev;
+    }
+    let p = progs.get(key);
+    if (p) return p;
+    p = make();
+    progs.set(key, p);
+    return p;
+  }
+  const pDraw = () => prog("draw", () => makeProgram(gl, vsSrc(), FS_DRAW, "draw"));
+  const pBlend = () => prog("blend", () => makeProgram(gl, vsSrc(), FS_BLEND, "blend"));
+  const pBlit = () => prog("blit", () => makeProgram(gl, vsSrc(), FS_BLIT, "blit"));
+  const pBlur = () => prog("blur", () => makeProgram(gl, vsSrc(), FS_BLUR, "blur"));
+  const pFill = () => prog("fill", () => makeProgram(gl, vsSrc(), FS_FILL, "fill"));
+
+  /* ── 効果 / 遷移の GLSL を取る ────────────────────────────────── */
+  function fxSource(f) {
+    const type = String((f && f.type) || "");
+    if (!type) return null;
+    const reg = pickObj(FXMOD, ["FX_REGISTRY", "REGISTRY", "FX"]);
+    const e = reg ? reg[type] : null;
+    if (!e) {
+      missing.add("fx." + type);
+      warnOnce("fx:" + type, "効果 " + type + " が FX_REGISTRY に在りません");
+      return null;
+    }
+    let g = e.glsl || e.frag || e.fs || e.shader || e.code || e.fxApply || e.gl || e.webgl;
+    if (typeof g === "function") {
+      try { g = g((f && f.params) || {}, { type }); }
+      catch (err) { warnOnce("fxglsl:" + type, err); g = null; }
+    }
+    if (typeof g !== "string" || g.indexOf("fxApply") < 0) {
+      missing.add("fx." + type);
+      warnOnce("fxglsl2:" + type, "効果 " + type + " が fxApply を出していません");
+      return null;
+    }
+    return { src: g, key: type + "#" + hash(g) };
+  }
+  function trSource(type) {
+    const t = String(type || "crossfade");
+    const reg = pickObj(TRMOD, ["TRANSITIONS", "REGISTRY"]);
+    const e = reg ? reg[t] : null;
+    let g = e && (e.glsl || e.frag || e.fs || e.shader || e.code || e.trApply || e.gl);
+    if (typeof g === "function") {
+      try { g = g((e && e.params) || {}, { type: t }); } catch (err) { warnOnce("trglsl:" + t, err); g = null; }
+    }
+    if (typeof g === "string" && g.indexOf("trApply") >= 0) return { src: g, key: t + "#" + hash(g) };
+    const name = TR_ALIAS[t];
+    if (!name) {
+      missing.add("transition." + t);
+      warnOnce("tr:" + t, "遷移 " + t + " が無いので crossfade で代えます");
+    }
+    return { src: BUILTIN_TR[name || "crossfade"], key: "builtin:" + (name || "crossfade") };
+  }
+  /** 効果の任意 uniform（規約: uFx_<paramKey>。遷移は uTr_ も受ける） */
+  function paramU(params, u, alsoTr) {
+    const ps = params && typeof params === "object" ? params : null;
+    if (!ps) return u;
+    for (const k in ps) {
+      u["uFx_" + k] = ps[k];
+      if (alsoTr) u["uTr_" + k] = ps[k];
+    }
+    return u;
+  }
+
+  /* ── テクスチャ ───────────────────────────────────────────────── */
+  function uploadEl(el, w, h, always) {
+    let e = texCache.get(el);
+    try {
+      if (!e) {
+        e = { tex: gl.createTexture(), w: 0, h: 0, once: false };
+        gl.bindTexture(gl.TEXTURE_2D, e.tex);
+        texParams(gl);
+        texCache.set(el, e);
+      } else {
+        gl.bindTexture(gl.TEXTURE_2D, e.tex);
+      }
+      if (e.once && !always) return e.tex;
+      if (e.w === w && e.h === h) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, el);
+      else {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, el);
+        e.w = w; e.h = h;
+      }
+      e.once = true;
+      st.texUploads++;
+      return e.tex;
+    } catch (err) {
+      warnOnce("upload", err);      // 読み込み途中の video などは この 1 枚を飛ばす
+      return null;
+    }
+  }
+  /** 文字/図形の canvas は clip ごとに 1 枚のテクスチャを使い回す */
+  function canvasTex(id, key, make) {
+    let e = canvasRegs.get(id);
+    if (e && e.key === key) return e;
+    let cv = null;
+    try { cv = make(); } catch (err) { warnOnce("render:" + id, err); return null; }
+    if (!cv || !cv.width) return null;
+    if (!e) {
+      if (canvasRegs.size > 24) {
+        const first = canvasRegs.keys().next().value;
+        const old = canvasRegs.get(first);
+        try { if (old && old.tex) gl.deleteTexture(old.tex); } catch (_e) { /* noop */ }
+        canvasRegs.delete(first);
+      }
+      e = { key: "", tex: null, w: 0, h: 0 };
+      canvasRegs.set(id, e);
+    }
+    const tex = uploadEl(cv, cv.width, cv.height, true);
+    if (!tex) return null;
+    e.key = key; e.tex = tex; e.w = cv.width; e.h = cv.height;
+    return e;
+  }
