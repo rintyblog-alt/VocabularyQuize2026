@@ -42,6 +42,11 @@
      ファイルを作らない」という上位の約束を破るため。panel 側は
      `import { createFieldKit } from "./index.js"` で受ける。index.js が
      panel を読むのは **動的 import** なので循環参照にはならない。
+     同じ理由でこのファイルは 700 行を超えている（作法は「超えたら分割」）。
+     分ける切れ目は ①部品の詰め合わせ（createFieldKit）②インスペクタ本体
+     （createInspector）の 2 つで、依存は本体 → 詰め合わせの一方向。
+     inspector/fields.js を作って良い事になったら、上の §3 をそこへ移すだけで
+     済むように、§3 は store と widgets 以外に何も知らない形にしてある。
    ══════════════════════════════════════════════════════════════════════════ */
 "use strict";
 
@@ -129,6 +134,9 @@ export function toastOf(widgets, msg, opts) {
   warn("inspector", "toast:", msg);
   return null;
 }
+
+/** 「共通でない値（—）」を表す <option> の value。素材 id と衝突しない文字列 */
+const MIXED_SENTINEL = "vqs:mixed";
 
 /** 値が Node か（widgets の返り値を信用しすぎない） */
 const isNode = (v) => !!v && typeof v === "object" && v.nodeType === 1;
@@ -249,12 +257,24 @@ export function createFieldKit(o) {
     let has = false;
     let live = false;
     let idleTimer = 0;
+    let beat = 0;
 
     function flush() {
       raf = 0;
       if (!has) return;
       sent = pending;
       try { apply(pending, "live"); } catch (e) { toastOf(widgets, (e && e.message) || "変更できませんでした", { kind: "error" }); }
+    }
+    /**
+     * 値が動いていない間も 100ms ごとに同じ値を当て直す（**心拍**）。
+     * store の履歴の合体は「同 type・同じ相手・120ms 以内」なので、
+     * 指が止まっている間に 120ms を超えると鎖が切れて undo が 2 回に割れる。
+     * 同じ値を当て直しても pushHistory は直前の 1 件に吸収するだけなので、
+     * 履歴は増えない（増やさずに鎖を繋ぐのがここの目的）。
+     */
+    function heartbeat() {
+      if (!has) return;
+      try { apply(pending, "live"); } catch (e) { /* 失敗は flush 側で既に出している */ }
     }
     function armGlobal() {
       if (live) return;
@@ -264,6 +284,7 @@ export function createFieldKit(o) {
       window.addEventListener("pointercancel", end, true);
       window.addEventListener("touchend", end, true);
       window.addEventListener("keyup", onKeyUp, true);
+      beat = setInterval(heartbeat, 100);
     }
     function onKeyUp(ev) {
       /* 矢印キーや Tab で値を動かしたときも「離した」と見なす */
@@ -272,6 +293,7 @@ export function createFieldKit(o) {
     function disarm() {
       if (!live) return;
       live = false;
+      if (beat) { clearInterval(beat); beat = 0; }
       window.removeEventListener("pointerup", end, true);
       window.removeEventListener("pointercancel", end, true);
       window.removeEventListener("touchend", end, true);
@@ -283,7 +305,9 @@ export function createFieldKit(o) {
       has = true;
       armGlobal();
       if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(end, 420);           // 指が止まったまま離れなかった時の保険
+      /* 部品の pointerup を拾えなかった時の保険。心拍が鎖を繋いでいるので
+         長めに取れる（短いと、ドラッグ中の長い手止まりで undo が割れる） */
+      idleTimer = setTimeout(end, 1500);
       if (!raf) raf = requestAnimationFrame(flush);
     }
     function end() {
@@ -296,7 +320,12 @@ export function createFieldKit(o) {
       has = false;
       disarm();
     }
-    cleanups.push(() => { if (idleTimer) clearTimeout(idleTimer); if (raf) cancelAnimationFrame(raf); disarm(); });
+    cleanups.push(() => {
+      if (idleTimer) { clearTimeout(idleTimer); idleTimer = 0; }
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
+      has = false;
+      disarm();
+    });
     return { input, end, get label() { return label; } };
   }
 
@@ -318,6 +347,9 @@ export function createFieldKit(o) {
   /** 部品の中の入力へ値を書き戻す（widgets の中身を知らなくても効くように） */
   function writeInto(host, v, mixed, text) {
     if (!host) return;
+    /* 「—」の見た目は部品の中身に関わらず付ける（vqsSet へ渡す前に付けること。
+       ここを後回しにすると、自前の部品では mixed の印が一度も付かない） */
+    host.classList.toggle("vqs-field--mixed", !!mixed);
     if (typeof host.vqsSet === "function") { try { host.vqsSet(v, mixed); return; } catch (e) { /* 下へ */ } }
     const inp = host.querySelector ? host.querySelector("input, select, textarea") : null;
     if (inp) {
@@ -328,7 +360,6 @@ export function createFieldKit(o) {
     }
     const out = host.querySelector ? host.querySelector("[data-value]") : null;
     if (out) out.textContent = mixed ? "—" : (text !== undefined ? text : String(v));
-    host.classList.toggle("vqs-field--mixed", !!mixed);
   }
 
   /** 触り所を 44px 以上にする（CSS がまだ無くても指で押せるように） */
@@ -467,6 +498,7 @@ export function createFieldKit(o) {
     }
     host.vqsSet = (v, mixed) => {
       if (!mixed) r.value = String(finite(v, c.min));
+      r.setAttribute("aria-valuetext", mixed ? "共通でない値" : String(r.value));
       out.textContent = mixed ? "—" : fmtNum(finite(v, 0), c.digits) + (c.unit || "");
     };
     return host;
@@ -546,7 +578,7 @@ export function createFieldKit(o) {
     s.setAttribute("aria-label", c.label || "選択");
     if (isTouch()) s.style.minHeight = "44px";
     const mixedOpt = el("option", "", "—");
-    mixedOpt.value = " mixed";
+    mixedOpt.value = MIXED_SENTINEL;
     for (const raw of c.items || []) {
       const it = typeof raw === "string" ? { value: raw, label: raw } : raw;
       const op = el("option", "", it.label);
@@ -554,13 +586,13 @@ export function createFieldKit(o) {
       s.append(op);
     }
     host.append(s);
-    s.addEventListener("change", () => { if (s.value !== " mixed") c.onChange(s.value); });
+    s.addEventListener("change", () => { if (s.value !== MIXED_SENTINEL) c.onChange(s.value); });
     const f = {
       el: host,
       set(v, mixed) {
         if (mixed) {
           if (!mixedOpt.isConnected) s.insertBefore(mixedOpt, s.firstChild);
-          s.value = " mixed";
+          s.value = MIXED_SENTINEL;
         } else {
           if (mixedOpt.isConnected) mixedOpt.remove();
           s.value = String(v);
@@ -667,46 +699,74 @@ export function createFieldKit(o) {
 
   /**
    * キーフレーム印。押すと現在時刻に打つ／その時刻に在れば外す。
+   * path は 1 本でも配列でも良い（位置のように X と Y を 1 つの印で扱う用）。
    * path が無い行（クロップ・反転・ブレンド等）は「打てない」印を出す
    * （場所を空けておかないと行の左端が揃わない）。
    */
   function keyframeMark(path, label) {
-    if (!path) {
+    const paths = (Array.isArray(path) ? path : [path]).filter((p) => typeof p === "string" && p);
+    if (!paths.length) {
       const spacer = el("span", "vqs-kf vqs-kf--none");
       spacer.setAttribute("aria-hidden", "true");
       return spacer;
     }
+    const tol = () => Math.max(1e-4, frameDur(fps()) / 2);
+    /** その clip の path に、今の時刻のキーが在るか */
+    const hasAt = (c, p) => {
+      const keys = (c.keys && c.keys[p]) || [];
+      const lt = localTime(c);
+      const t = tol();
+      return keys.some((k) => Math.abs(finite(k.t, 0) - lt) <= t);
+    };
     const state = () => {
-      const list = clips();
       let on = false;
       let count = 0;
-      for (const c of list) {
-        const keys = (c.keys && c.keys[path]) || [];
-        count += keys.length;
-        const lt = localTime(c);
-        const tol = Math.max(1e-4, frameDur(fps()) / 2);
-        if (keys.some((k) => Math.abs(finite(k.t, 0) - lt) <= tol)) on = true;
+      for (const c of clips()) {
+        for (const p of paths) {
+          count += ((c.keys && c.keys[p]) || []).length;
+          if (hasAt(c, p)) on = true;
+        }
       }
       return { on, count };
     };
     const toggle = () => {
       const st = state();
-      if (st.on) eachClip("キーフレームを削除", (c) => ({ type: "key.remove", payload: { clipId: c.id, path, t: localTime(c) } }));
-      else eachClip("キーフレームを追加", (c) => ({ type: "key.add", payload: { clipId: c.id, path } }));
+      if (st.on) {
+        /* 在る所だけ外す（無い path に key.remove を投げると op が throw して
+           batch ごと巻き戻る） */
+        kit_eachPath("キーフレームを削除", (c, p) => (hasAt(c, p) ? { type: "key.remove", payload: { clipId: c.id, path: p, t: localTime(c) } } : null));
+      } else {
+        kit_eachPath("キーフレームを追加", (c, p) => (hasAt(c, p) ? null : { type: "key.add", payload: { clipId: c.id, path: p } }));
+      }
       sync();
     };
+    /** クリップ × path の全組み合わせを 1 undo で当てる */
+    function kit_eachPath(label2, make) {
+      const list = clips();
+      if (!list.length) return null;
+      const jobs = [];
+      for (const c of list) for (const p of paths) {
+        const m = make(c, p);
+        if (m) jobs.push(m);
+      }
+      if (!jobs.length) return null;
+      if (jobs.length === 1) return patch(jobs[0].type, jobs[0].payload, { label: label2 });
+      try { return store.batch(label2, (d) => { for (const j of jobs) d(j.type, j.payload); }); }
+      catch (e) { toastOf(widgets, (e && e.message) || "キーフレームを変えられませんでした", { kind: "error" }); return null; }
+    }
     const jump = (dir) => {
       const list = clips();
       if (!list.length) return;
       const c = list[0];
-      const keys = (c.keys && c.keys[path]) || [];
       const lt = localTime(c);
-      const tol = Math.max(1e-4, frameDur(fps()) / 2);
+      const t = tol();
       let best = null;
-      for (const k of keys) {
-        const t = finite(k.t, 0);
-        if (dir > 0 ? t > lt + tol : t < lt - tol) {
-          if (best === null || (dir > 0 ? t < best : t > best)) best = t;
+      for (const p of paths) {
+        for (const k of (c.keys && c.keys[p]) || []) {
+          const kt = finite(k.t, 0);
+          if (dir > 0 ? kt > lt + t : kt < lt - t) {
+            if (best === null || (dir > 0 ? kt < best : kt > best)) best = kt;
+          }
         }
       }
       if (best === null) { toastOf(widgets, dir > 0 ? "これより後にキーフレームはありません" : "これより前にキーフレームはありません", { kind: "info" }); return; }
@@ -719,8 +779,10 @@ export function createFieldKit(o) {
     if (hasW("keyframeRow")) {
       /* widgets 側に専用部品が在ればそれを使う（依頼書の widgets.keyframeRow）。
          引数の形が分からないので、Node が返らなければ自前へ落ちる。 */
+      const st0 = state();
       host = tryW("keyframeRow", {
-        label, path, active: state().on, count: state().count,
+        label, path: paths.length === 1 ? paths[0] : paths, paths,
+        active: st0.on, count: st0.count,
         onToggle: toggle, onPrev: () => jump(-1), onNext: () => jump(1)
       });
     }

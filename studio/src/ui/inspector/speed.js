@@ -35,6 +35,14 @@
      （type:"pitchPreserve"）として clip.fx に積む**形で表した。
      engine/audio 側はこの type を見て playbackRate 補正を切り替えればよい。
      置き場が Clip に増えたら、こちらをその枝へ移す。
+   CONTRACT-NOTE: core/ops.js の `scaleLocalTimes()` は keys / audioFade /
+     transition の t を尺の変化に合わせて伸縮するが、**speedRamp の t は
+     伸縮しない**。ramp は clip ローカル秒なので、速度を変えて尺が縮むと
+     ramp の末尾がクリップの外へ出て、途中から「端の速度で一定」の平らな
+     尾になる。ここでは当てる前に `shapeDuration()` で変化後の尺を閉じた式で
+     出し、**その尺へ形を伸ばした ramp** を渡して回避している。
+     ops 側が scaleLocalTimes で speedRamp も伸縮するようになれば、
+     rampForShape は単純な scalePreset(shape, clip.duration) に戻せる。
    CONTRACT-NOTE: 補間（なし / ブレンド）は契約書 §9「やらないこと（v1）」に
      光学フロー補間が入っているため、v1 では「なし」だけを選べる形にし、
      選べない旨を画面に出す（依頼書どおり）。
@@ -163,6 +171,39 @@ export const RAMP_PRESETS = [
   { id: "jumpcut", label: "ジャンプカット", hint: "速い流れの途中で一瞬だけ止める", points: [{ t: 0, v: 3 }, { t: 0.45, v: 3 }, { t: 0.5, v: 0.2 }, { t: 0.55, v: 3 }, { t: 1, v: 3 }] },
   { id: "slowIn", label: "スローイン", hint: "ゆっくり始めて加速する", points: [{ t: 0, v: 0.3 }, { t: 1, v: 3 }] }
 ];
+
+/**
+ * 0..1 の「形」の平均倍率 … ∫0..1 f(u) du。
+ * 形を尺 D へ伸ばしたとき ∫0..D f(t/D) dt = D × mean なので、
+ * これだけで「素材を span 秒使うときの尺」が閉じた式で出る（二分探索が要らない）。
+ * @param {{t:number,v:number}[]} points t は 0..1
+ */
+export function shapeMean(points) {
+  const m = rampIntegral(points, 1);
+  return m > 0 ? m : 1;
+}
+
+/**
+ * 形（t: 0..1）で素材を sourceSpan 秒使うときの、タイムライン上の尺。
+ * この尺へ形を伸ばして ramp にすれば、**ramp がちょうどクリップを覆う**
+ * （ops の scaleLocalTimes は speedRamp の t を伸縮しないので、UI 側で
+ *  最初から合わせておく。そうしないと末尾が端の速度で一定の平らな尾を引く）。
+ */
+export function shapeDuration(points, sourceSpan) {
+  const span = Math.max(0, Number.isFinite(sourceSpan) ? sourceSpan : 0);
+  return Math.max(MIN_CLIP, span / shapeMean(points));
+}
+
+/** curveEditor の [[x,y]] → 0..1 の形（t: 0..1, v: 倍率） */
+export function curveToShape(points) {
+  const list = Array.isArray(points) ? points : [];
+  const out = list.map((q) => {
+    const x = Array.isArray(q) ? q[0] : (q && q.x);
+    const y = Array.isArray(q) ? q[1] : (q && q.y);
+    return { t: clamp(finite(x, 0), 0, 1), v: yToSpeed(finite(y, 0.5)) };
+  });
+  return normRamp(out.length >= 2 ? out : [{ t: 0, v: 1 }, { t: 1, v: 1 }]);
+}
 
 /** 割合の点（t: 0..1）→ clip ローカル秒の ramp */
 export function scalePreset(points, duration) {
@@ -329,10 +370,22 @@ export function createSpeedPanel(o) {
     renderRamp();  // 尺が変わって ramp の t が伸縮するので描き直す
   }
 
+  /**
+   * 0..1 の形をクリップへ当てる ramp にする。
+   * 「尺を伸ばす」ときは、形を **これから決まる尺**へ伸ばす（shapeDuration）。
+   * こうしないと ramp が古い尺のままで、末尾に平らな尾が残る。
+   */
+  function rampForShape(c, shape) {
+    const span = Math.max(0, finite(c.out, 0) - finite(c.in, 0));
+    const dur = Math.max(MIN_CLIP, finite(c.duration, MIN_CLIP));
+    const target = keepDuration || !(span > 0) ? dur : shapeDuration(shape, span);
+    return { ramp: scalePreset(shape, target), duration: target };
+  }
+
   function applyPreset(p) {
     kit.eachClip(p.label, (c) => ({
       type: "clip.setSpeedRamp",
-      payload: { clipId: c.id, ramp: scalePreset(p.points, finite(c.duration, MIN_CLIP)), keepDuration }
+      payload: { clipId: c.id, ramp: rampForShape(c, p.points).ramp, keepDuration }
     }));
     kit.update();
     renderRamp();
@@ -348,9 +401,10 @@ export function createSpeedPanel(o) {
   const curveDrv = kit.driver({
     label: "速度カーブ",
     apply: (points) => {
+      const shape = curveToShape(points);
       kit.eachClip("速度カーブ", (c) => ({
         type: "clip.setSpeedRamp",
-        payload: { clipId: c.id, ramp: pointsToRamp(points, finite(c.duration, MIN_CLIP)), keepDuration }
+        payload: { clipId: c.id, ramp: rampForShape(c, shape).ramp, keepDuration }
       }));
       showEstimate(points);
     }
@@ -423,12 +477,12 @@ export function createSpeedPanel(o) {
     const slot = durLine.querySelector(".vqs-insp-kv__v");
     if (!c || !slot) return;
     const dur = Math.max(MIN_CLIP, finite(c.duration, MIN_CLIP));
-    const ramp = pointsToRamp(points, dur);
     const span = srcSpan(c);
-    if (!(span > 0)) { slot.textContent = humanDuration(dur) + "（素材の尺が分かりません）"; return; }
-    const next = keepDuration ? dur : rampDuration(ramp, span);
+    if (!(span > 0)) { slot.textContent = fmtNum(dur, 2) + " 秒（素材の尺が分かりません）"; return; }
+    const next = rampForShape(c, curveToShape(points)).duration;
     const delta = next - dur;
-    slot.textContent = humanDuration(next) + (Math.abs(delta) < 0.02 ? "" : `（${delta > 0 ? "+" : "−"}${fmtNum(Math.abs(delta), 2)} 秒）`);
+    slot.textContent = fmtNum(next, 2) + " 秒"
+      + (Math.abs(delta) < 0.02 ? "" : `（${delta > 0 ? "+" : "−"}${fmtNum(Math.abs(delta), 2)} 秒）`);
   }
 
   function readKeep() {

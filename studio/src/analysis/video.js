@@ -79,7 +79,7 @@ export function curveHz(frames) { const dt = frameInterval(frames); return dt > 
 /** curve を作る（値は必ず有限・0..1。NaN を外へ出さないための関所） */
 export function makeCurve(values, hz) {
   const f = finite(hz, 0), vs = Array.isArray(values) ? values.map((v) => clamp01(finite(v, 0))) : [];
-  return { hz: f > 0 ? f : 0, values: vs };
+  return { hz: vs.length && f > 0 ? f : 0, values: vs }; // 空なら hz も 0（curveDuration と揃える）
 }
 
 /** 8x8x8 の RGB ヒストグラム（合計 1 に正規化。rgb は 3 バイト詰め） */
@@ -234,8 +234,9 @@ function waitMetadata(videoEl, signal) {
  * 待ち切れないときは今出ている絵で進む（解析は 1 枚外しても死なない）。
  */
 export function seekFrame(videoEl, t, opts = {}) {
-  const timeout = Math.max(120, finite(opts.timeout, 1200));
-  const signal = opts.signal || null;
+  const timeout = Math.max(120, finite(opts.timeout, 1200)), signal = opts.signal || null;
+  // 既にその位置に居るとき（detectFaces が同じ時刻をもう一度見る）は seeked が来ない
+  if (Math.abs(finite(videoEl.currentTime, -1) - t) < 1e-4 && finite(videoEl.readyState, 0) >= 2) return Promise.resolve();
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = (err) => {

@@ -296,7 +296,13 @@ export function nearestColor(palette, rgb, g, b) {
   return bi;
 }
 
-/** パレット引きに記憶を付けた物（同じ色を何万回も総当たりしないため） */
+/**
+ * パレット引きに記憶を付けた物（同じ色を何万回も総当たりしないため）。
+ * palette は **[[r,g,b], ...] の形だけ**（medianCut の返り）。平らなバイト列を
+ * 渡したい時は 3 つずつに組み直してから渡す。
+ * @param {number[][]} palette
+ * @returns {{palette:number[][], flat:Uint8Array, index:(r:number,g:number,b:number)=>number}}
+ */
 export function createPaletteMapper(palette) {
   const list = (palette || []).map((c) => [
     clampInt(finite(c && c[0], 0), 0, 255), clampInt(finite(c && c[1], 0), 0, 255), clampInt(finite(c && c[2], 0), 0, 255),

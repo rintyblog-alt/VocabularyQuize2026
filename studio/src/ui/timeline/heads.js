@@ -683,7 +683,7 @@ export function createTrackHeads(deps) {
   rebuild();
   const firstTimer = setTimeout(() => { if (!dead) render(); }, 240);
   function dispose() {
-    dead = true;
+    dead = true; drag = null;          // ドラッグ中に閉じられても store を触らない
     clearTimeout(firstTimer);
     root.removeEventListener("scroll", onHeadScroll);
     if (typeof globalThis.removeEventListener === "function") globalThis.removeEventListener("resize", onResize);

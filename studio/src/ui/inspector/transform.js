@@ -163,7 +163,7 @@ export function createTransformPanel(o) {
     onInput: (v) => setT({ y: v }, "位置")
   });
   const posRow = el("div", "vqs-insp-row vqs-tf__pos");
-  posRow.append(kit.keyframeMark("transform.x", "位置 X"));
+  posRow.append(kit.keyframeMark(["transform.x", "transform.y"], "位置"));
   const posCtl = el("div", "vqs-insp-row__ctl vqs-tf__pair");
   posCtl.append(fx.el, fy.el);
   posRow.append(posCtl);
