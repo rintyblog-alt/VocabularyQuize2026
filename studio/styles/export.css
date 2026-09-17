@@ -1,0 +1,642 @@
+/* ══════════════════════════════════════════════════════════════════════
+   styles/export.css — 書き出し画面の見た目（ui/export-dialog.js の相棒）
+
+   ★ 何をする所か
+     契約書 §11 の書き出し画面だけの装い。器（暗幕・panel・sheet）は
+     widgets.css が持っているので、ここは **中身**と「器の寸法の上書き」
+     だけを書く。クラスは全部 `vqs-ex*`。
+
+   ★ なぜこの形か
+     ・デスクトップは中央のモーダル（幅 720px）。それ以上広げても
+       設定が横に伸びるだけで読みづらい（2 列がちょうど収まる幅）。
+     ・モバイルは全高シート。書き出しは「札を選ぶ → つまみ → 進捗」と
+       縦に長いので、半分の高さだと常に中身が隠れる。
+     ・preset は **横スクロールの札**。縦に並べると 20 個で画面が埋まる。
+       札は幅を固定して「横に続きが在る」ことが分かるようにする
+       （`scroll-snap` で 1 枚ずつ止まる）。
+     ・設定は 2 列（`minmax(0, 1fr)` の 2 本）。狭い時は 1 列へ落とす。
+       `auto-fit` ではなく breakpoint で切るのは、札の下で列数が
+       ちらつかないようにするため。
+     ・進捗は **太いバー + 円形リング**の二段構え。バーは遠目でも見え、
+       リングは数字（%）を真ん中に置ける。
+     ・色・寸法・影・動きは全部 tokens.css の変数。直に色を書かない
+       （明るい配色へ切り替えた時に ここだけ暗く残る）。
+
+   ★ 触るときの注意
+     ・器の寸法は `.vqs-ex-layer` が付いた時だけ上書きする
+       （openModal / openSheet の className に渡している）。
+       `.vqs-modal__panel` を素で触ると他の画面まで 720px になる。
+     ・iOS の safe-area は sheet の下に必ず足す（§13.4 の罠）。
+       `height: calc(... + env(...))` の形にして、padding で潰さない。
+     ・触り所は 44px 以上（--vqs-hit）。札とタブは指で押せること。
+     ・`prefers-reduced-motion` では動きを止める（進捗の縞も止める）。
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. 器の寸法（デスクトップ = 中央モーダル 720px） ─────────── */
+
+.vqs-modal.vqs-ex-layer > .vqs-modal__panel {
+  width: min(92vw, 720px);
+  max-height: min(88dvh, 920px);
+  display: flex;
+  flex-direction: column;
+}
+
+.vqs-modal.vqs-ex-layer > .vqs-modal__panel > .vqs-modal__body {
+  padding: 0;
+  overflow: hidden auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* モバイル = 全高シート（openSheet が height:"full" を付ける） */
+.vqs-sheet.vqs-ex-layer {
+  height: calc(92dvh + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+}
+
+.vqs-sheet.vqs-ex-layer > .vqs-sheet__body {
+  padding: 0;
+  flex: 1 1 auto;
+  overflow: hidden auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(var(--vqs-gap-4) + env(safe-area-inset-bottom));
+}
+
+.vqs-ex {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-3);
+  font-size: var(--vqs-fs-2);
+  color: var(--vqs-text-1);
+}
+
+.vqs-ex__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-4);
+  padding: 0 var(--vqs-gap-4) var(--vqs-gap-4);
+}
+
+/* ── 2. タブ（動画 / 静止画 / 音声 / GIF / 字幕 / プロジェクト） ── */
+
+.vqs-extabs {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: var(--vqs-gap-1);
+  padding: var(--vqs-gap-2) var(--vqs-gap-4);
+  background: var(--vqs-elev);
+  border-bottom: 1px solid var(--vqs-line);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.vqs-extabs::-webkit-scrollbar { display: none; }
+
+.vqs-extab {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 var(--vqs-gap-3);
+  border: 1px solid transparent;
+  border-radius: var(--vqs-radius-pill);
+  background: transparent;
+  color: var(--vqs-text-2);
+  font: inherit;
+  font-weight: var(--vqs-fw-2);
+  cursor: pointer;
+  transition: background var(--vqs-t-fast), color var(--vqs-t-fast), border-color var(--vqs-t-fast);
+}
+
+.vqs-extab:hover { background: var(--vqs-hover); color: var(--vqs-text-1); }
+.vqs-extab:active { background: var(--vqs-active); }
+
+.vqs-extab--on {
+  background: var(--vqs-accent-dim);
+  border-color: var(--vqs-accent-line);
+  color: var(--vqs-text-1);
+}
+
+.vqs-extab:focus-visible { outline: none; box-shadow: var(--vqs-shadow-focus); }
+
+.vqs-extab-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-3);
+}
+
+/* 小見出し */
+.vqs-exsub {
+  font-size: var(--vqs-fs-1);
+  font-weight: var(--vqs-fw-2);
+  color: var(--vqs-text-3);
+  letter-spacing: 0.04em;
+}
+
+/* ── 3. preset の札（横スクロール） ──────────────────────────── */
+
+.vqs-exrail {
+  display: flex;
+  gap: var(--vqs-gap-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--vqs-gap-1) var(--vqs-gap-1) var(--vqs-gap-2);
+  margin: 0 calc(var(--vqs-gap-1) * -1);
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.vqs-excard {
+  position: relative;
+  flex: 0 0 auto;
+  width: 188px;
+  min-height: 92px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-1);
+  padding: var(--vqs-gap-3);
+  text-align: left;
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-bg-3);
+  color: var(--vqs-text-1);
+  font: inherit;
+  cursor: pointer;
+  box-shadow: var(--vqs-shadow-1);
+  transition: transform var(--vqs-t-fast), border-color var(--vqs-t-fast), background var(--vqs-t-fast);
+}
+
+.vqs-excard:hover { border-color: var(--vqs-line-2); background: var(--vqs-panel-2); }
+.vqs-excard:active { transform: scale(0.98); }
+.vqs-excard:focus-visible { outline: none; box-shadow: var(--vqs-shadow-focus); }
+
+.vqs-excard--on {
+  border-color: var(--vqs-accent);
+  background: var(--vqs-accent-dim);
+  box-shadow: 0 0 0 1px var(--vqs-accent-line) inset, var(--vqs-shadow-2);
+}
+
+.vqs-excard__name { font-weight: var(--vqs-fw-2); font-size: var(--vqs-fs-3); }
+.vqs-excard__meta { font-family: var(--vqs-mono); font-size: var(--vqs-fs-0); color: var(--vqs-text-2); }
+
+.vqs-excard__note {
+  font-size: var(--vqs-fs-0);
+  color: var(--vqs-text-3);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 「おすすめ」印 */
+.vqs-exbadge {
+  position: absolute;
+  top: calc(var(--vqs-gap-2) * -1);
+  right: var(--vqs-gap-2);
+  padding: 1px var(--vqs-gap-2);
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-accent);
+  color: var(--vqs-text-on-primary);
+  font-size: var(--vqs-fs-0);
+  font-weight: var(--vqs-fw-3);
+  box-shadow: var(--vqs-shadow-1);
+}
+
+/* 使えない選択肢（消さずに無効化して理由を title に置く） */
+.vqs-exopt--off,
+.vqs-ex button[disabled],
+.vqs-ex select option:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.vqs-exopt--off:hover { background: inherit; border-color: var(--vqs-line); }
+
+/* ── 4. 設定（2 列。狭い時は 1 列） ─────────────────────────── */
+
+.vqs-exgrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--vqs-gap-3);
+}
+
+.vqs-exfield {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-1);
+  min-width: 0;
+  padding: var(--vqs-gap-3);
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-panel);
+}
+
+.vqs-exfield__label {
+  font-size: var(--vqs-fs-1);
+  font-weight: var(--vqs-fw-2);
+  color: var(--vqs-text-2);
+}
+
+.vqs-exfield__body { min-width: 0; }
+.vqs-exfield__body > * { max-width: 100%; }
+
+.vqs-exfield__hint {
+  font-size: var(--vqs-fs-0);
+  color: var(--vqs-text-3);
+  line-height: 1.4;
+}
+
+.vqs-ex .vqs-seg { flex-wrap: wrap; }
+
+.vqs-exnum {
+  width: 100%;
+  min-height: var(--vqs-hit);
+  padding: 0 var(--vqs-gap-2);
+  border: 1px solid var(--vqs-line-2);
+  border-radius: var(--vqs-radius-2);
+  background: var(--vqs-bg-3);
+  color: var(--vqs-text-1);
+  font-family: var(--vqs-mono);
+  font-size: var(--vqs-fs-3);
+}
+
+.vqs-exnum:disabled { opacity: 0.45; }
+.vqs-exnum:focus-visible { outline: none; box-shadow: var(--vqs-shadow-focus); }
+
+/* 音声のトラック選び */
+.vqs-extracks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-1);
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-3);
+  padding: var(--vqs-gap-2);
+  background: var(--vqs-panel);
+  max-height: 208px;
+  overflow: auto;
+}
+
+.vqs-extrack {
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-2);
+  min-height: var(--vqs-hit);
+  padding: 0 var(--vqs-gap-2);
+  border-radius: var(--vqs-radius-2);
+  cursor: pointer;
+}
+
+.vqs-extrack:hover { background: var(--vqs-hover); }
+.vqs-extrack--on { background: var(--vqs-accent-dim); }
+.vqs-extrack__name { font-size: var(--vqs-fs-2); }
+
+.vqs-excheck {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--vqs-accent);
+  flex: 0 0 auto;
+}
+
+/* 字幕の下見 */
+.vqs-expre {
+  margin: 0;
+  padding: var(--vqs-gap-3);
+  max-height: 200px;
+  overflow: auto;
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-bg-0);
+  color: var(--vqs-text-2);
+  font-family: var(--vqs-mono);
+  font-size: var(--vqs-fs-1);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── 5. 注記と推定 ───────────────────────────────────────────── */
+
+.vqs-exnote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-1);
+  padding: var(--vqs-gap-2) var(--vqs-gap-3);
+  border-radius: var(--vqs-radius-2);
+  border-left: 3px solid var(--vqs-line-2);
+  background: var(--vqs-panel-2);
+  font-size: var(--vqs-fs-1);
+  line-height: 1.45;
+}
+
+.vqs-exnote__line { margin: 0; color: var(--vqs-text-2); }
+.vqs-exnote--info { border-left-color: var(--vqs-accent); }
+.vqs-exnote--warn { border-left-color: var(--vqs-warn); }
+.vqs-exnote--error { border-left-color: var(--vqs-danger); }
+.vqs-exnote--error .vqs-exnote__line { color: var(--vqs-danger); }
+
+.vqs-exest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vqs-gap-2) var(--vqs-gap-4);
+  padding: var(--vqs-gap-3);
+  border: 1px dashed var(--vqs-line-2);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-bg-2);
+}
+
+.vqs-exest__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 96px;
+}
+
+.vqs-exest__k { font-size: var(--vqs-fs-0); color: var(--vqs-text-3); }
+.vqs-exest__v { font-size: var(--vqs-fs-3); font-weight: var(--vqs-fw-2); font-family: var(--vqs-mono); }
+.vqs-exest__err { color: var(--vqs-danger); font-size: var(--vqs-fs-2); }
+
+/* ── 6. 実行のボタン列 ─────────────────────────────────────── */
+
+.vqs-exacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vqs-gap-2);
+  align-items: center;
+  padding-top: var(--vqs-gap-1);
+}
+
+.vqs-ex .vqs-btn {
+  min-height: var(--vqs-hit);
+  padding: 0 var(--vqs-gap-4);
+  border: 1px solid var(--vqs-line-2);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-bg-3);
+  color: var(--vqs-text-1);
+  font: inherit;
+  font-weight: var(--vqs-fw-2);
+  cursor: pointer;
+  transition: transform var(--vqs-t-fast), background var(--vqs-t-fast), box-shadow var(--vqs-t-fast);
+}
+
+.vqs-ex .vqs-btn:hover { background: var(--vqs-panel-2); }
+.vqs-ex .vqs-btn:active { transform: scale(0.98); }
+.vqs-ex .vqs-btn:focus-visible { outline: none; box-shadow: var(--vqs-shadow-focus); }
+
+.vqs-ex .vqs-btn--primary {
+  border-color: transparent;
+  background: var(--vqs-accent);
+  color: var(--vqs-text-on-primary);
+  box-shadow: var(--vqs-shadow-2);
+}
+
+.vqs-ex .vqs-btn--danger {
+  border-color: transparent;
+  background: var(--vqs-danger);
+  color: var(--vqs-text-on-primary);
+}
+
+.vqs-ex .vqs-btn--ghost { background: transparent; border-color: var(--vqs-line); color: var(--vqs-text-2); }
+
+.vqs-ex .vqs-btn--sm {
+  min-height: 32px;
+  padding: 0 var(--vqs-gap-3);
+  font-size: var(--vqs-fs-1);
+  border-radius: var(--vqs-radius-2);
+}
+
+.vqs-exrun { flex: 1 1 200px; }
+
+/* ── 7. 進捗（太いバー + 円形リング） ────────────────────────── */
+
+.vqs-exprog {
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-4);
+  padding: var(--vqs-gap-5) var(--vqs-gap-4);
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-4);
+  background: var(--vqs-panel);
+}
+
+.vqs-exprog .vqs-ring { flex: 0 0 auto; }
+
+.vqs-exprog__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-2);
+}
+
+.vqs-exprog__title { font-size: var(--vqs-fs-4); font-weight: var(--vqs-fw-2); }
+.vqs-exprog__stage { font-size: var(--vqs-fs-2); color: var(--vqs-text-2); }
+
+.vqs-exprog__meta {
+  font-family: var(--vqs-mono);
+  font-size: var(--vqs-fs-1);
+  color: var(--vqs-text-3);
+}
+
+.vqs-exbar {
+  position: relative;
+  height: 14px;
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-inset);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--vqs-line);
+}
+
+.vqs-exbar__fill {
+  display: block;
+  position: relative;   /* ::after の縞を «伸びた分» だけに乗せる（棒全体にしない） */
+  overflow: hidden;
+  height: 100%;
+  width: 0%;
+  border-radius: var(--vqs-radius-pill);
+  background: linear-gradient(90deg, var(--vqs-accent) 0%, var(--vqs-accent-2) 100%);
+  box-shadow: 0 0 12px var(--vqs-accent-glow);
+  transition: width var(--vqs-t);
+}
+
+.vqs-exbar__fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* 縞は token の薄い線色で作る（生の白を書かない = 明るい配色でも浮かない） */
+  background-image: linear-gradient(115deg, var(--vqs-line-2) 25%, transparent 25%,
+      transparent 50%, var(--vqs-line-2) 50%, var(--vqs-line-2) 75%, transparent 75%);
+  background-size: 22px 22px;
+  animation: vqs-exflow 900ms linear infinite;
+  opacity: 0.5;
+}
+
+@keyframes vqs-exflow {
+  from { background-position: 0 0; }
+  to { background-position: 22px 0; }
+}
+
+.vqs-exstop { flex: 0 0 auto; }
+
+/* ── 8. 完了と失敗 ───────────────────────────────────────────── */
+
+.vqs-exdone,
+.vqs-exfail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--vqs-gap-2);
+  padding: var(--vqs-gap-5) var(--vqs-gap-4);
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-4);
+  background: var(--vqs-panel);
+  text-align: center;
+}
+
+.vqs-exdone__mark,
+.vqs-exfail__mark {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: var(--vqs-fs-5);
+  font-weight: var(--vqs-fw-3);
+}
+
+.vqs-exdone__mark { background: var(--vqs-ok); color: var(--vqs-text-on-primary); }
+.vqs-exfail__mark { background: var(--vqs-danger-dim, var(--vqs-danger)); color: var(--vqs-danger); border: 1px solid var(--vqs-danger); }
+
+.vqs-exdone__title,
+.vqs-exfail__title { font-size: var(--vqs-fs-4); font-weight: var(--vqs-fw-2); }
+.vqs-exdone__meta { font-family: var(--vqs-mono); font-size: var(--vqs-fs-1); color: var(--vqs-text-2); }
+
+.vqs-exfail__msg {
+  margin: 0;
+  max-width: 52ch;
+  font-size: var(--vqs-fs-2);
+  color: var(--vqs-text-2);
+  line-height: 1.5;
+}
+
+.vqs-exdone .vqs-exacts,
+.vqs-exfail .vqs-exacts { justify-content: center; }
+
+/* ── 9. 履歴（直近 5 件） ───────────────────────────────────── */
+
+.vqs-exhist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-1);
+  padding-top: var(--vqs-gap-2);
+  border-top: 1px solid var(--vqs-line);
+}
+
+.vqs-exhist__empty { margin: 0; font-size: var(--vqs-fs-1); color: var(--vqs-text-3); }
+
+.vqs-exhist__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--vqs-gap-2);
+  min-height: 40px;
+  padding: 0 var(--vqs-gap-2);
+  border-radius: var(--vqs-radius-2);
+}
+
+.vqs-exhist__row:hover { background: var(--vqs-hover); }
+
+.vqs-exhist__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--vqs-fs-2);
+}
+
+.vqs-exhist__size,
+.vqs-exhist__at {
+  font-family: var(--vqs-mono);
+  font-size: var(--vqs-fs-0);
+  color: var(--vqs-text-3);
+  white-space: nowrap;
+}
+
+/* ── 10. 画面を閉じている間の小さな進捗（topbar に残す） ─────── */
+
+.vqs-exambient {
+  display: none;
+  align-items: center;
+  gap: var(--vqs-gap-1);
+  min-height: 24px;
+  padding: 0 var(--vqs-gap-2);
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-accent-dim);
+  color: var(--vqs-text-1);
+  border: 1px solid var(--vqs-accent-line);
+  font-family: var(--vqs-mono);
+  font-size: var(--vqs-fs-0);
+  cursor: pointer;
+}
+
+.vqs-exambient--on { display: inline-flex; }
+
+/* ── 11. 狭い画面（モバイル） ───────────────────────────────── */
+
+@media (max-width: 1023px) {
+  .vqs-exgrid { grid-template-columns: minmax(0, 1fr); }
+
+  .vqs-ex__main { padding: 0 var(--vqs-gap-3) var(--vqs-gap-5); gap: var(--vqs-gap-3); }
+  .vqs-extabs { padding: var(--vqs-gap-2) var(--vqs-gap-3); }
+  .vqs-extab { min-height: var(--vqs-hit); }
+
+  .vqs-excard { width: 156px; }
+
+  .vqs-exprog { flex-direction: column; text-align: center; }
+  .vqs-exprog__body { width: 100%; }
+  .vqs-exstop { width: 100%; }
+  .vqs-exrun { flex: 1 1 100%; }
+
+  .vqs-exhist__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-auto-rows: auto;
+    padding: var(--vqs-gap-1) var(--vqs-gap-2);
+  }
+
+  .vqs-exhist__at { grid-column: 1 / -1; }
+}
+
+/* 480px 以下では札も指 1 本で選べる幅に */
+@media (max-width: 480px) {
+  .vqs-excard { width: 142px; min-height: 84px; }
+  .vqs-exest__cell { min-width: 84px; }
+}
+
+/* ── 12. 動きを抑える設定を尊重する（§7 の prefers-reduced-motion） ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .vqs-ex *,
+  .vqs-ex *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .vqs-exbar__fill::after { display: none; }
+}
+
+/* ── 13. 明るい配色（tokens.css の data-theme="light" に追従） ── */
+
+:root[data-theme="light"] .vqs-exbar__fill::after { opacity: 0.3; }
+:root[data-theme="light"] .vqs-exfail__mark { background: transparent; }
+
+/* 印刷では器ごと出さない（書き出し画面を紙に出す意味が無い） */
+@media print {
+  .vqs-ex-layer { display: none !important; }
+}

@@ -556,9 +556,15 @@ export function createAiPanel(deps) {
           });
           const ok = (got || []).filter((r) => r && r.analysis);
           if (ok.length) {
-            store.batch("素材の解析", (dispatch) => {
-              for (const r of ok) dispatch("asset.update", { assetId: r.assetId, patch: { analysis: r.analysis } });
-            });
+            /* 書き戻しに失敗しても組み立ては続ける（解析は「あると良い」物）*/
+            try {
+              store.batch("素材の解析", (dispatch) => {
+                for (const r of ok) dispatch("asset.update", { assetId: r.assetId, patch: { analysis: r.analysis } });
+              });
+            } catch (e) {
+              warn("ai-panel", "解析結果を書き戻せなかった", msgOf(e));
+              notes.push("解析結果を保存できませんでした（この回だけ未解析として扱います）");
+            }
           }
           const bad = (got || []).filter((r) => r && r.error);
           if (bad.length) notes.push(bad.length + " 個の素材は調べきれませんでした（そのまま使います）");

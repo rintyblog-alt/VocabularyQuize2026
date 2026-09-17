@@ -696,7 +696,9 @@ async function silenceOf(input, opts) {
   const g = typeof globalThis !== "undefined" ? globalThis : {};
   const Ctx = g.AudioContext || g.webkitAudioContext || null;
   const blob = await resolveBlob(input, o);
-  if (!blob || !Ctx || typeof blob.arrayBuffer !== "function") return { spans: [], duration: finite(o.duration, 0) };
+  if (!blob || typeof blob.arrayBuffer !== "function") return { spans: [], duration: finite(o.duration, 0) };
+  /* 大きさの門は **AudioContext の有無より先**に見る（無い端末でも理由は同じ）。
+     ここを後ろに置くと「大きすぎる」と言えないまま黙って諦める。 */
   const size = finite(blob.size, 0);
   const cap = Math.max(1, finite(o.maxDecodeBytes, MAX_DECODE_BYTES));
   if (size > cap) {
@@ -705,6 +707,7 @@ async function silenceOf(input, opts) {
       note: `素材が大きすぎてここでは音を読めません（${Math.round(size / 1048576)}MB）。先に素材を解析してください`
     };
   }
+  if (!Ctx) return { spans: [], duration: finite(o.duration, 0), note: "この端末では音を復号できません（先に素材を解析してください）" };
   let ctx = null;
   try {
     ctx = new Ctx();

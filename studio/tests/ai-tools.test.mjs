@@ -923,3 +923,158 @@ test("autoSubtitleFromSpeech: 字幕を渡せば text クリップの ops にな
   for (const tr of after.tracks) for (const cl of tr.clips) if (cl.kind === "text") texts.push(cl.text.content);
   assert.ok(texts.join("").indexOf("一つ目") >= 0, "字幕の文字が入っていない");
 });
+
+/* ══ 11. 検収で見つけた穴（もう一度空かないように）═════════════ */
+
+test("autoReframe: RATIOS に無い比率では settings.update を作らない（投げる op を混ぜない）", () => {
+  /* core/ops.js の settings.update は知らない比率で OpError を投げる。
+     道具が投げる op を 1 つ混ぜると store.batch が丸ごと巻き戻り、
+     「AI を押したのに何も起きない」になる。 */
+  const p = baseProject();
+  for (const known of ["9:16", "4:5", "1:1"]) {
+    const res = assertResult(tools.autoReframe(p, { ratio: known }), `autoReframe ${known}`);
+    assert.ok(res.ops.some((o) => o.type === "settings.update"), `${known} で画面比率を変えていない`);
+    const after = apply(p, res.ops, `autoReframe ${known}`);
+    assert.equal(after.settings.ratio, known);
+  }
+  for (const unknown of ["3:2", "21:9", "2:3"]) {
+    const res = assertResult(tools.autoReframe(p, { ratio: unknown }), `autoReframe ${unknown}`);
+    assert.ok(!res.ops.some((o) => o.type === "settings.update"), `${unknown} で投げる settings.update を作った`);
+    assert.ok(res.ops.length > 0, `${unknown} で切り出しも作っていない`);
+    assert.ok(res.warnings.some((w) => w.indexOf(unknown) >= 0), `${unknown} を warnings で申告していない`);
+    const after = apply(p, res.ops, `autoReframe ${unknown}`);
+    assert.equal(after.settings.ratio, "16:9", "画面比率を勝手に変えた");
+  }
+});
+
+test("autoDuck: 音を持たないクリップ（静止画）は声として数えない", () => {
+  const p = baseProject({
+    assets: [
+      { id: "as_i", kind: "image", name: "a.png", mime: "image/png", duration: 0, width: 1920, height: 1080, hasAudio: false, storage: { kind: "idb", key: "k3" } },
+      { id: "as_m", kind: "audio", name: "bgm.m4a", mime: "audio/mp4", duration: 60, hasAudio: true, storage: { kind: "idb", key: "k2" }, analysis: musicAnalysis() }
+    ],
+    tracks: [
+      { id: "tr_v", kind: "video", name: "V1", clips: [{ id: "cl_i", kind: "image", assetId: "as_i", start: 0, duration: 10 }] },
+      { id: "tr_a", kind: "audio", name: "BGM", clips: [{ id: "cl_m", kind: "audio", assetId: "as_m", start: 0, duration: 10, in: 0, out: 10 }] }
+    ]
+  });
+  const res = assertResult(tools.autoDuck(p, {}), "autoDuck(静止画だけ)");
+  assert.equal(res.ops.length, 0, "静止画の上で BGM を下げてしまっている");
+  assert.ok(res.warnings.some((w) => w.indexOf("音を持たない") >= 0), "理由を申告していない");
+
+  /* 音の在る映像なら従来どおり下げる */
+  const ok = assertResult(tools.autoDuck(baseProject(), {}), "autoDuck");
+  assert.ok(ok.ops.length > 0 && ok.ops.every((o) => o.type === "key.add"));
+});
+
+test("autoHighlights: クリップが使っていない素材の所には印を付けない", () => {
+  /* 素材は 30 秒だが、タイムラインは頭の 4 秒しか使っていない */
+  const p = baseProject({
+    tracks: [
+      { id: "tr_v", kind: "video", name: "V1", clips: [{ id: "cl_1", kind: "video", assetId: "as_v", start: 0, duration: 4, in: 0, out: 4 }] },
+      { id: "tr_t", kind: "overlay", name: "テロップ", clips: [] }
+    ]
+  });
+  const res = tools.autoHighlights(p, { assetId: "as_v", count: 6, len: 2 });
+  assert.ok(res.ranges.length > 0, "見せ場を選べていない");
+  const tail = clipEnd(findClip(p, "cl_1").clip);
+  for (const op of res.ops) {
+    assert.equal(op.type, "marker.add");
+    assert.ok(op.payload.t >= 0 && op.payload.t <= tail + 1e-6,
+      `クリップ（0..${tail} 秒）の外へ印を付けた: ${op.payload.t}`);
+  }
+  if (res.ops.length < res.ranges.length) {
+    assert.ok(res.warnings.some((w) => w.indexOf("使っていない") >= 0), "省いた事を申告していない");
+  }
+  apply(p, res.ops, "autoHighlights");
+});
+
+test("captionsToClips: project.subtitleStyle（人が決めた既定）を尊重する", () => {
+  /* core/ops.js の subtitle.import と同じ優先順でないと、
+     取り込んだ字幕と AI が置いた字幕で見た目が食い違う。 */
+  const p = baseProject();
+  p.subtitleStyle = Object.assign({}, p.subtitleStyle, { size: 123, color: "#00ff88" });
+  const mine = captions.captionsToClips([{ start: 0, end: 2, text: "あいうえお" }], { project: p });
+  assert.equal(mine[0].payload.clip.text.style.size, 123, "project.subtitleStyle を無視した");
+  assert.equal(mine[0].payload.clip.text.style.color, "#00ff88");
+  /* 呼び出し側の指定が一番強い */
+  const given = captions.captionsToClips([{ start: 0, end: 2, text: "あ" }], { project: p, style: { size: 40 } });
+  assert.equal(given[0].payload.clip.text.style.size, 40);
+  /* project が無ければ素の既定（落ちない） */
+  const bare = captions.captionsToClips([{ start: 0, end: 2, text: "あ" }], {});
+  assert.ok(bare[0].payload.clip.text.style.size > 0);
+});
+
+test("readHistogram: analysis/video.js の Frame（生画素）もヒストとして読む", () => {
+  /* autoReframe の opts.frames は Frame 列。同じ物が autoColor へ渡っても
+     「w*h*3 段の輝度ヒスト」と読み違えてはいけない。 */
+  const w = 8, h = 4, n = w * h;
+  const rgb = new Uint8Array(n * 3);
+  for (let i = 0; i < n; i++) { rgb[i * 3] = 20; rgb[i * 3 + 1] = 30; rgb[i * 3 + 2] = 200; }  // 暗い青
+  const frame = { t: 0, w, h, gray: new Uint8Array(n), rgb };
+  const read = tools.readHistogram(frame);
+  assert.ok(read && read.luma && read.r && read.b, "Frame を読めていない");
+  assert.ok(Math.abs(read.luma.reduce((a, x) => a + x, 0) - 1) < 1e-9, "合計 1 になっていない");
+  const lv = tools.autoLevels(frame);
+  assert.ok(lv.exposure > 0, `暗い Frame を明るくしていない (${lv.exposure})`);
+  assert.ok(lv.temperature > 0, `青い Frame を暖色へ寄せていない (${lv.temperature})`);
+  /* Frame の列（複数フレームの平均）も読む */
+  const many = tools.readHistogram([frame, frame]);
+  assert.ok(many && many.luma.length === read.luma.length);
+  /* 512 段の RGB ヒストを持つ {w,h,rgb} は今までどおりヒストとして読む */
+  const cube = new Float32Array(512); cube[(1 * 8 + 2) * 8 + 5] = 1;
+  assert.ok(tools.readHistogram({ w: 8, h: 8, rgb: cube }), "本物の RGB ヒストが読めなくなった");
+});
+
+test("refineLocal: 「消して」で選択したクリップを勝手に消さない", () => {
+  const p = refineProject();
+  const sel = { clipIds: ["cl_1"] };
+  /* 音を消す注文で clip.rippleDelete が出てはいけない（取り返しが付かない） */
+  for (const say of ["音を消して", "声を消して", "音声を消して"]) {
+    const res = refine.refineLocal(say, { project: p, selection: sel });
+    assert.ok(res.ops.length > 0, `「${say}」を読み取れなかった`);
+    assert.ok(!res.ops.some((o) => o.type === "clip.rippleDelete" || o.type === "clip.remove"),
+      `「${say}」でクリップを消そうとした: ${JSON.stringify(res.matched)}`);
+    assert.ok(res.ops.every((o) => o.type === "clip.update"), `「${say}」が音を消していない`);
+    apply(p, res.ops, say);
+  }
+  /* BGM を消す注文は BGM のトラックを黙らせる（選択した映像ではない） */
+  const bgm = refine.refineLocal("BGMを消して", { project: p, selection: sel });
+  assert.deepEqual(bgm.ops.map((o) => o.type), ["track.update"]);
+  assert.equal(bgm.ops[0].payload.trackId, "tr_a");
+  assert.equal(bgm.ops[0].payload.patch.muted, true);
+  const afterBgm = apply(p, bgm.ops, "BGMを消して");
+  assert.equal(afterBgm.tracks.find((t) => t.id === "tr_a").muted, true);
+  /* 「音楽を消して」も同じ所へ（音 に当たって映像が黙らない） */
+  const ongaku = refine.refineLocal("音楽を消して", { project: p, selection: sel });
+  assert.deepEqual(ongaku.ops.map((o) => o.type), ["track.update"]);
+
+  /* テロップを消す注文は text クリップだけ */
+  const telop = refine.refineLocal("テロップを消して", { project: p });
+  assert.deepEqual(telop.ops.map((o) => o.type), ["clip.rippleDelete"]);
+  const gone = telop.ops[0].payload.clipIds;
+  assert.deepEqual(gone.slice().sort(), ["cl_t1", "cl_t2", "cl_t3"]);
+  apply(p, telop.ops, "テロップを消して");
+
+  /* 「この部分を削除して」は今までどおり選択を消す */
+  const one = refine.refineLocal("この部分を削除して", { project: p, selection: { clipIds: ["cl_2"] } });
+  assert.deepEqual(one.ops.map((o) => o.type), ["clip.rippleDelete"]);
+  assert.deepEqual(one.ops[0].payload.clipIds, ["cl_2"]);
+});
+
+test("transcribe: 大きすぎる素材はメモリに載せず、理由を返す", async () => {
+  captions.resetTranscribeState();
+  let read = 0;
+  const huge = {
+    size: 400 * 1024 * 1024, type: "video/mp4",
+    arrayBuffer: async () => { read++; throw new Error("ここは呼ばれてはいけない"); }
+  };
+  const res = await captions.transcribe(huge, { useApi: false });
+  assert.equal(read, 0, "巨大な Blob を丸ごとメモリへ載せた（iPhone が落ちる）");
+  assert.equal(res.via, "none");
+  assert.deepEqual(res.captions, []);
+  assert.ok(res.warnings.some((w) => w.indexOf("大きすぎ") >= 0), `理由を返していない: ${JSON.stringify(res.warnings)}`);
+  /* 上限は呼び出し側が動かせる（解析担当が別の道で読むとき） */
+  const small = await captions.transcribe(huge, { useApi: false, silence: [{ start: 2, end: 4 }], duration: 10 });
+  assert.equal(small.via, "silence", "指定された無音より先に復号へ行っている");
+});
