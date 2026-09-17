@@ -28,25 +28,30 @@
      ・listener は必ず `on()` 経由（dispose で全部外すため）。
      ・CSS は触らない。付けるクラスは vqs- 接頭辞のみ。
 
-   ★ CONTRACT-NOTE（契約書に無い部分の取り決め。実物と違ったらここだけ直す）
-     view（全て任意・無ければ控えの絵）:
-       pxPerSec|zoom（number か ()=>number） / scrollX / timeAtClientX(x)
-       hitTest(x,y) -> {kind,clipId,trackId,edge} / trackRects() -> [{trackId,top,bottom}]
-       setGhost(g|null) / setSnapLine(t|null,hit) / setMarquee(rect|null)
-       setPxPerSec(v)|setZoom(v) / setScrollX(px) / centerOn(t) / render()
-       ghost g = { mode:"move"|"trim"|"slip", dup, lifted, edge, ripple, snap,
-                   clipIds:[], items:[{clipId,fromStart,start,duration,
-                                       fromTrackId,trackId,dy}] }
-     dispatch する op の payload（op 名は契約書 §3。payload はここが唯一の取り決め）:
-       clip.move {clipId,trackId,start}          clip.duplicate {clipId,trackId,start}
-       clip.trim {clipId,edge:"in"|"out",time,ripple}   clip.roll {clipId,otherClipId,time}
-       clip.slip {clipId,delta}   ※delta は in/out に足す素材秒（右へ引くと負）
-       clip.split {clipId,t}      clip.remove {clipIds}   clip.rippleDelete {clipIds}
-       clip.update {clipId,patch} clip.setSpeed {clipId,speed}
-       clip.detachAudio {clipId}  clip.group {clipIds}    clip.ungroup {clipIds}
-       clip.freeze {clipId,t}     clip.reverse {clipId}   compound.make {clipIds}
-       clip.add {trackId,start,assetId}   timeline.paste {trackId,t,clips}
-       track.update {trackId,patch:{height}}
+   ★ 実物に合わせた所（view.js / ops.js を読んで確かめた。勝手に変えない）
+     view（ui/timeline/view.js。無い端末・読み込み失敗でも動くよう全て任意）:
+       pxPerSec / scrollX / timeAtClientX(x) / trackRects() -> [{trackId,top,bottom}]
+       setPxPerSec(v) / setScrollX(px) / centerOn(t) / render()
+       hitTest(x,y) -> { kind:"ruler"|"clip"|"handleL"|"handleR"|"keyframe"
+                                |"transition"|"empty", clipId, trackId, edge, keyframe }
+       setSnapLine(t, hit)  … **第 2 引数が在るときだけ第 1 引数を秒と読む**（view.js の約束）
+                              ので、吸着が無いときも `{unit:"time"}` を渡す
+       setMarquee(rect)     … 内容座標 {x,y,w,h}
+       setGhost({ mode, dup, lifted, valid, items:[{clipId,trackId,start,duration,dy}] })
+                            … **行の位置は trackId から view が決める**ので dy は 0。
+                              控えの絵（view 無し）用の px は dyPx に入れる
+     dispatch する op の payload（core/ops.js の実装に合わせた）:
+       clip.move   {clipId, trackId?, start}
+       clip.trim   {clipId, edge:"start"|"end", delta, ripple?}  ※delta>0 で **短くなる**
+       clip.roll   {clipId, edge:"start"|"end", delta}           ※delta = 境界の移動秒
+       clip.slip   {clipId, delta}        ※delta はタイムライン秒（右へ引くと負）
+       clip.duplicate {clipId, at, mode}  ※別トラックへ落とすときは clip.move を続けて 1 束
+       clip.add    {trackId, at, assetId} clip.split {clipId, t}
+       clip.remove {clipIds} / clip.rippleDelete {clipIds} / clip.reverse {clipIds}
+       clip.update {clipIds, patch} / clip.setSpeed {clipId, speed}
+       clip.detachAudio {clipId} / clip.group {clipIds} / clip.ungroup {clipIds}
+       clip.freeze {clipId, t} / compound.make {clipIds}
+       timeline.paste {trackId, at, clips} / track.update {trackId, patch:{height}}
      外へ出す合図（受け手は inspector / import 担当）:
        document 上の CustomEvent "vqs:clip-activate" {clipId,kind,tab}
        document 上の CustomEvent "vqs:timeline-drop" {files,trackId,t}
@@ -69,7 +74,8 @@ const AUTOSCROLL_ZONE = 56;   // 端からこの距離で自動スクロール
 const AUTOSCROLL_MAX = 1200;  // px/秒（契約どおりの上限）
 const PPS_MIN = 10;           // ピンチの下限（px/秒）
 const PPS_MAX = 400;          // ピンチの上限
-const PPS_HARD_MAX = 4000;    // ホイール拡大の上限
+const PPS_HARD_MAX = 800;     // ホイール拡大の上限（view.js の ZOOM_MAX と同じ）
+const PPS_DEFAULT = 80;       // view.js の ZOOM_DEFAULT と同じ
 const FRICTION = 0.92;        // 慣性の減衰（1 フレーム）
 const BOUNCE = 0.35;          // 端での跳ね返り
 const TRACK_H = [36, 240];    // トラック高さの下限・上限
@@ -124,7 +130,7 @@ export function createTimelineInteraction(arg) {
     startX: 0, startY: 0, x: 0, y: 0, moved: false, hit: null,
     items: [], edge: null, other: null, trackId: null, height: 0, el: null,
     dup: false, lifted: false, points: [], hitPoint: null, lineT: null,
-    pinch: { d0: 1, pps0: 60, t0: 0 }, vel: 0, lastT: 0, panX: 0,
+    pinch: { d0: 1, pps0: PPS_DEFAULT, t0: 0 }, vel: 0, lastT: 0, panX: 0,
     timer: 0, loop: 0, inertia: 0, dirty: false, buzzed: 0
   };
   const pointers = new Map();
@@ -142,7 +148,7 @@ export function createTimelineInteraction(arg) {
   function pxPerSec() {
     let v = readNum(view, "pxPerSec");
     if (!(v > 0)) v = readNum(view, "zoom");
-    if (!(v > 0)) v = finite(VW().zoom, 60);
+    if (!(v > 0)) v = finite(VW().zoom, PPS_DEFAULT);
     return clamp(v, 1, PPS_HARD_MAX);
   }
   /** クリップが並ぶ帯の左端（画面座標・scroll 済み） */
@@ -228,7 +234,15 @@ export function createTimelineInteraction(arg) {
     let h = null;
     const r = tryCall(view, "hitTest", [x, y]);
     if (r && typeof r === "object") {
-      h = { kind: r.kind || r.type || (r.clipId || r.id ? "clip" : "empty"), clipId: r.clipId || r.id, trackId: r.trackId, edge: null };
+      const k = String(r.kind || r.type || "");
+      h = {
+        // view は端を "handleL"/"handleR"、キーフレームや遷移の印を別の kind で返す。
+        // ここでは全部「クリップを触った」に畳み、端かどうかは edge で持つ
+        kind: (k === "ruler" || k === "empty") ? k : ((r.clipId || r.id) ? "clip" : "empty"),
+        clipId: r.clipId || r.id, trackId: r.trackId,
+        edge: r.edge === "in" || r.edge === "out" ? r.edge : (k === "handleL" ? "in" : k === "handleR" ? "out" : null),
+        keyframe: r.keyframe || null
+      };
     }
     if (!h || (h.kind === "clip" && !h.clipId)) {
       const el = document.elementFromPoint ? document.elementFromPoint(x, y) : null;
@@ -246,7 +260,7 @@ export function createTimelineInteraction(arg) {
       const ce = h.el || clipEl(h.clipId);
       h.el = ce || null;
       if (!h.trackId) { const f = findClip(h.clipId); if (f) h.trackId = f.track.id; }
-      if (ce) {
+      if (!h.edge && ce) {
         const b = ce.getBoundingClientRect();
         // 掴み代は幅の 1/3 まで（短いクリップが全部トリムになるのを防ぐ）
         const g = Math.min(touch ? EDGE_TOUCH : EDGE_MOUSE, b.width / 3);
@@ -273,7 +287,7 @@ export function createTimelineInteraction(arg) {
     for (const it of g.items) {
       const el = clipEl(it.clipId);
       if (!el) continue;
-      el.style.transform = "translate3d(" + ((it.start - it.fromStart) * pps) + "px," + finite(it.dy, 0) + "px,0)";
+      el.style.transform = "translate3d(" + ((it.start - it.fromStart) * pps) + "px," + finite(it.dyPx, 0) + "px,0)";
       if (g.mode === "trim") el.style.width = Math.max(2, it.duration * pps) + "px";
       el.style.opacity = g.dup ? "1" : "0.72";
       el.classList.add("vqs-tl-ghosting");
@@ -285,7 +299,8 @@ export function createTimelineInteraction(arg) {
   function setLine(t, hit) {
     if (t === G.lineT || (t !== null && G.lineT !== null && Math.abs(t - G.lineT) < 1e-6)) return;
     G.lineT = t;
-    if (has(view, "setSnapLine")) { tryCall(view, "setSnapLine", [t, hit || null]); return; }
+    // view.js は「第 2 引数が在れば第 1 引数は秒」と読む。だから必ず何か渡す
+    if (has(view, "setSnapLine")) { tryCall(view, "setSnapLine", [t, hit || { unit: "time" }]); return; }
     const el = els.tlSnapLine;
     if (!el) return;
     if (t === null) { el.classList.add("hidden"); return; }
