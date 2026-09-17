@@ -478,7 +478,10 @@ export function validatePlan(plan, ctx) {
       const w = Number(s.want);
       if (!Number.isFinite(w) || w <= 0) W(path + ".want", "want が数値ではない", "1 ショット長を入れる");
       else {
-        sum += w / Math.max(0.1, Math.abs(finite(s.speed, 1)) || 1);
+        /* want は **タイムライン上で見せる秒数**（ai/resolve.js が
+           `srcWant = want × speed` として素材側の秒に直す）。速度で割ると
+           「2 倍速で 30 秒」の注文に「合計が目標から離れすぎ」と嘘の警告が出る。 */
+        sum += w;
         const a = byId.get(id);
         const dur = a ? assetDuration(a) : 0;
         if (dur > 0 && w > dur + 1e-3) W(path + ".want", `want ${w.toFixed(2)}s が素材の尺 ${dur.toFixed(2)}s より長い`, "素材の尺に収める");
@@ -576,8 +579,9 @@ function planSystemPrompt() {
     + '"fx":[],"note":""}],'
     + '"captions":"none|auto|prompt","endCard":{"text":"締めの文字","duration":1.6}|null}',
     "決まり: segments は渡された素材の id だけを使う（作らない）。全ての素材を少なくとも 1 回使う。",
-    "want は「そのショットを何秒見せたいか」。素材の中の何秒目かは書かない（こちらで決める）。",
-    "合計（want ÷ speed）が targetDuration の ±10% に収まるようにする。",
+    "want は「そのショットを何秒見せたいか」＝ でき上がりの尺。素材の中の何秒目かは書かない（こちらで決める）。",
+    "speed を 1 以外にしても want は変えない（速くすると素材を多く使うだけで、見せる秒数は want のまま）。",
+    "want の合計が targetDuration の ±10% に収まるようにする。",
     "冒頭には一番良い素材を置く。テロップは冒頭の題と場面の頭だけに付ける。日本語で書く。"
   ].join("\n");
 }
@@ -667,6 +671,15 @@ export async function planEdit(opts) {
     let plan = normalizePlanShape(Object.assign({ id: local.id, ratio: intent.ratio, targetDuration: intent.targetDuration }, got));
     let v = validatePlan(plan, { assets });
     if (!v.ok) {
+      /* 使える素材を 1 つも指せていない案は「直す」意味が無い（repairPlan が
+         planLocal で全部作り直すので、中身は端末内の案なのに source:"llm" と
+         名乗ることになる）。ここで正直に端末内の案へ落とす。 */
+      const known = new Set(assets.map((a) => str(plain(a) && plain(a).id)));
+      if (!plan.segments.some((s) => known.has(str(s.assetId)))) {
+        notes.push("AI の案が渡した素材を 1 つも指していないので端末内の案を使う");
+        step(1, "でき上がり");
+        return { plan: local, source: "local", notes, intent };
+      }
       plan = repairPlan(plan, { assets, intent, template: o.template });
       const v2 = validatePlan(plan, { assets });
       notes.push(`AI の案を直した（${v.errors.length} 件の不整合）`);

@@ -170,7 +170,8 @@ function firstHit(rules, text) {
 
 /**
  * 目標の尺（秒）を読む。読めなければ null。
- * 「1分30秒」「90秒」「2分」「1分半」「30〜40秒」「尺は1:30」に対応。
+ * 「1分30秒」「90秒」「2分」「1分半」「30〜40秒」「30から40秒」「尺は1:30」
+ * 「1分30秒にまとめて」に対応。
  * @param {string} text NFKC 済みの文
  * @returns {number|null}
  */
@@ -178,11 +179,15 @@ export function parseTargetDuration(text) {
   const t = str(text);
   let m = null;
   /* 「10分にまとめて」のように **仕上がりの長さ**だと分かる言い方を最優先に見る。
-     こうしないと「1時間の講義を10分にまとめて」で素材の長さ（1時間）を拾う。 */
-  if ((m = /(\d+(?:\.\d+)?)\s*(時間|分|秒)\s*(?:くらい|ほど|程度|前後)?\s*(?:に|へ|で)\s*(?:まとめ|して|収め|抑え|編集|作|仕上|縮め|短く)/.exec(t))) {
-    const n = Number(m[1]);
-    const mul = m[2] === "時間" ? 3600 : m[2] === "分" ? 60 : 1;
-    if (Number.isFinite(n) && n > 0) return clamp(n * mul, MIN_TARGET, MAX_TARGET);
+     こうしないと「1時間の講義を10分にまとめて」で素材の長さ（1時間）を拾う。
+     頭の `(\d+)分` は任意（「1分30秒にまとめて」で 分 を落とさないため。
+     これが無いと「1分」の所で に/で が来ず、後ろの「30秒」だけを拾ってしまう）。 */
+  if ((m = /(?:(\d+(?:\.\d+)?)\s*分\s*)?(\d+(?:\.\d+)?)\s*(時間|分|秒)\s*(?:くらい|ほど|程度|前後)?\s*(?:に|へ|で)\s*(?:まとめ|して|収め|抑え|編集|作|仕上|縮め|短く)/.exec(t))) {
+    const n = Number(m[2]);
+    const mul = m[3] === "時間" ? 3600 : m[3] === "分" ? 60 : 1;
+    /* 頭の 分 が拾えているのは「X分Y秒」の形のときだけ（「X分Y分」は無い） */
+    const head = m[1] !== undefined && m[3] === "秒" ? Number(m[1]) * 60 : 0;
+    if (Number.isFinite(n) && n > 0 && Number.isFinite(head)) return clamp(head + n * mul, MIN_TARGET, MAX_TARGET);
   }
   if ((m = /(\d+(?:\.\d+)?)\s*時間\s*(\d+(?:\.\d+)?)?\s*分?/.exec(t))) {
     const h = Number(m[1]) * 3600 + (m[2] ? Number(m[2]) * 60 : 0);
@@ -190,24 +195,37 @@ export function parseTargetDuration(text) {
   }
   if ((m = /(\d+(?:\.\d+)?)\s*分\s*(\d+(?:\.\d+)?)\s*秒/.exec(t))) return clamp(Number(m[1]) * 60 + Number(m[2]), MIN_TARGET, MAX_TARGET);
   if ((m = /(\d+(?:\.\d+)?)\s*分\s*半/.exec(t))) return clamp(Number(m[1]) * 60 + 30, MIN_TARGET, MAX_TARGET);
-  if ((m = /(\d+)\s*[〜~\-から]\s*(\d+)\s*秒/.exec(t))) return clamp((Number(m[1]) + Number(m[2])) / 2, MIN_TARGET, MAX_TARGET);
-  if ((m = /(\d+)\s*[〜~\-から]\s*(\d+)\s*分/.exec(t))) return clamp(((Number(m[1]) + Number(m[2])) / 2) * 60, MIN_TARGET, MAX_TARGET);
+  /* 範囲の区切りは 1 文字ではない物（「から」）も在る。文字の集合に「か」「ら」を
+     入れるだけでは「30から40秒」が拾えないので、まとまりとして書く。 */
+  if ((m = /(\d+)\s*(?:[〜~～\-–ー]|から)\s*(\d+)\s*秒/.exec(t))) return clamp((Number(m[1]) + Number(m[2])) / 2, MIN_TARGET, MAX_TARGET);
+  if ((m = /(\d+)\s*(?:[〜~～\-–ー]|から)\s*(\d+)\s*分/.exec(t))) return clamp(((Number(m[1]) + Number(m[2])) / 2) * 60, MIN_TARGET, MAX_TARGET);
   if ((m = /(?:尺|長さ|時間)\s*は?\s*(\d{1,2})\s*:\s*([0-5]\d)/.exec(t))) return clamp(Number(m[1]) * 60 + Number(m[2]), MIN_TARGET, MAX_TARGET);
   if ((m = /(\d+(?:\.\d+)?)\s*(?:秒|びょう|sec|s)(?![a-z])/.exec(t))) return clamp(Number(m[1]), MIN_TARGET, MAX_TARGET);
   if ((m = /(\d+(?:\.\d+)?)\s*(?:分|ぷん|min)/.exec(t))) return clamp(Number(m[1]) * 60, MIN_TARGET, MAX_TARGET);
   return null;
 }
 
+/** 「N 倍」の直前に来ていたら **速さの話ではない**言葉（音量・明るさ…） */
+const NOT_SPEED_BEFORE = /(音量|ボリューム|音|明るさ|明度|大きさ|サイズ|文字|解像度|画質|値段|価格|人数|枚数|量|幅|高さ)[をはがにもの]?$/;
+
 /**
  * 「2倍速」「0.5倍」「1.5倍速で」を読む。無ければ null。
+ * 「音量を2倍にして」のような **速さ以外**の「N 倍」は拾わない
+ * （拾うと動画全体が 2 倍速になってしまう）。
  * @param {string} text @returns {number|null}
  */
 export function parseSpeed(text) {
-  const m = /(\d+(?:\.\d+)?)\s*倍(速|に|で)?/.exec(str(text));
-  if (!m) return null;
-  const v = Number(m[1]);
-  if (!Number.isFinite(v) || v <= 0) return null;
-  return clamp(v, 0.1, 8);
+  const t = str(text);
+  const re = /(\d+(?:\.\d+)?)\s*倍(速|に|で)?/g;
+  let m = null;
+  while ((m = re.exec(t))) {
+    const v = Number(m[1]);
+    if (!Number.isFinite(v) || v <= 0) continue;
+    /* 「倍速」と書いてあれば速さで確定。そうでなければ直前の言葉を見る */
+    if (m[2] !== "速" && NOT_SPEED_BEFORE.test(t.slice(Math.max(0, m.index - 8), m.index))) continue;
+    return clamp(v, 0.1, 8);
+  }
+  return null;
 }
 
 /** BGM の音量の言い方（小さめ/大きめ）→ 0..1 */
@@ -375,7 +393,11 @@ export function normalizeIntent(obj, base) {
     style: styleOk ? str(o.style) : b.style,
     mood: pick(o.mood, MOODS, b.mood),
     music: {
-      wanted: typeof (mus && mus.wanted) === "boolean" ? mus.wanted : (o.music === false ? false : b.music.wanted),
+      /* `music:null` / `music:false` は「BGM は敷かない」の意（契約書 §6 の
+         Plan.music が null で無音を表すのと同じ読み方）。鍵ごと無い（undefined）
+         ときだけ規則で読んだ値を使う。 */
+      wanted: typeof (mus && mus.wanted) === "boolean" ? mus.wanted
+        : (o.music === false || o.music === null ? false : b.music.wanted),
       assetId: str(mus && mus.assetId) || b.music.assetId || null,
       energy: pick(mus && mus.energy, ["low", "mid", "high"], b.music.energy),
       gain: num(mus && mus.gain, b.music.gain, 0, 1)

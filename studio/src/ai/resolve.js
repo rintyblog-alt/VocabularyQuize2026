@@ -98,14 +98,23 @@ function freeId(prefix, used) {
 
 /**
  * 拍の並びを均す（pure）。時刻は昇順・重複なし。
- * @param {*} beats { bpm, offset, times, downbeats } 相当
+ * @param {*} beats { bpm, offset, times, downbeats } 相当。
+ *   **時刻の配列だけ**（`analysis.beats.times` をそのまま）渡されても受ける
+ *   （呼び手が 1 段掘り忘れて「音ハメにならない」と黙って外れるのを防ぐ）。
  * @returns {{bpm:number, offset:number, times:number[], downbeats:number[], period:number}|null}
  */
 export function normalizeBeats(beats) {
-  const b = plain(beats);
+  const b = Array.isArray(beats) ? { times: beats } : plain(beats);
   if (!b) return null;
-  const times = arr(b.times).map((t) => finite(t, NaN)).filter((t) => Number.isFinite(t) && t >= 0).sort((x, y) => x - y);
-  const downs = arr(b.downbeats).map((t) => finite(t, NaN)).filter((t) => Number.isFinite(t) && t >= 0).sort((x, y) => x - y);
+  /* `finite(t, NaN)` は読めない値を **0 に倒す**（fallback が NaN なので 0 になる）。
+     それだと "x" や null が「0 秒の拍」として残り、頭出し（最初の downbeat）と
+     吸着の目安を狂わせる。ここは Number で見て、読めない物は落とす。 */
+  const nums = (list) => arr(list)
+    .map((t) => (typeof t === "number" ? t : typeof t === "string" && t.trim() ? Number(t) : NaN))
+    .filter((t) => Number.isFinite(t) && t >= 0)
+    .sort((x, y) => x - y);
+  const times = nums(b.times);
+  const downs = nums(b.downbeats);
   const bpm = finite(b.bpm, 0);
   let period = bpm >= 40 && bpm <= 240 ? 60 / bpm : 0;
   if (!period && times.length >= 3) {
@@ -381,7 +390,9 @@ export function resolvePlan(plan, opts) {
     if (arr(project.tracks).length + trackOps.length >= MAX_TRACKS) {
       const any = arr(project.tracks).find((t) => plain(t) && str(plain(t).kind) === kind && !plain(t).locked);
       if (any) {
-        warnings.push(`トラックが上限（${MAX_TRACKS} 本）なので ${str(plain(any).name) || kind} に重ねた`);
+        /* clip.add は mode:"overwrite" なので、既にあるクリップは削られる/割られる。
+           「重ねた」と書くと嘘になるので、上書きだと言い切る（取消 1 回で戻せる）。 */
+        warnings.push(`トラックが上限（${MAX_TRACKS} 本）なので ${str(plain(any).name) || kind} に上書きした（取り消しで戻せる）`);
         return str(plain(any).id);
       }
       warnings.push(`トラックが上限（${MAX_TRACKS} 本）なので ${kind} のトラックを作れなかった`);
@@ -479,7 +490,11 @@ export function resolvePlan(plan, opts) {
       warnings.push("BGM の素材が短すぎるので敷かなかった");
     } else {
       if (room + 1e-3 < timelineEnd) warnings.push(`BGM が ${(timelineEnd - room).toFixed(1)} 秒足りない（最後は無音になる）`);
-      d = Math.min(d, frameFloor(room));
+      /* 素材より長くしない。ただし **MIN_CLIP より短くもしない**（§1 不変条件 2）。
+         フレームで切り下げると 1 フレームが MIN_CLIP より短い fps（30 なら
+         0.0333 < 0.04）で下限を割るため、最後に minDur まで戻す。
+         room >= minDur はこの枝に入る条件なので、素材の端は越えない。 */
+      d = Math.max(minDur, Math.min(d, frameFloor(room)));
       const spec = {
         kind: "audio", assetId: str(musicAsset.id), start: 0, duration: r6(d),
         in: r6(musicIn), out: r6(Math.min(musicDur, musicIn + d)),

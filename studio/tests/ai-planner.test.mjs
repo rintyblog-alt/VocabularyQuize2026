@@ -89,7 +89,10 @@ function mkAssets() {
 /** 注文票を手で作る（規則で読まず、鍵だけ差し替えたいとき） */
 const mkIntent = (over) => Object.assign(parseIntentLocal("", null), over || null);
 
-const sum = (plan) => plan.segments.reduce((m, s) => m + s.want / s.speed, 0);
+/** want は **タイムライン上で見せる秒数**（speed を掛ける前ではない）。
+    ai/resolve.js が `srcWant = want × speed` として素材側の秒へ直すので、
+    でき上がりの尺は speed に関係なく want の総和になる。 */
+const sum = (plan) => plan.segments.reduce((m, s) => m + s.want, 0);
 
 /* ══ ① jsonRepair ═════════════════════════════════════════════════ */
 
@@ -134,6 +137,14 @@ test("jsonRepair: 文字列の中身は壊さない", () => {
   assert.deepEqual(parseJsonLoose('{"note": "1, 2, 3,"}'), { note: "1, 2, 3," });
   assert.equal(stripTrailingCommas('{"a":"x,"}'), '{"a":"x,"}');
   assert.equal(stripJsonComments('{"a":"http://x"}'), '{"a":"http://x"}');
+  /* 裸の鍵を直すとき、本文の「, 英字 :」を鍵と見間違えないこと
+     （見間違えると文字列が割れて、直せる JSON が直せなくなる） */
+  assert.equal(quoteBareKeys('{"note":"a, b: c", x:1}'), '{"note":"a, b: c", "x":1}');
+  assert.deepEqual(parseJsonLoose('{"note":"a, b: c", x:1}'), { note: "a, b: c", x: 1 });
+  assert.deepEqual(parseJsonLoose('{"jp":"夏, 海: 思い出", seg:[]}'), { jp: "夏, 海: 思い出", seg: [] });
+  assert.deepEqual(parseJsonLoose('{"esc":"a\\", b: c", k:2}'), { esc: 'a", b: c', k: 2 });
+  assert.equal(quoteBareKeys('{"ok":1}'), '{"ok":1}');
+  assert.equal(quoteBareKeys("{2a:1}"), "{2a:1}");   // 数字始まりは鍵にしない
 });
 
 test("jsonRepair: 部品もそれぞれ pure に動く", () => {
@@ -242,6 +253,23 @@ test("parseTargetDuration / parseSpeed / quotedParts", () => {
   assert.equal(parseSpeed("1.5倍速"), 1.5);
   assert.equal(parseSpeed("倍速ではない"), null);
   assert.deepEqual(quotedParts("「夏の思い出」と『続編』"), ["夏の思い出", "続編"]);
+  /* 「X分Y秒 に/で 〜して」… 分 を落として秒だけ拾わないこと */
+  assert.equal(parseTargetDuration("1分30秒にまとめて"), 90);
+  assert.equal(parseTargetDuration("2分30秒に収めて"), 150);
+  assert.equal(parseTargetDuration("1分30秒で作って"), 90);
+  /* 仕上がりの長さの言い方は素材の長さより強い（順番を崩していないこと） */
+  assert.equal(parseTargetDuration("1時間の講義を10分にまとめて"), 600);
+  assert.equal(parseTargetDuration("10分にまとめて"), 600);
+  /* 範囲の区切りは「〜」でも「から」でも同じ（真ん中を採る） */
+  assert.equal(parseTargetDuration("30から40秒"), 35);
+  assert.equal(parseTargetDuration("1から3分"), 120);
+  /* 速さ以外の「N 倍」を速度にしない（動画全体が 2 倍速になってしまう） */
+  assert.equal(parseSpeed("音量を2倍にして"), null);
+  assert.equal(parseSpeed("明るさ2倍"), null);
+  assert.equal(parseSpeed("2倍速で全部つなげて"), 2);
+  assert.equal(parseSpeed("1.5倍で再生して"), 1.5);
+  assert.equal(parseSpeed("音量は2倍、3倍速で"), 3);   // 速さの方を拾う
+  assert.equal(parseSpeed("10倍速"), 8);               // 上限まで
 });
 
 test("normalizeIntent: LLM の壊れた注文票でも Intent が壊れない", () => {
@@ -253,6 +281,11 @@ test("normalizeIntent: LLM の壊れた注文票でも Intent が壊れない", 
   assert.equal(merged.captions, base.captions);
   assert.equal(merged.music.gain, 1);       // 0..1 に収める
   assert.equal(merged.source, "llm");
+  /* `music:null` は「BGM は敷かない」（契約書 §6 の Plan.music と同じ読み方）。
+     鍵ごと無いときは規則で読んだ値をそのまま使う。 */
+  assert.equal(normalizeIntent({ music: null }, base).music.wanted, false);
+  assert.equal(normalizeIntent({ music: false }, base).music.wanted, false);
+  assert.equal(normalizeIntent({}, base).music.wanted, base.music.wanted);
 });
 
 /* ══ ③ templates ══════════════════════════════════════════════════ */
@@ -397,6 +430,15 @@ test("planLocal: 注文の色と速度が Plan に乗る", () => {
   const plan = planLocal(parseIntentLocal("30秒、映画風の色で、2倍速", { assets }), assets, null);
   assert.ok(plan.grade && plan.grade.contrast > 0, "colorLook が grade に落ちていない");
   for (const s of plan.segments) assert.equal(s.speed, 2);
+  /* want は speed を掛ける前の秒ではないので、速度を上げても目標尺は変わらない。
+     validatePlan が want を speed で割ると「離れすぎ」の嘘の警告が出る。 */
+  assert.ok(sum(plan) >= plan.targetDuration * 0.9 - 1e-6 && sum(plan) <= plan.targetDuration * 1.1 + 1e-6);
+  for (const mul of ["2倍速", "4倍速", "0.5倍速"]) {
+    const p = planLocal(parseIntentLocal(`30秒、${mul}`, { assets }), assets, null);
+    const v = validatePlan(p, { assets });
+    assert.equal(v.ok, true, JSON.stringify(v.errors));
+    assert.deepEqual(v.warnings.filter((w) => /離れすぎ/.test(w.msg)), [], `${mul} で嘘の警告が出た`);
+  }
 });
 
 test("planFromTemplate: 型を選ぶだけでも Plan になる", () => {
@@ -561,6 +603,27 @@ test("createLLM: fetch が無い環境・中止・Authorization", async () => {
   ctrl.abort();
   const llm = createLLM({ endpoint: "https://e.test/x", fetchImpl: async () => { throw Object.assign(new Error("aborted"), { name: "AbortError" }); } });
   await assert.rejects(() => llm.chat("やあ", { signal: ctrl.signal }), (e) => e.code === "ABORTED");
+});
+
+test("createLLM: 本文が来ない相手でも時間切れと中止が効く", async () => {
+  /* 実物の fetch と同じ作法の偽物: signal が立つと **本文の読み取りも** 失敗する。
+     読み取りを timer の外に出すと、ここが永久に待ちになる（パネルが回り続ける）。 */
+  const hang = (u, init) => ({
+    ok: true, status: 200,
+    text: () => new Promise((_ok, rej) => {
+      const s = init && init.signal;
+      const fail = () => rej(Object.assign(new Error("aborted"), { name: "AbortError" }));
+      if (!s) return;
+      if (s.aborted) fail(); else s.addEventListener("abort", fail);   // 実物と同じ: 既に中止済みなら即失敗
+    })
+  });
+  const llm = createLLM({ endpoint: "https://e.test/x", fetchImpl: async (u, i) => hang(u, i), timeout: 80 });
+  await assert.rejects(() => llm.chat("やあ"), (e) => e.code === "TIMEOUT");
+  const ctrl = new AbortController();
+  const llm2 = createLLM({ endpoint: "https://e.test/x", fetchImpl: async (u, i) => hang(u, i), timeout: 60000 });
+  const p = llm2.chat("やあ", { signal: ctrl.signal });
+  ctrl.abort();
+  await assert.rejects(() => p, (e) => e.code === "ABORTED");
 });
 
 /* ══ ⑦ planEdit（必ず Plan が返る）════════════════════════════════ */

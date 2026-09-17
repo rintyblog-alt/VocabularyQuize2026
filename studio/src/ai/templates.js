@@ -86,7 +86,7 @@ export const LOOK_IDS = Object.freeze(Object.keys(COLOR_LOOKS));
 export const LOOK_NAMES = Object.freeze({
   none: "そのまま", natural: "自然", cinematic: "シネマ", vivid: "鮮やか", punchy: "力強い",
   warm: "暖かい", cool: "涼しい", mono: "モノクロ", retro: "レトロ", bright: "明るい",
-  dark: "暗め", soft: "やわらか", clean: "clean"
+  dark: "暗め", soft: "やわらか", clean: "クリーン"
 });
 
 /**

@@ -246,9 +246,42 @@ export function singleToDoubleQuotes(s) {
   return out;
 }
 
-/** 裸の鍵（{ a: 1 } の a）を "a" にする */
+/** 鍵に使える字（1 文字目は英字か _ $） */
+const KEY_HEAD = /[A-Za-z_$]/;
+const KEY_BODY = /[A-Za-z0-9_$\-.]/;
+
+/**
+ * 裸の鍵（{ a: 1 } の a）を "a" にする。
+ * **文字列の中は触らない**: `{"note":"a, b: c", x:1}` のような本文に
+ * 「, 英字 :」が入っていると、素の置換では文字列を割ってしまい、
+ * 直せる JSON が直せなくなる（jsonRepair が null を返し、言い直しを無駄に使う）。
+ * @param {string} s @returns {string}
+ */
 export function quoteBareKeys(s) {
-  return s.replace(/([{,])(\s*)([A-Za-z_$][A-Za-z0-9_$\-.]*)(\s*):/g, '$1$2"$3"$4:');
+  let out = "", inStr = false, esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      out += c;
+      if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; out += c; continue; }
+    out += c;
+    if (c !== "{" && c !== ",") continue;
+    /* 「空白 → 裸の鍵 → 空白 → :」が続いていたら鍵を引用符で包む */
+    let j = i + 1;
+    while (j < s.length && /\s/.test(s[j])) j++;
+    const k0 = j;
+    while (j < s.length && KEY_BODY.test(s[j])) j++;
+    if (j === k0 || !KEY_HEAD.test(s[k0])) continue;
+    let k = j;
+    while (k < s.length && /\s/.test(s[k])) k++;
+    if (s[k] !== ":") continue;
+    out += s.slice(i + 1, k0) + '"' + s.slice(k0, j) + '"' + s.slice(j, k);
+    i = k - 1;                     // 次の周回で ":" を書き出す
+  }
+  return out;
 }
 
 /** 途中で切れた JSON を閉じる（文字列も括弧も） */
@@ -408,27 +441,31 @@ export function createLLM(opts) {
       }
     }
 
-    let res = null;
+    /* 本文の読み取りも **同じ timer / signal の中**でやる。ヘッダだけ来て
+       本文が来ない相手のとき、読み取りを外に出すと時間切れも中止も効かず、
+       AI パネルが永久に回り続ける（携帯では特に起きやすい）。 */
+    let res = null, text = "", reading = false;
     try {
       res = await fetchImpl(endpoint, {
         method: "POST", headers, body: JSON.stringify(body),
         signal: ctrl ? ctrl.signal : undefined,
         mode: "cors", credentials: "omit", cache: "no-store"
       });
+      reading = true;
+      text = await res.text();
     } catch (err) {
       if (q.signal && q.signal.aborted) throw (lastError = new LLMError("中止しました", { code: "ABORTED", cause: err }));
       if (timedOut) throw (lastError = new LLMError("AI の応答が時間内に来ませんでした", { code: "TIMEOUT", cause: err }));
-      throw (lastError = new LLMError("AI へ繋がりませんでした", { code: "NETWORK", cause: err }));
+      const st = Number(res && res.status) || 0;
+      throw (lastError = reading
+        ? new LLMError("AI の応答を読めませんでした", { code: "NETWORK", status: st, cause: err })
+        : new LLMError("AI へ繋がりませんでした", { code: "NETWORK", cause: err }));
     } finally {
       if (timer) clearTimeout(timer);
       if (onAbort) { try { q.signal.removeEventListener("abort", onAbort); } catch (_e) { /* 外せないだけ */ } }
     }
 
     const status = Number(res && res.status) || 0;
-    let text = "";
-    try { text = await res.text(); } catch (err) {
-      throw (lastError = new LLMError("AI の応答を読めませんでした", { code: "NETWORK", status, cause: err }));
-    }
     let data = text;
     if (text) { try { data = JSON.parse(text); } catch (_e) { data = text; } }
 

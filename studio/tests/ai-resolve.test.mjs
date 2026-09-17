@@ -290,6 +290,15 @@ test("nearestBeat / normalizeBeats / mergeWindows / audibleWindows は pure", { 
   const asset = mkAsset("as_x", "video", 4, { analysis: mkAnalysis(4, { silence: [{ start: 0, end: 1 }] }) });
   assert.deepEqual(R.audibleWindows(item, asset), [[11, 14]]);
   assert.deepEqual(R.audibleWindows(item, mkAsset("as_y", "video", 4)), [[10, 14]]);
+  // 逆再生でも「鳴っている所」は正しく裏返る（頭の 1 秒の無音 → 終わりの 1 秒）
+  const rev = { kind: "video", start: 0, duration: 4, in: 0, out: 4, speed: 1, reverse: true };
+  assert.deepEqual(R.audibleWindows(rev, asset), [[0, 3]]);
+  /* 読めない拍は **落とす**（0 秒の拍として残ると頭出しと吸着が狂う） */
+  const dirty = R.normalizeBeats({ bpm: NaN, times: ["x", -1, 2, null, 3, "4.5", true, {}, ""] });
+  assert.deepEqual(dirty.times, [2, 3, 4.5]);
+  assert.equal(R.normalizeBeats({ times: ["x", null] }), null);
+  // 時刻の配列だけ渡されても受ける（呼び手が 1 段掘り忘れても音ハメが効く）
+  assert.deepEqual(R.normalizeBeats([1, 0.5, 2]).times, [0.5, 1, 2]);
 });
 
 test("sourceRangeFor: pick ごとの範囲（同じ素材の 2 本目は別の所）", { skip: needAi }, () => {
@@ -422,6 +431,27 @@ test("resolvePlan: BGM の素材が無ければ warning を出して音無しで
   assert.equal(out.ops.filter((o) => o.payload.clip && o.payload.clip.kind === "audio").length, 0);
   assert.ok(out.warnings.some((w) => w.indexOf("BGM") >= 0));
   assert.ok(out.summary.indexOf("BGM なし") >= 0);
+});
+
+test("resolvePlan: 極端に短い BGM でも MIN_CLIP を割らない", { skip: needAi }, () => {
+  /* 1 フレームが MIN_CLIP より短い fps（30 なら 0.0333 < 0.04）で
+     「素材の尺ぴったり」に切り下げると、下限（契約書 §1 不変条件 2）を割る。 */
+  for (const fps of [24, 25, 30, 50, 60]) {
+    for (const bgmDur of [0.02, 0.041, 0.05, 0.06, 0.1, 0.5]) {
+      const assets = [mkAsset("as_v", "video", 10), mkAsset("as_s", "audio", bgmDur)];
+      const out = R.resolvePlan(mkPlan({
+        targetDuration: 8, music: { assetId: "as_s", gain: 0.25, duck: true, startAt: "auto" },
+        segments: [seg("as_v", 4), seg("as_v", 4)]
+      }), { project: mkProject(assets, { settings: { fps } }), assets, fps });
+      const music = out.ops.filter((o) => o.payload.clip && o.payload.clip.kind === "audio").map((o) => o.payload.clip);
+      for (const c of music) {
+        assert.ok(c.duration >= 0.04 - 1e-9, `fps=${fps} / BGM ${bgmDur}s → 尺 ${c.duration} が MIN_CLIP を割った`);
+        assert.ok(c.out <= bgmDur + 1e-6, `fps=${fps} / BGM ${bgmDur}s → out ${c.out} が素材を越えた`);
+        assert.ok(c.out > c.in);
+      }
+      if (bgmDur < 0.04) assert.equal(music.length, 0, "短すぎる BGM は敷かない");
+    }
+  }
 });
 
 /* ══ ⑦ 壊れた入力 ════════════════════════════════════════════════ */

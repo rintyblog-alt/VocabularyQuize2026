@@ -27,17 +27,33 @@
        返す。analysis/index.js の詰め替えが `Array.isArray(c.values)` を見ているため、
        Float32Array では無く Array で持つ（ここを typed array にすると loudness が
        丸ごと null に落ちる）。素の dBFS 列が欲しい時は `rmsCurve` を直に呼ぶ。
+       返す `hz` は **頼んだ hz ではなく hop から決まる本当の刻み**（`frameStep`）。
+       `sampleRate/hz` は割り切れない事が多く（22050Hz で 20Hz を頼むと 19.991Hz）、
+       頼んだ値で frame を秒に直すと後ろへ行くほどずれる（50 秒で 100ms 級 =
+       無音カットが 1 音節ぶん外れる）。`detectSilence` も同じ規則で秒に直す。
      ・CONTRACT-NOTE: `detectBeats` は拍が見つからなくても **必ずオブジェクトを返す**
        （`{bpm:0, offset:0, times:[], downbeats:[], conf:0}`）。呼ぶ側が `.bpm` で
        落ちないため。拍として信じて良いかは **`conf`** で見る（0.3 未満は使わない）。
+       打撃が無い素材（無音・純音・持続する和音・パッドだけの曲）は `conf` を待たず
+       `ONSET_MIN` の門でこの「拍なし」を返す。持続和音を通していた頃は、動かない
+       包絡のわずかな揺れを `emphasize` が 0..1 へ引き伸ばして **conf 0.6 で 96BPM を
+       幻覚**していた（conf 0.3 の門では止まらない所だった）。
+       テンポの倍・半分は `refineOctave` が「裏拍にも表と同じ高さの山が在るか」で
+       決める。`tempoPrior`（120 中心）だけでは **168BPM 以上が必ず半分に化ける**
+       （120 中心の重みでは 174 より 87 の方が得点が高い）。今は 60..200BPM を
+       2 刻みで全部当てる。裏が弱い素材（キックだけ）は倍速に化けない。
      ・CONTRACT-NOTE: `summarizeForLLM` は video.js にも同名が在る（あちらは映像向け）。
        `export * from "./audio.js"` を index.js に足すと ESM の星取り込みが衝突して
        名前ごと消えるので、**足すなら `summarizeAudioForLLM` を使う**（同じ実装の別名を
        export してある）。
-     ・CONTRACT-NOTE: 700 行を超えている（約 1000 行）。契約書 §6 の音の解析は全て
+     ・CONTRACT-NOTE: 700 行を超えている（約 1150 行）。契約書 §6 の音の解析は全て
        この 1 ファイルに置く約束で、担当外のファイルは作れないため分けられなかった。
        分けるなら `audio-fft.js`（FFT と窓）/ `audio-beat.js`（拍）/ `audio-speech.js`
        （声）の 3 つで、境界は下の見出し（§2 / §6 / §8）がそのまま切れ目になる。
+     ・**どの口も同期（await 無し）**なので、途中で `signal` では止められない。
+       止めたい所は analyzeAssets のように「口と口の間」で中止を見る（index.js の
+       実装どおり）。5 分の素材で desktop Node なら 5 つ合わせて 2.1 秒、iOS では
+       数倍かかるので、並列に走らせないこと。
      ・時刻の決め方: 窓は「左寄せの敷き詰め」が基本（frame i = `[i/hz, (i+1)/hz)`）。
        無音の端がこれで ±1 フレームに収まる。窓が hop より長い物（loudness の 400ms、
        特徴量の 40ms）だけは中心を合わせる（そうしないと値が後ろへずれる）。
@@ -832,7 +848,7 @@ const OCTAVE_OFF_RATIO = 0.9;
  */
 function refineOctave(d, env, lag, lagMin) {
   let cur = lag;
-  for (let k = 0; k < 3; k++) {                 // 4 倍までは追う（8 分・16 分の取り違え）
+  for (let k = 0; k < 3; k++) {                 // 3 段（最大 8 倍）まで追う（8 分・16 分の取り違え）
     const half = cur / 2;
     if (half < Math.max(2, lagMin)) break;
     const period = cur / env.hz;
