@@ -73,9 +73,12 @@ const LABELS = Object.freeze(Object.fromEntries(
    "compound.flatten ばらす|project.replace 差し替え|batch まとめて編集"
   ).split("|").map((e) => [e.slice(0, e.indexOf(" ")), e.slice(e.indexOf(" ") + 1)])
 ));
-/** @param {string} type @returns {string} 履歴に出す日本語 */
+/* 表示名の持ち主は **ops.js の opLabel（OP_LABELS）**。読めていればそちらを正とし、
+   ops.js が知らない見出し（"batch" 等）だけ上の表で補う（表が 2 つ在ると食い違う）。
+   @param {string} type @returns {string} */
 export function opLabel(type) {
   const t = typeof type === "string" ? type : "";
+  if (opsLabelFn) { const s = opsLabelFn(t); if (s && s !== t) return s; }
   return Object.prototype.hasOwnProperty.call(LABELS, t) ? LABELS[t] : (t || "編集");
 }
 /** store 自身の落ち方（op の失敗は ops.js の OpError がそのまま飛ぶ） */
@@ -97,12 +100,13 @@ export class StoreError extends Error {
  * @type {Record<string, (draft:Object, payload:Object, ctx:Object)=>any>}
  */
 export const OPS = Object.create(null);
-let opsPromise = null;
+let opsPromise = null, opsLabelFn = null;
 /** ops.js の読み込み（1 回だけ・失敗しても解決する）。@returns {Promise<Object>} */
 export function opsReady() {
   if (!opsPromise) {
     opsPromise = import("./ops.js").then((mod) => {
       const table = mod && (mod.OPS || mod.default);
+      if (mod && typeof mod.opLabel === "function") opsLabelFn = mod.opLabel;
       if (table && typeof table === "object") registerOps(table);
       else warn("store", "ops.js に OPS が無い（op は登録されない）");
       return OPS;
@@ -528,7 +532,7 @@ export function createStore(project, opts) {
   function makeCtx(type) {
     const st = present.project && present.project.settings;
     return {
-      type, selection: present.selection, view,
+      type, selection: present.selection, view, playhead: view.playhead,
       fps: clamp(finite(st && st.fps, 30), 1, 240), now: nowFn(), batch: batchDepth > 0
     };
   }

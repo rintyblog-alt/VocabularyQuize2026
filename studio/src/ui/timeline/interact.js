@@ -27,6 +27,11 @@
        元へ戻す。半端な ghost が残ると壊れて見える。
      ・listener は必ず `on()` 経由（dispose で全部外すため）。
      ・CSS は触らない。付けるクラスは vqs- 接頭辞のみ。
+     ・**このファイルは契約書 §0 の 700 行を超えている**（純粋な算数は snap.js §4 へ
+       出し切った残り。デスクトップ・モバイル・メニュー・ドロップの調停は 1 つの
+       状態機械でないと「掴んだまま別の操作へ移る」事故が起きる）。分けるなら
+       「入力の調停（この形）」と「右クリックのメニュー定義」の 2 つが境目。
+       担当は 2 ファイルに限られていて新規ファイルを作れないため、ここに残した。
 
    ★ 実物に合わせた所（view.js / ops.js を読んで確かめた。勝手に変えない）
      view（ui/timeline/view.js。無い端末・読み込み失敗でも動くよう全て任意）:
@@ -65,20 +70,26 @@ import { MIN_CLIP, clipEnd, projectDuration } from "../../core/schema.js";
 import { warn } from "../../core/log.js";
 
 /* ── 触り心地の数値（ここを変えると感触が変わる） ─────────────── */
-const LONG_PRESS_MS = 400;    // 長押し → 移動モード（CapCut と同じ）
+/* CONTRACT-NOTE: 担当票は「長押し 400ms・ピンチ 10〜400px/s・減衰 0.92」だったが、
+   契約書 §13.5（実機調査で確定した事実）は 320ms・8〜480px/s・0.94 と書いている。
+   契約書が唯一の契約なのでそちらに合わせた（担当票の数値は近いので感触は変わらない）。 */
+const LONG_PRESS_MS = 320;    // 長押し → 移動モード（契約書 §13.5）
 const TAP_SLOP = 8;           // これ以上動いたら「叩いた」ではない
 const EDGE_MOUSE = 8;         // トリムの掴み代（マウス）
-const EDGE_TOUCH = 18;        // 同（指・契約どおり 18px）
+const EDGE_TOUCH = 44;        // 同（指。見た目は 14px でも当たりは 44px・契約書 §13.5）
 const GAP_MOUSE = 5;          // トラック境界の掴み代
 const AUTOSCROLL_ZONE = 56;   // 端からこの距離で自動スクロール
 const AUTOSCROLL_MAX = 1200;  // px/秒（契約どおりの上限）
-const PPS_MIN = 10;           // ピンチの下限（px/秒）
-const PPS_MAX = 400;          // ピンチの上限
+const PPS_MIN = 8;            // ピンチの下限（px/秒・契約書 §13.5）
+const PPS_MAX = 480;          // ピンチの上限（同）
 const PPS_HARD_MAX = 800;     // ホイール拡大の上限（view.js の ZOOM_MAX と同じ）
 const PPS_DEFAULT = 80;       // view.js の ZOOM_DEFAULT と同じ
-const FRICTION = 0.92;        // 慣性の減衰（1 フレーム）
+const FRICTION = 0.94;        // 慣性の減衰（1 フレーム・契約書 §13.5）
+const INERTIA_STOP = 0.05;    // これ以下の速さで慣性を止める（px/フレーム）
 const BOUNCE = 0.35;          // 端での跳ね返り
 const TRACK_H = [36, 240];    // トラック高さの下限・上限
+const MIN_TRIM_UI = 0.1;      // UI のクリップ下限（モデルの MIN_CLIP=0.04 より厳しく）
+const FLASH_MS = 60;          // 吸着したときの目の合図（iOS に振動が無いため必須）
 const LABELS = ["#4f8cff", "#31c48d", "#f0b429", "#f2643d", "#a78bfa", "#94a3b8"];
 const DRAGGING = ["pan", "pinch", "move", "trim", "roll", "slip", "scrub"];
 const LOOPING = ["scrub", "move", "trim", "roll", "slip", "marquee"];
@@ -100,7 +111,18 @@ function esc(s) {
   const t = String(s);
   return (typeof CSS !== "undefined" && CSS && CSS.escape) ? CSS.escape(t) : t.replace(/["\\\]]/g, "\\$&");
 }
-function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* 出来なくて良い */ } }
+/**
+ * 触覚の合図。**iOS には navigator.vibrate が無い**（契約書 §13.4）ので、
+ * 振動は「在れば嬉しい」扱いにし、目に見える合図（60ms の明滅）を必ず一緒に出す。
+ * @param {number} ms 振動の長さ
+ * @param {Element|null} [flashEl] 明滅させる要素
+ */
+function tap(ms, flashEl) {
+  try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* 出来なくて良い */ }
+  if (!flashEl || !flashEl.classList) return;
+  flashEl.classList.add("vqs-tl-flash");
+  setTimeout(() => { try { flashEl.classList.remove("vqs-tl-flash"); } catch (e) { /* noop */ } }, FLASH_MS);
+}
 
 /**
  * タイムラインの触り方を立ち上げる。
@@ -262,8 +284,10 @@ export function createTimelineInteraction(arg) {
       if (!h.trackId) { const f = findClip(h.clipId); if (f) h.trackId = f.track.id; }
       if (!h.edge && ce) {
         const b = ce.getBoundingClientRect();
-        // 掴み代は幅の 1/3 まで（短いクリップが全部トリムになるのを防ぐ）
-        const g = Math.min(touch ? EDGE_TOUCH : EDGE_MOUSE, b.width / 3);
+        // 当たり幅は view と揃える。幅の 1/3 までに抑える（短いクリップが全部端になるのを防ぐ）
+        const want = readNum(view, "handleHitWidth");
+        const hw = Number.isFinite(want) && want > 0 ? want : (touch ? EDGE_TOUCH : EDGE_MOUSE);
+        const g = Math.min(hw, Math.max(4, b.width / 3));
         h.edge = (x - b.left <= g) ? "in" : (b.right - x <= g) ? "out" : null;
       }
     }
@@ -316,17 +340,27 @@ export function createTimelineInteraction(arg) {
     el.style.width = rect.w + "px"; el.style.height = rect.h + "px";
     el.classList.remove("hidden"); el.classList.add("vqs-tl-marquee--on");
   }
-  /** 吸着した瞬間だけ軽く震わせる（連打しない） */
+  /** 吸着した瞬間だけ合図を出す（連打しない） */
   function feedback(hit) {
-    if (hit) {
-      setLine(hit.t, hit);
-      const n = performance.now();
-      if (G.touch && n - G.buzzed > 140) { G.buzzed = n; buzz(8); }
-    } else setLine(null);
+    if (!hit) { setLine(null); return; }
+    setLine(hit.t, hit);
+    const n = performance.now();
+    if (n - G.buzzed > 140) { G.buzzed = n; tap(8, els.tlSnapLine || root); }
   }
 
   /* ══ 4. op を投げる（1 操作 = 1 undo） ═══════════════════════ */
   const op = (type, payload) => ({ type, payload });
+  /** dispatch を束ねて 1 取消単位にする。fn の中では前の op の返り値を使える */
+  function commitFn(label, fn) {
+    try {
+      if (has(store, "batch")) return store.batch(label, fn);
+      return fn((t, pl) => store.dispatch(t, pl));
+    } catch (e) {
+      warn("tl-interact", label, e);
+      tryCall(widgets, "toast", [(e && e.message) || "操作できませんでした", { kind: "error" }]);
+      return null;
+    }
+  }
   function commit(label, list) {
     const ops = (list || []).filter(Boolean);
     if (!ops.length) return null;
@@ -361,10 +395,8 @@ export function createTimelineInteraction(arg) {
         return;
       }
     }
-    const sel = selected();
     if (G.ctrl) {
-      const next = sel.indexOf(clipId) >= 0 ? sel.filter((x) => x !== clipId) : sel.concat([clipId]);
-      select(next, { additive: false, trackId });
+      select([clipId], { toggle: true, trackId });    // store が付け外しを持っている
       anchorId = clipId;
       return;
     }
@@ -406,13 +438,15 @@ export function createTimelineInteraction(arg) {
 
   /* ── 5.1 スクラブ（ルーラーを押す・擦る） ───────────────────── */
   function doScrub() {
-    const s = snapTime(Math.max(0, timeAt(G.x)), G.points, { pxPerSec: pxPerSec(), tolerancePx: tol() });
+    const raw = Math.max(0, timeAt(G.x));
+    const s = snapTime(raw, G.points, { pxPerSec: pxPerSec(), tolerancePx: tol() });
     feedback(s.hit);
-    seek(s.hit ? s.t : snapFrame(Math.max(0, timeAt(G.x)), fps()), true);
+    seek(s.hit ? s.t : snapFrame(raw, fps()), true);
   }
 
   /* ── 5.2 移動（横 = 時間・縦 = 別トラック・吸着つき） ────────── */
   function moveGhost() {
+    if (!G.items.length) return null;          // 掴んだ物が消えた（他所から削除された）
     const tr = trackAtY(G.y);
     const same = G.items.every((it) => it.fromTrackId === G.items[0].fromTrackId);
     const to = (tr && same && tr.trackId !== G.items[0].fromTrackId) ? tr.trackId : null;
@@ -425,19 +459,38 @@ export function createTimelineInteraction(arg) {
     const dyFollow = G.y - G.startY;
     const items = r.items.map((it, i) => {
       const src = G.items[i] || {};
-      const dy = (to && tr && typeof src.topAtStart === "number") ? (tr.top - src.topAtStart) : dyFollow;
-      return Object.assign({}, it, { dy });
+      // dy は view 用（trackId で行が決まるので 0）。dyPx は view が無いときの控えの絵用
+      const dyPx = (to && tr && typeof src.topAtStart === "number") ? (tr.top - src.topAtStart) : dyFollow;
+      return Object.assign({}, it, { dy: 0, dyPx });
     });
     return { mode: "move", dup: G.dup, lifted: G.lifted, snap: r.hit, trackId: to, clipIds: items.map((i) => i.clipId), items };
   }
   function commitMove() {
     const g = moveGhost();
     setGhost(null); setLine(null);
+    if (!g) return;
     const moved = g.items.filter((it) => Math.abs(it.start - it.fromStart) > 1e-6 || it.trackId !== it.fromTrackId);
     if (!moved.length) return;
-    const type = G.dup ? "clip.duplicate" : "clip.move";
-    commit(G.dup ? "クリップを複製" : "クリップを移動",
-      moved.map((it) => op(type, { clipId: it.clipId, trackId: it.trackId, start: it.start })));
+    if (!G.dup) {
+      commit("クリップを移動", moved.map((it) => op("clip.move", { clipId: it.clipId, trackId: it.trackId, start: it.start })));
+      return;
+    }
+    /* clip.duplicate は **同じトラックの at** に置く op なので、別トラックへ落とした
+       ときは続けて clip.move する。batch なので取消は 1 回で戻る */
+    const made = commitFn("クリップを複製", (d) => {
+      const out = [];
+      for (const it of moved) {
+        const r = d("clip.duplicate", { clipId: it.clipId, at: it.start, mode: "overwrite" });
+        const id = r && (r.id || (Array.isArray(r.ids) ? r.ids[0] : null));
+        if (!id) continue;
+        if (it.trackId !== it.fromTrackId) d("clip.move", { clipId: id, trackId: it.trackId, start: it.start });
+        out.push(id);
+      }
+      return out;
+    });
+    // 選択は batch の **外**で。batch の中で select すると、抜けるときに
+    // 元の選択で上書きされて消える（store.js runBatch の cleanSelection）
+    if (Array.isArray(made) && made.length) select(made, { additive: false });
   }
 
   /* ── 5.3 トリム / リップル / ロール ─────────────────────────── */
@@ -445,7 +498,7 @@ export function createTimelineInteraction(arg) {
     const it = G.items[0];
     if (!it) return null;
     const r = resolveTrim({
-      item: it, edge: G.edge, time: timeAt(G.x), other: G.other,
+      item: it, edge: G.edge, time: timeAt(G.x), other: G.other, minDur: MIN_TRIM_UI,
       points: G.points, pxPerSec: pxPerSec(), tolerancePx: tol(), fps: fps()
     });
     G.hitPoint = r.hit;
@@ -453,7 +506,7 @@ export function createTimelineInteraction(arg) {
     G.trimTime = r.time;
     return {
       mode: "trim", edge: G.edge, ripple: !!G.ctrl, roll: G.mode === "roll", snap: r.hit, clipIds: [it.clipId],
-      items: [{ clipId: it.clipId, fromStart: it.fromStart, start: r.start, duration: r.duration, fromTrackId: it.fromTrackId, trackId: it.fromTrackId, dy: 0 }]
+      items: [{ clipId: it.clipId, fromStart: it.fromStart, start: r.start, duration: r.duration, fromTrackId: it.fromTrackId, trackId: it.fromTrackId, dy: 0, dyPx: 0 }]
     };
   }
   function commitTrim() {
@@ -461,13 +514,19 @@ export function createTimelineInteraction(arg) {
     setGhost(null); setLine(null);
     const it = G.items[0];
     if (!g || !it) return;
-    const before = G.edge === "in" ? it.fromStart : it.fromStart + it.duration;
-    if (Math.abs(G.trimTime - before) < 1e-6) return;
-    if (G.mode === "roll" && G.other) {
-      commit("編集点をロール", [op("clip.roll", { clipId: it.clipId, otherClipId: G.other.id, time: G.trimTime })]);
+    const head = G.edge === "in";
+    const before = head ? it.fromStart : it.fromStart + it.duration;
+    const move = G.trimTime - before;                 // 境界が右へ動いたら正
+    if (Math.abs(move) < 1e-6) return;
+    const edge = head ? "start" : "end";              // ops.js の語彙（in/out ではない）
+    if (G.mode === "roll") {
+      // clip.roll の delta は「境界の移動秒」。隣は ops が自分で探す
+      commit("編集点をロール", [op("clip.roll", { clipId: it.clipId, edge, delta: move })]);
       return;
     }
-    commit(G.ctrl ? "詰めてトリム" : "トリム", [op("clip.trim", { clipId: it.clipId, edge: G.edge, time: G.trimTime, ripple: !!G.ctrl })]);
+    // clip.trim の delta は **正で短くなる**。頭は右へ動かすと短く、尻は左へ動かすと短い
+    commit(G.ctrl ? "詰めてトリム" : "トリム",
+      [op("clip.trim", { clipId: it.clipId, edge, delta: head ? move : -move, ripple: !!G.ctrl })]);
   }
 
   /* ── 5.4 スリップ（尺を保って中身をずらす） ─────────────────── */
@@ -477,7 +536,7 @@ export function createTimelineInteraction(arg) {
     if (!it) return;
     setGhost({
       mode: "slip", delta: slipDelta(), clipIds: [it.clipId],
-      items: [{ clipId: it.clipId, fromStart: it.fromStart, start: it.fromStart, duration: it.duration, fromTrackId: it.fromTrackId, trackId: it.fromTrackId, dy: 0 }]
+      items: [{ clipId: it.clipId, fromStart: it.fromStart, start: it.fromStart, duration: it.duration, fromTrackId: it.fromTrackId, trackId: it.fromTrackId, dy: 0, dyPx: 0 }]
     });
   }
   function commitSlip() {
@@ -531,7 +590,7 @@ export function createTimelineInteraction(arg) {
     let v = G.vel;
     const step = () => {
       v *= FRICTION;
-      if (Math.abs(v) < 0.2) { G.inertia = 0; return; }
+      if (Math.abs(v) < INERTIA_STOP) { G.inertia = 0; return; }
       panTo(playhead() + v / pxPerSec(), () => { v = -v * BOUNCE; });
       G.inertia = requestAnimationFrame(step);
     };
@@ -549,14 +608,16 @@ export function createTimelineInteraction(arg) {
     for (const p of pointers.values()) if (p.touch) a.push(p);
     return a.length >= 2 ? [a[0], a[1]] : null;
   }
+  /* CONTRACT-NOTE: 担当票は「中心は 2 指の中点」だったが、契約書 §13.5 は
+     「中心は常に画面中央（= 再生ヘッド）なので指の中点追跡は不要」。
+     中点を軸にすると再生ヘッドが中央から外れ、モバイルの土台（再生ヘッド固定）が
+     崩れるので、契約書に従い **軸は再生ヘッド**にした。倍率だけ指の間隔で決める。 */
   function doPinch() {
     const two = twoTouch();
     if (!two) return;
-    const d = fingerGap(two);
-    const mid = (two[0].x + two[1].x) / 2;
-    const pps = clamp(G.pinch.pps0 * (d / G.pinch.d0), PPS_MIN, PPS_MAX);
+    const pps = clamp(G.pinch.pps0 * (fingerGap(two) / G.pinch.d0), PPS_MIN, PPS_MAX);
     setPps(pps);
-    setScrollX(G.pinch.t0 * pps - (mid - viewRect().left));   // 中点の下の時刻を留める
+    centerOn(G.pinch.t0);
     repaint();
   }
 
@@ -641,9 +702,8 @@ export function createTimelineInteraction(arg) {
       const two = twoTouch();
       if (!two) return;
       abort(true);
-      const mid = (two[0].x + two[1].x) / 2;
       G.mode = "pinch"; G.touch = true;
-      G.pinch = { d0: fingerGap(two), pps0: pxPerSec(), t0: timeAt(mid) };
+      G.pinch = { d0: fingerGap(two), pps0: pxPerSec(), t0: playhead() };
       kick();
       return;
     }
@@ -682,7 +742,7 @@ export function createTimelineInteraction(arg) {
           G.items = pickItems(h.clipId);
           beginSnap(G.items.map((i) => i.clipId));
           root.classList.add("vqs-tl-grabbing");
-          buzz(14);
+          tap(14, clipEl(h.clipId) || root);
           kick();
         }, LONG_PRESS_MS);
         return;
@@ -758,10 +818,15 @@ export function createTimelineInteraction(arg) {
       else if (mode === "slip") commitSlip();
       else if (mode === "marquee") commitMarquee();
       else if (mode === "trackH") commitTrackH();
-      else if (mode === "pan") { if (Math.abs(G.vel) > 1.2) startInertia(); }
+      else if (mode === "pan") { if (Math.abs(G.vel) > INERTIA_STOP * 4) startInertia(); }
       else if (!moved && (mode === "pending" || mode === "movePending" || mode === "slipPending")) {
         /* 動かなかった = 叩いた/押した → 選択（Ctrl/Cmd で付け外し・Shift で追加） */
-        if (hit && hit.clipId) applySelect(hit.clipId, hit.trackId);
+        if (hit && hit.clipId) {
+          applySelect(hit.clipId, hit.trackId);
+          if (hit.keyframe && has(store, "selectKeyframe")) {
+            try { store.selectKeyframe(hit.keyframe); } catch (e) { warn("tl-interact", "selectKeyframe", e); }
+          }
+        }
       } else if (!moved && (mode === "panPending" || mode === "marqueePending")) {
         select([], { additive: false }); anchorId = "";              // 空白を叩く → 選択解除
         if (!G.touch) seek(snapFrame(timeAt(G.x), fps()), false);
@@ -816,9 +881,9 @@ export function createTimelineInteraction(arg) {
     const items = [];
     if (one) items.push(
       { label: "分割", onSelect: () => commit("分割", [op("clip.split", { clipId: one, t })]) },
-      { label: "削除", onSelect: () => commit("削除", [op("clip.remove", { clipIds: many })]) },
-      { label: "詰めて削除", onSelect: () => commit("詰めて削除", [op("clip.rippleDelete", { clipIds: many })]) },
-      { label: "複製", onSelect: () => commit("複製", many.map((id) => { const g = findClip(id); return g ? op("clip.duplicate", { clipId: id, trackId: g.track.id, start: clipEnd(g.clip) }) : null; })) },
+      { label: "削除", onSelect: () => removeClips("削除", "clip.remove", many) },
+      { label: "詰めて削除", onSelect: () => removeClips("詰めて削除", "clip.rippleDelete", many) },
+      { label: "複製", onSelect: () => commit("複製", [op("clip.duplicate", { clipIds: many })]) },
       { label: "コピー", onSelect: () => doCopy(many) },
       { separator: true },
       { label: "速度", items: [0.25, 0.5, 1, 2, 4].map((v) => ({ label: v === 1 ? "標準 (1x)" : v + "x", onSelect: () => commit("速度", many.map((id) => op("clip.setSpeed", { clipId: id, speed: v }))) })) },
@@ -831,9 +896,18 @@ export function createTimelineInteraction(arg) {
       { label: "色ラベル", items: LABELS.map((c) => ({ label: c, color: c, onSelect: () => patch("色ラベル", { label: c }) })) },
       { separator: true }
     );
-    items.push({ label: "貼り付け", disabled: !clipboard.length, onSelect: () => commit("貼り付け", [op("timeline.paste", { trackId, t, clips: clipboard })]) });
+    items.push({ label: "貼り付け", disabled: !clipboard.length, onSelect: () => commit("貼り付け", [op("timeline.paste", { trackId, at: t, clips: clipboard })]) });
     if (one) items.push({ label: "プロパティ", onSelect: () => activate(one) });
     return items;
+  }
+  /** 削除は確認ダイアログを出さず、**取消つきトースト**で戻せるようにする（契約書 §13.5） */
+  function removeClips(label, type, ids) {
+    if (!ids.length) return;
+    commit(label, [op(type, { clipIds: ids })]);
+    tryCall(widgets, "toast", [ids.length + " 個を" + label + "しました", {
+      kind: "ok", ms: 4000,
+      action: { label: "取消", onSelect: () => { try { store.undo(); } catch (e) { warn("tl-interact", "undo", e); } } }
+    }]);
   }
   function doCopy(ids) {
     clipboard = ids.map((id) => { const f = findClip(id); try { return f ? JSON.parse(JSON.stringify(f.clip)) : null; } catch (e) { return null; } }).filter(Boolean);
@@ -894,7 +968,7 @@ export function createTimelineInteraction(arg) {
     const dt = e.dataTransfer, d = dropTarget(e);
     let assetId = "";
     try { assetId = (dt && (dt.getData("application/x-vqs-asset") || dt.getData("text/plain"))) || ""; } catch (err) { assetId = ""; }
-    if (/^as_/.test(assetId)) { commit("素材を置く", [op("clip.add", { trackId: d.trackId, start: d.t, assetId })]); return; }
+    if (/^as_/.test(assetId)) { commit("素材を置く", [op("clip.add", { trackId: d.trackId, at: d.t, assetId })]); return; }
     const files = dt && dt.files && dt.files.length ? Array.from(dt.files) : [];
     if (!files.length) return;
     // 実ファイルの取り込みは ui/import.js の仕事。置き場所と時間だけ添えて渡す
@@ -923,7 +997,10 @@ export function createTimelineInteraction(arg) {
   on(root, "drop", onDrop);
   on(root, "touchstart", onTouchGuard, { passive: false });
   on(root, "touchmove", onTouchGuard, { passive: false });
-  on(root, "gesturestart", (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+  // WebKit 固有（iOS のページ拡大）。3 つ全部止めないと拡大が始まる（契約書 §13.4）
+  for (const g of ["gesturestart", "gesturechange", "gestureend"]) {
+    on(root, g, (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+  }
   on(root, "selectstart", (e) => { if (G.mode !== "idle") e.preventDefault(); });
   on(els.tlHeads, "pointerdown", onHeadsDown);
   on(els.tlHeads, "pointermove", onMove);

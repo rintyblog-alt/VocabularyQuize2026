@@ -411,6 +411,8 @@ export function resolveMove(a) {
  * @param {number} [a.tolerancePx=8]
  * @param {number} [a.fps=30]
  * @param {{start:number,duration:number}|null} [a.other]  ロールの相手
+ * @param {number} [a.minDur=MIN_CLIP]  UI 側の下限（契約書 §13.5 の MIN_TRIM_UI=0.1）。
+ *   **モデルの下限（MIN_CLIP=0.04）より短くはできない**（UI ≧ モデル）
  * @returns {{start:number, duration:number, time:number, hit:Object|null, edge:string}}
  */
 export function resolveTrim(a) {
@@ -424,6 +426,7 @@ export function resolveTrim(a) {
   // 余裕が分からない（渡されない）ときは縛らない。最後の砦は core/ops.js の検算
   const head = typeof it.headroom === "number" ? Math.max(0, it.headroom) : Infinity;
   const tail = typeof it.tailroom === "number" ? Math.max(0, it.tailroom) : Infinity;
+  const MIN = Math.max(MIN_CLIP, finite(o.minDur, MIN_CLIP));
 
   const s = snapTime(finite(o.time, 0), o.points, {
     pxPerSec: finite(o.pxPerSec, 0), tolerancePx: finite(o.tolerancePx, DEFAULT_TOLERANCE_PX)
@@ -436,23 +439,23 @@ export function resolveTrim(a) {
     const oStart = finite(other.start, 0);
     const oDur = Math.max(MIN_CLIP, finite(other.duration, MIN_CLIP));
     if (edge === "in") {           // 自分の先頭 = 相手（左隣）の末尾
-      t = span(t, oStart + MIN_CLIP, end - MIN_CLIP);
+      t = span(t, oStart + MIN, end - MIN);
       start = t; duration = end - t;
     } else {                       // 自分の末尾 = 相手（右隣）の先頭
-      t = span(t, from + MIN_CLIP, oStart + oDur - MIN_CLIP);
+      t = span(t, from + MIN, oStart + oDur - MIN);
       duration = t - from;
     }
   } else if (edge === "in") {
     // 素材の頭より前へは出せない（headroom）。尺の上限（maxDur）も見る
     const lo = Math.max(0, from - head, Number.isFinite(maxDur) ? end - maxDur : 0);
-    t = span(t, lo, end - MIN_CLIP);
+    t = span(t, lo, end - MIN);
     start = t; duration = end - t;
   } else {
     const hi = Math.min(Number.isFinite(maxDur) ? from + maxDur : Infinity, end + tail);
-    t = span(t, from + MIN_CLIP, hi);
+    t = span(t, from + MIN, hi);
     duration = t - from;
   }
-  duration = Math.max(MIN_CLIP, duration);
+  duration = Math.max(MIN, duration);
   return { start: Math.max(0, start), duration, time: edge === "in" ? start : start + duration, hit: s.hit, edge };
 }
 

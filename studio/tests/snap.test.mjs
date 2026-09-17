@@ -407,3 +407,11 @@ test("clipsInTimeRange: 重なった物だけ。端が触れているだけで�
   assert.deepEqual(clipsInTimeRange({ project: p, trackIds: ["tr9"], t0: 0, t1: 9 }), []);
   assert.deepEqual(clipsInTimeRange({ project: null, t0: 0, t1: 9 }), []);
 });
+
+test("resolveTrim: minDur（契約書 §13.5 の MIN_TRIM_UI）で UI の下限を上げられる", () => {
+  const r = resolveTrim({ item: { fromStart: 1, duration: 2 }, edge: "out", time: 0, points: [], pxPerSec: 100, minDur: 0.1 });
+  near(r.duration, 0.1);
+  // モデルの下限より短くはできない（UI ≧ モデル）
+  const tooSmall = resolveTrim({ item: { fromStart: 1, duration: 2 }, edge: "out", time: 0, points: [], pxPerSec: 100, minDur: 0.001 });
+  near(tooSmall.duration, MIN_CLIP);
+});

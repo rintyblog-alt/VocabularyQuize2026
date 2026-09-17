@@ -318,6 +318,7 @@ function videoTrackEntry(v) {
     strEl(EBML_IDS.CodecID, v.codec),
   ];
   if (v.codecPrivate && v.codecPrivate.length) parts.push(ebmlElement(EBML_IDS.CodecPrivate, v.codecPrivate));
+  else if (v.codec === "V_AV1") warn("mux/webm", "AV1 は CodecPrivate が無いと再生できません（meta.decoderConfig.description を addVideoChunk の第 2 引数で渡してください）");
   if (fps > 0) parts.push(uintEl(EBML_IDS.DefaultDuration, Math.round(1e9 / fps)));
   parts.push(ebmlElement(EBML_IDS.Video, [
     uintEl(EBML_IDS.PixelWidth, w), uintEl(EBML_IDS.PixelHeight, h),
@@ -519,6 +520,10 @@ function normalizeOptions(o) {
     trackNumber: AUDIO_TRACK, language: asrc.language || "und",
   } : null;
 
+  if (audio && (!(audio.sampleRate > 0) || !(audio.channels > 0))) {
+    throw new RangeError(`createWebMMuxer: 音声の sampleRate / channels が要ります（${audio.sampleRate}Hz ${audio.channels}ch）`);
+  }
+
   const onData = typeof src.onData === "function" ? src.onData : null;
   return {
     video, audio, onData,
@@ -583,7 +588,7 @@ export function createWebMMuxer(options) {
     cues: [],             // {timeMs, clusterPos, relPos, track}
     written: 0,           // 逐次方式で流した総バイト数
     segmentDataStart: 0,  // Segment の中身が始まる絶対位置
-    headWritten: false, newestMs: 0, baseUs: null,
+    headWritten: false, newestMs: 0, baseUs: null, lastTimecodeMs: 0,
     seq: 0, vCount: 0, aCount: 0,
     file: null,           // finalize 済みのバイト列
   };
@@ -684,7 +689,11 @@ export function createWebMMuxer(options) {
 
   function emitCluster(group) {
     writeHead();
-    const c = buildCluster({ timecodeMs: Math.max(0, group[0].ms), frames: group, timecodeScale: cfg.timecodeScale });
+    // Timecode は前の Cluster より戻さない（遅れて来た frame の相対時刻が
+    // 負になるだけで済む。負の相対時刻は int16 なので合法）
+    const tc = Math.max(0, group[0].ms, st.lastTimecodeMs);
+    st.lastTimecodeMs = tc;
+    const c = buildCluster({ timecodeMs: tc, frames: group, timecodeScale: cfg.timecodeScale });
     const pos = st.written - st.segmentDataStart;
     addCue(c, pos);
     emit(c.bytes);

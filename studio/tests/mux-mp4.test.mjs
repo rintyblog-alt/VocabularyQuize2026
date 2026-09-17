@@ -733,19 +733,21 @@ test("通し: Annex-B が description 無しで来ても avcC を組んで書け
   const avcC = find(walkBoxes(bytes), "avcC");
   assert.ok(avcC);
   assert.deepEqual([...bytes.subarray(avcC.offset + 8, avcC.offset + avcC.size)], [...AVCC]);
-  // サンプル本体は 4 バイト長接頭になっている（mdat の先頭を歩けること）
-  const mdat = walkBoxes(bytes).find((n) => n.type === "mdat");
-  let o = mdat.offset + 8;
-  const end = mdat.offset + mdat.size;
+  // サンプル本体は 4 バイト長接頭になっている（全 mdat を長さだけで歩けること）
   let nals = 0;
-  while (o < end) {
-    const len = u32At(bytes, o);
-    assert.ok(len > 0 && o + 4 + len <= end, `長さ接頭が壊れています（len=${len} @${o}）`);
-    o += 4 + len;
-    nals++;
+  for (const mdat of walkBoxes(bytes).filter((n) => n.type === "mdat")) {
+    let o = mdat.offset + 8;
+    const end = mdat.offset + mdat.size;
+    while (o < end) {
+      const len = u32At(bytes, o);
+      assert.ok(len > 0 && o + 4 + len <= end, `長さ接頭が壊れています（len=${len} @${o}）`);
+      o += 4 + len;
+      nals++;
+    }
+    assert.equal(o, end, "mdat を長さ接頭で歩き切れませんでした");
   }
-  assert.equal(o, end);
-  assert.ok(nals >= 30);
+  // 30 フレーム = 29 本 + 先頭フレームの SPS/PPS/IDR の 3 本
+  assert.equal(nals, 32);
 });
 
 test("通し: 壊れた入力は黙って通さない", () => {

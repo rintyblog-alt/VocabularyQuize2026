@@ -848,8 +848,10 @@ export function createMP4Muxer(config) {
     moovIndex = out.length;
     write(buildMoov(moovSpec()));
     headWritten = true;
-    // 溜めておいた分を 1 つの fragment として出す（頭が出るまでは数十フレーム）
-    flushFragment();
+    // 頭が出るまでに溜まった分。まだ 1 秒に満たなければ切らない
+    // （切ると 1 サンプルだけの moof が出来て fragment の数が読みにくくなる）。
+    // 音声を待って溜め込んだ場合はここで 1 本出す。
+    if (vTrack.pendingDur / vTrack.timescale >= FRAGMENT_SEC) flushFragment();
   }
 
   /** chunk.duration が無かったサンプルの長さを、次のサンプルの pts から埋める */

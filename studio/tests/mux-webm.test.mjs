@@ -646,7 +646,18 @@ test("onData: Segment は «大きさ不明» で Duration を書かない（Cue
   assert.deepEqual(f.clusters.map((c) => c.timecodeMs), [0, 2000], "切れ目は溜める方式と同じ");
   assert.equal(f.clusters.reduce((s, c) => s + c.blocks.length, 0), 30, "全部入る");
   assert.equal(idsOf(f.seg)[idsOf(f.seg).length - 1], EBML_IDS.Cues, "Cues は最後");
-  assert.equal(allEl(kids(f.cues), EBML_IDS.CuePoint).length, 2, "Cluster ごとに 1 つ");
+  const pts = allEl(kids(f.cues), EBML_IDS.CuePoint);
+  assert.equal(pts.length, 2, "Cluster ごとに 1 つ");
+  // 逐次でも Cues の位置が本物か（流しながら数えた位置がずれていないか）
+  pts.forEach((pt, i) => {
+    const tp = kids(findEl(kids(pt), EBML_IDS.CueTrackPositions));
+    const cpos = uintOf(findEl(tp, EBML_IDS.CueClusterPosition));
+    assert.equal(cpos, f.clusters[i].pos, "CueClusterPosition");
+    const at = f.segment.dataStart + cpos;
+    eqBytes(bytes.subarray(at, at + 4), [0x1f, 0x43, 0xb6, 0x75], "飛び先が Cluster");
+    const inside = at + (f.clusters[i].node.dataStart - f.clusters[i].node.start);
+    assert.equal(bytes[inside + uintOf(findEl(tp, EBML_IDS.CueRelativePosition))], 0xa3, "SimpleBlock");
+  });
   for (const c of f.clusters) assert.equal(c.blocks[0].key, true, "頭はキーフレーム");
 });
 
@@ -673,6 +684,47 @@ test("onData + retain:true なら finalizeBytes() が流した物と一致する
   assert.equal(m.stats().streaming, true);
   assert.equal(m.stats().videoChunks, 30);
   assert.equal(m.stats().audioChunks, 150);
+});
+
+test("onData: 遅れて来た chunk でも Cluster の Timecode は戻らない", () => {
+  // 現場では音声が映像より かなり遅れて届く事がある。その時に Cluster の
+  // Timecode が巻き戻ると seek が壊れるので、戻さない事を固める。
+  const got = [];
+  const m = createWebMMuxer({ video: VIDEO, audio: AUDIO, retain: true, onData: (b) => got.push(b) });
+  for (const c of fakeVideo({ n: 30 })) m.addVideoChunk(c);   // 先に映像だけ全部
+  for (const c of fakeAudio(100)) m.addAudioChunk(c);         // 後から 0ms の音声が届く
+  const f = openFile(m.finalizeBytes());
+  const tcs = f.clusters.map((c) => c.timecodeMs);
+  for (let i = 1; i < tcs.length; i++) {
+    assert.ok(tcs[i] >= tcs[i - 1], `Timecode が戻っていない（${tcs.join(",")}）`);
+  }
+  for (const c of f.clusters) {
+    for (const b of c.blocks) {
+      assert.ok(b.relMs >= -32768 && b.relMs <= MAX_BLOCK_REL, `相対時刻が 16bit に収まる（${b.relMs}）`);
+    }
+  }
+  const total = f.clusters.reduce((s2, c) => s2 + c.blocks.length, 0);
+  assert.equal(total, 130, "映像 30 + 音声 100 が 1 つも落ちない");
+});
+
+test("壊れた設定は «作る時» に throw する（finalize まで待たない）", () => {
+  assert.throws(() => createWebMMuxer({ video: VIDEO, audio: { codec: "opus", sampleRate: 0, channels: 2 } }),
+    RangeError, "sampleRate 0");
+  assert.throws(() => createWebMMuxer({ video: VIDEO, audio: { codec: "opus", sampleRate: 48000, channels: 0 } }),
+    RangeError, "channels 0");
+  assert.throws(() => createWebMMuxer({ video: { codec: "vp9", width: 1920, height: 0 } }),
+    RangeError, "高さ 0");
+});
+
+test("AV1 は meta の CodecPrivate（配列の頭）をそのまま書く", () => {
+  const seq = new Uint8Array([0x0a, 0x0b, 0x00, 0x00, 0x00, 0x24, 0xcf, 0x7f]);
+  const m = createWebMMuxer({ video: { codec: "av01.0.04M.08", width: 320, height: 180, fps: 30 } });
+  m.addVideoChunk({ data: new Uint8Array([1, 2, 3]), timestampUs: 0, durationUs: 33333, key: true },
+    { decoderConfig: { codec: "av01.0.04M.08", description: seq } });
+  const f = openFile(m.finalizeBytes());
+  const entry = kids(allEl(kids(f.tracks), EBML_IDS.TrackEntry)[0]);
+  assert.equal(strOf(findEl(entry, EBML_IDS.CodecID)), "V_AV1");
+  eqBytes(findEl(entry, EBML_IDS.CodecPrivate).data, Array.from(seq), "配列の頭");
 });
 
 /* ══ 9. exporter.js からの呼ばれ方 ═════════════════════════════ */
@@ -706,6 +758,19 @@ test("exporter.js が渡す «平らな» 設定でも作れる（別名 export 
   assert.throws(() => createWebMMuxer({}), /video か audio/, "設定が空");
   assert.throws(() => createWebMMuxer({ video: { codec: "vp9" } }), RangeError, "大きさ無し");
   assert.throws(() => createWebMMuxer({ video: { codec: "avc1.640028", width: 16, height: 16 } }), /入れられない/, "H.264");
+});
+
+test("音声だけの webm も組める（将来の exportAudio(webm) 用）", () => {
+  const m = createWebMMuxer({ video: null, audio: AUDIO });
+  for (const c of fakeAudio(300)) m.addAudioChunk(c);   // 20ms × 300 = 6 秒
+  assert.throws(() => m.addVideoChunk(fakeVideo({ n: 1 })[0]), /映像トラックの無い/);
+  const f = openFile(m.finalizeBytes());
+  assert.equal(allEl(kids(f.tracks), EBML_IDS.TrackEntry).length, 1, "音声 1 本");
+  assert.equal(uintOf(findEl(kids(allEl(kids(f.tracks), EBML_IDS.TrackEntry)[0]), EBML_IDS.TrackType)), 2);
+  assert.deepEqual(f.clusters.map((c) => c.timecodeMs), [0, 2000, 4000], "音声でも 2 秒ごと");
+  assert.equal(f.clusters.reduce((s2, c) => s2 + c.blocks.length, 0), 300);
+  assert.equal(floatOf(findEl(kids(f.info), EBML_IDS.Duration)), 6000, "Duration 6 秒");
+  assert.equal(allEl(kids(f.cues), EBML_IDS.CuePoint).length, 3, "索引も付く");
 });
 
 test("finalize(): Blob が在る環境では video/webm の Blob を返す", () => {
