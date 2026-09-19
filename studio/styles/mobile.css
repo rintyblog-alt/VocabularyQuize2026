@@ -1,0 +1,712 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   studio/styles/mobile.css — モバイル（< 1024px）の見た目一式
+
+   ★ 何をする所か
+     `src/ui/mobile.js`（CapCut 準拠の操作体系）の見た目。
+       ・下段タブ（#mobileBar）と文脈ツールバー（#contextBar）
+       ・ボトムシート（.vqs-m-sheet）と暗幕（.vqs-m-veil）
+       ・大きなスライダー（.vqs-m-field。当たり判定 44px）
+       ・左パネル（#left）と詳細（#right）を「下から出る抽斗」に化けさせる
+       ・プレビューとタイムラインの高さ配分（[data-vqs-mlayout]）
+       ・画面回転（[data-vqs-morient="landscape"]）＝プレビュー左・タイムライン右
+       ・タイムラインの寸法（トラック高 56px・ハンドル 18px・触り所 44px）
+
+   ★ なぜこの形か
+     ・**全部 @media (max-width: 1023.98px) の中**に書く。デスクトップの
+       見た目を壊さないため。この括りの外には 1 行も置かない。
+     ・色と寸法は tokens.css の変数を使う。まだ書かれていない段階でも
+       画面が真っ黒／真っ白にならないよう **必ず控えの値**を添える
+       （`var(--vqs-panel, #14181f)` の形）。
+     ・`#app` のような id で `display` を触ると `.hidden`（class）より
+       強いので、**必ず `:not(.hidden)` を付ける**。付けないと
+       アカウント画面や一覧の上に編集画面が出てしまう。
+     ・safe-area の罠（契約書 §13.4）: `flex: 0 0 44px` + padding は中身の
+       高さが負になるので、**height: calc(… + env(safe-area-inset-*))** で書く。
+     ・iOS のゴムバンド・ダブルタップ拡大・長押しの選択メニューはここで止める
+       （`overscroll-behavior` / `touch-action: manipulation` /
+        `-webkit-touch-callout`）。入力欄だけは選択と拡大を許す。
+
+   ★ 触るときの注意
+     ・`--vqs-m-*` はこのファイルが出所。JS（mobile.js）が書き換えるのは
+       `--vqs-m-kb`（キーボードで隠れた高さ）と `--vqs-m-drawer-h`（抽斗の高さ）。
+     ・タイムラインの「当たり判定」は **JS 側の数**（timeline/view.js の
+       `HANDLE_HIT_TOUCH`）が本体。ここで広げられるのは指が触れる DOM の幅だけ。
+     ・`prefers-reduced-motion` では動きを止める（機能は削らない）。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1023.98px) {
+
+  /* ── 0. 変数（この括りの中だけの寸法） ─────────────────────────── */
+  :root {
+    --vqs-m-bar-h: calc(58px + env(safe-area-inset-bottom));   /* 下段タブ */
+    --vqs-m-ctx-h: 60px;                                       /* 文脈ツールバー */
+    --vqs-m-top-h: calc(46px + env(safe-area-inset-top));      /* 上の帯 */
+    --vqs-m-tl: 38%;                                           /* タイムラインの高さ */
+    --vqs-m-kb: 0px;                                           /* キーボードで隠れた高さ */
+    --vqs-m-drawer-h: 58dvh;                                   /* 抽斗の高さ */
+    --vqs-m-touch: 44px;                                       /* 触り所の下限 */
+    --vqs-m-side: max(10px, env(safe-area-inset-left));
+  }
+
+  /* ── 1. 土台（iOS の癖をここで畳む） ──────────────────────────── */
+  html, body {
+    height: 100%;
+    overscroll-behavior: none;          /* ページのゴムバンドを止める */
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    overflow: hidden;                   /* 盤面は中で動かす（自前の慣性） */
+    touch-action: manipulation;         /* ダブルタップ拡大を止める */
+    -webkit-touch-callout: none;        /* 長押しの選択メニューを出さない */
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  input, textarea, [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+    font-size: 16px;                    /* iOS が焦点で勝手に拡大しない下限 */
+  }
+  /* id で display を触る所は必ず .hidden を勝たせる */
+  #app.hidden, #authScreen.hidden, #homeScreen.hidden, #contextBar.hidden { display: none !important; }
+  [hidden] { display: none !important; }
+
+  /* ── 2. 画面の骨（縦） ────────────────────────────────────────── */
+  #app:not(.hidden) {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    padding-bottom: calc(var(--vqs-m-bar-h) + var(--vqs-m-ctx-h));
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  #topbar {
+    flex: 0 0 auto;                     /* ← 契約書 §13.4: 固定 flex + padding は禁じ手 */
+    height: var(--vqs-m-top-h);
+    padding: env(safe-area-inset-top) var(--vqs-m-side) 0;
+    box-sizing: border-box;
+    gap: 4px;
+  }
+  /* 取消・やり直しは残す（消すと戻れない）。道具と比率はタブ側に在るので畳む */
+  #topbar .vqs-topbar__center { flex: 0 0 auto; gap: 2px; }
+  #topbar #toolGroup, #topbar #btnRatio, #topbar #btnQuality, #topbar .vqs-sep { display: none; }
+  #topbar .vqs-topbar__left, #topbar .vqs-topbar__right { min-width: 0; }
+  #btnAi, #btnExport {
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  #projectName { min-width: 0; flex: 1 1 auto; }
+  #saveState { display: none; }
+  #main {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    display: block;                     /* 3 ペインを畳んで中央だけにする */
+  }
+  #center {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  #previewWrap { flex: 1 1 auto; min-height: 0; position: relative; }
+  #transport { flex: 0 0 auto; min-height: var(--vqs-m-touch); }
+  #timelinePane {
+    flex: 0 0 var(--vqs-m-tl);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  #tlBody { flex: 1 1 auto; min-height: 0; }
+  #tlMinimap, #leftSplitter, #rightSplitter, #tlSplitter { display: none; }
+
+  /* 高さ配分（プレビューを叩くと拡大・もう一度で戻る） */
+  :root[data-vqs-mlayout="preview"]  { --vqs-m-tl: 20%; }
+  :root[data-vqs-mlayout="timeline"] { --vqs-m-tl: 62%; }
+
+  /* ── 3. 下段タブ（#mobileBar） ───────────────────────────────── */
+  #mobileBar.vqs-m-tabs {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: var(--vqs-m-kb);
+    height: var(--vqs-m-bar-h);
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 2px 6px env(safe-area-inset-bottom);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    background: var(--vqs-panel, #14181f);
+    border-top: 1px solid var(--vqs-line, #2a313d);
+    z-index: var(--vqs-z-bar, 40);
+  }
+  #mobileBar.vqs-m-tabs::-webkit-scrollbar { display: none; }
+  .vqs-m-tab {
+    flex: 0 0 auto;
+    min-width: 62px;
+    min-height: 54px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 12px;
+    background: none;
+    color: var(--vqs-ink-dim, #97a1b0);
+    font: inherit;
+    font-size: 11px;
+    line-height: 1.1;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vqs-m-tab__ico {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; line-height: 1;
+  }
+  .vqs-m-tab__ico svg { width: 22px; height: 22px; }
+  .vqs-m-tab__label {
+    max-width: 84px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vqs-m-tab--on {
+    color: var(--vqs-accent, #4f8cff);
+    background: var(--vqs-bg-2, #1d2330);
+  }
+  .vqs-m-tab:active { transform: scale(.94); }
+
+  /* ── 4. 文脈ツールバー（#contextBar） ────────────────────────── */
+  #contextBar:not(.hidden).vqs-m-acts {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: calc(var(--vqs-m-bar-h) + var(--vqs-m-kb));
+    height: var(--vqs-m-ctx-h);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    background: var(--vqs-bg-1, #10141b);
+    border-top: 1px solid var(--vqs-line, #2a313d);
+    z-index: var(--vqs-z-bar, 40);
+  }
+  #contextBar.vqs-m-acts::-webkit-scrollbar { display: none; }
+  .vqs-m-act {
+    flex: 0 0 auto;
+    min-width: 56px;
+    min-height: 52px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 4px 6px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: var(--vqs-ink, #e7ecf3);
+    font: inherit;
+    font-size: 10.5px;
+    line-height: 1.1;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vqs-m-act__ico {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; line-height: 1;
+  }
+  .vqs-m-act__ico svg { width: 22px; height: 22px; }
+  .vqs-m-act__label {
+    max-width: 84px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vqs-m-act:active { background: var(--vqs-bg-2, #1d2330); transform: scale(.94); }
+  .vqs-m-act--danger { color: var(--vqs-danger, #ff5f5f); }
+  .vqs-m-act--back {
+    color: var(--vqs-ink-dim, #97a1b0);
+    border-right: 1px solid var(--vqs-line, #2a313d);
+    margin-right: 4px;
+  }
+  /* 選択が無いときは「足す」側の列なので、少し控えめに */
+  #contextBar.vqs-m-acts[data-empty="1"] .vqs-m-act { color: var(--vqs-ink-dim, #97a1b0); }
+  #contextBar.vqs-m-acts[data-empty="1"] .vqs-m-act:first-child { color: var(--vqs-accent, #4f8cff); }
+
+  /* ── 5. 暗幕とボトムシート ───────────────────────────────────── */
+  .vqs-m-veil {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .52);
+    opacity: 0;
+    transition: opacity .2s ease;
+    z-index: var(--vqs-z-veil, 55);
+  }
+  .vqs-m-veil.is-on { opacity: 1; }
+  .vqs-m-veil--panel { opacity: 1; }
+  .vqs-m-sheet {
+    position: fixed;
+    left: 0; right: 0; bottom: var(--vqs-m-kb);
+    z-index: var(--vqs-z-sheet, 60);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    max-height: 92dvh;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 6px);
+    background: var(--vqs-panel, #14181f);
+    border-top: 1px solid var(--vqs-line, #2a313d);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -14px 44px rgba(0, 0, 0, .55);
+    transform: translate3d(0, 100%, 0);
+    transition: transform .26s cubic-bezier(.22, .61, .36, 1);
+  }
+  .vqs-m-sheet.is-on { transform: none; }
+  .vqs-m-sheet--half { height: 52dvh; }
+  .vqs-m-sheet--full { height: 88dvh; }
+  .vqs-m-sheet__grab {
+    flex: 0 0 auto;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;                  /* 掴み棒は自前で追う */
+    cursor: grab;
+  }
+  .vqs-m-sheet__grab > i {
+    width: 44px; height: 5px;
+    border-radius: 3px;
+    background: var(--vqs-line, #2a313d);
+  }
+  .vqs-m-sheet__head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 14px 6px;
+  }
+  .vqs-m-sheet__title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--vqs-ink, #e7ecf3);
+  }
+  .vqs-m-sheet__done {
+    min-height: var(--vqs-m-touch);
+    min-width: 66px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: var(--vqs-accent, #4f8cff);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .vqs-m-sheet__done:active { background: var(--vqs-bg-2, #1d2330); }
+  .vqs-m-sheet__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;        /* シートの中で止める（背面を動かさない） */
+    -webkit-overflow-scrolling: touch;
+    padding: 2px 14px 18px;
+  }
+  .vqs-m-pad { padding-bottom: 8px; }
+  .vqs-m-note {
+    margin: 10px 0 4px;
+    color: var(--vqs-ink-dim, #97a1b0);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  /* シートが出ている間は、プレビューの浮きボタンを引っ込める */
+  :root.vqs-m-sheeting .vqs-m-expand,
+  :root.vqs-m-sheeting .vqs-m-fsbtn { opacity: 0; pointer-events: none; }
+
+  /* ── 6. 大きなスライダー（当たり判定 44px・中央スナップの印） ──── */
+  .vqs-m-field { padding: 8px 0 12px; }
+  .vqs-m-field__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--vqs-ink-dim, #97a1b0);
+  }
+  .vqs-m-field__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vqs-m-field__val {
+    color: var(--vqs-ink, #e7ecf3);
+    font-variant-numeric: tabular-nums;
+    font-size: 14px;
+    flex: 0 0 auto;
+  }
+  .vqs-m-field__rail {
+    position: relative;
+    height: var(--vqs-m-touch);
+    margin-top: 2px;
+    touch-action: none;                  /* 擦る所（契約書 §7.2） */
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vqs-m-field__rail::before {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 50%;
+    height: 8px;
+    margin-top: -4px;
+    border-radius: 4px;
+    background: var(--vqs-bg-2, #1d2330);
+  }
+  .vqs-m-field__fill {
+    position: absolute;
+    left: 0; top: 50%;
+    height: 8px;
+    margin-top: -4px;
+    border-radius: 4px;
+    background: var(--vqs-accent, #4f8cff);
+  }
+  .vqs-m-field__center {
+    position: absolute;
+    top: 50%;
+    width: 2px; height: 16px;
+    margin: -8px 0 0 -1px;
+    border-radius: 1px;
+    background: var(--vqs-ink-dim, #97a1b0);
+    opacity: .7;
+  }
+  .vqs-m-field__knob {
+    position: absolute;
+    top: 50%; left: 0;
+    width: 28px; height: 28px;
+    margin: -14px 0 0 -14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
+    transition: transform .12s ease;
+  }
+  .vqs-m-field__rail.is-drag .vqs-m-field__knob { transform: scale(1.18); }
+  .vqs-m-field__rail:focus-visible { outline: 2px solid var(--vqs-accent, #4f8cff); outline-offset: 4px; border-radius: 8px; }
+
+  /* ── 7. 小さな部品（chips / 行 / 入切 / 色 / ボタン） ───────────── */
+  .vqs-m-chips, .vqs-m-seg {
+    display: flex;
+    gap: 8px;
+    padding: 8px 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .vqs-m-chips::-webkit-scrollbar, .vqs-m-seg::-webkit-scrollbar { display: none; }
+  .vqs-m-chip {
+    flex: 0 0 auto;
+    min-height: var(--vqs-m-touch);
+    padding: 0 16px;
+    border: 1px solid var(--vqs-line, #2a313d);
+    border-radius: 22px;
+    background: var(--vqs-bg-2, #1d2330);
+    color: var(--vqs-ink, #e7ecf3);
+    font: inherit;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .vqs-m-chip--on {
+    border-color: var(--vqs-accent, #4f8cff);
+    color: var(--vqs-accent, #4f8cff);
+    font-weight: 700;
+  }
+  .vqs-m-chip:active { transform: scale(.96); }
+  .vqs-m-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 54px;
+    border-top: 1px solid var(--vqs-line, #2a313d);
+  }
+  .vqs-m-row__label { font-size: 14px; color: var(--vqs-ink, #e7ecf3); }
+  .vqs-m-switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 58px; height: var(--vqs-m-touch);
+    border: 0;
+    background: none;
+    padding: 0;
+  }
+  .vqs-m-switch::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 6px;
+    width: 58px; height: 32px;
+    border-radius: 16px;
+    background: var(--vqs-bg-2, #1d2330);
+    transition: background .18s ease;
+  }
+  .vqs-m-switch > i {
+    position: absolute;
+    left: 3px; top: 9px;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .4);
+    transition: transform .18s cubic-bezier(.22, .61, .36, 1);
+  }
+  .vqs-m-switch--on::before { background: var(--vqs-accent, #4f8cff); }
+  .vqs-m-switch--on > i { transform: translateX(26px); }
+  .vqs-m-color {
+    flex: 0 0 auto;
+    width: 56px; height: var(--vqs-m-touch);
+    padding: 0;
+    border: 1px solid var(--vqs-line, #2a313d);
+    border-radius: 10px;
+    background: none;
+  }
+  .vqs-m-btn {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    margin-top: 8px;
+    padding: 0 14px;
+    border: 1px solid var(--vqs-line, #2a313d);
+    border-radius: 12px;
+    background: var(--vqs-bg-2, #1d2330);
+    color: var(--vqs-ink, #e7ecf3);
+    font: inherit;
+    font-size: 15px;
+  }
+  .vqs-m-btn--primary {
+    background: var(--vqs-accent, #4f8cff);
+    border-color: transparent;
+    color: #08121f;
+    font-weight: 700;
+  }
+  .vqs-m-btn--ghost { background: none; color: var(--vqs-ink-dim, #97a1b0); }
+  .vqs-m-btn:active { transform: scale(.98); }
+  .vqs-m-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(42%, 1fr));
+    gap: 8px;
+    padding: 6px 0;
+  }
+  .vqs-m-grid .vqs-m-btn { margin-top: 0; }
+
+  /* ── 8. 抽斗（#left / #right を下から出す） ───────────────────── */
+  #left, #right {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: var(--vqs-m-kb);
+    width: auto;
+    max-width: none;
+    height: calc(var(--vqs-m-drawer-h) + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--vqs-panel, #14181f);
+    border-top: 1px solid var(--vqs-line, #2a313d);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -14px 44px rgba(0, 0, 0, .55);
+    transform: translate3d(0, 115%, 0);
+    transition: transform .26s cubic-bezier(.22, .61, .36, 1);
+    z-index: var(--vqs-z-sheet, 60);
+    overflow: hidden;
+  }
+  :root[data-vqs-mpanel="library"] #left,
+  :root[data-vqs-mpanel="inspector"] #right { transform: none; }
+  /* 縦タブは横に寝かせる（抽斗の上の 1 列） */
+  #libraryTabs, #inspectorTabs {
+    flex: 0 0 auto;
+    flex-direction: row;
+    display: flex;
+    gap: 2px;
+    padding: 4px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    border-bottom: 1px solid var(--vqs-line, #2a313d);
+  }
+  #libraryTabs::-webkit-scrollbar, #inspectorTabs::-webkit-scrollbar { display: none; }
+  #libraryTabs > *, #inspectorTabs > * { flex: 0 0 auto; min-height: var(--vqs-m-touch); white-space: nowrap; }
+  #libraryPanel, #inspector {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .vqs-m-drawerbar {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: calc(var(--vqs-m-drawer-h) + env(safe-area-inset-bottom) + var(--vqs-m-kb));
+    height: 40px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 8px 0 14px;
+    z-index: calc(var(--vqs-z-sheet, 60) + 1);
+  }
+  .vqs-m-drawerbar__grab {
+    position: absolute;
+    left: 50%; top: 10px;
+    width: 44px; height: 5px;
+    margin-left: -22px;
+    border-radius: 3px;
+    background: var(--vqs-line, #39404d);
+    touch-action: none;
+  }
+  /* 掴み棒は見た目より広く触れるように（44px 規則） */
+  .vqs-m-drawerbar__grab::after {
+    content: "";
+    position: absolute;
+    left: -40px; right: -40px; top: -18px; bottom: -18px;
+  }
+  .vqs-m-drawerbar__title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--vqs-ink-dim, #97a1b0);
+  }
+  .vqs-m-drawerbar__done {
+    min-height: var(--vqs-m-touch);
+    min-width: 66px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: var(--vqs-accent, #4f8cff);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  /* ── 9. プレビューの浮きボタンと疑似全画面 ───────────────────── */
+  .vqs-m-expand, .vqs-m-fsbtn {
+    position: absolute;
+    top: 8px;
+    width: var(--vqs-m-touch);
+    height: var(--vqs-m-touch);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 12px;
+    background: rgba(8, 12, 18, .55);
+    color: #fff;
+    font-size: 16px;
+    z-index: 5;
+    transition: opacity .18s ease;
+  }
+  .vqs-m-expand { right: 8px; }
+  /* 殻が居ないとき（幅が戻った・片付けた）は素の button を出さない */
+  :root:not(.vqs-m-on) .vqs-m-expand,
+  :root:not(.vqs-m-on) .vqs-m-fsbtn { display: none !important; }
+  .vqs-m-fsbtn { right: calc(8px + var(--vqs-m-touch) + 6px); }
+  .vqs-m-expand__ico svg, .vqs-m-fsbtn__ico svg { width: 20px; height: 20px; }
+  :root.vqs-m-fs #previewWrap {
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--vqs-z-sheet, 60) + 2);
+    height: 100vh;
+    height: 100dvh;
+    background: #000;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  :root.vqs-m-fs #timelinePane,
+  :root.vqs-m-fs #topbar,
+  :root.vqs-m-fs #transport,
+  :root.vqs-m-fs #mobileBar,
+  :root.vqs-m-fs #contextBar { display: none !important; }
+
+  /* ── 10. キーボードが出ているとき ────────────────────────────── */
+  :root.vqs-m-kb-open #app:not(.hidden) { padding-bottom: calc(var(--vqs-m-bar-h) + var(--vqs-m-ctx-h) + var(--vqs-m-kb)); }
+  /* 打っている間はプレビューを優先（横向きは列が空くので畳まない） */
+  :root.vqs-m-kb-open[data-vqs-morient="portrait"] #timelinePane { display: none; }
+
+  /* ── 11. タイムラインの寸法（触り所を広げる） ─────────────────── */
+  #tlScroll { touch-action: none; }                          /* ピンチはこちらで受ける */
+  #tlHeads { width: var(--vqs-tlheads-w, 44px); flex: 0 0 auto; }
+  .vqs-tl-row { min-height: 56px; }                          /* 行高 56px（JS も同じ数） */
+  .vqs-clip { border-radius: 8px; }
+  .vqs-clip__handle {
+    width: 18px;                                             /* 見た目 18px */
+    min-width: 18px;
+    background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,.72));
+    border-radius: 6px;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+  }
+  /* 指の当たり判定を 44px まで広げる（絵は 18px のまま）。
+     ※ 掴んだ判定の本体は timeline/view.js の HANDLE_HIT_TOUCH。 */
+  .vqs-clip__handle::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0;
+    width: var(--vqs-m-touch);
+  }
+  .vqs-clip__handle--l::after { left: -13px; }
+  .vqs-clip__handle--r::after { right: -13px; }
+  .vqs-clip--selected { box-shadow: 0 0 0 2px var(--vqs-accent, #4f8cff); }
+  #tlToolbar {
+    flex: 0 0 auto;
+    min-height: var(--vqs-m-touch);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  #tlToolbar::-webkit-scrollbar { display: none; }
+  #tlToolbar > * { flex: 0 0 auto; }
+
+  /* ── 12. 横向き（プレビュー左・タイムライン右） ─────────────────
+     flex の折り返しだと 2 行目の高さが素直に伸びないので grid で置く
+     （fixed の下段タブ・文脈ツールバーは grid の外＝そのまま効く）。 */
+  :root[data-vqs-morient="landscape"] #app:not(.hidden) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: var(--vqs-m-top-h) minmax(0, 1fr);
+    grid-template-areas: "top top" "main tl";
+  }
+  :root[data-vqs-morient="landscape"] #topbar { grid-area: top; }
+  :root[data-vqs-morient="landscape"] #main { grid-area: main; height: auto; min-width: 0; min-height: 0; }
+  :root[data-vqs-morient="landscape"] #timelinePane {
+    grid-area: tl;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid var(--vqs-line, #2a313d);
+  }
+  :root[data-vqs-morient="landscape"] { --vqs-m-bar-h: calc(50px + env(safe-area-inset-bottom)); --vqs-m-ctx-h: 54px; }
+  :root[data-vqs-morient="landscape"] .vqs-m-tab { min-height: 46px; min-width: 56px; }
+  :root[data-vqs-morient="landscape"] .vqs-m-sheet--half { height: 74dvh; }
+  :root[data-vqs-morient="landscape"] #left,
+  :root[data-vqs-morient="landscape"] #right { --vqs-m-drawer-h: 76dvh; }
+
+  /* ── 13. 細い端末・動きを控える設定 ──────────────────────────── */
+  @media (max-width: 380px) {
+    .vqs-m-tab { min-width: 54px; font-size: 10px; }
+    .vqs-m-act { min-width: 52px; font-size: 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .vqs-m-sheet, #left, #right, .vqs-m-switch > i, .vqs-m-field__knob { transition: none; }
+    .vqs-m-tab:active, .vqs-m-act:active, .vqs-m-btn:active, .vqs-m-chip:active { transform: none; }
+  }
+  /* 触覚の代わりの目の合図（core/caps.js の haptic が付ける） */
+  .vqs-flash { animation: vqs-m-flash 90ms ease-out 1; }
+  @keyframes vqs-m-flash {
+    0%   { filter: brightness(1); }
+    50%  { filter: brightness(1.7); }
+    100% { filter: brightness(1); }
+  }
+}

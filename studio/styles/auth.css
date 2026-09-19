@@ -1,0 +1,834 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   studio/styles/auth.css — アカウント画面の見た目（契約書 §10.3）
+
+   ★ 何をする所か
+     ui/auth-screen.js が作る 11 枚（welcome / login / signup / verify / pin /
+     consent / reset / reset-code / reset-password / change-password / profile）の
+     装い。暗い地 + 動く抽象背景 + ガラス調のパネル（角 20px）。
+     6 桁入力・強度メータ・横スライド・ボタン内スピナー・成功のチェック描画。
+
+   ★ なぜこの形か
+     ・**最初に目に入る画面**なので、ここだけは密度より「静かで大きい」を採る。
+       入力は高さ 56px（指の下限 44px の余裕を持たせる）、文字は 15〜16px。
+       iOS は 16px 未満の入力に焦点が当たると **画面を勝手に拡大する**ので、
+       入力の font-size は 16px を下回らせない（§13.4 の罠）。
+     ・ガラスは `backdrop-filter` が在るときだけ。無い端末（古い WebKit・
+       省電力）では **不透明な panel 色**に落ちる。@supports で 2 択にして、
+       「ぼけないけど字が読めない」半端な状態を作らない。
+     ・色は tokens.css の変数だけ。半透明が要る所は素の rgba を書かず、
+       token に既に在る `--vqs-veil` / `--vqs-inset` / `--vqs-hover` /
+       `--vqs-accent-dim` を使う（明るい版 [data-theme="light"] でも成り立つ）。
+     ・横スライドは **出て行く 1 枚だけを absolute** にする。両方を absolute に
+       すると入って来る側の高さが取れず、パネルが一瞬潰れる。
+     ・`prefers-reduced-motion` では 背景・スライド・祝いの動きを全部止める
+       （機能は削らない＝押せる物は同じ）。
+
+   ★ 触るときの注意
+     ・クラスは全部 `vqs-auth` 接頭。`.hidden`（tokens.css で
+       `display:none !important`）に勝ってはいけないので、
+       `#authScreen` の id で display を触らない。
+     ・キーボードで隠れない仕掛けは JS 側が渡す `--vqs-auth-vh`
+       （visualViewport の高さ）に依る。この変数が無い端末では 100% に落ちる。
+     ・`env(safe-area-inset-*)` はここで足す（tokens は素の値だけを持つ）。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. 画面の地 ─────────────────────────────────────────────────── */
+
+.vqs-auth {
+  position: fixed;
+  inset: 0;
+  /* 暗幕と同じ段。commands.js が編集画面の上へ直に開く道（account 命令）でも
+     topbar（--vqs-z-bar）に負けないように、パネルより上・sheet/modal より下。 */
+  z-index: var(--vqs-z-veil);
+  overflow: hidden;
+  background: var(--vqs-bg-0);
+  color: var(--vqs-text-1);
+  font-family: var(--vqs-font);
+  line-height: var(--vqs-lh);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* 動く抽象背景: canvas（粒子）と CSS の階調を重ねる */
+.vqs-auth__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  opacity: 0.95;
+}
+
+.vqs-auth__wash {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 38% at 18% 12%, var(--vqs-accent-dim) 0%, transparent 70%),
+    radial-gradient(38% 34% at 84% 22%, var(--vqs-accent-glow) 0%, transparent 72%),
+    radial-gradient(52% 46% at 50% 108%, var(--vqs-accent-dim) 0%, transparent 74%);
+  filter: blur(18px);
+  animation: vqs-auth-wash 26s var(--vqs-ease) infinite alternate;
+}
+
+@keyframes vqs-auth-wash {
+  0%   { transform: translate3d(-2%, -1%, 0) scale(1); opacity: 0.85; }
+  50%  { transform: translate3d(2%, 1.5%, 0) scale(1.06); opacity: 1; }
+  100% { transform: translate3d(-1%, 2%, 0) scale(1.02); opacity: 0.9; }
+}
+
+/* ── 2. 巻物と 1 枚の置き場 ───────────────────────────────────────── */
+
+.vqs-auth__scroll {
+  position: relative;
+  height: 100%;
+  min-height: var(--vqs-auth-vh, 100%);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding:
+    calc(var(--vqs-gap-5) + env(safe-area-inset-top))
+    calc(var(--vqs-gap-4) + env(safe-area-inset-right))
+    calc(var(--vqs-gap-5) + env(safe-area-inset-bottom))
+    calc(var(--vqs-gap-4) + env(safe-area-inset-left));
+}
+
+/* キーボードが出ている間は上寄せ（真ん中寄せだとパネルが上へ切れる） */
+.vqs-auth--kb .vqs-auth__scroll { align-items: flex-start; }
+
+.vqs-auth__viewport {
+  position: relative;
+  width: 100%;
+  max-width: 452px;
+  margin: auto;
+}
+
+.vqs-auth__view {
+  width: 100%;
+  transition:
+    transform var(--vqs-dur-3) var(--vqs-ease-out),
+    opacity var(--vqs-dur-3) var(--vqs-ease-out);
+  will-change: transform, opacity;
+}
+
+/* 入って来る側（右から / 戻るときは左から） */
+.vqs-auth__view--from-right { transform: translate3d(16%, 0, 0); opacity: 0; }
+.vqs-auth__view--from-left  { transform: translate3d(-16%, 0, 0); opacity: 0; }
+
+/* 出て行く側だけ absolute にする（高さは入って来る側が決める） */
+.vqs-auth__view--leave {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+.vqs-auth__view--to-left  { transform: translate3d(-16%, 0, 0); opacity: 0; }
+.vqs-auth__view--to-right { transform: translate3d(16%, 0, 0); opacity: 0; }
+
+/* ── 3. ガラス調のパネル ─────────────────────────────────────────── */
+
+.vqs-auth__panel {
+  position: relative;
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-5);
+  background: var(--vqs-panel);
+  box-shadow: var(--vqs-shadow-3), var(--vqs-shadow-inset);
+  padding: var(--vqs-gap-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-3);
+}
+
+/* backdrop-filter が在る所だけ 本物のガラスにする */
+@supports ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  .vqs-auth__panel {
+    background: var(--vqs-veil);
+    border-color: var(--vqs-line-2);
+    -webkit-backdrop-filter: blur(26px) saturate(160%);
+    backdrop-filter: blur(26px) saturate(160%);
+  }
+}
+
+.vqs-auth__panel--bad { border-color: var(--vqs-danger); }
+
+.vqs-auth__panel--hero {
+  align-items: center;
+  text-align: center;
+  padding: var(--vqs-gap-5) var(--vqs-gap-4) var(--vqs-gap-4);
+  gap: var(--vqs-gap-2);
+}
+
+.vqs-auth__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vqs-gap-2);
+  margin-bottom: var(--vqs-gap-1);
+}
+
+.vqs-auth__htext { flex: 1 1 auto; min-width: 0; }
+
+.vqs-auth__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: var(--vqs-fw-3);
+  letter-spacing: 0.01em;
+}
+
+.vqs-auth__sub {
+  margin: var(--vqs-gap-1) 0 0;
+  font-size: var(--vqs-fs-3);
+  color: var(--vqs-text-2);
+}
+
+.vqs-auth__back {
+  flex: 0 0 auto;
+  width: var(--vqs-hit);
+  height: var(--vqs-hit);
+  margin: -6px 0 0 -8px;
+  border: 0;
+  border-radius: var(--vqs-radius-pill);
+  background: transparent;
+  color: var(--vqs-text-1);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--vqs-t-fast), transform var(--vqs-t-fast);
+}
+.vqs-auth__back:hover { background: var(--vqs-hover); }
+.vqs-auth__back:active { transform: scale(0.92); background: var(--vqs-active); }
+
+.vqs-auth__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-3);
+}
+
+/* ── 4. welcome の大きなロゴ ─────────────────────────────────────── */
+
+.vqs-auth__logo {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.28em;
+  font-size: clamp(34px, 11vw, 52px);
+  font-weight: var(--vqs-fw-3);
+  letter-spacing: -0.02em;
+  margin-top: var(--vqs-gap-2);
+}
+.vqs-auth__logo1 {
+  padding: 0 0.14em;
+  border-radius: var(--vqs-radius-4);
+  background: var(--vqs-ai);
+  color: var(--vqs-text-on-ai);
+}
+.vqs-auth__logo2 { color: var(--vqs-text-1); font-weight: var(--vqs-fw-2); }
+
+.vqs-auth__tag {
+  margin: var(--vqs-gap-2) 0 var(--vqs-gap-4);
+  font-size: var(--vqs-fs-5);
+  color: var(--vqs-text-2);
+}
+
+.vqs-auth__note {
+  margin: 0;
+  font-size: var(--vqs-fs-3);
+  color: var(--vqs-text-2);
+}
+
+.vqs-auth__fine {
+  margin: var(--vqs-gap-2) 0 0;
+  font-size: var(--vqs-fs-1);
+  color: var(--vqs-text-3);
+  text-align: center;
+}
+
+.vqs-auth__label {
+  margin: 0;
+  font-size: var(--vqs-fs-2);
+  color: var(--vqs-text-2);
+}
+
+/* ── 5. ボタン ───────────────────────────────────────────────────── */
+
+.vqs-auth__btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 var(--vqs-gap-4);
+  border: 1px solid transparent;
+  border-radius: var(--vqs-radius-4);
+  background: var(--vqs-bg-3);
+  color: var(--vqs-text-1);
+  font: inherit;
+  font-size: 16px;
+  font-weight: var(--vqs-fw-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--vqs-t-fast), box-shadow var(--vqs-t), background var(--vqs-t), opacity var(--vqs-t);
+}
+.vqs-auth__btn:active:not(:disabled) { transform: scale(0.985); box-shadow: var(--vqs-shadow-1); }
+.vqs-auth__btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.vqs-auth__btn:focus-visible { outline: none; box-shadow: var(--vqs-shadow-focus); }
+
+.vqs-auth__btn--primary {
+  background: var(--vqs-accent);
+  color: var(--vqs-text-on-accent);
+  font-weight: var(--vqs-fw-3);
+  box-shadow: 0 6px 20px var(--vqs-accent-glow);
+}
+.vqs-auth__btn--primary:hover:not(:disabled) { box-shadow: 0 10px 28px var(--vqs-accent-glow); }
+
+.vqs-auth__btn--line {
+  background: transparent;
+  border-color: var(--vqs-line-2);
+}
+.vqs-auth__btn--line:hover:not(:disabled) { background: var(--vqs-hover); }
+
+.vqs-auth__btn--quiet {
+  background: transparent;
+  color: var(--vqs-text-2);
+  min-height: var(--vqs-hit);
+}
+.vqs-auth__btn--quiet:hover:not(:disabled) { background: var(--vqs-hover); color: var(--vqs-text-1); }
+
+.vqs-auth__btn--danger {
+  background: transparent;
+  color: var(--vqs-danger);
+  border-color: var(--vqs-danger-dim);
+}
+.vqs-auth__btn--danger:hover:not(:disabled) { background: var(--vqs-danger-dim); }
+
+.vqs-auth__blabel { transition: opacity var(--vqs-t-fast); }
+
+/* ボタンの中のスピナー（押した所から動かない = 押せたことが分かる） */
+.vqs-auth__spin {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0;
+  animation: vqs-auth-spin 700ms linear infinite;
+}
+.vqs-auth__btn--busy .vqs-auth__spin { opacity: 1; }
+.vqs-auth__btn--busy .vqs-auth__blabel { opacity: 0; }
+
+@keyframes vqs-auth-spin { to { transform: rotate(360deg); } }
+
+.vqs-auth__link {
+  border: 0;
+  background: transparent;
+  color: var(--vqs-accent);
+  font: inherit;
+  font-size: var(--vqs-fs-3);
+  padding: var(--vqs-gap-2) var(--vqs-gap-1);
+  min-height: var(--vqs-hit);
+  cursor: pointer;
+  text-align: center;
+}
+.vqs-auth__link:hover { text-decoration: underline; }
+.vqs-auth__link:focus-visible { outline: none; box-shadow: var(--vqs-shadow-focus); border-radius: var(--vqs-radius-2); }
+
+.vqs-auth__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vqs-gap-2);
+  flex-wrap: wrap;
+}
+
+/* ── 6. 入力欄（浮き上がるラベル） ────────────────────────────────── */
+
+.vqs-auth__field { display: block; }
+
+.vqs-auth__fbox {
+  position: relative;
+  display: block;
+  border: 1px solid var(--vqs-line-2);
+  border-radius: var(--vqs-radius-4);
+  background: var(--vqs-inset);
+  transition: border-color var(--vqs-t), box-shadow var(--vqs-t), background var(--vqs-t);
+}
+.vqs-auth__fbox:focus-within {
+  border-color: var(--vqs-accent);
+  box-shadow: 0 0 0 4px var(--vqs-accent-dim);
+}
+
+.vqs-auth__input,
+.vqs-auth__select {
+  width: 100%;
+  min-height: 58px;
+  padding: 22px var(--vqs-gap-3) 8px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--vqs-text-1);
+  font: inherit;
+  /* iOS の自動拡大を防ぐため 16px を下回らせない */
+  font-size: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.vqs-auth__input:focus, .vqs-auth__select:focus { outline: none; }
+.vqs-auth__fbox--reveal .vqs-auth__input { padding-right: 64px; }
+
+.vqs-auth__select {
+  padding-top: 24px;
+  padding-right: 34px;
+  cursor: pointer;
+}
+.vqs-auth__field--select .vqs-auth__fbox::after {
+  content: "⌄";
+  position: absolute;
+  right: var(--vqs-gap-3);
+  top: 50%;
+  transform: translateY(-60%);
+  color: var(--vqs-text-3);
+  pointer-events: none;
+}
+
+.vqs-auth__flabel {
+  position: absolute;
+  left: calc(var(--vqs-gap-3) + 1px);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--vqs-text-3);
+  font-size: 16px;
+  pointer-events: none;
+  transition: transform var(--vqs-t), font-size var(--vqs-t), color var(--vqs-t), top var(--vqs-t);
+}
+.vqs-auth__input:focus + .vqs-auth__flabel,
+.vqs-auth__input:not(:placeholder-shown) + .vqs-auth__flabel,
+.vqs-auth__flabel--fixed {
+  top: 9px;
+  transform: translateY(0);
+  font-size: var(--vqs-fs-1);
+  color: var(--vqs-text-2);
+}
+.vqs-auth__input:focus + .vqs-auth__flabel { color: var(--vqs-accent); }
+
+.vqs-auth__fhint {
+  display: block;
+  min-height: 16px;
+  margin: 5px var(--vqs-gap-2) 0;
+  font-size: var(--vqs-fs-1);
+  color: var(--vqs-text-3);
+}
+.vqs-auth__field--ok .vqs-auth__fhint { color: var(--vqs-ok); }
+.vqs-auth__field--bad .vqs-auth__fhint { color: var(--vqs-warn); }
+.vqs-auth__field--bad .vqs-auth__fbox { border-color: var(--vqs-warn); }
+
+.vqs-auth__eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 52px;
+  height: var(--vqs-hit);
+  border: 0;
+  border-radius: var(--vqs-radius-3);
+  background: transparent;
+  color: var(--vqs-text-2);
+  font: inherit;
+  font-size: var(--vqs-fs-2);
+  cursor: pointer;
+}
+.vqs-auth__eye:hover { background: var(--vqs-hover); color: var(--vqs-text-1); }
+
+/* 大文字ロックの警告（出ている時だけ場所を取る） */
+.vqs-auth__caps {
+  display: none;
+  margin: 4px var(--vqs-gap-2) 0;
+  font-size: var(--vqs-fs-1);
+  color: var(--vqs-warn);
+}
+.vqs-auth__field--caps .vqs-auth__caps { display: block; }
+
+/* ── 7. 印（規約の同意など） ─────────────────────────────────────── */
+
+.vqs-auth__check {
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-3);
+  min-height: var(--vqs-hit);
+  padding: var(--vqs-gap-1) 0;
+  cursor: pointer;
+  font-size: var(--vqs-fs-3);
+  color: var(--vqs-text-1);
+}
+.vqs-auth__checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.vqs-auth__checkmark {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--vqs-line-2);
+  border-radius: var(--vqs-radius-2);
+  background: var(--vqs-inset);
+  position: relative;
+  transition: background var(--vqs-t), border-color var(--vqs-t);
+}
+.vqs-auth__checkmark::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 3px;
+  width: 8px;
+  height: 13px;
+  border: solid var(--vqs-text-on-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(42deg) scale(0.4);
+  opacity: 0;
+  transition: transform var(--vqs-t), opacity var(--vqs-t);
+}
+.vqs-auth__checkbox:checked + .vqs-auth__checkmark {
+  background: var(--vqs-accent);
+  border-color: var(--vqs-accent);
+}
+.vqs-auth__checkbox:checked + .vqs-auth__checkmark::after { opacity: 1; transform: rotate(42deg) scale(1); }
+.vqs-auth__checkbox:focus-visible + .vqs-auth__checkmark { box-shadow: var(--vqs-shadow-focus); }
+.vqs-auth__checklabel { flex: 1 1 auto; }
+
+/* ── 8. 6 桁 / 4 桁のコード入力 ──────────────────────────────────── */
+
+.vqs-auth__code {
+  display: flex;
+  gap: var(--vqs-gap-2);
+  justify-content: space-between;
+}
+
+.vqs-auth__cell {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 62px;
+  height: 62px;
+  text-align: center;
+  border: 1px solid var(--vqs-line-2);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-inset);
+  color: var(--vqs-text-1);
+  font-family: var(--vqs-mono);
+  font-size: 26px;
+  font-weight: var(--vqs-fw-2);
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color var(--vqs-t), box-shadow var(--vqs-t), background var(--vqs-t);
+}
+.vqs-auth__cell:focus {
+  outline: none;
+  border-color: var(--vqs-accent);
+  background: var(--vqs-accent-dim);
+  box-shadow: 0 0 0 4px var(--vqs-accent-dim);
+}
+
+/* 失敗したら赤く 1 回だけ震える */
+.vqs-auth__code--bad .vqs-auth__cell { border-color: var(--vqs-danger); }
+.vqs-auth__code--bad { animation: vqs-auth-shake 480ms var(--vqs-ease) 1; }
+
+.vqs-auth__shake { animation: vqs-auth-shake 480ms var(--vqs-ease) 1; }
+
+@keyframes vqs-auth-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  15% { transform: translate3d(-8px, 0, 0); }
+  32% { transform: translate3d(7px, 0, 0); }
+  50% { transform: translate3d(-5px, 0, 0); }
+  68% { transform: translate3d(3px, 0, 0); }
+  85% { transform: translate3d(-2px, 0, 0); }
+}
+
+.vqs-auth__timer {
+  margin: 0;
+  text-align: center;
+  font-size: var(--vqs-fs-2);
+  color: var(--vqs-text-2);
+  font-variant-numeric: tabular-nums;
+}
+.vqs-auth__timer--out { color: var(--vqs-warn); }
+
+.vqs-auth__dev {
+  margin: 0;
+  text-align: center;
+  font-family: var(--vqs-mono);
+  font-size: var(--vqs-fs-1);
+  color: var(--vqs-text-3);
+  border: 1px dashed var(--vqs-line-2);
+  border-radius: var(--vqs-radius-2);
+  padding: var(--vqs-gap-1) var(--vqs-gap-2);
+}
+
+.vqs-auth__pinwrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-2);
+}
+.vqs-auth__pinwrap .vqs-auth__code { justify-content: center; }
+.vqs-auth__pinwrap.hidden { display: none; }
+
+/* ── 9. パスワード強度メータ ─────────────────────────────────────── */
+
+.vqs-auth__pw {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-1);
+  margin-top: calc(var(--vqs-gap-2) * -1);
+}
+.vqs-auth__pwbars {
+  display: flex;
+  gap: 5px;
+}
+.vqs-auth__pwbars i {
+  flex: 1 1 0;
+  height: 5px;
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-inset);
+  transition: background var(--vqs-t), transform var(--vqs-t);
+}
+.vqs-auth__pwbars--s1 i.on { background: var(--vqs-danger); }
+.vqs-auth__pwbars--s2 i.on { background: var(--vqs-warn); }
+.vqs-auth__pwbars--s3 i.on { background: var(--vqs-accent-2); }
+.vqs-auth__pwbars--s4 i.on { background: var(--vqs-ok); }
+
+.vqs-auth__pwlabel {
+  font-size: var(--vqs-fs-1);
+  color: var(--vqs-text-2);
+}
+.vqs-auth__pwhints {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: var(--vqs-fs-1);
+  color: var(--vqs-text-3);
+}
+
+/* ── 10. 方法選び（reset）───────────────────────────────────────── */
+
+.vqs-auth__seg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-2);
+}
+.vqs-auth__segitem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 58px;
+  padding: var(--vqs-gap-3);
+  border: 1px solid var(--vqs-line-2);
+  border-radius: var(--vqs-radius-4);
+  background: var(--vqs-inset);
+  color: var(--vqs-text-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--vqs-t), background var(--vqs-t);
+}
+.vqs-auth__segitem--on {
+  border-color: var(--vqs-accent);
+  background: var(--vqs-accent-dim);
+}
+.vqs-auth__segt { font-size: var(--vqs-fs-4); font-weight: var(--vqs-fw-2); }
+.vqs-auth__segn { font-size: var(--vqs-fs-1); color: var(--vqs-text-2); }
+
+/* ── 11. 規約の要点（consent）──────────────────────────────────── */
+
+.vqs-auth__terms {
+  max-height: 34vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-4);
+  background: var(--vqs-inset);
+  padding: var(--vqs-gap-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-3);
+}
+.vqs-auth__terms:focus-visible { outline: none; box-shadow: var(--vqs-shadow-focus); }
+.vqs-auth__termh {
+  margin: 0 0 2px;
+  font-size: var(--vqs-fs-3);
+  font-weight: var(--vqs-fw-3);
+  color: var(--vqs-text-1);
+}
+.vqs-auth__termp {
+  margin: 0;
+  font-size: var(--vqs-fs-2);
+  color: var(--vqs-text-2);
+}
+
+/* ── 12. profile ─────────────────────────────────────────────────── */
+
+.vqs-auth__idcard {
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-3);
+  padding: var(--vqs-gap-3);
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-4);
+  background: var(--vqs-inset);
+}
+.vqs-auth__avatar {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-ai);
+  color: var(--vqs-text-on-ai);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--vqs-fs-5);
+  font-weight: var(--vqs-fw-3);
+}
+.vqs-auth__idmeta { display: flex; flex-direction: column; min-width: 0; }
+.vqs-auth__idname { font-size: var(--vqs-fs-5); font-weight: var(--vqs-fw-2); }
+.vqs-auth__idgrade { font-size: var(--vqs-fs-2); color: var(--vqs-text-2); }
+
+.vqs-auth__rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--vqs-gap-2) var(--vqs-gap-3);
+  margin: 0;
+  font-size: var(--vqs-fs-2);
+}
+.vqs-auth__rows dt { color: var(--vqs-text-3); }
+.vqs-auth__rows dd { margin: 0; color: var(--vqs-text-1); }
+
+/* ── 13. 失敗の文（枠の下に穏やかに） ──────────────────────────── */
+
+.vqs-auth__error:empty { display: none; }
+.vqs-auth__error {
+  margin: 0;
+  padding: var(--vqs-gap-2) var(--vqs-gap-3);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-danger-dim);
+  color: var(--vqs-text-1);
+  font-size: var(--vqs-fs-2);
+  animation: vqs-auth-fade var(--vqs-dur-3) var(--vqs-ease-out) 1;
+}
+
+@keyframes vqs-auth-fade { from { opacity: 0; transform: translate3d(0, -4px, 0); } to { opacity: 1; } }
+
+/* ── 14. 成功の合図（400ms でチェックを描く）───────────────────── */
+
+.vqs-auth__done {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vqs-gap-3);
+  background: var(--vqs-veil);
+}
+@supports ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  .vqs-auth__done { -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+}
+
+.vqs-auth__donesvg { width: 92px; height: 92px; }
+.vqs-auth__donering,
+.vqs-auth__donetick {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.vqs-auth__donering {
+  stroke: var(--vqs-ok);
+  stroke-width: 3;
+  stroke-dasharray: 170;
+  stroke-dashoffset: 170;
+  animation: vqs-auth-draw 400ms var(--vqs-ease-out) forwards;
+}
+.vqs-auth__donetick {
+  stroke: var(--vqs-ok);
+  stroke-width: 5;
+  stroke-dasharray: 46;
+  stroke-dashoffset: 46;
+  animation: vqs-auth-draw 260ms var(--vqs-ease-out) 200ms forwards;
+}
+@keyframes vqs-auth-draw { to { stroke-dashoffset: 0; } }
+
+.vqs-auth__donetext {
+  margin: 0;
+  font-size: var(--vqs-fs-5);
+  font-weight: var(--vqs-fw-2);
+  color: var(--vqs-text-1);
+}
+
+/* 既定の見た目そのままの「控え」ボタン（並びの意味を明示するための名前） */
+.vqs-auth__btn--ghost { background: var(--vqs-bg-3); }
+
+/* 強度 0（何も点かない）。段の高さを保つためだけの受け皿 */
+.vqs-auth__pwbars--s0 i { background: var(--vqs-inset); }
+
+/* welcome は板ごと中央に置く（1 枚だけ幅を詰める） */
+.vqs-auth__view--hero .vqs-auth__panel { max-width: 420px; margin: 0 auto; }
+
+/* 規約の 1 区画 */
+.vqs-auth__term { display: block; }
+
+/* ── 15. 小さい画面（縦 1 枚で完全に成立させる）───────────────── */
+
+@media (max-width: 560px) {
+  .vqs-auth__scroll {
+    align-items: flex-start;
+    padding:
+      calc(var(--vqs-gap-4) + env(safe-area-inset-top))
+      calc(var(--vqs-gap-3) + env(safe-area-inset-right))
+      calc(var(--vqs-gap-5) + env(safe-area-inset-bottom))
+      calc(var(--vqs-gap-3) + env(safe-area-inset-left));
+  }
+  .vqs-auth__viewport { max-width: 100%; }
+  .vqs-auth__panel {
+    padding: var(--vqs-gap-4) var(--vqs-gap-3) var(--vqs-gap-4);
+    gap: var(--vqs-gap-2);
+  }
+  .vqs-auth__title { font-size: 20px; }
+  .vqs-auth__cell { height: 54px; font-size: 22px; }
+  .vqs-auth__code { gap: 6px; }
+  .vqs-auth__terms { max-height: 30vh; }
+  .vqs-auth__tag { font-size: var(--vqs-fs-4); margin-bottom: var(--vqs-gap-3); }
+}
+
+/* 横向きの低い画面（キーボードが出ると 200px 台になる） */
+@media (max-height: 520px) {
+  .vqs-auth__scroll { align-items: flex-start; }
+  .vqs-auth__logo { font-size: 32px; margin-top: 0; }
+  .vqs-auth__tag { margin: var(--vqs-gap-1) 0 var(--vqs-gap-2); font-size: var(--vqs-fs-3); }
+  .vqs-auth__terms { max-height: 26vh; }
+}
+
+/* ── 16. 動きを減らす設定（機能は削らない）──────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .vqs-auth__wash { animation: none; }
+  .vqs-auth__view,
+  .vqs-auth__btn,
+  .vqs-auth__flabel,
+  .vqs-auth__fbox,
+  .vqs-auth__checkmark,
+  .vqs-auth__checkmark::after { transition: none; }
+  .vqs-auth__view--from-right,
+  .vqs-auth__view--from-left,
+  .vqs-auth__view--to-left,
+  .vqs-auth__view--to-right { transform: none; opacity: 1; }
+  .vqs-auth__shake,
+  .vqs-auth__code--bad,
+  .vqs-auth__error { animation: none; }
+  .vqs-auth__spin { animation-duration: 1400ms; }
+  .vqs-auth__donering,
+  .vqs-auth__donetick { animation: none; stroke-dashoffset: 0; }
+}

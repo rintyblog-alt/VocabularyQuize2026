@@ -1,0 +1,82 @@
+/* ══════════════════════════════════════════════════════════════════════
+   studio/styles/preview.css — プレビュー（舞台・変形ハンドル・HUD）
+   変数は tokens.css。読めない時も崩れないよう var() に既定値を添える。
+   ══════════════════════════════════════════════════════════════════════ */
+
+#center { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: var(--vqs-bg-0, #0f1318); }
+#previewWrap {
+  position: relative; flex: 1 1 auto; min-height: 0; display: grid; place-items: center;
+  overflow: hidden; padding: 12px;
+  /* 透明を市松で見せる */
+  background-color: var(--vqs-bg-0, #0f1318);
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,.035) 25%, transparent 25% 75%, rgba(255,255,255,.035) 75%),
+    linear-gradient(45deg, rgba(255,255,255,.035) 25%, transparent 25% 75%, rgba(255,255,255,.035) 75%);
+  background-size: 22px 22px; background-position: 0 0, 11px 11px;
+}
+#previewStage { position: relative; box-shadow: 0 10px 34px rgba(0, 0, 0, .55); }
+#previewCanvas {
+  display: block; max-width: 100%; max-height: 100%;
+  background: #000; border-radius: 2px;
+}
+#previewOverlay { position: absolute; inset: 0; pointer-events: none; }
+#previewOverlay.vqs-ov--live { pointer-events: auto; }
+
+/* 変形ハンドル */
+.vqs-ov-box { position: absolute; outline: 1px solid var(--vqs-accent, #4c9ffe); }
+.vqs-ov-h {
+  position: absolute; width: 11px; height: 11px; margin: -6px 0 0 -6px;
+  background: #fff; border: 1px solid rgba(0, 0, 0, .55); border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .5); pointer-events: auto;
+}
+.vqs-ov-h--rot { border-radius: 50%; cursor: grab; }
+.vqs-ov-h--nw, .vqs-ov-h--se { cursor: nwse-resize; }
+.vqs-ov-h--ne, .vqs-ov-h--sw { cursor: nesw-resize; }
+.vqs-ov-h--n, .vqs-ov-h--s { cursor: ns-resize; }
+.vqs-ov-h--e, .vqs-ov-h--w { cursor: ew-resize; }
+.vqs-ov-anchor { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px;
+  border: 1px solid #fff; border-radius: 50%; pointer-events: auto; }
+/* 整列ガイド・セーフエリア・格子 */
+.vqs-ov-guide { position: absolute; background: var(--vqs-accent, #4c9ffe); opacity: .9; }
+.vqs-ov-guide--v { width: 1px; top: 0; bottom: 0; }
+.vqs-ov-guide--h { height: 1px; left: 0; right: 0; }
+.vqs-ov-safe { position: absolute; border: 1px dashed rgba(255, 255, 255, .35); }
+.vqs-ov-grid { position: absolute; inset: 0;
+  background-image: linear-gradient(rgba(255,255,255,.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.12) 1px, transparent 1px);
+  background-size: 33.333% 33.333%; }
+/* クロップ・マスクの覆い */
+.vqs-ov-veil { position: absolute; background: rgba(0, 0, 0, .55); }
+/* 文字の直接編集 */
+.vqs-ov-edit {
+  position: absolute; pointer-events: auto; min-width: 40px; padding: 2px 4px;
+  background: rgba(0, 0, 0, .35); color: #fff; border: 1px solid var(--vqs-accent, #4c9ffe);
+  outline: none; white-space: pre-wrap;
+}
+/* HUD */
+.vqs-pv-hud {
+  position: absolute; z-index: 3; padding: 2px 7px; border-radius: 999px;
+  background: rgba(0, 0, 0, .5); color: var(--vqs-text-2, #9aa7b4);
+  font-size: 11px; font-variant-numeric: tabular-nums; pointer-events: none;
+}
+.vqs-pv-hud--tl { left: 10px; top: 10px; }
+.vqs-pv-hud--tr { right: 10px; top: 10px; }
+.vqs-pv-hud--bc { left: 50%; bottom: 10px; transform: translateX(-50%); }
+.vqs-pv-playing .vqs-ov-h, .vqs-pv-playing .vqs-ov-box { opacity: .25; }
+/* 拡大率の帯 */
+#previewBar {
+  display: flex; align-items: center; gap: 6px; justify-content: flex-end;
+  padding: 4px 8px; background: var(--vqs-bg-2, #171c22);
+  border-top: 1px solid var(--vqs-line, #2a313a);
+}
+#previewBar button, .vqs-pv-btn {
+  min-width: 34px; min-height: 28px; padding: 0 8px; border: 1px solid transparent;
+  border-radius: var(--vqs-radius-sm, 6px); background: var(--vqs-bg-3, #1e242c);
+  color: var(--vqs-text-2, #9aa7b4); font-size: 12px; cursor: pointer;
+}
+@media (max-width: 1023px) {
+  #previewWrap { padding: 6px; }
+  #previewBar { justify-content: center; }
+  .vqs-ov-h { width: 15px; height: 15px; margin: -8px 0 0 -8px; }
+}

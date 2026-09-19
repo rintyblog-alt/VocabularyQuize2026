@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ja" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0d10">
+<meta name="description" content="VQ Studio — ブラウザだけで動く高機能な動画編集ソフト。AI 自動編集つき。">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>VQ Studio — 動画編集</title>
+
+<!-- ══ 見た目（順番に意味がある: token → 骨組み → 部品 → 各部） ══ -->
+<link rel="stylesheet" href="./styles/tokens.css">
+<link rel="stylesheet" href="./styles/layout.css">
+<link rel="stylesheet" href="./styles/widgets.css">
+<link rel="stylesheet" href="./styles/panels.css">
+<link rel="stylesheet" href="./styles/timeline.css">
+<link rel="stylesheet" href="./styles/preview.css">
+<link rel="stylesheet" href="./styles/auth.css">
+<link rel="stylesheet" href="./styles/home.css">
+<link rel="stylesheet" href="./styles/ai.css">
+<link rel="stylesheet" href="./styles/export.css">
+<link rel="stylesheet" href="./styles/mobile.css">
+</head>
+<body>
+
+<!-- ══ 起動中の幕（main.js が外す。JS が落ちても文字だけは出る） ══ -->
+<div id="boot" class="vqs-boot" data-test="boot">
+  <div class="vqs-boot__mark">VQ<span>Studio</span></div>
+  <div class="vqs-boot__bar"><i></i></div>
+  <p class="vqs-boot__msg" id="bootMsg">読み込んでいます…</p>
+  <noscript><p class="vqs-boot__msg">この編集ソフトは JavaScript が必要です。</p></noscript>
+</div>
+
+<!-- ══ アカウント画面（ui/auth-screen.js が中身を作る） ══ -->
+<div id="authScreen" class="vqs-auth hidden" data-test="auth-screen" aria-live="polite"></div>
+
+<!-- ══ プロジェクト一覧（ui/home.js が中身を作る） ══ -->
+<div id="homeScreen" class="vqs-home hidden" data-test="home-screen"></div>
+
+<!-- ══ 編集画面 ══ -->
+<div id="app" class="vqs-app hidden" data-test="app">
+
+  <header id="topbar" class="vqs-topbar">
+    <div class="vqs-topbar__left">
+      <button id="btnHome" class="vqs-iconbtn" data-test="btn-home" title="プロジェクト一覧" aria-label="プロジェクト一覧"></button>
+      <input id="projectName" class="vqs-projectname" data-test="project-name" value="無題のプロジェクト" aria-label="プロジェクト名">
+      <span id="saveState" class="vqs-savestate" data-test="save-state">保存済み</span>
+    </div>
+    <div class="vqs-topbar__center">
+      <button id="btnUndo" class="vqs-iconbtn" data-test="btn-undo" title="取り消し (Ctrl+Z)" aria-label="取り消し"></button>
+      <button id="btnRedo" class="vqs-iconbtn" data-test="btn-redo" title="やり直し (Ctrl+Shift+Z)" aria-label="やり直し"></button>
+      <span class="vqs-sep"></span>
+      <div id="toolGroup" class="vqs-toolgroup" data-test="tool-group"></div>
+      <span class="vqs-sep"></span>
+      <button id="btnRatio" class="vqs-chip" data-test="btn-ratio">16:9</button>
+      <button id="btnQuality" class="vqs-chip" data-test="btn-quality">画質 自動</button>
+    </div>
+    <div class="vqs-topbar__right">
+      <button id="btnAi" class="vqs-btn vqs-btn--ai" data-test="btn-ai">AI 自動編集</button>
+      <button id="btnExport" class="vqs-btn vqs-btn--primary" data-test="btn-export">書き出し</button>
+      <button id="btnAccount" class="vqs-avatar" data-test="btn-account" title="アカウント" aria-label="アカウント"></button>
+    </div>
+  </header>
+
+  <main id="main" class="vqs-main">
+
+    <!-- 左: 素材・テキスト・音・効果・テンプレ -->
+    <aside id="left" class="vqs-left" data-test="left-panel">
+      <nav id="libraryTabs" class="vqs-vtabs" data-test="library-tabs"></nav>
+      <div id="libraryPanel" class="vqs-panelbody" data-test="library-panel"></div>
+      <div id="leftSplitter" class="vqs-splitter vqs-splitter--v" data-test="left-splitter"></div>
+    </aside>
+
+    <!-- 中央: プレビューと再生 -->
+    <section id="center" class="vqs-center">
+      <div id="previewWrap" class="vqs-previewwrap" data-test="preview-wrap">
+        <div id="previewStage" class="vqs-stage">
+          <canvas id="previewCanvas" class="vqs-canvas" width="1920" height="1080" data-test="preview-canvas"></canvas>
+          <canvas id="previewOverlay" class="vqs-overlay" width="1920" height="1080" data-test="preview-overlay"></canvas>
+        </div>
+        <div id="previewHud" class="vqs-hud" data-test="preview-hud"></div>
+        <div id="previewBadges" class="vqs-badges"></div>
+      </div>
+      <div id="transport" class="vqs-transport" data-test="transport"></div>
+      <div id="contextBar" class="vqs-contextbar hidden" data-test="context-bar"></div>
+    </section>
+
+    <!-- 右: 詳細設定 -->
+    <aside id="right" class="vqs-right" data-test="right-panel">
+      <div id="rightSplitter" class="vqs-splitter vqs-splitter--v" data-test="right-splitter"></div>
+      <nav id="inspectorTabs" class="vqs-tabs" data-test="inspector-tabs"></nav>
+      <div id="inspector" class="vqs-panelbody" data-test="inspector"></div>
+    </aside>
+
+  </main>
+
+  <!-- 下: タイムライン -->
+  <section id="timelinePane" class="vqs-tlpane" data-test="timeline-pane">
+    <div id="tlSplitter" class="vqs-splitter vqs-splitter--h" data-test="tl-splitter"></div>
+    <div id="tlToolbar" class="vqs-tltoolbar" data-test="tl-toolbar"></div>
+    <div id="tlBody" class="vqs-tlbody">
+      <div id="tlHeads" class="vqs-tlheads" data-test="tl-heads"></div>
+      <div id="tlScroll" class="vqs-tlscroll" data-test="tl-scroll">
+        <div id="tlRuler" class="vqs-tlruler" data-test="tl-ruler"></div>
+        <div id="tlTracks" class="vqs-tltracks" data-test="tl-tracks"></div>
+        <div id="tlPlayhead" class="vqs-playhead" data-test="tl-playhead"><i></i></div>
+        <div id="tlSnapLine" class="vqs-snapline hidden"></div>
+        <div id="tlMarquee" class="vqs-marquee hidden"></div>
+      </div>
+    </div>
+    <div id="tlMinimap" class="vqs-tlminimap" data-test="tl-minimap"></div>
+  </section>
+
+  <!-- モバイルの下段タブ -->
+  <nav id="mobileBar" class="vqs-mobilebar" data-test="mobile-bar"></nav>
+</div>
+
+<!-- ══ 重ねる物の置き場（ui/widgets.js が使う。順番 = 重なり順） ══ -->
+<div id="sheetHost" class="vqs-host" data-test="sheet-host"></div>
+<div id="modalHost" class="vqs-host" data-test="modal-host"></div>
+<div id="menuHost" class="vqs-host" data-test="menu-host"></div>
+<div id="toastHost" class="vqs-host" data-test="toast-host" aria-live="polite"></div>
+<div id="dragHost" class="vqs-host" data-test="drag-host"></div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,748 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   studio/styles/layout.css — 画面の骨組み（契約書 §7 の 3+1 ペイン）と上の帯
+
+   ★ 何をする所か
+     `#app / #topbar / #main / #left / #center / #right / #timelinePane / #mobileBar`
+     の配置だけを決める。中身の見た目は widgets.css と各部の css。
+     併せて #topbar の中の押し物（.vqs-btn / .vqs-iconbtn / .vqs-chip …）と
+     重ね物の置き場（.vqs-host）に見た目を付ける。
+
+   ★ なぜこの形か
+     ・縦は Grid の 3 行（上: topbar / 中: main / 下: timelinePane）。
+       中の横は Grid の 3 列（left | center | right）。
+       flex の入れ子より「帯の高さが中身に押されて伸びない」ので NLE 向き。
+     ・高さは `100dvh` 基準（iOS の URL バーで 100vh が余る問題を避ける）。
+       `dvh` が無い古い WebKit のために `100vh` を先に書いて上書きする。
+     ・**§13.4 の罠**: `flex: 0 0 44px` に `padding-top: env(safe-area-inset-top)`
+       を足すと中身の高さが負になりボタンが押せない。だから帯は必ず
+       `height: calc(<素の高さ> + env(safe-area-inset-*))` ＋ 同じ量の padding で書く。
+       Grid の行は `auto` にして、帯自身の height に決めさせる。
+     ・パネル幅は `--vqs-left-w` / `--vqs-right-w`（ui/layout.js が
+       localStorage の値を root に書く）。CSS は px を直に持たない。
+     ・プレビューは `#previewWrap` を器にして **中央寄せ + letterbox**。
+       `#previewStage` の left/top/width/height は ui/preview.js が inline で
+       決めるので **ここでは書かない**（inline が勝って黙って効かなくなる）。
+
+   ★ 触るときの注意
+     ・`.hidden` は tokens.css で `display:none !important`。だから id 指定で
+       display を書いても隠れる。順番を変えないこと。
+     ・モバイル（< 1024px）の細かい所は styles/mobile.css が後から上書きする。
+       ここには「最低限これだけで成立する」配置しか置かない。
+     ・タイムラインは `touch-action:none` + `overscroll-behavior:none`。
+       これが無いと iOS でページごと動く（§13.4）。
+     ・z-index の生数字を書かない。`var(--vqs-z-*)` を使う。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. 画面ぜんたい ──────────────────────────────────────────────── */
+
+#app.vqs-app {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 100%;
+  grid-template-rows: auto minmax(0, 1fr) auto;   /* topbar / main / timeline */
+  grid-template-areas: "topbar" "main" "timeline";
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  background: var(--vqs-bg-1);
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#app input, #app textarea, #app [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ── 2. 上の帯 ───────────────────────────────────────────────────── */
+
+#topbar.vqs-topbar {
+  grid-area: topbar;
+  /* §13.4: 高さは flex-basis で固定せず、safe-area を足した height で持つ */
+  height: calc(var(--vqs-topbar-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top)
+           calc(var(--vqs-gap-3) + env(safe-area-inset-right))
+           0
+           calc(var(--vqs-gap-3) + env(safe-area-inset-left));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--vqs-gap-2);
+  border-bottom: 1px solid var(--vqs-line);
+  background: linear-gradient(180deg, var(--vqs-bg-3) 0%, var(--vqs-bg-2) 100%);
+  box-shadow: var(--vqs-shadow-1);
+  z-index: var(--vqs-z-panel);
+}
+.vqs-topbar__left,
+.vqs-topbar__center,
+.vqs-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-2);
+  min-width: 0;
+  height: 100%;
+}
+.vqs-topbar__center { justify-content: center; }
+.vqs-topbar__right { justify-content: flex-end; }
+
+/* ── 3. 中の 3 列 ────────────────────────────────────────────────── */
+
+#main.vqs-main {
+  grid-area: main;
+  display: grid;
+  grid-template-columns: var(--vqs-left-w) minmax(0, 1fr) var(--vqs-right-w);
+  grid-template-rows: 100%;
+  min-height: 0;
+  min-width: 0;
+  background: var(--vqs-bg-1);
+}
+#main > * { min-width: 0; min-height: 0; }
+
+#left.vqs-left,
+#right.vqs-right {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  background: var(--vqs-panel);
+  z-index: var(--vqs-z-panel);
+}
+#left.vqs-left {
+  border-right: 1px solid var(--vqs-line);
+  padding-left: env(safe-area-inset-left);
+}
+#right.vqs-right {
+  flex-direction: column;
+  border-left: 1px solid var(--vqs-line);
+  padding-right: env(safe-area-inset-right);
+}
+/* 左は「縦タブ + 本体」の 2 列 */
+#libraryTabs.vqs-vtabs {
+  flex: 0 0 auto;
+  width: 56px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-1);
+  padding: var(--vqs-gap-2) var(--vqs-gap-1);
+  border-right: 1px solid var(--vqs-line);
+  background: var(--vqs-bg-2);
+  overflow: hidden auto;
+}
+#inspectorTabs.vqs-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: var(--vqs-gap-0);
+  min-height: 34px;
+  padding: 0 var(--vqs-gap-1);
+  border-bottom: 1px solid var(--vqs-line);
+  background: var(--vqs-bg-2);
+  overflow: auto hidden;
+  scrollbar-width: none;
+}
+#inspectorTabs.vqs-tabs::-webkit-scrollbar { height: 0; }
+
+.vqs-panelbody {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--vqs-gap-2);
+}
+
+/* パネルを畳んだ時（ui/layout.js が付ける） */
+.vqs-pane--collapsed { display: none !important; }
+
+/* ── 4. 中央（プレビュー / 再生 / 文脈ツールバー） ─────────────────── */
+
+#center.vqs-center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--vqs-bg-0);
+}
+
+#previewWrap.vqs-previewwrap {
+  position: relative;               /* #previewStage は absolute で置かれる */
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  place-items: center;              /* JS が来る前の保険（中央寄せ） */
+  overflow: hidden;
+  background:
+    radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.028) 0%, rgba(0, 0, 0, 0) 60%),
+    var(--vqs-bg-0);
+  touch-action: none;               /* ピンチでページが動かないように（§13.4） */
+  overscroll-behavior: none;
+}
+
+/* 透明の市松模様（素材の抜け）。寸法は ui/preview.js が inline で決める */
+.vqs-stage {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 2px;
+  box-shadow: var(--vqs-shadow-2), 0 0 0 1px rgba(0, 0, 0, 0.5);
+  background-color: var(--vqs-checker-a);
+  background-image:
+    linear-gradient(45deg, var(--vqs-checker-b) 25%, transparent 25%, transparent 75%, var(--vqs-checker-b) 75%),
+    linear-gradient(45deg, var(--vqs-checker-b) 25%, transparent 25%, transparent 75%, var(--vqs-checker-b) 75%);
+  background-size: var(--vqs-checker-size) var(--vqs-checker-size);
+  background-position: 0 0, calc(var(--vqs-checker-size) / 2) calc(var(--vqs-checker-size) / 2);
+  overflow: hidden;
+}
+.vqs-stage > .vqs-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.vqs-stage > .vqs-overlay { pointer-events: none; }
+
+#previewHud.vqs-hud {
+  position: absolute;
+  inset: auto var(--vqs-gap-3) var(--vqs-gap-3) var(--vqs-gap-3);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--vqs-gap-2);
+  pointer-events: none;
+}
+#previewHud.vqs-hud > * { pointer-events: auto; }
+
+#previewBadges.vqs-badges {
+  position: absolute;
+  inset: var(--vqs-gap-2) var(--vqs-gap-2) auto auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--vqs-gap-1);
+  max-width: 60%;
+  pointer-events: none;
+}
+
+#transport.vqs-transport {
+  flex: 0 0 auto;                   /* §13.4: basis で高さを決めない */
+  height: var(--vqs-transport-h);
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-2);
+  padding: 0 var(--vqs-gap-3);
+  border-top: 1px solid var(--vqs-line);
+  border-bottom: 1px solid var(--vqs-line);
+  background: var(--vqs-bg-2);
+  overflow: auto hidden;
+  scrollbar-width: none;
+}
+#transport.vqs-transport::-webkit-scrollbar { height: 0; }
+
+#contextBar.vqs-contextbar {
+  flex: 0 0 auto;
+  min-height: var(--vqs-hit);
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-2);
+  padding: var(--vqs-gap-1) var(--vqs-gap-2);
+  border-bottom: 1px solid var(--vqs-line);
+  background: var(--vqs-bg-3);
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+#contextBar.vqs-contextbar::-webkit-scrollbar { height: 0; }
+
+/* ── 5. 下のタイムライン ──────────────────────────────────────────── */
+
+#timelinePane.vqs-tlpane {
+  grid-area: timeline;
+  position: relative;
+  /* 高さは JS が --vqs-tl-h を書き換える。safe-area は height に足す（§13.4） */
+  height: calc(var(--vqs-tl-h) + env(safe-area-inset-bottom));
+  min-height: calc(var(--vqs-ruler-h) + var(--vqs-track-h-sm) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-top: 1px solid var(--vqs-line);
+  background: var(--vqs-bg-2);
+  z-index: var(--vqs-z-timeline);
+}
+
+#tlToolbar.vqs-tltoolbar {
+  flex: 0 0 auto;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-2);
+  padding: 0 var(--vqs-gap-2);
+  border-bottom: 1px solid var(--vqs-line);
+  background: var(--vqs-bg-3);
+  overflow: auto hidden;
+  scrollbar-width: none;
+}
+#tlToolbar.vqs-tltoolbar::-webkit-scrollbar { height: 0; }
+
+#tlBody.vqs-tlbody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--vqs-tlheads-w) minmax(0, 1fr);
+  overflow: hidden;
+}
+
+#tlHeads.vqs-tlheads {
+  position: relative;
+  min-width: 0;
+  padding-top: var(--vqs-ruler-h);      /* ルーラの分だけ下げて行を揃える */
+  border-right: 1px solid var(--vqs-line);
+  background: var(--vqs-panel);
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+#tlScroll.vqs-tlscroll {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;                     /* 盤面は transform で動かす（§13.5） */
+  background:
+    linear-gradient(180deg, var(--vqs-bg-3) 0, var(--vqs-bg-3) var(--vqs-ruler-h),
+                    var(--vqs-bg-1) var(--vqs-ruler-h), var(--vqs-bg-1) 100%);
+  touch-action: none;                   /* §13.4 の唯一の手の 1 つ目 */
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  cursor: default;
+}
+#tlRuler.vqs-tlruler {
+  position: sticky;
+  top: 0;
+  height: var(--vqs-ruler-h);
+  border-bottom: 1px solid var(--vqs-line);
+  background: var(--vqs-bg-3);
+  z-index: 3;
+  overflow: hidden;
+}
+#tlTracks.vqs-tltracks {
+  position: relative;
+  min-height: 0;
+}
+#tlPlayhead.vqs-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid var(--vqs-tl-playhead);
+  pointer-events: none;
+  z-index: 6;
+}
+#tlPlayhead.vqs-playhead > i {
+  position: absolute;
+  top: 0;
+  left: -7px;
+  width: 15px;
+  height: 12px;
+  background: var(--vqs-tl-playhead);
+  clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%);
+  box-shadow: var(--vqs-shadow-1);
+}
+#tlSnapLine.vqs-snapline {
+  position: absolute;
+  top: var(--vqs-ruler-h);
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--vqs-tl-snap);
+  pointer-events: none;
+  z-index: 5;
+}
+#tlMarquee.vqs-marquee {
+  position: absolute;
+  border: 1px solid var(--vqs-accent);
+  background: var(--vqs-accent-dim);
+  pointer-events: none;
+  z-index: 4;
+}
+#tlMinimap.vqs-tlminimap {
+  flex: 0 0 auto;
+  height: var(--vqs-tlmini-h);
+  border-top: 1px solid var(--vqs-line);
+  background: var(--vqs-tl-mini-bg);
+  overflow: hidden;
+  touch-action: none;
+}
+
+/* ── 6. 分割線（ui/layout.js が掴む） ────────────────────────────── */
+
+.vqs-splitter {
+  position: absolute;
+  z-index: 8;
+  background: transparent;
+  transition: background var(--vqs-t-fast);
+  touch-action: none;
+}
+.vqs-splitter::after {
+  content: "";
+  position: absolute;
+  background: var(--vqs-accent);
+  opacity: 0;
+  transition: opacity var(--vqs-t-fast);
+}
+.vqs-splitter:hover::after,
+.vqs-splitter[data-dragging="1"]::after { opacity: 1; }
+
+.vqs-splitter--v {                      /* 縦の線（左右パネルの幅） */
+  top: 0;
+  bottom: 0;
+  width: var(--vqs-splitter-w);
+  cursor: ew-resize;
+}
+.vqs-splitter--v::after { top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; }
+#leftSplitter { right: calc(var(--vqs-splitter-w) / -2); }
+#rightSplitter { left: calc(var(--vqs-splitter-w) / -2); }
+
+.vqs-splitter--h {                      /* 横の線（タイムラインの高さ） */
+  left: 0;
+  right: 0;
+  top: calc(var(--vqs-splitter-w) / -2);
+  height: var(--vqs-splitter-w);
+  cursor: ns-resize;
+}
+.vqs-splitter--h::after { left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; }
+
+/* ── 7. モバイルの下段タブ（既定は隠す。< 1024px で出す） ──────────── */
+
+#mobileBar.vqs-mobilebar { display: none; }
+
+/* ── 8. 重ね物の置き場（widgets.js が中に入れる。順番 = 重なり順） ── */
+
+.vqs-host {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;               /* 中の物だけが触れる */
+}
+.vqs-host > * { pointer-events: auto; }
+#sheetHost { z-index: var(--vqs-z-sheet); }
+#modalHost { z-index: var(--vqs-z-modal); }
+#menuHost  { z-index: var(--vqs-z-menu); }
+#toastHost {
+  z-index: var(--vqs-z-toast);
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--vqs-gap-2);
+  padding: var(--vqs-gap-4)
+           calc(var(--vqs-gap-4) + env(safe-area-inset-right))
+           calc(var(--vqs-gap-4) + env(safe-area-inset-bottom) + var(--vqs-gap-4))
+           calc(var(--vqs-gap-4) + env(safe-area-inset-left));
+}
+#dragHost { z-index: var(--vqs-z-drag); }
+
+/* ── 9. 上の帯の中身（押し物・名札） ───────────────────────────────── */
+
+.vqs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vqs-gap-2);
+  min-height: 30px;
+  min-width: 0;
+  padding: 0 var(--vqs-gap-3);
+  border: 1px solid var(--vqs-line-2);
+  border-radius: var(--vqs-radius-2);
+  background: var(--vqs-bg-3);
+  color: var(--vqs-text-1);
+  font-size: var(--vqs-fs-2);
+  font-weight: var(--vqs-fw-2);
+  white-space: nowrap;
+  box-shadow: var(--vqs-shadow-inset);
+  transition: background var(--vqs-t-fast), border-color var(--vqs-t-fast),
+              transform var(--vqs-t-fast), box-shadow var(--vqs-t-fast), opacity var(--vqs-t-fast);
+}
+.vqs-btn:hover { background: var(--vqs-panel-2); border-color: rgba(255, 255, 255, 0.24); }
+.vqs-btn:active { transform: translateY(1px) scale(0.985); background: var(--vqs-active); }
+.vqs-btn:focus-visible { box-shadow: var(--vqs-shadow-focus); }
+.vqs-btn[disabled], .vqs-btn[aria-disabled="true"] {
+  opacity: 0.42; pointer-events: none; box-shadow: none;
+}
+.vqs-btn--sm { min-height: 26px; padding: 0 var(--vqs-gap-2); font-size: var(--vqs-fs-1); }
+.vqs-btn--ghost { background: transparent; border-color: transparent; box-shadow: none; color: var(--vqs-text-2); }
+.vqs-btn--ghost:hover { background: var(--vqs-hover); color: var(--vqs-text-1); }
+.vqs-btn--on {
+  background: var(--vqs-accent-dim);
+  border-color: var(--vqs-accent-line);
+  color: var(--vqs-text-1);
+}
+.vqs-btn--primary {
+  background: linear-gradient(180deg, var(--vqs-accent) 0%, #3a74e0 100%);
+  border-color: rgba(0, 0, 0, 0.32);
+  color: var(--vqs-text-on-primary);
+  box-shadow: var(--vqs-shadow-1), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+.vqs-btn--primary:hover { filter: brightness(1.08); background: var(--vqs-accent); }
+.vqs-btn--danger {
+  background: var(--vqs-danger-dim);
+  border-color: rgba(255, 77, 79, 0.5);
+  color: var(--vqs-danger);
+}
+.vqs-btn--danger:hover { background: rgba(255, 77, 79, 0.28); color: var(--vqs-text-on-primary); }
+.vqs-btn--ai {
+  position: relative;
+  border-color: transparent;
+  background: var(--vqs-ai);
+  color: var(--vqs-text-on-ai);
+  font-weight: var(--vqs-fw-3);
+}
+.vqs-btn--ai:hover { filter: brightness(1.1) saturate(1.05); }
+.vqs-btn__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vqs-btnrow { display: flex; align-items: center; gap: var(--vqs-gap-2); flex-wrap: wrap; }
+
+.vqs-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--vqs-radius-2);
+  background: transparent;
+  color: var(--vqs-text-2);
+  transition: background var(--vqs-t-fast), color var(--vqs-t-fast), border-color var(--vqs-t-fast);
+}
+.vqs-iconbtn:hover { background: var(--vqs-hover); color: var(--vqs-text-1); }
+.vqs-iconbtn:active { background: var(--vqs-active); }
+.vqs-iconbtn:focus-visible { box-shadow: var(--vqs-shadow-focus); }
+.vqs-iconbtn[disabled], .vqs-iconbtn[aria-disabled="true"] { opacity: 0.35; pointer-events: none; }
+.vqs-iconbtn[aria-pressed="true"], .vqs-iconbtn.vqs-btn--on {
+  background: var(--vqs-accent-dim);
+  border-color: var(--vqs-accent-line);
+  color: var(--vqs-text-1);
+}
+.vqs-iconbtn > svg, .vqs-btn > svg { width: 18px; height: 18px; flex: 0 0 auto; }
+/* 図が来る前でも「押せる物」に見えるように（ui/icons.js が入れば消える） */
+.vqs-iconbtn:empty::after {
+  content: "";
+  width: 14px; height: 14px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  opacity: 0.55;
+}
+
+.vqs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vqs-gap-1);
+  min-height: 26px;
+  padding: 0 var(--vqs-gap-2);
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-bg-2);
+  color: var(--vqs-text-2);
+  font-size: var(--vqs-fs-1);
+  white-space: nowrap;
+  transition: background var(--vqs-t-fast), color var(--vqs-t-fast), border-color var(--vqs-t-fast);
+}
+.vqs-chip:hover { background: var(--vqs-panel-2); color: var(--vqs-text-1); }
+.vqs-chip:focus-visible { box-shadow: var(--vqs-shadow-focus); }
+.vqs-chip[aria-pressed="true"], .vqs-chip.vqs-m-on {
+  background: var(--vqs-accent-dim);
+  border-color: var(--vqs-accent-line);
+  color: var(--vqs-text-1);
+}
+
+.vqs-projectname {
+  min-width: 80px;
+  max-width: 28ch;
+  height: 28px;
+  padding: 0 var(--vqs-gap-2);
+  border: 1px solid transparent;
+  border-radius: var(--vqs-radius-2);
+  background: transparent;
+  color: var(--vqs-text-1);
+  font-size: var(--vqs-fs-3);
+  font-weight: var(--vqs-fw-2);
+  text-overflow: ellipsis;
+  transition: background var(--vqs-t-fast), border-color var(--vqs-t-fast);
+}
+.vqs-projectname:hover { background: var(--vqs-hover); }
+.vqs-projectname:focus {
+  background: var(--vqs-bg-1);
+  border-color: var(--vqs-accent);
+  outline: none;
+}
+
+.vqs-savestate {
+  flex: 0 0 auto;
+  color: var(--vqs-text-3);
+  font-size: var(--vqs-fs-1);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vqs-savestate[data-state="saving"] { color: var(--vqs-accent-2); }
+.vqs-savestate[data-state="dirty"] { color: var(--vqs-warn); }
+.vqs-savestate[data-state="error"] { color: var(--vqs-danger); }
+
+.vqs-avatar {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--vqs-line-2);
+  border-radius: var(--vqs-radius-pill);
+  background: radial-gradient(120% 120% at 30% 20%, var(--vqs-accent-2), var(--vqs-accent));
+  color: var(--vqs-text-on-accent);
+  font-size: var(--vqs-fs-1);
+  font-weight: var(--vqs-fw-3);
+  overflow: hidden;
+}
+.vqs-avatar:hover { filter: brightness(1.12); }
+.vqs-avatar:focus-visible { box-shadow: var(--vqs-shadow-focus); }
+
+.vqs-sep {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--vqs-gap-1);
+  background: var(--vqs-line-2);
+}
+
+.vqs-toolgroup {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-2);
+  background: var(--vqs-inset);
+}
+.vqs-toolgroup > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--vqs-radius-1);
+  background: transparent;
+  color: var(--vqs-text-2);
+  transition: background var(--vqs-t-fast), color var(--vqs-t-fast);
+}
+.vqs-toolgroup > button:hover { background: var(--vqs-hover); color: var(--vqs-text-1); }
+.vqs-toolgroup > button[aria-pressed="true"] {
+  background: var(--vqs-accent);
+  color: var(--vqs-text-on-accent);
+}
+.vqs-toolgroup > button:focus-visible { box-shadow: var(--vqs-shadow-focus); }
+
+/* ── 10. 画面ごと隠す物（疑似全画面。iPhone は requestFullscreen が無い） ── */
+.vqs-fs-lock { overflow: hidden !important; }
+.vqs-fs-fake {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  background: var(--vqs-black);
+  z-index: var(--vqs-z-modal);
+}
+
+/* ══ 11. モバイル（< 1024px）。細部は styles/mobile.css が後で上書きする ══ */
+@media (max-width: 1023.98px) {
+
+  #app.vqs-app {
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "topbar" "main" "timeline" "mobilebar";
+    /* 画面が小さいのでタイムラインは低くする（mobile.js が更に上書きする） */
+    --vqs-tl-h: min(42dvh, 248px);
+  }
+
+  /* 左右パネルは「下から出る抽斗」になるので、ここでは畳む（mobile.css が出す） */
+  #left.vqs-left, #right.vqs-right { display: none; }
+  #main.vqs-main { grid-template-columns: minmax(0, 1fr); }
+
+  #topbar.vqs-topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-left: calc(var(--vqs-gap-2) + env(safe-area-inset-left));
+    padding-right: calc(var(--vqs-gap-2) + env(safe-area-inset-right));
+  }
+  .vqs-topbar__center { display: none; }       /* 取消・ツールは文脈ツールバーへ */
+  .vqs-topbar__right { gap: var(--vqs-gap-1); }
+
+  /* 上からプレビュー → 文脈ツールバー → タイムライン → 下段タブ */
+  #center.vqs-center { min-height: 0; }
+  #transport.vqs-transport { height: calc(var(--vqs-hit) + 2px); }
+  #contextBar.vqs-contextbar { min-height: calc(var(--vqs-hit) + 4px); }
+
+  #timelinePane.vqs-tlpane {
+    height: var(--vqs-tl-h);                   /* safe-area は下段タブが持つ */
+    min-height: calc(var(--vqs-ruler-h) + var(--vqs-track-h-sm) + 8px);
+    padding-bottom: 0;
+  }
+  #tlBody.vqs-tlbody { grid-template-columns: minmax(0, 1fr); }
+  #tlHeads.vqs-tlheads { display: none; }      /* CapCut 式（頭は出さない） */
+  #tlMinimap.vqs-tlminimap { display: none; }
+  #tlToolbar.vqs-tltoolbar { height: var(--vqs-hit); }
+
+  /* 触り所を 44px に。分割線は指では掴ませない */
+  .vqs-splitter { display: none; }
+  .vqs-iconbtn { width: var(--vqs-hit); height: var(--vqs-hit); }
+  .vqs-btn { min-height: 34px; }
+  .vqs-chip { min-height: 32px; }
+
+  #mobileBar.vqs-mobilebar {
+    grid-area: mobilebar;
+    /* §13.4: 下段タブは min-height に safe-area を足す（basis で固定しない） */
+    display: flex;
+    align-items: stretch;
+    gap: var(--vqs-gap-0);
+    height: auto;
+    min-height: calc(var(--vqs-mobilebar-h) + env(safe-area-inset-bottom));
+    padding: 0
+             calc(var(--vqs-gap-1) + env(safe-area-inset-right))
+             env(safe-area-inset-bottom)
+             calc(var(--vqs-gap-1) + env(safe-area-inset-left));
+    border-top: 1px solid var(--vqs-line);
+    background: var(--vqs-bg-2);
+    box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.32);
+    overflow: auto hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    z-index: var(--vqs-z-bar);
+  }
+  #mobileBar.vqs-mobilebar::-webkit-scrollbar { height: 0; }
+
+  #previewHud.vqs-hud { inset: auto var(--vqs-gap-2) var(--vqs-gap-2) var(--vqs-gap-2); }
+}
+
+/* 横向き（高さが足りない）: プレビュー左・タイムライン右の 2 列 */
+@media (max-width: 1023.98px) and (max-height: 500px) {
+  #app.vqs-app {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 46%);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "topbar   topbar"
+      "main     timeline";
+  }
+  #topbar.vqs-topbar { height: calc(40px + env(safe-area-inset-top)); }
+  #timelinePane.vqs-tlpane {
+    height: auto;
+    border-top: 0;
+    border-left: 1px solid var(--vqs-line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  #mobileBar.vqs-mobilebar { display: none; }   /* 横向きは文脈ツールバーだけ */
+  #contextBar.vqs-contextbar { min-height: 40px; }
+}
+
+/* 画面が広い時は左右を少し広げる余地を持たせる（JS の値が無い時の見栄え） */
+@media (min-width: 1600px) {
+  #app.vqs-app { --vqs-left-w: 320px; --vqs-right-w: 360px; }
+}

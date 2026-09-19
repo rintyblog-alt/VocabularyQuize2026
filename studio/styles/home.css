@@ -1,0 +1,659 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   studio/styles/home.css — プロジェクト一覧（#homeScreen / ui/home.js）
+
+   ★ ここでやること
+     起動して最初に触る画面の見た目。上段（ロゴ・検索・並べ替え・表示切替・
+     アカウント）→ 始め方の段 → テンプレート → 一覧の格子 → 下段（容量・ヘルプ）。
+
+   ★ なぜこの形か
+     ・格子は `auto-fill minmax(200px, 1fr)` を土台にし、
+       画面幅ごとに **列数を言い切る**（モバイル 2 / タブレット 3 / デスクトップ 4〜6）。
+       auto-fill だけに任せると、幅の端で 1 列になったり 8 列に割れたりして
+       サムネが読めなくなるため。
+     ・サムネは 16:9 固定（`aspect-ratio`）。素材が無くても名前から作った
+       安定色で «同じプロジェクトは常に同じ色» に見えるようにしている。
+     ・色・寸法・角丸・影・重なり順は **tokens.css の変数だけ** を使う。
+       ここで生の色を足すと、明るい版（[data-theme="light"]）で破れる。
+
+   ★ 触るときの注意
+     ・`.hidden` は tokens.css で `display:none !important`。
+       `.vqs-home` に `display:flex` を書いても勝てるのはそちら側。
+     ・触り所は 44px 以上（--vqs-hit）。iOS の safe-area は上下で足す。
+     ・`vqs-home*` 以外のクラスをここで定義しない（他の部品と衝突する）。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. 全体の枠 ──────────────────────────────────────────────── */
+
+.vqs-home {
+  position: fixed;
+  inset: 0;
+  z-index: var(--vqs-z-panel);
+  display: flex;
+  flex-direction: column;
+  background: var(--vqs-bg-1);
+  color: var(--vqs-text-1);
+  font-family: var(--vqs-font);
+  overflow: hidden;
+}
+
+/* ── 2. 上段（ロゴ / 検索 / 並べ替え / 表示切替 / アカウント）──── */
+
+.vqs-home__top {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-3);
+  padding: var(--vqs-gap-2) var(--vqs-gap-4);
+  padding-top: calc(var(--vqs-gap-2) + env(safe-area-inset-top));
+  min-height: var(--vqs-topbar-h);
+  background: var(--vqs-bg-2);
+  border-bottom: 1px solid var(--vqs-line);
+}
+
+.vqs-home__brand {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-size: 17px;
+  white-space: nowrap;
+}
+.vqs-home__brand-a { color: var(--vqs-text-1); }
+.vqs-home__brand-b { color: var(--vqs-accent); }
+
+.vqs-home__search {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-2);
+  min-width: 0;
+  max-width: 420px;
+  height: 36px;
+  padding: 0 var(--vqs-gap-3);
+  background: var(--vqs-bg-3);
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-pill);
+}
+.vqs-home__search:focus-within { border-color: var(--vqs-accent-line); }
+.vqs-home__search-ico { color: var(--vqs-text-3); font-size: 15px; }
+.vqs-home__search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--vqs-text-1);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.vqs-home__search-input::placeholder { color: var(--vqs-text-3); }
+.vqs-home__search-input::-webkit-search-cancel-button { appearance: none; }
+
+.vqs-home__tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-2);
+}
+
+/* widgets の segmented を使えた場合は .vqs-seg の見た目が乗る。
+   素で作った場合の見た目をここで揃える。 */
+.vqs-home__sort {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--vqs-bg-3);
+  border-radius: var(--vqs-radius-pill);
+}
+.vqs-home__sortbtn {
+  min-height: 30px;
+  padding: 0 var(--vqs-gap-3);
+  border: 0;
+  border-radius: var(--vqs-radius-pill);
+  background: transparent;
+  color: var(--vqs-text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.vqs-home__sortbtn:hover { background: var(--vqs-hover); color: var(--vqs-text-1); }
+.vqs-home__sortbtn--on { background: var(--vqs-accent-dim); color: var(--vqs-text-1); }
+
+.vqs-home__viewbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-2);
+  background: var(--vqs-bg-3);
+  color: var(--vqs-text-2);
+  font-size: 15px;
+  cursor: pointer;
+}
+.vqs-home__viewbtn:hover { background: var(--vqs-hover); color: var(--vqs-text-1); }
+
+.vqs-home__account {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vqs-gap-2);
+  max-width: 200px;
+  min-height: 36px;
+  padding: 0 var(--vqs-gap-3) 0 4px;
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-bg-3);
+  color: var(--vqs-text-1);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.vqs-home__account:hover { background: var(--vqs-hover); }
+.vqs-home__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-accent);
+  color: var(--vqs-text-on-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.vqs-home__accname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 3. 中身（縦スクロール）─────────────────────────────────── */
+
+.vqs-home__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding: var(--vqs-gap-5) var(--vqs-gap-4) var(--vqs-gap-5);
+}
+
+.vqs-home__sec {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto var(--vqs-gap-5);
+}
+.vqs-home__sec:last-child { margin-bottom: 0; }
+
+.vqs-home__h {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vqs-gap-2);
+  margin: 0 0 var(--vqs-gap-3);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vqs-text-2);
+}
+.vqs-home__count {
+  padding: 1px var(--vqs-gap-2);
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-bg-3);
+  color: var(--vqs-text-3);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ── 4. 始め方の段 ────────────────────────────────────────────── */
+
+.vqs-home__new {
+  display: flex;
+  align-items: center;
+  gap: var(--vqs-gap-4);
+  width: 100%;
+  min-height: 84px;
+  padding: var(--vqs-gap-4);
+  margin: 0 0 var(--vqs-gap-3);
+  border: 1px solid var(--vqs-accent-line);
+  border-radius: var(--vqs-radius-4);
+  background: linear-gradient(135deg, var(--vqs-accent-dim), var(--vqs-panel-2));
+  color: var(--vqs-text-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--vqs-shadow-1);
+  transition: transform var(--vqs-t-fast), box-shadow var(--vqs-t-fast);
+}
+.vqs-home__new:hover { box-shadow: var(--vqs-shadow-2); }
+.vqs-home__new:active { transform: scale(0.995); }
+.vqs-home__new-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-accent);
+  color: var(--vqs-text-on-accent);
+  font-size: 22px;
+  font-weight: 700;
+}
+.vqs-home__new-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.vqs-home__new-title { font-size: 17px; font-weight: 700; }
+.vqs-home__new-sub { font-size: 13px; color: var(--vqs-text-2); }
+
+.vqs-home__starts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--vqs-gap-3);
+}
+.vqs-home__start {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: var(--vqs-hit);
+  padding: var(--vqs-gap-3) var(--vqs-gap-4);
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-bg-3);
+  color: var(--vqs-text-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--vqs-t-fast), border-color var(--vqs-t-fast);
+}
+.vqs-home__start:hover { background: var(--vqs-hover); border-color: var(--vqs-line-2); }
+.vqs-home__start-title { font-size: 14px; font-weight: 600; }
+.vqs-home__start-sub { font-size: 12px; color: var(--vqs-text-3); }
+
+/* 比率を選ぶ（sheet / modal の中身）*/
+.vqs-home__ratios {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: var(--vqs-gap-3);
+  padding: var(--vqs-gap-2) 0;
+}
+.vqs-home__ratio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 108px;
+  padding: var(--vqs-gap-3);
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-bg-3);
+  color: var(--vqs-text-1);
+  font: inherit;
+  cursor: pointer;
+}
+.vqs-home__ratio:hover { background: var(--vqs-hover); border-color: var(--vqs-accent-line); }
+.vqs-home__ratio-box {
+  width: 56px;
+  aspect-ratio: var(--vqs-home-ar, 16 / 9);
+  max-height: 56px;
+  border: 2px solid var(--vqs-text-2);
+  border-radius: var(--vqs-radius-1);
+  background: var(--vqs-inset);
+}
+.vqs-home__ratio-label { font-size: 13px; font-weight: 600; }
+.vqs-home__ratio-note { font-size: 11px; color: var(--vqs-text-3); text-align: center; }
+
+/* ── 5. テンプレート ──────────────────────────────────────────── */
+
+.vqs-home__tpls {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--vqs-gap-3);
+}
+.vqs-home__tpl {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 0 var(--vqs-gap-3);
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-panel);
+  color: var(--vqs-text-1);
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: var(--vqs-shadow-1);
+}
+.vqs-home__tpl:hover { border-color: var(--vqs-accent-line); }
+.vqs-home__tpl-face {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, var(--vqs-home-tint-a, var(--vqs-panel-2)), var(--vqs-home-tint-b, var(--vqs-bg-2)));
+}
+.vqs-home__tpl-dur {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-pv-veil);
+  color: var(--vqs-white);
+  font-size: 11px;
+}
+.vqs-home__tpl-name { padding: 0 var(--vqs-gap-3); font-size: 14px; font-weight: 600; }
+.vqs-home__tpl-desc {
+  padding: 0 var(--vqs-gap-3);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--vqs-text-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── 6. 一覧の格子 ────────────────────────────────────────────── */
+
+.vqs-home__grid {
+  display: grid;
+  /* 土台（契約書 C14）。列数は §9 の画面幅ごとに言い切る */
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--vqs-gap-4) var(--vqs-gap-3);
+}
+
+.vqs-home__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vqs-gap-2);
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--vqs-line);
+  border-radius: var(--vqs-radius-3);
+  background: var(--vqs-panel);
+  color: var(--vqs-text-1);
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: var(--vqs-shadow-1);
+  transition: border-color var(--vqs-t-fast), box-shadow var(--vqs-t-fast), transform var(--vqs-t-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.vqs-home__card:hover { border-color: var(--vqs-line-2); box-shadow: var(--vqs-shadow-2); }
+.vqs-home__card:active { transform: scale(0.99); }
+.vqs-home__card:focus-visible { outline: 2px solid var(--vqs-accent); outline-offset: 2px; }
+
+.vqs-home__thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;          /* サムネは 16:9 固定（C14）*/
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--vqs-home-tint-a, var(--vqs-panel-2)), var(--vqs-home-tint-b, var(--vqs-bg-2)));
+  overflow: hidden;
+}
+.vqs-home__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.vqs-home__thumb--img .vqs-home__initial { display: none; }
+.vqs-home__initial {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--vqs-white);
+  opacity: 0.82;
+  user-select: none;
+}
+.vqs-home__dur,
+.vqs-home__ratio-tag {
+  position: absolute;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: var(--vqs-radius-pill);
+  background: var(--vqs-pv-veil);
+  color: var(--vqs-white);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.vqs-home__dur { right: 6px; }
+.vqs-home__ratio-tag { left: 6px; color: var(--vqs-text-2); }
+
+.vqs-home__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 var(--vqs-gap-3) var(--vqs-gap-3);
+}
+.vqs-home__name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vqs-home__sub {
+  font-size: 12px;
+  color: var(--vqs-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vqs-home__more {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--vqs-radius-2);
+  background: var(--vqs-pv-veil);
+  color: var(--vqs-white);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--vqs-t-fast);
+}
+.vqs-home__card:hover .vqs-home__more,
+.vqs-home__more:focus-visible { opacity: 1; }
+
+/* 読み込み中の骨組み */
+.vqs-home__card--skel { pointer-events: none; border-color: var(--vqs-line); }
+.vqs-home__card--skel .vqs-home__thumb {
+  background: var(--vqs-bg-3);
+  animation: vqs-home-pulse 1.2s var(--vqs-ease) infinite alternate;
+}
+.vqs-home__card--skel .vqs-home__meta {
+  height: 34px;
+  margin: 0 var(--vqs-gap-3) var(--vqs-gap-3);
+  padding: 0;
+  border-radius: var(--vqs-radius-1);
+  background: var(--vqs-bg-3);
+}
+@keyframes vqs-home-pulse { from { opacity: 0.5; } to { opacity: 1; } }
+
+/* ── 7. 一覧（横並び）表示 ────────────────────────────────────── */
+
+.vqs-home__grid--list {
+  grid-template-columns: 1fr;
+  gap: var(--vqs-gap-2);
+}
+.vqs-home__grid--list .vqs-home__card {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--vqs-gap-3);
+  padding: var(--vqs-gap-2);
+}
+.vqs-home__grid--list .vqs-home__thumb {
+  width: 124px;
+  flex: 0 0 auto;
+  border-radius: var(--vqs-radius-2);
+}
+.vqs-home__grid--list .vqs-home__initial { font-size: 20px; }
+.vqs-home__grid--list .vqs-home__meta { flex: 1 1 auto; padding: 0; }
+.vqs-home__grid--list .vqs-home__more { position: static; opacity: 1; flex: 0 0 auto; background: transparent; color: var(--vqs-text-2); }
+
+/* ── 8. 空のとき / 下段 / ヘルプ ──────────────────────────────── */
+
+.vqs-home__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vqs-gap-3);
+  padding: var(--vqs-gap-5);
+  border: 1px dashed var(--vqs-line-2);
+  border-radius: var(--vqs-radius-4);
+  background: var(--vqs-panel);
+}
+.vqs-home__empty-title { margin: 0; font-size: 16px; font-weight: 700; }
+.vqs-home__empty-msg {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--vqs-text-2);
+}
+.vqs-home__btn {
+  min-height: var(--vqs-hit);
+  padding: 0 var(--vqs-gap-4);
+  border: 1px solid var(--vqs-accent-line);
+  border-radius: var(--vqs-radius-2);
+  background: var(--vqs-accent-dim);
+  color: var(--vqs-text-1);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.vqs-home__btn:hover { background: var(--vqs-accent); color: var(--vqs-text-on-accent); }
+.vqs-home__btn--ghost { background: var(--vqs-bg-3); border-color: var(--vqs-line-2); }
+.vqs-home__btn[disabled] { opacity: 0.55; cursor: default; }
+
+.vqs-home__foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vqs-gap-3);
+  padding: var(--vqs-gap-2) var(--vqs-gap-4);
+  padding-bottom: calc(var(--vqs-gap-2) + env(safe-area-inset-bottom));
+  min-height: 40px;
+  background: var(--vqs-bg-2);
+  border-top: 1px solid var(--vqs-line);
+  font-size: 12px;
+  color: var(--vqs-text-3);
+}
+.vqs-home__usage { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vqs-home__link {
+  min-height: 32px;
+  padding: 0 var(--vqs-gap-2);
+  border: 0;
+  border-radius: var(--vqs-radius-2);
+  background: transparent;
+  color: var(--vqs-accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vqs-home__link:hover { background: var(--vqs-hover); }
+
+.vqs-home__help { display: flex; flex-direction: column; gap: var(--vqs-gap-2); }
+.vqs-home__help-lead,
+.vqs-home__help-msg { margin: 0; font-size: 13px; line-height: 1.7; color: var(--vqs-text-2); }
+.vqs-home__help-h {
+  margin: var(--vqs-gap-3) 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--vqs-text-3);
+}
+.vqs-home__keys {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px var(--vqs-gap-3);
+  margin: 0;
+  font-size: 13px;
+}
+.vqs-home__key-t { margin: 0; color: var(--vqs-text-1); }
+.vqs-home__key-d {
+  margin: 0;
+  color: var(--vqs-text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vqs-home__file { display: none; }
+
+/* ── 9. 画面幅（モバイル 2 列 / タブレット 3 列 / デスクトップ 4〜6 列）── */
+
+/* デスクトップ: 最大幅 1440px と min 220px で 4〜6 列に収まる */
+@media (min-width: 1024px) {
+  .vqs-home__grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+}
+
+/* タブレット: 3 列 */
+@media (min-width: 600px) and (max-width: 1023px) {
+  .vqs-home__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vqs-home__tpls,
+  .vqs-home__starts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* モバイル: 2 列 */
+@media (max-width: 599px) {
+  .vqs-home__top {
+    flex-wrap: wrap;
+    gap: var(--vqs-gap-2);
+    padding-left: var(--vqs-gap-3);
+    padding-right: var(--vqs-gap-3);
+  }
+  .vqs-home__search { order: 3; flex-basis: 100%; max-width: none; }
+  .vqs-home__tools { order: 2; margin-left: auto; }
+  .vqs-home__sortbtn { padding: 0 var(--vqs-gap-2); font-size: 12px; }
+  .vqs-home__accname { display: none; }
+  .vqs-home__account { padding: 3px; }
+  .vqs-home__scroll { padding: var(--vqs-gap-4) var(--vqs-gap-3); }
+  .vqs-home__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--vqs-gap-3) var(--vqs-gap-2); }
+  .vqs-home__starts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vqs-home__tpls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vqs-home__new { min-height: 72px; padding: var(--vqs-gap-3); }
+  .vqs-home__new-plus { width: 40px; height: 40px; font-size: 19px; }
+  .vqs-home__new-title { font-size: 15px; }
+  .vqs-home__name { font-size: 13px; }
+  .vqs-home__more { opacity: 1; }             /* 触る端末には常に出す */
+  .vqs-home__grid--list .vqs-home__thumb { width: 96px; }
+  .vqs-home__empty { padding: var(--vqs-gap-4); }
+}
+
+/* 細い縦（iPhone SE 級）でも 2 列を保つが、余白だけ詰める */
+@media (max-width: 380px) {
+  .vqs-home__scroll { padding: var(--vqs-gap-3) var(--vqs-gap-2); }
+  .vqs-home__grid { gap: var(--vqs-gap-2); }
+}
+
+/* ── 10. 動きを減らす設定を尊重する ──────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .vqs-home__card,
+  .vqs-home__new,
+  .vqs-home__start,
+  .vqs-home__more { transition: none; }
+  .vqs-home__card:active,
+  .vqs-home__new:active { transform: none; }
+  .vqs-home__card--skel .vqs-home__thumb { animation: none; }
+}
